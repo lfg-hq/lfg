@@ -1,0 +1,135 @@
+{% extends 'projects/base_projects.html' %}
+
+{% block title %}{{ project.name }} - LFG 🚀🚀{% endblock %}
+
+{% block content %}
+<div class="projects-container">
+    <div class="project-header">
+        <div class="large-project-icon">{{ project.icon }}</div>
+        <div class="project-header-content">
+            <h1 class="project-header-name">{{ project.name }}</h1>
+            <div class="project-header-meta">
+                <span><i class="fas fa-calendar"></i> Created {{ project.created_at|date:"M d, Y" }}</span>
+                <span><i class="fas fa-clock"></i> Last updated {{ project.updated_at|date:"M d, Y" }}</span>
+                <span class="project-status project-status-{{ project.status }}">{{ project.status }}</span>
+            </div>
+        </div>
+        <div class="project-header-actions">
+            <a href="{% url 'create_conversation' project.id %}" class="btn btn-primary">
+                <i class="fas fa-comment"></i> New Chat
+            </a>
+            <a href="{% url 'projects:project_terminal' project.id %}" class="btn btn-outline-secondary">
+                <i class="fas fa-terminal"></i> Terminal
+            </a>
+            <a href="{% url 'projects:update_project' project.id %}" class="btn btn-outline">
+                <i class="fas fa-edit"></i> Edit
+            </a>
+            <form action="{% url 'projects:delete_project' project.id %}" method="post" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-danger delete-project-btn" data-project-name="{{ project.name }}">
+                    <i class="fas fa-trash-alt"></i> Delete
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div class="project-description-section">
+        <div class="card">
+            <h2 class="section-title">About this project</h2>
+            <div class="project-description-content">
+                {% if project.description %}
+                    {{ project.description }}
+                {% else %}
+                    <p class="text-muted">No description provided</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="project-content">
+        <div class="page-section">
+            <h2 class="section-title">Project Conversations</h2>
+            
+            {% if project.direct_conversations.all %}
+                <div class="conversations-list">
+                    {% for conversation in project.direct_conversations.all|dictsortreversed:"updated_at"|slice:":4" %}
+                        <div class="conversation-list-item" data-conversation-id="{{ conversation.id }}">
+                            <div class="conversation-list-icon">
+                                <i class="fas fa-comments"></i>
+                            </div>
+                            <div class="conversation-list-content">
+                                <h3 class="conversation-list-title">{{ conversation.title }}</h3>
+                                <div class="conversation-list-meta">
+                                    <span><i class="fas fa-calendar"></i> {{ conversation.created_at|date:"M d, Y" }}</span>
+                                    <span><i class="fas fa-message"></i> {{ conversation.messages.count }} messages</span>
+                                </div>
+                            </div>
+                            <div class="conversation-list-actions">
+                                <a href="{% url 'conversation_detail' conversation.id %}" class="btn btn-sm btn-outline">
+                                    <i class="fas fa-external-link-alt"></i>&nbsp; Open
+                                </a>
+                            </div>
+                        </div>
+                    {% endfor %}
+                    
+                    <div class="conversation-list-footer">
+                        <a href="{% url 'create_conversation' project.id %}" class="btn btn-outline">
+                            <i class="fas fa-plus"></i> New Conversation
+                        </a>
+                        
+                        {% if project.direct_conversations.all.count > 4 %}
+                        <a href="{% url 'projects:project_detail' project.id %}" class="btn btn-link">
+                            View All ({{ project.direct_conversations.all.count }})
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+            {% else %}
+                <div class="empty-state">
+                    <div class="empty-state-icon">
+                        <i class="fas fa-comments"></i>
+                    </div>
+                    <h3 class="empty-state-title">No conversations yet</h3>
+                    <div class="empty-state-text">
+                        Start a conversation to interact with AI about this project.
+                    </div>
+                    <a href="{% url 'create_conversation' project.id %}" class="btn btn-primary">
+                        <i class="fas fa-comment"></i> Start First Conversation
+                    </a>
+                </div>
+            {% endif %}
+        </div>
+        
+        <!-- Conversation Message History Section -->
+        <div class="page-section conversation-history-section" style="display: none;" id="conversation-history-section">
+            <div class="section-header">
+                <h2 class="section-title" id="conversation-history-title">Conversation Messages</h2>
+                <button class="btn btn-sm btn-outline close-conversation-btn">
+                    <i class="fas fa-times"></i> Close
+                </button>
+            </div>
+            <div class="card">
+                <div class="conversation-messages" id="conversation-messages">
+                    <!-- Messages will be loaded here -->
+                    <div class="loading-spinner">
+                        <i class="fas fa-spinner fa-spin"></i> Loading conversation...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- CSS and JavaScript moved to external files -->
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+<script src="/static/js/project_detail.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css">
+<link rel="stylesheet" href="/static/css/project_detail.css">
+{% endblock %}
+
+<!-- Include CSRF Token -->
+{% csrf_token %} 

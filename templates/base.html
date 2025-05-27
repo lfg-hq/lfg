@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Projects - LFG 🚀🚀{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/common.css">
+    <link rel="stylesheet" href="/static/css/projects.css">
+    <link rel="stylesheet" href="/static/css/settings.css">
+    <link rel="stylesheet" href="/static/css/auth.css">
+    <link rel="stylesheet" href="/static/css/integrations.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <meta name="color-scheme" content="dark">
+</head>
+<body>
+    <div class="app-container">
+        <header class="main-header">
+            <div class="container">
+                <div class="header-content">
+                    <div class="header-left">
+                        <div class="logo">
+                            <a href="{% url 'projects:project_list' %}">
+                                <span class="logo-text">LFG</span>
+                                <span class="logo-emoji">🚀🚀</span>
+                            </a>
+                        </div>
+                        <nav class="main-nav">
+                            <a href="/">Home</a>
+                            {% if user.is_authenticated %}
+                                <a href="{% url 'projects:project_list' %}">Projects</a>
+                                <a href="{% url 'profile' %}">Profile</a>
+                                <a href="{% url 'subscriptions:dashboard' %}" title="Your Credits">
+                                    <i class="fas fa-coins"></i> {{ user_credits|default:"0" }}
+                                </a>
+                            {% else %}
+                                <a href="{% url 'login' %}">Login</a>
+                                <a href="{% url 'register' %}">Register</a>
+                            {% endif %}
+                        </nav>
+                    </div>
+                    <div class="header-right">
+                        <div class="user-menu">
+                            {% if user.is_authenticated %}
+                                <div class="dropdown">
+                                    <button class="dropdown-button user-dropdown-button">
+                                        <div class="user-avatar">
+                                            {% if user.profile.avatar %}
+                                                <img src="{{ user.profile.avatar.url }}" alt="{{ user.username }}'s avatar">
+                                            {% else %}
+                                                <div class="avatar-text">{{ user.username|first|upper }}</div>
+                                            {% endif %}
+                                        </div>
+                                        <span class="username">{{ user.username }}</span>
+                                        <i class="fas fa-chevron-down"></i>
+                                    </button>
+                                    <div class="dropdown-menu">
+                                        <a href="{% url 'profile' %}" class="dropdown-item">
+                                            <i class="fas fa-user"></i> Profile
+                                        </a>
+                                        <a href="{% url 'integrations' %}" class="dropdown-item">
+                                            <i class="fas fa-plug"></i> Integrations
+                                        </a>
+                                        <a href="#" class="dropdown-item">
+                                            <i class="fas fa-cog"></i> Settings
+                                        </a>
+                                        <div class="dropdown-divider"></div>
+                                        <a href="{% url 'logout' %}" class="dropdown-item">
+                                            <i class="fas fa-sign-out-alt"></i> Logout
+                                        </a>
+                                    </div>
+                                </div>
+                            {% else %}
+                                <a href="{% url 'login' %}" class="btn btn-primary">Log In</a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+        
+        <main class="main-content">
+            <div class="container">
+                {% if messages %}
+                    <div class="messages">
+                        {% for message in messages %}
+                            <div class="alert {% if message.tags == 'error' %}alert-danger{% elif message.tags == 'success' %}alert-success{% endif %}">
+                                {{ message }}
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+                
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+        
+        <footer class="main-footer">
+            <div class="container">
+                <p>&copy; {% now "Y" %} LFG Technologies. All rights reserved.</p>
+            </div>
+        </footer>
+    </div>
+
+    <script src="/static/js/projects.js"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html> 

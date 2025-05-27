@@ -1,0 +1,3134 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Monaco Editor</title>
+
+<!-- Monaco & Material Icons -->
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.34.0/min/vs/loader.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@6.5.95/css/materialdesignicons.min.css">
+
+<style>
+/* ── transparent scrollbar everywhere ───────────────────────────── */
+*::-webkit-scrollbar{width:10px!important;height:10px!important;background:transparent!important}
+*::-webkit-scrollbar-track,*::-webkit-scrollbar-corner{background:transparent!important}
+*::-webkit-scrollbar-thumb{background:#424242!important;border:2px solid transparent!important;border-radius:5px!important}
+*::-webkit-scrollbar-thumb:hover{background:#525252!important}
+#file-explorer,#terminal,.monaco-scrollable-element{scrollbar-width:thin;scrollbar-color:#424242 transparent;-ms-overflow-style:none;transition:scrollbar-color .2s}
+#file-explorer:not(:hover)::-webkit-scrollbar-thumb,
+#terminal:not(:hover)::-webkit-scrollbar-thumb,
+.monaco-scrollable-element:not(:hover)::-webkit-scrollbar-thumb{background:transparent}
+
+/* ── layout ─────────────────────────────────────────────────────── */
+body{margin:0;padding:0;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,Cantarell,'Open Sans','Helvetica Neue',sans-serif;background:#1e1e1e}
+#container{display:flex;height:100vh;background:#1e1e1e}
+
+/* Explorer pane */
+#file-explorer{min-width:100px;max-width:600px;width:250px;background:#252526;color:#fff;overflow-y:auto;font-size:13px;flex-shrink:0}
+.explorer-title{padding:10px 20px;font-size:11px;text-transform:uppercase;font-weight:700;letter-spacing:1px;color:#bbb;background:#252526}
+
+/* Terminal title */
+.terminal-title{padding:6px 10px;font-size:11px;text-transform:uppercase;font-weight:700;letter-spacing:1px;color:#bbb;background:#1e1e1e;border-top:1px solid #333;border-bottom:1px solid #333;display:flex;align-items:center;justify-content:space-between}
+
+/* Editor / terminal column */
+#editor-container{flex-grow:1;display:flex;flex-direction:column;background:#1e1e1e}
+#monaco-editor{flex-grow:1}
+#h-resizer{height:5px;width:100%;background:#1e1e1e;cursor:row-resize;transition:background .2s}
+#h-resizer:hover,#h-resizer.dragging{background:#0e639c}
+
+/* Tab bar styles */
+#editor-tabs {
+    display: flex;
+    background: #252526;
+    border-bottom: 1px solid #333;
+    overflow-x: auto;
+    user-select: none;
+    height: 35px;
+    flex-shrink: 0;
+    scrollbar-width: thin;
+    position: relative;
+    scroll-behavior: smooth;
+    padding-right: 35px; /* Make room for the add button */
+    padding-left: 35px; /* Make room for the menu button */
+}
+
+/* Hide scrollbar but keep functionality */
+#editor-tabs::-webkit-scrollbar {
+    height: 5px;
+    background: transparent;
+}
+
+#editor-tabs::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+}
+
+#editor-tabs:hover::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* Tabs menu button - positioned at the beginning */
+.tabs-menu-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 35px;
+    height: 35px;
+    background: #2d2d2d;
+    color: #ccc;
+    cursor: pointer;
+    font-size: 18px;
+    border: none;
+    border-right: 1px solid #1e1e1e;
+    position: absolute;
+    left: 0;
+    top: 0;
+    z-index: 10;
+}
+
+.tabs-menu-button:hover {
+    background: #3d3d3d;
+    color: #fff;
+}
+
+/* Tabs menu dropdown */
+.tabs-menu-dropdown {
+    position: fixed;
+    top: 35px;
+    left: 0;
+    background: #252526;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+    border: 1px solid #454545;
+    max-height: 300px;
+    overflow-y: auto;
+    z-index: 9999;
+    min-width: 200px;
+    display: none;
+    opacity: 0;
+    transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
+    transform: translateY(-10px);
+    border-radius: 4px;
+}
+
+.tabs-menu-dropdown.show {
+    display: block !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    transform: translateY(0) !important;
+}
+
+/* Remove debugging outline */
+#tabs-menu-dropdown.show {
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.4);
+}
+
+/* Enhance tab menu items */
+.tab-menu-item {
+    display: flex;
+    align-items: center;
+    padding: 10px 12px;
+    color: #ccc;
+    border-bottom: 1px solid #333;
+    cursor: pointer;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: background 0.15s ease;
+}
+
+.tab-menu-item:hover {
+    background: #37373d;
+}
+
+.tab-menu-item.active {
+    background: #094771;
+    color: #fff;
+}
+
+.tab-menu-item .tab-icon {
+    margin-right: 8px;
+    font-size: 14px;
+}
+
+.tab-menu-item .tab-close {
+    margin-left: auto;
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+    font-size: 14px;
+    visibility: hidden;
+}
+
+.tab-menu-item:hover .tab-close {
+    visibility: visible;
+}
+
+.tab-menu-item .tab-close:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* Tab add button sticky to the right side */
+.tab-add-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 35px;
+    height: 35px;
+    background: transparent;
+    color: #ccc;
+    cursor: pointer;
+    font-size: 18px;
+    border: none;
+    position: absolute;
+    right: 0;
+    top: 0;
+    z-index: 10;
+}
+
+.tab-add-button:hover {
+    background: #333;
+}
+
+/* Modify editor tab to scroll properly */
+.editor-tab {
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    height: 35px;
+    background: #2d2d2d;
+    border-right: 1px solid #1e1e1e;
+    font-size: 12px;
+    color: #ccc;
+    cursor: pointer;
+    white-space: nowrap;
+    position: relative;
+    min-width: 100px;
+    max-width: 200px;
+    flex-shrink: 0;
+}
+
+.editor-tab.active {
+    background: #1e1e1e;
+    color: #fff;
+    border-top: 1px solid #0e639c;
+    margin-top: -1px;
+}
+
+.editor-tab:hover {
+    background: #333;
+}
+
+.editor-tab .tab-icon {
+    margin-right: 6px;
+    font-size: 14px;
+    color: #ccc;
+}
+
+.editor-tab .tab-name {
+    flex-grow: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 150px;
+}
+
+.editor-tab .tab-close {
+    margin-left: 6px;
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+    font-size: 14px;
+    visibility: hidden;
+}
+
+.editor-tab:hover .tab-close {
+    visibility: visible;
+}
+
+.editor-tab .tab-close:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.editor-tab .tab-close:active {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.editor-tab.unsaved .tab-close::before {
+    content: "";
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #0e639c;
+    position: absolute;
+    top: 8px;
+    right: 8px;
+}
+
+/* Loading spinner for tabs */
+.loading-spinner {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top-color: #0e639c;
+    animation: tab-spin 1s linear infinite;
+    margin-right: 5px;
+}
+
+@keyframes tab-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Editor wrapper */
+#editor-wrapper {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+}
+
+/* Terminal WebSocket Styles */
+
+/* Terminal container enhancements */
+#terminal {
+    height: 300px;
+    background: #1e1e1e;
+    overflow: hidden;
+    border-top: 1px solid #333;
+    box-shadow: inset 0 0 8px rgba(0,0,0,.6);
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Terminal title with status */
+.terminal-title {
+    padding: 6px 10px;
+    font-size: 11px;
+    text-transform: uppercase;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: #bbb;
+    background: #1e1e1e;
+    border-top: 1px solid #333;
+    border-bottom: 1px solid #333;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+/* Terminal status indicator */
+#terminal-status {
+    font-size: 10px;
+    color: #777;
+    margin-left: 10px;
+    font-weight: normal;
+}
+
+/* Terminal buttons */
+.terminal-button {
+    background: #0e639c;
+    color: white;
+    border: none;
+    padding: 4px 10px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+    margin-left: 5px;
+    transition: background-color 0.2s;
+}
+
+.terminal-button:hover {
+    background: #1177BB;
+}
+
+.terminal-button.prominent {
+    background: #2ea043;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    padding: 5px 10px;
+}
+
+.terminal-button.prominent:hover {
+    background: #3bbd55;
+}
+
+.terminal-button.prominent i {
+    margin-right: 5px;
+}
+
+/* Terminal iframe */
+#terminal-iframe {
+    flex-grow: 1;
+    width: 100%;
+    border: none;
+    background: #1e1e1e;
+}
+
+/* Connection status colors */
+.status-connected { color: #0dbc79 !important; }
+.status-disconnected { color: #f14c4c !important; }
+.status-connecting { color: #fcce0c !important; }
+
+/* File‑tree */
+.file-tree{list-style:none;padding:0;margin:0;background:#252526}
+.file-item{display:flex;align-items:center;padding:4px 8px 4px 20px;cursor:pointer;user-select:none;white-space:nowrap;background:transparent}
+.file-item:hover{background:#2a2d2e}
+.file-item.active{background:#37373d}
+.file-item i{margin-right:6px;font-size:16px;width:16px;text-align:center;color:#c5c5c5}
+.directory>.file-item{padding-left:calc(20px*var(--depth,1))}
+.file-item.file{padding-left:calc(20px*var(--depth,1))}
+.directory>.file-item i.mdi-chevron-right{transition:transform .15s}
+.directory.expanded>.file-item i.mdi-chevron-right{transform:rotate(90deg)}
+.directory>.file-tree{display:none}
+.directory.expanded>.file-tree{display:block}
+
+/* File tree loading states and messages */
+.file-item .loading-spinner {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top-color: #0e639c;
+    animation: spin 0.8s linear infinite;
+    margin-right: 6px;
+    position: absolute;
+    left: 3px;
+}
+
+li.empty-folder {
+    padding: 4px 8px 4px calc(20px*var(--depth,1) + 20px);
+    color: #6c6c6c;
+    font-style: italic;
+    font-size: 12px;
+}
+
+li.error-message {
+    padding: 4px 8px 4px calc(20px*var(--depth,1) + 20px);
+    color: #f14c4c;
+    font-style: italic;
+    font-size: 12px;
+}
+
+/* Monaco background override */
+.monaco-editor,.monaco-editor .margin,.monaco-editor-background,
+.monaco-editor .inputarea.ime-input{background:#1e1e1e!important}
+
+/* Vertical resizer */
+#resizer{width:5px;background:#1e1e1e;cursor:col-resize;transition:background .2s}
+#resizer:hover,#resizer.dragging{background:#0e639c}
+.dragging{user-select:none}
+
+/* Context‑menu */
+.context-menu{position:fixed;background:#252526;border:1px solid #454545;box-shadow:0 2px 8px rgba(0,0,0,.15);padding:4px 0;min-width:150px;z-index:1000}
+.context-menu-item{padding:6px 12px;cursor:pointer;color:#ccc;font-size:13px;display:flex;align-items:center}
+.context-menu-item:hover{background:#094771;color:#fff}
+.context-menu-item i{margin-right:8px;font-size:16px}
+.context-menu-separator{height:1px;background:#454545;margin:4px 0}
+.context-menu-item.danger{color:#f14c4c}
+.context-menu-item.danger:hover{background:#3c1f1f;color:#ff6b6b}
+
+/* No context message */
+.no-context-message {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    max-width: 600px;
+    padding: 30px;
+    background: #252526;
+    border: 1px solid #454545;
+    color: #d4d4d4;
+    border-radius: 5px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.3);
+    text-align: center;
+}
+.no-context-message h2 {
+    margin-top: 0;
+    color: #0e639c;
+}
+.no-context-message p {
+    margin-bottom: 20px;
+}
+.no-context-message code {
+    display: block;
+    background: #1e1e1e;
+    padding: 10px;
+    border-radius: 4px;
+    margin: 15px 0;
+    font-family: Consolas, monospace;
+}
+
+.loading-indicator {
+    padding: 15px;
+    display: flex;
+    align-items: center;
+    color: #ccc;
+}
+
+.loading-indicator .spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    margin-right: 10px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top-color: #0e639c;
+    animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.no-files-message {
+    padding: 15px;
+    color: #fcce0c;
+    text-align: center;
+}
+
+.no-files-message p {
+    margin-bottom: 15px;
+}
+
+.error-message {
+    padding: 15px;
+    color: #f14c4c;
+    background-color: rgba(241, 76, 76, 0.1);
+    border-radius: 4px;
+    margin: 10px;
+}
+
+/* Button styles */
+.btn {
+    display: inline-block;
+    padding: 6px 12px;
+    margin-bottom: 0;
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 1.42857143;
+    text-align: center;
+    white-space: nowrap;
+    vertical-align: middle;
+    cursor: pointer;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: white;
+}
+
+.btn-primary {
+    background-color: #2ea043;
+    border-color: #2a913c;
+}
+
+.btn-primary:hover {
+    background-color: #2a913c;
+}
+
+.btn-secondary {
+    background-color: #0e639c;
+    border-color: #0d5b8f;
+}
+
+.btn-secondary:hover {
+    background-color: #0d5b8f;
+}
+
+.mt-2 {
+    margin-top: 8px;
+}
+</style>
+</head>
+<body>
+{% if no_context %}
+<div class="no-context-message">
+    <h2>Missing Context</h2>
+    <p>{{ message }}</p>
+    <p>Examples:</p>
+    <code>/coding/editor/?project_id=my-project-123</code>
+    <p>or</p>
+    <code>/coding/editor/?conversation_id=my-conversation-456</code>
+</div>
+{% else %}
+<div id="container">
+    <!-- Explorer -->
+    <div id="file-explorer">
+        <div class="explorer-title">
+            EXPLORER
+            <button id="refresh-file-explorer" title="Refresh File Explorer" style="background: transparent; border: none; cursor: pointer; float: right; padding: 0; margin-top: -2px; color: #888; transition: color 0.2s;">
+                <i class="mdi mdi-refresh" style="font-size: 16px;"></i>
+            </button>
+        </div>
+        <div id="file-tree-container"></div>
+    </div>
+
+    <!-- Vertical resizer -->
+    <div id="resizer"></div>
+
+    <!-- Editor + horizontal resizer + terminal -->
+    <div id="editor-container">
+        <div id="editor-wrapper">
+            <div id="editor-tabs">
+                <!-- Tabs menu button first -->
+                <button class="tabs-menu-button" id="tabs-menu-button" title="Show All Tabs">
+                    <i class="mdi mdi-dots-horizontal"></i>
+                </button>
+                <div class="tabs-menu-dropdown" id="tabs-menu-dropdown"></div>
+                
+                <!-- Tabs will be added dynamically via JavaScript -->
+                
+                <!-- Add button at the end -->
+                <button class="tab-add-button" id="add-new-tab" title="New File">
+                    <i class="mdi mdi-plus"></i>
+                </button>
+            </div>
+            <div id="monaco-editor"></div>
+        </div>
+        <div id="h-resizer"></div>
+        
+        <!-- Terminal Container -->
+        <div id="terminal" class="terminal-container" {% if project_id %}data-project-id="{{ project_id }}"{% endif %} {% if conversation_id %}data-conversation-id="{{ conversation_id }}"{% endif %}>
+            <div class="terminal-header">
+                <div class="terminal-title">
+                    TERMINAL <span id="terminal-status" style="margin-left: 5px; color: #fcce0c;">(Initializing...)</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 5px 10px; background-color: #2d2d2d; border-bottom: 1px solid #333;">
+                    <div style="display: flex; align-items: center; color: #f3ca3c;">
+                        <i class="mdi mdi-key" style="margin-right: 5px;"></i>
+                        <span style="font-size: 12px;">Login with: <code style="background: #1e1e1e; padding: 2px 4px; border-radius: 3px;">user</code> / <code style="background: #1e1e1e; padding: 2px 4px; border-radius: 3px;">password</code></span>
+                    </div>
+                    <div>
+                    <button id="open-external-terminal" class="terminal-button prominent"><i class="mdi mdi-open-in-new"></i>Open Terminal in New Window</button>
+                    </div>
+                </div>
+            </div>
+            <iframe id="terminal-iframe" src="about:blank"></iframe>
+        </div>
+    </div>
+</div>
+
+<!-- Context‑menu -->
+<div id="context-menu" class="context-menu" style="display:none">
+    <div class="context-menu-item" onclick="createNewFile()" data-action="new-file"><i class="mdi mdi-file-plus"></i>New File</div>
+    <div class="context-menu-item" onclick="createNewFolder()" data-action="new-folder"><i class="mdi mdi-folder-plus"></i>New Folder</div>
+    <div class="context-menu-separator"></div>
+    <div class="context-menu-item" onclick="renameItem()" data-action="rename"><i class="mdi mdi-pencil"></i>Rename</div>
+    <div class="context-menu-item danger" onclick="deleteItem()" data-action="delete"><i class="mdi mdi-delete"></i>Delete</div>
+</div>
+
+<script>
+// Add this code at the top to prevent reload confirmation dialogs
+window.onbeforeunload = function() {
+    // Return null to prevent the browser from showing a confirmation dialog
+    return null;
+};
+
+/*─────────────────────────────────────────────────────────────
+  Global file tree functions (accessible outside Monaco scope)
+─────────────────────────────────────────────────────────────*/
+// Declare function in the global scope
+function loadFileTree(forceRefresh = false) {
+    console.log("Loading file tree from Kubernetes pod...", forceRefresh ? "(Force refresh)" : "");
+    
+    // Track expanded folders and scroll position
+    const container = document.getElementById('file-tree-container');
+    const expanded = Array.from(container.querySelectorAll('.directory.expanded>.file-item'))
+                        .map(it => it.dataset.path);
+    const scrollPos = container.scrollTop;
+    
+    const loadingIndicator = document.createElement('div');
+    loadingIndicator.className = 'loading-indicator';
+    loadingIndicator.innerHTML = '<div class="spinner"></div><span>Loading files from Kubernetes pod...</span>';
+    
+    container.innerHTML = '';
+    container.appendChild(loadingIndicator);
+    
+    // Create request data
+    const requestData = { 
+        workspace_dir: "/workspace",
+        force_refresh: forceRefresh  // Add a flag to indicate this is a forced refresh
+    };
+    if (window.projectId) requestData.project_id = window.projectId;
+    if (window.conversationId) requestData.conversation_id = window.conversationId;
+    if (window.podToken) requestData.token = window.podToken;
+
+    // Function to make the actual request
+    const makeRequest = () => {
+        fetch('/coding/k8s/get_file_tree/', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(requestData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                // If we get a token error, try refreshing the token and retry
+                if (data.error.includes('token') && !requestData.retried) {
+                    console.log('Token error, refreshing token and retrying...');
+                    return updatePodTokens().then(tokens => {
+                        if (tokens && tokens.podToken) {
+                            requestData.token = tokens.podToken;
+                            requestData.retried = true;
+                            return makeRequest();
+                        } else {
+                            container.innerHTML = `<div class="error-message">Error loading files: Invalid token</div>`;
+                        }
+                    });
+                }
+                
+                // If force refresh was requested and we still got an error, try using terminal check as fallback
+                if (forceRefresh) {
+                    console.log("Force refresh failed, trying terminal check as fallback");
+                    setTimeout(checkForFilesInTerminal, 300);
+                }
+                
+                container.innerHTML = `<div class="error-message">Error loading files: ${data.error}</div>`;
+                return;
+            }
+            
+            container.innerHTML = '';
+            
+            if (!data.files || data.files.length === 0) {
+                console.log("No files found in Kubernetes pod workspace");
+                
+                // If this was a force refresh, also try a terminal check
+                if (forceRefresh) {
+                    console.log("Force refresh found no files, trying terminal check");
+                    setTimeout(checkForFilesInTerminal, 300);
+                    return;
+                }
+                
+                container.innerHTML = `
+                    <div class="no-files-message">
+                        <p>No files found in Kubernetes pod workspace.</p>
+                        <button id="create-first-file" class="btn btn-primary">Create First File</button>
+                        <button id="check-files-terminal" class="btn btn-secondary mt-2">Check via Terminal</button>
+                        <button id="refresh-file-tree" class="btn btn-secondary mt-2">Refresh</button>
+                    </div>
+                `;
+                document.getElementById('create-first-file').addEventListener('click', createFirstFile);
+                document.getElementById('check-files-terminal').addEventListener('click', checkForFilesInTerminal);
+                document.getElementById('refresh-file-tree').addEventListener('click', () => loadFileTree(true));
+                return;
+            }
+            
+            // Call global renderFileTree function
+            container.innerHTML = window.renderFileTree(data.files, true);
+            
+            // Restore expanded folders
+            expanded.forEach(path => {
+                const el = container.querySelector(`.directory>.file-item[data-path="${path}"]`);
+                if(el) el.parentElement.classList.add('expanded');
+            });
+            
+            // Set up event handlers for directories
+            container.querySelectorAll('.directory>.file-item').forEach(item => {
+                item.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    
+                    const folderPath = this.dataset.path;
+                    const isLoaded = this.dataset.loaded === 'true';
+                    const parentDir = this.parentElement;
+                    
+                    // Toggle the expanded state of the folder
+                    parentDir.classList.toggle('expanded');
+                    
+                    // If this folder hasn't been loaded yet and is now expanded, load its contents
+                    if (!isLoaded && parentDir.classList.contains('expanded')) {
+                        loadFolderContents(folderPath, parentDir);
+                    }
+                });
+            });
+            
+            // Set up event handlers for files
+            container.querySelectorAll('.file-item.file').forEach(item => {
+                const path = item.dataset.path;
+                item.onclick = () => window.openFile(path, item);
+            });
+            
+            // Restore active file highlighting
+            if(window.currentFile) {
+                const again = container.querySelector(`.file-item[data-path="${window.currentFile}"]`);
+                if(again) {
+                    again.classList.add('active'); 
+                    window.activeItem = again;
+                }
+            }
+            
+            // Restore scroll position
+            container.scrollTop = scrollPos;
+            
+            // If we have pod info in the response (from K8s), display it
+            if (data.pod_info) {
+                appendToTerminal(`Connected to Kubernetes pod: ${data.pod_info.pod_name} (${data.pod_info.status})`, 'out');
+            }
+        })
+        .catch(error => {
+            console.error("Error fetching file tree:", error);
+            container.innerHTML = `<div class="error-message">Error loading files: ${error.message}</div>`;
+        });
+    };
+
+    // If we don't have a token, get it first
+    if (!window.podToken) {
+        updatePodTokens().then(() => makeRequest());
+    } else {
+        makeRequest();
+    }
+}
+
+const refreshTree = loadFileTree;
+
+/*─────────────────────────────────────────────────────────────
+  Make URL params globally available
+─────────────────────────────────────────────────────────────*/
+const urlParams = new URLSearchParams(window.location.search);
+window.projectId = urlParams.get('project_id');
+window.conversationId = urlParams.get('conversation_id');
+
+/*─────────────────────────────────────────────────────────────
+  Global renderFileTree function
+─────────────────────────────────────────────────────────────*/
+window.renderFileTree = function(items, isRoot=false, depth=1) {
+    let html='<ul class="file-tree"'+(isRoot?' id="root-tree"':'')+'>';
+    html+=items.map(item=>{
+        if(item.type==='directory'){
+            return`<li class="directory" style="--depth:${depth}">
+                      <div class="file-item" data-path="${item.path}" data-loaded="false">
+                          <i class="mdi mdi-chevron-right"></i>
+                          <i class="mdi mdi-folder${item.name.startsWith('.')?'-hidden':''}"></i>${item.name}
+                      </div>
+                      ${item.children && item.children.length > 0 ? window.renderFileTree(item.children,false,depth+1) : '<ul class="file-tree"></ul>'}
+                    </li>`;
+        }
+        return`<li style="--depth:${depth}">
+                  <div class="file-item file" data-path="${item.path}">
+                      <i class="mdi mdi-${getFileIcon(item.name)}"></i>${item.name}
+                  </div>
+                </li>`;
+    }).join('');
+    return html+'</ul>';
+}
+
+/*─────────────────────────────────────────────────────────────
+  Icon map
+─────────────────────────────────────────────────────────────*/
+const fileIcons={py:'language-python',js:'language-javascript',jsx:'language-javascript',ts:'language-typescript',tsx:'language-typescript',html:'language-html5',css:'language-css3',scss:'language-sass',less:'language-less',php:'language-php',java:'language-java',cpp:'language-cpp',c:'language-c',cs:'language-csharp',go:'language-go',rb:'language-ruby',rs:'language-rust',swift:'language-swift',kt:'language-kotlin',json:'code-json',xml:'code-tags',svg:'svg',vue:'vuejs',react:'react',yml:'code-braces',yaml:'code-braces',toml:'code-braces',ini:'code-braces',conf:'cog',config:'cog',dockerfile:'docker','docker-compose.yml':'docker','docker-compose.yaml':'docker',sh:'console',bash:'console',zsh:'console',fish:'console',md:'language-markdown',txt:'text',pdf:'file-pdf-box',doc:'file-word-box',docx:'file-word-box',xls:'file-excel-box',xlsx:'file-excel-box',ppt:'file-powerpoint-box',pptx:'file-powerpoint-box',sql:'database',sqlite:'database',sqlite3:'database',db:'database',png:'file-image',jpg:'file-image',jpeg:'file-image',gif:'file-image',ico:'file-image',webp:'file-image',zip:'zip-box',rar:'zip-box','7z':'zip-box',tar:'zip-box',gz:'zip-box','.gitignore':'git','.gitmodules':'git','.gitattributes':'git','package.json':'nodejs','package-lock.json':'nodejs','requirements.txt':'language-python',Pipfile:'language-python','poetry.lock':'language-python','composer.json':'language-php',Gemfile:'language-ruby','pom.xml':'language-java','build.gradle':'language-java',default:'file-document-outline'};
+function getFileIcon(name){if(fileIcons[name.toLowerCase()])return fileIcons[name.toLowerCase()];const ext=name.split('.').pop().toLowerCase();return fileIcons[ext]||fileIcons.default}
+
+/*─────────────────────────────────────────────────────────────
+  Monaco boot‑strap
+─────────────────────────────────────────────────────────────*/
+require.config({paths:{vs:'https://cdn.jsdelivr.net/npm/monaco-editor@0.34.0/min/vs'}});
+require(['vs/editor/editor.main'],()=>{
+
+const editor=monaco.editor.create(document.getElementById('monaco-editor'),{value:'',language:'javascript',theme:'vs-dark',automaticLayout:true});
+// expose for other handlers
+window.editor = editor;
+
+// Set global variables for file state tracking
+window.currentFile = '';
+window.activeItem = null;
+window.currentFileSource = 'kubernetes';
+window.openTabs = []; // Array to store open tabs
+window.activeTabIndex = -1; // Index of the active tab
+
+// Set up auto-save in Monaco
+let saveTimeout;
+editor.onDidChangeModelContent(()=>{
+    if(!window.currentFile)return;
+    clearTimeout(saveTimeout);
+    saveTimeout=setTimeout(window.saveFile,1000);
+    
+    // Mark the current tab as unsaved
+    const tabIndex = findTabByPath(window.currentFile);
+    if (tabIndex !== -1) {
+        const tab = document.querySelector(`.editor-tab[data-index="${tabIndex}"]`);
+        if (tab) tab.classList.add('unsaved');
+    }
+});
+
+// Add keyboard shortcuts
+editor.addCommand(monaco.KeyMod.CtrlCmd|monaco.KeyCode.KeyS, window.saveFile);
+
+// Add keyboard shortcut for switching tabs
+editor.addCommand(monaco.KeyMod.CtrlCmd|monaco.KeyCode.Tab, () => {
+    if (window.openTabs.length <= 1) return;
+    const nextIndex = (window.activeTabIndex + 1) % window.openTabs.length;
+    switchToTab(nextIndex);
+});
+
+// Add keyboard shortcut for closing tabs
+editor.addCommand(monaco.KeyMod.CtrlCmd|monaco.KeyMod.Shift|monaco.KeyCode.KeyW, () => {
+    if (window.activeTabIndex !== -1) {
+        closeTab(window.activeTabIndex);
+    }
+});
+
+// Add keyboard shortcut for creating a new tab
+editor.addCommand(monaco.KeyMod.CtrlCmd|monaco.KeyCode.KeyN, () => {
+    createNewTab('Untitled', '', 'plaintext');
+    return false; // Prevent default browser behavior
+});
+
+/*─────────────────────────────────────────────────────────────
+  Initial load
+─────────────────────────────────────────────────────────────*/
+console.log("Monaco initialized");
+
+// Initialize the tabs UI
+initTabsUI();
+
+});/* end require */
+
+/*─────────────────────────────────────────────────────────────
+  Tabs Management Functions
+─────────────────────────────────────────────────────────────*/
+function initTabsUI() {
+    console.log("Initializing tabs UI");
+    
+    // Initialize openTabs array if it doesn't exist
+    if (!window.openTabs) {
+        window.openTabs = [];
+        window.activeTabIndex = -1;
+    }
+    
+    // Set up the "New Tab" button
+    const addTabButton = document.getElementById('add-new-tab');
+    if (addTabButton) {
+        console.log("Found add tab button");
+        addTabButton.addEventListener('click', function() {
+            console.log("Add tab button clicked");
+            createNewTab('Untitled', '', 'plaintext');
+        });
+    }
+    
+    // Setup the tabs menu
+    setupTabsMenu();
+}
+
+// Add a direct setup function for the tabs menu
+function setupTabsMenu() {
+    console.log("Setting up tabs menu button");
+    
+    // Find the button
+    const tabsMenuButton = document.getElementById('tabs-menu-button');
+    if (!tabsMenuButton) {
+        console.error("Tabs menu button not found!");
+        return;
+    }
+    
+    // Create a new button to replace the old one
+    const newButton = document.createElement('button');
+    newButton.id = 'tabs-menu-button';
+    newButton.className = 'tabs-menu-button';
+    newButton.title = 'Show All Tabs';
+    newButton.innerHTML = '<i class="mdi mdi-dots-horizontal"></i>';
+    
+    // Use a simple onclick function
+    newButton.onclick = function(e) {
+        showTabsMenu(e);
+        return false;
+    };
+    
+    // Replace the old button
+    if (tabsMenuButton.parentNode) {
+        tabsMenuButton.parentNode.replaceChild(newButton, tabsMenuButton);
+        console.log("Tabs menu button replaced successfully");
+    }
+}
+
+// Separate function to show the menu
+function showTabsMenu(e) {
+    if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+    
+    console.log("SHOW TABS MENU CALLED", new Date().toISOString());
+    
+    // Remove any existing dropdown first
+    hideAllDropdowns();
+    
+    // Create content for dropdown
+    let menuContent = '';
+    
+    if (!window.openTabs || window.openTabs.length === 0) {
+        menuContent = '<div class="tab-menu-item">No open tabs</div>';
+        console.log("No tabs to show");
+    } else {
+        console.log(`Creating menu for ${window.openTabs.length} tabs`);
+        
+        window.openTabs.forEach((tab, index) => {
+            const isActive = index === window.activeTabIndex;
+            const iconClass = tab.path ? getFileIcon(tab.name) : 'file-document-outline';
+            
+            menuContent += `
+                <div class="tab-menu-item ${isActive ? 'active' : ''}" data-index="${index}">
+                    <span class="tab-icon"><i class="mdi mdi-${iconClass}"></i></span>
+                    <span class="tab-name">${tab.name}</span>
+                    <span class="tab-close" data-index="${index}"><i class="mdi mdi-close"></i></span>
+                </div>
+            `;
+        });
+    }
+    
+    // Get the menu button
+    const menuButton = document.getElementById('tabs-menu-button');
+    if (!menuButton) {
+        console.error("Menu button not found");
+        return;
+    }
+    
+    // Calculate position for the dropdown
+    const buttonRect = menuButton.getBoundingClientRect();
+    
+    // Create a new dropdown
+    const newDropdown = document.createElement('div');
+    newDropdown.id = 'tabs-menu-dropdown';
+    newDropdown.className = 'tabs-menu-dropdown';
+    newDropdown.style.position = 'fixed';
+    newDropdown.style.left = buttonRect.left + 'px';
+    newDropdown.style.top = (buttonRect.bottom) + 'px';
+    newDropdown.style.minWidth = '250px';
+    newDropdown.innerHTML = menuContent;
+    
+    // Add it to the document body
+    document.body.appendChild(newDropdown);
+    
+    // Force a repaint before showing
+    void newDropdown.offsetWidth;
+    
+    // Show the dropdown
+    newDropdown.classList.add('show');
+    
+    console.log("Created new dropdown element");
+    
+    // Add click event listeners for menu items
+    newDropdown.querySelectorAll('.tab-menu-item').forEach(item => {
+        item.onclick = function(e) {
+            if (!e.target.closest('.tab-close')) {
+                const index = parseInt(item.dataset.index, 10);
+                console.log(`Switching to tab ${index}`);
+                switchToTab(index);
+                hideAllDropdowns();
+            }
+        };
+    });
+    
+    // Add click event listeners for close buttons
+    newDropdown.querySelectorAll('.tab-close').forEach(closeBtn => {
+        closeBtn.onclick = function(e) {
+            e.stopPropagation();
+            const index = parseInt(closeBtn.dataset.index, 10);
+            console.log(`Closing tab ${index}`);
+            closeTab(index);
+            
+            // If we still have tabs, refresh the menu
+            if (window.openTabs && window.openTabs.length > 0) {
+                setTimeout(function() {
+                    showTabsMenu();
+                }, 100);
+            } else {
+                hideAllDropdowns();
+            }
+        };
+    });
+    
+    // Setup document click to close the menu when clicking outside
+    setTimeout(function() {
+        document.addEventListener('click', documentClickHandler);
+    }, 10);
+}
+
+// Function to hide all dropdowns
+function hideAllDropdowns() {
+    // Find all dropdown elements and remove them
+    const dropdowns = document.querySelectorAll('.tabs-menu-dropdown');
+    dropdowns.forEach(dropdown => {
+        dropdown.remove();
+    });
+    
+    // Also remove any event handlers
+    document.removeEventListener('click', documentClickHandler);
+}
+
+// Function to handle document clicks to close the menu
+function documentClickHandler(e) {
+    if (!e.target.closest('.tabs-menu-dropdown') && 
+        !e.target.closest('.tabs-menu-button')) {
+        console.log("Clicked outside menu, hiding");
+        hideAllDropdowns();
+    }
+}
+
+// Add direct global handlers for the tabs button
+document.addEventListener('DOMContentLoaded', function() {
+    // Directly add a global handler for the button
+    window.tabsMenuHandler = function(e) {
+        console.log("Global click handler triggered");
+        showTabsMenu(e || window.event);
+        return false;
+    };
+});
+
+// Override the setupTabsMenu function
+function setupTabsMenu() {
+    console.log("Setting up tabs menu with direct method handler");
+    
+    const tabsMenuButton = document.getElementById('tabs-menu-button');
+    if (!tabsMenuButton) {
+        console.error("Tabs menu button not found!");
+        return;
+    }
+    
+    // Create a fresh button to replace the old one
+    const newButton = document.createElement('button');
+    newButton.id = 'tabs-menu-button';
+    newButton.className = 'tabs-menu-button debug-visible';
+    newButton.title = 'Show All Tabs';
+    newButton.innerHTML = '<i class="mdi mdi-dots-horizontal"></i>';
+    newButton.setAttribute('onclick', 'window.tabsMenuHandler(event)');
+    
+    // Replace the old button
+    tabsMenuButton.parentNode.replaceChild(newButton, tabsMenuButton);
+    
+    console.log("Tabs menu button replaced with new one having global click handler");
+}
+
+// Add these handlers when the page loads
+window.addEventListener('DOMContentLoaded', function() {
+    console.log("DOM loaded - setting up tabs menu");
+    setupTabsMenu();
+});
+
+// Make sure we clean up and reinitialize everything on load
+window.addEventListener('load', function() {
+    console.log("Window loaded - ensuring tab system is initialized");
+    
+    // Initialize tabs UI
+    initTabsUI();
+    
+    // Make sure we have a tab open 
+    setTimeout(function() {
+        if (!window.openTabs || window.openTabs.length === 0) {
+            console.log("No tabs found, creating a welcome tab");
+            createNewTab('Welcome', '', 'plaintext', 'Welcome to the editor!');
+        }
+    }, 1000);
+});
+
+// Function to create a new tab
+function createNewTab(name, path, language, content = '') {
+    // Initialize the tabs array if it doesn't exist yet
+    if (!window.openTabs) {
+        window.openTabs = [];
+        window.activeTabIndex = -1;
+    }
+    
+    // Check if the tab already exists
+    const existingTabIndex = findTabByPath(path);
+    if (existingTabIndex !== -1) {
+        // If it exists, just switch to it
+        switchToTab(existingTabIndex);
+        return;
+    }
+    
+    // Create a new tab object
+    const newTab = {
+        name: name,
+        path: path,
+        language: language,
+        content: content
+    };
+    
+    // Add to our tabs array
+    window.openTabs.push(newTab);
+    const tabIndex = window.openTabs.length - 1;
+    
+    // Create the tab UI element
+    const tabsContainer = document.getElementById('editor-tabs');
+    const tabElement = document.createElement('div');
+    tabElement.className = 'editor-tab';
+    tabElement.setAttribute('data-index', tabIndex);
+    tabElement.setAttribute('data-path', path);
+    
+    // Determine icon based on file extension
+    let iconClass = 'mdi-file-document-outline';
+    if (path) {
+        const ext = path.split('.').pop().toLowerCase();
+        const fileIcon = getFileIcon(name);
+        iconClass = `mdi-${fileIcon}`;
+    }
+    
+    tabElement.innerHTML = `
+        <span class="tab-icon"><i class="mdi ${iconClass}"></i></span>
+        <span class="tab-name">${name}</span>
+        <span class="tab-close"><i class="mdi mdi-close"></i></span>
+    `;
+    
+    // Add click handler to switch to this tab
+    tabElement.addEventListener('click', (e) => {
+        // If not clicking the close button
+        if (!e.target.closest('.tab-close')) {
+            switchToTab(tabIndex);
+        }
+    });
+    
+    // Add close button handler
+    const closeButton = tabElement.querySelector('.tab-close');
+    closeButton.addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeTab(tabIndex);
+    });
+    
+    // Insert the tab before the add button
+    tabsContainer.insertBefore(tabElement, document.getElementById('add-new-tab'));
+    
+    // Switch to the new tab
+    switchToTab(tabIndex);
+    
+    return tabIndex;
+}
+
+// Function to switch to a tab
+function switchToTab(index) {
+    if (index < 0 || index >= window.openTabs.length) return;
+    
+    // If we're already on this tab, do nothing
+    if (index === window.activeTabIndex) return;
+    
+    // Remove active class from all tabs
+    document.querySelectorAll('.editor-tab').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    
+    // Add active class to the selected tab
+    const tabElement = document.querySelector(`.editor-tab[data-index="${index}"]`);
+    if (tabElement) {
+        tabElement.classList.add('active');
+        
+        // Ensure the tab is visible by scrolling if needed
+        const tabsContainer = document.getElementById('editor-tabs');
+        if (tabsContainer) {
+            const containerRect = tabsContainer.getBoundingClientRect();
+            const tabRect = tabElement.getBoundingClientRect();
+            
+            // Check if tab is outside visible area
+            if (tabRect.left < containerRect.left || tabRect.right > containerRect.right) {
+                // Calculate scroll position to center the tab
+                const scrollLeft = tabElement.offsetLeft - (containerRect.width / 2) + (tabRect.width / 2);
+                tabsContainer.scrollTo({ left: scrollLeft, behavior: 'smooth' });
+            }
+        }
+    }
+    
+    // Update the active tab index
+    window.activeTabIndex = index;
+    
+    // Get the tab data
+    const tab = window.openTabs[index];
+    if (!tab) {
+        console.error(`Tab at index ${index} not found`);
+        return;
+    }
+    
+    // Update the editor content
+    if (tab.path) {
+        // If it's a real file, update the current file and load it
+        window.currentFile = tab.path;
+        
+        // If we already have content cached, use it
+        if (tab.model) {
+            try {
+                window.editor.setModel(tab.model);
+            } catch (e) {
+                console.error("Error setting editor model:", e);
+                // If there was an error with the model, try to load the file again
+                delete tab.model;
+                loadFileContent(tab.path);
+            }
+        } else {
+            // Otherwise, load the file from the server
+            const fileItem = document.querySelector(`.file-item[data-path="${tab.path}"]`);
+            if (fileItem) {
+                // Update the active item in the file tree
+                if (window.activeItem) window.activeItem.classList.remove('active');
+                fileItem.classList.add('active');
+                window.activeItem = fileItem;
+            }
+            
+            // Load the file content
+            loadFileContent(tab.path);
+        }
+    } else {
+        // For new untitled files, create a new model
+        const uri = monaco.Uri.parse(`untitled:${index}`);
+        let model = monaco.editor.getModel(uri);
+        
+        try {
+            if (!model) {
+                model = monaco.editor.createModel(tab.content || '', tab.language, uri);
+                tab.model = model;
+            }
+            
+            window.editor.setModel(model);
+            window.currentFile = '';
+        } catch (e) {
+            console.error("Error creating or setting model for untitled file:", e);
+            // Create a new model as fallback
+            try {
+                const fallbackModel = monaco.editor.createModel('', 'plaintext');
+                window.editor.setModel(fallbackModel);
+            } catch (e2) {
+                console.error("Error creating fallback model:", e2);
+            }
+        }
+    }
+}
+
+// Function to close a tab
+function closeTab(index) {
+    if (index < 0 || index >= window.openTabs.length) return;
+    
+    const tab = window.openTabs[index];
+    
+    // Check if the tab has unsaved changes
+    const tabElement = document.querySelector(`.editor-tab[data-index="${index}"]`);
+    if (tabElement && tabElement.classList.contains('unsaved')) {
+        if (!confirm(`The file "${tab.name}" has unsaved changes. Do you want to close it anyway?`)) {
+            return;
+        }
+    }
+    
+    // Store the current file path and active tab before removal
+    const wasActiveTab = (index === window.activeTabIndex);
+    const filePath = tab.path;
+    
+    // Remove the tab from the DOM
+    if (tabElement) {
+        tabElement.remove();
+    }
+    
+    // Dispose of the model if it exists
+    if (tab.model) {
+        try {
+            tab.model.dispose();
+        } catch (e) {
+            console.error("Error disposing model:", e);
+        }
+    }
+    
+    // Remove the tab from our array
+    window.openTabs.splice(index, 1);
+    
+    // Update data-index attributes for all tabs after this one
+    document.querySelectorAll('.editor-tab').forEach(tab => {
+        const tabIndex = parseInt(tab.getAttribute('data-index'));
+        if (tabIndex > index) {
+            tab.setAttribute('data-index', tabIndex - 1);
+        }
+    });
+    
+    // If we closed the active tab
+    if (wasActiveTab) {
+        // If there are still tabs open, switch to the next one or the previous one
+        if (window.openTabs.length > 0) {
+            const newIndex = Math.min(index, window.openTabs.length - 1);
+            window.activeTabIndex = -1; // Reset active tab index to force a full switch
+            switchToTab(newIndex);
+        } else {
+            // No tabs left, clear the editor
+            window.editor.setModel(monaco.editor.createModel('', 'plaintext'));
+            window.currentFile = '';
+            window.activeTabIndex = -1;
+            if (window.activeItem) {
+                window.activeItem.classList.remove('active');
+                window.activeItem = null;
+            }
+        }
+    } else if (index < window.activeTabIndex) {
+        // If we closed a tab before the active one, adjust the active index
+        window.activeTabIndex--;
+    }
+    
+    // If this was a file tab and it was the active file in the file explorer, deselect it
+    if (filePath && filePath === window.currentFile) {
+        window.currentFile = '';
+        if (window.activeItem) {
+            window.activeItem.classList.remove('active');
+            window.activeItem = null;
+        }
+    }
+}
+
+// Helper function to find a tab by path
+function findTabByPath(path) {
+    if (!path) return -1;
+    return window.openTabs.findIndex(tab => tab.path === path);
+}
+
+// Function to load file content (extracted from openFile)
+function loadFileContent(path) {
+    // Create request data
+    const requestData = { path };
+    if (window.projectId) requestData.project_id = window.projectId;
+    if (window.conversationId) requestData.conversation_id = window.conversationId;
+    if (window.podToken) requestData.token = window.podToken;
+
+    // Find the tab for this file
+    const tabIndex = findTabByPath(path);
+    if (tabIndex === -1) return; // Tab doesn't exist anymore
+    
+    // Get the tab element and add a loading indicator class
+    const tabElement = document.querySelector(`.editor-tab[data-index="${tabIndex}"]`);
+    if (tabElement) {
+        tabElement.classList.add('loading');
+        // Add a small loading indicator to the tab
+        const tabName = tabElement.querySelector('.tab-name');
+        if (tabName) {
+            tabName.dataset.originalText = tabName.textContent;
+            tabName.innerHTML = `<span class="loading-spinner"></span> ${tabName.textContent}`;
+        }
+    }
+
+    // Function to make the actual request
+    const makeRequest = () => {
+        fetch('/coding/k8s/get_file_content/', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify(requestData)
+        })
+        .then(r => {
+            console.log(`File content response status: ${r.status}`);
+            return r.json();
+        })
+        .then(data => {
+            console.log(`File content response:`, data);
+            
+            // Remove loading indicator
+            if (tabElement) {
+                tabElement.classList.remove('loading');
+                const tabName = tabElement.querySelector('.tab-name');
+                if (tabName && tabName.dataset.originalText) {
+                    tabName.textContent = tabName.dataset.originalText;
+                    delete tabName.dataset.originalText;
+                }
+            }
+            
+            if (data.error) {
+                // If we get a token error, try refreshing the token and retry
+                if (data.error.includes('token') && !requestData.retried) {
+                    console.log('Token error, refreshing tokens and retrying...');
+                    return updatePodTokens().then(tokens => {
+                        if (tokens && tokens.podToken) {
+                            requestData.token = tokens.podToken;
+                            requestData.retried = true;
+                            return makeRequest();
+                        } else {
+                            appendToTerminal('Error opening file: Invalid token', 'error');
+                        }
+                    });
+                }
+                appendToTerminal('Error opening file: ' + data.error, 'error');
+                return;
+            }
+            
+            // Determine file extension and language
+            const ext = path.split('.').pop();
+            const lang = monaco.languages.getLanguages().find(l => l.extensions?.includes('.'+ext))?.id || 'plaintext';
+            
+            // Handle different content types properly
+            let contentStr = '';
+            
+            if (data.content === null || data.content === undefined) {
+                // Handle null/undefined content
+                contentStr = '';
+                console.log("Content is null or undefined, using empty string");
+            } else if (typeof data.content === 'string') {
+                // Handle string content directly
+                contentStr = data.content;
+                console.log("Content is string type, using as-is");
+            } else if (typeof data.content === 'object') {
+                // Handle object content (likely empty object)
+                try {
+                    contentStr = JSON.stringify(data.content);
+                    console.log("Content is object type, stringified to:", contentStr);
+                    
+                    // If it's an empty object {}, just use empty string
+                    if (contentStr === '{}') {
+                        contentStr = '';
+                        console.log("Content was empty object, using empty string instead");
+                    }
+                } catch (e) {
+                    console.error("Error stringifying content:", e);
+                    contentStr = '';
+                }
+            } else {
+                // Handle any other types by converting to string
+                try {
+                    contentStr = String(data.content);
+                    console.log("Content is other type, converted to string");
+                } catch (e) {
+                    console.error("Error converting content to string:", e);
+                    contentStr = '';
+                }
+            }
+            
+            console.log(`Processed file content type: ${typeof contentStr}, length: ${contentStr.length}`);
+            
+            try {
+                // Find the tab for this file again (in case it was closed during loading)
+                const tabIndex = findTabByPath(path);
+                if (tabIndex !== -1) {
+                    const tab = window.openTabs[tabIndex];
+                    
+                    // Create a model for this tab if it doesn't exist
+                    const uri = monaco.Uri.parse(`file:///${path}`);
+                    let model = monaco.editor.getModel(uri);
+                    
+                    if (!model) {
+                        model = monaco.editor.createModel(contentStr, lang, uri);
+                        tab.model = model;
+                    } else {
+                        model.setValue(contentStr);
+                    }
+                    
+                    // Set the editor model only if this is still the active tab
+                    if (window.activeTabIndex === tabIndex) {
+                        window.editor.setModel(model);
+                    }
+                    
+                    // Remove unsaved marker if present
+                    const tabElement = document.querySelector(`.editor-tab[data-index="${tabIndex}"]`);
+                    if (tabElement) tabElement.classList.remove('unsaved');
+                }
+                
+                // Log success
+                console.log(`Editor model updated for ${path}. Empty: ${contentStr.length === 0}`);
+                appendToTerminal(`Opened file: ${path}${contentStr.length === 0 ? ' (empty)' : ''}`, 'out');
+            } catch (e) {
+                console.error("Error updating editor model:", e);
+                appendToTerminal(`Error updating editor for ${path}: ${e.message}`, 'error');
+            }
+        })
+        .catch(err => {
+            // Remove loading indicator on error
+            if (tabElement) {
+                tabElement.classList.remove('loading');
+                const tabName = tabElement.querySelector('.tab-name');
+                if (tabName && tabName.dataset.originalText) {
+                    tabName.textContent = tabName.dataset.originalText;
+                    delete tabName.dataset.originalText;
+                }
+            }
+            
+            console.error(`Error opening file ${path}:`, err);
+            appendToTerminal('Error opening file: ' + err, 'error');
+        });
+    };
+
+    // If we don't have a token, get it first
+    if (!window.podToken) {
+        updatePodTokens().then(() => makeRequest());
+    } else {
+        makeRequest();
+    }
+}
+
+/*─────────────────────────────────────────────────────────────
+  Vertical resizer (explorer width)
+─────────────────────────────────────────────────────────────*/
+const resizer=document.getElementById('resizer');
+const fileExplorer=document.getElementById('file-explorer');
+let xDrag=false,lastX=0;
+resizer.addEventListener('mousedown',e=>{
+    xDrag=true;lastX=e.clientX;
+    resizer.classList.add('dragging');document.body.classList.add('dragging');
+});
+document.addEventListener('mousemove',e=>{
+    if(!xDrag)return;
+    const dx=e.clientX-lastX;lastX=e.clientX;
+    const w=fileExplorer.offsetWidth+dx;
+    if(w>=100&&w<=600)fileExplorer.style.width=w+'px';
+});
+document.addEventListener('mouseup',()=>{
+    if(!xDrag)return;
+    xDrag=false;resizer.classList.remove('dragging');document.body.classList.remove('dragging');
+});
+
+// Setup variables and functions when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    // Only initialize terminal if we have a terminal container
+    const terminalContainer = document.getElementById('terminal');
+    if (terminalContainer) {
+        initializeTerminal();
+    }
+});
+
+// Global variables for terminal management
+let terminalIframe = null;
+let statusElement = null;
+let openExternalButton = null;
+let terminalConnected = false;
+let terminalConnectionTimeout = null;
+let lastTtydUrl = null;
+
+// Initialize terminal on page load
+function initializeTerminal() {
+    // Reset connection tracking
+    terminalConnected = false;
+    if (terminalConnectionTimeout) {
+        clearTimeout(terminalConnectionTimeout);
+        terminalConnectionTimeout = null;
+    }
+
+    // Get terminal elements
+    terminalIframe = document.getElementById('terminal-iframe');
+    statusElement = document.getElementById('terminal-status');
+    openExternalButton = document.getElementById('open-external-terminal');
+    
+    if (!terminalIframe) {
+        console.error('Terminal iframe not found');
+        return;
+    }
+
+    // Start with loading status
+    updateTerminalStatus('Connecting...', '#fcce0c');
+    
+    // Display loading message in iframe while we initialize
+    try {
+        const iframeDoc = terminalIframe.contentDocument || terminalIframe.contentWindow.document;
+        
+        // Create content programmatically instead of using template literals
+        iframeDoc.body.innerHTML = ''; // Clear first
+        
+        // Create main container
+        const container = iframeDoc.createElement('div');
+        container.style.padding = '15px';
+        container.style.color = '#d4d4d4';
+        container.style.fontFamily = 'sans-serif';
+        container.style.textAlign = 'center';
+        
+        // Add title
+        const title = iframeDoc.createElement('h3');
+        title.textContent = 'Creating Your Development Environment';
+        container.appendChild(title);
+        
+        // Create progress container
+        const progressContainer = iframeDoc.createElement('div');
+        progressContainer.style.margin = '30px auto';
+        progressContainer.style.maxWidth = '400px';
+        container.appendChild(progressContainer);
+        
+        // Create progress bar
+        const progressBarContainer = iframeDoc.createElement('div');
+        progressBarContainer.style.height = '6px';
+        progressBarContainer.style.background = '#333';
+        progressBarContainer.style.borderRadius = '3px';
+        progressBarContainer.style.margin = '20px 0';
+        progressContainer.appendChild(progressBarContainer);
+        
+        const progressBar = iframeDoc.createElement('div');
+        progressBar.id = 'progress-bar';
+        progressBar.style.width = '25%';
+        progressBar.style.height = '100%';
+        progressBar.style.background = '#2ea043';
+        progressBar.style.borderRadius = '3px';
+        progressBar.style.transition = 'width 1s';
+        progressBarContainer.appendChild(progressBar);
+        
+        // Create progress label
+        const progressLabel = iframeDoc.createElement('div');
+        progressLabel.id = 'progress-label';
+        progressLabel.style.textAlign = 'center';
+        progressLabel.style.fontSize = '14px';
+        progressLabel.style.marginBottom = '30px';
+        progressLabel.style.color = '#ccc';
+        progressLabel.textContent = 'Initializing your environment...';
+        progressContainer.appendChild(progressLabel);
+        
+        // Create credentials box (hidden initially)
+        const credentialsBox = iframeDoc.createElement('div');
+        credentialsBox.id = 'credentials-box';
+        credentialsBox.style.margin = '20px auto';
+        credentialsBox.style.width = '80%';
+        credentialsBox.style.maxWidth = '400px';
+        credentialsBox.style.background = '#252526';
+        credentialsBox.style.padding = '15px';
+        credentialsBox.style.borderRadius = '5px';
+        credentialsBox.style.borderLeft = '4px solid #f3ca3c';
+        credentialsBox.style.display = 'none';
+        container.appendChild(credentialsBox);
+        
+        // Add credentials title
+        const credentialsTitle = iframeDoc.createElement('p');
+        credentialsTitle.style.margin = '0 0 10px 0';
+        credentialsTitle.style.fontWeight = 'bold';
+        credentialsTitle.style.color = '#f3ca3c';
+        credentialsTitle.textContent = 'Login Credentials:';
+        credentialsBox.appendChild(credentialsTitle);
+        
+        // Add username row
+        const usernameRow = iframeDoc.createElement('div');
+        usernameRow.style.display = 'flex';
+        usernameRow.style.justifyContent = 'space-between';
+        usernameRow.style.background = '#1e1e1e';
+        usernameRow.style.padding = '8px';
+        usernameRow.style.borderRadius = '4px';
+        usernameRow.style.marginBottom = '5px';
+        credentialsBox.appendChild(usernameRow);
+        
+        const usernameLabel = iframeDoc.createElement('span');
+        usernameLabel.textContent = 'Username:';
+        usernameRow.appendChild(usernameLabel);
+        
+        const usernameValue = iframeDoc.createElement('code');
+        usernameValue.style.background = '#333';
+        usernameValue.style.padding = '2px 6px';
+        usernameValue.style.borderRadius = '3px';
+        usernameValue.textContent = 'user';
+        usernameRow.appendChild(usernameValue);
+        
+        // Add password row
+        const passwordRow = iframeDoc.createElement('div');
+        passwordRow.style.display = 'flex';
+        passwordRow.style.justifyContent = 'space-between';
+        passwordRow.style.background = '#1e1e1e';
+        passwordRow.style.padding = '8px';
+        passwordRow.style.borderRadius = '4px';
+        credentialsBox.appendChild(passwordRow);
+        
+        const passwordLabel = iframeDoc.createElement('span');
+        passwordLabel.textContent = 'Password:';
+        passwordRow.appendChild(passwordLabel);
+        
+        const passwordValue = iframeDoc.createElement('code');
+        passwordValue.style.background = '#333';
+        passwordValue.style.padding = '2px 6px';
+        passwordValue.style.borderRadius = '3px';
+        passwordValue.textContent = 'password';
+        passwordRow.appendChild(passwordValue);
+        
+        // Add script for progress animation
+        const script = iframeDoc.createElement('script');
+        script.textContent = `
+            const progressStages = ["Initializing your environment...", "Creating Kubernetes pod...", "Setting up terminal service...", "Ready to connect!"];
+            const progressBar = document.getElementById("progress-bar");
+            const progressLabel = document.getElementById("progress-label");
+            const credentialsBox = document.getElementById("credentials-box");
+            let currentStage = 0;
+            
+            function updateStage() {
+              progressLabel.textContent = progressStages[currentStage];
+              progressBar.style.width = ((currentStage + 1) * 25) + "%";
+              if (currentStage === 3) credentialsBox.style.display = "block";
+            }
+            
+            // Simulate progress (this will be replaced by real progress from the server)
+            setTimeout(() => { currentStage = 1; updateStage(); }, 2000);
+            setTimeout(() => { currentStage = 2; updateStage(); }, 4000);
+            setTimeout(() => { currentStage = 3; updateStage(); }, 6000);
+        `;
+        
+        // Add style tag for body
+        const style = iframeDoc.createElement('style');
+        style.textContent = `
+            body {
+                background: #1e1e1e;
+                margin: 0;
+                padding: 0;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                height: 100vh;
+            }
+        `;
+        
+        // Append everything to document
+        iframeDoc.body.appendChild(container);
+        iframeDoc.body.appendChild(script);
+        iframeDoc.head.appendChild(style);
+        
+    } catch (e) {
+        console.error('Could not set loading message in iframe:', e);
+    }
+    
+    // Start the connection process
+    fetchPodInfo();
+}
+
+// Update terminal connection status display
+function updateTerminalStatus(status, color) {
+    if (statusElement) {
+        statusElement.textContent = `(${status})`;
+        statusElement.style.color = color;
+        
+        // Help overlay removed as requested
+    }
+}
+
+// Global variables to store different tokens
+window.podToken = null;  // For file operations
+window.ttydToken = null; // For terminal operations
+
+// Function to get pod info and store tokens separately
+function updatePodTokens() {
+    const requestData = {};
+    if (window.projectId) requestData.project_id = window.projectId;
+    if (window.conversationId) requestData.conversation_id = window.conversationId;
+    
+    return fetch('/coding/k8s/get_pod_info/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(requestData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            console.error('Error fetching pod tokens:', data.error);
+            return null;
+        }
+        
+        // Store tokens separately
+        if (data.service_details) {
+            window.podToken = data.service_details.file_token || data.service_details.token;
+            window.ttydToken = data.service_details.ttyd_token || data.service_details.token;
+            console.log('Updated tokens:', {
+                podToken: window.podToken?.substring(0, 8) + '...',
+                ttydToken: window.ttydToken?.substring(0, 8) + '...'
+            });
+        }
+        
+        return {
+            podToken: window.podToken,
+            ttydToken: window.ttydToken
+        };
+    })
+    .catch(error => {
+        console.error('Error fetching pod tokens:', error);
+        return null;
+    });
+}
+
+// Modify fetchPodInfo to use ttydToken
+function fetchPodInfo() {
+    // Create request data with project_id or conversation_id
+    const requestData = {};
+    
+    // Get project or conversation ID from data attributes
+    const terminalContainer = document.getElementById('terminal');
+    console.log('Terminal container found:', terminalContainer ? 'yes' : 'no');
+    
+    if (terminalContainer) {
+        const projectId = terminalContainer.getAttribute('data-project-id');
+        const conversationId = terminalContainer.getAttribute('data-conversation-id');
+        
+        console.log('Data attributes:', {
+            'data-project-id': projectId,
+            'data-conversation-id': conversationId
+        });
+        
+        if (projectId) {
+            requestData.project_id = projectId;
+        } else if (conversationId) {
+            requestData.conversation_id = conversationId;
+        }
+    }
+    
+    // If neither project_id nor conversation_id, try to get from URL parameters as fallback
+    if (!requestData.project_id && !requestData.conversation_id) {
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlProjectId = urlParams.get('project_id');
+        const urlConversationId = urlParams.get('conversation_id');
+        
+        if (urlProjectId) {
+            requestData.project_id = urlProjectId;
+        } else if (urlConversationId) {
+            requestData.conversation_id = urlConversationId;
+        }
+    }
+    
+    console.log('Request data being sent:', requestData);
+    
+    // Fetch sandbox/pod info to get the ttyd URL
+    fetch('/coding/k8s/get_pod_info/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(requestData)
+    })
+    .then(response => {
+        console.log('Pod info response status:', response.status);
+        return response.json();
+    })
+    .then(data => {
+        console.log('Pod info response:', data);
+        
+        if (data.error) {
+            updateTerminalStatus('Error: ' + data.error, '#f14c4c');
+            console.error('Error fetching pod info:', data.error);
+                showTerminalError('pod info endpoint', data);
+            setTimeout(fetchPodInfo, 5000);
+            return;
+        }
+        
+        // Store tokens first
+        if (data.service_details) {
+            window.podToken = data.service_details.file_token || data.service_details.token;
+            window.ttydToken = data.service_details.ttyd_token || data.service_details.token;
+        }
+        
+        // Get ttydUrl from top level (preferred) or from service_details
+        let ttydUrl = data.ttydUrl || (data.service_details && data.service_details.ttydUrl);
+        
+        // If we don't have a ttyd URL but have enough information, try to construct it
+        if (!ttydUrl && data.service_details) {
+            const nodeIP = data.service_details.nodeIP;
+            const ttydPort = data.service_details.ttydPort;
+            
+            if (nodeIP && ttydPort) {
+                ttydUrl = `http://${nodeIP}:${ttydPort}`;
+                console.log('Constructed ttydUrl from pieces:', ttydUrl);
+            }
+        }
+        
+        if (ttydUrl) {
+            console.log('Loading ttyd URL:', ttydUrl);
+            updateTerminalStatus('Connected', '#4caf50');
+            
+            // Save the URL for potential reuse
+            lastTtydUrl = ttydUrl;
+            
+            // Add authentication parameters
+            try {
+                const urlObj = new URL(ttydUrl);
+                
+                // Add ttyd token if available
+                if (window.ttydToken) {
+                    urlObj.searchParams.set('token', window.ttydToken);
+                }
+                
+                // Add credentials
+                urlObj.searchParams.set('_username', 'user');
+                urlObj.searchParams.set('_password', 'password');
+                
+                ttydUrl = urlObj.toString();
+                console.log('Final ttyd URL with auth:', ttydUrl);
+            } catch (e) {
+                console.warn('Could not parse ttyd URL:', e);
+            }
+            
+            // Set up iframe load handler
+            terminalIframe.onload = function() {
+                console.log('Terminal iframe loaded successfully');
+                terminalConnected = true;
+                
+                // Try to focus and auto-login
+                let focusAttempts = 0;
+                const attemptFocus = function() {
+                    if (focusAttempts > 5) return;
+                    
+                    try {
+                        terminalIframe.focus();
+                        console.log(`Focus attempt ${focusAttempts+1}: Focused terminal iframe`);
+                        
+                        const iframeDoc = terminalIframe.contentDocument || terminalIframe.contentWindow.document;
+                        if (iframeDoc && iframeDoc.body) {
+                            try {
+                                const clickEvent = new MouseEvent('click', {
+                                    bubbles: true,
+                                    cancelable: true,
+                                    view: terminalIframe.contentWindow
+                                });
+                                iframeDoc.body.dispatchEvent(clickEvent);
+                                
+                                // Try to auto-fill login form with delay
+                                setTimeout(() => {
+                                    try {
+                                        console.log('Attempting to auto-fill login form');
+                                        const form = iframeDoc.querySelector('form');
+                                        const usernameInput = iframeDoc.querySelector('input[type="text"]');
+                                        const passwordInput = iframeDoc.querySelector('input[type="password"]');
+                                        const submitButton = iframeDoc.querySelector('button[type="button"]');
+                                        
+                                        if (usernameInput && passwordInput && submitButton) {
+                                            console.log('Found login form, filling credentials');
+                                            usernameInput.value = 'user';
+                                            passwordInput.value = 'password';
+                                            submitButton.click();
+                                        }
+                                    } catch (e) {
+                                        console.warn('Error auto-filling credentials:', e);
+                                    }
+                                }, 1000);
+                            } catch (e) {
+                                console.warn('Could not dispatch click in iframe:', e);
+                            }
+                        }
+                    } catch (e) {
+                        console.warn(`Focus attempt ${focusAttempts+1} failed:`, e);
+                    }
+                    
+                    focusAttempts++;
+                    if (focusAttempts < 5) {
+                        setTimeout(attemptFocus, 1000);
+                    }
+                };
+                
+                attemptFocus();
+            };
+            
+            // Set iframe source
+            terminalIframe.src = ttydUrl;
+            
+            // Update external button URL
+            if (openExternalButton) {
+                openExternalButton.onclick = function() {
+                    const terminalWindow = window.open(ttydUrl, 'terminal_window', 'width=800,height=600');
+                    if (terminalWindow) {
+                        terminalWindow.focus();
+                    }
+                    return false;
+                };
+            }
+            
+            // Clear any previous failure timers
+            if (terminalConnectionTimeout) {
+                clearTimeout(terminalConnectionTimeout);
+            }
+            
+            // Set connection timeout
+            terminalConnectionTimeout = setTimeout(function() {
+                if (!terminalConnected) {
+                    console.warn('Terminal connection timeout - retrying');
+                    fetchPodInfo();
+                }
+            }, 10000);
+        } else {
+            console.error('No ttydUrl available:', data);
+                updateTerminalStatus('Waiting for terminal service...', '#fcce0c');
+            showTerminalError('ttyd service', {
+                error_details: 'No terminal URL available. Service may still be starting.',
+                debug_info: {
+                    pod_name: data.pod_name || 'unknown',
+                    service_details: data.service_details || {}
+                }
+            });
+            // setTimeout(fetchPodInfo, 5000);
+        }
+    })
+    .catch(error => {
+        console.error('Error fetching pod info:', error);
+        updateTerminalStatus('Connection error', '#f14c4c');
+        showTerminalError('API endpoint', {
+            error_details: error.toString(),
+            debug_info: {
+                message: 'Failed to connect to the pod info endpoint.'
+            }
+        });
+        // setTimeout(fetchPodInfo, 5000);
+    });
+}
+
+// Function to show terminal error in iframe
+function showTerminalError(url, errorData = null) {
+    try {
+        const iframeDoc = terminalIframe.contentDocument || terminalIframe.contentWindow.document;
+        
+        // Format any debug info for display
+        let debugInfoHtml = '';
+        if (errorData) {
+            if (errorData.debug_info) {
+                debugInfoHtml = `
+                    <div style="margin-top: 15px; padding: 10px; background: #252526; border-radius: 3px;">
+                        <h4 style="margin-top: 0; color: #fcce0c;">Debug Information:</h4>
+                        <pre style="margin: 0; color: #bbb; font-size: 12px;">${JSON.stringify(errorData.debug_info, null, 2)}</pre>
+                    </div>
+                `;
+            }
+            
+            if (errorData.error_details) {
+                debugInfoHtml += `
+                    <div style="margin-top: 10px;">
+                        <p style="color: #f14c4c;">${errorData.error_details}</p>
+                    </div>
+                `;
+            }
+        }
+        
+        iframeDoc.body.innerHTML = `
+            <div style="padding: 15px; color: #d4d4d4; font-family: sans-serif;">
+                <h3 style="color: #f14c4c;">Terminal Connection Failed</h3>
+                <p>Could not connect to the ttyd terminal service.</p>
+                <p>Error details: Could not load ${url}</p>
+                
+                <div style="margin: 20px 0; background: #252526; padding: 15px; border-radius: 5px; border-left: 4px solid #f3ca3c;">
+                    <p style="margin: 0 0 10px 0; font-weight: bold; color: #f3ca3c;">When connection resumes, you'll need:</p>
+                    <div style="display: flex; justify-content: space-between; background: #1e1e1e; padding: 8px; border-radius: 4px; margin-bottom: 5px;">
+                        <span>Username:</span>
+                        <code style="background: #333; padding: 2px 6px; border-radius: 3px;">user</code>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; background: #1e1e1e; padding: 8px; border-radius: 4px;">
+                        <span>Password:</span>
+                        <code style="background: #333; padding: 2px 6px; border-radius: 3px;">password</code>
+                    </div>
+                </div>
+                
+                <p>Check the browser console for more information.</p>
+                ${debugInfoHtml}
+                <div style="margin-top: 15px;">
+                    <button onclick="window.parent.initializeTerminal()" style="background: #0e639c; color: white; border: none; padding: 8px 15px; border-radius: 3px; cursor: pointer; font-weight: bold;">
+                        <i class="mdi mdi-refresh" style="margin-right: 5px;"></i> Retry Connection
+                    </button>
+                </div>
+                
+                <p style="margin-top: 15px; font-size: 12px; color: #999;">Tip: Try refreshing the entire page if the issue persists.</p>
+            </div>
+        `;
+    } catch (e) {
+        console.error('Could not modify iframe content:', e);
+    }
+}
+
+/*─────────────────────────────────────────────────────────────
+  Horizontal resizer (terminal height)
+─────────────────────────────────────────────────────────────*/
+const hRes=document.getElementById('h-resizer');
+const termEl=document.getElementById('terminal');
+let yDrag=false,startY=0,startH=0;
+
+hRes.addEventListener('mousedown', e=> {
+    yDrag=true;
+    startY=e.clientY;
+    startH=termEl.offsetHeight;
+    console.log('h-resizer mousedown', {startY, startH});
+    hRes.classList.add('dragging');
+    document.body.classList.add('dragging');
+});
+
+document.addEventListener('mousemove',e=>{
+    if(!yDrag)
+        return;
+    const dy=startY - e.clientY;            /* up = larger terminal */
+    const newH=startH + dy;                /* invert direction */
+    console.log('h-resizer mousemove', {dy, newH});
+    if(newH < 100 || newH > window.innerHeight*0.8) return;
+    termEl.style.height=newH+'px';
+    const monEl=document.getElementById('monaco-editor');
+    monEl.style.height=newH+'px';
+    /* Let flexbox handle editor height, just relayout Monaco */
+    if(window.editor)window.editor.layout();
+});
+
+document.addEventListener('mouseup',()=>{
+    if(!yDrag)return;
+    yDrag=false;hRes.classList.remove('dragging');document.body.classList.remove('dragging');
+    console.log('h-resizer mouseup', {finalHeight: termEl.offsetHeight});
+});
+
+// Helper function to get cookies (for CSRF token)
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+function showTerminalHelp() {
+    // Create a visible modal-like message about using external window
+    const helpOverlay = document.createElement('div');
+    helpOverlay.style.position = 'absolute';
+    helpOverlay.style.top = '50%';
+    helpOverlay.style.left = '50%';
+    helpOverlay.style.transform = 'translate(-50%, -50%)';
+    helpOverlay.style.backgroundColor = '#2d2d2d';
+    helpOverlay.style.padding = '25px';
+    helpOverlay.style.borderRadius = '8px';
+    helpOverlay.style.boxShadow = '0 0 20px rgba(0,0,0,0.7)';
+    helpOverlay.style.zIndex = '1000';
+    helpOverlay.style.maxWidth = '450px';
+    helpOverlay.style.textAlign = 'center';
+    helpOverlay.style.border = '1px solid #4a4a4a';
+    helpOverlay.innerHTML = `
+        <div style="display:flex; align-items:center; justify-content:center; margin-bottom:15px; color:#f3ca3c;">
+            <i class="mdi mdi-lightbulb-on" style="font-size:28px; margin-right:10px;"></i>
+            <h3 style="margin:0; color:#f3ca3c;">Important Terminal Instructions</h3>
+        </div>
+        <p style="margin-bottom:20px;">Please follow these steps to use the terminal:</p>
+        
+        <div style="background:#1e1e1e; padding:15px; border-radius:5px; margin-bottom:20px; text-align:left; border-left:4px solid #2ea043;">
+            <p style="margin-top:0;"><strong style="color:#2ea043;">Step 1:</strong> Use the <strong style="color:#2ea043;">Open Terminal in New Window</strong> button for best experience.</p>
+            
+            <div style="background:#252526; padding:12px; border-radius:4px; margin:15px 0; border:1px solid #333;">
+                <p style="margin:0; font-weight:bold; color:#f3ca3c;">Login Credentials:</p>
+                <div style="display:flex; justify-content:space-between; margin-top:8px;">
+                    <span>Username:</span>
+                    <code style="background:#1e1e1e; padding:3px 8px; border-radius:3px;">user</code>
+                </div>
+                <div style="display:flex; justify-content:space-between; margin-top:5px;">
+                    <span>Password:</span>
+                    <code style="background:#1e1e1e; padding:3px 8px; border-radius:3px;">password</code>
+                </div>
+            </div>
+            
+            <p><strong style="color:#2ea043;">Step 3:</strong> If you see a blank screen after login, try refreshing the page.</p>
+        </div>
+        
+        <p style="color:#bbb; font-size:12px; margin-bottom:20px;">The terminal service requires authentication and may work better in a separate window due to browser security restrictions.</p>
+        
+        <button id="dismiss-terminal-help" style="background:#2ea043; color:white; border:none; padding:10px 20px; border-radius:4px; cursor:pointer; font-weight:bold; display:flex; align-items:center; margin:0 auto;">
+            <i class="mdi mdi-check" style="margin-right:5px;"></i> Got it!
+        </button>
+    `;
+    
+    const terminalContainer = document.getElementById('terminal');
+    if (terminalContainer) {
+        terminalContainer.style.position = 'relative';
+        terminalContainer.appendChild(helpOverlay);
+        
+        // Add dismiss button handler
+        document.getElementById('dismiss-terminal-help').addEventListener('click', function() {
+            helpOverlay.style.display = 'none';
+        });
+    }
+}
+
+// Function to create a first file when the workspace is empty
+window.createFirstFile = function() {
+    const fileName = prompt('Enter file name:', 'hello.py');
+    if (!fileName) return;
+    
+    // Ensure we don't have any path components in the filename
+    const cleanFileName = fileName.includes('/') ? fileName.split('/').pop() : fileName;
+    
+    // Sample content based on file extension
+    let content = '';
+    const ext = cleanFileName.split('.').pop().toLowerCase();
+    
+    if (ext === 'py') {
+        content = '# My first Python file\n\ndef hello():\n    print("Hello, world!")\n\nif __name__ == "__main__":\n    hello()';
+    } else if (ext === 'js') {
+        content = '// My first JavaScript file\n\nfunction hello() {\n    console.log("Hello, world!");\n}\n\nhello();';
+    } else if (ext === 'html') {
+        content = '<!DOCTYPE html>\n<html>\n<head>\n    <title>My Page</title>\n</head>\n<body>\n    <h1>Hello, world!</h1>\n</body>\n</html>';
+    } else if (ext === 'css') {
+        content = '/* My first CSS file */\n\nbody {\n    font-family: Arial, sans-serif;\n    margin: 0;\n    padding: 20px;\n}';
+    } else {
+        content = '# Hello, world!';
+    }
+    
+    // Create request data
+    const requestData = { 
+        path: cleanFileName,  // Use the clean filename without any path
+        content: content,
+        type: 'file'
+    };
+    if (window.projectId) requestData.project_id = window.projectId;
+    if (window.conversationId) requestData.conversation_id = window.conversationId;
+    if (window.podToken) requestData.token = window.podToken;
+    
+    console.log("Creating first file:", requestData);
+    
+    // Function to make the actual request
+    const makeRequest = () => {
+        fetch('/coding/k8s/create_item/', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(requestData)
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                // If we get a token error, try refreshing the token and retry
+                if (data.error.includes('token') && !requestData.retried) {
+                    console.log('Token error, refreshing tokens and retrying...');
+                    return updatePodTokens().then(tokens => {
+                        if (tokens && tokens.podToken) {
+                            requestData.token = tokens.podToken;
+                            requestData.retried = true;
+                            return makeRequest();
+                        } else {
+                            appendToTerminal('Error creating file: Invalid token', 'error');
+                        }
+                    });
+                }
+                appendToTerminal('Error creating file: ' + data.error, 'error');
+                console.error("Error creating first file:", data.error);
+                return;
+            }
+            appendToTerminal(data.message || 'File created: ' + cleanFileName, 'out');
+            loadFileTree();
+            
+            // Determine language based on file extension
+            const lang = monaco.languages.getLanguages().find(l => l.extensions?.includes('.'+ext))?.id || 'plaintext';
+            
+            // Create a tab for the new file
+            createNewTab(cleanFileName, cleanFileName, lang, content);
+            
+            // Also run the file if it's a Python file to demonstrate how it works
+            if (ext === 'py') {
+                setTimeout(() => {
+                    const runCmd = { 
+                        command: `python ${cleanFileName}`,
+                        project_id: window.projectId,
+                        conversation_id: window.conversationId
+                    };
+                    
+                    fetch('/coding/k8s/execute_command/', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(runCmd)
+                    })
+                    .then(r => r.json())
+                    .then(res => {
+                        if (res.stdout) appendToTerminal(res.stdout, 'out');
+                        if (res.stderr) appendToTerminal(res.stderr, 'error');
+                    })
+                    .catch(err => console.error("Error running first file:", err));
+                }, 1000);
+            }
+        })
+        .catch(err => {
+            appendToTerminal('Error creating file: ' + err, 'error');
+            console.error("Error creating first file:", err);
+        });
+    };
+
+    // If we don't have a token, get it first
+    if (!window.podToken) {
+        updatePodTokens().then(() => makeRequest());
+    } else {
+        makeRequest();
+    }
+};
+
+/*──────────────────────────────────────────────────────────────
+  Function to check for files via terminal command and sync the file explorer
+──────────────────────────────────────────────────────────────*/
+function checkForFilesInTerminal() {
+    console.log("Checking for files in terminal...");
+    appendToTerminal("Checking for workspace files...", 'out');
+    
+    const requestData = { 
+        command: "ls -la /workspace"
+    };
+    if (window.projectId) requestData.project_id = window.projectId;
+    if (window.conversationId) requestData.conversation_id = window.conversationId;
+    
+    fetch('/coding/k8s/execute_command/', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(requestData)
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (res.error) {
+            appendToTerminal('Error checking files: ' + res.error, 'error');
+            return;
+        }
+        
+        if (res.stdout) {
+            appendToTerminal(res.stdout, 'out');
+            
+            // Parse file list from ls output
+            const lines = res.stdout.split('\n').filter(line => line.trim() !== '');
+            
+            // Skip the first line (total) and hidden files/directories
+            const files = lines
+                .slice(1) // Skip "total XX" line if present
+                .filter(line => !line.includes(' . ') && !line.includes(' .. ') && !line.match(/^\s*d.*\s\./)) // Skip . and .. and hidden dirs
+                .map(line => {
+                    const parts = line.trim().split(/\s+/);
+                    const fileName = parts.slice(8).join(' '); // Filename is after the 8th space-separated part
+                    const isDir = line.startsWith('d');
+                    return {
+                        name: fileName,
+                        type: isDir ? 'directory' : 'file',
+                        path: fileName,
+                        children: isDir ? [] : undefined
+                    };
+                })
+                .filter(file => file.name && !file.name.startsWith('.'));
+                
+            console.log("Files found via terminal:", files);
+            
+            if (files.length > 0) {
+                // If we found files but the explorer is empty, manually add them to the file explorer
+                const container = document.getElementById('file-tree-container');
+                if (!container.querySelector('.file-item')) {
+                    container.innerHTML = window.renderFileTree(files, true);
+                    
+                    // Add event listeners for the new items
+                    container.querySelectorAll('.directory>.file-item').forEach(item => {
+                        item.addEventListener('click', e => {
+                            e.stopPropagation();
+                            item.parentElement.classList.toggle('expanded');
+                        });
+                    });
+                    
+                    container.querySelectorAll('.file-item.file').forEach(item => {
+                        const p = item.dataset.path;
+                        item.onclick = () => window.openFile(p, item);
+                    });
+                    
+                    appendToTerminal('Updated file explorer from terminal output', 'out');
+                }
+            } else {
+                appendToTerminal('No files found in workspace. Use the context menu (right-click) to create files.', 'out');
+            }
+        }
+        
+        if (res.stderr) {
+            appendToTerminal(res.stderr, 'error');
+        }
+    })
+    .catch(err => {
+        appendToTerminal('Error checking files: ' + err, 'error');
+        console.error("Error checking files:", err);
+    });
+}
+
+// Function to check for files after initialization
+function checkForFilesAfterInitialization() {
+    setTimeout(() => {
+        const container = document.getElementById('file-tree-container');
+        if (!container.querySelector('.file-item') && !container.querySelector('.loading-indicator')) {
+            console.log("No files found in explorer after initialization, checking terminal...");
+            checkForFilesInTerminal();
+        }
+    }, 5000); // 5 second delay to ensure initial file tree load has completed
+}
+
+// Initialize everything when window loads
+window.addEventListener('load', function() {
+    console.log("Window loaded - initializing editor and file explorer");
+    
+    // Set up refresh button
+    const refreshButton = document.getElementById('refresh-file-explorer');
+    if (refreshButton) {
+        refreshButton.addEventListener('click', function() {
+            loadFileTree(true); // Force refresh when clicked
+            // Add a subtle rotation animation
+            this.querySelector('i').style.transition = 'transform 0.5s';
+            this.querySelector('i').style.transform = 'rotate(360deg)';
+            setTimeout(() => {
+                this.querySelector('i').style.transition = 'none';
+                this.querySelector('i').style.transform = 'rotate(0deg)';
+            }, 500);
+        });
+        
+        // Add hover effect
+        refreshButton.addEventListener('mouseover', function() {
+            this.style.color = '#0e639c';
+        });
+        refreshButton.addEventListener('mouseout', function() {
+            this.style.color = '#888';
+        });
+    }
+    
+    // Get tokens first, then load the file tree
+    updatePodTokens().then(() => {
+        loadFileTree();
+        
+        // Continue with other initializations if they exist
+        if (typeof initializePodConnection === 'function') initializePodConnection();
+        if (typeof initializeTerminal === 'function') initializeTerminal();
+        if (typeof initializeButtons === 'function') initializeButtons();
+        if (typeof initializeContext === 'function') initializeContext();
+        
+        // Set up automatic file check if explorer is empty
+        checkForFilesAfterInitialization();
+    });
+    
+    // Prevent default browser behavior for Ctrl+N
+    document.addEventListener('keydown', function(e) {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+            e.preventDefault();
+        }
+    });
+});
+
+/*─────────────────────────────────────────────────────────────
+  Context‑menu helpers
+─────────────────────────────────────────────────────────────*/
+let contextMenuTarget=null;
+let contextMenuPath=""; // Store the current path for context menu operations
+
+function showContextMenu(e,target){
+    e.preventDefault();
+    const m=document.getElementById('context-menu');
+    
+    // Determine the current path based on the target
+    if (target) {
+        const isDirectory = target.parentElement && 
+                          target.parentElement.classList.contains('directory');
+        
+        if (isDirectory) {
+            // If target is a directory, use its path
+            contextMenuPath = target.dataset.path || '';
+        } else {
+            // If target is a file, use its parent directory
+            const filePath = target.dataset.path || '';
+            const lastSlashIndex = filePath.lastIndexOf('/');
+            if (lastSlashIndex !== -1) {
+                contextMenuPath = filePath.substring(0, lastSlashIndex);
+            } else {
+                contextMenuPath = ""; // Root if no parent directory
+            }
+        }
+    } else {
+        contextMenuPath = ""; // Root level
+    }
+    
+    // Update the context menu items to show the current path
+    const newFileItem = m.querySelector('[data-action="new-file"]');
+    const newFolderItem = m.querySelector('[data-action="new-folder"]');
+    
+    if (newFileItem) {
+        newFileItem.innerHTML = `<i class="mdi mdi-file-plus"></i>New File${contextMenuPath ? ` in /${contextMenuPath}` : ''}`;
+    }
+    
+    if (newFolderItem) {
+        newFolderItem.innerHTML = `<i class="mdi mdi-folder-plus"></i>New Folder${contextMenuPath ? ` in /${contextMenuPath}` : ''}`;
+    }
+    
+    // Show or hide rename/delete options based on target
+    const renameItem = m.querySelector('[data-action="rename"]');
+    const deleteItem = m.querySelector('[data-action="delete"]');
+    const separator = m.querySelector('.context-menu-separator');
+    
+    if (renameItem && deleteItem && separator) {
+        if (target) {
+            renameItem.style.display = '';
+            deleteItem.style.display = '';
+            separator.style.display = '';
+        } else {
+            renameItem.style.display = 'none';
+            deleteItem.style.display = 'none';
+            separator.style.display = 'none';
+        }
+    }
+    
+    m.style.display='block';
+    m.style.left=e.pageX+'px';
+    m.style.top=e.pageY+'px';
+    contextMenuTarget=target;
+}
+
+function hideContextMenu(){
+    document.getElementById('context-menu').style.display='none';
+    contextMenuTarget=null;
+}
+
+document.addEventListener('contextmenu',e=>{
+    // Find the closest file-item if clicked on one, or use the file-explorer container
+    const item = e.target.closest('#file-explorer .file-item');
+    const fileExplorer = e.target.closest('#file-explorer');
+    
+    if (item) {
+        // If clicked on a file/folder item, use that as target
+        showContextMenu(e, item);
+    } else if (fileExplorer) {
+        // If clicked elsewhere in the file explorer, use null as target (root level)
+        showContextMenu(e, null);
+    }
+});
+document.addEventListener('click',hideContextMenu);
+
+/*── open file - globally accessible ─────────────────────────*/
+window.openFile = function(path, element) {
+    if(window.activeItem)window.activeItem.classList.remove('active');
+    element.classList.add('active');
+    window.activeItem=element;
+    
+    console.log(`Opening file: ${path}`);
+
+    // Get the file name from the path
+    const name = path.split('/').pop();
+    
+    // Determine language based on file extension
+    const ext = path.split('.').pop();
+    const lang = monaco.languages.getLanguages().find(l => l.extensions?.includes('.'+ext))?.id || 'plaintext';
+    
+    // Create or switch to a tab for this file
+    createNewTab(name, path, lang);
+}
+
+/*── auto‑save - defined inside Monaco init but using globals ───*/
+window.saveFile = function() {
+    if(!window.currentFile)return;
+
+    // Create request data
+    const requestData = { 
+        path: window.currentFile,
+        content: window.editor.getValue()
+    };
+    if (window.projectId) requestData.project_id = window.projectId;
+    if (window.conversationId) requestData.conversation_id = window.conversationId;
+    if (window.podToken) requestData.token = window.podToken;
+
+    // Function to make the actual request
+    const makeRequest = () => {
+        fetch('/coding/k8s/save_file/', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify(requestData)
+        })
+        .then(r=>r.json())
+        .then(data=>{
+            if (data.error) {
+                // If we get a token error, try refreshing the token and retry
+                if (data.error.includes('token') && !requestData.retried) {
+                    console.log('Token error, refreshing token and retrying...');
+                    return updatePodTokens().then(tokens => {
+                        if (tokens && tokens.podToken) {
+                            requestData.token = tokens.podToken;
+                            requestData.retried = true;
+                            return makeRequest();
+                        } else {
+                            appendToTerminal('Error saving file: Invalid token', 'error');
+                        }
+                    });
+                }
+                appendToTerminal('Error saving file: ' + data.error, 'error');
+                return;
+            }
+            appendToTerminal('File saved: '+window.currentFile,'out');
+            
+            // Remove unsaved marker if present
+            const tabIndex = findTabByPath(window.currentFile);
+            if (tabIndex !== -1) {
+                const tabElement = document.querySelector(`.editor-tab[data-index="${tabIndex}"]`);
+                if (tabElement) tabElement.classList.remove('unsaved');
+            }
+        })
+        .catch(err=>appendToTerminal('Error saving file: '+err,'error'));
+    };
+
+    // If we don't have a token, get it first
+    if (!window.podToken) {
+        updatePodTokens().then(() => makeRequest());
+    } else {
+        makeRequest();
+    }
+};
+
+window.createNewFolder=function(){
+    const name=prompt('Enter folder name:');
+    if(!name)return hideContextMenu();
+    
+    // Use the contextMenuPath to determine where to create the folder
+    let path = contextMenuPath ? `${contextMenuPath}/${name}` : name;
+    
+    // Create request data with path and optional project_id or conversation_id
+    const requestData = {
+        path,
+        type: 'directory'
+    };
+    if (window.projectId) requestData.project_id = window.projectId;
+    if (window.conversationId) requestData.conversation_id = window.conversationId;
+    if (window.podToken) requestData.token = window.podToken;
+
+    // Function to make the actual request
+    const makeRequest = () => {
+        fetch('/coding/k8s/create_item/', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(requestData)
+        })
+        .then(r => r.json())
+        .then(res => {
+            if (res.error) {
+                // If we get a token error, try refreshing the token and retry
+                if (res.error.includes('token') && !requestData.retried) {
+                    console.log('Token error, refreshing tokens and retrying...');
+                    return updatePodTokens().then(tokens => {
+                        if (tokens && tokens.podToken) {
+                            requestData.token = tokens.podToken;
+                            requestData.retried = true;
+                            return makeRequest();
+                        } else {
+                            appendToTerminal('Error creating folder: Invalid token', 'error');
+                        }
+                    });
+                }
+                
+                // Check if the folder might already exist (even though backend should handle this now)
+                if (res.error.includes('409') || res.error.includes('already exists')) {
+                    appendToTerminal(`Folder already exists: ${path}`, 'out');
+                    // Force a full refresh of the file tree after a delay
+                    setTimeout(() => loadFileTree(true), 500);
+                    return;
+                }
+                
+                appendToTerminal('Error creating folder: ' + res.error, 'error');
+            } else {
+                // Check if the message indicates the folder already exists
+                if (res.message && res.message.includes('already exists')) {
+                    appendToTerminal(res.message, 'out');
+                    
+                    // FALLBACK: If API says it exists but we can't see it,
+                    // force directory creation with mkdir command
+                    const cmdRequestData = {
+                        command: `mkdir -p /workspace/${path}`,
+                        project_id: window.projectId,
+                        conversation_id: window.conversationId
+                    };
+                    
+                    fetch('/coding/k8s/execute_command/', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(cmdRequestData)
+                    })
+                    .then(cr => cr.json())
+                    .then(cmdRes => {
+                        if (cmdRes.error) {
+                            appendToTerminal(`Error creating directory via command: ${cmdRes.error}`, 'error');
+                        } else {
+                            appendToTerminal(`Fallback mkdir command executed for: ${path}`, 'out');
+                            if (cmdRes.stderr) {
+                                appendToTerminal(cmdRes.stderr, 'error');
+                            }
+                        }
+                        // Force file tree refresh after terminal command
+                        setTimeout(() => {
+                            loadFileTree(true);
+                            // Also use terminal check as extra fallback
+                            checkForFilesInTerminal();
+                        }, 500);
+                    })
+                    .catch(cmdErr => {
+                        appendToTerminal(`Command execution error: ${cmdErr}`, 'error');
+                        setTimeout(() => loadFileTree(true), 500);
+                    });
+                    
+                    return;
+                } else {
+                    appendToTerminal(res.message || `Folder created: ${path}`, 'out');
+                }
+                // Force a full refresh of the file tree after a delay
+                setTimeout(() => loadFileTree(true), 500);
+                return;
+            }
+            loadFileTree();
+        })
+        .catch(err => {
+            appendToTerminal('Error creating folder: ' + err, 'error');
+            console.error("Error creating folder:", err);
+        })
+        .finally(hideContextMenu);
+    };
+
+    // If we don't have a token, get it first
+    if (!window.podToken) {
+        updatePodTokens().then(() => makeRequest());
+    } else {
+        makeRequest();
+    }
+};
+
+window.renameItem=function(){
+    if(!contextMenuTarget)return hideContextMenu();
+    const old=contextMenuTarget.dataset.path;
+    const curName=contextMenuTarget.textContent.trim();
+    const newName=prompt('Enter new name:',curName);
+    if(!newName||newName===curName)return hideContextMenu();
+    const parent=old.substring(0,old.lastIndexOf('/'));
+    const newPath=parent?`${parent}/${newName}`:newName;
+    
+    // Create request data with paths and optional project_id or conversation_id
+    const requestData = { old_path: old, new_path: newPath };
+    if (window.projectId) requestData.project_id = window.projectId;
+    if (window.conversationId) requestData.conversation_id = window.conversationId;
+
+    fetch('/coding/k8s/rename_item/', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(requestData)
+    })
+    .then(r=>r.json())
+    .then(res=>{
+        res.error ? appendToTerminal('Error renaming: '+res.error,'error')
+                  : appendToTerminal(`Renamed ${old} ➜ ${newPath}`,'out');
+        loadFileTree();
+    })
+    .catch(err=>appendToTerminal('Error renaming item: '+err,'error'))
+    .finally(hideContextMenu);
+};
+
+window.deleteItem=function(){
+    if(!contextMenuTarget)return hideContextMenu();
+    const path=contextMenuTarget.dataset.path;
+    const isDir=!!contextMenuTarget.querySelector('.mdi-folder,.mdi-folder-hidden');
+    const type=isDir?'folder':'file';
+    if(!confirm(`Delete this ${type}?\n${path}`))return hideContextMenu();
+    
+    // Create request data with path, is_directory, and optional project_id or conversation_id
+    const requestData = { path, is_directory: isDir };
+    if (window.projectId) requestData.project_id = window.projectId;
+    if (window.conversationId) requestData.conversation_id = window.conversationId;
+
+    fetch('/coding/k8s/delete_item/', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(requestData)
+    })
+    .then(r=>r.json())
+    .then(res=>{
+        res.error ? appendToTerminal('Error deleting: '+res.error,'error')
+                  : appendToTerminal(`Deleted ${type}: ${path}`,'out');
+        if(path===window.currentFile){
+            window.editor.setModel(monaco.editor.createModel('','plaintext'));
+            window.currentFile='';
+            if(window.activeItem)window.activeItem.classList.remove('active');
+        }
+        loadFileTree();
+    })
+    .catch(err=>appendToTerminal('Error deleting item: '+err,'error'))
+    .finally(hideContextMenu);
+};
+
+window.createNewFile=function(){
+    const name=prompt('Enter file name:');
+    if(!name)return hideContextMenu();
+    
+    // Use the contextMenuPath to determine where to create the file
+    let path = contextMenuPath ? `${contextMenuPath}/${name}` : name;
+    
+    // Create request data with path, content, and optional project_id or conversation_id
+    const requestData = {
+        path,
+        content: '',
+        type: 'file'
+    };
+    if (window.projectId) requestData.project_id = window.projectId;
+    if (window.conversationId) requestData.conversation_id = window.conversationId;
+    if (window.podToken) requestData.token = window.podToken;
+
+    // Function to make the actual request
+    const makeRequest = () => {
+        fetch('/coding/k8s/create_item/', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(requestData)
+        })
+        .then(r => r.json())
+        .then(res => {
+            if (res.error) {
+                // If we get a token error, try refreshing the token and retry
+                if (res.error.includes('token') && !requestData.retried) {
+                    console.log('Token error, refreshing tokens and retrying...');
+                    return updatePodTokens().then(tokens => {
+                        if (tokens && tokens.podToken) {
+                            requestData.token = tokens.podToken;
+                            requestData.retried = true;
+                            return makeRequest();
+                        } else {
+                            appendToTerminal('Error creating file: Invalid token', 'error');
+                        }
+                    });
+                }
+                appendToTerminal('Error creating file: ' + res.error, 'error');
+            } else {
+                appendToTerminal(res.message || `File created: ${path}`, 'out');
+                
+                // Refresh the file tree
+                loadFileTree();
+                
+                // Determine language based on file extension
+                const ext = path.split('.').pop();
+                const lang = monaco.languages.getLanguages().find(l => l.extensions?.includes('.'+ext))?.id || 'plaintext';
+                
+                // Create a tab for the new file
+                createNewTab(name, path, lang, '');
+            }
+        })
+        .catch(err => {
+            appendToTerminal('Error creating file: ' + err, 'error');
+            console.error("Error creating file:", err);
+        })
+        .finally(hideContextMenu);
+    };
+
+    // If we don't have a token, get it first
+    if (!window.podToken) {
+        updatePodTokens().then(() => makeRequest());
+    } else {
+        makeRequest();
+    }
+};
+
+/*─────────────────────────────────────────────────────────
+  Terminal
+─────────────────────────────────────────────────────────*/
+function appendToTerminal(text, type='out') {
+    console.log(`Terminal ${type}: ${text}`);
+    
+    // If terminal output exists, append to it
+    const tOut = document.getElementById('terminal-output');
+    if (tOut) {
+        const div = document.createElement('div');
+        div.className = 'terminal-output ' + type;
+        div.textContent = text;
+        tOut.appendChild(div);
+        
+        // Auto‑scroll terminal container
+        const termEl = document.getElementById('terminal');
+        if (termEl) termEl.scrollTop = termEl.scrollHeight;
+    } else {
+        // If we're using iframe terminal, show message in console
+        console.log("Terminal output element not found - using ttyd instead");
+    }
+}
+
+// Add this new function to load folder contents dynamically
+function loadFolderContents(folderPath, parentElement) {
+    console.log(`Loading contents for folder: ${folderPath}`);
+    
+    // Show loading indicator inside the folder
+    const folderItem = parentElement.querySelector('.file-item');
+    const oldHTML = folderItem.innerHTML;
+    folderItem.innerHTML = '<div class="loading-spinner"></div>' + oldHTML;
+    
+    // Create request data
+    const requestData = { 
+        path: folderPath,
+        workspace_dir: "/workspace"
+    };
+    if (window.projectId) requestData.project_id = window.projectId;
+    if (window.conversationId) requestData.conversation_id = window.conversationId;
+    if (window.podToken) requestData.token = window.podToken;
+
+    // Make the request to get folder contents
+    fetch('/coding/k8s/get_folder_contents/', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(requestData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        // Remove the loading spinner
+        folderItem.innerHTML = oldHTML;
+        
+        if (data.error) {
+            console.error(`Error loading folder contents: ${data.error}`);
+            // Mark folder as not loaded so we can try again
+            folderItem.dataset.loaded = 'false';
+            
+            // Show empty folder or error indicator
+            const childList = parentElement.querySelector('ul.file-tree');
+            childList.innerHTML = `<li class="error-message">Error loading contents: ${data.error}</li>`;
+            return;
+        }
+        
+        // Debug the response
+        console.log("Folder contents received:", data);
+        
+        // Update the folder's contents
+        const folderFiles = data.files || [];
+        const childList = parentElement.querySelector('ul.file-tree');
+        
+        if (folderFiles.length === 0) {
+            childList.innerHTML = '<li class="empty-folder">Empty folder</li>';
+        } else {
+            try {
+                // Generate HTML for the folder contents
+                const folderDepth = parseInt(parentElement.style.getPropertyValue('--depth')) || 1;
+                const nextDepth = folderDepth + 1;
+                
+                // Create HTML for each item in the folder
+                let contentsHTML = '';
+                folderFiles.forEach(item => {
+                    if (item.type === 'directory') {
+                        contentsHTML += `
+                            <li class="directory" style="--depth:${nextDepth}">
+                                <div class="file-item" data-path="${item.path}" data-loaded="false">
+                                    <i class="mdi mdi-chevron-right"></i>
+                                    <i class="mdi mdi-folder${item.name.startsWith('.') ? '-hidden' : ''}"></i>${item.name}
+                                </div>
+                                <ul class="file-tree"></ul>
+                            </li>`;
+                    } else {
+                        contentsHTML += `
+                            <li style="--depth:${nextDepth}">
+                                <div class="file-item file" data-path="${item.path}">
+                                    <i class="mdi mdi-${getFileIcon(item.name)}"></i>${item.name}
+                                </div>
+                            </li>`;
+                    }
+                });
+                
+                // Update the child list with the new content
+                childList.innerHTML = contentsHTML;
+                
+                // Add click handlers to new subfolders
+                childList.querySelectorAll('.directory>.file-item').forEach(subItem => {
+                    subItem.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        const subFolderPath = this.dataset.path;
+                        const isSubLoaded = this.dataset.loaded === 'true';
+                        const subParentDir = this.parentElement;
+                        
+                        subParentDir.classList.toggle('expanded');
+                        
+                        if (!isSubLoaded && subParentDir.classList.contains('expanded')) {
+                            loadFolderContents(subFolderPath, subParentDir);
+                        }
+                    });
+                });
+                
+                // Add click handlers to new files
+                childList.querySelectorAll('.file-item.file').forEach(fileItem => {
+                    const filePath = fileItem.dataset.path;
+                    fileItem.onclick = () => window.openFile(filePath, fileItem);
+                });
+                
+                console.log(`Successfully rendered ${folderFiles.length} items in folder ${folderPath}`);
+            } catch (error) {
+                console.error("Error rendering folder contents:", error);
+                childList.innerHTML = `<li class="error-message">Error rendering contents: ${error.message}</li>`;
+                folderItem.dataset.loaded = 'false';
+                return;
+            }
+        }
+        
+        // Mark this folder as loaded
+        folderItem.dataset.loaded = 'true';
+    })
+    .catch(error => {
+        // Remove the loading spinner and restore original content
+        folderItem.innerHTML = oldHTML;
+        folderItem.dataset.loaded = 'false';
+        
+        console.error(`Error fetching folder contents: ${error}`);
+        const childList = parentElement.querySelector('ul.file-tree');
+        childList.innerHTML = `<li class="error-message">Failed to load contents: ${error.message}</li>`;
+    });
+}
+
+// Separate the click handler for better organization
+function handleTabsMenuClick(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    console.log("===== TABS MENU BUTTON CLICKED =====");
+    console.log("Event details:", {
+        type: e.type,
+        target: e.target.tagName,
+        currentTarget: e.currentTarget.id,
+        bubbles: e.bubbles,
+        timestamp: new Date().toISOString()
+    });
+    
+    const tabsMenuDropdown = document.getElementById('tabs-menu-dropdown');
+    if (!tabsMenuDropdown) {
+        console.error("Dropdown element not found");
+        return;
+    }
+    
+    // Check if we have any tabs
+    console.log("Current tabs:", {
+        count: window.openTabs ? window.openTabs.length : 0,
+        activeIndex: window.activeTabIndex,
+        tabsInitialized: !!window.openTabs
+    });
+    
+    if (!window.openTabs || window.openTabs.length === 0) {
+        console.log("No tabs to display in menu");
+        tabsMenuDropdown.innerHTML = '<div class="tab-menu-item">No open tabs</div>';
+        tabsMenuDropdown.classList.toggle('show');
+        return;
+    }
+    
+    console.log(`Generating menu for ${window.openTabs.length} tabs:`, 
+                window.openTabs.map(tab => tab.name));
+    
+    // Generate menu items
+    let menuHtml = '';
+    window.openTabs.forEach((tab, index) => {
+        const isActive = index === window.activeTabIndex;
+        const iconClass = tab.path ? getFileIcon(tab.name) : 'file-document-outline';
+        
+        menuHtml += `
+            <div class="tab-menu-item ${isActive ? 'active' : ''}" data-index="${index}">
+                <span class="tab-icon"><i class="mdi mdi-${iconClass}"></i></span>
+                <span class="tab-name">${tab.name}</span>
+                <span class="tab-close" data-index="${index}"><i class="mdi mdi-close"></i></span>
+            </div>
+        `;
+    });
+    
+    tabsMenuDropdown.innerHTML = menuHtml;
+    
+    // Add click handlers for menu items
+    tabsMenuDropdown.querySelectorAll('.tab-menu-item').forEach(item => {
+        item.addEventListener('click', function(e) {
+            if (!e.target.closest('.tab-close')) {
+                const index = parseInt(item.dataset.index);
+                console.log(`Menu item clicked: switching to tab ${index} (${window.openTabs[index].name})`);
+                switchToTab(index);
+                tabsMenuDropdown.classList.remove('show');
+            }
+        });
+    });
+    
+    // Add click handlers for close buttons
+    tabsMenuDropdown.querySelectorAll('.tab-close').forEach(closeBtn => {
+        closeBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const index = parseInt(closeBtn.dataset.index);
+            console.log(`Close button clicked for tab ${index} (${window.openTabs[index].name})`);
+            closeTab(index);
+            
+            // Check if we still have tabs
+            if (window.openTabs.length > 0) {
+                // Regenerate the menu
+                console.log("Regenerating menu after tab close");
+                setTimeout(handleTabsMenuClick, 100, e);
+            } else {
+                // No tabs left, just hide the dropdown
+                console.log("No tabs left, hiding dropdown");
+                tabsMenuDropdown.classList.remove('show');
+            }
+        });
+    });
+    
+    // Toggle visibility with force repaint
+    const wasVisible = tabsMenuDropdown.classList.contains('show');
+    tabsMenuDropdown.classList.toggle('show');
+    
+    // Force a repaint to ensure the dropdown is visible
+    void tabsMenuDropdown.offsetWidth;
+    
+    console.log(`Dropdown visibility changed: ${wasVisible ? 'visible → hidden' : 'hidden → visible'}`);
+    console.log("===== END TABS MENU CLICK HANDLER =====");
+}
+</script>
+{% endif %}
+</body>
+</html>

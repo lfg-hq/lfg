@@ -1,0 +1,205 @@
+/* Settings Page Styles */
+:root {
+    /* Core colors */
+    --dark-bg: #000000;
+    --text-primary: #ffffff;
+    --text-secondary: #888888;
+    
+    /* Status colors */
+    --connected: #10b981;
+    --not-connected: #71717a;
+    
+    /* Brand colors */
+    --github: #6e5494;
+    --openai: #10a37f;
+    --anthropic: #b300ff;
+    --groq: #ff5f1f;
+    
+    /* UI Colors */
+    --primary: #7c3aed;
+    --button-bg: #252525;
+    --button-hover-bg: #333333;
+}
+
+body {
+    background-color: var(--dark-bg);
+    color: var(--text-primary);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+    padding: 0;
+    line-height: 1.5;
+}
+  
+.integrations-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+  
+  @media (min-width: 768px) {
+    .integrations-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+  
+  .integration-card {
+    background-color: #1e1e1e;
+    border-radius: 0.5rem;
+    padding: 1.5rem;
+    border: 1px solid #333;
+    transition: all 0.3s ease;
+  }
+  
+  .integration-card:hover {
+    border-color: #a78bfa;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  }
+  
+  .integration-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+  }
+  
+  .integration-title {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  
+  .integration-icon {
+    width: 1.75rem;
+    height: 1.75rem;
+  }
+  
+  .integration-name {
+    font-size: 1.25rem;
+    font-weight: 600;
+  }
+  
+  .connection-status {
+    background-color: #333;
+    color: #a0a0a0;
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+  }
+  
+  .connection-status.connected {
+    background-color: #10b981;
+    color: white;
+  }
+  
+  .integration-description {
+    color: #a0a0a0;
+    margin-bottom: 1.5rem;
+    font-size: 0.95rem;
+    line-height: 1.5;
+  }
+  
+  .connect-button {
+    background-color: #8b5cf6;
+    color: white;
+    border: none;
+    padding: 0.625rem 1rem;
+    border-radius: 0.375rem;
+    width: 100%;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background-color 0.2s;
+  }
+  
+  .connect-button:hover {
+    background-color: #7c3aed;
+  }
+  
+  .disconnect-button {
+    background-color: #4b5563;
+    color: white;
+    border: none;
+    padding: 0.625rem 1rem;
+    border-radius: 0.375rem;
+    width: 100%;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background-color 0.2s;
+    margin-top: 0.5rem;
+  }
+  
+  .disconnect-button:hover {
+    background-color: #ef4444;
+  }
+  
+  .api-form {
+    margin-top: 1rem;
+    display: none;
+  }
+  
+  .api-form.visible {
+    display: block;
+  }
+  
+  .api-input {
+    width: 100%;
+    padding: 0.625rem;
+    border-radius: 0.375rem;
+    border: 1px solid #4b5563;
+    background-color: #111827;
+    color: #e5e7eb;
+    margin-bottom: 0.5rem;
+  }
+  
+  .api-input:focus {
+    outline: none;
+    border-color: #8b5cf6;
+  }
+  
+  .api-button {
+    background-color: #8b5cf6;
+    color: white;
+    border: none;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background-color 0.2s;
+  }
+  
+  .api-button:hover {
+    background-color: #7c3aed;
+  }
+  
+  .connected-user {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+  
+  .connected-avatar {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+  }
+  
+  .connected-name {
+    font-weight: 600;
+    color: #e5e7eb;
+  }
+  
+  /* External link styles */
+  .external-link {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #a78bfa;
+    text-decoration: none;
+    font-size: 0.875rem;
+    margin-top: 0.75rem;
+  }
+  
+  .external-link:hover {
+    text-decoration: underline;
+  }

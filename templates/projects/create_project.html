@@ -1,0 +1,58 @@
+{% extends 'projects/base_projects.html' %}
+
+{% block title %}Create Project - LFG 🚀🚀{% endblock %}
+
+{% block content %}
+<div class="projects-container">
+    <div class="page-header">
+        <h1 class="page-title">
+            <i class="fas fa-plus-circle"></i>
+            Create New Project
+        </h1>
+        <a href="{% url 'projects:project_list' %}" class="btn btn-outline">
+            <i class="fas fa-arrow-left"></i> Back to Projects
+        </a>
+    </div>
+
+    <div class="card">
+        <form method="post" class="create-project-form" id="create-project-form">
+            {% csrf_token %}
+            
+            <div class="form-group">
+                <label for="project-name" class="form-label">Project Name*</label>
+                <input type="text" id="project-name" name="name" class="form-control" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="project-description" class="form-label">Description (optional)</label>
+                <textarea id="project-description" name="description" class="form-control"></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Project Icon</label>
+                <input type="hidden" id="project-icon" name="icon" value="📋">
+                
+                <div class="emoji-picker">
+                    <div class="emoji-option selected">📋</div>
+                    <div class="emoji-option">📊</div>
+                    <div class="emoji-option">🚀</div>
+                    <div class="emoji-option">💡</div>
+                    <div class="emoji-option">📱</div>
+                    <div class="emoji-option">🌐</div>
+                    <div class="emoji-option">📈</div>
+                    <div class="emoji-option">🎯</div>
+                    <div class="emoji-option">🔍</div>
+                    <div class="emoji-option">⚙️</div>
+                    <div class="emoji-option">🎨</div>
+                    <div class="emoji-option">📝</div>
+                </div>
+            </div>
+            
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Create Project</button>
+                <a href="{% url 'projects:project_list' %}" class="btn btn-outline">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %} 

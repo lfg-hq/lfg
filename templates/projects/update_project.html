@@ -1,0 +1,67 @@
+{% extends 'projects/base_projects.html' %}
+
+{% block title %}Edit {{ project.name }} - LFG 🚀🚀{% endblock %}
+
+{% block content %}
+<div class="projects-container">
+    <div class="page-header">
+        <h1 class="page-title">
+            <i class="fas fa-edit"></i>
+            Edit Project
+        </h1>
+        <a href="{% url 'projects:project_detail' project.id %}" class="btn btn-outline">
+            <i class="fas fa-arrow-left"></i> Back to Project
+        </a>
+    </div>
+
+    <div class="card">
+        <form method="post" class="create-project-form" id="update-project-form">
+            {% csrf_token %}
+            
+            <div class="form-group">
+                <label for="project-name" class="form-label">Project Name*</label>
+                <input type="text" id="project-name" name="name" class="form-control" value="{{ project.name }}" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="project-description" class="form-label">Description (optional)</label>
+                <textarea id="project-description" name="description" class="form-control">{{ project.description }}</textarea>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Project Icon</label>
+                <input type="hidden" id="project-icon" name="icon" value="{{ project.icon }}">
+                
+                <div class="emoji-picker">
+                    <div class="emoji-option {% if project.icon == '📋' %}selected{% endif %}">📋</div>
+                    <div class="emoji-option {% if project.icon == '📊' %}selected{% endif %}">📊</div>
+                    <div class="emoji-option {% if project.icon == '🚀' %}selected{% endif %}">🚀</div>
+                    <div class="emoji-option {% if project.icon == '💡' %}selected{% endif %}">💡</div>
+                    <div class="emoji-option {% if project.icon == '📱' %}selected{% endif %}">📱</div>
+                    <div class="emoji-option {% if project.icon == '🌐' %}selected{% endif %}">🌐</div>
+                    <div class="emoji-option {% if project.icon == '📈' %}selected{% endif %}">📈</div>
+                    <div class="emoji-option {% if project.icon == '🎯' %}selected{% endif %}">🎯</div>
+                    <div class="emoji-option {% if project.icon == '🔍' %}selected{% endif %}">🔍</div>
+                    <div class="emoji-option {% if project.icon == '⚙️' %}selected{% endif %}">⚙️</div>
+                    <div class="emoji-option {% if project.icon == '🎨' %}selected{% endif %}">🎨</div>
+                    <div class="emoji-option {% if project.icon == '📝' %}selected{% endif %}">📝</div>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="project-status" class="form-label">Status</label>
+                <select id="project-status" name="status" class="form-control">
+                    <option value="active" {% if project.status == 'active' %}selected{% endif %}>Active</option>
+                    <option value="archived" {% if project.status == 'archived' %}selected{% endif %}>Archived</option>
+                    <option value="completed" {% if project.status == 'completed' %}selected{% endif %}>Completed</option>
+                </select>
+            </div>
+            
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Update Project</button>
+                <a href="{% url 'projects:project_detail' project.id %}" class="btn btn-outline">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %} 

@@ -1,0 +1,24 @@
+version: "3.9"
+
+services:
+  web:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    command: >
+      bash -c "python manage.py collectstatic --noinput &&
+               python manage.py runserver 0.0.0.0:8000"
+    volumes:
+      - .:/app
+      # Mount a volume for static files if you want to persist or share them.
+      - static_volume:/app/staticfiles
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=1  # Set additional environment variables as needed.
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+
+volumes:
+  static_volume:

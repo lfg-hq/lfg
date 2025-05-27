@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="noise-overlay"></div>
+<div class="auth-container">
+    <div class="auth-form-container">
+        <div class="auth-form-header">
+            <div class="logo-container">
+                <span class="logo-text">LFG</span>
+                <span class="logo-emoji">🚀</span>
+            </div>
+            <h2 class="glitch" data-text="Welcome Back">Welcome Back</h2>
+            <p class="auth-subtitle">Log in to your LFG account</p>
+        </div>
+        
+        <form method="POST">
+            {% csrf_token %}
+            <div class="form-group">
+                <label for="{{ form.username.id_for_label }}">Username</label>
+                <div class="input-wrapper">
+                    <i class="input-icon fas fa-user"></i>
+                    {{ form.username }}
+                </div>
+                {% if form.username.errors %}
+                <div class="form-error">{{ form.username.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div class="form-group">
+                <label for="{{ form.password.id_for_label }}">Password</label>
+                <div class="input-wrapper">
+                    <i class="input-icon fas fa-lock"></i>
+                    {{ form.password }}
+                </div>
+                {% if form.password.errors %}
+                <div class="form-error">{{ form.password.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <button type="submit" class="auth-button">
+                <span>Log In</span>
+                <i class="fas fa-arrow-right"></i>
+            </button>
+        </form>
+        
+        <div class="auth-footer">
+            <p>Don't have an account? <a href="{% url 'register' %}">Sign Up</a></p>
+            <a href="#" class="forgot-password">Forgot Password?</a>
+        </div>
+    </div>
+    
+    <div class="particles">
+        <div class="particle p1"></div>
+        <div class="particle p2"></div>
+        <div class="particle p3"></div>
+        <div class="particle p4"></div>
+        <div class="particle p5"></div>
+        <div class="particle p6"></div>
+    </div>
+    
+    <div class="orbiting-elements auth-orbit">
+        <div class="orbit">
+            <div class="orbit-icon"><i class="fas fa-code"></i></div>
+        </div>
+        <div class="orbit">
+            <div class="orbit-icon"><i class="fas fa-robot"></i></div>
+        </div>
+        <div class="center-sphere"></div>
+    </div>
+</div>
+{% endblock %} 

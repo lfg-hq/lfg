@@ -1,0 +1,140 @@
+<!-- Artifacts Panel -->
+<div class="artifacts-container" id="artifacts-panel">
+    <div class="resize-handle" id="resize-handle"></div>
+    
+    <button class="artifacts-toggle" id="artifacts-toggle">
+        <i class="fas fa-chevron-right"></i>
+    </button>
+    
+    <div class="artifacts-header">
+        <h2>Artifacts</h2>
+    </div>
+    
+    <div class="artifacts-content">
+        <!-- Tabs Navigation -->
+        <div class="artifacts-tabs">
+            <button class="tab-button active" data-tab="prd">PRD</button>
+            <button class="tab-button" data-tab="features">Features</button>
+            <button class="tab-button" data-tab="personas">Personas</button>
+            <button class="tab-button" data-tab="design">Design</button>
+            <button class="tab-button" data-tab="tickets">Tickets</button>
+            <button class="tab-button" data-tab="apps">Apps</button>
+            <button class="tab-button" data-tab="codebase">Codebase</button>
+        </div>
+
+        <!-- Tab Content -->
+        <div class="tab-content">
+            <!-- PRD Tab -->
+            <div class="tab-pane active" id="prd">
+                <div class="empty-state">
+                    <div class="empty-state-icon">
+                        <i class="fas fa-file-alt"></i>
+                    </div>
+                    <div class="empty-state-text">
+                        No PRD content available yet.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Features Tab -->
+            <div class="tab-pane" id="features">
+                <div class="empty-state">
+                    <div class="empty-state-icon">
+                        <i class="fas fa-list-check"></i>
+                    </div>
+                    <div class="empty-state-text">
+                        No features defined yet.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Personas Tab -->
+            <div class="tab-pane" id="personas">
+                <div class="empty-state">
+                    <div class="empty-state-icon">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <div class="empty-state-text">
+                        No personas created yet.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Design Tab -->
+            <div class="tab-pane" id="design">
+                <div class="design-container" style="width: 100%; height: 100%; position: absolute; top: 0; left: 0; right: 0; bottom: 0;">
+                    <div class="loading-state" id="design-loading" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">
+                        <div class="spinner"></div>
+                        <div>Loading design elements...</div>
+                    </div>
+                    <div class="empty-state" id="design-empty" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">
+                        <div class="empty-state-icon">
+                            <i class="fas fa-palette"></i>
+                        </div>
+                        <div class="empty-state-text">
+                            No design artifacts available yet.
+                        </div>
+                    </div>
+                    <div class="design-frame-container" id="design-frame-container" style="display: none; width: 100%; height: 100%; position: absolute; top: 0; left: 0; right: 0; bottom: 0;">
+                        <iframe id="design-iframe" style="width: 100%; height: 100%; border: none;" sandbox="allow-same-origin"></iframe>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tickets Tab -->
+            <div class="tab-pane" id="tickets">
+                <div class="empty-state">
+                    <div class="empty-state-icon">
+                        <i class="fas fa-ticket"></i>
+                    </div>
+                    <div class="empty-state-text">
+                        No tickets created yet.
+                    </div>
+                </div>
+                <!-- Ticket content will be loaded dynamically -->
+            </div>
+
+            <!-- Apps Tab -->
+            <div class="tab-pane" id="apps">
+                <div class="app-container" style="width: 100%; height: 100%; position: absolute; top: 0; left: 0; right: 0; bottom: 0;">
+                    <div class="loading-state" id="app-loading" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">
+                        <div class="spinner"></div>
+                        <div>Loading app...</div>
+                    </div>
+                    <div class="empty-state" id="app-empty">
+                        <div class="empty-state-icon">
+                            <i class="fas fa-cube"></i>
+                        </div>
+                        <div class="empty-state-text">
+                            No running apps available for this project.
+                        </div>
+                    </div>
+                    <div class="app-frame-container" id="app-frame-container" style="display: none; width: 100%; height: 100%; position: absolute; top: 0; left: 0; right: 0; bottom: 0;">
+                        <iframe id="app-iframe" style="width: 100%; height: 100%; border: none;" sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-top-navigation-by-user-activation"></iframe>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Codebase Tab -->
+            <div class="tab-pane" id="codebase">
+                <div class="codebase-container" style="width: 100%; height: 100%; position: absolute; top: 0; left: 0; right: 0; bottom: 0;">
+                    <div class="loading-state" id="codebase-loading" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">
+                        <div class="spinner"></div>
+                        <div>Loading codebase explorer...</div>
+                    </div>
+                    <div class="empty-state" id="codebase-empty">
+                        <div class="empty-state-icon">
+                            <i class="fas fa-code"></i>
+                        </div>
+                        <div class="empty-state-text">
+                            No codebase explorer available yet.
+                        </div>
+                    </div>
+                    <div class="codebase-frame-container" id="codebase-frame-container" style="display: none; width: 100%; height: 100%; position: absolute; top: 0; left: 0; right: 0; bottom: 0;">
+                        <iframe id="codebase-iframe" style="width: 100%; height: 100%; border: none;" sandbox="allow-same-origin allow-scripts"></iframe>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,372 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Terminal - {{ project.name }}{% endblock %}
+
+{% block extra_head %}
+<!-- XTerm.js CSS -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.1.0/css/xterm.min.css">
+<style>
+    .terminal-container {
+        padding: 15px;
+        background-color: #1e1e1e;
+        border-radius: 5px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        height: calc(100vh - 150px);
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    #terminal {
+        flex-grow: 1;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+    }
+    
+    .terminal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+        color: #fff;
+        background-color: #2a2a2a;
+        padding: 8px 15px;
+        border-radius: 4px 4px 0 0;
+    }
+    
+    .terminal-header h3 {
+        margin: 0;
+        font-size: 16px;
+    }
+    
+    .terminal-actions {
+        display: flex;
+        gap: 10px;
+    }
+    
+    .terminal-action-btn {
+        background: none;
+        border: none;
+        color: #ccc;
+        cursor: pointer;
+        font-size: 14px;
+        padding: 3px 8px;
+        border-radius: 3px;
+        transition: all 0.2s;
+    }
+    
+    .terminal-action-btn:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+        color: #fff;
+    }
+    
+    .terminal-status {
+        font-size: 12px;
+        color: #888;
+        padding: 5px 0;
+    }
+    
+    .terminal-connection-info {
+        margin-top: 5px;
+        font-size: 12px;
+        color: #6c6c6c;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-12">
+            <h2 class="mb-3">
+                Terminal{% if project %} - {{ project.name }}{% endif %}
+                <small class="ml-2">
+                    <a href="{% url 'projects:project_detail' project.id %}" class="btn btn-sm btn-outline-primary">
+                        <i class="fas fa-arrow-left"></i> Back to Project
+                    </a>
+                </small>
+            </h2>
+            
+            <div class="terminal-container">
+                <div class="terminal-header">
+                    <h3>Terminal</h3>
+                    <div class="terminal-actions">
+                        <button id="reconnect-btn" class="terminal-action-btn" title="Reconnect">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                        <button id="clear-btn" class="terminal-action-btn" title="Clear Terminal">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                        <button id="fullscreen-btn" class="terminal-action-btn" title="Fullscreen">
+                            <i class="fas fa-expand"></i>
+                        </button>
+                    </div>
+                </div>
+                <div id="terminal"></div>
+                <div class="terminal-status">
+                    <span id="connection-status">Disconnected</span>
+                    <div class="terminal-connection-info">
+                        {% if project and pod %}
+                        Connected to: Pod {{ pod.pod_name }} (Project: {{ project.name }})
+                        {% else %}
+                        Local terminal
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- XTerm.js and related libraries -->
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.1.0/lib/xterm.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.7.0/lib/xterm-addon-fit.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.8.0/lib/xterm-addon-web-links.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-search@0.11.0/lib/xterm-addon-search.min.js"></script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize terminal
+        const terminal = new Terminal({
+            cursorBlink: true,
+            theme: {
+                background: '#1e1e1e',
+                foreground: '#f0f0f0',
+                cursor: '#ffffff',
+                selectionBackground: '#5b5b5b',
+                black: '#000000',
+                red: '#e06c75',
+                green: '#98c379',
+                yellow: '#e5c07b',
+                blue: '#61afef',
+                magenta: '#c678dd',
+                cyan: '#56b6c2',
+                white: '#dcdfe4',
+                brightBlack: '#5c6370',
+                brightRed: '#e06c75',
+                brightGreen: '#98c379',
+                brightYellow: '#e5c07b',
+                brightBlue: '#61afef',
+                brightMagenta: '#c678dd',
+                brightCyan: '#56b6c2',
+                brightWhite: '#ffffff'
+            },
+            fontSize: 14,
+            fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+            rows: 24,
+            allowTransparency: false,
+            convertEol: true,
+            disableStdin: false,
+            scrollback: 1000,
+            screenReaderMode: false,
+            macOptionIsMeta: true,
+            macOptionClickForcesSelection: false,
+            termName: 'xterm',
+        });
+        
+        // Initialize addons
+        const fitAddon = new FitAddon.FitAddon();
+        const webLinksAddon = new WebLinksAddon.WebLinksAddon();
+        const searchAddon = new SearchAddon.SearchAddon();
+        
+        // Load addons
+        terminal.loadAddon(fitAddon);
+        terminal.loadAddon(webLinksAddon);
+        terminal.loadAddon(searchAddon);
+        
+        // Open terminal
+        terminal.open(document.getElementById('terminal'));
+        fitAddon.fit();
+        
+        // Variables for WebSocket handling
+        let socket;
+        let connectInterval;
+        let statusElement = document.getElementById('connection-status');
+        
+        // Connect to WebSocket
+        function connectWebSocket() {
+            // Close existing socket if open
+            if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+                socket.close();
+            }
+            
+            // Set status
+            setStatus('Connecting...', 'warning');
+            
+            // Get query parameters
+            let params = new URLSearchParams();
+            {% if project %}
+            params.append('projectId', '{{ project.id }}');
+            {% endif %}
+            {% if pod %}
+            params.append('podId', '{{ pod.id }}');
+            {% endif %}
+            
+            // Create WebSocket connection
+            let protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            let wsUrl = `${protocol}//${window.location.host}/ws/terminal/?${params.toString()}`;
+            socket = new WebSocket(wsUrl);
+            
+            // Initial message
+            terminal.write('\x1b[1;34mConnecting to terminal...\x1b[0m\r\n');
+            
+            // Handle connection open
+            socket.onopen = function(e) {
+                setStatus('Connected', 'success');
+                terminal.write('\x1b[1;32mConnected!\x1b[0m\r\n');
+                
+                // Clear any pending reconnection
+                if (connectInterval) {
+                    clearTimeout(connectInterval);
+                    connectInterval = null;
+                }
+                
+                // Fit terminal to container
+                setTimeout(() => {
+                    fitAddon.fit();
+                }, 100);
+            };
+            
+            // Handle incoming messages
+            socket.onmessage = function(event) {
+                try {
+                    // Check if it's a JSON message (for control messages)
+                    let data = event.data;
+                    let isJson = false;
+                    
+                    try {
+                        let jsonData = JSON.parse(data);
+                        isJson = true;
+                        
+                        // Handle JSON control messages
+                        if (jsonData.type === 'terminal.error') {
+                            terminal.write(`\x1b[1;31mError: ${jsonData.message}\x1b[0m\r\n`);
+                        } else if (jsonData.type === 'terminal.connected') {
+                            terminal.write(`\x1b[1;32m${jsonData.message}\x1b[0m\r\n`);
+                        }
+                    } catch (e) {
+                        // Not JSON, so it's terminal output
+                        isJson = false;
+                    }
+                    
+                    // If not a JSON control message, write to terminal
+                    if (!isJson) {
+                        terminal.write(data);
+                    }
+                } catch (e) {
+                    console.error('Error processing message:', e);
+                    terminal.write(`\x1b[1;31mError processing message: ${e.message}\x1b[0m\r\n`);
+                }
+            };
+            
+            // Handle errors
+            socket.onerror = function(error) {
+                console.error('WebSocket Error:', error);
+                setStatus('Error', 'danger');
+                terminal.write('\x1b[1;31mWebSocket error. Check console for details.\x1b[0m\r\n');
+            };
+            
+            // Handle disconnection
+            socket.onclose = function(event) {
+                let reason = '';
+                
+                if (event.code === 1000) {
+                    reason = 'Normal closure';
+                } else if (event.code === 1001) {
+                    reason = 'Remote server going away';
+                } else if (event.code === 1006) {
+                    reason = 'Connection closed abnormally';
+                } else if (event.code === 1011) {
+                    reason = 'Server error';
+                } else {
+                    reason = `Code: ${event.code}`;
+                }
+                
+                setStatus('Disconnected', 'danger');
+                terminal.write(`\x1b[1;31mDisconnected: ${reason}\x1b[0m\r\n`);
+                
+                // Attempt to reconnect after delay
+                if (!connectInterval) {
+                    terminal.write('\x1b[1;33mAttempting to reconnect in 5 seconds...\x1b[0m\r\n');
+                    connectInterval = setTimeout(connectWebSocket, 5000);
+                }
+            };
+        }
+        
+        // Set connection status with appropriate styling
+        function setStatus(message, type) {
+            statusElement.textContent = message;
+            statusElement.className = '';
+            statusElement.classList.add('status-' + type);
+        }
+        
+        // Handle terminal input
+        terminal.onData(data => {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                console.log("Sending to websocket:", data.length, "characters");
+                socket.send(data);
+            } else {
+                console.warn("Socket not ready, can't send data");
+                // Visual feedback that input was received but not sent
+                if (socket && socket.readyState !== WebSocket.OPEN) {
+                    terminal.write('\x1b[1;31mSocket not connected, reconnecting...\x1b[0m\r\n');
+                    connectWebSocket();
+                }
+            }
+        });
+        
+        // Make terminal element focusable for better input handling
+        const terminalElement = document.getElementById('terminal');
+        terminalElement.tabIndex = 0;
+        
+        // Focus terminal on click
+        terminalElement.addEventListener('click', () => {
+            terminal.focus();
+        });
+        
+        // Focus terminal on page load
+        setTimeout(() => {
+            terminal.focus();
+        }, 500);
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            fitAddon.fit();
+        });
+        
+        // Button handlers
+        document.getElementById('reconnect-btn').addEventListener('click', () => {
+            terminal.write('\x1b[1;33mReconnecting...\x1b[0m\r\n');
+            connectWebSocket();
+        });
+        
+        document.getElementById('clear-btn').addEventListener('click', () => {
+            terminal.clear();
+        });
+        
+        const fullscreenBtn = document.getElementById('fullscreen-btn');
+        fullscreenBtn.addEventListener('click', () => {
+            const terminalContainer = document.querySelector('.terminal-container');
+            
+            if (!document.fullscreenElement) {
+                if (terminalContainer.requestFullscreen) {
+                    terminalContainer.requestFullscreen();
+                    fullscreenBtn.innerHTML = '<i class="fas fa-compress"></i>';
+                }
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                    fullscreenBtn.innerHTML = '<i class="fas fa-expand"></i>';
+                }
+            }
+        });
+        
+        // Start connection
+        connectWebSocket();
+    });
+</script>
+{% endblock %} 

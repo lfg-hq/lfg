@@ -1,0 +1,424 @@
+/* Function call indicator styles - SUBTLE VERSION */
+.function-call-indicator, .function-mini-indicator {
+    display: flex;
+    align-items: center;
+    background-color: rgba(45, 55, 72, 0.5); /* Subtle dark blue-gray */
+    border-radius: 4px;
+    padding: 6px 10px;
+    margin: 8px 0;
+    max-width: fit-content;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+    border: none;
+    color: #e2e8f0;
+}
+
+/* Mini indicator seen in HTML */
+.function-mini-indicator {
+    background-color: rgba(45, 55, 72, 0.5) !important;
+    color: #e2e8f0 !important;
+    font-weight: normal !important;
+    padding: 3px 8px !important;
+    border-radius: 3px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    font-size: 0.75rem !important;
+}
+
+.function-mini-indicator.show {
+    display: inline-flex !important;
+}
+
+/* Separator styling */
+.function-call-separator {
+    border-top: 1px dotted rgba(255, 255, 255, 0.15);
+    margin: 6px 0;
+    width: 100%;
+}
+
+.function-call-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255, 255, 255, 0.15);
+    border-top: 2px solid #cbd5e1;
+    border-radius: 50%;
+    margin-right: 8px;
+    animation: spin 1s linear infinite;
+}
+
+.function-call-text {
+    display: flex;
+    align-items: center;
+}
+
+.function-name {
+    font-family: monospace;
+    font-weight: normal;
+    color: #e2e8f0;
+    font-size: 0.8rem;
+    letter-spacing: 0.25px;
+}
+
+.function-status {
+    display: none; /* Hide status text */
+}
+
+/* Function-specific styles */
+.function-features .function-call-indicator,
+.function-features .function-mini-indicator {
+    background-color: rgba(91, 33, 182, 0.3) !important; /* Subtle purple */
+    border-left: 2px solid #a78bfa !important;
+}
+
+.function-personas .function-call-indicator,
+.function-personas .function-mini-indicator {
+    background-color: rgba(157, 23, 77, 0.3) !important; /* Subtle pink */
+    border-left: 2px solid #f472b6 !important;
+}
+
+/* Success indicator styles */
+.function-call-success {
+    display: flex;
+    align-items: center;
+    background-color: rgba(6, 78, 59, 0.3) !important; /* Subtle green */
+    border-radius: 4px;
+    padding: 6px 10px;
+    margin: 8px 0;
+    max-width: fit-content;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+    border-left: 2px solid #34d399 !important;
+    color: #e2e8f0 !important;
+}
+
+.function-call-success.fade-out {
+    opacity: 0;
+}
+
+.function-call-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    background-color: rgba(16, 185, 129, 0.3);
+    color: #e2e8f0;
+    border-radius: 50%;
+    margin-right: 8px;
+    font-weight: normal;
+    font-size: 0.7rem;
+}
+
+.function-result {
+    font-size: 0.8rem;
+    color: #e2e8f0;
+}
+
+/* Type-specific success styles */
+.function-features .function-call-success {
+    background-color: rgba(91, 33, 182, 0.3) !important;
+    border-left: 2px solid #a78bfa !important;
+}
+
+.function-features .function-call-icon {
+    background-color: rgba(139, 92, 246, 0.3);
+    color: #e2e8f0;
+}
+
+.function-personas .function-call-success {
+    background-color: rgba(157, 23, 77, 0.3) !important;
+    border-left: 2px solid #f472b6 !important;
+}
+
+.function-personas .function-call-icon {
+    background-color: rgba(236, 72, 153, 0.3);
+    color: #e2e8f0;
+}
+
+/* Animation keyframes */
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Chat input wrapper and actions styling */
+.input-wrapper {
+    display: flex;
+    position: relative;
+    width: 100%;
+}
+
+.input-actions {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    /* background-color: rgba(30, 30, 30, 0.2); */
+    background-color: var(--card-bg);
+    border-radius: 20px;
+}
+
+.action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: none;
+    background-color: rgba(187, 134, 252, 0.1);
+    color: var(--primary-color, #bb86fc);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 12px;
+}
+
+.action-btn:hover {
+    background-color: rgba(187, 134, 252, 0.2);
+    transform: translateY(-2px);
+}
+
+/* Role dropdown styling */
+.role-dropdown {
+    height: 28px;
+    background-color: rgba(187, 134, 252, 0.1);
+    color: var(--primary-color, #bb86fc);
+    border: none;
+    border-radius: 14px;
+    padding: 0 10px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 24 24' fill='none' stroke='%23bb86fc' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    padding-right: 24px;
+}
+
+.role-dropdown:hover {
+    background-color: rgba(187, 134, 252, 0.2);
+}
+
+.role-dropdown:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(187, 134, 252, 0.3);
+}
+
+/* Model dropdown styling */
+.model-dropdown {
+    height: 28px;
+    background-color: rgba(187, 134, 252, 0.1);
+    color: var(--primary-color, #bb86fc);
+    border: none;
+    border-radius: 14px;
+    padding: 0 10px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 24 24' fill='none' stroke='%23bb86fc' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    padding-right: 24px;
+}
+
+.model-dropdown:hover {
+    background-color: rgba(187, 134, 252, 0.2);
+}
+
+.model-dropdown:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(187, 134, 252, 0.3);
+}
+
+#file-upload-btn {
+    font-size: 12px;
+}
+
+/* Adjust chat input padding to accommodate the action buttons */
+#chat-input {
+    padding-right: 0px;
+    padding-bottom: 45px;
+    min-height: 80px;
+}
+
+/* File info notification styles */
+.file-info {
+    position: absolute;
+    bottom: 100%;
+    right: 10px;
+    background-color: rgba(187, 134, 252, 0.2);
+    border-left: 2px solid var(--primary-color, #bb86fc);
+    color: var(--text-color, #e0e0e0);
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    max-width: 250px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    margin-bottom: 8px;
+    z-index: 10;
+}
+
+.file-info.show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* File attachment in message styles */
+.file-attachment {
+    display: inline-flex;
+    align-items: center;
+    background-color: rgba(187, 134, 252, 0.1);
+    padding: 4px 8px;
+    border-radius: 4px;
+    margin-top: 6px;
+    max-width: fit-content;
+    font-size: 0.85rem;
+}
+
+.file-attachment i {
+    margin-right: 6px;
+    color: var(--primary-color, #bb86fc);
+}
+
+.file-name {
+    font-weight: 500;
+    margin-right: 6px;
+}
+
+.file-type {
+    opacity: 0.7;
+    font-size: 0.75rem;
+}
+
+/* Input file attachment indicator */
+.input-file-attachment {
+    position: absolute;
+    top: -30px;
+    left: 10px;
+    background-color: rgba(187, 134, 252, 0.1);
+    border: 1px solid rgba(187, 134, 252, 0.3);
+    border-radius: 20px;
+    padding: 4px 12px;
+    display: flex;
+    align-items: center;
+    font-size: 0.8rem;
+    color: var(--text-color, #e0e0e0);
+    max-width: calc(100% - 20px);
+    z-index: 10;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.input-file-attachment i {
+    color: var(--primary-color, #bb86fc);
+    margin-right: 6px;
+}
+
+.input-file-attachment span {
+    margin-right: 8px;
+    max-width: 250px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#remove-file-btn {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.6);
+    cursor: pointer;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    font-size: 0.7rem;
+    transition: all 0.2s ease;
+}
+
+#remove-file-btn:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.9);
+}
+
+/* File notifications */
+.file-notification {
+    position: fixed;
+    bottom: 80px;
+    right: 20px;
+    background-color: rgba(29, 29, 29, 0.9);
+    color: #e0e0e0;
+    padding: 10px 16px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+    font-size: 0.9rem;
+    max-width: 350px;
+    z-index: 1000;
+    transform: translateY(20px);
+    opacity: 0;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+.file-notification.show {
+    transform: translateY(0);
+    opacity: 1;
+}
+
+.file-notification i {
+    margin-right: 8px;
+    font-size: 1rem;
+}
+
+.file-notification.success {
+    border-left: 3px solid #4caf50;
+}
+
+.file-notification.success i {
+    color: #4caf50;
+}
+
+.file-notification.error {
+    border-left: 3px solid #f44336;
+}
+
+.file-notification.error i {
+    color: #f44336;
+}
+
+.file-notification.uploading {
+    border-left: 3px solid #2196f3;
+}
+
+.file-notification.uploading i {
+    color: #2196f3;
+}
+
+/* Role indicator in messages */
+.role-indicator {
+    position: absolute;
+    top: -18px;
+    right: 5px;
+    background-color: rgba(187, 134, 252, 0.2);
+    color: var(--primary-color, #bb86fc);
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: capitalize;
+} 

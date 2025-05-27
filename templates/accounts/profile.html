@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/profile.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="profile-container">
+    <div class="profile-card">
+        <div class="profile-header">
+            <div class="profile-avatar">
+                <div class="avatar-placeholder">{{ user.email|first|upper }}</div>
+            </div>
+            <div class="profile-info">
+                <h2>{{ user.email }}</h2>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

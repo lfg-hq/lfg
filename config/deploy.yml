@@ -1,0 +1,95 @@
+# Name of your application. Used to uniquely configure containers.
+service: lfg
+
+# Name of the container image.
+image: jitin2pillai/lfg
+
+ssh:
+  user: root
+
+# Deploy to these servers.
+servers:
+  web:
+    hosts:
+      - 5.161.59.97
+    # Uncomment and adjust the command if you need to run migrations or similar:
+    # cmd: python manage.py migrate && python manage.py runserver
+    labels:
+      traefik.enable: true
+      traefik.http.routers.lfg-web.rule: Host(`lfg.run`)
+      traefik.http.services.lfg-web.loadbalancer.server.port: 8000
+      traefik.http.routers.lfg-web.entrypoints: web
+      traefik.http.routers.lfg-web_secure.rule: Host(`lfg.run`)
+      traefik.http.routers.lfg-web_secure.entrypoints: websecure
+      traefik.http.routers.lfg-web_secure.tls.certresolver: dashboardresolver
+    options:
+      expose: 8000
+      health-cmd: "curl -f http://localhost:8000/health/"
+    proxy: false
+    cmd: sh -c "python manage.py migrate --noinput && python manage.py runserver 0.0.0.0:8000"
+    
+
+env:
+  secret:
+    - POSTGRES_HOST
+    - POSTGRES_PORT
+    - POSTGRES_DB
+    - POSTGRES_USER
+    - POSTGRES_PASSWORD
+    - OPENAI_API_KEY
+    - ANTHROPIC_API_KEY
+    - GEMINI_API_KEY
+    
+
+registry:
+  server: docker.io
+  username: 
+    - DOCKER_REGISTRY_TOKEN
+  password:
+    - KAMAL_REGISTRY_PASSWORD
+
+builder:
+  arch: amd64
+
+accessories:
+  postgres_db:
+    image: postgres:16-alpine
+    # host: 5.161.59.97
+    service: postgres_db
+    port: 5432
+    env:
+      clear:
+        POSTGRES_DB: lfg_prod
+      secret:
+        - POSTGRES_USER
+        - POSTGRES_PASSWORD
+    options:
+      restart: always
+    directories:
+      - /root/postgres_data:/var/lib/postgresql/data
+    labels:
+      traefik.enable: false
+    roles:
+      - web
+
+  traefik:
+    image: traefik:v2.10
+    # host: 5.161.59.97
+    service: traefik
+    port: 443
+    options:
+      volume:
+        - "/var/run/docker.sock:/var/run/docker.sock"
+    directories:
+      - "./letsencrypt/dashboard:/letsencrypt/dashboard"
+    cmd: "--api.insecure=true --entrypoints.websecure.address=:443 --entrypoints.traefik.address=:8080 --providers.docker=true --providers.docker.exposedbydefault=false --entryPoints.web.http.redirections.entryPoint.scheme=https --certificatesResolvers.dashboardresolver.acme.email=jitin@microgigs.ai --certificatesResolvers.dashboardresolver.acme.storage=/letsencrypt/dashboard/acme.json --certificatesResolvers.dashboardresolver.acme.tlschallenge=true"
+    labels:
+      traefik.enable: true
+      traefik.http.routers.traefik.rule: Host(`5.161.59.97`)
+      traefik.http.routers.traefik.service: api@internal
+      traefik.http.routers.traefik.entrypoints: traefik
+      traefik.http.routers.catchall.rule: HostRegexp(`{any:.*}`)
+      traefik.http.routers.catchall.entrypoints: web
+    roles:
+      - web
+

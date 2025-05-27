@@ -1,0 +1,249 @@
+/* Integrations Page Styles */
+
+body {
+  background-color: #121212;
+  color: #ffffff;
+}
+
+main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+h1 {
+  font-size: 2rem;
+  font-weight: bold;
+  margin-bottom: 1.5rem;
+  color: #ffffff;
+}
+
+.section-heading {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  margin-top: 2rem;
+  color: #a78bfa;
+  border-bottom: 1px solid #333;
+  padding-bottom: 0.5rem;
+}
+
+.repository-section {
+  margin-bottom: 2.5rem;
+}
+
+.integrations-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .integrations-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .repository-section {
+    grid-template-columns: 1fr;
+    max-width: 600px;
+  }
+}
+
+.integration-card {
+  background-color: #1e1e1e;
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+  border: 1px solid #333;
+  transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.integration-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.integration-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.integration-icon {
+  width: 2rem;
+  height: 2rem;
+  fill: #a78bfa;
+}
+
+/* Special style for Anthropic's logo */
+.integration-card:nth-child(3) .integration-icon {
+  height: 1.5rem;
+}
+
+.integration-name {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #ffffff;
+  margin: 0;
+}
+
+.connection-status {
+  background-color: #333;
+  color: #a0a0a0;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.25rem;
+  white-space: nowrap;
+}
+
+.connection-status.connected {
+  background-color: #10b981;
+  color: white;
+}
+
+.integration-description {
+  color: #a0a0a0;
+  margin-bottom: 1.5rem;
+  font-size: 1rem;
+  line-height: 1.5;
+  flex-grow: 1;
+}
+
+.connect-button {
+  background-color: #8b5cf6;
+  color: white;
+  border: none;
+  border-radius: 0.375rem;
+  width: 100%;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.2s;
+  font-size: 1rem;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 45px;
+  margin-top: auto;
+}
+
+.connect-button:hover {
+  background-color: #7c3aed;
+}
+
+.disconnect-button {
+  background-color: #4b5563;
+  color: white;
+  border: none;
+  border-radius: 0.375rem;
+  width: 100%;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.2s, color 0.2s;
+  margin-top: 0.5rem;
+  font-size: 1rem;
+  height: 45px;
+}
+
+.disconnect-button:hover {
+  background-color: #ef4444;
+}
+
+.api-form {
+  margin-top: 1rem;
+  display: none;
+}
+
+.api-form.visible {
+  display: block;
+}
+
+.api-input {
+  width: 100%;
+  padding: 0.625rem;
+  border-radius: 0.375rem;
+  border: 1px solid #4b5563;
+  background-color: #111827;
+  color: #e5e7eb;
+  margin-bottom: 0.5rem;
+  height: 45px;
+  font-size: 0.95rem;
+}
+
+.api-input:focus {
+  outline: none;
+  border-color: #8b5cf6;
+}
+
+.api-button {
+  background-color: #8b5cf6;
+  color: white;
+  border: none;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.2s;
+  height: 40px;
+  font-size: 0.95rem;
+}
+
+.api-button:hover {
+  background-color: #7c3aed;
+}
+
+.connected-user {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.connected-avatar {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+}
+
+.connected-name {
+  font-weight: 600;
+  color: #e5e7eb;
+}
+
+/* External link styles */
+.external-link {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #a78bfa;
+  text-decoration: none;
+  font-size: 0.875rem;
+  margin-top: 0.75rem;
+}
+
+.external-link:hover {
+  text-decoration: underline;
+}
+
+/* Alert styling */
+.alert {
+  border-radius: 0.375rem;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.alert-success {
+  background-color: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  color: #10b981;
+}
+
+.alert-danger {
+  background-color: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+} 

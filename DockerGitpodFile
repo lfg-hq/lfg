@@ -1,0 +1,18 @@
+FROM gitpod/workspace-full:latest
+
+USER root
+
+# Install ttyd
+RUN wget -qO /usr/local/bin/ttyd \
+      https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64 && \
+    chmod +x /usr/local/bin/ttyd
+
+# Copy the entrypoint script
+COPY gitpodentry.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+USER gitpod
+
+EXPOSE 7681
+
+ENTRYPOINT ["/entrypoint.sh"]

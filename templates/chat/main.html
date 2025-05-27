@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Tig - AI Coding Assistant{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="stylesheet" href="/static/css/artifacts.css">
+    <link rel="stylesheet" href="/static/css/chat.css">
+    <link rel="stylesheet" href="/static/css/artifacts-fix.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/marked/marked.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://kit.fontawesome.com/c10b7e86e5.js" crossorigin="anonymous"></script>
+    <link rel="icon" href="/static/assets/favicon.ico">
+</head>
+<body data-user-authenticated="{% if user.is_authenticated %}true{% else %}false{% endif %}" 
+      >
+    <div class="app-container">
+        <div class="sidebar-overlay" id="sidebar-overlay"></div>
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-top-content">
+                <div class="sidebar-header">
+                    <h1>🚀</h1>
+                    <div class="header-buttons">
+                        <button id="back-btn" title="Back to Projects"><i class="fas fa-arrow-left"></i></button>
+                        <button id="new-chat-btn" title="New Chat"><i class="fas fa-plus"></i></button>
+                    </div>
+                </div>
+                <div class="conversation-list" id="conversation-list">
+                    <!-- Conversations will be loaded here -->
+                </div>
+            </div>
+            <div class="sidebar-bottom-content">
+                <div class="user-info">
+                    {% if user.is_authenticated %}
+                        <div class="user-avatar">
+                            {% if user.profile.avatar %}
+                                <img src="{{ user.profile.avatar.url }}" alt="{{ user.username }}'s avatar">
+                            {% else %}
+                                <div class="avatar-text">{{ user.username|first|upper }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="user-details">
+                            <span class="username">{{ user.username }}</span>
+                            <a href="{% url 'profile' %}" class="profile-link">Profile</a>
+                        </div>
+                    {% else %}
+                        <a href="{% url 'login' %}" class="login-button">Log In</a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <div class="chat-container">
+            <div class="chat-messages" id="chat-messages">
+                <!-- Messages will appear here -->
+                <div class="message-container">
+                    <div class="welcome-message">
+                        <h2>LFG 🚀🚀</h2>
+                        <p>Start a conversation with the AI assistant below.</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="chat-input-container">
+                <form id="chat-form">
+                    <div class="input-wrapper">
+                        <textarea 
+                            id="chat-input" 
+                            placeholder="Type your message here..." 
+                            rows="2"
+                            autofocus
+                        ></textarea>
+                        <div class="input-actions">
+                            <button type="button" id="file-upload-btn" class="action-btn" title="Upload file">
+                                <i class="fas fa-paperclip"></i>
+                            </button>
+                            <input type="file" id="file-upload-input" style="display: none">
+                            <select id="role-dropdown" class="role-dropdown" title="Select a role">
+                                <option value="developer">Developer</option>
+                                <option value="designer">Designer</option>
+                                <option value="product_analyst">Analyst</option>
+                            </select>
+                            <select id="model-dropdown" class="model-dropdown" title="Select a model">
+                                <option value="claude_4_sonnet">Claude 4 Sonnet</option>
+                                <option value="gpt_4_1">OpenAI GPT-4.1</option>
+                                <option value="gpt_4o">OpenAI GPT-4o</option>
+                            </select>
+                            <button type="submit" id="send-btn" class="action-btn" title="Send message">
+                                <i class="fas fa-paper-plane"></i>
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    {% include 'chat/artifacts.html' %}
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="/static/js/markdown-config.js"></script>
+
+    <script src="/static/js/app-loader.js"></script>
+    <script src="/static/js/chat.js"></script>
+    <script src="/static/js/sidebar.js"></script>
+    <script src="/static/js/artifacts.js"></script>
+    <script src="/static/js/artifacts-loader.js"></script>
+    <script src="/static/js/design-loader.js"></script>
+    <script src="/static/js/role-handler.js"></script>
+    <script src="/static/js/model-handler.js"></script>
+    {% csrf_token %}
+</body>
+</html> 

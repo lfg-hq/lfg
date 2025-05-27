@@ -1,0 +1,422 @@
+/* Styles specific to the Projects module */
+
+.projects-container {
+    padding: 2rem 0;
+    min-height: calc(100vh - 150px);
+}
+
+.project-card {
+    position: relative;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+}
+
+.project-card-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.project-icon {
+    font-size: 2rem;
+    margin-right: 0.75rem;
+}
+
+.project-name {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin: 0;
+    word-break: break-word;
+}
+
+.project-description {
+    color: var(--text-light);
+    margin-bottom: 1.5rem;
+    flex-grow: 1;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+}
+
+.project-meta {
+    font-size: 0.875rem;
+    color: var(--text-light);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: auto;
+}
+
+.project-status {
+    padding: 0.25rem 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-transform: capitalize;
+}
+
+.project-status-active {
+    background-color: rgba(52, 211, 153, 0.2);
+    color: var(--success-color);
+}
+
+.project-status-archived {
+    background-color: rgba(148, 163, 184, 0.2);
+    color: var(--text-light);
+}
+
+.project-status-completed {
+    background-color: rgba(96, 165, 250, 0.2);
+    color: var(--info-color);
+}
+
+.project-card-link {
+    display: block;
+    text-decoration: none;
+    color: var(--text-color);
+    padding: 1.5rem;
+    padding-bottom: 0.5rem;
+    transition: all 0.2s ease;
+    cursor: pointer;
+    height: calc(100% - 2.5rem);
+    display: flex;
+    flex-direction: column;
+}
+
+.project-card-link:hover {
+    color: var(--text-color);
+}
+
+.project-card-actions {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    z-index: 10;
+}
+
+.project-card:hover .project-card-actions {
+    opacity: 1;
+}
+
+.dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.dropdown-button {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 0.25rem;
+    color: var(--text-light);
+    transition: color 0.2s ease;
+}
+
+.dropdown-button:hover {
+    color: var(--text-color);
+}
+
+.dropdown-menu {
+    position: absolute;
+    right: 0;
+    top: 100%;
+    background-color: var(--card-bg);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    z-index: 10;
+    min-width: 150px;
+    display: none;
+    border: 1px solid var(--border-color);
+}
+
+.dropdown.active .dropdown-menu {
+    display: block;
+}
+
+.dropdown-item {
+    width: 100%;
+    text-align: left;
+    border: none;
+    background: none;
+    cursor: pointer;
+    padding: 0.5rem 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: background-color 0.2s ease;
+    color: var(--text-color);
+    font-size: 0.9rem;
+    font-family: var(--font-family);
+}
+
+.dropdown-item:hover {
+    background-color: var(--light-bg);
+}
+
+.dropdown-item-danger {
+    color: var(--danger-color);
+}
+
+/* Create Project Form */
+.create-project-form {
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.emoji-picker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.emoji-option {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    background-color: var(--light-bg);
+}
+
+.emoji-option:hover {
+    background-color: rgba(99, 102, 241, 0.1);
+}
+
+.emoji-option.selected {
+    background-color: rgba(99, 102, 241, 0.2);
+    box-shadow: 0 0 0 2px var(--primary-color);
+}
+
+/* Empty state */
+.empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+}
+
+.empty-state-icon {
+    font-size: 4rem;
+    color: var(--text-light);
+    opacity: 0.5;
+    margin-bottom: 1.5rem;
+}
+
+.empty-state-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+}
+
+.empty-state-text {
+    color: var(--text-light);
+    max-width: 400px;
+    margin: 0 auto 2rem;
+}
+
+/* Project detail page */
+.project-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.large-project-icon {
+    font-size: 3rem;
+    margin-right: 1rem;
+}
+
+.project-header-content {
+    flex-grow: 1;
+}
+
+.project-header-name {
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+}
+
+.project-header-meta {
+    color: var(--text-light);
+    display: flex;
+    gap: 1rem;
+    font-size: 0.875rem;
+}
+
+.project-header-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.project-header-actions .btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Create Project Button */
+.create-project-btn {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+    border: 2px dashed var(--border-color);
+    background-color: rgba(31, 41, 55, 0.5);
+    transition: border-color 0.2s ease, background-color 0.2s ease;
+    text-decoration: none;
+    padding: 0;
+}
+
+.card-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    width: 100%;
+    padding: 2rem;
+}
+
+.create-project-btn:hover {
+    border-color: var(--primary-color);
+    background-color: rgba(99, 102, 241, 0.1);
+    color: var(--text-color);
+}
+
+.create-project-btn-icon {
+    font-size: 2rem;
+    color: var(--primary-color);
+    margin-bottom: 0.75rem;
+}
+
+.create-project-btn-text {
+    font-weight: 500;
+    color: var(--primary-color);
+}
+
+/* Dark theme specific overrides for better visibility */
+.project-description-content {
+    line-height: 1.6;
+}
+
+/* Glow effect for cards on hover in dark mode */
+.card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 0 15px rgba(99, 102, 241, 0.3);
+}
+
+/* Glow effect for cards on hover in dark mode */
+.dark-mode .card:hover {
+    box-shadow: 0 0 15px rgba(147, 151, 255, 0.3);
+}
+
+.project-card-link:hover .project-name {
+    color: var(--primary-color);
+}
+
+.dark-mode .project-card-link:hover .project-name {
+    color: var(--primary-hover);
+}
+
+/* Improved contrast for status badges */
+.project-status {
+    font-weight: 600;
+}
+
+/* Improved button focus styles */
+.btn:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.3);
+}
+
+/* Status badge in select dropdown */
+#project-status {
+    background-color: var(--light-bg);
+    color: var(--text-color);
+    border-color: var(--border-color);
+}
+
+/* Conversation cards */
+.conversations-grid {
+    margin-top: 1rem;
+}
+
+.conversation-card {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    color: var(--text-color);
+}
+
+.conversation-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 0 15px rgba(99, 102, 241, 0.3);
+    color: var(--text-color);
+}
+
+.conversation-icon {
+    font-size: 1.5rem;
+    color: var(--primary-color);
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background-color: rgba(99, 102, 241, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.conversation-content {
+    flex-grow: 1;
+}
+
+.conversation-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.conversation-meta {
+    font-size: 0.75rem;
+    color: var(--text-light);
+    display: flex;
+    gap: 1rem;
+}
+
+.create-conversation-btn {
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    border: 2px dashed var(--border-color);
+    background-color: rgba(31, 41, 55, 0.5);
+}
+
+.create-conversation-btn:hover {
+    border-color: var(--primary-color);
+    background-color: rgba(99, 102, 241, 0.1);
+}
+
+.create-conversation-btn-icon {
+    font-size: 2rem;
+    color: var(--primary-color);
+    margin-bottom: 0.75rem;
+}
+
+.create-conversation-btn-text {
+    font-weight: 500;
+    color: var(--primary-color);
+} 

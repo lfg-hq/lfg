@@ -1,0 +1,540 @@
+/* Special CSS fixes for ticket cards not displaying properly */
+
+/* Targets for what we see in the inspector */
+.ticket-card {
+    background-color: #2a2a2a !important;
+    border-radius: 8px !important;
+    overflow: hidden !important;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2) !important;
+    transition: transform 0.2s, box-shadow 0.2s !important;
+    height: auto !important;
+    min-height: 100px !important;
+    display: flex !important; /* This will be overridden by JS when hiding */
+    flex-direction: column !important;
+    margin-bottom: 15px !important;
+    width: 100% !important;
+    border: 1px solid #333 !important;
+}
+
+.ticket-card:hover {
+    transform: translateY(-3px) !important;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.3) !important;
+}
+
+/* Allow JavaScript to hide cards */
+.ticket-card[style*="display: none"] {
+    display: none !important; /* Override the display: flex when hidden by JS */
+}
+
+.tickets-by-status {
+    display: flex !important; 
+    flex-direction: column !important; 
+    width: 100% !important;
+    gap: 10px !important;
+}
+
+/* Card header styles */
+.card-header {
+    padding: 12px 15px !important;
+    background-color: rgba(30, 30, 30, 0.6) !important;
+    border-bottom: 1px solid #333 !important;
+}
+
+/* Remove colored top borders from status cards */
+.card-header.open,
+.card-header.in_progress,
+.card-header.agent,
+.card-header.closed {
+    border-top: none !important;
+    border-left: 4px solid #444 !important;
+}
+
+/* Use subtle left border instead for status indicators */
+.card-header.open {
+    border-left-color: #3498db !important;
+}
+
+.card-header.in_progress {
+    border-left-color: #f39c12 !important;
+}
+
+.card-header.agent {
+    border-left-color: #9b59b6 !important;
+}
+
+.card-header.closed {
+    border-left-color: #2ecc71 !important;
+}
+
+/* Card title styling */
+.card-title {
+    font-size: 15px !important;
+    font-weight: 500 !important;
+    margin: 0 !important;
+    color: #e2e2e2 !important;
+    line-height: 1.4 !important;
+}
+
+/* Card body */
+.card-body {
+    padding: 15px;
+    flex: 1;
+    color: #bbb;
+    font-size: 14px;
+    line-height: 1.5;
+    display: flex;
+    flex-direction: column;
+}
+
+.card-description {
+    flex: 1;
+    margin-bottom: 15px;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+    line-height: 1.6;
+    max-height: 250px;
+    overflow-y: auto;
+    padding-right: 5px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.card-description::-webkit-scrollbar {
+    width: 4px;
+}
+
+.card-description::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.card-description::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+}
+
+/* Card Meta Section (integrated into body) */
+.card-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: auto;
+    padding-top: 12px;
+    border-top: 1px dashed rgba(255, 255, 255, 0.05);
+}
+
+/* Card tags container */
+.card-tags {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 5px !important;
+    flex: 1 !important;
+}
+
+/* View details button */
+.view-details-btn {
+    background-color: rgba(108, 92, 231, 0.2) !important;
+    color: #bb86fc !important;
+    border: 1px solid rgba(108, 92, 231, 0.3) !important;
+    border-radius: 50% !important;
+    width: 28px !important;
+    height: 28px !important;
+    font-size: 14px !important;
+    cursor: pointer !important;
+    transition: all 0.2s ease !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 0 !important;
+    flex-shrink: 0 !important;
+    margin-left: 8px !important;
+}
+
+.view-details-btn:hover {
+    background-color: rgba(108, 92, 231, 0.3) !important;
+    transform: translateY(-1px) !important;
+}
+
+/* Status Tags */
+.status-tag {
+    font-size: 12px !important;
+    padding: 3px 8px !important;
+    border-radius: 4px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 5px !important;
+}
+
+/* Drawer Styles - ensure they work */
+.ticket-details-drawer {
+    position: fixed !important;
+    top: 0 !important;
+    right: -400px !important;
+    width: 400px !important;
+    height: 100vh !important;
+    background-color: #2a2a2a !important;
+    box-shadow: -2px 0 10px rgba(0, 0, 0, 0.5) !important;
+    z-index: 1000 !important;
+    transition: right 0.3s ease !important;
+    display: flex !important;
+    flex-direction: column !important;
+    border-left: 1px solid #333 !important;
+}
+
+.ticket-details-drawer.open {
+    right: 0 !important;
+}
+
+.drawer-overlay {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    background-color: rgba(0, 0, 0, 0.5) !important;
+    z-index: 999 !important;
+    display: none !important;
+}
+
+.drawer-overlay.active {
+    display: block !important;
+}
+
+/* Dropdown filter styles */
+.feature-filter-dropdown {
+    min-width: 120px !important;
+    max-width: 180px !important;
+    background-color: rgba(40, 40, 40, 0.8) !important;
+    color: #e0e0e0 !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 4px !important;
+    padding: 6px 28px 6px 10px !important;
+    font-size: 12px !important;
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E") !important;
+    background-repeat: no-repeat !important;
+    background-position: right 8px center !important;
+    background-size: 12px !important;
+}
+
+/* Clear filters button */
+.clear-filters-btn {
+    width: 24px !important;
+    height: 24px !important;
+    background-color: rgba(40, 40, 40, 0.8) !important;
+    color: #999 !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 50% !important;
+    font-size: 10px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    cursor: pointer !important;
+    padding: 0 !important;
+    transition: all 0.2s ease !important;
+}
+
+.clear-filters-btn:hover {
+    background-color: rgba(60, 60, 60, 0.9) !important;
+    color: #fff !important;
+    transform: scale(1.05) !important;
+}
+
+/* Filter options container */
+.filter-options {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+}
+
+.filter-group {
+    display: flex !important;
+    align-items: center !important;
+    gap: 5px !important;
+    position: relative !important;
+}
+
+/* Ticket filters panel */
+.ticket-filters {
+    background-color: rgba(30, 30, 30, 0.8) !important;
+    padding: 10px 15px !important;
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 10 !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+
+/* No results state when filters applied */
+.no-results {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 40px 20px !important;
+    text-align: center !important;
+}
+
+.no-results .empty-state-icon {
+    font-size: 28px !important;
+    margin-bottom: 15px !important;
+    color: rgba(187, 134, 252, 0.4) !important;
+}
+
+.no-results .empty-state-text {
+    font-size: 0.9rem !important;
+    color: #999 !important;
+}
+
+/* Feature tag highlight when filtered */
+.feature-tag.filter-active {
+    background-color: rgba(108, 92, 231, 0.3) !important;
+    color: #bb86fc !important;
+    border-color: rgba(108, 92, 231, 0.5) !important;
+    box-shadow: 0 0 4px rgba(108, 92, 231, 0.3) !important;
+}
+
+/* Feature tag styling */
+.feature-tag {
+    background-color: #333 !important;
+    color: #bbb !important;
+    font-size: 11px !important;
+    padding: 3px 8px !important;
+    border-radius: 3px !important;
+    border: 1px solid #444 !important;
+    transition: all 0.2s ease !important;
+}
+
+/* Highlight feature tag when filter is active */
+.feature-tag.filter-active {
+    background-color: #444 !important;
+    color: #fff !important;
+    border-color: #666 !important;
+    box-shadow: 0 0 5px rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Force list layout */
+@media screen and (min-width: 768px) {
+    #tickets .tickets-by-status {
+        display: flex !important;
+        flex-direction: column !important;
+        width: 100% !important;
+    }
+    
+    #tickets .ticket-card {
+        display: flex !important;
+        flex-direction: column !important;
+        margin-bottom: 12px !important;
+    }
+} 
+
+/* Ticket status group styling */
+.ticket-status-group {
+    margin-bottom: 25px !important;
+}
+
+.ticket-status-heading {
+    font-size: 16px !important;
+    font-weight: 500 !important;
+    color: #e2e2e2 !important;
+    padding-bottom: 8px !important;
+    margin-bottom: 15px !important;
+    border-bottom: 1px solid #444 !important;
+}
+
+/* Right Drawer Styles - replacing modal */
+.ticket-drawer {
+    position: fixed !important;
+    top: 0 !important;
+    right: -400px !important; /* Start offscreen */
+    width: 400px !important;
+    height: 100% !important;
+    background-color: #1e1e1e !important;
+    box-shadow: -2px 0 10px rgba(0, 0, 0, 0.3) !important;
+    z-index: 1000 !important;
+    transition: right 0.3s ease !important;
+    overflow: hidden !important;
+}
+
+.ticket-drawer.open {
+    right: 0 !important; /* Slide in when open */
+}
+
+.drawer-content {
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100% !important;
+    width: 100% !important;
+    background-color: #272727 !important;
+}
+
+.drawer-header {
+    padding: 20px !important;
+    background-color: #1f1f1f !important;
+    border-bottom: 1px solid #333 !important;
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+}
+
+.drawer-header h3 {
+    margin: 0 !important;
+    color: #fff !important;
+    font-size: 18px !important;
+    font-weight: 600 !important;
+    max-width: 320px !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+}
+
+.close-drawer {
+    cursor: pointer !important;
+    font-size: 24px !important;
+    color: #aaa !important;
+    transition: color 0.2s !important;
+}
+
+.close-drawer:hover {
+    color: #fff !important;
+}
+
+.drawer-body {
+    flex: 1 !important;
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+/* Drawer Tabs */
+.drawer-tabs {
+    display: flex !important;
+    background-color: #2a2a2a !important;
+    border-bottom: 1px solid #333 !important;
+    overflow-x: auto !important;
+    scrollbar-width: none !important; /* Firefox */
+}
+
+.drawer-tabs::-webkit-scrollbar {
+    display: none !important; /* Chrome, Safari, Edge */
+}
+
+.drawer-tab {
+    padding: 12px 16px !important;
+    background: none !important;
+    border: none !important;
+    color: #94a3b8 !important;
+    cursor: pointer !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+    position: relative !important;
+    white-space: nowrap !important;
+    transition: color 0.2s !important;
+}
+
+.drawer-tab:hover {
+    color: #e2e8f0 !important;
+}
+
+.drawer-tab.active {
+    color: #e2e2e2 !important;
+}
+
+.drawer-tab.active::after {
+    content: '' !important;
+    position: absolute !important;
+    bottom: -1px !important;
+    left: 0 !important;
+    right: 0 !important;
+    height: 2px !important;
+    background: #666 !important;
+}
+
+.drawer-tab-content {
+    flex: 1 !important;
+    overflow: hidden !important;
+    position: relative !important;
+}
+
+.drawer-tab-content .tab-content {
+    display: none !important;
+    padding: 20px !important;
+    overflow-y: auto !important;
+    height: 100% !important;
+    max-height: calc(100vh - 120px) !important;
+}
+
+.drawer-tab-content .tab-content.active {
+    display: block !important;
+} 
+
+/* Fix for content rendering in drawer */
+.drawer-content-wrapper {
+    padding: 5px 0 !important;
+}
+
+.drawer-tab-content .tab-content p {
+    font-size: 13px !important;
+    line-height: 1.5 !important;
+    margin-bottom: 12px !important;
+    color: #e2e2e2 !important;
+}
+
+/* Fix numbered lists in drawer */
+.drawer-tab-content .tab-content ol {
+    padding-left: 24px !important;
+    margin-top: 0 !important;
+    margin-bottom: 16px !important;
+    list-style-position: outside !important;
+    counter-reset: item !important;
+}
+
+.drawer-tab-content .tab-content ol li {
+    font-size: 13px !important;
+    line-height: 1.5 !important;
+    margin-bottom: 10px !important;
+    padding-left: 5px !important;
+    color: #e2e2e2 !important;
+    display: list-item !important;
+    list-style-type: decimal !important;
+}
+
+/* Fix unnumbered lists in drawer */
+.drawer-tab-content .tab-content ul {
+    padding-left: 20px !important;
+    margin-top: 0 !important;
+    margin-bottom: 16px !important;
+    list-style-type: disc !important;
+}
+
+.drawer-tab-content .tab-content ul li {
+    font-size: 13px !important;
+    line-height: 1.5 !important;
+    margin-bottom: 8px !important;
+    padding-left: 5px !important;
+    color: #e2e2e2 !important;
+}
+
+/* Code blocks in content */
+.drawer-tab-content .tab-content code {
+    font-family: monospace !important;
+    background-color: rgba(0, 0, 0, 0.2) !important;
+    padding: 2px 4px !important;
+    border-radius: 3px !important;
+    font-size: 12px !important;
+}
+
+/* Fix for headings in drawer content */
+.drawer-tab-content .tab-content h1,
+.drawer-tab-content .tab-content h2,
+.drawer-tab-content .tab-content h3,
+.drawer-tab-content .tab-content h4 {
+    margin-top: 0 !important;
+    margin-bottom: 10px !important;
+    color: #f0f0f0 !important;
+    font-weight: 600 !important;
+}
+
+.drawer-tab-content .tab-content h1 { font-size: 18px !important; }
+.drawer-tab-content .tab-content h2 { font-size: 16px !important; }
+.drawer-tab-content .tab-content h3 { font-size: 15px !important; }
+.drawer-tab-content .tab-content h4 { font-size: 14px !important; } 

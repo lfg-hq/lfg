@@ -1,0 +1,664 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Your Credits - LFG{% endblock %}
+
+{% block extra_head %}
+<!-- Make sure Bootstrap is loaded -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
+<style>
+    body {
+        background-color: #0f172a;
+        color: #f8fafc;
+    }
+    
+    .credit-card {
+        background: linear-gradient(135deg, #13294B 0%, #1e3a5f 100%);
+        color: white;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 10px 20px rgba(0,0,0,0.15);
+        height: 100%;
+    }
+    
+    .credit-header {
+        padding: 20px 25px;
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    
+    .credit-body {
+        padding: 30px 25px;
+    }
+    
+    .credit-amount {
+        font-size: 48px;
+        font-weight: 700;
+        margin: 10px 0;
+        line-height: 1;
+    }
+    
+    .plan-card {
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+        transition: all 0.3s ease;
+        height: 100%;
+    }
+    
+    .plan-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 15px 30px rgba(0,0,0,0.1);
+    }
+    
+    .plan-header {
+        padding: 25px 20px 15px;
+        text-align: center;
+        border-bottom: 1px solid rgba(0,0,0,0.05);
+    }
+    
+    .monthly-plan .plan-header {
+        background-color: #2563EB;
+        color: white;
+    }
+    
+    .addon-plan .plan-header {
+        background-color: #ffffff;
+        color: #1F2937;
+        border-bottom: 1px solid #E5E7EB;
+    }
+    
+    .plan-price {
+        font-size: 42px;
+        font-weight: 700;
+        line-height: 1;
+        margin: 15px 0 5px;
+    }
+    
+    .monthly-plan .plan-price {
+        color: white;
+    }
+    
+    .addon-plan .plan-price {
+        color: #1F2937;
+    }
+    
+    .plan-body {
+        padding: 25px 20px;
+        background-color: white;
+        color: #1F2937;
+    }
+    
+    .plan-features {
+        margin: 25px 0;
+        padding: 0;
+        list-style: none;
+    }
+    
+    .plan-features li {
+        padding: 8px 0;
+        display: flex;
+        align-items: center;
+    }
+    
+    .plan-features li:before {
+        content: "✓";
+        margin-right: 10px;
+        color: #10B981;
+        font-weight: bold;
+    }
+    
+    .btn-subscribe {
+        padding: 12px 20px;
+        border-radius: 8px;
+        text-transform: uppercase;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+        transition: all 0.3s ease;
+        width: 100%;
+        display: inline-block;
+        text-decoration: none;
+        text-align: center;
+    }
+    
+    .monthly-plan .btn-subscribe {
+        background-color: #2563EB;
+        color: white;
+        border: none;
+    }
+    
+    .monthly-plan .btn-subscribe:hover {
+        background-color: #1D4ED8;
+        color: white;
+        text-decoration: none;
+    }
+    
+    .addon-plan .btn-subscribe {
+        background-color: white;
+        color: #2563EB;
+        border: 2px solid #2563EB;
+    }
+    
+    .addon-plan .btn-subscribe:hover {
+        background-color: #2563EB;
+        color: white;
+        text-decoration: none;
+    }
+    
+    .transaction-table {
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+    }
+    
+    .transaction-table th {
+        background-color: #F3F4F6;
+        padding: 12px 16px;
+        font-weight: 600;
+        color: #1F2937;
+    }
+    
+    .transaction-table td {
+        padding: 16px;
+        vertical-align: middle;
+        color: #1F2937;
+    }
+    
+    .badge {
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-weight: 500;
+        font-size: 12px;
+        display: inline-block;
+    }
+    
+    .section-title {
+        margin-bottom: 30px;
+        font-weight: 700;
+        position: relative;
+        display: inline-block;
+        color: #f8fafc;
+    }
+    
+    .section-title:after {
+        content: '';
+        position: absolute;
+        bottom: -10px;
+        left: 0;
+        width: 50px;
+        height: 3px;
+        background-color: #2563EB;
+    }
+    
+    .page-header {
+        background-color: #1e293b;
+        padding: 40px 0 30px;
+        margin-bottom: 40px;
+        border-bottom: 1px solid #334155;
+    }
+    
+    .bg-primary {
+        background-color: #2563EB !important;
+    }
+    
+    .text-primary {
+        color: #2563EB !important;
+    }
+    
+    .text-white-50 {
+        color: rgba(255, 255, 255, 0.5) !important;
+    }
+    
+    .text-muted {
+        color: #94a3b8 !important;
+    }
+    
+    .display-5 {
+        font-size: 2.5rem;
+        font-weight: 700;
+        line-height: 1.2;
+    }
+    
+    .fw-bold {
+        font-weight: 700 !important;
+    }
+    
+    .accordion-item {
+        background-color: #1e293b;
+        border: 1px solid #334155;
+    }
+    
+    .accordion-button {
+        background-color: #1e293b;
+        color: #f8fafc;
+    }
+    
+    .accordion-button:not(.collapsed) {
+        background-color: #2d3748;
+        color: #f8fafc;
+    }
+    
+    .accordion-body {
+        background-color: #1e293b;
+        color: #cbd5e1;
+    }
+    
+    .accordion-button:focus {
+        box-shadow: 0 0 0 0.25rem rgba(37, 99, 235, 0.25);
+    }
+    
+    /* Fix for collapsed accordion */
+    .accordion-button::after {
+        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23fff'%3e%3cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3e%3c/svg%3e");
+    }
+    
+    .table {
+        background-color: white;
+    }
+    
+    .alert {
+        border-radius: 8px;
+        margin-bottom: 30px;
+    }
+    
+    .alert-info {
+        background-color: rgba(37, 99, 235, 0.1);
+        border-color: rgba(37, 99, 235, 0.2);
+        color: #93c5fd;
+    }
+    
+    .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.3s, visibility 0.3s;
+    }
+    
+    .loading-overlay.active {
+        opacity: 1;
+        visibility: visible;
+    }
+    
+    .spinner-container {
+        text-align: center;
+        color: white;
+    }
+    
+    .spinner-border {
+        width: 3rem;
+        height: 3rem;
+        margin-bottom: 1rem;
+    }
+    
+    .subscription-status {
+        background: linear-gradient(135deg, #10B981 0%, #34D399 100%);
+        color: white;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 10px 20px rgba(0,0,0,0.15);
+        margin-bottom: 2rem;
+        position: relative;
+    }
+    
+    .subscription-header {
+        padding: 20px 25px;
+        background-color: rgba(0,0,0,0.1);
+        font-weight: 600;
+    }
+    
+    .subscription-body {
+        padding: 25px;
+    }
+    
+    .subscription-badge {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .badge-active {
+        background-color: white;
+        color: #10B981;
+    }
+    
+    .badge-inactive {
+        background-color: #F87171;
+        color: white;
+    }
+    
+    .btn-danger {
+        background-color: #EF4444;
+        border-color: #EF4444;
+    }
+    
+    .btn-danger:hover {
+        background-color: #DC2626;
+        border-color: #DC2626;
+    }
+    
+    .renewal-date {
+        margin-top: 15px;
+        font-size: 14px;
+        opacity: 0.9;
+    }
+    
+    /* Modal styles */
+    .modal-content {
+        background-color: #1e293b;
+        color: #f8fafc;
+        border: 1px solid #334155;
+    }
+    
+    .modal-header {
+        border-bottom: 1px solid #334155;
+    }
+    
+    .modal-footer {
+        border-top: 1px solid #334155;
+    }
+    
+    .btn-close {
+        filter: invert(1) grayscale(100%) brightness(200%);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Loading overlay -->
+<div id="loadingOverlay" class="loading-overlay">
+    <div class="spinner-container">
+        <div class="spinner-border text-light" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <p>Redirecting to secure payment page...</p>
+    </div>
+</div>
+
+<!-- Cancel Subscription Modal -->
+<div class="modal fade" id="cancelSubscriptionModal" tabindex="-1" aria-labelledby="cancelSubscriptionModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="cancelSubscriptionModalLabel">Cancel Subscription</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to cancel your subscription?</p>
+                <p>You will continue to have access until the end of your current billing period.</p>
+                <p>After that, you will no longer receive monthly credits, but any remaining credits in your account will still be available.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Keep Subscription</button>
+                <a href="{% url 'subscriptions:cancel_subscription' %}" class="btn btn-danger">Yes, Cancel Subscription</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="page-header">
+    <div class="container">
+        <h1 class="display-5 fw-bold">Your Credits</h1>
+        <p class="text-muted">Manage your credits and subscription plans</p>
+    </div>
+</div>
+
+<div class="container py-4">
+    {% if messages %}
+    <div class="messages mb-4">
+        {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}">
+            {{ message }}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle me-2"></i> We use Stripe for secure payments. When you click on a payment option, you'll be redirected to Stripe's secure checkout page.
+    </div>
+
+    <!-- Subscription Status (if subscribed) -->
+    {% if user_credit.has_active_subscription %}
+    <div class="subscription-status">
+        <div class="subscription-badge badge-active">Active</div>
+        <div class="subscription-header">
+            Monthly Subscription
+        </div>
+        <div class="subscription-body">
+            <p>Your subscription is active. You receive 1,000,000 credits each month.</p>
+            <p class="renewal-date">Next renewal: {{ user_credit.subscription_end_date|date:"F j, Y" }}</p>
+            <button class="btn btn-danger mt-3" data-bs-toggle="modal" data-bs-target="#cancelSubscriptionModal">
+                Cancel Subscription
+            </button>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Credit Balance Section -->
+    <div class="row mb-5">
+        <div class="col-md-6 col-lg-4">
+            <div class="credit-card">
+                <div class="credit-header">
+                    <h5 class="mb-0">Current Balance</h5>
+                </div>
+                <div class="credit-body">
+                    <div class="credit-amount">{{ user_credit.credits|default:"0" }}</div>
+                    <p class="text-white-50 mb-0">Available credits in your account</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Plans Section -->
+    <h2 class="section-title mb-4">Buy Credits</h2>
+    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4 mb-5">
+        <!-- Monthly Plan -->
+        <div class="col">
+            <div class="plan-card monthly-plan">
+                <div class="plan-header">
+                    <h3 class="mb-1">Monthly Plan</h3>
+                    <div class="plan-price">$10</div>
+                    <div class="text-white-50">per month</div>
+                </div>
+                <div class="plan-body">
+                    <div class="text-center mb-3">
+                        <div class="badge bg-primary">Best Value</div>
+                    </div>
+                    <p class="text-center fw-bold">Get 1,000,000 credits</p>
+                    <ul class="plan-features">
+                        <li>Monthly billing</li>
+                        <li>Full access to all features</li>
+                        <li>Email support</li>
+                        <li>No contract, cancel anytime</li>
+                    </ul>
+                    {% if user_credit.has_active_subscription %}
+                        <button class="btn-subscribe" disabled>Currently Subscribed</button>
+                    {% else %}
+                        <a href="{% url 'subscriptions:checkout' 1 %}" class="btn-subscribe checkout-btn">Subscribe</a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Additional Credits -->
+        <div class="col">
+            <div class="plan-card addon-plan">
+                <div class="plan-header">
+                    <h3 class="mb-1">Additional Credits</h3>
+                    <div class="plan-price">$5</div>
+                    <div class="text-muted">one-time</div>
+                </div>
+                <div class="plan-body">
+                    <p class="text-center fw-bold">Get 1,000,000 more credits</p>
+                    <ul class="plan-features">
+                        <li>One-time purchase</li>
+                        <li>Added to existing balance</li>
+                        <li>Never expires</li>
+                        <li>Instant delivery</li>
+                    </ul>
+                    <a href="{% url 'subscriptions:checkout' 2 %}" class="btn-subscribe checkout-btn">Buy Credits</a>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Add more plans here -->
+    </div>
+    
+    {% if transactions %}
+    <!-- Transactions Section -->
+    <h2 class="section-title mb-4">Recent Transactions</h2>
+    <div class="table-responsive mb-5">
+        <table class="table transaction-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Plan</th>
+                    <th>Amount</th>
+                    <th>Credits</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for transaction in transactions %}
+                <tr>
+                    <td>{{ transaction.created_at|date:"M d, Y" }}</td>
+                    <td>{{ transaction.payment_plan.name }}</td>
+                    <td>${{ transaction.amount }}</td>
+                    <td>{{ transaction.credits_added|floatformat:"0g" }}</td>
+                    <td>
+                        {% if transaction.status == 'completed' %}
+                        <span class="badge bg-success">Completed</span>
+                        {% elif transaction.status == 'pending' %}
+                        <span class="badge bg-warning text-dark">Pending</span>
+                        {% elif transaction.status == 'failed' %}
+                        <span class="badge bg-danger">Failed</span>
+                        {% else %}
+                        <span class="badge bg-secondary">{{ transaction.status }}</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+    
+    <!-- FAQ Section -->
+    <div class="row mt-5">
+        <div class="col-md-8 mx-auto">
+            <h3 class="text-center mb-4" style="color: #f8fafc;">Frequently Asked Questions</h3>
+            <div class="accordion" id="creditsAccordion">
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingOne">
+                        <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="true" aria-controls="collapseOne">
+                            What can I do with credits?
+                        </button>
+                    </h2>
+                    <div id="collapseOne" class="accordion-collapse collapse show" aria-labelledby="headingOne" data-bs-parent="#creditsAccordion">
+                        <div class="accordion-body">
+                            Credits allow you to use various features on our platform, such as generating AI responses, creating projects, and using premium tools.
+                        </div>
+                    </div>
+                </div>
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingTwo">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTwo" aria-expanded="false" aria-controls="collapseTwo">
+                            Do credits expire?
+                        </button>
+                    </h2>
+                    <div id="collapseTwo" class="accordion-collapse collapse" aria-labelledby="headingTwo" data-bs-parent="#creditsAccordion">
+                        <div class="accordion-body">
+                            No, credits purchased never expire. You can use them at your own pace.
+                        </div>
+                    </div>
+                </div>
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingThree">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseThree" aria-expanded="false" aria-controls="collapseThree">
+                            How can I cancel my subscription?
+                        </button>
+                    </h2>
+                    <div id="collapseThree" class="accordion-collapse collapse" aria-labelledby="headingThree" data-bs-parent="#creditsAccordion">
+                        <div class="accordion-body">
+                            You can cancel your subscription at any time from your dashboard by clicking the "Cancel Subscription" button. Your subscription will remain active until the end of your current billing period, and you will continue to have access to any remaining credits in your account.
+                        </div>
+                    </div>
+                </div>
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingFour">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseFour" aria-expanded="false" aria-controls="collapseFour">
+                            Is my payment information secure?
+                        </button>
+                    </h2>
+                    <div id="collapseFour" class="accordion-collapse collapse" aria-labelledby="headingFour" data-bs-parent="#creditsAccordion">
+                        <div class="accordion-body">
+                            Yes, we use Stripe for payment processing. Your payment information is never stored on our servers - all payment details are securely handled by Stripe, which maintains the highest level of security certification in the payments industry.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-ka7Sk0Gln4gmtz2MlQnikT1wXgYsOg+OMhuP+IlRH9sENBO0LRn5q+8nbTov4+1p" crossorigin="anonymous"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize any Bootstrap components that need JavaScript
+        var accordionElements = document.querySelectorAll('.accordion');
+        if (accordionElements.length > 0 && typeof bootstrap !== 'undefined') {
+            accordionElements.forEach(function(el) {
+                new bootstrap.Collapse(el.querySelector('.accordion-collapse.collapse.show'));
+            });
+        }
+        
+        // Show loading overlay when redirecting to checkout
+        const checkoutButtons = document.querySelectorAll('.checkout-btn');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        
+        checkoutButtons.forEach(function(button) {
+            button.addEventListener('click', function(e) {
+                // Show loading overlay
+                loadingOverlay.classList.add('active');
+                
+                // Disable the button to prevent multiple clicks
+                this.disabled = true;
+                this.style.opacity = '0.7';
+                this.style.cursor = 'not-allowed';
+                
+                // Store the original text
+                const originalText = this.textContent;
+                this.textContent = 'Processing...';
+                
+                // If something goes wrong and the page doesn't redirect after 10 seconds,
+                // re-enable the button
+                setTimeout(function() {
+                    if (document.body.contains(button)) {
+                        button.disabled = false;
+                        button.style.opacity = '1';
+                        button.style.cursor = 'pointer';
+                        button.textContent = originalText;
+                        loadingOverlay.classList.remove('active');
+                    }
+                }, 10000);
+            });
+        });
+    });
+</script>
+{% endblock %} 
