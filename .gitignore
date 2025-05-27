@@ -153,3 +153,5 @@ docker-compose.override.yml
 .kamal/
 
 config/deploy.yml
+
+storage/
