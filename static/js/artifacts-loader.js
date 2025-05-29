@@ -821,19 +821,99 @@ document.addEventListener('DOMContentLoaded', function() {
                         return;
                     }
 
-                    // Build checklist HTML with status grouping
-                    let checklistHTML = '<div class="checklist-container">';
-                    
-                    // Group items by status
-                    const openItems = checklist.filter(item => item.status !== 'closed');
-                    const doneItems = checklist.filter(item => item.status === 'closed');
-                    
-                    // Render Open items first
-                    if (openItems.length > 0) {
-                        checklistHTML += '<div class="status-section">';
-                        checklistHTML += '<h3 class="status-heading">Open Tasks</h3>';
+                    // Extract unique statuses and roles for filter dropdowns
+                    const statuses = [...new Set(checklist.map(item => item.status || 'open'))].sort();
+                    const roles = [...new Set(checklist.map(item => item.role || 'user'))].sort();
+
+                    // Create container with filters
+                    let checklistHTML = `
+                        <div class="checklist-wrapper">
+                            <div class="checklist-filters">
+                                <div class="filter-options">
+                                    <div class="filter-group">
+                                        <select id="status-filter" class="checklist-filter-dropdown">
+                                            <option value="all">All Statuses</option>
+                                            ${statuses.map(status => `<option value="${status}">${status.replace('_', ' ').charAt(0).toUpperCase() + status.replace('_', ' ').slice(1)}</option>`).join('')}
+                                        </select>
+                                        <select id="role-filter" class="checklist-filter-dropdown">
+                                            <option value="all">All Assigned</option>
+                                            ${roles.map(role => `<option value="${role}">${role.charAt(0).toUpperCase() + role.slice(1)}</option>`).join('')}
+                                        </select>
+                                        <button id="clear-checklist-filters" class="clear-filters-btn" title="Clear filters">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="checklist-container" id="checklist-content">
+                                <!-- Checklist items will be loaded here -->
+                            </div>
+                        </div>
+                    `;
+
+                    // Add drawer HTML for checklist details
+                    checklistHTML += `
+                        <!-- Checklist Details Drawer -->
+                        <div class="checklist-details-drawer" id="checklist-details-drawer">
+                            <div class="drawer-header">
+                                <h3 class="drawer-title">Checklist Item Details</h3>
+                                <button class="close-drawer-btn" id="close-checklist-drawer-btn">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            <div class="drawer-content" id="checklist-drawer-content">
+                                <!-- Checklist details will be loaded here -->
+                            </div>
+                        </div>
                         
-                        openItems.forEach(item => {
+                        <!-- Overlay for drawer -->
+                        <div class="drawer-overlay" id="checklist-drawer-overlay"></div>
+                    `;
+                    
+                    checklistTab.innerHTML = checklistHTML;
+
+                    // Get filter elements and content container
+                    const checklistContent = document.getElementById('checklist-content');
+                    const statusFilter = document.getElementById('status-filter');
+                    const roleFilter = document.getElementById('role-filter');
+                    const clearFiltersBtn = document.getElementById('clear-checklist-filters');
+
+                    // Function to render checklist items based on filters
+                    const renderChecklist = (filterStatus = 'all', filterRole = 'all') => {
+                        let filteredChecklist = [...checklist];
+                        
+                        // Apply status filter
+                        if (filterStatus !== 'all') {
+                            filteredChecklist = filteredChecklist.filter(item => 
+                                (item.status || 'open') === filterStatus
+                            );
+                        }
+                        
+                        // Apply role filter
+                        if (filterRole !== 'all') {
+                            filteredChecklist = filteredChecklist.filter(item => 
+                                (item.role || 'user') === filterRole
+                            );
+                        }
+
+                        if (filteredChecklist.length === 0) {
+                            checklistContent.innerHTML = `
+                                <div class="no-results">
+                                    <div class="empty-state-icon">
+                                        <i class="fas fa-filter"></i>
+                                    </div>
+                                    <div class="empty-state-text">
+                                        No checklist items match your filter criteria.
+                                    </div>
+                                </div>
+                            `;
+                            return;
+                        }
+
+                        // Build checklist HTML with filtered items
+                        let itemsHTML = '';
+                        
+                        filteredChecklist.forEach(item => {
                             const statusClass = item.status ? item.status.toLowerCase().replace(' ', '-') : 'open';
                             const priorityClass = item.priority ? item.priority.toLowerCase() : 'medium';
                             const roleClass = item.role ? item.role.toLowerCase() : 'user';
@@ -855,7 +935,11 @@ document.addEventListener('DOMContentLoaded', function() {
                                     break;
                             }
                             
-                            checklistHTML += `
+                            // Check if this item matches active filters for highlighting
+                            const isStatusHighlighted = filterStatus !== 'all' && (item.status || 'open') === filterStatus;
+                            const isRoleHighlighted = filterRole !== 'all' && (item.role || 'user') === filterRole;
+                            
+                            itemsHTML += `
                                 <div class="checklist-card ${statusClass}" data-id="${item.id}">
                                     <div class="card-header">
                                         <div class="card-status">
@@ -863,8 +947,8 @@ document.addEventListener('DOMContentLoaded', function() {
                                             <h3 class="card-title">${item.name}</h3>
                                         </div>
                                         <div class="card-badges">
-                                            <span class="priority-badge ${priorityClass}">${item.priority || 'Medium'}</span>
-                                            <span class="role-badge ${roleClass}">${item.role || 'User'}</span>
+                                            <span class="priority-badge ${priorityClass} ${isStatusHighlighted ? 'filter-active' : ''}">${item.priority || 'Medium'}</span>
+                                            <span class="role-badge ${roleClass} ${isRoleHighlighted ? 'filter-active' : ''}">${item.role || 'User'}</span>
                                         </div>
                                     </div>
                                     
@@ -898,181 +982,132 @@ document.addEventListener('DOMContentLoaded', function() {
                             `;
                         });
                         
-                        checklistHTML += '</div>'; // Close status-section
-                    }
-                    
-                    // Render Done items
-                    if (doneItems.length > 0) {
-                        checklistHTML += '<div class="status-section">';
-                        checklistHTML += '<h3 class="status-heading">Completed Tasks</h3>';
+                        checklistContent.innerHTML = itemsHTML;
                         
-                        doneItems.forEach(item => {
-                            const statusClass = 'closed';
-                            const priorityClass = item.priority ? item.priority.toLowerCase() : 'medium';
-                            const roleClass = item.role ? item.role.toLowerCase() : 'user';
-                            
-                            checklistHTML += `
-                                <div class="checklist-card ${statusClass}" data-id="${item.id}">
-                                    <div class="card-header">
-                                        <div class="card-status">
-                                            <i class="fas fa-check-circle status-icon"></i>
-                                            <h3 class="card-title">${item.name}</h3>
-                                        </div>
-                                        <div class="card-badges">
-                                            <span class="priority-badge ${priorityClass}">${item.priority || 'Medium'}</span>
-                                            <span class="role-badge ${roleClass}">${item.role || 'User'}</span>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="card-body">
-                                        <div class="card-description">
-                                            ${item.description || 'No description provided.'}
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="card-footer">
-                                        <div class="card-meta">
-                                            <small class="created-date">
-                                                <i class="fas fa-calendar-plus"></i>
-                                                Created: ${new Date(item.created_at).toLocaleDateString()}
-                                            </small>
-                                            <small class="updated-date">
-                                                <i class="fas fa-calendar-check"></i>
-                                                Updated: ${new Date(item.updated_at).toLocaleDateString()}
-                                            </small>
-                                        </div>
-                                        <div class="card-actions">
-                                            <button class="action-btn edit-btn" onclick="editChecklistItem(${item.id})" title="Edit">
-                                                <i class="fas fa-edit"></i>
-                                            </button>
-                                            <button class="action-btn toggle-btn" onclick="toggleChecklistStatus(${item.id}, '${item.status}')" title="Toggle Status">
-                                                <i class="fas fa-sync-alt"></i>
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            `;
-                        });
+                        // Reattach event listeners after rendering
+                        attachChecklistDetailListeners();
+                    };
+
+                    // Function to attach event listeners for checklist detail view
+                    const attachChecklistDetailListeners = () => {
+                        // Add click handlers for opening drawer
+                        console.log('[ArtifactsLoader] Adding click handlers to checklist items for drawer');
+                        const checklistCards = checklistContent.querySelectorAll('.checklist-card');
+                        const checklistDrawer = document.getElementById('checklist-details-drawer');
+                        const checklistDrawerOverlay = document.getElementById('checklist-drawer-overlay');
+                        const closeChecklistDrawerBtn = document.getElementById('close-checklist-drawer-btn');
+                        const checklistDrawerContent = document.getElementById('checklist-drawer-content');
                         
-                        checklistHTML += '</div>'; // Close status-section
-                    }
-                    
-                    checklistHTML += '</div>'; // Close checklist-container
-                    
-                    // Add drawer HTML for checklist details
-                    checklistHTML += `
-                        <!-- Checklist Details Drawer -->
-                        <div class="checklist-details-drawer" id="checklist-details-drawer">
-                            <div class="drawer-header">
-                                <h3 class="drawer-title">Checklist Item Details</h3>
-                                <button class="close-drawer-btn" id="close-checklist-drawer-btn">
-                                    <i class="fas fa-times"></i>
-                                </button>
-                            </div>
-                            <div class="drawer-content" id="checklist-drawer-content">
-                                <!-- Checklist details will be loaded here -->
-                            </div>
-                        </div>
+                        console.log(`[ArtifactsLoader] Found ${checklistCards.length} checklist cards`);
                         
-                        <!-- Overlay for drawer -->
-                        <div class="drawer-overlay" id="checklist-drawer-overlay"></div>
-                    `;
-                    
-                    checklistTab.innerHTML = checklistHTML;
-                    
-                    // Add click handlers for opening drawer
-                    console.log('[ArtifactsLoader] Adding click handlers to checklist items for drawer');
-                    const checklistCards = checklistTab.querySelectorAll('.checklist-card');
-                    const checklistDrawer = document.getElementById('checklist-details-drawer');
-                    const checklistDrawerOverlay = document.getElementById('checklist-drawer-overlay');
-                    const closeChecklistDrawerBtn = document.getElementById('close-checklist-drawer-btn');
-                    const checklistDrawerContent = document.getElementById('checklist-drawer-content');
-                    
-                    console.log(`[ArtifactsLoader] Found ${checklistCards.length} checklist cards`);
-                    
-                    checklistCards.forEach((card, index) => {
-                        console.log(`[ArtifactsLoader] Adding click handler to card ${index}`);
-                        
-                        card.addEventListener('click', function(e) {
-                            console.log('[ArtifactsLoader] Card clicked', e.target);
+                        checklistCards.forEach((card, index) => {
+                            console.log(`[ArtifactsLoader] Adding click handler to card ${index}`);
                             
-                            // Don't open drawer if clicking on action buttons
-                            if (e.target.closest('.action-btn')) {
-                                console.log('[ArtifactsLoader] Action button clicked, not opening drawer');
-                                return;
-                            }
-                            
-                            // Get the item data
-                            const itemId = card.getAttribute('data-id');
-                            const item = checklist.find(i => i.id == itemId);
-                            
-                            if (item) {
-                                console.log('[ArtifactsLoader] Opening drawer for item:', item);
+                            card.addEventListener('click', function(e) {
+                                console.log('[ArtifactsLoader] Card clicked', e.target);
                                 
-                                // Get status display text
-                                const statusText = item.status ? item.status.replace('_', ' ').charAt(0).toUpperCase() + item.status.replace('_', ' ').slice(1) : 'Open';
+                                // Don't open drawer if clicking on action buttons
+                                if (e.target.closest('.action-btn')) {
+                                    console.log('[ArtifactsLoader] Action button clicked, not opening drawer');
+                                    return;
+                                }
                                 
-                                // Populate drawer with item details
-                                checklistDrawerContent.innerHTML = `
-                                    <div class="drawer-section">
-                                        <h4 class="section-title">Item Information</h4>
-                                        <div class="checklist-detail-info">
-                                            <p class="detail-row"><strong>Name:</strong> ${item.name}</p>
-                                            <p class="detail-row"><strong>Status:</strong> <span class="status-badge status-${item.status || 'open'}">${statusText}</span></p>
-                                            <p class="detail-row"><strong>Priority:</strong> <span class="priority-badge ${(item.priority || 'medium').toLowerCase()}">${item.priority || 'Medium'}</span></p>
-                                            <p class="detail-row"><strong>Role:</strong> <span class="role-badge ${(item.role || 'user').toLowerCase()}">${item.role || 'User'}</span></p>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="drawer-section">
-                                        <h4 class="section-title">Description</h4>
-                                        <div class="section-content description-content">
-                                            ${item.description ? item.description.replace(/\n/g, '<br>') : 'No description provided.'}
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="drawer-section">
-                                        <h4 class="section-title">Timeline</h4>
-                                        <div class="section-content">
-                                            <p class="detail-row"><strong>Created:</strong> ${new Date(item.created_at).toLocaleDateString()} at ${new Date(item.created_at).toLocaleTimeString()}</p>
-                                            <p class="detail-row"><strong>Last Updated:</strong> ${new Date(item.updated_at).toLocaleDateString()} at ${new Date(item.updated_at).toLocaleTimeString()}</p>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="drawer-section">
-                                        <h4 class="section-title">Actions</h4>
-                                        <div class="drawer-actions">
-                                            <button class="drawer-action-btn edit-btn" onclick="editChecklistItem(${item.id})">
-                                                <i class="fas fa-edit"></i> Edit Item
-                                            </button>
-                                            <button class="drawer-action-btn toggle-btn" onclick="toggleChecklistStatus(${item.id}, '${item.status}')">
-                                                <i class="fas fa-sync-alt"></i> Toggle Status
-                                            </button>
-                                        </div>
-                                    </div>
-                                `;
+                                // Get the item data
+                                const itemId = card.getAttribute('data-id');
+                                const item = checklist.find(i => i.id == itemId);
                                 
-                                // Show the drawer
-                                checklistDrawer.classList.add('open');
-                                checklistDrawerOverlay.classList.add('active');
-                            }
+                                if (item) {
+                                    console.log('[ArtifactsLoader] Opening drawer for item:', item);
+                                    
+                                    // Get status display text
+                                    const statusText = item.status ? item.status.replace('_', ' ').charAt(0).toUpperCase() + item.status.replace('_', ' ').slice(1) : 'Open';
+                                    
+                                    // Populate drawer with item details
+                                    checklistDrawerContent.innerHTML = `
+                                        <div class="drawer-section">
+                                            <h4 class="section-title">Item Information</h4>
+                                            <div class="checklist-detail-info">
+                                                <p class="detail-row"><strong>Name:</strong> ${item.name}</p>
+                                                <p class="detail-row"><strong>Status:</strong> <span class="status-badge status-${item.status || 'open'}">${statusText}</span></p>
+                                                <p class="detail-row"><strong>Priority:</strong> <span class="priority-badge ${(item.priority || 'medium').toLowerCase()}">${item.priority || 'Medium'}</span></p>
+                                                <p class="detail-row"><strong>Role:</strong> <span class="role-badge ${(item.role || 'user').toLowerCase()}">${item.role || 'User'}</span></p>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="drawer-section">
+                                            <h4 class="section-title">Description</h4>
+                                            <div class="section-content description-content">
+                                                ${item.description ? item.description.replace(/\n/g, '<br>') : 'No description provided.'}
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="drawer-section">
+                                            <h4 class="section-title">Timeline</h4>
+                                            <div class="section-content">
+                                                <p class="detail-row"><strong>Created:</strong> ${new Date(item.created_at).toLocaleDateString()} at ${new Date(item.created_at).toLocaleTimeString()}</p>
+                                                <p class="detail-row"><strong>Last Updated:</strong> ${new Date(item.updated_at).toLocaleDateString()} at ${new Date(item.updated_at).toLocaleTimeString()}</p>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="drawer-section">
+                                            <h4 class="section-title">Actions</h4>
+                                            <div class="drawer-actions">
+                                                <button class="drawer-action-btn edit-btn" onclick="editChecklistItem(${item.id})">
+                                                    <i class="fas fa-edit"></i> Edit Item
+                                                </button>
+                                                <button class="drawer-action-btn toggle-btn" onclick="toggleChecklistStatus(${item.id}, '${item.status}')">
+                                                    <i class="fas fa-sync-alt"></i> Toggle Status
+                                                </button>
+                                            </div>
+                                        </div>
+                                    `;
+                                    
+                                    // Show the drawer
+                                    checklistDrawer.classList.add('open');
+                                    checklistDrawerOverlay.classList.add('active');
+                                }
+                            });
                         });
-                    });
-                    
-                    // Close drawer event handlers
-                    if (closeChecklistDrawerBtn) {
-                        closeChecklistDrawerBtn.addEventListener('click', function() {
-                            checklistDrawer.classList.remove('open');
-                            checklistDrawerOverlay.classList.remove('active');
+                        
+                        // Close drawer event handlers
+                        if (closeChecklistDrawerBtn) {
+                            closeChecklistDrawerBtn.addEventListener('click', function() {
+                                checklistDrawer.classList.remove('open');
+                                checklistDrawerOverlay.classList.remove('active');
+                            });
+                        }
+                        
+                        if (checklistDrawerOverlay) {
+                            checklistDrawerOverlay.addEventListener('click', function() {
+                                checklistDrawer.classList.remove('open');
+                                checklistDrawerOverlay.classList.remove('active');
+                            });
+                        }
+                    };
+
+                    // Add event listeners for filters
+                    if (statusFilter) {
+                        statusFilter.addEventListener('change', function() {
+                            renderChecklist(this.value, roleFilter.value);
                         });
                     }
-                    
-                    if (checklistDrawerOverlay) {
-                        checklistDrawerOverlay.addEventListener('click', function() {
-                            checklistDrawer.classList.remove('open');
-                            checklistDrawerOverlay.classList.remove('active');
+
+                    if (roleFilter) {
+                        roleFilter.addEventListener('change', function() {
+                            renderChecklist(statusFilter.value, this.value);
                         });
                     }
+
+                    if (clearFiltersBtn) {
+                        clearFiltersBtn.addEventListener('click', function() {
+                            statusFilter.value = 'all';
+                            roleFilter.value = 'all';
+                            renderChecklist('all', 'all');
+                        });
+                    }
+
+                    // Initial render with all items
+                    renderChecklist();
                 })
                 .catch(error => {
                     console.error('Error fetching checklist:', error);
