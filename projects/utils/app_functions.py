@@ -4,6 +4,8 @@ import string
 import random
 import shlex
 import asyncio
+import subprocess
+from pathlib import Path
 from asgiref.sync import sync_to_async
 from django.db import transaction
 from projects.models import Project, ProjectFeature, ProjectPersona, \
@@ -118,6 +120,7 @@ async def app_functions(function_name, function_args, project_id, conversation_i
             return await get_pending_tickets(project_id)
         case "get_latest_ticket":
             return await get_latest_ticket(project_id)
+        
         case "execute_command":
             command = function_args.get('commands', '')
             print(f"Running command: {command}")
