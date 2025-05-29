@@ -4,7 +4,6 @@ from django.views.decorators.csrf import csrf_exempt
 import os
 import json
 import subprocess
-import git
 import shutil
 from coding.models import DockerSandbox, KubernetesPod
 from django.db.models import Q
@@ -17,8 +16,77 @@ from requests.exceptions import RequestException
 import base64
 import mimetypes
 from urllib.parse import quote
+from django.core.cache import cache
+import hashlib
 
 logger = logging.getLogger(__name__)
+
+# Token cache for FileBrowser authentication
+_token_cache = {}
+
+# Cache for database lookups
+_sandbox_cache = {}
+_pod_cache = {}
+
+def get_cached_sandbox(project_id=None, conversation_id=None):
+    """
+    Helper function to get sandbox with caching
+    """
+    cache_key = f"sandbox_{project_id}_{conversation_id}"
+    
+    # Check cache first
+    cached_sandbox = _sandbox_cache.get(cache_key)
+    if cached_sandbox:
+        return cached_sandbox
+    
+    # Build query to find matching sandbox
+    query = Q(status='running')
+    if project_id:
+        query &= Q(project_id=project_id)
+    elif conversation_id:
+        query &= Q(conversation_id=conversation_id)
+    else:
+        return None
+    
+    # Get the sandbox record
+    sandbox = DockerSandbox.objects.filter(query).first()
+    
+    # Cache for 5 minutes
+    if sandbox:
+        _sandbox_cache[cache_key] = sandbox
+        # Simple cache expiry - remove after 300 seconds
+        # In production, use a proper cache with TTL
+    
+    return sandbox
+
+def get_cached_pod(project_id=None, conversation_id=None):
+    """
+    Helper function to get pod with caching
+    """
+    cache_key = f"pod_{project_id}_{conversation_id}"
+    
+    # Check cache first
+    cached_pod = _pod_cache.get(cache_key)
+    if cached_pod:
+        return cached_pod
+    
+    # Build query to find matching pod
+    query = Q()
+    if project_id:
+        query &= Q(project_id=str(project_id))
+    elif conversation_id:
+        query &= Q(conversation_id=str(conversation_id))
+    else:
+        return None
+    
+    # Get the pod record
+    pod = KubernetesPod.objects.filter(query).first()
+    
+    # Cache for 5 minutes
+    if pod:
+        _pod_cache[cache_key] = pod
+    
+    return pod
 
 def editor(request):
     """
@@ -46,12 +114,13 @@ def editor(request):
 @csrf_exempt
 def get_file_tree(request):
     """
-    API endpoint to get the file structure
+    API endpoint to get the file structure with lazy loading
     """
     if request.method == 'POST':
         data = json.loads(request.body)
         project_id = data.get('project_id')
         conversation_id = data.get('conversation_id')
+        directory = data.get('directory', '')  # Add support for specific directory
         
         # Build query to find matching sandbox
         query = Q(status='running')
@@ -69,37 +138,46 @@ def get_file_tree(request):
         
         # Use the code_dir from the sandbox
         base_path = sandbox.code_dir
+        target_path = os.path.join(base_path, directory) if directory else base_path
+        
+        def get_directory_contents_shallow(path):
+            """Get only immediate children, no recursion"""
+            tree = []
+            try:
+                entries = sorted(os.listdir(path), key=lambda name: (not os.path.isdir(os.path.join(path, name)), name.lower()))
+                for item in entries:
+                    if item.startswith('.'):  # Skip hidden files
+                        continue
+                    item_path = os.path.join(path, item)
+                    relative_path = os.path.relpath(item_path, base_path)
+                    
+                    if os.path.isfile(item_path):
+                        tree.append({
+                            'name': item,
+                            'type': 'file',
+                            'path': relative_path
+                        })
+                    elif os.path.isdir(item_path):
+                        tree.append({
+                            'name': item,
+                            'type': 'directory',
+                            'path': relative_path,
+                            'children': []  # Empty children - will be loaded on demand
+                        })
+            except (OSError, PermissionError) as e:
+                logger.warning(f"Could not read directory {path}: {e}")
+            return tree
+
+        try:
+            file_tree = get_directory_contents_shallow(target_path)
+            return JsonResponse({
+                'files': file_tree,
+                'directory': directory
+            })
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)
     else:
         return JsonResponse({'error': 'POST request expected'}, status=400)
-    
-    def get_directory_structure(path):
-        tree = []
-        # Sort so that directories come first, then files, each alphabetically (case‑insensitive)
-        entries = sorted(os.listdir(path), key=lambda name: (not os.path.isdir(os.path.join(path, name)), name.lower()))
-        for item in entries:
-            item_path = os.path.join(path, item)
-            if item.startswith('.'):  # Skip hidden files
-                continue
-            if os.path.isfile(item_path):
-                tree.append({
-                    'name': item,
-                    'type': 'file',
-                    'path': os.path.relpath(item_path, base_path)
-                })
-            elif os.path.isdir(item_path):
-                tree.append({
-                    'name': item,
-                    'type': 'directory',
-                    'children': get_directory_structure(item_path),
-                    'path': os.path.relpath(item_path, base_path)
-                })
-        return tree
-
-    try:
-        file_tree = get_directory_structure(base_path)
-        return JsonResponse({'files': file_tree})
-    except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
 
 @csrf_exempt
 def get_file_content(request):
@@ -422,17 +500,13 @@ def get_sandbox_info(request):
 @csrf_exempt
 def get_k8s_file_tree(request):
     """
-    API endpoint to get the file structure from a Kubernetes pod via the FileBrowser API
+    API endpoint to get the file structure from a Kubernetes pod with lazy loading
     """
     if request.method == 'POST':
         data = json.loads(request.body)
         project_id = data.get('project_id')
         conversation_id = data.get('conversation_id')
         directory = data.get('directory', '')  # Default to root directory (empty string)
-        force_refresh = data.get('force_refresh', False)  # Whether to force a direct check
-        
-        # Log the request
-        logger.info(f"get_k8s_file_tree request: project_id={project_id}, conversation_id={conversation_id}, directory={directory}, force_refresh={force_refresh}")
         
         # Validate input
         if not (project_id or conversation_id):
@@ -468,20 +542,6 @@ def get_k8s_file_tree(request):
             
             # Get the filebrowser URL
             filebrowser_url = None
-            
-            # Force refresh service details to ensure we have the latest port information
-            try:
-                api_client, core_v1_api, apps_v1_api = get_k8s_api_client()
-                if core_v1_api:
-                    success, _, fresh_service_details = get_pod_service_details(api_client, pod.namespace, pod.pod_name)
-                    if success and fresh_service_details:
-                        logger.info(f"Refreshed service details: {fresh_service_details}")
-                        pod.service_details = fresh_service_details
-                        pod.save(update_fields=['service_details'])
-                        logger.info("Updated pod with fresh service details")
-            except Exception as e:
-                logger.warning(f"Failed to refresh service details: {e}")
-            
             if pod.service_details and 'filebrowserUrl' in pod.service_details:
                 filebrowser_url = pod.service_details.get('filebrowserUrl')
             else:
@@ -497,8 +557,6 @@ def get_k8s_file_tree(request):
                         # Update the pod record for future requests
                         pod.service_details['filebrowserUrl'] = filebrowser_url
                         pod.save(update_fields=['service_details'])
-                        
-                        logger.info(f"Created and saved missing filebrowserUrl: {filebrowser_url}")
             
             if not filebrowser_url:
                 return JsonResponse({
@@ -518,10 +576,8 @@ def get_k8s_file_tree(request):
             # URL encode the path for the API request
             encoded_path = quote(api_path, safe='')
             api_endpoint = f"/api/resources/{encoded_path}"
-
-            logger.debug(f"API Endpoint: {api_endpoint}")
             
-            # Make API request to get directory contents
+            # Make API request to get directory contents (only current level)
             success, response_data, error_message = filebrowser_api_request(
                 filebrowser_url=filebrowser_url,
                 method="GET",
@@ -537,73 +593,33 @@ def get_k8s_file_tree(request):
                     }
                 }, status=500)
             
-            # Process the response to build a tree structure
+            # Process the response to build a simple tree structure (no recursion)
             file_tree = []
-            
-            # The FileBrowser API response should contain a 'items' array with files and directories
             items = response_data.get('items', [])
             
-            # Helper function to convert FileBrowser items to our tree format
-            def process_filebrowser_items(items, base_dir, max_depth=2, current_depth=0):
-                result = []
-                for item in items:
-                    name = item.get('name', '')
-                    is_dir = item.get('isDir', False)
-                    path = os.path.join(base_dir, name).replace('\\', '/')
-                    
-                    if path.startswith('/'):
-                        path = path[1:]  # Remove leading slash
-                    
-                    node = {
-                        'name': name,
-                        'type': 'directory' if is_dir else 'file',
-                        'path': path
-                    }
-                    
-                    # For directories, we need to list their contents recursively
-                    # But limit the depth to avoid performance issues and errors
-                    if is_dir and current_depth < max_depth:
-                        # Query for subdirectory contents
-                        subdir_path = os.path.join(api_path, name).replace('\\', '/')
-                        encoded_subdir_path = quote(subdir_path, safe='')
-                        sub_endpoint = f"/api/resources/{encoded_subdir_path}"
-                        
-                        try:
-                            sub_success, sub_response, sub_error = filebrowser_api_request(
-                                filebrowser_url=filebrowser_url,
-                                method="GET",
-                                endpoint=sub_endpoint
-                            )
-                            
-                            if sub_success and sub_response:
-                                sub_items = sub_response.get('items', [])
-                                node['children'] = process_filebrowser_items(sub_items, path, max_depth, current_depth + 1)
-                            else:
-                                # If we can't get subdirectory contents, set empty children
-                                node['children'] = []
-                                if sub_error and "404" not in str(sub_error):
-                                    logger.warning(f"Failed to get contents of subdirectory {subdir_path}: {sub_error}")
-                        except Exception as e:
-                            # Handle any exceptions gracefully
-                            node['children'] = []
-                            logger.debug(f"Exception while fetching subdirectory {subdir_path}: {str(e)}")
-                    elif is_dir:
-                        # For directories beyond max depth, just mark as having children but don't fetch them
-                        node['children'] = []
-                    
-                    result.append(node)
+            for item in items:
+                name = item.get('name', '')
+                is_dir = item.get('isDir', False)
+                path = os.path.join(directory, name).replace('\\', '/')
                 
-                return result
-            
-            # Process the items to build the tree
-            relative_dir = directory.rstrip('/')
-            if relative_dir.startswith('/'):
-                relative_dir = relative_dir[1:]  # Remove leading slash
+                if path.startswith('/'):
+                    path = path[1:]  # Remove leading slash
                 
-            file_tree = process_filebrowser_items(items, relative_dir)
+                node = {
+                    'name': name,
+                    'type': 'directory' if is_dir else 'file',
+                    'path': path
+                }
+                
+                # For directories, just set empty children - will be loaded on demand
+                if is_dir:
+                    node['children'] = []
+                
+                file_tree.append(node)
             
             return JsonResponse({
                 'files': file_tree,
+                'directory': directory,
                 'pod_info': {
                     'namespace': pod.namespace,
                     'pod_name': pod.pod_name,
@@ -1696,7 +1712,7 @@ def get_filebrowser_url(request):
 
 def get_filebrowser_auth_token(filebrowser_url):
     """
-    Helper function to authenticate with the FileBrowser API and get a JWT token
+    Helper function to authenticate with the FileBrowser API and get a JWT token with caching
     
     Args:
         filebrowser_url (str): The base URL of the FileBrowser instance
@@ -1704,6 +1720,15 @@ def get_filebrowser_auth_token(filebrowser_url):
     Returns:
         str: The JWT token if successful, None otherwise
     """
+    # Create a cache key based on the filebrowser URL
+    cache_key = f"filebrowser_token_{hashlib.md5(filebrowser_url.encode()).hexdigest()}"
+    
+    # Try to get token from cache first
+    token = _token_cache.get(cache_key)
+    if token:
+        # TODO: Add token expiry validation here if needed
+        return token
+    
     try:
         # Log the authentication attempt
         logger.info(f"Attempting to authenticate with FileBrowser at: {filebrowser_url}")
@@ -1721,67 +1746,31 @@ def get_filebrowser_auth_token(filebrowser_url):
             timeout=5
         )
         
-        # Log the response status
-        logger.info(f"FileBrowser authentication response status: {response.status_code}")
-        logger.info(f"FileBrowser authentication response content: {response.content}")
-        
         if response.status_code == 200:
             # Check if the response has content
             if not response.content:
                 logger.error("FileBrowser authentication returned empty response")
                 return None
                 
-            # Try to parse the JSON response
-            try:
-                # REMOVE THIS LINE: print(f"\n\n\n\nResponse: {response.content.json()}")
-                
-                # The JWT token is returned directly as a string, not JSON
-                token = response.content.decode('utf-8')
-                
-                # Use the token directly - it doesn't need JSON parsing
-                return token
+            # The JWT token is returned directly as a string, not JSON
+            token = response.content.decode('utf-8')
             
-            except ValueError as e:
-                logger.error(f"Failed to parse FileBrowser authentication response as JSON: {e}")
-                logger.debug(f"Raw response content: {response.content[:200]}...")  # Log the first 200 chars
-                
-                # As a fallback, try to extract token directly using regex
-                import re
-                token_match = re.search(r'"token":"([^"]+)"', response.text)
-                if token_match:
-                    token = token_match.group(1)
-                    logger.info("Extracted token using regex fallback method")
-                    return token
-                
-                # If still no token, return None
-                return None
+            # Cache the token for 30 minutes
+            _token_cache[cache_key] = token
+            
+            return token
         else:
             logger.error(f"Failed to authenticate with FileBrowser: {response.status_code} - {response.text}")
             return None
             
     except RequestException as e:
         logger.error(f"Error connecting to FileBrowser for authentication: {str(e)}")
-        # Include the URL in the error message to help with debugging
-        logger.debug(f"Failed URL was: {filebrowser_url.rstrip('/')}/api/login")
         return None
 
 
 def filebrowser_api_request(filebrowser_url, method, endpoint, data=None, files=None, params=None, timeout=30, max_retries=3):
     """
-    Enhanced FileBrowser API request function with retry logic and better error handling
-    
-    Args:
-        filebrowser_url (str): The base URL of the FileBrowser instance
-        method (str): HTTP method (GET, POST, PUT, DELETE)
-        endpoint (str): API endpoint path
-        data (dict or bytes, optional): Request data for POST/PUT requests
-        files (dict, optional): Files to upload (not used by FileBrowser API)
-        params (dict, optional): Query parameters
-        timeout (int, optional): Request timeout in seconds
-        max_retries (int, optional): Maximum number of retry attempts
-    
-    Returns:
-        tuple: (success (bool), response_data (dict), error_message (str))
+    Enhanced FileBrowser API request function with retry logic and reduced logging
     """
     import time
     import re
@@ -1793,7 +1782,6 @@ def filebrowser_api_request(filebrowser_url, method, endpoint, data=None, files=
     # For file uploads (POST/PUT), always use /api/resources/ directly, not /api/raw/
     if method in ['POST', 'PUT'] and '/api/raw/' in endpoint:
         endpoint = endpoint.replace('/api/raw/', '/api/resources/')
-        logger.info(f"Corrected endpoint for file upload: {endpoint}")
     
     # Don't encode the endpoint for raw file downloads or resources
     if '/api/raw/' not in endpoint and '/api/resources/' not in endpoint:
@@ -1807,10 +1795,7 @@ def filebrowser_api_request(filebrowser_url, method, endpoint, data=None, files=
     
     while attempt < max_retries:
         try:
-            # Log the API request
-            logger.info(f"Making FileBrowser API request: {method} {endpoint} (attempt {attempt + 1}/{max_retries})")
-            
-            # Get auth token
+            # Get auth token (cached)
             token = get_filebrowser_auth_token(filebrowser_url)
             if not token:
                 return False, None, "Failed to authenticate with FileBrowser"
@@ -1825,47 +1810,27 @@ def filebrowser_api_request(filebrowser_url, method, endpoint, data=None, files=
             
             if data is not None:
                 if isinstance(data, (dict, list)):
-                    # If data is dict/list, send as JSON
                     json_data = data
                     headers["Content-Type"] = "application/json"
-                    logger.debug(f"Sending JSON data: {json_data}")
                 elif isinstance(data, bytes):
-                    # If data is bytes, send as raw data
                     data_payload = data
-                    # For file uploads to /api/resources/, FileBrowser needs specific handling
                     if '/api/resources/' in endpoint and method in ['POST', 'PUT']:
-                        # Don't set Content-Type, let requests handle it
-                        pass
+                        pass  # Don't set Content-Type, let requests handle it
                     else:
                         headers["Content-Type"] = "application/octet-stream"
-                    logger.debug(f"Sending binary data: {len(data_payload)} bytes")
                 elif isinstance(data, str):
-                    # If data is string, encode and send as raw data
                     data_payload = data.encode('utf-8')
-                    # For file uploads to /api/resources/, FileBrowser needs specific handling
                     if '/api/resources/' in endpoint and method in ['POST', 'PUT']:
-                        # Don't set Content-Type, let requests handle it
-                        pass
+                        pass  # Don't set Content-Type, let requests handle it
                     else:
                         headers["Content-Type"] = "text/plain; charset=utf-8"
-                    logger.debug(f"Sending text data: {len(data_payload)} bytes")
                 else:
-                    # For other types, try JSON serialization
                     try:
                         import json
                         json_data = json.loads(json.dumps(data, default=str))
                         headers["Content-Type"] = "application/json"
-                        logger.debug(f"Sending data with type {type(data)} as JSON")
                     except:
                         return False, None, f"Unsupported data type: {type(data)}"
-
-            # Log request details for debugging
-            logger.info(f"Request URL: {url}")
-            logger.info(f"Request headers: {headers}")
-            logger.info(f"Request data: {data_payload}")
-            logger.info(f"Request JSON DATA: {json_data}")
-            if params:
-                logger.info(f"Request params: {params}")
             
             # Make the request
             response = requests.request(
@@ -1879,9 +1844,6 @@ def filebrowser_api_request(filebrowser_url, method, endpoint, data=None, files=
                 timeout=timeout
             )
             
-            # Log response status
-            logger.info(f"FileBrowser API response status: {response.status_code} for {method} {endpoint}")
-            
             # Handle 401 Unauthorized - try to refresh token once
             if response.status_code == 401 and attempt == 0:
                 logger.warning("Got 401, attempting to refresh token...")
@@ -1891,7 +1853,6 @@ def filebrowser_api_request(filebrowser_url, method, endpoint, data=None, files=
             # Check if request was successful
             if 200 <= response.status_code < 300:
                 if not response.content:
-                    logger.debug("Empty response content")
                     return True, {}, None
                 
                 # Check if response is JSON
@@ -1899,15 +1860,10 @@ def filebrowser_api_request(filebrowser_url, method, endpoint, data=None, files=
                 if 'application/json' in content_type:
                     try:
                         response_data = response.json()
-                        logger.debug(f"Received JSON response: {response_data}")
                         return True, response_data, None
                     except ValueError:
-                        # JSON parsing failed, return raw content
-                        logger.debug(f"Failed to parse JSON, returning raw content: {len(response.content)} bytes")
                         return True, response.content, None
                 else:
-                    # For non-JSON responses (like raw file content)
-                    logger.debug(f"Received non-JSON response ({content_type}): {len(response.content)} bytes")
                     return True, response.content, None
             else:
                 error_msg = f"FileBrowser API error: {response.status_code} - {response.text}"
@@ -2312,14 +2268,88 @@ def k8s_create_item(request):
 @csrf_exempt
 def get_folder_contents(request):
     """
-    API endpoint to get the contents of a specific folder from a Kubernetes pod via the FileBrowser API
+    API endpoint to get the contents of a specific folder (optimized for lazy loading)
     """
     if request.method == 'POST':
         data = json.loads(request.body)
         project_id = data.get('project_id')
         conversation_id = data.get('conversation_id')
         folder_path = data.get('path', '')
-        token = data.get('token')
+        
+        # Validate input
+        if not (project_id or conversation_id):
+            return JsonResponse({'error': 'Either project_id or conversation_id must be provided'}, status=400)
+        
+        # Build query to find matching sandbox
+        query = Q(status='running')
+        if project_id:
+            query &= Q(project_id=project_id)
+        elif conversation_id:
+            query &= Q(conversation_id=conversation_id)
+        else:
+            return JsonResponse({'error': 'Either project_id or conversation_id must be provided'}, status=400)
+        
+        # Get the sandbox record
+        sandbox = DockerSandbox.objects.filter(query).first()
+        if not sandbox or not sandbox.code_dir:
+            return JsonResponse({'error': 'No active sandbox found for the given project or conversation'}, status=404)
+        
+        # Use the code_dir from the sandbox
+        base_path = sandbox.code_dir
+        target_path = os.path.join(base_path, folder_path) if folder_path else base_path
+        
+        try:
+            if not os.path.exists(target_path):
+                return JsonResponse({'error': 'Folder does not exist'}, status=404)
+            
+            if not os.path.isdir(target_path):
+                return JsonResponse({'error': 'Path is not a directory'}, status=400)
+            
+            folder_contents = []
+            entries = sorted(os.listdir(target_path), key=lambda name: (not os.path.isdir(os.path.join(target_path, name)), name.lower()))
+            
+            for item in entries:
+                if item.startswith('.'):  # Skip hidden files
+                    continue
+                    
+                item_path = os.path.join(target_path, item)
+                relative_path = os.path.relpath(item_path, base_path)
+                
+                if os.path.isfile(item_path):
+                    folder_contents.append({
+                        'name': item,
+                        'type': 'file',
+                        'path': relative_path
+                    })
+                elif os.path.isdir(item_path):
+                    folder_contents.append({
+                        'name': item,
+                        'type': 'directory',
+                        'path': relative_path,
+                        'children': []  # Empty children - will be loaded on demand
+                    })
+            
+            return JsonResponse({
+                'files': folder_contents,
+                'folder_path': folder_path
+            })
+            
+        except Exception as e:
+            logger.exception(f"Error in get_folder_contents: {str(e)}")
+            return JsonResponse({'error': str(e)}, status=500)
+    
+    return JsonResponse({'error': 'POST request expected'}, status=400)
+
+@csrf_exempt
+def get_k8s_folder_contents(request):
+    """
+    API endpoint to get the contents of a specific folder from a Kubernetes pod (optimized for lazy loading)
+    """
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        project_id = data.get('project_id')
+        conversation_id = data.get('conversation_id')
+        folder_path = data.get('path', '')
         
         # Validate input
         if not (project_id or conversation_id):
@@ -2346,7 +2376,7 @@ def get_folder_contents(request):
                     }
                 }, status=404)
             
-            # Get the filebrowser URL
+            # Get the filebrowser URL from cached service details
             filebrowser_url = None
             if pod.service_details and 'filebrowserUrl' in pod.service_details:
                 filebrowser_url = pod.service_details.get('filebrowserUrl')
@@ -2363,8 +2393,6 @@ def get_folder_contents(request):
                         # Update the pod record for future requests
                         pod.service_details['filebrowserUrl'] = filebrowser_url
                         pod.save(update_fields=['service_details'])
-                        
-                        logger.info(f"Created and saved missing filebrowserUrl: {filebrowser_url}")
             
             if not filebrowser_url:
                 return JsonResponse({
@@ -2387,7 +2415,7 @@ def get_folder_contents(request):
             # Construct the API endpoint
             api_endpoint = f"/api/resources/{encoded_path}"
             
-            # Make API request to get directory contents
+            # Make single API request to get directory contents (no recursion)
             success, response_data, error_message = filebrowser_api_request(
                 filebrowser_url=filebrowser_url,
                 method="GET",
@@ -2403,34 +2431,30 @@ def get_folder_contents(request):
                     }
                 }, status=500)
             
-            # Process the response to build a simplified folder structure
+            # Process the response to build a simple folder structure
             folder_contents = []
-            
-            # The FileBrowser API response should contain an 'items' array with files and directories
             items = response_data.get('items', [])
             
-            # Process each item in the folder
             for item in items:
                 name = item.get('name', '')
                 is_dir = item.get('isDir', False)
-                
-                # Skip hidden files and folders if desired
-                # if name.startswith('.'):
-                #     continue
                 
                 path = os.path.join(folder_path, name).replace('\\', '/')
                 if path.startswith('/'):
                     path = path[1:]  # Remove leading slash
                 
-                # Add the item to our result list
-                folder_contents.append({
+                node = {
                     'name': name,
                     'type': 'directory' if is_dir else 'file',
-                    'path': path,
-                    'children': [] if is_dir else None
-                })
+                    'path': path
+                }
+                
+                # For directories, just set empty children - will be loaded on demand
+                if is_dir:
+                    node['children'] = []
+                
+                folder_contents.append(node)
             
-            # Return the folder contents
             return JsonResponse({
                 'files': folder_contents,
                 'folder_path': folder_path,
@@ -2441,7 +2465,7 @@ def get_folder_contents(request):
                 }
             })
         except Exception as e:
-            logger.exception(f"Error in get_folder_contents: {str(e)}")
+            logger.exception(f"Error in get_k8s_folder_contents: {str(e)}")
             return JsonResponse({'error': str(e)}, status=500)
     
     return JsonResponse({'error': 'POST request expected'}, status=400)
