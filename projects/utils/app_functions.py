@@ -1205,6 +1205,31 @@ async def server_command_in_k8s(command: str, project_id: int | str = None, conv
         "message_to_agent": message + "\n\nProceed to next step",
     }
 
+def execute_local_command(command: str, workspace_path: str) -> tuple[bool, str, str]:
+    """
+    Execute a command locally using subprocess.
+    
+    Args:
+        command: The command to execute
+        workspace_path: The workspace directory path
+        
+    Returns:
+        Tuple of (success, stdout, stderr)
+    """
+    try:
+        result = subprocess.run(
+            command,
+            shell=True,
+            cwd=workspace_path,
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 minute timeout
+        )
+        return result.returncode == 0, result.stdout, result.stderr
+    except subprocess.TimeoutExpired:
+        return False, "", "Command timed out after 5 minutes"
+    except Exception as e:
+        return False, "", f"Error executing command: {str(e)}"
 
 # def run_command(command: str, project_id: int | str = None, conversation_id: int | str = None, use_k8s: bool = False) -> dict:
 #     """
