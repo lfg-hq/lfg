@@ -210,11 +210,11 @@ class OpenAIProvider(AIProvider):
                                             formatted_explanation = f"\n\n{explanation}\n\n"
                                             
                                             # Add to the assistant message content
-                                            if full_assistant_message.get("content", None) is None:
-                                                logger.debug(f"Setting content to: {formatted_explanation}")
-                                                full_assistant_message["content"] = formatted_explanation
-                                            else:
-                                                full_assistant_message["content"] += formatted_explanation
+                                            # if full_assistant_message.get("content", None) is None:
+                                            #     logger.debug(f"Setting content to: {formatted_explanation}")
+                                            #     full_assistant_message["content"] = formatted_explanation
+                                            # else:
+                                            #     full_assistant_message["content"] += formatted_explanation
                                             
                                             # Yield the explanation immediately so it streams to the frontend
                                             yield "*"
@@ -222,10 +222,10 @@ class OpenAIProvider(AIProvider):
                                     logger.debug(f"Calling app_functions with {tool_call_name}, {parsed_args}, {project_id}, {conversation_id}")
                                     
                                     # Execute the function with extensive logging and error handling
-                                    # Run the potentially blocking app_functions in a thread
+                                    # app_functions is now async, so we await it directly
                                     try:
-                                        tool_result = await asyncio.to_thread(
-                                            app_functions, tool_call_name, parsed_args, project_id, conversation_id
+                                        tool_result = await app_functions(
+                                            tool_call_name, parsed_args, project_id, conversation_id
                                         )
                                         logger.debug(f"app_functions call successful for {tool_call_name}")
                                     except Exception as func_error:

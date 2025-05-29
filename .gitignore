@@ -155,3 +155,5 @@ docker-compose.override.yml
 config/deploy.yml
 
 storage/
+
+prod_deploy.sh

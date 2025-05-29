@@ -143,10 +143,85 @@ generate_tickets = {
         "description": "Call this function to generate the tickets for the project",
         "parameters": {
             "type": "object",
-            "properties": {}
+            "properties": {
+                "tickets": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "description": {"type": "string"},
+                            "priority": {"type": "string", "enum": ["High", "Medium", "Low"]}
+                        },
+                        "required": ["name", "description", "priority"]
+                    }
+                }
+            },
+            "required": ["tickets"]
         }
     }
 }
+
+checklist_tickets = {
+    "type": "function",
+    "function": {
+        "name": "checklist_tickets",
+        "description": "Call this function to generate the checklist tickets for the project",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "tickets": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "description": {"type": "string"},
+                            "role": {"type": "string", "enum": ["agent", "user"]},
+                            "priority": {"type": "string", "enum": ["High", "Medium", "Low"]}
+                        },
+                        "required": ["name", "description", "priority"]
+                    }
+                }
+            },
+            "required": ["tickets"]
+        }
+    }
+}
+
+update_checklist_ticket = {
+
+    "type": "function",
+    "function": {
+        "name": "update_checklist_ticket",
+        "description": "Call this function to update the status of a checklist ticket to done. You need to pass the id.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "ticket_id": {"type": "string"},
+                "status": {"type": "string", "enum": ["done", "in_progress", "agent", "open"]}
+            },
+            "required": ["ticket_id", "status"]
+        }
+    }
+}
+
+get_latest_ticket = {
+    "type": "function",
+    "function": {
+        "name": "get_latest_ticket",
+        "description": "Call this function to get the latest ticket for the project",
+    }
+}
+
+get_pending_tickets = {
+    "type": "function",
+    "function": {
+        "name": "get_pending_tickets",
+        "description": "Call this function to get the pending tickets for the project",
+    }
+}
+
 
 generate_code = {
     "type": "function",
@@ -251,6 +326,6 @@ get_github_access_token = {
 
 # tools = [save_prd, get_prd, save_features, save_personas, design_schema, generate_tickets, write_code_file, read_code_file]
 
-tools_code = [execute_command, start_server, get_github_access_token]
+tools_code = [execute_command, start_server, get_github_access_token, checklist_tickets, update_checklist_ticket, get_latest_ticket, get_pending_tickets]
 tools_product = [save_prd, get_prd, save_features, save_personas, extract_features, extract_personas, design_schema, generate_tickets]
 tools_design = [get_prd, execute_command, start_server, get_github_access_token]

@@ -762,6 +762,331 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Set the iframe source to load the editor
             codebaseIframe.src = editorUrl;
+        },
+        
+        /**
+         * Load checklist items from the API for the current project
+         * @param {number} projectId - The ID of the current project
+         */
+        loadChecklist: function(projectId) {
+            console.log(`[ArtifactsLoader] loadChecklist called with project ID: ${projectId}`);
+            
+            if (!projectId) {
+                console.warn('[ArtifactsLoader] No project ID provided for loading checklist');
+                return;
+            }
+            
+            // Get checklist tab content element
+            const checklistTab = document.getElementById('checklist');
+            if (!checklistTab) {
+                console.warn('[ArtifactsLoader] Checklist tab element not found');
+                return;
+            }
+            
+            // Show loading state
+            console.log('[ArtifactsLoader] Showing loading state for checklist');
+            checklistTab.innerHTML = '<div class="loading-state"><div class="spinner"></div><div>Loading checklist...</div></div>';
+            
+            // Fetch checklist from API
+            const url = `/projects/${projectId}/api/checklist/`;
+            console.log(`[ArtifactsLoader] Fetching checklist from API: ${url}`);
+            
+            fetch(url)
+                .then(response => {
+                    console.log(`[ArtifactsLoader] Checklist API response received, status: ${response.status}`);
+                    if (!response.ok) {
+                        throw new Error(`Network response was not ok: ${response.status} ${response.statusText}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('[ArtifactsLoader] Checklist API data received:', data);
+                    // Process checklist data
+                    const checklist = data.checklist || [];
+                    console.log(`[ArtifactsLoader] Found ${checklist.length} checklist items`);
+                    
+                    if (checklist.length === 0) {
+                        // Show empty state if no checklist items found
+                        console.log('[ArtifactsLoader] No checklist items found, showing empty state');
+                        checklistTab.innerHTML = `
+                            <div class="checklist-empty-state">
+                                <div class="empty-state-icon">
+                                    <i class="fas fa-check-square"></i>
+                                </div>
+                                <div class="empty-state-text">
+                                    No checklist items created yet.
+                                </div>
+                            </div>
+                        `;
+                        return;
+                    }
+
+                    // Build checklist HTML with status grouping
+                    let checklistHTML = '<div class="checklist-container">';
+                    
+                    // Group items by status
+                    const openItems = checklist.filter(item => item.status !== 'closed');
+                    const doneItems = checklist.filter(item => item.status === 'closed');
+                    
+                    // Render Open items first
+                    if (openItems.length > 0) {
+                        checklistHTML += '<div class="status-section">';
+                        checklistHTML += '<h3 class="status-heading">Open Tasks</h3>';
+                        
+                        openItems.forEach(item => {
+                            const statusClass = item.status ? item.status.toLowerCase().replace(' ', '-') : 'open';
+                            const priorityClass = item.priority ? item.priority.toLowerCase() : 'medium';
+                            const roleClass = item.role ? item.role.toLowerCase() : 'user';
+                            
+                            // Get status icon
+                            let statusIcon = 'fas fa-circle';
+                            switch(statusClass) {
+                                case 'open':
+                                    statusIcon = 'fas fa-circle';
+                                    break;
+                                case 'in-progress':
+                                    statusIcon = 'fas fa-play-circle';
+                                    break;
+                                case 'agent':
+                                    statusIcon = 'fas fa-robot';
+                                    break;
+                                case 'closed':
+                                    statusIcon = 'fas fa-check-circle';
+                                    break;
+                            }
+                            
+                            checklistHTML += `
+                                <div class="checklist-card ${statusClass}" data-id="${item.id}">
+                                    <div class="card-header">
+                                        <div class="card-status">
+                                            <i class="${statusIcon} status-icon"></i>
+                                            <h3 class="card-title">${item.name}</h3>
+                                        </div>
+                                        <div class="card-badges">
+                                            <span class="priority-badge ${priorityClass}">${item.priority || 'Medium'}</span>
+                                            <span class="role-badge ${roleClass}">${item.role || 'User'}</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="card-body">
+                                        <div class="card-description">
+                                            ${item.description || 'No description provided.'}
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="card-footer">
+                                        <div class="card-meta">
+                                            <small class="created-date">
+                                                <i class="fas fa-calendar-plus"></i>
+                                                Created: ${new Date(item.created_at).toLocaleDateString()}
+                                            </small>
+                                            <small class="updated-date">
+                                                <i class="fas fa-calendar-check"></i>
+                                                Updated: ${new Date(item.updated_at).toLocaleDateString()}
+                                            </small>
+                                        </div>
+                                        <div class="card-actions">
+                                            <button class="action-btn edit-btn" onclick="editChecklistItem(${item.id})" title="Edit">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                            <button class="action-btn toggle-btn" onclick="toggleChecklistStatus(${item.id}, '${item.status}')" title="Toggle Status">
+                                                <i class="fas fa-sync-alt"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                        
+                        checklistHTML += '</div>'; // Close status-section
+                    }
+                    
+                    // Render Done items
+                    if (doneItems.length > 0) {
+                        checklistHTML += '<div class="status-section">';
+                        checklistHTML += '<h3 class="status-heading">Completed Tasks</h3>';
+                        
+                        doneItems.forEach(item => {
+                            const statusClass = 'closed';
+                            const priorityClass = item.priority ? item.priority.toLowerCase() : 'medium';
+                            const roleClass = item.role ? item.role.toLowerCase() : 'user';
+                            
+                            checklistHTML += `
+                                <div class="checklist-card ${statusClass}" data-id="${item.id}">
+                                    <div class="card-header">
+                                        <div class="card-status">
+                                            <i class="fas fa-check-circle status-icon"></i>
+                                            <h3 class="card-title">${item.name}</h3>
+                                        </div>
+                                        <div class="card-badges">
+                                            <span class="priority-badge ${priorityClass}">${item.priority || 'Medium'}</span>
+                                            <span class="role-badge ${roleClass}">${item.role || 'User'}</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="card-body">
+                                        <div class="card-description">
+                                            ${item.description || 'No description provided.'}
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="card-footer">
+                                        <div class="card-meta">
+                                            <small class="created-date">
+                                                <i class="fas fa-calendar-plus"></i>
+                                                Created: ${new Date(item.created_at).toLocaleDateString()}
+                                            </small>
+                                            <small class="updated-date">
+                                                <i class="fas fa-calendar-check"></i>
+                                                Updated: ${new Date(item.updated_at).toLocaleDateString()}
+                                            </small>
+                                        </div>
+                                        <div class="card-actions">
+                                            <button class="action-btn edit-btn" onclick="editChecklistItem(${item.id})" title="Edit">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                            <button class="action-btn toggle-btn" onclick="toggleChecklistStatus(${item.id}, '${item.status}')" title="Toggle Status">
+                                                <i class="fas fa-sync-alt"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                        
+                        checklistHTML += '</div>'; // Close status-section
+                    }
+                    
+                    checklistHTML += '</div>'; // Close checklist-container
+                    
+                    // Add drawer HTML for checklist details
+                    checklistHTML += `
+                        <!-- Checklist Details Drawer -->
+                        <div class="checklist-details-drawer" id="checklist-details-drawer">
+                            <div class="drawer-header">
+                                <h3 class="drawer-title">Checklist Item Details</h3>
+                                <button class="close-drawer-btn" id="close-checklist-drawer-btn">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            <div class="drawer-content" id="checklist-drawer-content">
+                                <!-- Checklist details will be loaded here -->
+                            </div>
+                        </div>
+                        
+                        <!-- Overlay for drawer -->
+                        <div class="drawer-overlay" id="checklist-drawer-overlay"></div>
+                    `;
+                    
+                    checklistTab.innerHTML = checklistHTML;
+                    
+                    // Add click handlers for opening drawer
+                    console.log('[ArtifactsLoader] Adding click handlers to checklist items for drawer');
+                    const checklistCards = checklistTab.querySelectorAll('.checklist-card');
+                    const checklistDrawer = document.getElementById('checklist-details-drawer');
+                    const checklistDrawerOverlay = document.getElementById('checklist-drawer-overlay');
+                    const closeChecklistDrawerBtn = document.getElementById('close-checklist-drawer-btn');
+                    const checklistDrawerContent = document.getElementById('checklist-drawer-content');
+                    
+                    console.log(`[ArtifactsLoader] Found ${checklistCards.length} checklist cards`);
+                    
+                    checklistCards.forEach((card, index) => {
+                        console.log(`[ArtifactsLoader] Adding click handler to card ${index}`);
+                        
+                        card.addEventListener('click', function(e) {
+                            console.log('[ArtifactsLoader] Card clicked', e.target);
+                            
+                            // Don't open drawer if clicking on action buttons
+                            if (e.target.closest('.action-btn')) {
+                                console.log('[ArtifactsLoader] Action button clicked, not opening drawer');
+                                return;
+                            }
+                            
+                            // Get the item data
+                            const itemId = card.getAttribute('data-id');
+                            const item = checklist.find(i => i.id == itemId);
+                            
+                            if (item) {
+                                console.log('[ArtifactsLoader] Opening drawer for item:', item);
+                                
+                                // Get status display text
+                                const statusText = item.status ? item.status.replace('_', ' ').charAt(0).toUpperCase() + item.status.replace('_', ' ').slice(1) : 'Open';
+                                
+                                // Populate drawer with item details
+                                checklistDrawerContent.innerHTML = `
+                                    <div class="drawer-section">
+                                        <h4 class="section-title">Item Information</h4>
+                                        <div class="checklist-detail-info">
+                                            <p class="detail-row"><strong>Name:</strong> ${item.name}</p>
+                                            <p class="detail-row"><strong>Status:</strong> <span class="status-badge status-${item.status || 'open'}">${statusText}</span></p>
+                                            <p class="detail-row"><strong>Priority:</strong> <span class="priority-badge ${(item.priority || 'medium').toLowerCase()}">${item.priority || 'Medium'}</span></p>
+                                            <p class="detail-row"><strong>Role:</strong> <span class="role-badge ${(item.role || 'user').toLowerCase()}">${item.role || 'User'}</span></p>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="drawer-section">
+                                        <h4 class="section-title">Description</h4>
+                                        <div class="section-content description-content">
+                                            ${item.description ? item.description.replace(/\n/g, '<br>') : 'No description provided.'}
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="drawer-section">
+                                        <h4 class="section-title">Timeline</h4>
+                                        <div class="section-content">
+                                            <p class="detail-row"><strong>Created:</strong> ${new Date(item.created_at).toLocaleDateString()} at ${new Date(item.created_at).toLocaleTimeString()}</p>
+                                            <p class="detail-row"><strong>Last Updated:</strong> ${new Date(item.updated_at).toLocaleDateString()} at ${new Date(item.updated_at).toLocaleTimeString()}</p>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="drawer-section">
+                                        <h4 class="section-title">Actions</h4>
+                                        <div class="drawer-actions">
+                                            <button class="drawer-action-btn edit-btn" onclick="editChecklistItem(${item.id})">
+                                                <i class="fas fa-edit"></i> Edit Item
+                                            </button>
+                                            <button class="drawer-action-btn toggle-btn" onclick="toggleChecklistStatus(${item.id}, '${item.status}')">
+                                                <i class="fas fa-sync-alt"></i> Toggle Status
+                                            </button>
+                                        </div>
+                                    </div>
+                                `;
+                                
+                                // Show the drawer
+                                checklistDrawer.classList.add('open');
+                                checklistDrawerOverlay.classList.add('active');
+                            }
+                        });
+                    });
+                    
+                    // Close drawer event handlers
+                    if (closeChecklistDrawerBtn) {
+                        closeChecklistDrawerBtn.addEventListener('click', function() {
+                            checklistDrawer.classList.remove('open');
+                            checklistDrawerOverlay.classList.remove('active');
+                        });
+                    }
+                    
+                    if (checklistDrawerOverlay) {
+                        checklistDrawerOverlay.addEventListener('click', function() {
+                            checklistDrawer.classList.remove('open');
+                            checklistDrawerOverlay.classList.remove('active');
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching checklist:', error);
+                    checklistTab.innerHTML = `
+                        <div class="error-state">
+                            <div class="error-state-icon">
+                                <i class="fas fa-exclamation-triangle"></i>
+                            </div>
+                            <div class="error-state-text">
+                                Error loading checklist. Please try again.
+                            </div>
+                        </div>
+                    `;
+                });
         }
     };
     
@@ -839,6 +1164,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     console.warn('[ArtifactsLoader] loadAppPreview function not available');
                 }
                 break;
+            case 'checklist':
+                window.ArtifactsLoader.loadChecklist(projectId);
+                break;
             // Add more cases as needed for other tabs
         }
     }
@@ -874,5 +1202,49 @@ document.addEventListener('DOMContentLoaded', function() {
     window.ArtifactsHelper = {
         getCurrentProjectId: getCurrentProjectId,
         getCurrentConversationId: getCurrentConversationId
+    };
+
+    // Checklist action functions
+    window.editChecklistItem = function(itemId) {
+        console.log(`[ArtifactsLoader] Edit checklist item: ${itemId}`);
+        // TODO: Implement edit functionality
+        alert('Edit functionality coming soon!');
+    };
+
+    window.toggleChecklistStatus = function(itemId, currentStatus) {
+        console.log(`[ArtifactsLoader] Toggle checklist status for item: ${itemId}, current: ${currentStatus}`);
+        
+        const projectId = getCurrentProjectId();
+        if (!projectId) {
+            console.warn('[ArtifactsLoader] No project ID available for status toggle');
+            return;
+        }
+
+        const newStatus = currentStatus === 'closed' ? 'open' : 'closed';
+        
+        // TODO: Implement API call to update status
+        // For now, just show a message
+        const itemElement = document.querySelector(`[data-id="${itemId}"]`);
+        if (itemElement) {
+            // Update the visual state immediately for better UX
+            itemElement.classList.remove('open', 'in-progress', 'agent', 'closed');
+            itemElement.classList.add(newStatus);
+            
+            const statusIcon = itemElement.querySelector('.status-icon');
+            const statusText = itemElement.querySelector('.checklist-status-text');
+            const actionBtn = itemElement.querySelector('.checklist-actions button:last-child');
+            
+            if (newStatus === 'closed') {
+                statusIcon.className = 'fas fa-check-circle status-icon';
+                statusText.textContent = 'CLOSED';
+                actionBtn.innerHTML = '<i class="fas fa-undo"></i> Reopen';
+            } else {
+                statusIcon.className = 'fas fa-circle status-icon';
+                statusText.textContent = 'OPEN';
+                actionBtn.innerHTML = '<i class="fas fa-check"></i> Complete';
+            }
+        }
+        
+        console.log(`[ArtifactsLoader] Status toggled to: ${newStatus}`);
     };
 });

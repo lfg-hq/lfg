@@ -14,10 +14,12 @@
         <!-- Tabs Navigation -->
         <div class="artifacts-tabs">
             <button class="tab-button active" data-tab="prd">PRD</button>
-            <button class="tab-button" data-tab="features">Features</button>
-            <button class="tab-button" data-tab="personas">Personas</button>
-            <button class="tab-button" data-tab="design">Design</button>
-            <button class="tab-button" data-tab="tickets">Tickets</button>
+            <button class="tab-button" data-tab="implementation">Implementation</button>
+            <!-- <button class="tab-button" data-tab="features">Features</button> -->
+            <!-- <button class="tab-button" data-tab="personas">Personas</button> -->
+            <!-- <button class="tab-button" data-tab="design">Design</button> -->
+            <!-- <button class="tab-button" data-tab="tickets">Tickets</button> -->
+            <button class="tab-button" data-tab="checklist">Task List</button>
             <button class="tab-button" data-tab="apps">Apps</button>
             <button class="tab-button" data-tab="codebase">Codebase</button>
         </div>
@@ -92,6 +94,19 @@
                     </div>
                 </div>
                 <!-- Ticket content will be loaded dynamically -->
+            </div>
+
+            <!-- Checklist Tab -->
+            <div class="tab-pane" id="checklist">
+                <div class="empty-state">
+                    <div class="empty-state-icon">
+                        <i class="fas fa-check-square"></i>
+                    </div>
+                    <div class="empty-state-text">
+                        No checklist items created yet.
+                    </div>
+                </div>
+                <!-- Checklist content will be loaded dynamically -->
             </div>
 
             <!-- Apps Tab -->

@@ -494,6 +494,46 @@
             line-height: 1.5;
         }
 
+        /* Disabled agent cards */
+        .agent-card.disabled {
+            opacity: 0.5;
+            filter: grayscale(1);
+            pointer-events: none;
+            position: relative;
+        }
+
+        .agent-card.disabled:hover {
+            transform: none;
+            border-color: var(--border-color);
+            box-shadow: none;
+        }
+
+        .agent-card.disabled .agent-avatar {
+            background: linear-gradient(135deg, var(--text-muted), var(--border-color));
+        }
+
+        .agent-card.disabled h3,
+        .agent-card.disabled .agent-role,
+        .agent-card.disabled p {
+            color: var(--text-muted);
+        }
+
+        /* Coming Soon badge */
+        .coming-soon-badge {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: linear-gradient(135deg, var(--warning), #FCD34D);
+            color: #1F2937;
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+        }
+
         /* Customization Section */
         .customization {
             padding: 6rem 2rem;
@@ -736,7 +776,7 @@
                 Open Source AI Platform
             </div>
             <h1>Build Products with AI Agents</h1>
-            <p>The ultimate AI-powered platform that combines Product Managers, Developers, and Designers in one intelligent workspace. Create PRDs, build apps, fix bugs, and ship faster than ever.</p>
+            <p>The AI-powered platform that combines Product Managers, Developers, and Designers in one intelligent workspace. Create PRDs, build apps, fix bugs, and ship faster than ever.</p>
             <div class="hero-buttons">
                 <a href="#get-started" class="btn-primary">
                     <i class="fas fa-play"></i>
@@ -834,7 +874,8 @@
                     <div class="agent-role">Design & Experience</div>
                     <p>Creates beautiful interfaces, designs user experiences, and ensures accessibility and usability.</p>
                 </div>
-                <div class="agent-card">
+                <div class="agent-card disabled">
+                    <div class="coming-soon-badge">Coming Soon</div>
                     <div class="agent-avatar">
                         <i class="fas fa-shield-alt"></i>
                     </div>
@@ -842,7 +883,8 @@
                     <div class="agent-role">Quality & Testing</div>
                     <p>Performs automated testing, identifies bugs, ensures quality standards, and validates functionality.</p>
                 </div>
-                <div class="agent-card">
+                <div class="agent-card disabled">
+                    <div class="coming-soon-badge">Coming Soon</div>
                     <div class="agent-avatar">
                         <i class="fas fa-cloud"></i>
                     </div>
@@ -850,7 +892,8 @@
                     <div class="agent-role">Deployment & Infrastructure</div>
                     <p>Manages deployments, configures infrastructure, monitors performance, and ensures scalability.</p>
                 </div>
-                <div class="agent-card">
+                <div class="agent-card disabled">
+                    <div class="coming-soon-badge">Coming Soon</div>
                     <div class="agent-avatar">
                         <i class="fas fa-chart-line"></i>
                     </div>
@@ -895,7 +938,7 @@
                     <li>Custom frameworks</li>
                 </ul>
             </div>
-            <div class="custom-card">
+            <!-- <div class="custom-card">
                 <div class="custom-icon">
                     <i class="fas fa-server"></i>
                 </div>
@@ -907,7 +950,7 @@
                     <li>On-premise deployment</li>
                     <li>Hybrid cloud setups</li>
                 </ul>
-            </div>
+            </div> -->
             <div class="custom-card">
                 <div class="custom-icon">
                     <i class="fas fa-plug"></i>

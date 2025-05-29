@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 # These imports are safe now because django.setup() is called in asgi.py before imports
 from django.contrib.auth.models import User
 from chat.models import Conversation, Message, ChatFile, ModelSelection
+from projects.models import ProjectChecklist
 from chat.utils import AIProvider, get_system_prompt_developer, get_system_prompt_design, get_system_prompt_product
 
 import os
@@ -846,7 +847,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """
         # Use the same provider as the chat
         provider_name = settings.AI_PROVIDER_DEFAULT
-        provider = AIProvider.get_provider(provider_name)
+        
+        # Get model selection for the user
+        model_selection = await database_sync_to_async(ModelSelection.objects.get)(user=self.user)
+        selected_model = model_selection.selected_model
+        
+        provider = AIProvider.get_provider(provider_name, selected_model)
         
         # Create a special prompt for title generation
         title_prompt = [
@@ -861,9 +867,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
         ]
         
         try:
+            # Get project_id if available
+            project_id = await self.get_project_id() if self.conversation else None
+            
+            # Use empty tools list for title generation (no function calls needed)
+            tools = []
+            
             # Generate title non-streaming
             title = ""
-            async for content in self.process_ai_stream(provider, title_prompt):
+            async for content in self.process_ai_stream(provider, title_prompt, project_id, tools):
                 title += content
                 
             # Clean and truncate the generated title

@@ -100,6 +100,30 @@ class ProjectTickets(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
+class ProjectChecklist(models.Model):
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="checklist")
+    name = models.CharField(max_length=255)
+    status = models.CharField(max_length=20, choices=(
+        ('open', 'Open'),
+        ('in_progress', 'In Progress'),
+        ('agent', 'Agent'),
+        ('closed', 'Closed'),
+    ), default='open')
+    description = models.TextField()
+    priority = models.CharField(max_length=20, choices=(
+        ('High', 'High'),
+        ('Medium', 'Medium'),
+        ('Low', 'Low'),
+    ), default='Medium')
+    role = models.CharField(max_length=20, choices=(
+        ('agent', 'Agent'),
+        ('user', 'User'),
+    ), default='user')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"{self.project.name} - Checklist"
     
 class ProjectCodeGeneration(models.Model):
     project = models.OneToOneField(Project, on_delete=models.CASCADE, related_name="code_generation")

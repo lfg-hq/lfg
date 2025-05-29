@@ -17,4 +17,5 @@ urlpatterns = [
     path('<int:project_id>/api/prd/', views.project_prd_api, name='project_prd_api'),
     path('<int:project_id>/api/design-schema/', views.project_design_schema_api, name='project_design_schema_api'),
     path('<int:project_id>/api/tickets/', views.project_tickets_api, name='project_tickets_api'),
+    path('<int:project_id>/api/checklist/', views.project_checklist_api, name='project_checklist_api'),
 ]

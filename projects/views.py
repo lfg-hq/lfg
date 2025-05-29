@@ -2,7 +2,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.contrib import messages
-from .models import Project, ProjectFeature, ProjectPersona, ProjectPRD, ProjectDesignSchema, ProjectTickets
+from .models import Project, ProjectFeature, ProjectPersona, ProjectPRD, ProjectDesignSchema, ProjectTickets, ProjectChecklist
 from django.views.decorators.http import require_POST
 from django.core.exceptions import PermissionDenied
 
@@ -188,6 +188,29 @@ def project_tickets_api(request, project_id):
         })
     
     return JsonResponse({'tickets': tickets_list})
+
+@login_required
+def project_checklist_api(request, project_id):
+    """API view to get checklist items for a project"""
+    project = get_object_or_404(Project, id=project_id, owner=request.user)
+    
+    # Get all checklist items for this project
+    checklist_items = ProjectChecklist.objects.filter(project=project)
+    
+    checklist_list = []
+    for item in checklist_items:
+        checklist_list.append({
+            'id': item.id,
+            'name': item.name,
+            'description': item.description,
+            'status': item.status,
+            'priority': item.priority,
+            'role': item.role,
+            'created_at': item.created_at.isoformat(),
+            'updated_at': item.updated_at.isoformat(),
+        })
+    
+    return JsonResponse({'checklist': checklist_list})
 
 @login_required
 def project_terminal(request, project_id):

@@ -508,10 +508,10 @@ def create_kubernetes_pod(client, namespace, image="gitpod/workspace-full:latest
     # Default resource limits if not provided
     if not resource_limits:
         resource_limits = {
-            'memory': '500Mi',
-            'cpu': '250m',
-            'memory_requests': '200Mi',
-            'cpu_requests': '100m'
+            'memory': '800Mi',
+            'cpu': '500m',
+            'memory_requests': '500Mi',
+            'cpu_requests': '250m'
         }
     
     # Use namespace lock to prevent race conditions

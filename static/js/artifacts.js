@@ -510,6 +510,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     console.warn('[ArtifactsPanel] ArtifactsLoader.loadTickets not found');
                 }
                 break;
+            case 'checklist':
+                if (window.ArtifactsLoader && typeof window.ArtifactsLoader.loadChecklist === 'function') {
+                    window.ArtifactsLoader.loadChecklist(projectId);
+                } else {
+                    console.warn('[ArtifactsPanel] ArtifactsLoader.loadChecklist not found');
+                }
+                break;
             case 'codebase':
                 // Load codebase explorer in iframe
                 if (window.ArtifactsLoader && typeof window.ArtifactsLoader.loadCodebase === 'function') {
