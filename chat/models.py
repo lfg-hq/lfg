@@ -4,8 +4,6 @@ import os
 import uuid
 
 
-
-
 class AgentRole(models.Model):
     """Model to define different agent roles in the system"""
     ROLE_CHOICES = [

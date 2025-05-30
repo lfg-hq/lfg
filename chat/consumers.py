@@ -1,36 +1,57 @@
 import json
 import asyncio
 import logging
-from channels.generic.websocket import AsyncWebsocketConsumer
-from channels.db import database_sync_to_async
-from django.conf import settings
-
-# Set up logger
-logger = logging.getLogger(__name__)
-
-# Import everything we need at the module level
-# These imports are safe now because django.setup() is called in asgi.py before imports
-from django.contrib.auth.models import User
-from chat.models import Conversation, Message, ChatFile, ModelSelection
-from projects.models import ProjectChecklist
-from chat.utils import AIProvider, get_system_prompt_developer, get_system_prompt_design, get_system_prompt_product
-
 import os
 import base64
 import uuid
-from django.core.files.base import ContentFile
-from chat.models import ChatFile, AgentRole
+from channels.generic.websocket import AsyncWebsocketConsumer
+from channels.db import database_sync_to_async
 from django.conf import settings
-from chat.utils.ai_tools import tools_code, tools_product, tools_design
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import User
+from django.core.files.base import ContentFile
+from chat.models import (
+    Conversation, 
+    Message,
+    ChatFile,
+    ModelSelection,
+    AgentRole
+)
+from projects.models import ProjectChecklist
+from coding.utils import (
+    AIProvider,
+    get_system_prompt_developer,
+    get_system_prompt_design, 
+    get_system_prompt_product
+)
+from coding.utils.ai_tools import tools_code, tools_product, tools_design
+
+# Set up logger
+logger = logging.getLogger(__name__)
 
 class ChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         """
         Handle WebSocket connection
         """
+        connection_accepted = False
+        
         try:
-            # Get user from scope
-            self.user = self.scope["user"]
+            # Get user from scope and ensure it's properly resolved
+            lazy_user = self.scope["user"]
+            
+            # Convert UserLazyObject to actual User instance to avoid database field errors
+            if hasattr(lazy_user, '_wrapped') and hasattr(lazy_user, '_setup'):
+                # This is a LazyObject, force evaluation
+                if lazy_user.is_authenticated:
+                    # Get the actual user instance from database
+                    User = get_user_model()
+                    self.user = await database_sync_to_async(User.objects.get)(pk=lazy_user.pk)
+                else:
+                    self.user = lazy_user
+            else:
+                # Already a proper User instance
+                self.user = lazy_user
             
             # Each user joins their own room based on their username
             if self.user.is_authenticated:
@@ -40,10 +61,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 logger.warning("User is not authenticated, using anonymous chat room")
             
             # Create a sanitized group name for the channel layer
-            self.room_group_name = self.room_name.replace(" ", "_")
+            # Django Channels group names can only contain ASCII alphanumerics, hyphens, underscores, or periods
+            import re
+            # Replace any invalid characters with underscores
+            self.room_group_name = re.sub(r'[^a-zA-Z0-9._-]', '_', self.room_name)
             
             # Accept connection
             await self.accept()
+            connection_accepted = True
             logger.info(f"WebSocket connection accepted for user {self.user} in room {self.room_group_name}")
             
             # Initialize properties
@@ -82,15 +107,25 @@ class ChatConsumer(AsyncWebsocketConsumer):
             
         except Exception as e:
             logger.error(f"Error in WebSocket connect: {str(e)}")
-            # Try to accept and send error
-            try:
-                await self.accept()
-                await self.send(text_data=json.dumps({
-                    'type': 'error',
-                    'message': f"Connection error: {str(e)}"
-                }))
-            except Exception as inner_e:
-                logger.error(f"Could not accept WebSocket connection: {str(inner_e)}")
+            # Only try to accept and send error if we haven't already accepted
+            if not connection_accepted:
+                try:
+                    await self.accept()
+                    await self.send(text_data=json.dumps({
+                        'type': 'error',
+                        'message': f"Connection error: {str(e)}"
+                    }))
+                except Exception as inner_e:
+                    logger.error(f"Could not accept WebSocket connection: {str(inner_e)}")
+            else:
+                # Connection already accepted, just send error
+                try:
+                    await self.send(text_data=json.dumps({
+                        'type': 'error',
+                        'message': f"Connection error: {str(e)}"
+                    }))
+                except Exception as inner_e:
+                    logger.error(f"Could not send error message: {str(inner_e)}")
     
     async def disconnect(self, close_code):
         """
@@ -255,6 +290,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
         except Exception as e:
             logger.error(f"Error sending response to client: {str(e)}")
     
+    async def ai_chunk(self, event):
+        """
+        Temporary handler for ai_chunk messages - redirect to ai_response_chunk
+        This method handles cases where ai_chunk messages accidentally get sent to the channel layer
+        """
+        logger.warning("ai_chunk message received on channel layer - this should use ai_response_chunk instead")
+        # Redirect to the proper handler
+        await self.ai_response_chunk(event)
+    
     async def generate_ai_response(self, user_message, provider_name, project_id=None, user_role=None):
         """
         Generate response from AI
@@ -309,8 +353,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 "content": system_prompt
             })
 
-        model_selection = await database_sync_to_async(ModelSelection.objects.get)(user=self.user)
-        selected_model = model_selection.selected_model
+        try:
+            model_selection = await database_sync_to_async(ModelSelection.objects.get)(user=self.user)
+            selected_model = model_selection.selected_model
+        except ModelSelection.DoesNotExist:
+            # Create a default model selection if none exists
+            model_selection = await database_sync_to_async(ModelSelection.objects.create)(
+                user=self.user,
+                selected_model='claude_4_sonnet'
+            )
+            selected_model = model_selection.selected_model
         
         # Get the appropriate AI provider
         provider = AIProvider.get_provider(provider_name, selected_model)
@@ -525,7 +577,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             
                             # Create notification message to send to client
                             notification_message = {
-                                'type': 'ai_chunk',
                                 'chunk': '',  # No visible content
                                 'is_final': False,
                                 'is_notification': True,
@@ -547,7 +598,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
                                     }
                                 )
                             else:
-                                await self.send(text_data=json.dumps(notification_message))
+                                await self.send(text_data=json.dumps({
+                                    'type': 'ai_chunk',
+                                    **notification_message
+                                }))
                             
                             # Skip yielding this chunk as text content
                             continue
@@ -581,7 +635,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             
                             # This is a notification - send it as a special message
                             notification_message = {
-                                'type': 'ai_chunk',
                                 'chunk': '',  # No visible content
                                 'is_final': False,
                                 'is_notification': True,
@@ -849,8 +902,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
         provider_name = settings.AI_PROVIDER_DEFAULT
         
         # Get model selection for the user
-        model_selection = await database_sync_to_async(ModelSelection.objects.get)(user=self.user)
-        selected_model = model_selection.selected_model
+        try:
+            model_selection = await database_sync_to_async(ModelSelection.objects.get)(user=self.user)
+            selected_model = model_selection.selected_model
+        except ModelSelection.DoesNotExist:
+            # Create a default model selection if none exists
+            model_selection = await database_sync_to_async(ModelSelection.objects.create)(
+                user=self.user,
+                selected_model='claude_4_sonnet'
+            )
+            selected_model = model_selection.selected_model
         
         provider = AIProvider.get_provider(provider_name, selected_model)
         

@@ -222,7 +222,6 @@ get_pending_tickets = {
     }
 }
 
-
 generate_code = {
     "type": "function",
     "function": {
@@ -326,6 +325,6 @@ get_github_access_token = {
 
 # tools = [save_prd, get_prd, save_features, save_personas, design_schema, generate_tickets, write_code_file, read_code_file]
 
-tools_code = [execute_command, start_server, get_github_access_token, checklist_tickets, update_checklist_ticket, get_latest_ticket, get_pending_tickets]
+tools_code = [save_prd, get_prd, execute_command, start_server, get_github_access_token, checklist_tickets, update_checklist_ticket, get_latest_ticket, get_pending_tickets]
 tools_product = [save_prd, get_prd, save_features, save_personas, extract_features, extract_personas, design_schema, generate_tickets]
 tools_design = [get_prd, execute_command, start_server, get_github_access_token]

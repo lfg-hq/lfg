@@ -11,10 +11,9 @@ from django.db import transaction
 from projects.models import Project, ProjectFeature, ProjectPersona, \
                             ProjectPRD, ProjectDesignSchema, ProjectTickets, \
                             ProjectCodeGeneration, ProjectChecklist
-from .ai_utils import analyze_features, analyze_personas, \
+from coding.utils.prd_functions import analyze_features, analyze_personas, \
                     design_schema, generate_tickets_per_feature 
 
-from coding.utils.ai_utils import write_files_to_storage, read_file_from_storage
 from coding.docker.docker_utils import (
     Sandbox, 
     get_or_create_sandbox,
@@ -23,6 +22,7 @@ from coding.docker.docker_utils import (
     get_client_project_folder_path,
     add_port_to_sandbox
 )
+from django.conf import settings
 from coding.k8s_manager.manage_pods import execute_command_in_pod, manage_kubernetes_pod
 
 from coding.models import KubernetesPod, KubernetesPortMapping
@@ -76,6 +76,71 @@ def validate_function_args(function_args, required_keys=None):
             }
     return None
 
+def execute_local_command(command: str, workspace_path: str) -> tuple[bool, str, str]:
+    """
+    Execute a command locally using subprocess.
+    
+    Args:
+        command: The command to execute
+        workspace_path: The workspace directory path
+        
+    Returns:
+        Tuple of (success, stdout, stderr)
+    """
+    try:
+        result = subprocess.run(
+            command,
+            shell=True,
+            cwd=workspace_path,
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 minute timeout
+        )
+        return result.returncode == 0, result.stdout, result.stderr
+    except subprocess.TimeoutExpired:
+        return False, "", "Command timed out after 5 minutes"
+    except Exception as e:
+        return False, "", f"Error executing command: {str(e)}"
+
+def execute_local_server_command(command: str, workspace_path: str) -> tuple[bool, str, str]:
+    """
+    Execute a server command locally using subprocess in background.
+    
+    Args:
+        command: The command to execute
+        workspace_path: The workspace directory path
+        
+    Returns:
+        Tuple of (success, stdout, stderr)
+    """
+    try:
+        # Create tmp directory for logs if it doesn't exist
+        tmp_path = Path(workspace_path) / "tmp"
+        tmp_path.mkdir(exist_ok=True)
+        
+        # Run command in background and redirect output to log file
+        full_command = f"{command} > {tmp_path}/server_output.log 2>&1 &"
+        
+        result = subprocess.run(
+            full_command,
+            shell=True,
+            cwd=workspace_path,
+            capture_output=True,
+            text=True,
+            timeout=30  # Shorter timeout since server should start quickly
+        )
+        
+        # For background processes, success is typically when the command starts successfully
+        if result.returncode == 0:
+            return True, f"Server command started successfully in background", ""
+        else:
+            return False, result.stdout, result.stderr
+            
+    except subprocess.TimeoutExpired:
+        return False, "", "Server command timed out after 30 seconds"
+    except Exception as e:
+        return False, "", f"Error executing server command: {str(e)}"
+
 # ============================================================================
 # MAIN DISPATCHER
 # ============================================================================
@@ -124,7 +189,10 @@ async def app_functions(function_name, function_args, project_id, conversation_i
         case "execute_command":
             command = function_args.get('commands', '')
             print(f"Running command: {command}")
-            result = await run_command_in_k8s(command, project_id=project_id, conversation_id=conversation_id)
+            if settings.ENVIRONMENT == "local":
+                result = await run_command_locally(command, project_id=project_id, conversation_id=conversation_id)
+            else:
+                result = await run_command_in_k8s(command, project_id=project_id, conversation_id=conversation_id)
             return result
         
         case "start_server":
@@ -132,7 +200,18 @@ async def app_functions(function_name, function_args, project_id, conversation_i
             application_port = function_args.get('application_port', '')
             type = function_args.get('type', '')
             print(f"Running server: {command}")
-            result = await server_command_in_k8s(command, project_id=project_id, conversation_id=conversation_id, application_port=application_port, type=type)
+            if settings.ENVIRONMENT == "local":
+                result = await run_server_locally(command, project_id=project_id, conversation_id=conversation_id, application_port=application_port, type=type)
+            else:
+                result = await server_command_in_k8s(command, project_id=project_id, conversation_id=conversation_id, application_port=application_port, type=type)
+            return result
+        
+        case "start_server_local":
+            command = function_args.get('start_server_command', '')
+            application_port = function_args.get('application_port', '')
+            type = function_args.get('type', '')
+            print(f"Running local server: {command}")
+            result = await run_server_locally(command, project_id=project_id, conversation_id=conversation_id, application_port=application_port, type=type)
             return result
         
         case "get_github_access_token":
@@ -1205,59 +1284,182 @@ async def server_command_in_k8s(command: str, project_id: int | str = None, conv
         "message_to_agent": message + "\n\nProceed to next step",
     }
 
-def execute_local_command(command: str, workspace_path: str) -> tuple[bool, str, str]:
+async def run_command_locally(command: str, project_id: int | str = None, conversation_id: int | str = None) -> dict:
     """
-    Execute a command locally using subprocess.
+    Run a command in the local terminal using subprocess.
+    Creates a local workspace directory if it doesn't exist.
+    """
+    # Create workspace directory if it doesn't exist
+    workspace_path = Path.home() / "LFG" / "workspace"
+    workspace_path.mkdir(parents=True, exist_ok=True)
+    
+    command_to_run = f"cd {workspace_path} && {command}"
+    print(f"\n\nLocal Command: {command_to_run}")
+
+    # Create command record in database
+    cmd_record = await sync_to_async(lambda: (
+        CommandExecution.objects.create(
+            project_id=project_id,
+            command=command,
+            output=None  # Will update after execution
+        )
+    ))()
+
+    success = False
+    stdout = ""
+    stderr = ""
+
+    try:
+        # Execute the command locally using subprocess in thread pool
+        success, stdout, stderr = await asyncio.get_event_loop().run_in_executor(
+            None, execute_local_command, command, str(workspace_path)
+        )
+
+        print(f"\n\nLocal Command output: {stdout}")
+        if stderr:
+            print(f"\n\nLocal Command stderr: {stderr}")
+
+        # Update command record with output
+        await sync_to_async(lambda: (
+            setattr(cmd_record, 'output', stdout if success else stderr),
+            cmd_record.save()
+        )[1])()
+
+    except Exception as e:
+        error_msg = f"Failed to execute command locally: {str(e)}"
+        stderr = error_msg
+        
+        # Update command record with error
+        await sync_to_async(lambda: (
+            setattr(cmd_record, 'output', error_msg),
+            cmd_record.save()
+        )[1])()
+
+    if not success:
+        return {
+            "is_notification": True,
+            "notification_type": "command_error",
+            "message_to_agent": f"{stderr}\n\nThe local command execution failed. Stop generating further steps and inform the user that the command could not be executed.",
+        }
+    
+    return {
+        "is_notification": True,
+        "notification_type": "command_output", 
+        "message_to_agent": f"Local command output: {stdout}\n\nFix if there is any error, otherwise you can proceed to next step",
+    }
+
+async def run_server_locally(command: str, project_id: int | str = None, conversation_id: int | str = None, application_port: int | str = None, type: str = None) -> dict:
+    """
+    Run a server command locally using subprocess in background.
+    Creates a local workspace directory if it doesn't exist.
     
     Args:
-        command: The command to execute
-        workspace_path: The workspace directory path
+        command: The command to run
+        project_id: The project ID
+        conversation_id: The conversation ID  
+        application_port: The port the application listens on locally
+        type: The type of application (frontend, backend, etc.)
         
     Returns:
-        Tuple of (success, stdout, stderr)
+        Dict containing command output and local server information
     """
-    try:
-        result = subprocess.run(
-            command,
-            shell=True,
-            cwd=workspace_path,
-            capture_output=True,
-            text=True,
-            timeout=300  # 5 minute timeout
-        )
-        return result.returncode == 0, result.stdout, result.stderr
-    except subprocess.TimeoutExpired:
-        return False, "", "Command timed out after 5 minutes"
-    except Exception as e:
-        return False, "", f"Error executing command: {str(e)}"
+    print(f"\n\nLocal Application port: {application_port}")
+    print(f"\n\nLocal Type: {type}")
 
-# def run_command(command: str, project_id: int | str = None, conversation_id: int | str = None, use_k8s: bool = False) -> dict:
-#     """
-#     Run a command in the terminal using either Docker or Kubernetes.
-#     This function serves as a dispatcher between Docker and Kubernetes command execution.
+    # Create workspace directory if it doesn't exist
+    workspace_path = Path.home() / "LFG" / "workspace"
+    workspace_path.mkdir(parents=True, exist_ok=True)
     
-#     Args:
-#         command: The command to run
-#         project_id: The project ID (optional if conversation_id is provided)
-#         conversation_id: The conversation ID (optional if project_id is provided)
-#         use_k8s: Boolean flag to force using Kubernetes instead of Docker
+    # Handle application port validation if provided
+    if application_port:
+        try:
+            # Convert application_port to integer if it's a string
+            application_port = int(application_port)
+            
+            # Check if port is in valid range
+            if application_port < 1 or application_port > 65535:
+                return {
+                    "is_notification": True,
+                    "notification_type": "command_error",
+                    "message_to_agent": f"Invalid application port: {application_port}. Port must be between 1 and 65535."
+                }
+        except (ValueError, TypeError):
+            return {
+                "is_notification": True,
+                "notification_type": "command_error",
+                "message_to_agent": f"Invalid application port: {application_port}. Must be a valid integer."
+            }
+            
+        # Standardize port type
+        port_type = type.lower() if type else "application"
+        if port_type not in ["frontend", "backend", "application"]:
+            port_type = "application"
+    
+    print(f"\n\nLocal Server Command: {command}")
+
+    # Create command record in database
+    cmd_record = await sync_to_async(lambda: (
+        CommandExecution.objects.create(
+            project_id=project_id,
+            command=command,
+            output=None  # Will update after execution
+        )
+    ))()
+
+    success = False
+    stdout = ""
+    stderr = ""
+
+    try:
+        # Execute the server command locally using subprocess in thread pool (background)
+        success, stdout, stderr = await asyncio.get_event_loop().run_in_executor(
+            None, execute_local_server_command, command, str(workspace_path)
+        )
+
+        print(f"\n\nLocal Server Command output: {stdout}")
+        if stderr:
+            print(f"\n\nLocal Server Command stderr: {stderr}")
+
+        # Update command record with output
+        await sync_to_async(lambda: (
+            setattr(cmd_record, 'output', stdout if success else stderr),
+            cmd_record.save()
+        )[1])()
+
+    except Exception as e:
+        error_msg = f"Failed to execute server command locally: {str(e)}"
+        stderr = error_msg
         
-#     Returns:
-#         Dict containing command output information
-#     """
-#     # Determine whether to use Kubernetes or Docker
-#     use_kubernetes = use_k8s
+        # Update command record with error
+        await sync_to_async(lambda: (
+            setattr(cmd_record, 'output', error_msg),
+            cmd_record.save()
+        )[1])()
+
+    if not success:
+        return {
+            "is_notification": True,
+            "notification_type": "command_error",
+            "message_to_agent": f"{stderr}\n\nThe local server command execution failed. Stop generating further steps and inform the user that the command could not be executed.",
+        }
     
-#     # Get the EXECUTION_ENVIRONMENT from environment or fallback to Docker
-#     execution_env = os.environ.get('EXECUTION_ENVIRONMENT', 'docker').lower()
-#     if execution_env == 'kubernetes':
-#         use_kubernetes = True
+    # Prepare success message with port information if applicable
+    message = f"{stdout}\n\nLocal server command executed successfully."
     
-#     # Execute the command in the appropriate environment
-#     if use_kubernetes:
-#         print("Using Kubernetes for command execution")
-#         return run_command_k8s(command, project_id, conversation_id)
-#     else:
-#         print("Using Docker for command execution")
-#         return run_command_docker(command, project_id, conversation_id)
+    if application_port:
+        # For local execution, the server will be accessible on localhost
+        local_url = f"http://localhost:{application_port}"
+        
+        # Add URL information to the message
+        message += f"\n\n{port_type.capitalize()} is running on port {application_port} locally."
+        message += f"\nYou can access it at: {local_url}"
+        message += f"\nServer logs are available at: {workspace_path}/tmp/server_output.log"
+    else:
+        message += f"\nServer logs are available at: {workspace_path}/tmp/server_output.log"
+    
+    return {
+        "is_notification": True,
+        "notification_type": "command_output",
+        "message_to_agent": message + "\n\nProceed to next step",
+    }
     

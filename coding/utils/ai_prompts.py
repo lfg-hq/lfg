@@ -141,7 +141,7 @@ fi
 
 ## Workflow (Updated with Context Management)
 
-1. **Requirement intake** – when you receive a new requirement, ask for the **project name** if the user has not provided one. Create a PRD for the project using the tool `save_prd` and ask user to review
+1. **Requirement intake** – when you receive a new requirement, ask for the **project name** if the user has not provided one. Create a PRD for the project using the tool `save_prd` and ask user to review it.
 2. **Plan** – write `Implementation.md` that covers architecture, file‑folder structure, file names, background workers or Celery tasks and any edge considerations. 
   If required, you can use the tool `web_search` to get more information about the project. You can inform the user that you can do some research for them.
 3. **Checklist** – extract every TODO from the plan into Checklist via the function `checklist_tickets`. Tickets can be for the agent or the user (e.g. supplying keys, secrets, verifying completed tasks).
