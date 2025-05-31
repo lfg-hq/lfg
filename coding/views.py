@@ -18,6 +18,8 @@ import mimetypes
 from urllib.parse import quote
 from django.core.cache import cache
 import hashlib
+from pathlib import Path
+import platform
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +112,125 @@ def editor(request):
     }
     
     return render(request, 'coding/editor.html', context)
+
+def editor_local(request):
+    """
+    View for opening local code editors
+    """
+    # Get the workspace path (same as in ai_functions.py)
+    workspace_path = Path.home() / "LFG" / "workspace"
+    workspace_path.mkdir(parents=True, exist_ok=True)
+    
+    # Detect installed editors
+    detected_editors = []
+    system = platform.system().lower()
+    
+    # VS Code detection
+    vscode_detected = False
+    vscode_command = None
+    if system == "darwin":  # macOS
+        vscode_paths = [
+            "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code",
+            "/usr/local/bin/code"
+        ]
+        for path in vscode_paths:
+            if os.path.exists(path):
+                vscode_detected = True
+                vscode_command = path
+                break
+        if not vscode_detected and shutil.which("code"):
+            vscode_detected = True
+            vscode_command = "code"
+    elif system == "windows":
+        # Check common Windows paths
+        if shutil.which("code"):
+            vscode_detected = True
+            vscode_command = "code"
+    else:  # Linux
+        if shutil.which("code"):
+            vscode_detected = True
+            vscode_command = "code"
+    
+    if vscode_detected:
+        detected_editors.append({
+            'name': 'Visual Studio Code',
+            'command': vscode_command,
+            'icon': 'vscode',
+            'description': 'Microsoft Visual Studio Code'
+        })
+    
+    # Cursor detection
+    cursor_detected = False
+    cursor_command = None
+    if system == "darwin":  # macOS
+        cursor_paths = [
+            "/Applications/Cursor.app/Contents/Resources/app/bin/cursor",
+            "/usr/local/bin/cursor"
+        ]
+        for path in cursor_paths:
+            if os.path.exists(path):
+                cursor_detected = True
+                cursor_command = path
+                break
+        if not cursor_detected and shutil.which("cursor"):
+            cursor_detected = True
+            cursor_command = "cursor"
+    elif system == "windows":
+        if shutil.which("cursor"):
+            cursor_detected = True
+            cursor_command = "cursor"
+    else:  # Linux
+        if shutil.which("cursor"):
+            cursor_detected = True
+            cursor_command = "cursor"
+    
+    if cursor_detected:
+        detected_editors.append({
+            'name': 'Cursor',
+            'command': cursor_command,
+            'icon': 'cursor',
+            'description': 'Cursor AI Code Editor'
+        })
+    
+    context = {
+        'workspace_path': str(workspace_path),
+        'detected_editors': detected_editors,
+        'has_editors': len(detected_editors) > 0
+    }
+    
+    return render(request, 'coding/editor_local.html', context)
+
+@csrf_exempt
+def open_local_editor(request):
+    """
+    API endpoint to open local code editor
+    """
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        editor_command = data.get('command')
+        
+        if not editor_command:
+            return JsonResponse({'error': 'Editor command is required'}, status=400)
+        
+        try:
+            # Get the workspace path
+            workspace_path = Path.home() / "LFG" / "workspace"
+            workspace_path.mkdir(parents=True, exist_ok=True)
+            
+            # Open the editor with the workspace path
+            # Use subprocess.Popen to open the editor without blocking
+            subprocess.Popen([editor_command, str(workspace_path)], 
+                           stdout=subprocess.DEVNULL, 
+                           stderr=subprocess.DEVNULL)
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Opening workspace at {workspace_path}'
+            })
+        except Exception as e:
+            return JsonResponse({'error': f'Failed to open editor: {str(e)}'}, status=500)
+    
+    return JsonResponse({'error': 'POST request expected'}, status=400)
 
 @csrf_exempt
 def get_file_tree(request):

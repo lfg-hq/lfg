@@ -10,7 +10,8 @@ from asgiref.sync import sync_to_async
 from django.db import transaction
 from projects.models import Project, ProjectFeature, ProjectPersona, \
                             ProjectPRD, ProjectDesignSchema, ProjectTickets, \
-                            ProjectCodeGeneration, ProjectChecklist
+                            ProjectCodeGeneration, ProjectChecklist, \
+                            ProjectImplementation
 from coding.utils.prd_functions import analyze_features, analyze_personas, \
                     design_schema, generate_tickets_per_feature 
 
@@ -171,6 +172,10 @@ async def app_functions(function_name, function_args, project_id, conversation_i
             return await save_prd(function_args, project_id)
         case "get_prd":
             return await get_prd(project_id)
+        case "save_implementation":
+            return await save_implementation(function_args, project_id)
+        case "get_implementation":
+            return await get_implementation(project_id)
         case "save_features":
             return await save_features(project_id)
         case "save_personas":
@@ -183,8 +188,8 @@ async def app_functions(function_name, function_args, project_id, conversation_i
             return await update_individual_checklist_ticket(project_id, function_args.get('ticket_id'), function_args.get('status'))
         case "get_pending_tickets":
             return await get_pending_tickets(project_id)
-        case "get_latest_ticket":
-            return await get_latest_ticket(project_id)
+        case "get_next_ticket":
+            return await get_next_ticket(project_id)
         
         case "execute_command":
             command = function_args.get('commands', '')
@@ -681,6 +686,105 @@ async def get_prd(project_id):
             "message_to_agent": f"Error retrieving PRD: {str(e)}"
         }
 
+async def save_implementation(function_args, project_id):
+    """
+    Save the implementation for a project
+    """
+    print(f"Implementation saving function called \n\n: {function_args}")
+    
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+    
+    validation_error = validate_function_args(function_args, ['implementation'])
+    if validation_error:
+        return validation_error
+    
+    project = await get_project(project_id)
+    if not project:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Project with ID {project_id} does not exist"
+        }
+    
+    implementation_content = function_args.get('implementation', '')
+
+    if not implementation_content:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: PRD content cannot be empty"
+        }
+
+    print(f"\n\n\nImplementation Content: {implementation_content}")
+
+    try:
+        # Save PRD to database
+        created = await sync_to_async(lambda: (
+            lambda: (
+                lambda prd, created: created
+            )(*ProjectImplementation.objects.get_or_create(project=project, defaults={'implementation': implementation_content}))
+        )())()
+        
+        # Update existing PRD if it wasn't created
+        if not created:
+            await sync_to_async(lambda: (
+                ProjectImplementation.objects.filter(project=project).update(implementation=implementation_content)
+            ))()
+        
+        action = "created" if created else "updated"
+        
+        return {
+            "is_notification": True,
+            "notification_type": "implementation",
+            "message_to_agent": f"Implementation {action} successfully in the database"
+        }
+        
+    except Exception as e:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error saving Implementation: {str(e)}"
+        }
+
+async def get_implementation(project_id):
+    """
+    Retrieve the Implementation for a project
+    """
+    print("Get Implementation function called \n\n")
+    
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: project_id is required to retrieve Implementation"
+        }
+    
+    project = await get_project(project_id)
+    if not project:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Project with ID {project_id} does not exist"
+        }
+    
+    try:
+        # Check if project has PRD and get content
+        implementation_content = await sync_to_async(lambda: project.implementation.implementation)()
+        return {
+            "is_notification": True,
+            "notification_type": "implementation",
+            "message_to_agent": f"Here is the existing version of the Implementation: {implementation_content} \n\n Please update this as needed."
+        }
+    except ProjectImplementation.DoesNotExist:
+        return {
+            "is_notification": False,
+            "message_to_agent": "No Implementation found for this project. Please create a Implementation first."
+        }
+    except Exception as e:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error retrieving Implementation: {str(e)}"
+        }
+
+
 async def save_design_schema(function_args, project_id):
     """
     Save the design schema for a project
@@ -812,7 +916,7 @@ async def checklist_tickets(function_args, project_id):
             "message_to_agent": f"Error creating checklist tickets: {str(e)}"
         }
 
-async def get_latest_ticket(project_id):
+async def get_next_ticket(project_id):
     """
     Get the latest ticket for a project
     """
@@ -900,13 +1004,20 @@ async def get_pending_tickets(project_id):
             "message_to_agent": f"Error: Project with ID {project_id} does not exist"
         }
     
-    project_list = await sync_to_async(
-        lambda: ProjectChecklist.objects.filter(project=project, status='open', role='agent').first()
+    project_tickets = await sync_to_async(
+        lambda: list(ProjectChecklist.objects.filter(project=project, status='open', role='agent').values('id', 'name', 'description', 'status', 'priority'))
     )()
 
-    if project_list:
-        # Access the fields directly without triggering related queries
-        message_content = f"Ticket ID: {project_list.id}, Name: {project_list.name}, Description: {project_list.description}, Status: {project_list.status}"
+    if project_tickets:
+        # Format all pending tickets with their details
+        ticket_details = []
+        for ticket in project_tickets:
+            ticket_details.append(
+                f"Ticket ID: {ticket['id']}, Name: {ticket['name']}, "
+                f"Description: {ticket['description']}, Status: {ticket['status']}, "
+                f"Priority: {ticket['priority']}"
+            )
+        message_content = "\n".join(ticket_details)
     else:
         message_content = "No pending tickets found"
 

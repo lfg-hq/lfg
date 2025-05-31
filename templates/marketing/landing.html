@@ -292,50 +292,6 @@
             transform: translateY(-3px);
         }
 
-        /* Floating elements */
-        .floating-elements {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 1;
-        }
-
-        .floating-element {
-            position: absolute;
-            width: 60px;
-            height: 60px;
-            background: linear-gradient(135deg, var(--primary-purple), var(--neon-purple));
-            border-radius: 50%;
-            opacity: 0.1;
-            animation: float 6s ease-in-out infinite;
-        }
-
-        .floating-element:nth-child(1) {
-            top: 20%;
-            left: 10%;
-            animation-delay: 0s;
-        }
-
-        .floating-element:nth-child(2) {
-            top: 60%;
-            right: 15%;
-            animation-delay: 2s;
-        }
-
-        .floating-element:nth-child(3) {
-            bottom: 30%;
-            left: 20%;
-            animation-delay: 4s;
-        }
-
-        @keyframes float {
-            0%, 100% { transform: translateY(0px) rotate(0deg); }
-            50% { transform: translateY(-20px) rotate(180deg); }
-        }
-
         /* Features Section */
         .features {
             padding: 6rem 2rem;
@@ -765,11 +721,6 @@
 
     <!-- Hero Section -->
     <section class="hero">
-        <div class="floating-elements">
-            <div class="floating-element"></div>
-            <div class="floating-element"></div>
-            <div class="floating-element"></div>
-        </div>
         <div class="hero-content">
             <div class="hero-badge">
                 <i class="fas fa-rocket"></i>
@@ -1011,28 +962,17 @@
                 <a href="#features">Features</a>
                 <a href="#agents">AI Agents</a>
                 <a href="#customization">Customization</a>
-                <a href="#">Pricing</a>
-                <a href="#">Roadmap</a>
+                <a href="https://github.com/yourusername/lfg" target="_blank">GitHub</a>
             </div>
             <div class="footer-section">
-                <h3>Developers</h3>
-                <a href="#">Documentation</a>
-                <a href="#">API Reference</a>
-                <a href="#">GitHub</a>
-                <a href="#">Contributing</a>
-                <a href="#">Community</a>
-            </div>
-            <div class="footer-section">
-                <h3>Company</h3>
-                <a href="#">About</a>
-                <a href="#">Blog</a>
-                <a href="#">Careers</a>
+                <h3>Support</h3>
+                <a href="#get-started">Get Started</a>
+                <a href="https://github.com/yourusername/lfg/issues" target="_blank">Report Issue</a>
                 <a href="#">Contact</a>
-                <a href="#">Privacy Policy</a>
             </div>
         </div>
         <div class="footer-bottom">
-            <p>&copy; 2024 LFG Platform. Open source and built with ❤️ by the community.</p>
+            <p>&copy; 2025 LFG 🚀 Project. Forever open source.</p>
         </div>
     </footer>
 

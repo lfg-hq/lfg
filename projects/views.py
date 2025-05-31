@@ -2,7 +2,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.contrib import messages
-from .models import Project, ProjectFeature, ProjectPersona, ProjectPRD, ProjectDesignSchema, ProjectTickets, ProjectChecklist
+from .models import Project, ProjectFeature, ProjectPersona, ProjectPRD, ProjectImplementation, ProjectDesignSchema, ProjectTickets, ProjectChecklist
 from django.views.decorators.http import require_POST
 from django.core.exceptions import PermissionDenied
 
@@ -234,4 +234,25 @@ def project_terminal(request, project_id):
     }
     
     return render(request, 'projects/terminal.html', context)
+
+@login_required
+def project_implementation_api(request, project_id):
+    """API view to get implementation for a project"""
+    project = get_object_or_404(Project, id=project_id, owner=request.user)
+    
+    # Get the implementation or create it if it doesn't exist
+    implementation, created = ProjectImplementation.objects.get_or_create(
+        project=project,
+        defaults={'implementation': ''}  # Default empty content if we're creating a new implementation
+    )
+    
+    # Convert to JSON-serializable format
+    implementation_data = {
+        'id': implementation.id,
+        'content': implementation.implementation,
+        'title': 'Implementation Plan',
+        'updated_at': implementation.updated_at.strftime('%Y-%m-%d %H:%M') if implementation.updated_at else None
+    }
+    
+    return JsonResponse(implementation_data)
 

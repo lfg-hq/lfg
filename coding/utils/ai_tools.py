@@ -30,6 +30,37 @@ get_prd = {
     }
 }
 
+save_implementation = {
+    "type": "function",
+    "function": {
+        "name": "save_implementation",
+        "description": "Save the implementation details and technical specifications for the project in Markdown format. This could be an updated implementation document",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "implementation": {
+                    "type": "string",
+                    "description": "A detailed implementation document in markdown format containing technical specifications, architecture, and implementation details"
+                }
+            },
+            "required": ["implementation"],
+            "additionalProperties": False,
+        }
+    }
+}
+
+get_implementation = {
+    "type": "function",
+    "function": {
+        "name": "get_implementation",
+        "description": "Call this function to check if implementation document already exists. If it does, it will return the implementation details",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
+    }
+}
+
 save_features = {
     "type": "function",
     "function": {
@@ -206,11 +237,11 @@ update_checklist_ticket = {
     }
 }
 
-get_latest_ticket = {
+get_next_ticket = {
     "type": "function",
     "function": {
-        "name": "get_latest_ticket",
-        "description": "Call this function to get the latest ticket for the project",
+        "name": "get_next_ticket",
+        "description": "Call this function to get the next available ticket for the project",
     }
 }
 
@@ -325,6 +356,12 @@ get_github_access_token = {
 
 # tools = [save_prd, get_prd, save_features, save_personas, design_schema, generate_tickets, write_code_file, read_code_file]
 
-tools_code = [save_prd, get_prd, execute_command, start_server, get_github_access_token, checklist_tickets, update_checklist_ticket, get_latest_ticket, get_pending_tickets]
+tools_code = [save_prd, get_prd, execute_command, start_server, \
+              get_github_access_token, \
+              checklist_tickets, update_checklist_ticket, \
+              get_next_ticket, get_pending_tickets, \
+              save_implementation, get_implementation]
+
 tools_product = [save_prd, get_prd, save_features, save_personas, extract_features, extract_personas, design_schema, generate_tickets]
+
 tools_design = [get_prd, execute_command, start_server, get_github_access_token]

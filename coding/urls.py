@@ -1,8 +1,18 @@
 from django.urls import path
 from . import views
+from django.conf import settings
+
+if settings.ENVIRONMENT == 'local':
+    editor_view = views.editor_local
+elif settings.ENVIRONMENT == 'prod':
+    editor_view = views.editor
+else:
+    editor_view = views.editor
 
 urlpatterns = [
-    path('editor/', views.editor, name='editor'),
+    path('editor/', editor_view, name='editor'),
+    # path('editor-local/', views.editor_local, name='editor_local'),
+    path('open-local-editor/', views.open_local_editor, name='open_local_editor'),
     path('get_file_tree/', views.get_file_tree, name='get_file_tree'),
     path('get_file_content/', views.get_file_content, name='get_file_content'),
     path('save_file/', views.save_file, name='save_file'),

@@ -147,8 +147,8 @@ CORS_ALLOW_ALL_ORIGINS = True
 X_FRAME_OPTIONS = 'SAMEORIGIN'  # Allow pages to be displayed in frames on the same origin
 
 # AI Provider Selection Feature
-AI_PROVIDER_DEFAULT = 'openai'  # Default provider 
-# AI_PROVIDER_DEFAULT = 'anthropic'  # Alternate provider 
+# AI_PROVIDER_DEFAULT = 'openai'  # Default provider 
+AI_PROVIDER_DEFAULT = 'anthropic'  # Alternate provider 
 
 # Kubernetes SSH server settings
 K8S_SSH_HOST = os.environ.get('K8S_SSH_HOST', '127.0.0.1')
@@ -194,4 +194,4 @@ K8S_DEFAULT_NAMESPACE = "lfg"
 SSH_USERNAME=os.getenv('SSH_USERNAME', 'root')
 SSH_KEY_STRING=os.getenv('SSH_KEY_STRING', None)
 
-ENVIRONMENT = os.getenv('ENVIRONMENT', 'local')
+ENVIRONMENT = os.getenv('environment', 'local')

@@ -289,6 +289,92 @@ document.addEventListener('DOMContentLoaded', function() {
         },
         
         /**
+         * Load implementation from the API for the current project
+         * @param {number} projectId - The ID of the current project
+         */
+        loadImplementation: function(projectId) {
+            console.log(`[ArtifactsLoader] loadImplementation called with project ID: ${projectId}`);
+            
+            if (!projectId) {
+                console.warn('[ArtifactsLoader] No project ID provided for loading implementation');
+                return;
+            }
+            
+            // Get implementation tab content element
+            const implementationTab = document.getElementById('implementation');
+            if (!implementationTab) {
+                console.warn('[ArtifactsLoader] Implementation tab element not found');
+                return;
+            }
+            
+            // Show loading state
+            console.log('[ArtifactsLoader] Showing loading state for implementation');
+            implementationTab.innerHTML = '<div class="loading-state"><div class="spinner"></div><div>Loading implementation...</div></div>';
+            
+            // Fetch implementation from API
+            const url = `/projects/${projectId}/api/implementation/`;
+            console.log(`[ArtifactsLoader] Fetching implementation from API: ${url}`);
+            
+            fetch(url)
+                .then(response => {
+                    console.log(`[ArtifactsLoader] Implementation API response received, status: ${response.status}`);
+                    if (!response.ok) {
+                        throw new Error(`Network response was not ok: ${response.status} ${response.statusText}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('[ArtifactsLoader] Implementation API data received:', data);
+                    // Process implementation data
+                    const implementationContent = data.content || '';
+                    
+                    if (!implementationContent) {
+                        // Show empty state if no implementation found
+                        console.log('[ArtifactsLoader] No implementation found, showing empty state');
+                        implementationTab.innerHTML = `
+                            <div class="empty-state">
+                                <div class="empty-state-icon">
+                                    <i class="fas fa-code"></i>
+                                </div>
+                                <div class="empty-state-text">
+                                    No implementation plan available yet.
+                                </div>
+                            </div>
+                        `;
+                        return;
+                    }
+                    
+                    // Render implementation content with markdown
+                    implementationTab.innerHTML = `
+                        <div class="implementation-container">
+                            <div class="implementation-header">
+                                <h2>${data.title || 'Implementation Plan'}</h2>
+                                <div class="implementation-meta">
+                                    ${data.updated_at ? `<span>Last updated: ${data.updated_at}</span>` : ''}
+                                </div>
+                            </div>
+                            <div class="implementation-content markdown-content">
+                                ${typeof marked !== 'undefined' ? marked.parse(implementationContent) : implementationContent}
+                            </div>
+                        </div>
+                    `;
+                })
+                .catch(error => {
+                    console.error('Error fetching implementation:', error);
+                    implementationTab.innerHTML = `
+                        <div class="error-state">
+                            <div class="error-state-icon">
+                                <i class="fas fa-exclamation-triangle"></i>
+                            </div>
+                            <div class="error-state-text">
+                                Error loading implementation. Please try again.
+                            </div>
+                        </div>
+                    `;
+                });
+        },
+        
+        /**
          * Load tickets from the API for the current project
          * @param {number} projectId - The ID of the current project
          */
@@ -1174,6 +1260,9 @@ document.addEventListener('DOMContentLoaded', function() {
             case 'prd':
                 window.ArtifactsLoader.loadPRD(projectId);
                 break;
+            case 'implementation':
+                window.ArtifactsLoader.loadImplementation(projectId);
+                break;
             case 'features':
                 window.ArtifactsLoader.loadFeatures(projectId);
                 break;
@@ -1282,4 +1371,19 @@ document.addEventListener('DOMContentLoaded', function() {
         
         console.log(`[ArtifactsLoader] Status toggled to: ${newStatus}`);
     };
+
+    // Auto-load content for the initially active tab when page loads
+    setTimeout(() => {
+        const activeTab = document.querySelector('.tab-button.active');
+        if (activeTab) {
+            const activeTabId = activeTab.getAttribute('data-tab');
+            const activePane = document.getElementById(activeTabId);
+            
+            // Check if the active pane has empty state and load data if needed
+            if (activePane && activePane.querySelector('.empty-state')) {
+                console.log(`[ArtifactsLoader] Auto-loading data for initially active tab: ${activeTabId}`);
+                loadTabData(activeTabId);
+            }
+        }
+    }, 100); // Small delay to ensure DOM is fully ready
 });

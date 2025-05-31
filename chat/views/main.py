@@ -8,7 +8,6 @@ from django.views.decorators.http import require_http_methods
 from chat.models import Conversation, Message, AgentRole, ModelSelection
 import markdown
 from django.conf import settings
-from chat.utils.ai_providers import AIProvider
 from django.contrib.auth.decorators import login_required
 from projects.models import Project
 from django.utils.decorators import method_decorator
@@ -28,26 +27,8 @@ def project_chat(request, project_id):
     """Create a new conversation linked to a project and redirect to the chat interface."""
     project = get_object_or_404(Project, id=project_id, owner=request.user)
     
-    # Create a new conversation
-    # conversation = Conversation.objects.create(
-    #     user=request.user,
-    #     title=f"Chat for {project.name}"
-    # )
-    
-    # # Link the conversation to the project
-    # project.conversations.add(conversation)
-    # project.save()
-    
-    # Add an initial system message that mentions the project
-    # Message.objects.create(
-    #     conversation=conversation,
-    #     role='system',
-    #     content=f""
-    # )
-    
     # Redirect to the chat interface with this conversation open
     context = {
-        # 'conversation_id': conversation.id,
         'project': project,
         'project_id': project.id
     }

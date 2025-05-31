@@ -1,0 +1,135 @@
+{% extends 'coding/base_code.html' %}
+
+
+{% block title %}Local Code Editor - LFG{% endblock %}
+
+{% block content %}
+<div class="projects-container">
+    <div class="page-header">
+        <h1 class="page-title">
+            Open in Your Local Code Editor
+        </h1>
+        
+        <div style="margin-top: 15px; padding: 12px; background: rgba(255,255,255,0.1); border-radius: 8px; border: 1px solid rgba(255,255,255,0.2);">
+            <strong>Workspace:</strong> <code style="background: rgba(255,255,255,0.15); padding: 4px 8px; border-radius: 4px; font-family: 'Courier New', monospace;">{{ workspace_path }}</code>
+        </div>
+    </div>
+
+    {% if has_editors %}
+        <div class="grid grid-2">
+            {% for editor in detected_editors %}
+                <div class="card project-card" style="text-align: center;">
+                    <div class="card-content">
+                        <h3 style="margin-bottom: 10px;">{{ editor.name }}</h3>
+                        <p class="text-muted" style="margin-bottom: 20px;">{{ editor.description }}</p>
+                        <button 
+                            onclick="openEditor('{{ editor.command|escapejs }}')"
+                            class="btn btn-primary"
+                            style="width: 100%;"
+                        >
+                            Open {{ editor.name }}
+                        </button>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+
+    {% else %}
+        <div class="empty-state">
+            <div class="empty-state-icon">
+                <i class="fas fa-code"></i>
+            </div>
+            <h2 class="empty-state-title">No Code Editors Detected</h2>
+            <div class="empty-state-text">
+                We couldn't find any supported code editors. 
+                Install one of the following to get started:
+            </div>
+            
+            <div class="grid grid-2" style="margin: 20px 0;">
+                <a href="https://code.visualstudio.com/" target="_blank" class="card" style="text-decoration: none; text-align: center;">
+                    <div class="card-content">
+                        <h4>Visual Studio Code</h4>
+                        <p class="text-muted">Free, open-source code editor</p>
+                    </div>
+                </a>
+                
+                <a href="https://cursor.sh/" target="_blank" class="card" style="text-decoration: none; text-align: center;">
+                    <div class="card-content">
+                        <h4>Cursor</h4>
+                        <p class="text-muted">AI-powered code editor</p>
+                    </div>
+                </a>
+            </div>
+            
+            <div style="padding: 12px; background: rgba(255,255,255,0.1); border-radius: 6px; margin-top: 15px; border: 1px solid rgba(255,255,255,0.2);">
+                <strong>Note:</strong> After installing an editor, refresh this page to see it.
+            </div>
+        </div>
+    {% endif %}
+</div>
+
+<!-- Success/Error Messages -->
+<div id="message-container" style="position: fixed; top: 20px; right: 20px; z-index: 1000;"></div>
+
+<script>
+function openEditor(command) {
+    // Show loading state
+    showMessage('Opening editor...', 'info');
+    
+    fetch('{% url "open_local_editor" %}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify({
+            'command': command
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            showMessage(data.message, 'success');
+        } else {
+            showMessage(data.error || 'Failed to open editor', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showMessage('An error occurred while opening the editor', 'error');
+    });
+}
+
+function showMessage(message, type) {
+    const container = document.getElementById('message-container');
+    const messageDiv = document.createElement('div');
+    
+    let backgroundColor = '#007bff';
+    if (type === 'success') {
+        backgroundColor = '#28a745';
+    } else if (type === 'error') {
+        backgroundColor = '#dc3545';
+    }
+    
+    messageDiv.style.cssText = `
+        background: ${backgroundColor};
+        color: white;
+        padding: 12px 16px;
+        border-radius: 6px;
+        margin-bottom: 10px;
+        max-width: 300px;
+        font-size: 14px;
+    `;
+    messageDiv.textContent = message;
+    
+    container.appendChild(messageDiv);
+    
+    // Remove message after 5 seconds
+    setTimeout(() => {
+        if (messageDiv.parentNode) {
+            messageDiv.parentNode.removeChild(messageDiv);
+        }
+    }, 5000);
+}
+</script>
+{% endblock %} 

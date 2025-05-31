@@ -28,7 +28,8 @@ class AIProvider:
     def get_provider(provider_name, selected_model):
         """Factory method to get the appropriate provider"""
         providers = {
-            'openai': lambda: OpenAIProvider(selected_model),
+            # 'openai': lambda: OpenAIProvider(selected_model),
+            'anthropic': lambda: AnthropicProvider(selected_model),
         }
         provider_factory = providers.get(provider_name)
         if provider_factory:
@@ -338,3 +339,358 @@ class OpenAIProvider(AIProvider):
             yield chunk
             # Yield control back to the event loop periodically
             await asyncio.sleep(0)
+
+
+class AnthropicProvider(AIProvider):
+    """Anthropic Claude provider implementation"""
+    
+    def __init__(self, selected_model):
+        logger.debug(f"Selected model: {selected_model}")
+        
+        anthropic_api_key = os.getenv('ANTHROPIC_API_KEY')
+        
+        if selected_model == "claude_4_sonnet":
+            self.model = "claude-sonnet-4-20250514"
+        elif selected_model == "claude_4_opus":
+            self.model = "claude-opus-4-20250514"
+        elif selected_model == "claude_3.5_sonnet":
+            self.model = "claude-3-5-sonnet-20241022"
+        else:
+            # Default to claude-4-sonnet
+            self.model = "claude-sonnet-4-20250514"
+            
+        logger.debug(f"Using Claude model: {self.model}")
+        self.client = anthropic.AsyncAnthropic(api_key=anthropic_api_key)
+
+    def _convert_messages_to_claude_format(self, messages):
+        """Convert OpenAI format messages to Claude format"""
+        claude_messages = []
+        
+        for msg in messages:
+            role = msg["role"]
+            
+            if role == "system":
+                # Claude handles system messages differently
+                continue
+            elif role == "assistant":
+                claude_msg = {"role": "assistant", "content": []}
+                if msg.get("content"):
+                    claude_msg["content"].append({"type": "text", "text": msg["content"]})
+                if msg.get("tool_calls"):
+                    for tc in msg["tool_calls"]:
+                        claude_msg["content"].append({
+                            "type": "tool_use",
+                            "id": tc["id"],
+                            "name": tc["function"]["name"],
+                            "input": json.loads(tc["function"]["arguments"])
+                        })
+                claude_messages.append(claude_msg)
+            elif role == "user":
+                claude_msg = {"role": "user", "content": [{"type": "text", "text": msg["content"]}]}
+                claude_messages.append(claude_msg)
+            elif role == "tool":
+                # Find the corresponding tool use in the previous assistant message
+                tool_result = {
+                    "type": "tool_result",
+                    "tool_use_id": msg["tool_call_id"],
+                    "content": msg["content"]
+                }
+                # Add to user message (Claude requires tool results in user messages)
+                if claude_messages and claude_messages[-1]["role"] == "user":
+                    claude_messages[-1]["content"].append(tool_result)
+                else:
+                    claude_messages.append({"role": "user", "content": [tool_result]})
+        
+        return claude_messages
+
+    def _convert_tools_to_claude_format(self, tools):
+        """Convert OpenAI format tools to Claude format"""
+        claude_tools = []
+        
+        for tool in tools:
+            if tool.get("type") == "function":
+                func = tool["function"]
+                claude_tool = {
+                    "name": func["name"],
+                    "description": func.get("description", ""),
+                    "input_schema": func.get("parameters", {"type": "object", "properties": {}, "required": []})
+                }
+                claude_tools.append(claude_tool)
+        
+        return claude_tools
+
+    async def generate_stream(self, messages, project_id, conversation_id, tools):
+        current_messages = list(messages) # Work on a copy
+
+        while True: # Loop to handle potential multi-turn tool calls
+            try:
+                # Convert messages and tools to Claude format
+                claude_messages = self._convert_messages_to_claude_format(current_messages)
+                claude_tools = self._convert_tools_to_claude_format(tools)
+                
+                # Extract system message if present
+                system_message = None
+                for msg in current_messages:
+                    if msg["role"] == "system":
+                        system_message = msg["content"]
+                        break
+                
+                params = {
+                    "model": self.model,
+                    "messages": claude_messages,
+                    "max_tokens": 4096,
+                    "tools": claude_tools,
+                    "tool_choice": {"type": "auto"}
+                }
+                
+                if system_message:
+                    params["system"] = system_message
+                
+                logger.debug(f"Making Claude API call with {len(claude_messages)} messages.")
+                
+                # Variables for this specific API call
+                tool_calls_requested = [] # Stores {id, function_name, function_args_str}
+                full_assistant_message = {"role": "assistant", "content": None, "tool_calls": []} # To store the complete assistant turn
+                current_tool_use = None
+                current_tool_args = ""
+
+                logger.debug("New Loop!!")
+                
+                # --- Process the stream from the API --- 
+                async with self.client.messages.stream(**params) as stream:
+                    async for event in stream:
+                        if event.type == "content_block_start":
+                            if event.content_block.type == "text":
+                                # Text content block started
+                                pass
+                            elif event.content_block.type == "tool_use":
+                                # Tool use block started
+                                current_tool_use = {
+                                    "id": event.content_block.id,
+                                    "type": "function",
+                                    "function": {
+                                        "name": event.content_block.name,
+                                        "arguments": ""
+                                    }
+                                }
+                                current_tool_args = ""
+                                
+                                # Send early notification
+                                function_name = event.content_block.name
+                                notification_type = None
+                                if function_name == "extract_features":
+                                    notification_type = "features"
+                                elif function_name == "extract_personas":
+                                    notification_type = "personas"
+                                elif function_name == "start_server":
+                                    notification_type = "start_server"
+                                elif function_name == "execute_command":
+                                    notification_type = "execute_command"
+                                
+                                if notification_type:
+                                    logger.debug(f"SENDING EARLY NOTIFICATION FOR {function_name}")
+                                    early_notification = {
+                                        "is_notification": True,
+                                        "notification_type": notification_type,
+                                        "early_notification": True,
+                                        "function_name": function_name,
+                                        "notification_marker": "__NOTIFICATION__"
+                                    }
+                                    notification_json = json.dumps(early_notification)
+                                    logger.debug(f"Early notification sent: {notification_json}")
+                                    yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                        
+                        elif event.type == "content_block_delta":
+                            if event.delta.type == "text_delta":
+                                # Stream text content
+                                text = event.delta.text
+                                yield text
+                                if full_assistant_message["content"] is None:
+                                    full_assistant_message["content"] = ""
+                                full_assistant_message["content"] += text
+                            elif event.delta.type == "input_json_delta":
+                                # Accumulate tool arguments
+                                if current_tool_use:
+                                    current_tool_args += event.delta.partial_json
+                        
+                        elif event.type == "content_block_stop":
+                            if current_tool_use:
+                                # Finalize tool use
+                                current_tool_use["function"]["arguments"] = current_tool_args or "{}"
+                                tool_calls_requested.append(current_tool_use)
+                                current_tool_use = None
+                                current_tool_args = ""
+                        
+                        elif event.type == "message_stop":
+                            # Message completed
+                            stop_reason = event.message.stop_reason
+                            logger.debug(f"Stop Reason: {stop_reason}")
+                            
+                            if stop_reason == "tool_use" and tool_calls_requested:
+                                # Build the assistant message
+                                full_assistant_message["tool_calls"] = tool_calls_requested
+                                
+                                # Remove the content field if it was just tool calls
+                                if full_assistant_message["content"] is None:
+                                    full_assistant_message.pop("content")
+                                
+                                # Append to the running conversation history
+                                current_messages.append(full_assistant_message)
+                                
+                                # --- Execute Tools and Prepare Next Call --- 
+                                tool_results_messages = []
+                                
+                                # Execute tools in parallel
+                                tool_tasks = []
+                                for tool_call_to_execute in tool_calls_requested:
+                                    task = self._execute_tool(
+                                        tool_call_to_execute,
+                                        project_id,
+                                        conversation_id
+                                    )
+                                    tool_tasks.append(task)
+                                
+                                # Wait for all tools to complete
+                                tool_results = await asyncio.gather(*tool_tasks, return_exceptions=True)
+                                
+                                # Process results
+                                for i, (tool_call_to_execute, result) in enumerate(zip(tool_calls_requested, tool_results)):
+                                    tool_call_id = tool_call_to_execute["id"]
+                                    tool_call_name = tool_call_to_execute["function"]["name"]
+                                    
+                                    if isinstance(result, Exception):
+                                        # Handle exception
+                                        error_message = f"Error executing tool {tool_call_name}: {result}"
+                                        logger.error(f"{error_message}\n{traceback.format_exc()}")
+                                        result_content = f"Error: {error_message}"
+                                        notification_data = None
+                                    else:
+                                        result_content, notification_data, yielded_content = result
+                                        
+                                        # Yield any content that needs to be streamed
+                                        if yielded_content:
+                                            yield yielded_content
+                                    
+                                    # Append tool result message
+                                    tool_results_messages.append({
+                                        "role": "tool",
+                                        "tool_call_id": tool_call_id,
+                                        "content": f"Tool call {tool_call_name}() completed. {result_content}."
+                                    })
+                                    
+                                    # If we have notification data, yield it
+                                    if notification_data:
+                                        logger.debug("YIELDING NOTIFICATION DATA TO CONSUMER")
+                                        notification_json = json.dumps(notification_data)
+                                        logger.debug(f"Notification JSON: {notification_json}")
+                                        yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                
+                                current_messages.extend(tool_results_messages)
+                                # Continue the outer while loop to make the next API call
+                                break
+                            
+                            elif stop_reason in ["end_turn", "stop_sequence", "max_tokens"]:
+                                # Conversation finished naturally
+                                return
+                            else:
+                                logger.warning(f"Unhandled stop reason: {stop_reason}")
+                                return
+                
+                # If we broke out of the inner loop due to tool_use, continue
+                if tool_calls_requested:
+                    continue
+                else:
+                    # Stream ended without tool calls
+                    return
+
+            except Exception as e:
+                logger.error(f"Critical Error: {str(e)}\n{traceback.format_exc()}")
+                yield f"Error with Claude stream: {str(e)}"
+                return
+
+    async def _execute_tool(self, tool_call, project_id, conversation_id):
+        """Execute a single tool call and return results"""
+        tool_call_id = tool_call["id"]
+        tool_call_name = tool_call["function"]["name"]
+        tool_call_args_str = tool_call["function"]["arguments"]
+        
+        logger.debug(f"Executing Tool: {tool_call_name} (ID: {tool_call_id})")
+        logger.debug(f"Raw Args: {tool_call_args_str}")
+        
+        result_content = ""
+        notification_data = None
+        yielded_content = ""
+        
+        try:
+            # Handle empty arguments string
+            if not tool_call_args_str.strip():
+                parsed_args = {}
+                logger.debug("Empty arguments string, defaulting to empty object")
+            else:
+                parsed_args = json.loads(tool_call_args_str)
+                # Check for explanation
+                explanation = parsed_args.get("explanation", parsed_args.get("explaination", ""))
+                
+                if explanation:
+                    logger.debug(f"Found explanation: {explanation}")
+                    formatted_explanation = f"\n\n{explanation}\n\n"
+                    yielded_content = "*"
+            
+            # Execute the function
+            logger.debug(f"Calling app_functions with {tool_call_name}, {parsed_args}, {project_id}, {conversation_id}")
+            
+            tool_result = await app_functions(
+                tool_call_name, parsed_args, project_id, conversation_id
+            )
+            logger.debug(f"app_functions call successful for {tool_call_name}")
+            logger.debug(f"Tool Result: {tool_result}")
+            
+            # Send special notification for extraction functions
+            if tool_call_name in ["extract_features", "extract_personas"]:
+                notification_type = "features" if tool_call_name == "extract_features" else "personas"
+                logger.debug(f"FORCING NOTIFICATION FOR {tool_call_name}")
+                notification_data = {
+                    "is_notification": True,
+                    "notification_type": notification_type,
+                    "function_name": tool_call_name,
+                    "notification_marker": "__NOTIFICATION__"
+                }
+                logger.debug(f"Forced notification: {notification_data}")
+            
+            # Handle the result
+            if tool_result is None:
+                result_content = "The function returned no result."
+            elif isinstance(tool_result, dict) and tool_result.get("is_notification") is True:
+                logger.debug("NOTIFICATION DATA CREATED IN ANTHROPIC PROVIDER")
+                logger.debug(f"Tool result: {tool_result}")
+                
+                notification_data = {
+                    "is_notification": True,
+                    "notification_type": tool_result.get("notification_type", "features"),
+                    "notification_marker": "__NOTIFICATION__"
+                }
+                
+                logger.debug(f"Notification data to be yielded: {notification_data}")
+                result_content = str(tool_result.get("message_to_agent", ""))
+            else:
+                if isinstance(tool_result, str):
+                    result_content = tool_result
+                elif isinstance(tool_result, dict):
+                    result_content = str(tool_result.get("message_to_agent", ""))
+                else:
+                    result_content = str(tool_result) if tool_result is not None else ""
+            
+            logger.debug(f"Tool Success. Result: {result_content}")
+            
+        except json.JSONDecodeError as e:
+            error_message = f"Failed to parse JSON arguments: {e}. Args: {tool_call_args_str}"
+            logger.error(error_message)
+            result_content = f"Error: {error_message}"
+            notification_data = None
+        except Exception as e:
+            error_message = f"Error executing tool {tool_call_name}: {e}"
+            logger.error(f"{error_message}\n{traceback.format_exc()}")
+            result_content = f"Error: {error_message}"
+            notification_data = None
+        
+        return result_content, notification_data, yielded_content
