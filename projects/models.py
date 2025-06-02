@@ -119,8 +119,9 @@ class ProjectChecklist(models.Model):
     status = models.CharField(max_length=20, choices=(
         ('open', 'Open'),
         ('in_progress', 'In Progress'),
-        ('agent', 'Agent'),
-        ('closed', 'Closed'),
+        ('done', 'Done'),
+        ('failed', 'Failed'),
+        ('blocked', 'Blocked'),
     ), default='open')
     description = models.TextField()
     priority = models.CharField(max_length=20, choices=(
@@ -132,11 +133,37 @@ class ProjectChecklist(models.Model):
         ('agent', 'Agent'),
         ('user', 'User'),
     ), default='user')
+    
+    # Enhanced fields for detailed specifications
+    details = models.JSONField(default=dict, blank=True, 
+        help_text='Detailed specifications including files, technical requirements')
+    
+    # UI/UX specific fields
+    ui_requirements = models.JSONField(default=dict, blank=True,
+        help_text='UI/UX design specifications (layout, colors, typography, spacing, animations)')
+    component_specs = models.JSONField(default=dict, blank=True,
+        help_text='Component-level specifications (buttons, forms, modals, etc.)')
+    
+    # Implementation details
+    acceptance_criteria = models.JSONField(default=list, blank=True,
+        help_text='List of acceptance criteria for ticket completion')
+    dependencies = models.JSONField(default=list, blank=True,
+        help_text='List of ticket IDs or names this ticket depends on')
+    
+    # Execution metadata
+    complexity = models.CharField(max_length=20, choices=(
+        ('simple', 'Simple'),
+        ('medium', 'Medium'), 
+        ('complex', 'Complex'),
+    ), default='medium', help_text='Estimated complexity of the ticket')
+    requires_worktree = models.BooleanField(default=True,
+        help_text='Whether this ticket requires a git worktree for code changes')
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
     def __str__(self):
-        return f"{self.project.name} - Checklist"
+        return f"{self.project.name} - {self.name}"
     
 class ProjectCodeGeneration(models.Model):
     project = models.OneToOneField(Project, on_delete=models.CASCADE, related_name="code_generation")

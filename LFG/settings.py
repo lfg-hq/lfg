@@ -27,12 +27,14 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     'channels',
+    'django_q',
     'chat',
     'accounts',
     'marketing',
     'projects',
     'subscriptions',
     'coding',
+    'tasks',
 ]
 
 MIDDLEWARE = [
@@ -195,3 +197,106 @@ SSH_USERNAME=os.getenv('SSH_USERNAME', 'root')
 SSH_KEY_STRING=os.getenv('SSH_KEY_STRING', None)
 
 ENVIRONMENT = os.getenv('environment', 'local')
+
+# Django Q Configuration
+if ENVIRONMENT in ['production', 'staging']:
+    # Use Redis for production/staging
+    Q_CLUSTER = {
+        'name': 'LFG_Tasks',
+        'workers': 4,
+        'recycle': 500,
+        'timeout': 60,
+        'retry': 120,
+        'queue_limit': 50,
+        'bulk': 10,
+        'orm': 'default',
+        'redis': {
+            'host': os.getenv('REDIS_HOST', 'localhost'),
+            'port': int(os.getenv('REDIS_PORT', 6379)),
+            'db': int(os.getenv('REDIS_DB', 0)),
+            'password': os.getenv('REDIS_PASSWORD', None),
+        }
+    }
+else:
+    # Use Django ORM (SQLite) for local development
+    Q_CLUSTER = {
+        'name': 'LFG_Tasks_Local',
+        'workers': 2,
+        'recycle': 500,
+        'timeout': 60,
+        'retry': 120,
+        'queue_limit': 50,
+        'bulk': 10,
+        'orm': 'default',
+    }
+
+# Logging Configuration
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '[{levelname}] {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+            'datefmt': '%Y-%m-%d %H:%M:%S'
+        },
+        'simple': {
+            'format': '[{levelname}] {module}: {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'level': 'DEBUG',
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose'
+        },
+        'file': {
+            'level': 'DEBUG',
+            'class': 'logging.FileHandler',
+            'filename': BASE_DIR / 'debug.log',
+            'formatter': 'verbose'
+        },
+    },
+    'root': {
+        'handlers': ['console', 'file'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'channels': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'chat': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'coding': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'coding.utils': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'coding.utils.ai_providers': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'coding.utils.ai_functions': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+    },
+}

@@ -1025,6 +1025,41 @@ document.addEventListener('DOMContentLoaded', function() {
                             const isStatusHighlighted = filterStatus !== 'all' && (item.status || 'open') === filterStatus;
                             const isRoleHighlighted = filterRole !== 'all' && (item.role || 'user') === filterRole;
                             
+                            // Extract dependencies if available
+                            let dependenciesHtml = '';
+                            if (item.dependencies && item.dependencies.length > 0) {
+                                dependenciesHtml = `
+                                    <div class="card-dependencies">
+                                        <span class="dependencies-label"><i class="fas fa-link"></i> Dependencies:</span>
+                                        ${item.dependencies.map(dep => `<span class="dependency-tag">${dep}</span>`).join('')}
+                                    </div>
+                                `;
+                            }
+                            
+                            // Extract details if available
+                            let detailsPreview = '';
+                            if (item.details && Object.keys(item.details).length > 0) {
+                                // Show a preview of details
+                                const detailKeys = Object.keys(item.details);
+                                const previewKeys = detailKeys.slice(0, 2);
+                                detailsPreview = `
+                                    <div class="card-details-preview">
+                                        ${previewKeys.map(key => {
+                                            const value = item.details[key];
+                                            if (Array.isArray(value) && value.length > 0) {
+                                                return `<span class="detail-item"><i class="fas fa-info-circle"></i> ${key}: ${value.length} items</span>`;
+                                            } else if (typeof value === 'object' && value !== null) {
+                                                return `<span class="detail-item"><i class="fas fa-info-circle"></i> ${key}: ${Object.keys(value).length} properties</span>`;
+                                            } else if (value) {
+                                                return `<span class="detail-item"><i class="fas fa-info-circle"></i> ${key}</span>`;
+                                            }
+                                            return '';
+                                        }).filter(Boolean).join('')}
+                                        ${detailKeys.length > 2 ? `<span class="more-details">+${detailKeys.length - 2} more...</span>` : ''}
+                                    </div>
+                                `;
+                            }
+                            
                             itemsHTML += `
                                 <div class="checklist-card ${statusClass}" data-id="${item.id}">
                                     <div class="card-header">
@@ -1035,6 +1070,8 @@ document.addEventListener('DOMContentLoaded', function() {
                                         <div class="card-badges">
                                             <span class="priority-badge ${priorityClass} ${isStatusHighlighted ? 'filter-active' : ''}">${item.priority || 'Medium'}</span>
                                             <span class="role-badge ${roleClass} ${isRoleHighlighted ? 'filter-active' : ''}">${item.role || 'User'}</span>
+                                            ${item.complexity ? `<span class="complexity-badge ${item.complexity}">${item.complexity}</span>` : ''}
+                                            ${item.requires_worktree ? '<span class="worktree-badge"><i class="fas fa-code-branch"></i> Worktree</span>' : ''}
                                         </div>
                                     </div>
                                     
@@ -1042,6 +1079,8 @@ document.addEventListener('DOMContentLoaded', function() {
                                         <div class="card-description">
                                             ${item.description || 'No description provided.'}
                                         </div>
+                                        ${dependenciesHtml}
+                                        ${detailsPreview}
                                     </div>
                                     
                                     <div class="card-footer">
@@ -1056,6 +1095,9 @@ document.addEventListener('DOMContentLoaded', function() {
                                             </small>
                                         </div>
                                         <div class="card-actions">
+                                            <button class="action-btn view-details-btn" data-item-id="${item.id}" title="View Details">
+                                                <i class="fas fa-eye"></i>
+                                            </button>
                                             <button class="action-btn edit-btn" onclick="editChecklistItem(${item.id})" title="Edit">
                                                 <i class="fas fa-edit"></i>
                                             </button>
@@ -1079,6 +1121,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         // Add click handlers for opening drawer
                         console.log('[ArtifactsLoader] Adding click handlers to checklist items for drawer');
                         const checklistCards = checklistContent.querySelectorAll('.checklist-card');
+                        const viewDetailsButtons = checklistContent.querySelectorAll('.view-details-btn');
                         const checklistDrawer = document.getElementById('checklist-details-drawer');
                         const checklistDrawerOverlay = document.getElementById('checklist-drawer-overlay');
                         const closeChecklistDrawerBtn = document.getElementById('close-checklist-drawer-btn');
@@ -1108,6 +1151,111 @@ document.addEventListener('DOMContentLoaded', function() {
                                     // Get status display text
                                     const statusText = item.status ? item.status.replace('_', ' ').charAt(0).toUpperCase() + item.status.replace('_', ' ').slice(1) : 'Open';
                                     
+                                    // Build dependencies section
+                                    let dependenciesSection = '';
+                                    if (item.dependencies && item.dependencies.length > 0) {
+                                        dependenciesSection = `
+                                            <div class="drawer-section">
+                                                <h4 class="section-title">Dependencies</h4>
+                                                <div class="dependencies-list">
+                                                    ${item.dependencies.map(dep => `
+                                                        <div class="dependency-item">
+                                                            <i class="fas fa-link"></i> ${dep}
+                                                        </div>
+                                                    `).join('')}
+                                                </div>
+                                            </div>
+                                        `;
+                                    }
+                                    
+                                    // Build details section
+                                    let detailsSection = '';
+                                    if (item.details && Object.keys(item.details).length > 0) {
+                                        detailsSection = `
+                                            <div class="drawer-section">
+                                                <h4 class="section-title">Technical Details</h4>
+                                                <div class="details-content">
+                                                    ${Object.entries(item.details).map(([key, value]) => {
+                                                        let valueHtml = '';
+                                                        if (Array.isArray(value)) {
+                                                            if (value.length > 0) {
+                                                                valueHtml = `
+                                                                    <ul class="detail-list">
+                                                                        ${value.map(v => `<li>${typeof v === 'object' ? JSON.stringify(v, null, 2) : v}</li>`).join('')}
+                                                                    </ul>
+                                                                `;
+                                                            } else {
+                                                                valueHtml = '<em>Empty list</em>';
+                                                            }
+                                                        } else if (typeof value === 'object' && value !== null) {
+                                                            valueHtml = `<pre class="detail-object">${JSON.stringify(value, null, 2)}</pre>`;
+                                                        } else {
+                                                            valueHtml = value || '<em>Not specified</em>';
+                                                        }
+                                                        
+                                                        return `
+                                                            <div class="detail-item">
+                                                                <h5 class="detail-key">${key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</h5>
+                                                                <div class="detail-value">${valueHtml}</div>
+                                                            </div>
+                                                        `;
+                                                    }).join('')}
+                                                </div>
+                                            </div>
+                                        `;
+                                    }
+                                    
+                                    // Build UI requirements section if available
+                                    let uiRequirementsSection = '';
+                                    if (item.ui_requirements && Object.keys(item.ui_requirements).length > 0) {
+                                        uiRequirementsSection = `
+                                            <div class="drawer-section">
+                                                <h4 class="section-title">UI Requirements</h4>
+                                                <div class="ui-requirements-content">
+                                                    ${Object.entries(item.ui_requirements).map(([key, value]) => `
+                                                        <div class="ui-requirement-item">
+                                                            <strong>${key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}:</strong> ${value}
+                                                        </div>
+                                                    `).join('')}
+                                                </div>
+                                            </div>
+                                        `;
+                                    }
+                                    
+                                    // Build component specs section if available
+                                    let componentSpecsSection = '';
+                                    if (item.component_specs && Object.keys(item.component_specs).length > 0) {
+                                        componentSpecsSection = `
+                                            <div class="drawer-section">
+                                                <h4 class="section-title">Component Specifications</h4>
+                                                <div class="component-specs-content">
+                                                    ${Object.entries(item.component_specs).map(([key, value]) => `
+                                                        <div class="component-spec-item">
+                                                            <strong>${key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}:</strong> ${value}
+                                                        </div>
+                                                    `).join('')}
+                                                </div>
+                                            </div>
+                                        `;
+                                    }
+                                    
+                                    // Build acceptance criteria section if available
+                                    let acceptanceCriteriaSection = '';
+                                    if (item.acceptance_criteria && item.acceptance_criteria.length > 0) {
+                                        acceptanceCriteriaSection = `
+                                            <div class="drawer-section">
+                                                <h4 class="section-title">Acceptance Criteria</h4>
+                                                <ul class="acceptance-criteria-list">
+                                                    ${item.acceptance_criteria.map(criteria => `
+                                                        <li class="criteria-item">
+                                                            <i class="fas fa-check-circle"></i> ${criteria}
+                                                        </li>
+                                                    `).join('')}
+                                                </ul>
+                                            </div>
+                                        `;
+                                    }
+                                    
                                     // Populate drawer with item details
                                     checklistDrawerContent.innerHTML = `
                                         <div class="drawer-section">
@@ -1117,6 +1265,8 @@ document.addEventListener('DOMContentLoaded', function() {
                                                 <p class="detail-row"><strong>Status:</strong> <span class="status-badge status-${item.status || 'open'}">${statusText}</span></p>
                                                 <p class="detail-row"><strong>Priority:</strong> <span class="priority-badge ${(item.priority || 'medium').toLowerCase()}">${item.priority || 'Medium'}</span></p>
                                                 <p class="detail-row"><strong>Role:</strong> <span class="role-badge ${(item.role || 'user').toLowerCase()}">${item.role || 'User'}</span></p>
+                                                ${item.complexity ? `<p class="detail-row"><strong>Complexity:</strong> <span class="complexity-badge ${item.complexity}">${item.complexity}</span></p>` : ''}
+                                                ${item.requires_worktree !== undefined ? `<p class="detail-row"><strong>Requires Worktree:</strong> ${item.requires_worktree ? 'Yes' : 'No'}</p>` : ''}
                                             </div>
                                         </div>
                                         
@@ -1126,6 +1276,12 @@ document.addEventListener('DOMContentLoaded', function() {
                                                 ${item.description ? item.description.replace(/\n/g, '<br>') : 'No description provided.'}
                                             </div>
                                         </div>
+                                        
+                                        ${dependenciesSection}
+                                        ${detailsSection}
+                                        ${uiRequirementsSection}
+                                        ${componentSpecsSection}
+                                        ${acceptanceCriteriaSection}
                                         
                                         <div class="drawer-section">
                                             <h4 class="section-title">Timeline</h4>
@@ -1151,6 +1307,23 @@ document.addEventListener('DOMContentLoaded', function() {
                                     // Show the drawer
                                     checklistDrawer.classList.add('open');
                                     checklistDrawerOverlay.classList.add('active');
+                                }
+                            });
+                        });
+                        
+                        // Add click handlers for view details buttons
+                        viewDetailsButtons.forEach(button => {
+                            button.addEventListener('click', function(e) {
+                                e.stopPropagation(); // Prevent card click event
+                                const itemId = this.getAttribute('data-item-id');
+                                const item = checklist.find(i => i.id == itemId);
+                                
+                                if (item) {
+                                    // Trigger the same drawer opening logic
+                                    const card = this.closest('.checklist-card');
+                                    if (card) {
+                                        card.click();
+                                    }
                                 }
                             });
                         });

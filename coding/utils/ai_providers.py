@@ -139,6 +139,12 @@ class OpenAIProvider(AIProvider):
                                         notification_type = "start_server"
                                     elif function_name == "execute_command":
                                         notification_type = "execute_command"
+                                    elif function_name == "save_implementation":
+                                        notification_type = "implementation"
+                                    elif function_name == "get_implementation":
+                                        notification_type = "implementation"
+                                    elif function_name == "update_implementation":
+                                        notification_type = "implementation"
                                     
                                     # Send early notification if it's an extraction function
                                     if notification_type:
@@ -238,8 +244,14 @@ class OpenAIProvider(AIProvider):
                                     logger.debug(f"Tool Result: {tool_result}")
                                     
                                     # Send special notification for extraction functions regardless of result
-                                    if tool_call_name in ["extract_features", "extract_personas"]:
-                                        notification_type = "features" if tool_call_name == "extract_features" else "personas"
+                                    if tool_call_name in ["extract_features", "extract_personas", "save_implementation", "get_implementation", "update_implementation"]:
+                                        if tool_call_name == "extract_features":
+                                            notification_type = "features"
+                                        elif tool_call_name == "extract_personas":
+                                            notification_type = "personas"
+                                        else:
+                                            notification_type = "implementation"
+                                        
                                         logger.debug(f"FORCING NOTIFICATION FOR {tool_call_name}")
                                         notification_data = {
                                             "is_notification": True,
@@ -416,6 +428,10 @@ class AnthropicProvider(AIProvider):
                     "input_schema": func.get("parameters", {"type": "object", "properties": {}, "required": []})
                 }
                 claude_tools.append(claude_tool)
+                
+                # Log implementation-related tools
+                if func["name"] in ["save_implementation", "get_implementation"]:
+                    logger.debug(f"[AnthropicProvider] Added {func['name']} to Claude tools with description: {func.get('description', '')[:100]}...")
         
         return claude_tools
 
@@ -428,12 +444,23 @@ class AnthropicProvider(AIProvider):
                 claude_messages = self._convert_messages_to_claude_format(current_messages)
                 claude_tools = self._convert_tools_to_claude_format(tools)
                 
+                # Log available tools
+                logger.debug(f"Available tools for Claude: {[tool['name'] for tool in claude_tools]}")
+                
                 # Extract system message if present
                 system_message = None
                 for msg in current_messages:
                     if msg["role"] == "system":
                         system_message = msg["content"]
                         break
+                
+                # Log system message snippet to verify it contains implementation instructions
+                if system_message:
+                    logger.debug(f"System message snippet: {system_message[:200]}...")
+                    if "save_implementation" in system_message:
+                        logger.debug("System message contains save_implementation instructions")
+                    if "get_implementation" in system_message:
+                        logger.debug("System message contains get_implementation instructions")
                 
                 params = {
                     "model": self.model,
@@ -465,6 +492,7 @@ class AnthropicProvider(AIProvider):
                                 pass
                             elif event.content_block.type == "tool_use":
                                 # Tool use block started
+                                logger.debug(f"Tool use started: {event.content_block.name}")
                                 current_tool_use = {
                                     "id": event.content_block.id,
                                     "type": "function",
@@ -486,6 +514,12 @@ class AnthropicProvider(AIProvider):
                                     notification_type = "start_server"
                                 elif function_name == "execute_command":
                                     notification_type = "execute_command"
+                                elif function_name == "save_implementation":
+                                    notification_type = "implementation"
+                                elif function_name == "get_implementation":
+                                    notification_type = "implementation"
+                                elif function_name == "update_implementation":
+                                    notification_type = "implementation"
                                 
                                 if notification_type:
                                     logger.debug(f"SENDING EARLY NOTIFICATION FOR {function_name}")
@@ -591,9 +625,12 @@ class AnthropicProvider(AIProvider):
                             
                             elif stop_reason in ["end_turn", "stop_sequence", "max_tokens"]:
                                 # Conversation finished naturally
+                                logger.debug(f"[AnthropicProvider] Claude finished without using tools. Stop reason: {stop_reason}")
+                                if full_assistant_message["content"]:
+                                    logger.debug(f"[AnthropicProvider] Assistant response snippet: {full_assistant_message['content'][:100]}...")
                                 return
                             else:
-                                logger.warning(f"Unhandled stop reason: {stop_reason}")
+                                logger.warning(f"[AnthropicProvider] Unhandled stop reason: {stop_reason}")
                                 return
                 
                 # If we broke out of the inner loop due to tool_use, continue
@@ -614,8 +651,9 @@ class AnthropicProvider(AIProvider):
         tool_call_name = tool_call["function"]["name"]
         tool_call_args_str = tool_call["function"]["arguments"]
         
-        logger.debug(f"Executing Tool: {tool_call_name} (ID: {tool_call_id})")
-        logger.debug(f"Raw Args: {tool_call_args_str}")
+        logger.debug(f"[AnthropicProvider] Executing Tool: {tool_call_name} (ID: {tool_call_id})")
+        logger.debug(f"[AnthropicProvider] Project ID: {project_id}, Conversation ID: {conversation_id}")
+        logger.debug(f"[AnthropicProvider] Raw Args: {tool_call_args_str}")
         
         result_content = ""
         notification_data = None
@@ -637,17 +675,27 @@ class AnthropicProvider(AIProvider):
                     yielded_content = "*"
             
             # Execute the function
-            logger.debug(f"Calling app_functions with {tool_call_name}, {parsed_args}, {project_id}, {conversation_id}")
+            logger.debug(f"[AnthropicProvider] Calling app_functions with:")
+            logger.debug(f"  - tool_call_name: {tool_call_name}")
+            logger.debug(f"  - parsed_args: {parsed_args}")
+            logger.debug(f"  - project_id: {project_id}")
+            logger.debug(f"  - conversation_id: {conversation_id}")
             
             tool_result = await app_functions(
                 tool_call_name, parsed_args, project_id, conversation_id
             )
-            logger.debug(f"app_functions call successful for {tool_call_name}")
-            logger.debug(f"Tool Result: {tool_result}")
+            logger.debug(f"[AnthropicProvider] app_functions call successful for {tool_call_name}")
+            logger.debug(f"[AnthropicProvider] Tool Result: {tool_result}")
             
             # Send special notification for extraction functions
-            if tool_call_name in ["extract_features", "extract_personas"]:
-                notification_type = "features" if tool_call_name == "extract_features" else "personas"
+            if tool_call_name in ["extract_features", "extract_personas", "save_implementation", "get_implementation", "update_implementation"]:
+                if tool_call_name == "extract_features":
+                    notification_type = "features"
+                elif tool_call_name == "extract_personas":
+                    notification_type = "personas"
+                else:
+                    notification_type = "implementation"
+                
                 logger.debug(f"FORCING NOTIFICATION FOR {tool_call_name}")
                 notification_data = {
                     "is_notification": True,

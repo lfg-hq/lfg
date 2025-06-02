@@ -24,3 +24,5 @@ websocket-client>=1.6.0
 uvicorn[standard]==0.29.0
 docker==7.1.0
 python-git==2018.2.1
+django-q2==1.4.5
+redis>=4.0.0

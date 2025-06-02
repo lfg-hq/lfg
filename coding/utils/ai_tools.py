@@ -61,6 +61,34 @@ get_implementation = {
     }
 }
 
+update_implementation = {
+    "type": "function",
+    "function": {
+        "name": "update_implementation",
+        "description": "Update the existing implementation document by adding new sections or modifications. Updates are added to the top of the document with timestamps. Use this for incremental changes or additions to the implementation plan.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "update_type": {
+                    "type": "string",
+                    "enum": ["addition", "modification", "complete_rewrite"],
+                    "description": "Type of update: 'addition' for new sections, 'modification' for changes to existing content, 'complete_rewrite' for replacing entire document"
+                },
+                "update_content": {
+                    "type": "string",
+                    "description": "The update content in markdown format. For additions/modifications, this will be prepended to the existing document with a timestamp."
+                },
+                "update_summary": {
+                    "type": "string",
+                    "description": "Brief summary of what was updated or added"
+                }
+            },
+            "required": ["update_type", "update_content", "update_summary"],
+            "additionalProperties": False,
+        }
+    }
+}
+
 save_features = {
     "type": "function",
     "function": {
@@ -253,6 +281,59 @@ get_pending_tickets = {
     }
 }
 
+implement_ticket_async = {
+    "type": "function",
+    "function": {
+        "name": "implement_ticket_async",
+        "description": "Queue a ticket for asynchronous implementation using Django-Q. This allows parallel execution of multiple tickets.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "ticket_id": {
+                    "type": "integer",
+                    "description": "The ID of the ticket to implement"
+                }
+            },
+            "required": ["ticket_id"]
+        }
+    }
+}
+
+execute_tickets_in_parallel = {
+    "type": "function",
+    "function": {
+        "name": "execute_tickets_in_parallel",
+        "description": "Execute multiple tickets in parallel using Django-Q. Automatically groups tickets by priority and dependencies.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "max_workers": {
+                    "type": "integer",
+                    "description": "Maximum number of tickets to execute in parallel (default: 3)",
+                    "default": 3
+                }
+            }
+        }
+    }
+}
+
+get_ticket_execution_status = {
+    "type": "function",
+    "function": {
+        "name": "get_ticket_execution_status",
+        "description": "Get the execution status of tickets being processed by Django-Q",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "task_id": {
+                    "type": "string",
+                    "description": "Optional: specific Django-Q task ID to check. If not provided, returns all project ticket statuses."
+                }
+            }
+        }
+    }
+}
+
 generate_code = {
     "type": "function",
     "function": {
@@ -360,7 +441,9 @@ tools_code = [save_prd, get_prd, execute_command, start_server, \
               get_github_access_token, \
               checklist_tickets, update_checklist_ticket, \
               get_next_ticket, get_pending_tickets, \
-              save_implementation, get_implementation]
+              save_implementation, get_implementation, update_implementation, \
+              implement_ticket_async, execute_tickets_in_parallel, \
+              get_ticket_execution_status]
 
 tools_product = [save_prd, get_prd, save_features, save_personas, extract_features, extract_personas, design_schema, generate_tickets]
 

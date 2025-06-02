@@ -13,7 +13,14 @@ from projects.models import Project, ProjectFeature, ProjectPersona, \
                             ProjectCodeGeneration, ProjectChecklist, \
                             ProjectImplementation
 from coding.utils.prd_functions import analyze_features, analyze_personas, \
-                    design_schema, generate_tickets_per_feature 
+                    design_schema, generate_tickets_per_feature
+
+# Import Django-Q functions
+from .ai_django_q import (
+    implement_ticket_async,
+    execute_tickets_in_parallel,
+    get_ticket_execution_status
+) 
 
 from coding.docker.docker_utils import (
     Sandbox, 
@@ -176,6 +183,8 @@ async def app_functions(function_name, function_args, project_id, conversation_i
             return await save_implementation(function_args, project_id)
         case "get_implementation":
             return await get_implementation(project_id)
+        case "update_implementation":
+            return await update_implementation(function_args, project_id)
         case "save_features":
             return await save_features(project_id)
         case "save_personas":
@@ -221,6 +230,18 @@ async def app_functions(function_name, function_args, project_id, conversation_i
         
         case "get_github_access_token":
             return await get_github_access_token(project_id=project_id, conversation_id=conversation_id)
+        
+        case "implement_ticket_async":
+            ticket_id = function_args.get('ticket_id')
+            return await implement_ticket_async(ticket_id, project_id, conversation_id)
+        
+        case "execute_tickets_in_parallel":
+            max_workers = function_args.get('max_workers', 3)
+            return await execute_tickets_in_parallel(project_id, conversation_id, max_workers)
+        
+        case "get_ticket_execution_status":
+            task_id = function_args.get('task_id')
+            return await get_ticket_execution_status(project_id, task_id)
 
     return None
 
@@ -784,6 +805,100 @@ async def get_implementation(project_id):
             "message_to_agent": f"Error retrieving Implementation: {str(e)}"
         }
 
+async def update_implementation(function_args, project_id):
+    """
+    Update the implementation for a project by adding new sections or modifications
+    """
+    print(f"Update Implementation function called \n\n: {function_args}")
+    
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+    
+    validation_error = validate_function_args(function_args, ['update_type', 'update_content', 'update_summary'])
+    if validation_error:
+        return validation_error
+    
+    project = await get_project(project_id)
+    if not project:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Project with ID {project_id} does not exist"
+        }
+    
+    update_type = function_args.get('update_type', '')
+    update_content = function_args.get('update_content', '')
+    update_summary = function_args.get('update_summary', '')
+
+    if not update_content:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: Update content cannot be empty"
+        }
+
+    print(f"\n\n\nUpdate Type: {update_type}")
+    print(f"Update Summary: {update_summary}")
+
+    try:
+        # Get existing implementation or create new one
+        try:
+            implementation = await sync_to_async(lambda: project.implementation)()
+            existing_content = implementation.implementation
+        except ProjectImplementation.DoesNotExist:
+            # Create new implementation if it doesn't exist
+            implementation = await sync_to_async(ProjectImplementation.objects.create)(
+                project=project,
+                implementation=""
+            )
+            existing_content = ""
+        
+        # Format the update based on type
+        from datetime import datetime
+        timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+        
+        if update_type == "complete_rewrite":
+            # Replace entire document
+            new_content = update_content
+            action = "completely rewritten"
+        else:
+            # Add update to the top of the document
+            update_header = f"""# Implementation Update - {timestamp}
+**Update Type:** {update_type.replace('_', ' ').title()}
+**Summary:** {update_summary}
+
+---
+
+{update_content}
+
+---
+
+# Previous Implementation Content
+"""
+            if existing_content:
+                new_content = update_header + "\n" + existing_content
+            else:
+                new_content = update_header + "\n(No previous implementation content)"
+            
+            action = "updated with new " + ("additions" if update_type == "addition" else "modifications")
+        
+        # Save the updated implementation
+        await sync_to_async(lambda: (
+            setattr(implementation, 'implementation', new_content),
+            implementation.save()
+        )[1])()
+        
+        return {
+            "is_notification": True,
+            "notification_type": "implementation",
+            "message_to_agent": f"Implementation {action} successfully. The update has been added to the document with timestamp {timestamp}."
+        }
+        
+    except Exception as e:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error updating Implementation: {str(e)}"
+        }
+
 
 async def save_design_schema(function_args, project_id):
     """
@@ -893,22 +1008,35 @@ async def checklist_tickets(function_args, project_id):
         }
     
     try:
-        # Create tickets in bulk
-        await sync_to_async(lambda: [
-            ProjectChecklist.objects.create(
-                project=project,
-                name=ticket.get('name', ''),
-                description=ticket.get('description', ''),
-                priority=ticket.get('priority', 'medium'),
-                status='open',
-                role=ticket.get('role', 'agent')
-            ) for ticket in checklist_tickets if isinstance(ticket, dict)
-        ])()
+        # Create tickets with enhanced details
+        created_tickets = []
+        for ticket in checklist_tickets:
+            if isinstance(ticket, dict):
+                # Extract details from the ticket
+                details = ticket.get('details', {})
+                
+                new_ticket = await sync_to_async(ProjectChecklist.objects.create)(
+                    project=project,
+                    name=ticket.get('name', ''),
+                    description=ticket.get('description', ''),
+                    priority=ticket.get('priority', 'Medium'),
+                    status='open',
+                    role=ticket.get('role', 'agent'),
+                    # Enhanced fields
+                    details=details,
+                    ui_requirements=details.get('ui_requirements', {}),
+                    component_specs=details.get('component_specs', {}),
+                    acceptance_criteria=details.get('acceptance_criteria', []),
+                    dependencies=details.get('dependencies', []),
+                    complexity=details.get('complexity', 'medium'),
+                    requires_worktree=details.get('requires_worktree', True)
+                )
+                created_tickets.append(new_ticket.id)
         
         return {
             "is_notification": True,
             "notification_type": "checklist_tickets",
-            "message_to_agent": f"Checklist tickets have been successfully generated and saved in the database"
+            "message_to_agent": f"Successfully created {len(created_tickets)} detailed tickets with design specifications"
         }
     except Exception as e:
         return {
