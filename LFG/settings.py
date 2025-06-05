@@ -203,13 +203,17 @@ if ENVIRONMENT in ['production', 'staging']:
     # Use Redis for production/staging
     Q_CLUSTER = {
         'name': 'LFG_Tasks',
-        'workers': 4,
-        'recycle': 500,
-        'timeout': 60,
-        'retry': 120,
-        'queue_limit': 50,
-        'bulk': 10,
+        'workers': 1,  # Reduced to single worker to prevent timer conflicts
+        'recycle': 100,  # Reduced recycle count
+        'timeout': 30,   # Reduced timeout
+        'retry': 60,     # Reduced retry time
+        'queue_limit': 10,  # Reduced queue limit
+        'bulk': 1,       # Single task processing
         'orm': 'default',
+        'guard_cycle': 10,  # Longer guard cycle
+        'daemonize_workers': False,  # Disable daemon mode
+        'max_attempts': 1,
+        'sync': False,   # Keep async for production
         'redis': {
             'host': os.getenv('REDIS_HOST', 'localhost'),
             'port': int(os.getenv('REDIS_PORT', 6379)),
@@ -218,17 +222,18 @@ if ENVIRONMENT in ['production', 'staging']:
         }
     }
 else:
-    # Use Django ORM (SQLite) for local development
+    # Use Django ORM (SQLite) for local development with safer settings
     Q_CLUSTER = {
-        'name': 'LFG_Tasks_Local',
-        'workers': 2,
-        'recycle': 500,
-        'timeout': 60,
-        'retry': 120,
-        'queue_limit': 50,
-        'bulk': 10,
-        'orm': 'default',
-    }
+    'name': 'DjangORM',
+    'workers': 1,
+    'timeout': 90,
+    'retry': 120,
+    'queue_limit': 50,
+    'bulk': 10,
+    'orm': 'default',
+    'broker': 'django_q.brokers.orm.ORM',  # Explicitly set ORM broker
+    'sync': False,
+}
 
 # Logging Configuration
 LOGGING = {

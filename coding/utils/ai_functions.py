@@ -22,6 +22,9 @@ from .ai_django_q import (
     get_ticket_execution_status
 ) 
 
+from coding.utils.ai_tools import tools_ticket
+from coding.utils.task_prompt import get_task_implementaion_developer
+
 from coding.docker.docker_utils import (
     Sandbox, 
     get_or_create_sandbox,
@@ -179,8 +182,8 @@ async def app_functions(function_name, function_args, project_id, conversation_i
             return await save_prd(function_args, project_id)
         case "get_prd":
             return await get_prd(project_id)
-        case "save_implementation":
-            return await save_implementation(function_args, project_id)
+        case "create_implementation":
+            return await create_implementation(function_args, project_id)
         case "get_implementation":
             return await get_implementation(project_id)
         case "update_implementation":
@@ -231,17 +234,23 @@ async def app_functions(function_name, function_args, project_id, conversation_i
         case "get_github_access_token":
             return await get_github_access_token(project_id=project_id, conversation_id=conversation_id)
         
-        case "implement_ticket_async":
+        case "implement_ticket":
             ticket_id = function_args.get('ticket_id')
-            return await implement_ticket_async(ticket_id, project_id, conversation_id)
+            ticket_details = function_args.get('ticket_details')
+            implementation_plan = function_args.get('implementation_plan')
+            return await implement_ticket(ticket_id, project_id, conversation_id, ticket_details, implementation_plan)
+
+        # case "implement_ticket_async":
+        #     ticket_id = function_args.get('ticket_id')
+        #     return await implement_ticket_async(ticket_id, project_id, conversation_id)
         
-        case "execute_tickets_in_parallel":
-            max_workers = function_args.get('max_workers', 3)
-            return await execute_tickets_in_parallel(project_id, conversation_id, max_workers)
+        # case "execute_tickets_in_parallel":
+        #     max_workers = function_args.get('max_workers', 3)
+        #     return await execute_tickets_in_parallel(project_id, conversation_id, max_workers)
         
-        case "get_ticket_execution_status":
-            task_id = function_args.get('task_id')
-            return await get_ticket_execution_status(project_id, task_id)
+        # case "get_ticket_execution_status":
+        #     task_id = function_args.get('task_id')
+        #     return await get_ticket_execution_status(project_id, task_id)
 
     return None
 
@@ -707,7 +716,7 @@ async def get_prd(project_id):
             "message_to_agent": f"Error retrieving PRD: {str(e)}"
         }
 
-async def save_implementation(function_args, project_id):
+async def create_implementation(function_args, project_id):
     """
     Save the implementation for a project
     """
@@ -898,7 +907,6 @@ async def update_implementation(function_args, project_id):
             "is_notification": False,
             "message_to_agent": f"Error updating Implementation: {str(e)}"
         }
-
 
 async def save_design_schema(function_args, project_id):
     """
@@ -1701,4 +1709,77 @@ async def run_server_locally(command: str, project_id: int | str = None, convers
         "notification_type": "command_output",
         "message_to_agent": message + "\n\nProceed to next step",
     }
-    
+
+async def implement_ticket(ticket_id, project_id, conversation_id, ticket_details, implementation_plan):
+    """
+    Implement a specific ticket with all its requirements
+    """
+    try:
+        # Local import to avoid circular import issue
+        from coding.utils.ai_providers import AIProvider
+        
+        # Extract key details
+        ticket_name = ticket_details.get('name', 'Unknown')
+        requires_worktree = ticket_details.get('details', {}).get('requires_worktree', False)
+        
+        user_message = f"""
+        You are implementing ticket #{ticket_id}: {ticket_name}
+        Project: {project_id}
+        Requires Worktree: {requires_worktree}
+        
+        **Full Ticket Details:**
+        {json.dumps(ticket_details, indent=2)}
+        
+        **Implementation Instructions:**
+        1. Setup ticket tracking and worktree (if required) using execute_command
+        2. Get project context using get_prd() and get_implementation()
+        3. Write all files using git patch format with execute_command (see examples in your prompt)
+        4. Update .gitignore if needed
+        5. Follow UI/UX requirements precisely
+        6. Run tests using execute_command
+        7. Commit with: git commit -m "Implement ticket {ticket_id}: {ticket_name}"
+        
+        **Important:**
+        - Use git patch format for ALL file creation/modification
+        - Always use execute_command() for shell operations
+        - Focus only on this ticket's scope
+        
+        Begin implementation now.
+        """
+        
+        # Create messages list
+        messages = [
+            {"role": "system", "content": await get_task_implementaion_developer()},
+            {"role": "user", "content": user_message}
+        ]
+        
+        # Get the provider
+        provider = AIProvider.get_provider("anthropic", "claude_4_sonnet")
+        
+        # Collect the streaming response
+        full_content = ""
+        
+        async for chunk in provider.generate_stream(messages, project_id, conversation_id, tools_ticket):
+            if isinstance(chunk, str) and ("__NOTIFICATION__" in chunk):
+                continue
+            full_content += chunk
+        
+        return {
+            "is_notification": True,
+            "notification_type": "ticket_complete",
+            "message_to_agent": f"Ticket {ticket_id} ({ticket_name}) implementation completed",
+            "details": {
+                "ticket_id": ticket_id,
+                "ticket_name": ticket_name,
+                "branch": f"ticket-{ticket_id}" if requires_worktree else "main"
+            }
+        }
+        
+    except Exception as e:
+        print(f"Error implementing ticket {ticket_id}: {str(e)}")
+        return {
+            "is_notification": True,
+            "notification_type": "ticket_error",
+            "message_to_agent": f"Error implementing ticket {ticket_id}: {str(e)}",
+            "error": str(e)
+        }

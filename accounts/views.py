@@ -49,7 +49,16 @@ def auth(request):
             if login_form.is_valid():
                 user = login_form.get_user()
                 login(request, user)
-                messages.success(request, f'Welcome back!')
+                
+                # Check if user has required API keys set up
+                profile = user.profile
+                openai_key_missing = not bool(profile.openai_api_key)
+                anthropic_key_missing = not bool(profile.anthropic_api_key)
+                
+                # If both OpenAI and Anthropic keys are missing, redirect to integrations
+                if openai_key_missing and anthropic_key_missing:
+                    messages.success(request, 'Please set up OpenAI or Anthropic API keys to get started.')
+                    return redirect('integrations')
                 
                 # Redirect to the chat page or next parameter if provided
                 next_url = request.GET.get('next')
