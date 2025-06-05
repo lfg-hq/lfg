@@ -844,13 +844,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
             
-            // Add a visual "calling function" separator
-            const separator = document.createElement('div');
-            separator.className = 'function-call-separator';
-            separator.innerHTML = `<div class="separator-line"></div>
-                                  <div class="separator-text">Calling early notification function: ${data.function_name}</div>
-                                  <div class="separator-line"></div>`;
-            messageContainer.appendChild(separator);
+            
             scrollToBottom();
             
             return;
@@ -883,8 +877,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 toolExecutionIndicator.remove();
             }
             
-            // Show success message
-            showFunctionCallSuccess(functionName, data.notification_type);
             
             // Check if we have a valid project ID from somewhere
             if (!currentProjectId) {
@@ -1868,9 +1860,6 @@ document.addEventListener('DOMContentLoaded', () => {
         messageContainer.appendChild(successElement);
         scrollToBottom();
         
-        // Also add a permanent mini indicator
-        addFunctionCallMiniIndicator(functionName, type);
-        
         // Remove after a delay
         setTimeout(() => {
             if (successElement.parentNode) {
@@ -2665,7 +2654,6 @@ document.addEventListener('DOMContentLoaded', () => {
         // After a delay, show the success message
         setTimeout(() => {
             const type = fn.includes('features') ? 'features' : 'personas';
-            showFunctionCallSuccess(fn, type);
             
             // Add a simulated response message
             setTimeout(() => {

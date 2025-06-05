@@ -86,8 +86,9 @@ async def execute_tool_call(tool_call_name, tool_call_args_str, project_id, conv
             
             if explanation:
                 logger.debug(f"Found explanation: {explanation}")
-                # Return "*" to be yielded for explanations
-                yielded_content = "*"
+                # Return the actual explanation to be yielded with formatting
+                # Add a newline before and after for better readability
+                yielded_content = f"\n*{explanation}*\n"
         
         # Log the function call with clean arguments
         logger.debug(f"Calling app_functions with {tool_call_name}, {parsed_args}, {project_id}, {conversation_id}")
