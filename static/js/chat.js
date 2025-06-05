@@ -710,6 +710,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // Show a function call indicator in the UI for the function that generated this notification
             const functionName = data.notification_type === 'features' ? 'extract_features' : 
                                data.notification_type === 'personas' ? 'extract_personas' : 
+                               data.notification_type === 'execute_command' ? 'execute_command' : 
+                               data.notification_type === 'start_server' ? 'start_server' : 
+                               data.notification_type === 'implementation' ? 'save_implementation' : 
                                data.function_name || data.notification_type;
             
             // Remove any previous function call indicators
@@ -1635,6 +1638,18 @@ document.addEventListener('DOMContentLoaded', () => {
             'get_prd': {
                 description: 'Retrieving existing PRD for this project...',
                 successMessage: 'Existing PRD has been loaded from the database.'
+            },
+            'execute_command': {
+                description: 'Executing a command...',
+                successMessage: 'Command executed successfully.'
+            },
+            'start_server': {
+                description: 'Starting the server...',
+                successMessage: 'Server started successfully.'
+            },
+            'save_implementation': {
+                description: 'Saving implementation...',
+                successMessage: 'Implementation saved successfully.'
             }
         };
         
@@ -1689,7 +1704,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 
                 // Only show for known functions to avoid false positives
-                const knownFunctions = ['extract_features', 'extract_personas', 'get_features', 'get_personas', 'extract_prd', 'get_prd'];
+                const knownFunctions = ['extract_features', 'extract_personas', 'get_features', 'get_personas', 'extract_prd', 'get_prd', 'execute_command', 'start_server', 'save_implementation'];
                 
                 if (knownFunctions.includes(functionName)) {
                     showFunctionCallIndicator(functionName);
@@ -2006,7 +2021,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.testFunctionCall = function(functionName) {
         console.log('Testing function call indicator for:', functionName);
         
-        const validFunctions = ['extract_features', 'extract_personas', 'get_features', 'get_personas'];
+        const validFunctions = ['extract_features', 'extract_personas', 'get_features', 'get_personas', 'execute_command', 'start_server', 'save_implementation'];
         const fn = validFunctions.includes(functionName) ? functionName : validFunctions[0];
         
         // Add a simulated assistant message first

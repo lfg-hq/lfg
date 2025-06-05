@@ -8,23 +8,28 @@ body {
 main {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 2rem 1rem;
+  padding: 1rem 1rem;
 }
 
 h1 {
-  font-size: 2rem;
+  font-size: 1.5rem;
   font-weight: bold;
   margin-bottom: 1.5rem;
   color: #ffffff;
 }
 
+.section-divider {
+  border-top: 1px solid #333;
+  margin-bottom: 2rem;
+  padding-top: 1rem;
+}
+
 .section-heading {
-  font-size: 1.5rem;
-  font-weight: 600;
-  margin-bottom: 1rem;
-  margin-top: 2rem;
+  font-size: 1rem;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+  margin-top: 1rem;
   color: #a78bfa;
-  border-bottom: 1px solid #333;
   padding-bottom: 0.5rem;
 }
 
@@ -35,17 +40,18 @@ h1 {
 .integrations-grid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 1.5rem;
+  gap: 2rem;
+  margin-bottom: 3rem;
 }
 
 @media (min-width: 768px) {
   .integrations-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(3, 1fr);
   }
   
   .repository-section {
     grid-template-columns: 1fr;
-    max-width: 600px;
+    max-width: 400px;
   }
 }
 
@@ -74,8 +80,8 @@ h1 {
 }
 
 .integration-icon {
-  width: 2rem;
-  height: 2rem;
+  width: 1.5rem;
+  height: 1.5rem;
   fill: #a78bfa;
 }
 
@@ -85,8 +91,8 @@ h1 {
 }
 
 .integration-name {
-  font-size: 1.25rem;
-  font-weight: 600;
+  font-size: 1rem;
+  font-weight: 500;
   color: #ffffff;
   margin: 0;
 }
@@ -122,12 +128,12 @@ h1 {
   cursor: pointer;
   font-weight: 500;
   transition: background-color 0.2s;
-  font-size: 1rem;
+  font-size: 0.9rem;
   text-decoration: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 45px;
+  height: 40px;
   margin-top: auto;
 }
 

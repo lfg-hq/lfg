@@ -75,6 +75,70 @@
     border-left: 2px solid #f472b6 !important;
 }
 
+.function-implementation .function-call-indicator,
+.function-implementation .function-mini-indicator {
+    background-color: rgba(5, 150, 105, 0.3) !important; /* Subtle green */
+    border-left: 2px solid #10b981 !important;
+}
+
+/* Add support for execute_command and other command functions */
+.function-execute_command .function-call-indicator,
+.function-execute_command .function-mini-indicator,
+.function-command .function-call-indicator,
+.function-command .function-mini-indicator {
+    background-color: rgba(245, 158, 11, 0.3) !important; /* Subtle orange */
+    border-left: 2px solid #fbbf24 !important;
+}
+
+/* Add support for start_server function */
+.function-start_server .function-call-indicator,
+.function-start_server .function-mini-indicator,
+.function-server .function-call-indicator,
+.function-server .function-mini-indicator {
+    background-color: rgba(34, 197, 94, 0.3) !important; /* Subtle green */
+    border-left: 2px solid #22c55e !important;
+}
+
+/* Add generic function support */
+.function-generic .function-call-indicator,
+.function-generic .function-mini-indicator {
+    background-color: rgba(100, 116, 139, 0.3) !important; /* Subtle gray */
+    border-left: 2px solid #64748b !important;
+}
+
+/* Loading states for specific function types */
+.function-features.loading {
+    background-color: rgba(91, 33, 182, 0.4) !important;
+    border-left-color: #c084fc !important;
+}
+
+.function-personas.loading {
+    background-color: rgba(157, 23, 77, 0.4) !important;
+    border-left-color: #f472b6 !important;
+}
+
+.function-implementation.loading {
+    background-color: rgba(5, 150, 105, 0.4) !important;
+    border-left-color: #34d399 !important;
+}
+
+.function-execute_command.loading,
+.function-command.loading {
+    background-color: rgba(245, 158, 11, 0.4) !important;
+    border-left-color: #fbbf24 !important;
+}
+
+.function-start_server.loading,
+.function-server.loading {
+    background-color: rgba(34, 197, 94, 0.4) !important;
+    border-left-color: #22c55e !important;
+}
+
+.function-generic.loading {
+    background-color: rgba(100, 116, 139, 0.4) !important;
+    border-left-color: #64748b !important;
+}
+
 /* Success indicator styles */
 .function-call-success {
     display: flex;
@@ -421,4 +485,4 @@
     font-size: 10px;
     font-weight: 500;
     text-transform: capitalize;
-} 
+}

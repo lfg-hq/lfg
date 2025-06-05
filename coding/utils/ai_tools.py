@@ -30,10 +30,10 @@ get_prd = {
     }
 }
 
-save_implementation = {
+create_implementation = {
     "type": "function",
     "function": {
-        "name": "save_implementation",
+        "name": "create_implementation",
         "description": "Save the implementation details and technical specifications for the project in Markdown format. This could be an updated implementation document",
         "parameters": {
             "type": "object",
@@ -281,20 +281,43 @@ get_pending_tickets = {
     }
 }
 
-implement_ticket_async = {
+implement_ticket = {
     "type": "function",
     "function": {
-        "name": "implement_ticket_async",
-        "description": "Queue a ticket for asynchronous implementation using Django-Q. This allows parallel execution of multiple tickets.",
+        "name": "implement_ticket",
+        "description": "Implement a specific ticket with all its requirements",
         "parameters": {
             "type": "object",
             "properties": {
-                "ticket_id": {
-                    "type": "integer",
-                    "description": "The ID of the ticket to implement"
+                "ticket_id": {"type": "integer"},
+                "ticket_details": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "description": {"type": "string"},
+                        "files_to_create": {"type": "array", "items": {"type": "string"}},
+                        "files_to_modify": {"type": "array", "items": {"type": "string"}},
+                        "requires_worktree": {"type": "boolean"},
+                        "branch_name": {"type": "string"},
+                        "ui_requirements": {"type": "object"},
+                        "component_specs": {"type": "object"},
+                        "acceptance_criteria": {"type": "array", "items": {"type": "string"}}
+                    }
+                },
+                "implementation_plan": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "step": {"type": "integer"},
+                            "action": {"type": "string"},
+                            "files": {"type": "array", "items": {"type": "string"}},
+                            "code_snippets": {"type": "object"}
+                        }
+                    }
                 }
             },
-            "required": ["ticket_id"]
+            "required": ["ticket_id", "ticket_details", "implementation_plan"]
         }
     }
 }
@@ -441,10 +464,11 @@ tools_code = [save_prd, get_prd, execute_command, start_server, \
               get_github_access_token, \
               checklist_tickets, update_checklist_ticket, \
               get_next_ticket, get_pending_tickets, \
-              save_implementation, get_implementation, update_implementation, \
-              implement_ticket_async, execute_tickets_in_parallel, \
-              get_ticket_execution_status]
+              create_implementation, get_implementation, update_implementation, \
+              implement_ticket]
 
 tools_product = [save_prd, get_prd, save_features, save_personas, extract_features, extract_personas, design_schema, generate_tickets]
+
+tools_ticket = [execute_command, get_prd, get_implementation]
 
 tools_design = [get_prd, execute_command, start_server, get_github_access_token]

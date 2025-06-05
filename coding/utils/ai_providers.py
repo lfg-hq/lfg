@@ -14,12 +14,72 @@ from google.genai.types import (
     Tool,
 )
 from coding.utils.ai_functions import app_functions
-from chat.models import AgentRole, ModelSelection
+from chat.models import AgentRole, ModelSelection, Conversation
 from projects.models import Project
+from accounts.models import TokenUsage
+from django.contrib.auth.models import User
 import traceback # Import traceback for better error logging
+
+from coding.utils.ai_tools import tools_ticket
 
 # Set up logger
 logger = logging.getLogger(__name__)
+
+async def get_ai_response(user_message, system_prompt, project_id, conversation_id, stream=False, tools=None):
+    """
+    Non-streaming wrapper for AI providers to be used in task implementations.
+    Collects the full response from streaming providers and returns it as a complete response.
+    
+    Args:
+        user_message: The user's message content
+        system_prompt: The system prompt for the AI
+        project_id: The project ID
+        conversation_id: The conversation ID
+        stream: Whether to return streaming (not used, kept for compatibility)
+        tools: List of tools available to the AI
+        
+    Returns:
+        Dict containing the AI response with content and tool_calls
+    """
+    if tools is None:
+        from coding.utils.ai_tools import tools_code
+        tools = tools_code
+    
+    # Create messages list
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_message}
+    ]
+    
+    # Get the default provider (can be enhanced later to support provider selection)
+    provider = AIProvider.get_provider("anthropic", "claude_4_sonnet")
+    
+    # Collect the streaming response
+    full_content = ""
+    tool_calls = []
+    
+    try:
+        async for chunk in provider.generate_stream(messages, project_id, conversation_id, tools):
+            # Skip notification chunks
+            if isinstance(chunk, str) and ("__NOTIFICATION__" in chunk):
+                continue
+            full_content += chunk
+        
+        # Note: The provider.generate_stream already handles tool calls internally
+        # and executes them. The tool calls are not returned in the stream,
+        # they are executed automatically within the stream processing.
+        
+        return {
+            "content": full_content,
+            "tool_calls": tool_calls  # Will be empty since tools are auto-executed
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in get_ai_response: {str(e)}")
+        return {
+            "content": f"Error generating AI response: {str(e)}",
+            "tool_calls": []
+        }
 
 class AIProvider:
     """Base class for AI providers"""
@@ -66,6 +126,28 @@ class OpenAIProvider(AIProvider):
 
     async def generate_stream(self, messages, project_id, conversation_id, tools):
         current_messages = list(messages) # Work on a copy
+        
+        # Get user and project/conversation for token tracking
+        user = None
+        project = None
+        conversation = None
+        
+        try:
+            if conversation_id:
+                conversation = await asyncio.to_thread(
+                    Conversation.objects.select_related('user', 'project').get,
+                    id=conversation_id
+                )
+                user = conversation.user
+                project = conversation.project
+            elif project_id:
+                project = await asyncio.to_thread(
+                    Project.objects.select_related('owner').get,
+                    id=project_id
+                )
+                user = project.owner
+        except Exception as e:
+            logger.warning(f"Could not get user/project/conversation for token tracking: {e}")
 
         while True: # Loop to handle potential multi-turn tool calls (though typically one round)
             try:
@@ -74,7 +156,8 @@ class OpenAIProvider(AIProvider):
                     "messages": current_messages,
                     "stream": True,
                     "tool_choice": "auto", 
-                    "tools": tools
+                    "tools": tools,
+                    "stream_options": {"include_usage": True}  # Request usage info in stream
                 }
                 
                 logger.debug(f"Making API call with {len(current_messages)} messages.")
@@ -95,13 +178,21 @@ class OpenAIProvider(AIProvider):
 
                 logger.debug("New Loop!!")
                 
+                # Variables for token tracking
+                usage_data = None
+                
                 # --- Process the stream from the API --- 
                 # We need to wrap the stream iteration in a thread as well
                 async for chunk in self._process_stream_async(response_stream):
                     delta = chunk.choices[0].delta if chunk.choices else None
                     finish_reason = chunk.choices[0].finish_reason if chunk.choices else None
+                    
+                    # Check for usage information in the chunk
+                    if hasattr(chunk, 'usage') and chunk.usage:
+                        usage_data = chunk.usage
+                        logger.debug(f"Token usage received: {usage_data}")
 
-                    if not delta: continue # Skip empty chunks
+                    if not delta and not usage_data: continue # Skip empty chunks
 
                     # --- Accumulate Text Content --- 
                     if delta.content:
@@ -322,10 +413,20 @@ class OpenAIProvider(AIProvider):
                         
                         elif finish_reason == "stop":
                             # Conversation finished naturally
+                            # Track token usage before exiting
+                            if usage_data and user:
+                                await self._track_token_usage(
+                                    user, project, conversation, usage_data
+                                )
                             return # Exit the generator completely
                         else:
                             # Handle other finish reasons if necessary (e.g., length, content_filter)
                             logger.warning(f"Unhandled finish reason: {finish_reason}")
+                            # Track token usage before exiting
+                            if usage_data and user:
+                                await self._track_token_usage(
+                                    user, project, conversation, usage_data
+                                )
                             return # Exit generator
                 
                 # If the inner loop finished because of tool_calls, the outer loop continues
@@ -351,6 +452,37 @@ class OpenAIProvider(AIProvider):
             yield chunk
             # Yield control back to the event loop periodically
             await asyncio.sleep(0)
+    
+    async def _track_token_usage(self, user, project, conversation, usage_data):
+        """Track token usage in the database"""
+        try:
+            # Determine provider based on the client base URL
+            provider = 'openai'
+            if hasattr(self.client, 'base_url') and 'anthropic' in str(self.client.base_url):
+                provider = 'anthropic'
+            
+            # Create token usage record
+            token_usage = TokenUsage(
+                user=user,
+                project=project,
+                conversation=conversation,
+                provider=provider,
+                model=self.model,
+                input_tokens=getattr(usage_data, 'prompt_tokens', 0),
+                output_tokens=getattr(usage_data, 'completion_tokens', 0),
+                total_tokens=getattr(usage_data, 'total_tokens', 0)
+            )
+            
+            # Calculate cost
+            token_usage.calculate_cost()
+            
+            # Save asynchronously
+            await asyncio.to_thread(token_usage.save)
+            
+            logger.debug(f"Token usage tracked: {token_usage}")
+            
+        except Exception as e:
+            logger.error(f"Error tracking token usage: {e}")
 
 
 class AnthropicProvider(AIProvider):
@@ -437,6 +569,28 @@ class AnthropicProvider(AIProvider):
 
     async def generate_stream(self, messages, project_id, conversation_id, tools):
         current_messages = list(messages) # Work on a copy
+        
+        # Get user and project/conversation for token tracking
+        user = None
+        project = None
+        conversation = None
+        
+        try:
+            if conversation_id:
+                conversation = await asyncio.to_thread(
+                    Conversation.objects.select_related('user', 'project').get,
+                    id=conversation_id
+                )
+                user = conversation.user
+                project = conversation.project
+            elif project_id:
+                project = await asyncio.to_thread(
+                    Project.objects.select_related('owner').get,
+                    id=project_id
+                )
+                user = project.owner
+        except Exception as e:
+            logger.warning(f"Could not get user/project/conversation for token tracking: {e}")
 
         while True: # Loop to handle potential multi-turn tool calls
             try:
@@ -465,7 +619,7 @@ class AnthropicProvider(AIProvider):
                 params = {
                     "model": self.model,
                     "messages": claude_messages,
-                    "max_tokens": 4096,
+                    "max_tokens": 8192,
                     "tools": claude_tools,
                     "tool_choice": {"type": "auto"}
                 }
@@ -514,7 +668,7 @@ class AnthropicProvider(AIProvider):
                                     notification_type = "start_server"
                                 elif function_name == "execute_command":
                                     notification_type = "execute_command"
-                                elif function_name == "save_implementation":
+                                elif function_name == "create_implementation":
                                     notification_type = "implementation"
                                 elif function_name == "get_implementation":
                                     notification_type = "implementation"
@@ -559,6 +713,12 @@ class AnthropicProvider(AIProvider):
                             # Message completed
                             stop_reason = event.message.stop_reason
                             logger.debug(f"Stop Reason: {stop_reason}")
+                            
+                            # Track token usage if available
+                            if hasattr(event.message, 'usage') and event.message.usage and user:
+                                await self._track_token_usage(
+                                    user, project, conversation, event.message.usage
+                                )
                             
                             if stop_reason == "tool_use" and tool_calls_requested:
                                 # Build the assistant message
@@ -688,7 +848,7 @@ class AnthropicProvider(AIProvider):
             logger.debug(f"[AnthropicProvider] Tool Result: {tool_result}")
             
             # Send special notification for extraction functions
-            if tool_call_name in ["extract_features", "extract_personas", "save_implementation", "get_implementation", "update_implementation"]:
+            if tool_call_name in ["extract_features", "extract_personas", "save_implementation", "get_implementation"]:
                 if tool_call_name == "extract_features":
                     notification_type = "features"
                 elif tool_call_name == "extract_personas":
@@ -742,3 +902,29 @@ class AnthropicProvider(AIProvider):
             notification_data = None
         
         return result_content, notification_data, yielded_content
+    
+    async def _track_token_usage(self, user, project, conversation, usage_data):
+        """Track token usage in the database"""
+        try:
+            # Create token usage record for Anthropic
+            token_usage = TokenUsage(
+                user=user,
+                project=project,
+                conversation=conversation,
+                provider='anthropic',
+                model=self.model,
+                input_tokens=getattr(usage_data, 'input_tokens', 0),
+                output_tokens=getattr(usage_data, 'output_tokens', 0),
+                total_tokens=getattr(usage_data, 'input_tokens', 0) + getattr(usage_data, 'output_tokens', 0)
+            )
+            
+            # Calculate cost
+            token_usage.calculate_cost()
+            
+            # Save asynchronously
+            await asyncio.to_thread(token_usage.save)
+            
+            logger.debug(f"Anthropic token usage tracked: {token_usage}")
+            
+        except Exception as e:
+            logger.error(f"Error tracking Anthropic token usage: {e}")

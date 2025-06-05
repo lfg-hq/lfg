@@ -54,20 +54,107 @@ import json
 import logging
 from datetime import datetime
 from typing import Dict, Any, Optional, List
+import os
 
 from django.conf import settings
 from django.db import transaction
 from asgiref.sync import sync_to_async, async_to_sync
 
+from projects.models import ProjectChecklist, Project
+from coding.utils.ai_providers import get_ai_response
+from coding.utils.task_prompt import get_task_implementaion_developer
+from coding.utils.ai_tools import tools_code
+import time
+
 logger = logging.getLogger(__name__)
+
+
+def simple_test_task_for_debugging(message: str, delay: int = 1) -> dict:
+    """
+    A simple test task to verify Django-Q functionality without complex operations.
+    This helps isolate the timer issue from the complex ticket implementation logic.
+    """
+    logger = logging.getLogger(__name__)
+    logger.info(f"Simple test task started: {message}")
+    
+    try:
+        # Simulate some work without complex Django operations
+        time.sleep(delay)
+        
+        result = {
+            'status': 'success',
+            'message': message,
+            'timestamp': time.time(),
+            'delay': delay,
+            'worker_info': {
+                'process_id': os.getpid(),
+                'working_directory': os.getcwd()
+            }
+        }
+        
+        logger.info(f"Simple test task completed: {result}")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error in simple test task: {str(e)}")
+        return {
+            'status': 'error',
+            'message': str(e),
+            'timestamp': time.time()
+        }
+
+
+def safe_execute_ticket_implementation(ticket_id: int, project_id: int, conversation_id: int) -> Dict[str, Any]:
+    """
+    A safer version of execute_ticket_implementation that reduces complexity to prevent timer issues.
+    This version does minimal operations and delegates complex work to synchronous mode.
+    """
+    logger = logging.getLogger(__name__)
+    
+    try:
+        logger.info(f"Starting SAFE implementation of ticket {ticket_id}")
+        
+        # Simple task simulation for now
+        time.sleep(2)  # Simulate work
+        
+        # Update ticket status with minimal Django operations
+        from projects.models import ProjectChecklist
+        
+        ticket = ProjectChecklist.objects.get(id=ticket_id)
+        ticket.status = 'done'  # Mark as done for testing
+        ticket.save()
+        
+        logger.info(f"Successfully completed SAFE implementation of ticket {ticket_id}")
+        
+        return {
+            "status": "success",
+            "ticket_id": ticket_id,
+            "message": f"SAFE implementation completed for ticket {ticket_id}",
+            "completion_time": datetime.now().isoformat(),
+            "worker_info": {
+                "process_id": os.getpid(),
+                "working_directory": os.getcwd()
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in SAFE ticket implementation {ticket_id}: {str(e)}")
+        
+        return {
+            "status": "error",
+            "ticket_id": ticket_id,
+            "error": str(e),
+            "completion_time": datetime.now().isoformat()
+        }
 
 
 def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_id: int) -> Dict[str, Any]:
     """
-    Execute a single ticket implementation asynchronously.
+    Execute a single ticket implementation asynchronously with continuous AI interaction.
     
-    This task is called by Django-Q to implement a ticket in the background.
-    It updates ticket status, calls the AI implementation, and handles results.
+    This task runs in a loop, continuously calling the AI and processing tool calls
+    until the ticket is marked as complete. It provides full access to execute_command
+    and other tools for comprehensive ticket implementation.
     
     Args:
         ticket_id: The ID of the ProjectChecklist ticket
@@ -77,10 +164,9 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
     Returns:
         Dict with execution results and status
     """
-    from projects.models import ProjectChecklist, Project
-    from coding.utils.ai_providers import get_ai_response
-    from coding.utils.task_prompt import get_task_implementaion_developer
-    from coding.utils.ai_functions import execute_function
+    # Configuration
+    MAX_ITERATIONS = 10  # Prevent infinite loops
+    ITERATION_DELAY = 2  # Seconds between iterations
     
     try:
         # Get ticket and project
@@ -93,91 +179,161 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
         
         logger.info(f"Starting implementation of ticket {ticket_id}: {ticket.name}")
         
-        # Prepare ticket context for AI
-        ticket_context = {
-            "ticket_id": ticket.id,
-            "ticket_name": ticket.name,
-            "ticket_description": ticket.description,
-            "ticket_priority": ticket.priority,
-            "project_name": project.name,
-            "project_id": project.id,
-            "requires_worktree": True  # Default to true for code changes
-        }
-        
         # Get implementation prompt
         system_prompt = async_to_sync(get_task_implementaion_developer)()
         
-        # Prepare user message with detailed ticket information
-        user_message = f"""
+        # Prepare initial ticket context
+        initial_message = f"""
         You have been assigned the following ticket to implement:
         
-        Ticket ID: {ticket.id}
-        Ticket Name: {ticket.name}
-        Description: {ticket.description}
-        Priority: {ticket.priority}
-        Project: {project.name}
-        Complexity: {ticket.complexity}
-        Requires Worktree: {ticket.requires_worktree}
+        **Ticket Details:**
+        - Ticket ID: {ticket.id}
+        - Ticket Name: {ticket.name}
+        - Description: {ticket.description}
+        - Priority: {ticket.priority}
+        - Project: {project.name}
+        - Complexity: {ticket.complexity}
+        - Requires Worktree: {ticket.requires_worktree}
         
-        Technical Details:
+        **Technical Details:**
+        ```json
         {json.dumps(ticket.details, indent=2)}
+        ```
         
-        UI/UX Requirements:
+        **UI/UX Requirements:**
+        ```json
         {json.dumps(ticket.ui_requirements, indent=2)}
+        ```
         
-        Component Specifications:
+        **Component Specifications:**
+        ```json
         {json.dumps(ticket.component_specs, indent=2)}
+        ```
         
-        Acceptance Criteria:
+        **Acceptance Criteria:**
+        ```json
         {json.dumps(ticket.acceptance_criteria, indent=2)}
+        ```
         
-        Dependencies:
+        **Dependencies:**
+        ```json
         {json.dumps(ticket.dependencies, indent=2)}
+        ```
         
-        Please implement this ticket with exceptional attention to visual design and user experience.
-        Follow the design system specifications exactly.
-        Ensure all acceptance criteria are met, including UI/UX requirements.
+        Please implement this ticket following the workflow outlined in your system prompt.
+        Use the execute_command tool to run any necessary commands for setup, implementation, and testing.
+        
+        Start by setting up the ticket context and environment as described in your prompt.
+        Continue working until the ticket is fully implemented and all acceptance criteria are met.
         """
         
-        # Call AI to implement the ticket
-        ai_response = async_to_sync(get_ai_response)(
-            user_message=user_message,
-            system_prompt=system_prompt,
-            project_id=project_id,
-            conversation_id=conversation_id,
-            stream=False
-        )
+        iteration = 0
+        ticket_completed = False
+        last_ai_response = None
         
-        # Process AI response and execute any tool calls
-        if ai_response.get('tool_calls'):
-            for tool_call in ai_response['tool_calls']:
-                function_name = tool_call.get('function', {}).get('name')
-                function_args = json.loads(tool_call.get('function', {}).get('arguments', '{}'))
+        # Main implementation loop
+        while not ticket_completed and iteration < MAX_ITERATIONS:
+            iteration += 1
+            logger.info(f"Ticket {ticket_id} - Iteration {iteration}/{MAX_ITERATIONS}")
+            
+            try:
+                # Call AI with current message
+                if iteration == 1:
+                    current_message = initial_message
+                else:
+                    # For subsequent iterations, ask the AI to continue
+                    current_message = """
+                    Please continue with the ticket implementation. 
+                    
+                    If you have completed all the requirements:
+                    - Ensure all acceptance criteria are met
+                    - Run any final tests
+                    - State clearly "TICKET IMPLEMENTATION COMPLETED" 
+                    
+                    If you need to continue working:
+                    - Use the execute_command tool for any necessary operations
+                    - Follow the implementation workflow from your system prompt
+                    - Focus on the remaining tasks for this ticket
+                    """
                 
-                result = async_to_sync(execute_function)(
-                    function_name=function_name,
-                    function_args=function_args,
+                ai_response = async_to_sync(get_ai_response)(
+                    user_message=current_message,
+                    system_prompt=system_prompt,
                     project_id=project_id,
-                    conversation_id=conversation_id
+                    conversation_id=conversation_id,
+                    stream=False,
+                    tools=tools_code  # Use the full tools_code list which includes execute_command
                 )
                 
-                logger.info(f"Executed function {function_name} with result: {result}")
+                last_ai_response = ai_response
+                
+                # Check if ticket implementation is complete
+                response_content = ai_response.get('content', '').lower()
+                completion_indicators = [
+                    'ticket implementation completed',
+                    'implementation completed',
+                    'ticket completed successfully',
+                    'all acceptance criteria met',
+                    'implementation finished',
+                    'ticket is now complete',
+                    'implementation is complete'
+                ]
+                
+                if any(indicator in response_content for indicator in completion_indicators):
+                    logger.info(f"Ticket {ticket_id} appears to be completed based on AI response")
+                    ticket_completed = True
+                    break
+                
+                # Check for explicit completion signals
+                if 'completed' in response_content and iteration > 3:
+                    # If we've done several iterations and AI mentions completion
+                    logger.info(f"Ticket {ticket_id} likely completed after {iteration} iterations")
+                    ticket_completed = True
+                    break
+                
+                # Add delay between iterations to prevent overwhelming
+                time.sleep(ITERATION_DELAY)
+                
+            except Exception as iteration_error:
+                logger.error(f"Error in iteration {iteration}: {str(iteration_error)}")
+                
+                # Don't break on individual iteration errors, but limit retries
+                if iteration >= MAX_ITERATIONS - 5:  # Last 5 iterations, be more strict
+                    break
         
-        # Update ticket status to done
-        ticket.status = 'done'
-        ticket.save()
-        
-        logger.info(f"Successfully completed ticket {ticket_id}")
-        
-        return {
-            "status": "success",
-            "ticket_id": ticket_id,
-            "message": f"Ticket {ticket.name} implemented successfully",
-            "completion_time": datetime.now().isoformat()
-        }
+        # Determine final status
+        if ticket_completed:
+            ticket.status = 'done'
+            ticket.save()
+            
+            logger.info(f"Successfully completed ticket {ticket_id} after {iteration} iterations")
+            
+            return {
+                "status": "success",
+                "ticket_id": ticket_id,
+                "message": f"Ticket {ticket.name} implemented successfully",
+                "iterations_used": iteration,
+                "completion_time": datetime.now().isoformat(),
+                "final_response": last_ai_response.get('content', '') if last_ai_response else None
+            }
+        else:
+            # Max iterations reached without completion
+            ticket.status = 'failed'
+            ticket.save()
+            
+            logger.warning(f"Ticket {ticket_id} reached max iterations ({MAX_ITERATIONS}) without completion")
+            
+            return {
+                "status": "timeout",
+                "ticket_id": ticket_id,
+                "message": f"Ticket {ticket.name} reached maximum iterations without completion",
+                "iterations_used": iteration,
+                "completion_time": datetime.now().isoformat(),
+                "final_response": last_ai_response.get('content', '') if last_ai_response else None
+            }
         
     except Exception as e:
-        logger.error(f"Error implementing ticket {ticket_id}: {str(e)}")
+        logger.error(f"Critical error implementing ticket {ticket_id}: {str(e)}")
         
         # Update ticket status to failed
         if 'ticket' in locals():
@@ -188,7 +344,8 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
             "status": "error",
             "ticket_id": ticket_id,
             "error": str(e),
-            "completion_time": datetime.now().isoformat()
+            "completion_time": datetime.now().isoformat(),
+            "iterations_used": iteration if 'iteration' in locals() else 0
         }
 
 
@@ -340,9 +497,9 @@ def parallel_ticket_executor(project_id: int, conversation_id: int, max_workers:
         for ticket_id in high_priority[:max_workers]:
             task_id = task_manager.publish_task(
                 'tasks.task_definitions.execute_ticket_implementation',
-                args=(ticket_id, project_id, conversation_id),
-                group=f'project_{project_id}_high',
-                sync=False
+                ticket_id, project_id, conversation_id,  # Pass args directly
+                task_name=f'Ticket_{ticket_id}_High_Priority',
+                group=f'project_{project_id}_high'
             )
             queued_tasks.append({
                 'ticket_id': ticket_id,
@@ -355,9 +512,9 @@ def parallel_ticket_executor(project_id: int, conversation_id: int, max_workers:
             if check_ticket_dependencies(ticket_id):
                 task_id = task_manager.publish_task(
                     'tasks.task_definitions.execute_ticket_implementation',
-                    args=(ticket_id, project_id, conversation_id),
-                    group=f'project_{project_id}_medium',
-                    sync=False
+                    ticket_id, project_id, conversation_id,  # Pass args directly
+                    task_name=f'Ticket_{ticket_id}_Medium_Priority',
+                    group=f'project_{project_id}_medium'
                 )
                 queued_tasks.append({
                     'ticket_id': ticket_id,
