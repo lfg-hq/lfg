@@ -171,9 +171,9 @@ async def app_functions(function_name, function_args, project_id, conversation_i
 
     match function_name:
         case "extract_features":
-            return await extract_features(function_args, project_id)
+            return await extract_features(function_args, project_id, conversation_id)
         case "extract_personas":
-            return await extract_personas(function_args, project_id)
+            return await extract_personas(function_args, project_id, conversation_id)
         case "get_features":
             return await get_features(project_id)
         case "get_personas":
@@ -418,11 +418,23 @@ async def save_personas(project_id):
             "message_to_agent": f"Error saving personas: {str(e)}"
         }
 
-async def extract_features(function_args, project_id):
+async def extract_features(function_args, project_id, conversation_id=None):
     """
     Extract the features from the project into a different list and save them to the database
     """
     print("Feature extraction function called \n\n")
+    
+    # Import progress utility
+    from coding.utils.progress_utils import send_tool_progress
+    
+    # Step 1: Start
+    if conversation_id:
+        await send_tool_progress(
+            conversation_id, 
+            "extract_features", 
+            "Starting feature extraction...", 
+            10
+        )
     
     error_response = validate_project_id(project_id)
     if error_response:
@@ -432,8 +444,24 @@ async def extract_features(function_args, project_id):
     if validation_error:
         return validation_error
     
+    # Step 2: Validate project
+    if conversation_id:
+        await send_tool_progress(
+            conversation_id, 
+            "extract_features", 
+            "Validating project information...", 
+            30
+        )
+    
     project = await get_project(project_id)
     if not project:
+        if conversation_id:
+            await send_tool_progress(
+                conversation_id, 
+                "extract_features", 
+                f"Error: Project with ID {project_id} does not exist", 
+                -1  # Error state
+            )
         return {
             "is_notification": False,
             "message_to_agent": f"Error: Project with ID {project_id} does not exist"
@@ -442,12 +470,37 @@ async def extract_features(function_args, project_id):
     features = function_args.get('features', [])
     
     if not isinstance(features, list):
+        if conversation_id:
+            await send_tool_progress(
+                conversation_id, 
+                "extract_features", 
+                "Error: features must be a list", 
+                -1  # Error state
+            )
         return {
             "is_notification": False,
             "message_to_agent": "Error: features must be a list"
         }
     
+    # Step 3: Extract and categorize features
+    if conversation_id:
+        await send_tool_progress(
+            conversation_id, 
+            "extract_features", 
+            f"Processing {len(features)} features...", 
+            60
+        )
+    
     try:
+        # Step 4: Save to database
+        if conversation_id:
+            await send_tool_progress(
+                conversation_id, 
+                "extract_features", 
+                "Saving features to project database...", 
+                90
+            )
+        
         # Create new features using async database operations
         await sync_to_async(lambda: [
             ProjectFeature.objects.create(
@@ -459,6 +512,15 @@ async def extract_features(function_args, project_id):
             ) for feature in features if isinstance(feature, dict)
         ])()
         
+        # Step 5: Complete
+        if conversation_id:
+            await send_tool_progress(
+                conversation_id, 
+                "extract_features", 
+                f"Successfully saved {len(features)} features!", 
+                100
+            )
+        
         return {
             "is_notification": True,
             "notification_type": "features",
@@ -466,16 +528,35 @@ async def extract_features(function_args, project_id):
         }
     except Exception as e:
         print(f"Error saving features: {str(e)}")
+        if conversation_id:
+            await send_tool_progress(
+                conversation_id, 
+                "extract_features", 
+                f"Error: {str(e)}", 
+                -1  # Error state
+            )
         return {
             "is_notification": False,
             "message_to_agent": f"Error saving features: {str(e)}"
         }
 
-async def extract_personas(function_args, project_id):
+async def extract_personas(function_args, project_id, conversation_id=None):
     """
     Extract the personas from the project and save them to the database
     """
     print("Persona extraction function called \n\n")
+    
+    # Import progress utility
+    from coding.utils.progress_utils import send_tool_progress
+    
+    # Step 1: Start
+    if conversation_id:
+        await send_tool_progress(
+            conversation_id, 
+            "extract_personas", 
+            "Starting persona extraction...", 
+            10
+        )
     
     error_response = validate_project_id(project_id)
     if error_response:
@@ -485,8 +566,24 @@ async def extract_personas(function_args, project_id):
     if validation_error:
         return validation_error
     
+    # Step 2: Validate project
+    if conversation_id:
+        await send_tool_progress(
+            conversation_id, 
+            "extract_personas", 
+            "Validating project information...", 
+            30
+        )
+    
     project = await get_project(project_id)
     if not project:
+        if conversation_id:
+            await send_tool_progress(
+                conversation_id, 
+                "extract_personas", 
+                f"Error: Project with ID {project_id} does not exist", 
+                -1  # Error state
+            )
         return {
             "is_notification": False,
             "message_to_agent": f"Error: Project with ID {project_id} does not exist"
@@ -495,12 +592,37 @@ async def extract_personas(function_args, project_id):
     personas = function_args.get('personas', [])
     
     if not isinstance(personas, list):
+        if conversation_id:
+            await send_tool_progress(
+                conversation_id, 
+                "extract_personas", 
+                "Error: personas must be a list", 
+                -1  # Error state
+            )
         return {
             "is_notification": False,
             "message_to_agent": "Error: personas must be a list"
         }
     
+    # Step 3: Extract and categorize personas
+    if conversation_id:
+        await send_tool_progress(
+            conversation_id, 
+            "extract_personas", 
+            f"Processing {len(personas)} personas...", 
+            60
+        )
+    
     try:
+        # Step 4: Save to database
+        if conversation_id:
+            await send_tool_progress(
+                conversation_id, 
+                "extract_personas", 
+                "Saving personas to project database...", 
+                90
+            )
+        
         # Create new personas using async database operations
         await sync_to_async(lambda: [
             ProjectPersona.objects.create(
@@ -511,6 +633,15 @@ async def extract_personas(function_args, project_id):
             ) for persona in personas if isinstance(persona, dict)
         ])()
         
+        # Step 5: Complete
+        if conversation_id:
+            await send_tool_progress(
+                conversation_id, 
+                "extract_personas", 
+                f"Successfully saved {len(personas)} personas!", 
+                100
+            )
+        
         return {
             "is_notification": True,
             "notification_type": "personas",
@@ -518,6 +649,13 @@ async def extract_personas(function_args, project_id):
         }
     except Exception as e:
         print(f"Error saving personas: {str(e)}")
+        if conversation_id:
+            await send_tool_progress(
+                conversation_id, 
+                "extract_personas", 
+                f"Error: {str(e)}", 
+                -1  # Error state
+            )
         return {
             "is_notification": False,
             "message_to_agent": f"Error saving personas: {str(e)}"
