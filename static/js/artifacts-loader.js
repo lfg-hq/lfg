@@ -1019,6 +1019,15 @@ document.addEventListener('DOMContentLoaded', function() {
                                 case 'closed':
                                     statusIcon = 'fas fa-check-circle';
                                     break;
+                                case 'done':
+                                    statusIcon = 'fas fa-check-circle';
+                                    break;
+                                case 'failed':
+                                    statusIcon = 'fas fa-times-circle';
+                                    break;
+                                case 'blocked':
+                                    statusIcon = 'fas fa-ban';
+                                    break;
                             }
                             
                             // Check if this item matches active filters for highlighting
@@ -1070,8 +1079,6 @@ document.addEventListener('DOMContentLoaded', function() {
                                         <div class="card-badges">
                                             <span class="priority-badge ${priorityClass} ${isStatusHighlighted ? 'filter-active' : ''}">${item.priority || 'Medium'}</span>
                                             <span class="role-badge ${roleClass} ${isRoleHighlighted ? 'filter-active' : ''}">${item.role || 'User'}</span>
-                                            ${item.complexity ? `<span class="complexity-badge ${item.complexity}">${item.complexity}</span>` : ''}
-                                            ${item.requires_worktree ? '<span class="worktree-badge"><i class="fas fa-code-branch"></i> Worktree</span>' : ''}
                                         </div>
                                     </div>
                                     
@@ -1168,6 +1175,68 @@ document.addEventListener('DOMContentLoaded', function() {
                                         `;
                                     }
                                     
+                                    // Build combined specifications section
+                                    let specificationsSection = '';
+                                    let hasSpecs = false;
+                                    
+                                    let specsContent = '';
+                                    
+                                    // Add component specs section
+                                    if (item.component_specs && Object.keys(item.component_specs).length > 0) {
+                                        specsContent += `
+                                            <div class="spec-subsection">
+                                                <h5 class="spec-heading">Component Specifications:</h5>
+                                                <ul class="spec-list">
+                                                    ${Object.entries(item.component_specs).map(([key, value]) => `
+                                                        <li>${key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}: ${value}</li>
+                                                    `).join('')}
+                                                </ul>
+                                            </div>
+                                        `;
+                                        hasSpecs = true;
+                                    }
+                                    
+                                    // Add acceptance criteria section
+                                    if (item.acceptance_criteria && item.acceptance_criteria.length > 0) {
+                                        specsContent += `
+                                            <div class="spec-subsection">
+                                                <h5 class="spec-heading">Acceptance Criteria:</h5>
+                                                <ul class="spec-list">
+                                                    ${item.acceptance_criteria.map(criteria => `
+                                                        <li>${criteria}</li>
+                                                    `).join('')}
+                                                </ul>
+                                            </div>
+                                        `;
+                                        hasSpecs = true;
+                                    }
+                                    
+                                    // Add UI requirements section
+                                    if (item.ui_requirements && Object.keys(item.ui_requirements).length > 0) {
+                                        specsContent += `
+                                            <div class="spec-subsection">
+                                                <h5 class="spec-heading">UI Requirements:</h5>
+                                                <ul class="spec-list">
+                                                    ${Object.entries(item.ui_requirements).map(([key, value]) => `
+                                                        <li>${key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}: ${value}</li>
+                                                    `).join('')}
+                                                </ul>
+                                            </div>
+                                        `;
+                                        hasSpecs = true;
+                                    }
+                                    
+                                    if (hasSpecs) {
+                                        specificationsSection = `
+                                            <div class="drawer-section">
+                                                <h4 class="section-title">Specifications</h4>
+                                                <div class="specifications-content">
+                                                    ${specsContent}
+                                                </div>
+                                            </div>
+                                        `;
+                                    }
+                                    
                                     // Build details section
                                     let detailsSection = '';
                                     if (item.details && Object.keys(item.details).length > 0) {
@@ -1205,66 +1274,30 @@ document.addEventListener('DOMContentLoaded', function() {
                                         `;
                                     }
                                     
-                                    // Build UI requirements section if available
-                                    let uiRequirementsSection = '';
-                                    if (item.ui_requirements && Object.keys(item.ui_requirements).length > 0) {
-                                        uiRequirementsSection = `
-                                            <div class="drawer-section">
-                                                <h4 class="section-title">UI Requirements</h4>
-                                                <div class="ui-requirements-content">
-                                                    ${Object.entries(item.ui_requirements).map(([key, value]) => `
-                                                        <div class="ui-requirement-item">
-                                                            <strong>${key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}:</strong> ${value}
-                                                        </div>
-                                                    `).join('')}
-                                                </div>
-                                            </div>
-                                        `;
-                                    }
-                                    
-                                    // Build component specs section if available
-                                    let componentSpecsSection = '';
-                                    if (item.component_specs && Object.keys(item.component_specs).length > 0) {
-                                        componentSpecsSection = `
-                                            <div class="drawer-section">
-                                                <h4 class="section-title">Component Specifications</h4>
-                                                <div class="component-specs-content">
-                                                    ${Object.entries(item.component_specs).map(([key, value]) => `
-                                                        <div class="component-spec-item">
-                                                            <strong>${key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}:</strong> ${value}
-                                                        </div>
-                                                    `).join('')}
-                                                </div>
-                                            </div>
-                                        `;
-                                    }
-                                    
-                                    // Build acceptance criteria section if available
-                                    let acceptanceCriteriaSection = '';
-                                    if (item.acceptance_criteria && item.acceptance_criteria.length > 0) {
-                                        acceptanceCriteriaSection = `
-                                            <div class="drawer-section">
-                                                <h4 class="section-title">Acceptance Criteria</h4>
-                                                <ul class="acceptance-criteria-list">
-                                                    ${item.acceptance_criteria.map(criteria => `
-                                                        <li class="criteria-item">
-                                                            <i class="fas fa-check-circle"></i> ${criteria}
-                                                        </li>
-                                                    `).join('')}
-                                                </ul>
-                                            </div>
-                                        `;
-                                    }
-                                    
                                     // Populate drawer with item details
                                     checklistDrawerContent.innerHTML = `
                                         <div class="drawer-section">
                                             <h4 class="section-title">Item Information</h4>
                                             <div class="checklist-detail-info">
                                                 <p class="detail-row"><strong>Name:</strong> ${item.name}</p>
-                                                <p class="detail-row"><strong>Status:</strong> <span class="status-badge status-${item.status || 'open'}">${statusText}</span></p>
+                                                <div class="detail-row">
+                                                    <strong>Status:</strong> 
+                                                    <select class="status-dropdown" data-item-id="${item.id}" data-current-status="${item.status || 'open'}">
+                                                        <option value="open" ${(item.status || 'open') === 'open' ? 'selected' : ''}>Open</option>
+                                                        <option value="in_progress" ${item.status === 'in_progress' ? 'selected' : ''}>In Progress</option>
+                                                        <option value="done" ${item.status === 'done' ? 'selected' : ''}>Done</option>
+                                                        <option value="failed" ${item.status === 'failed' ? 'selected' : ''}>Failed</option>
+                                                        <option value="blocked" ${item.status === 'blocked' ? 'selected' : ''}>Blocked</option>
+                                                    </select>
+                                                </div>
                                                 <p class="detail-row"><strong>Priority:</strong> <span class="priority-badge ${(item.priority || 'medium').toLowerCase()}">${item.priority || 'Medium'}</span></p>
-                                                <p class="detail-row"><strong>Role:</strong> <span class="role-badge ${(item.role || 'user').toLowerCase()}">${item.role || 'User'}</span></p>
+                                                <div class="detail-row">
+                                                    <strong>Assigned to:</strong> 
+                                                    <select class="role-dropdown" data-item-id="${item.id}" data-current-role="${item.role || 'user'}">
+                                                        <option value="user" ${(item.role || 'user') === 'user' ? 'selected' : ''}>User</option>
+                                                        <option value="agent" ${item.role === 'agent' ? 'selected' : ''}>Agent</option>
+                                                    </select>
+                                                </div>
                                                 ${item.complexity ? `<p class="detail-row"><strong>Complexity:</strong> <span class="complexity-badge ${item.complexity}">${item.complexity}</span></p>` : ''}
                                                 ${item.requires_worktree !== undefined ? `<p class="detail-row"><strong>Requires Worktree:</strong> ${item.requires_worktree ? 'Yes' : 'No'}</p>` : ''}
                                             </div>
@@ -1278,10 +1311,8 @@ document.addEventListener('DOMContentLoaded', function() {
                                         </div>
                                         
                                         ${dependenciesSection}
+                                        ${specificationsSection}
                                         ${detailsSection}
-                                        ${uiRequirementsSection}
-                                        ${componentSpecsSection}
-                                        ${acceptanceCriteriaSection}
                                         
                                         <div class="drawer-section">
                                             <h4 class="section-title">Timeline</h4>
@@ -1307,9 +1338,38 @@ document.addEventListener('DOMContentLoaded', function() {
                                     // Show the drawer
                                     checklistDrawer.classList.add('open');
                                     checklistDrawerOverlay.classList.add('active');
+                                    
+                                    // Add event listeners for the dropdowns
+                                    attachDropdownListeners();
                                 }
                             });
                         });
+                        
+                        // Function to attach dropdown event listeners
+                        const attachDropdownListeners = () => {
+                            const statusDropdowns = document.querySelectorAll('.status-dropdown');
+                            const roleDropdowns = document.querySelectorAll('.role-dropdown');
+                            
+                            statusDropdowns.forEach(dropdown => {
+                                dropdown.addEventListener('change', function() {
+                                    const itemId = this.getAttribute('data-item-id');
+                                    const newStatus = this.value;
+                                    const oldStatus = this.getAttribute('data-current-status');
+                                    
+                                    updateChecklistItemStatus(itemId, newStatus, oldStatus);
+                                });
+                            });
+                            
+                            roleDropdowns.forEach(dropdown => {
+                                dropdown.addEventListener('change', function() {
+                                    const itemId = this.getAttribute('data-item-id');
+                                    const newRole = this.value;
+                                    const oldRole = this.getAttribute('data-current-role');
+                                    
+                                    updateChecklistItemRole(itemId, newRole, oldRole);
+                                });
+                            });
+                        };
                         
                         // Add click handlers for view details buttons
                         viewDetailsButtons.forEach(button => {
@@ -1344,32 +1404,207 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
                     };
 
-                    // Add event listeners for filters
-                    if (statusFilter) {
-                        statusFilter.addEventListener('change', function() {
-                            renderChecklist(this.value, roleFilter.value);
-                        });
-                    }
+                    // Function to update checklist item status
+                    const updateChecklistItemStatus = (itemId, newStatus, oldStatus) => {
+                        console.log(`[ArtifactsLoader] Updating checklist item ${itemId} status from ${oldStatus} to ${newStatus}`);
+                        
+                        const projectId = getCurrentProjectId();
+                        if (!projectId) {
+                            console.warn('[ArtifactsLoader] No project ID available for status update');
+                            showStatusUpdateError('Project ID not available');
+                            return;
+                        }
 
-                    if (roleFilter) {
-                        roleFilter.addEventListener('change', function() {
-                            renderChecklist(statusFilter.value, this.value);
-                        });
-                    }
+                        // Show loading state
+                        const dropdown = document.querySelector(`.status-dropdown[data-item-id="${itemId}"]`);
+                        if (dropdown) {
+                            dropdown.disabled = true;
+                            dropdown.style.opacity = '0.6';
+                        }
 
-                    if (clearFiltersBtn) {
-                        clearFiltersBtn.addEventListener('click', function() {
-                            statusFilter.value = 'all';
-                            roleFilter.value = 'all';
-                            renderChecklist('all', 'all');
-                        });
-                    }
+                        // TODO: Replace with actual API call
+                        // For now, simulate the update
+                        setTimeout(() => {
+                            // Re-enable dropdown
+                            if (dropdown) {
+                                dropdown.disabled = false;
+                                dropdown.style.opacity = '1';
+                                dropdown.setAttribute('data-current-status', newStatus);
+                            }
+                            
+                            // Update the item in the checklist array
+                            const item = checklist.find(i => i.id == itemId);
+                            if (item) {
+                                item.status = newStatus;
+                                item.updated_at = new Date().toISOString();
+                            }
+                            
+                            // Update the visual state in the main list
+                            const itemElement = document.querySelector(`[data-id="${itemId}"]`);
+                            if (itemElement) {
+                                // Remove old status classes
+                                itemElement.classList.remove('open', 'in-progress', 'done', 'failed', 'blocked');
+                                // Add new status class
+                                itemElement.classList.add(newStatus.replace('_', '-'));
+                                
+                                // Update status icon
+                                const statusIcon = itemElement.querySelector('.status-icon');
+                                if (statusIcon) {
+                                    let newIconClass = 'fas fa-circle';
+                                    switch(newStatus) {
+                                        case 'open':
+                                            newIconClass = 'fas fa-circle';
+                                            break;
+                                        case 'in_progress':
+                                            newIconClass = 'fas fa-play-circle';
+                                            break;
+                                        case 'done':
+                                            newIconClass = 'fas fa-check-circle';
+                                            break;
+                                        case 'failed':
+                                            newIconClass = 'fas fa-times-circle';
+                                            break;
+                                        case 'blocked':
+                                            newIconClass = 'fas fa-ban';
+                                            break;
+                                    }
+                                    statusIcon.className = `${newIconClass} status-icon`;
+                                }
+                            }
+                            
+                            console.log(`[ArtifactsLoader] Status updated successfully to: ${newStatus}`);
+                            showStatusUpdateSuccess(newStatus);
+                        }, 300);
+                    };
 
-                    // Initial render with all items
+                    // Function to update checklist item role/assignment
+                    const updateChecklistItemRole = (itemId, newRole, oldRole) => {
+                        console.log(`[ArtifactsLoader] Updating checklist item ${itemId} role from ${oldRole} to ${newRole}`);
+                        
+                        const projectId = getCurrentProjectId();
+                        if (!projectId) {
+                            console.warn('[ArtifactsLoader] No project ID available for role update');
+                            showRoleUpdateError('Project ID not available');
+                            return;
+                        }
+
+                        // Show loading state
+                        const dropdown = document.querySelector(`.role-dropdown[data-item-id="${itemId}"]`);
+                        if (dropdown) {
+                            dropdown.disabled = true;
+                            dropdown.style.opacity = '0.6';
+                        }
+
+                        // TODO: Replace with actual API call
+                        // For now, simulate the update
+                        setTimeout(() => {
+                            // Re-enable dropdown
+                            if (dropdown) {
+                                dropdown.disabled = false;
+                                dropdown.style.opacity = '1';
+                                dropdown.setAttribute('data-current-role', newRole);
+                            }
+                            
+                            // Update the item in the checklist array
+                            const item = checklist.find(i => i.id == itemId);
+                            if (item) {
+                                item.role = newRole;
+                                item.updated_at = new Date().toISOString();
+                            }
+                            
+                            // Update the visual state in the main list
+                            const itemElement = document.querySelector(`[data-id="${itemId}"]`);
+                            if (itemElement) {
+                                // Remove old role classes
+                                itemElement.classList.remove('user', 'agent');
+                                // Add new role class
+                                itemElement.classList.add(newRole);
+                                
+                                // Update role badge
+                                const roleBadge = itemElement.querySelector('.role-badge');
+                                if (roleBadge) {
+                                    roleBadge.className = `role-badge ${newRole}`;
+                                    roleBadge.textContent = newRole.charAt(0).toUpperCase() + newRole.slice(1);
+                                }
+                            }
+                            
+                            console.log(`[ArtifactsLoader] Role updated successfully to: ${newRole}`);
+                            showRoleUpdateSuccess(newRole);
+                        }, 300);
+                    };
+
+                    // Function to show status update success message
+                    const showStatusUpdateSuccess = (newStatus) => {
+                        const statusUpdateMessage = document.getElementById('status-update-message');
+                        if (statusUpdateMessage) {
+                            statusUpdateMessage.textContent = `Status updated to: ${newStatus}`;
+                            statusUpdateMessage.style.display = 'block';
+                            setTimeout(() => {
+                                statusUpdateMessage.style.display = 'none';
+                            }, 3000);
+                        }
+                    };
+
+                    // Function to show role update success message
+                    const showRoleUpdateSuccess = (newRole) => {
+                        const roleUpdateMessage = document.getElementById('role-update-message');
+                        if (roleUpdateMessage) {
+                            roleUpdateMessage.textContent = `Role updated to: ${newRole}`;
+                            roleUpdateMessage.style.display = 'block';
+                            setTimeout(() => {
+                                roleUpdateMessage.style.display = 'none';
+                            }, 3000);
+                        }
+                    };
+
+                    // Function to show status update error message
+                    const showStatusUpdateError = (errorMessage) => {
+                        const statusUpdateError = document.getElementById('status-update-error');
+                        if (statusUpdateError) {
+                            statusUpdateError.textContent = `Error updating status: ${errorMessage}`;
+                            statusUpdateError.style.display = 'block';
+                            setTimeout(() => {
+                                statusUpdateError.style.display = 'none';
+                            }, 5000);
+                        }
+                    };
+
+                    // Function to show role update error message
+                    const showRoleUpdateError = (errorMessage) => {
+                        const roleUpdateError = document.getElementById('role-update-error');
+                        if (roleUpdateError) {
+                            roleUpdateError.textContent = `Error updating role: ${errorMessage}`;
+                            roleUpdateError.style.display = 'block';
+                            setTimeout(() => {
+                                roleUpdateError.style.display = 'none';
+                            }, 5000);
+                        }
+                    };
+
+                    // Attach event listeners for filters
+                    statusFilter.addEventListener('change', function() {
+                        const filterStatus = this.value;
+                        const filterRole = roleFilter.value;
+                        renderChecklist(filterStatus, filterRole);
+                    });
+                    
+                    roleFilter.addEventListener('change', function() {
+                        const filterStatus = statusFilter.value;
+                        const filterRole = this.value;
+                        renderChecklist(filterStatus, filterRole);
+                    });
+                    
+                    clearFiltersBtn.addEventListener('click', function() {
+                        statusFilter.value = 'all';
+                        roleFilter.value = 'all';
+                        renderChecklist();
+                    });
+
+                    // Initial render
                     renderChecklist();
                 })
                 .catch(error => {
-                    console.error('Error fetching checklist:', error);
+                    console.error('[ArtifactsLoader] Error fetching checklist:', error);
                     checklistTab.innerHTML = `
                         <div class="error-state">
                             <div class="error-state-icon">
@@ -1381,182 +1616,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         </div>
                     `;
                 });
-        }
-    };
-    
-    // Switch tab helper function
-    window.switchTab = function(tabId) {
-        console.log(`[ArtifactsLoader] Switching to tab: ${tabId}`);
-        
-        // Get tab elements
-        const tabButtons = document.querySelectorAll('.tab-button');
-        const tabPanes = document.querySelectorAll('.tab-pane');
-        
-        // Remove active class from all buttons and panes
-        tabButtons.forEach(button => button.classList.remove('active'));
-        tabPanes.forEach(pane => pane.classList.remove('active'));
-        
-        // Add active class to the selected tab
-        const selectedButton = document.querySelector(`.tab-button[data-tab="${tabId}"]`);
-        const selectedPane = document.getElementById(tabId);
-        
-        if (selectedButton && selectedPane) {
-            selectedButton.classList.add('active');
-            selectedPane.classList.add('active');
-            
-            // Load data for the tab if it's empty
-            if (selectedPane.querySelector('.empty-state')) {
-                loadTabData(tabId);
-            }
-        }
-    };
-    
-    // Set up tab switching event listeners
-    document.querySelectorAll('.tab-button').forEach(button => {
-        button.addEventListener('click', function() {
-            const tabId = this.getAttribute('data-tab');
-            window.switchTab(tabId);
-        });
-    });
-    
-    // Function to load data for a tab
-    function loadTabData(tabId) {
-        const projectId = getCurrentProjectId();
-        if (!projectId) {
-            console.warn('[ArtifactsLoader] No project ID available for loading tab data');
-            return;
-        }
-        
-        console.log(`[ArtifactsLoader] Loading data for tab: ${tabId}`);
-        
-        switch (tabId) {
-            case 'prd':
-                window.ArtifactsLoader.loadPRD(projectId);
-                break;
-            case 'implementation':
-                window.ArtifactsLoader.loadImplementation(projectId);
-                break;
-            case 'features':
-                window.ArtifactsLoader.loadFeatures(projectId);
-                break;
-            case 'personas':
-                window.ArtifactsLoader.loadPersonas(projectId);
-                break;
-            case 'design':
-                if (window.ArtifactsLoader.loadDesignSchema) {
-                    window.ArtifactsLoader.loadDesignSchema(projectId);
-                }
-                break;
-            case 'tickets':
-                window.ArtifactsLoader.loadTickets(projectId);
-                break;
-            case 'codebase':
-                window.ArtifactsLoader.loadCodebase(projectId);
-                break;
-            case 'apps':
-                console.log('[ArtifactsLoader] Attempting to load app preview');
-                if (window.ArtifactsLoader.loadAppPreview) {
-                    window.ArtifactsLoader.loadAppPreview(projectId, null);
-                } else {
-                    console.warn('[ArtifactsLoader] loadAppPreview function not available');
-                }
-                break;
-            case 'checklist':
-                window.ArtifactsLoader.loadChecklist(projectId);
-                break;
-            // Add more cases as needed for other tabs
-        }
-    }
-    
-    // Function to get current project ID from URL or stored value
-    function getCurrentProjectId() {
-        // Try to get from URL path (e.g. /chat/project/123/)
-        const pathMatch = window.location.pathname.match(/\/project\/(\d+)/);
-        if (pathMatch && pathMatch[1]) {
-            return pathMatch[1];
-        }
-        
-        // Try to get from URL query parameter
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.has('project_id')) {
-            return urlParams.get('project_id');
-        }
-        
-        // Try to get from stored value in localStorage
-        return localStorage.getItem('current_project_id');
-    }
-    
-    // Function to get current conversation ID from URL
-    function getCurrentConversationId() {
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.has('conversation_id')) {
-            return urlParams.get('conversation_id');
-        }
-        return null;
-    }
-    
-    // Expose these functions globally for other modules to use
-    window.ArtifactsHelper = {
-        getCurrentProjectId: getCurrentProjectId,
-        getCurrentConversationId: getCurrentConversationId
+        },
     };
 
-    // Checklist action functions
-    window.editChecklistItem = function(itemId) {
-        console.log(`[ArtifactsLoader] Edit checklist item: ${itemId}`);
-        // TODO: Implement edit functionality
-        alert('Edit functionality coming soon!');
-    };
-
-    window.toggleChecklistStatus = function(itemId, currentStatus) {
-        console.log(`[ArtifactsLoader] Toggle checklist status for item: ${itemId}, current: ${currentStatus}`);
-        
-        const projectId = getCurrentProjectId();
-        if (!projectId) {
-            console.warn('[ArtifactsLoader] No project ID available for status toggle');
-            return;
-        }
-
-        const newStatus = currentStatus === 'closed' ? 'open' : 'closed';
-        
-        // TODO: Implement API call to update status
-        // For now, just show a message
-        const itemElement = document.querySelector(`[data-id="${itemId}"]`);
-        if (itemElement) {
-            // Update the visual state immediately for better UX
-            itemElement.classList.remove('open', 'in-progress', 'agent', 'closed');
-            itemElement.classList.add(newStatus);
-            
-            const statusIcon = itemElement.querySelector('.status-icon');
-            const statusText = itemElement.querySelector('.checklist-status-text');
-            const actionBtn = itemElement.querySelector('.checklist-actions button:last-child');
-            
-            if (newStatus === 'closed') {
-                statusIcon.className = 'fas fa-check-circle status-icon';
-                statusText.textContent = 'CLOSED';
-                actionBtn.innerHTML = '<i class="fas fa-undo"></i> Reopen';
-            } else {
-                statusIcon.className = 'fas fa-circle status-icon';
-                statusText.textContent = 'OPEN';
-                actionBtn.innerHTML = '<i class="fas fa-check"></i> Complete';
-            }
-        }
-        
-        console.log(`[ArtifactsLoader] Status toggled to: ${newStatus}`);
-    };
-
-    // Auto-load content for the initially active tab when page loads
-    setTimeout(() => {
-        const activeTab = document.querySelector('.tab-button.active');
-        if (activeTab) {
-            const activeTabId = activeTab.getAttribute('data-tab');
-            const activePane = document.getElementById(activeTabId);
-            
-            // Check if the active pane has empty state and load data if needed
-            if (activePane && activePane.querySelector('.empty-state')) {
-                console.log(`[ArtifactsLoader] Auto-loading data for initially active tab: ${activeTabId}`);
-                loadTabData(activeTabId);
-            }
-        }
-    }, 100); // Small delay to ensure DOM is fully ready
-});
+    // Initialize the ArtifactsLoader
+    ArtifactsLoader.init();
+})();

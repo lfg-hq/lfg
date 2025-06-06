@@ -866,6 +866,10 @@ document.addEventListener('DOMContentLoaded', () => {
                                data.notification_type === 'command_output' ? 'execute_command' : 
                                data.notification_type === 'start_server' ? 'start_server' : 
                                data.notification_type === 'implementation' ? 'save_implementation' : 
+                               data.notification_type === 'prd' ? 'create_prd' :
+                               data.notification_type === 'design' ? 'design_schema' :
+                               data.notification_type === 'tickets' ? 'generate_tickets' :
+                               data.notification_type === 'checklist' ? 'checklist_tickets' :
                                data.function_name || data.notification_type;
             
             // Remove any previous function call indicators
@@ -934,63 +938,65 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Make sure artifacts panel is visible
             let panelOpenSuccess = false;
+
+            // Update logic to pop open the artifacts panel when needed
             
-            if (window.ArtifactsPanel && typeof window.ArtifactsPanel.toggle === 'function') {
-                console.log('Opening artifacts panel with ArtifactsPanel.toggle');
-                try {
-                    window.ArtifactsPanel.toggle(true); // Use forceOpen parameter to ensure it opens
-                    console.log('ArtifactsPanel.toggle called successfully');
+            // if (window.ArtifactsPanel && typeof window.ArtifactsPanel.toggle === 'function') {
+            //     console.log('Opening artifacts panel with ArtifactsPanel.toggle');
+            //     try {
+            //         window.ArtifactsPanel.toggle(true); // Use forceOpen parameter to ensure it opens
+            //         console.log('ArtifactsPanel.toggle called successfully');
                     
-                    // Double check if panel is actually open now
-                    const panel = document.getElementById('artifacts-panel');
-                    if (panel) {
-                        console.log('Panel element found, expanded status:', panel.classList.contains('expanded'));
-                        panelOpenSuccess = panel.classList.contains('expanded');
+            //         // Double check if panel is actually open now
+            //         const panel = document.getElementById('artifacts-panel');
+            //         if (panel) {
+            //             console.log('Panel element found, expanded status:', panel.classList.contains('expanded'));
+            //             panelOpenSuccess = panel.classList.contains('expanded');
                         
-                        if (!panelOpenSuccess) {
-                            console.log('Panel still not expanded after toggle, adding expanded class directly');
-                            panel.classList.add('expanded');
-                            document.querySelector('.app-container')?.classList.add('artifacts-expanded');
-                            document.getElementById('artifacts-button')?.classList.add('active');
-                            panelOpenSuccess = true;
-                        }
-                    } else {
-                        console.error('Could not find artifacts-panel element in DOM');
-                    }
-                } catch (err) {
-                    console.error('Error toggling artifacts panel:', err);
-                }
-            } else {
-                console.error('ArtifactsPanel not available!', window.ArtifactsPanel);
-            }
+            //             if (!panelOpenSuccess) {
+            //                 console.log('Panel still not expanded after toggle, adding expanded class directly');
+            //                 panel.classList.add('expanded');
+            //                 document.querySelector('.app-container')?.classList.add('artifacts-expanded');
+            //                 document.getElementById('artifacts-button')?.classList.add('active');
+            //                 panelOpenSuccess = true;
+            //             }
+            //         } else {
+            //             console.error('Could not find artifacts-panel element in DOM');
+            //         }
+            //     } catch (err) {
+            //         console.error('Error toggling artifacts panel:', err);
+            //     }
+            // } else {
+            //     console.error('ArtifactsPanel not available!', window.ArtifactsPanel);
+            // }
             
             // If the panel still isn't open, try the direct approach
-            if (!panelOpenSuccess && window.forceOpenArtifactsPanel) {
-                console.log('Using forceOpenArtifactsPanel as fallback');
-                window.forceOpenArtifactsPanel(data.notification_type);
-                panelOpenSuccess = true;
-            }
+            // if (!panelOpenSuccess && window.forceOpenArtifactsPanel) {
+            //     console.log('Using forceOpenArtifactsPanel as fallback');
+            //     window.forceOpenArtifactsPanel(data.notification_type);
+            //     panelOpenSuccess = true;
+            // }
             
             // Last resort - direct DOM manipulation if all else fails
-            if (!panelOpenSuccess) {
-                console.log('Attempting direct DOM manipulation to open panel');
-                try {
-                    // Try to manipulate DOM directly
-                    const panel = document.getElementById('artifacts-panel');
-                    const appContainer = document.querySelector('.app-container');
-                    const button = document.getElementById('artifacts-button');
+            // if (!panelOpenSuccess) {
+            //     console.log('Attempting direct DOM manipulation to open panel');
+            //     try {
+            //         // Try to manipulate DOM directly
+            //         const panel = document.getElementById('artifacts-panel');
+            //         const appContainer = document.querySelector('.app-container');
+            //         const button = document.getElementById('artifacts-button');
                     
-                    if (panel && appContainer) {
-                        panel.classList.add('expanded');
-                        appContainer.classList.add('artifacts-expanded');
-                        if (button) button.classList.add('active');
-                        console.log('Panel forced open with direct DOM manipulation');
-                        panelOpenSuccess = true;
-                    }
-                } catch (e) {
-                    console.error('Error in direct DOM manipulation:', e);
-                }
-            }
+            //         if (panel && appContainer) {
+            //             panel.classList.add('expanded');
+            //             appContainer.classList.add('artifacts-expanded');
+            //             if (button) button.classList.add('active');
+            //             console.log('Panel forced open with direct DOM manipulation');
+            //             panelOpenSuccess = true;
+            //         }
+            //     } catch (e) {
+            //         console.error('Error in direct DOM manipulation:', e);
+            //     }
+            // }
             
             console.log('\n\nTab Switching Status:');
             console.log('switchTab available:', !!window.switchTab);
@@ -1841,6 +1847,14 @@ document.addEventListener('DOMContentLoaded', () => {
             message = 'PRD generated and saved successfully!';
         } else if (type === 'command_output' || functionName === 'execute_command') {
             message = 'Command executed successfully!';
+        } else if (type === 'implementation') {
+            message = 'Implementation saved successfully!';
+        } else if (type === 'design') {
+            message = 'Design schema created successfully!';
+        } else if (type === 'tickets') {
+            message = 'Tickets generated successfully!';
+        } else if (type === 'checklist') {
+            message = 'Checklist updated successfully!';
         } else {
             message = 'Function call completed successfully!';
         }
@@ -1937,6 +1951,50 @@ document.addEventListener('DOMContentLoaded', () => {
             'save_implementation': {
                 description: 'Saving implementation...',
                 successMessage: 'Implementation saved successfully.'
+            },
+            'create_prd': {
+                description: 'Creating and saving PRD document...',
+                successMessage: 'PRD has been created and saved to the project.'
+            },
+            'create_implementation': {
+                description: 'Creating implementation document...',
+                successMessage: 'Implementation document has been created and saved.'
+            },
+            'update_implementation': {
+                description: 'Updating implementation document...',
+                successMessage: 'Implementation document has been updated.'
+            },
+            'get_implementation': {
+                description: 'Retrieving implementation document...',
+                successMessage: 'Implementation document has been loaded.'
+            },
+            'save_features': {
+                description: 'Saving features to the project...',
+                successMessage: 'Features have been saved successfully.'
+            },
+            'save_personas': {
+                description: 'Saving personas to the project...',
+                successMessage: 'Personas have been saved successfully.'
+            },
+            'design_schema': {
+                description: 'Creating database design schema...',
+                successMessage: 'Database schema has been designed and saved.'
+            },
+            'generate_tickets': {
+                description: 'Generating development tickets...',
+                successMessage: 'Development tickets have been generated successfully.'
+            },
+            'checklist_tickets': {
+                description: 'Creating checklist for tickets...',
+                successMessage: 'Ticket checklist has been created.'
+            },
+            'update_checklist_ticket': {
+                description: 'Updating ticket checklist...',
+                successMessage: 'Checklist has been updated.'
+            },
+            'get_next_ticket': {
+                description: 'Getting next ticket to work on...',
+                successMessage: 'Next ticket has been retrieved.'
             }
         };
         

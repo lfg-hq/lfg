@@ -178,8 +178,8 @@ async def app_functions(function_name, function_args, project_id, conversation_i
             return await get_features(project_id)
         case "get_personas":
             return await get_personas(project_id)
-        case "save_prd":
-            return await save_prd(function_args, project_id)
+        case "create_prd":
+            return await create_prd(function_args, project_id)
         case "get_prd":
             return await get_prd(project_id)
         case "create_implementation":
@@ -752,7 +752,7 @@ async def get_personas(project_id):
         "message_to_agent": f"Following personas already exists in the database: {persona_list}"
     }
 
-async def save_prd(function_args, project_id):
+async def create_prd(function_args, project_id):
     """
     Save the PRD for a project
     """
@@ -1169,13 +1169,13 @@ async def checklist_tickets(function_args, project_id):
                     status='open',
                     role=ticket.get('role', 'agent'),
                     # Enhanced fields
-                    details=details,
-                    ui_requirements=details.get('ui_requirements', {}),
-                    component_specs=details.get('component_specs', {}),
-                    acceptance_criteria=details.get('acceptance_criteria', []),
-                    dependencies=details.get('dependencies', []),
-                    complexity=details.get('complexity', 'medium'),
-                    requires_worktree=details.get('requires_worktree', True)
+                    # details=details,
+                    ui_requirements=ticket.get('ui_requirements', {}),
+                    component_specs=ticket.get('component_specs', {}),
+                    acceptance_criteria=ticket.get('acceptance_criteria', []),
+                    dependencies=ticket.get('dependencies', []),
+                    # complexity=details.get('complexity', 'medium'),
+                    # requires_worktree=details.get('requires_worktree', True)
                 )
                 created_tickets.append(new_ticket.id)
         

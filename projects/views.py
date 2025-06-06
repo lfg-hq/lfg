@@ -208,6 +208,13 @@ def project_checklist_api(request, project_id):
             'role': item.role,
             'created_at': item.created_at.isoformat(),
             'updated_at': item.updated_at.isoformat(),
+            'details': item.details,
+            'ui_requirements': item.ui_requirements,
+            'component_specs': item.component_specs,
+            'acceptance_criteria': item.acceptance_criteria,
+            'dependencies': item.dependencies,
+            'complexity': item.complexity,
+            'requires_worktree': item.requires_worktree,
         })
     
     return JsonResponse({'checklist': checklist_list})

@@ -1466,6 +1466,24 @@
     border: 1px solid rgba(16, 185, 129, 0.3);
 }
 
+.checklist-details-drawer .status-badge.status-done {
+    background: rgba(16, 185, 129, 0.2);
+    color: #86efac;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.checklist-details-drawer .status-badge.status-failed {
+    background: rgba(239, 68, 68, 0.2);
+    color: #fca5a5;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.checklist-details-drawer .status-badge.status-blocked {
+    background: rgba(156, 163, 175, 0.2);
+    color: #d1d5db;
+    border: 1px solid rgba(156, 163, 175, 0.3);
+}
+
 .checklist-details-drawer .priority-badge {
     padding: 3px 8px;
     border-radius: 12px;
@@ -1554,6 +1572,100 @@
     background: rgba(34, 197, 94, 0.3);
     color: #86efac;
     border-color: rgba(34, 197, 94, 0.5);
+}
+
+/* Drawer Dropdown Styles */
+.checklist-details-drawer .status-dropdown,
+.checklist-details-drawer .role-dropdown {
+    padding: 4px 20px 4px 8px;
+    background-color: rgba(40, 40, 40, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
+    color: #e0e0e0;
+    font-size: 0.85rem;
+    min-width: 120px;
+    height: 32px;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    background-size: 10px;
+    transition: all 0.2s ease;
+    font-weight: 500;
+    margin-left: 8px;
+}
+
+.checklist-details-drawer .status-dropdown:hover,
+.checklist-details-drawer .role-dropdown:hover {
+    background-color: rgba(50, 50, 50, 0.9);
+    border-color: rgba(255, 255, 255, 0.25);
+    transform: translateY(-1px);
+}
+
+.checklist-details-drawer .status-dropdown:focus,
+.checklist-details-drawer .role-dropdown:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(187, 134, 252, 0.4);
+    border-color: rgba(187, 134, 252, 0.6);
+}
+
+.checklist-details-drawer .status-dropdown:disabled,
+.checklist-details-drawer .role-dropdown:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+/* Enhanced detail row styling for dropdowns */
+.checklist-details-drawer .detail-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 12px;
+    font-size: 0.9rem;
+}
+
+.checklist-details-drawer .detail-row strong {
+    color: #f0f0f0;
+    min-width: 100px;
+    flex-shrink: 0;
+}
+
+/* Status-specific dropdown styling */
+.checklist-details-drawer .status-dropdown option[value="open"] {
+    background-color: rgba(107, 114, 128, 0.2);
+    color: #9ca3af;
+}
+
+.checklist-details-drawer .status-dropdown option[value="in_progress"] {
+    background-color: rgba(245, 158, 11, 0.2);
+    color: #fcd34d;
+}
+
+.checklist-details-drawer .status-dropdown option[value="done"] {
+    background-color: rgba(16, 185, 129, 0.2);
+    color: #86efac;
+}
+
+.checklist-details-drawer .status-dropdown option[value="failed"] {
+    background-color: rgba(239, 68, 68, 0.2);
+    color: #fca5a5;
+}
+
+.checklist-details-drawer .status-dropdown option[value="blocked"] {
+    background-color: rgba(156, 163, 175, 0.2);
+    color: #d1d5db;
+}
+
+/* Role-specific dropdown styling */
+.checklist-details-drawer .role-dropdown option[value="user"] {
+    background-color: rgba(59, 130, 246, 0.2);
+    color: #93c5fd;
+}
+
+.checklist-details-drawer .role-dropdown option[value="agent"] {
+    background-color: rgba(139, 92, 246, 0.2);
+    color: #c4b5fd;
 }
 
 /* Mobile responsiveness for checklist drawer */
@@ -2124,28 +2236,90 @@
 }
 
 .acceptance-criteria-list {
-    margin: 0;
-    padding: 0;
     list-style: none;
+    padding: 0;
+    margin: 0;
 }
 
 .criteria-item {
-    padding: 10px 12px;
-    margin-bottom: 8px;
-    background: rgba(16, 185, 129, 0.1);
-    border-radius: 6px;
-    color: #a7f3d0;
-    font-size: 0.85rem;
-    line-height: 1.5;
     display: flex;
     align-items: flex-start;
-    gap: 8px;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.criteria-item:last-child {
+    border-bottom: none;
 }
 
 .criteria-item i {
     color: #10b981;
+    margin-right: 8px;
     margin-top: 2px;
     flex-shrink: 0;
+}
+
+/* Specifications section styles */
+.specifications-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.spec-item {
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.9);
+    line-height: 1.5;
+}
+
+.spec-item:last-child {
+    border-bottom: none;
+}
+
+.spec-item strong {
+    color: rgba(255, 255, 255, 0.95);
+}
+
+/* Specifications section styles */
+.specifications-content {
+    margin: 0;
+}
+
+.spec-subsection {
+    margin-bottom: 16px;
+}
+
+.spec-subsection:last-child {
+    margin-bottom: 0;
+}
+
+.spec-heading {
+    color: rgba(255, 255, 255, 0.95);
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin: 0 0 8px 0;
+    padding: 0;
+}
+
+.spec-list {
+    list-style-type: disc;
+    padding-left: 20px;
+    margin: 0;
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.spec-list li {
+    margin-bottom: 4px;
+    line-height: 1.4;
+}
+
+.spec-list li:last-child {
+    margin-bottom: 0;
+}
+
+.spec-list li strong {
+    color: rgba(255, 255, 255, 0.95);
 }
 
 /* View Details Button for Checklist */
@@ -2166,4 +2340,40 @@
     background: rgba(99, 102, 241, 0.3);
     transform: translateY(-1px);
     box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+}
+
+.checklist-card.closed {
+    --status-color: #10b981;
+}
+
+.checklist-card.closed::before {
+    background: #10b981 !important;
+    border-color: #10b981 !important;
+}
+
+.checklist-card.done {
+    --status-color: #10b981;
+}
+
+.checklist-card.done::before {
+    background: #10b981 !important;
+    border-color: #10b981 !important;
+}
+
+.checklist-card.failed {
+    --status-color: #ef4444;
+}
+
+.checklist-card.failed::before {
+    background: #ef4444 !important;
+    border-color: #ef4444 !important;
+}
+
+.checklist-card.blocked {
+    --status-color: #9ca3af;
+}
+
+.checklist-card.blocked::before {
+    background: #9ca3af !important;
+    border-color: #9ca3af !important;
 }

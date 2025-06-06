@@ -41,12 +41,23 @@ def get_notification_type_for_tool(tool_name):
     notification_mappings = {
         "extract_features": "features",
         "extract_personas": "personas",
+        "save_features": "features",
+        "save_personas": "personas",
+        "get_features": "features",
+        "get_personas": "personas",
+        "create_prd": "prd",
+        "get_prd": "prd",
         "start_server": "start_server",
         "execute_command": "execute_command",
         "save_implementation": "implementation",
         "get_implementation": "implementation",
         "update_implementation": "implementation",
-        "create_implementation": "implementation"
+        "create_implementation": "implementation",
+        "design_schema": "design",
+        "generate_tickets": "tickets",
+        "checklist_tickets": "checklist",
+        "update_checklist_ticket": "checklist",
+        "get_next_ticket": "tickets"
     }
     
     return notification_mappings.get(tool_name)
@@ -109,7 +120,13 @@ async def execute_tool_call(tool_call_name, tool_call_args_str, project_id, conv
         # Send special notification for extraction functions regardless of result
         notification_type = get_notification_type_for_tool(tool_call_name)
         print(f"\n\n\n\n\nNotification type: {notification_type}")
-        if notification_type and tool_call_name in ["extract_features", "extract_personas", "save_implementation", "get_implementation", "update_implementation", "execute_command", "start_server"]:
+        if notification_type and tool_call_name in [
+            "extract_features", "extract_personas", "save_features", "save_personas",
+            "get_features", "get_personas", "create_prd", "get_prd",
+            "save_implementation", "get_implementation", "update_implementation", "create_implementation",
+            "execute_command", "start_server", "design_schema", "generate_tickets",
+            "checklist_tickets", "update_checklist_ticket", "get_next_ticket"
+        ]:
             logger.debug(f"FORCING NOTIFICATION FOR {tool_call_name}")
             notification_data = {
                 "is_notification": True,

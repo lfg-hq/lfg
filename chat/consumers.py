@@ -697,9 +697,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
         logger.debug(f"Messages: {messages}")
         try:
             conversation_id = self.conversation.id if self.conversation else None
-            self.pending_message = ""  # Initialize pending message
-            self.last_save_time = asyncio.get_event_loop().time()
-            last_save_length = 0
             
             # Stream content directly from the now-async provider
             async for content in provider.generate_stream(messages, project_id, conversation_id, tools):
@@ -797,34 +794,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
                         # Not a valid JSON notification, treat as normal text
                         pass
                 
-                # Normal text chunk - add to pending message and yield it
-                self.pending_message += content
-                
-                # Auto-save every 500 characters or every 5 seconds
-                current_time = asyncio.get_event_loop().time()
-                should_save = (
-                    len(self.pending_message) - last_save_length > 500 or
-                    current_time - self.last_save_time > 5
-                )
-                
-                if should_save:
-                    await self.auto_save_partial_message()
-                    last_save_length = len(self.pending_message)
-                    self.last_save_time = current_time
+                # Normal text chunk - yield it
+                # Note: We don't accumulate in pending_message anymore to avoid duplicate saves
+                # The message is saved once in generate_ai_response after all streaming is complete
                 
                 # Yield the content for streaming
                 yield content
                 
         except Exception as e:
             logger.error(f"Error in process_ai_stream: {str(e)}")
-            # Save whatever we have so far
-            if self.pending_message:
-                await self.force_save_message()
             yield f"Error generating response: {str(e)}"
         finally:
-            # Final save if there's any remaining content
-            if self.pending_message:
-                await self.finalize_message()
+            # Clean up - no need to save here as it's handled in generate_ai_response
             self.pending_message = None
     
     
