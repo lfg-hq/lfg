@@ -1,8 +1,8 @@
-save_prd = {
+create_prd = {
     "type": "function",
     "function": 
         {
-            "name": "save_prd",
+            "name": "create_prd",
             "description": "Summarize the project based on the provided requirements and save the PRD in Markdown format. This could be an updated PRD either",
             "parameters": {
                 "type": "object",
@@ -225,7 +225,7 @@ checklist_tickets = {
     "type": "function",
     "function": {
         "name": "checklist_tickets",
-        "description": "Call this function to generate the checklist tickets for the project",
+        "description": "Call this function to generate the checklist tickets for the project. You will review the implementation plan for this.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -235,11 +235,15 @@ checklist_tickets = {
                         "type": "object",
                         "properties": {
                             "name": {"type": "string"},
-                            "description": {"type": "string"},
+                            "description": {"type": "string", "description": "Detailed description as to all the details that needs to be implemented"},
                             "role": {"type": "string", "enum": ["agent", "user"]},
+                            "ui_requirements": {"type": "object", "description": "UI requirements for this ticket if applicable"},
+                            "component_specs": {"type": "object", "description": "Component specifications for this ticket if applicable"},
+                            "acceptance_criteria": {"type": "array", "items": {"type": "string"}, "description": "Acceptance criteria for this ticket"},
+                            "dependencies": {"type": "array", "items": {"type": "string"}, "description": "Is this ticket dependent on any other ticket? If yes, pass the ticket id"},
                             "priority": {"type": "string", "enum": ["High", "Medium", "Low"]}
                         },
-                        "required": ["name", "description", "priority"]
+                        "required": ["name", "description", "role", "ui_requirements", "component_specs", "acceptance_criteria", "dependencies", "priority"]
                     }
                 }
             },
@@ -248,7 +252,7 @@ checklist_tickets = {
     }
 }
 
-update_checklist_ticket = {
+update_checklist_ticket = {""
 
     "type": "function",
     "function": {
@@ -458,16 +462,16 @@ get_github_access_token = {
     }
 }
 
-# tools = [save_prd, get_prd, save_features, save_personas, design_schema, generate_tickets, write_code_file, read_code_file]
+# tools = [create_prd, get_prd, save_features, save_personas, design_schema, generate_tickets, write_code_file, read_code_file]
 
-tools_code = [save_prd, get_prd, execute_command, start_server, \
+tools_code = [create_prd, get_prd, execute_command, start_server, \
               get_github_access_token, \
               checklist_tickets, update_checklist_ticket, \
               get_next_ticket, get_pending_tickets, \
               create_implementation, get_implementation, update_implementation, \
               implement_ticket]
 
-tools_product = [save_prd, get_prd, save_features, save_personas, extract_features, extract_personas, design_schema, generate_tickets]
+tools_product = [create_prd, get_prd, save_features, save_personas, extract_features, extract_personas, design_schema, generate_tickets]
 
 tools_ticket = [execute_command, get_prd, get_implementation]
 

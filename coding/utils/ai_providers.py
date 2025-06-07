@@ -25,6 +25,160 @@ from coding.utils.ai_tools import tools_ticket
 # Set up logger
 logger = logging.getLogger(__name__)
 
+def get_notification_type_for_tool(tool_name):
+    """
+    Determine the notification type based on the tool/function name.
+    
+    Args:
+        tool_name: The name of the tool/function being called
+        
+    Returns:
+        str or None: The notification type if the tool should trigger a notification, None otherwise
+    """
+
+    print(f"\n\\n\n\n\n\nGetting notification type for tool: {tool_name}")
+    
+    notification_mappings = {
+        "extract_features": "features",
+        "extract_personas": "personas",
+        "save_features": "features",
+        "save_personas": "personas",
+        "get_features": "features",
+        "get_personas": "personas",
+        "create_prd": "prd",
+        "get_prd": "prd",
+        "start_server": "start_server",
+        "execute_command": "execute_command",
+        "save_implementation": "implementation",
+        "get_implementation": "implementation",
+        "update_implementation": "implementation",
+        "create_implementation": "implementation",
+        "design_schema": "design",
+        "generate_tickets": "tickets",
+        "checklist_tickets": "checklist",
+        "update_checklist_ticket": "checklist",
+        "get_next_ticket": "tickets"
+    }
+    
+    return notification_mappings.get(tool_name)
+
+async def execute_tool_call(tool_call_name, tool_call_args_str, project_id, conversation_id):
+    """
+    Execute a tool call and return the results.
+    
+    Args:
+        tool_call_name: The name of the tool/function to execute
+        tool_call_args_str: The JSON string of arguments for the tool
+        project_id: The project ID
+        conversation_id: The conversation ID
+        
+    Returns:
+        tuple: (result_content, notification_data, yielded_content)
+            - result_content: The string result to return to the model
+            - notification_data: Dict with notification data or None
+            - yielded_content: Content to yield immediately (e.g., "*" for explanations)
+    """
+    logger.debug(f"Executing Tool: {tool_call_name}")
+    logger.debug(f"Raw Args: {tool_call_args_str}")
+    
+    result_content = ""
+    notification_data = None
+    yielded_content = ""
+    
+    try:
+        # Handle empty arguments string by defaulting to an empty object
+        if not tool_call_args_str.strip():
+            parsed_args = {}
+            logger.debug("Empty arguments string, defaulting to empty object")
+        else:
+            parsed_args = json.loads(tool_call_args_str)
+            # Check for both possible spellings of "explanation"
+            explanation = parsed_args.get("explanation", parsed_args.get("explaination", ""))
+            
+            if explanation:
+                logger.debug(f"Found explanation: {explanation}")
+                # Return the actual explanation to be yielded with formatting
+                # Add a newline before and after for better readability
+                yielded_content = f"\n*{explanation}*\n"
+        
+        # Log the function call with clean arguments
+        logger.debug(f"Calling app_functions with {tool_call_name}, {parsed_args}, {project_id}, {conversation_id}")
+        
+        # Execute the function
+        try:
+            tool_result = await app_functions(
+                tool_call_name, parsed_args, project_id, conversation_id
+            )
+            logger.debug(f"app_functions call successful for {tool_call_name}")
+        except Exception as func_error:
+            logger.error(f"Error calling app_functions: {str(func_error)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            raise
+
+        logger.debug(f"Tool Result: {tool_result}")
+        
+        # Send special notification for extraction functions regardless of result
+        notification_type = get_notification_type_for_tool(tool_call_name)
+        print(f"\n\n\n\n\nNotification type: {notification_type}")
+        if notification_type and tool_call_name in [
+            "extract_features", "extract_personas", "save_features", "save_personas",
+            "get_features", "get_personas", "create_prd", "get_prd",
+            "save_implementation", "get_implementation", "update_implementation", "create_implementation",
+            "execute_command", "start_server", "design_schema", "generate_tickets",
+            "checklist_tickets", "update_checklist_ticket", "get_next_ticket"
+        ]:
+            logger.debug(f"FORCING NOTIFICATION FOR {tool_call_name}")
+            notification_data = {
+                "is_notification": True,
+                "notification_type": notification_type,
+                "function_name": tool_call_name,
+                "notification_marker": "__NOTIFICATION__"
+            }
+            logger.debug(f"Forced notification: {notification_data}")
+        
+        # Handle the tool result
+        if tool_result is None:
+            result_content = "The function returned no result."
+        elif isinstance(tool_result, dict) and tool_result.get("is_notification") is True:
+            # Set notification data to be yielded later
+            logger.debug("NOTIFICATION DATA CREATED IN TOOL EXECUTION")
+            logger.debug(f"Tool result: {tool_result}")
+            
+            notification_data = {
+                "is_notification": True,
+                "notification_type": tool_result.get("notification_type", "features"),
+                "notification_marker": "__NOTIFICATION__"
+            }
+            
+            logger.debug(f"Notification data to be yielded: {notification_data}")
+            
+            # Use the message_to_agent as the result content
+            result_content = str(tool_result.get("message_to_agent", ""))
+        else:
+            # Normal case without notification or when tool_result is a string
+            if isinstance(tool_result, str):
+                result_content = tool_result
+            elif isinstance(tool_result, dict):
+                result_content = str(tool_result.get("message_to_agent", ""))
+            else:
+                # If tool_result is neither a string nor a dict
+                result_content = str(tool_result) if tool_result is not None else ""
+        
+        logger.debug(f"Tool Success. Result: {result_content}")
+        
+    except json.JSONDecodeError as e:
+        error_message = f"Failed to parse JSON arguments: {e}. Args: {tool_call_args_str}"
+        logger.error(error_message)
+        result_content = f"Error: {error_message}"
+        notification_data = None
+    except Exception as e:
+        error_message = f"Error executing tool {tool_call_name}: {e}"
+        logger.error(f"{error_message}\n{traceback.format_exc()}")
+        result_content = f"Error: {error_message}"
+        notification_data = None
+    
+    return result_content, notification_data, yielded_content
+
 async def get_ai_response(user_message, system_prompt, project_id, conversation_id, stream=False, tools=None):
     """
     Non-streaming wrapper for AI providers to be used in task implementations.
@@ -221,21 +375,7 @@ class OpenAIProvider(AIProvider):
                                     current_tc["function"]["name"] = function_name
                                     
                                     # Determine notification type based on function name
-                                    notification_type = None
-                                    if function_name == "extract_features":
-                                        notification_type = "features"
-                                    elif function_name == "extract_personas":
-                                        notification_type = "personas"
-                                    elif function_name == "start_server":
-                                        notification_type = "start_server"
-                                    elif function_name == "execute_command":
-                                        notification_type = "execute_command"
-                                    elif function_name == "save_implementation":
-                                        notification_type = "implementation"
-                                    elif function_name == "get_implementation":
-                                        notification_type = "implementation"
-                                    elif function_name == "update_implementation":
-                                        notification_type = "implementation"
+                                    notification_type = get_notification_type_for_tool(function_name)
                                     
                                     # Send early notification if it's an extraction function
                                     if notification_type:
@@ -286,112 +426,16 @@ class OpenAIProvider(AIProvider):
                                 tool_call_name = tool_call_to_execute["function"]["name"]
                                 tool_call_args_str = tool_call_to_execute["function"]["arguments"]
                                 
-                                logger.debug(f"Executing Tool: {tool_call_name} (ID: {tool_call_id})")
-                                logger.debug(f"Raw Args: {tool_call_args_str}")
+                                logger.debug(f"OpenAI Provider - Tool Call ID: {tool_call_id}")
                                 
-                                result_content = ""
-                                notification_data = None
-                                try:
-                                    # Handle empty arguments string by defaulting to an empty object
-                                    if not tool_call_args_str.strip():
-                                        parsed_args = {}
-                                        logger.debug("Empty arguments string, defaulting to empty object")
-                                    else:
-                                        parsed_args = json.loads(tool_call_args_str)
-                                        # Check for both possible spellings of "explanation"
-                                        explanation = parsed_args.get("explanation", parsed_args.get("explaination", ""))
-                                        
-                                        if explanation:
-                                            logger.debug(f"Found explanation: {explanation}")
-                                            
-                                            # Format the explanation nicely with markdown
-                                            formatted_explanation = f"\n\n{explanation}\n\n"
-                                            
-                                            # Add to the assistant message content
-                                            # if full_assistant_message.get("content", None) is None:
-                                            #     logger.debug(f"Setting content to: {formatted_explanation}")
-                                            #     full_assistant_message["content"] = formatted_explanation
-                                            # else:
-                                            #     full_assistant_message["content"] += formatted_explanation
-                                            
-                                            # Yield the explanation immediately so it streams to the frontend
-                                            yield "*"
-                                    # Log the function call with clean arguments
-                                    logger.debug(f"Calling app_functions with {tool_call_name}, {parsed_args}, {project_id}, {conversation_id}")
-                                    
-                                    # Execute the function with extensive logging and error handling
-                                    # app_functions is now async, so we await it directly
-                                    try:
-                                        tool_result = await app_functions(
-                                            tool_call_name, parsed_args, project_id, conversation_id
-                                        )
-                                        logger.debug(f"app_functions call successful for {tool_call_name}")
-                                    except Exception as func_error:
-                                        logger.error(f"Error calling app_functions: {str(func_error)}")
-                                        logger.error(f"Traceback: {traceback.format_exc()}")
-                                        # Rethrow to be caught by the outer try-except
-                                        raise
-
-                                    logger.debug(f"Tool Result: {tool_result}")
-                                    
-                                    # Send special notification for extraction functions regardless of result
-                                    if tool_call_name in ["extract_features", "extract_personas", "save_implementation", "get_implementation", "update_implementation"]:
-                                        if tool_call_name == "extract_features":
-                                            notification_type = "features"
-                                        elif tool_call_name == "extract_personas":
-                                            notification_type = "personas"
-                                        else:
-                                            notification_type = "implementation"
-                                        
-                                        logger.debug(f"FORCING NOTIFICATION FOR {tool_call_name}")
-                                        notification_data = {
-                                            "is_notification": True,
-                                            "notification_type": notification_type,
-                                            "function_name": tool_call_name,
-                                            "notification_marker": "__NOTIFICATION__"
-                                        }
-                                        logger.debug(f"Forced notification: {notification_data}")
-                                    
-                                    # Handle the case where tool_result is None
-                                    if tool_result is None:
-                                        result_content = "The function returned no result."
-                                    # Handle the case where tool_result is a dict with notification data
-                                    elif isinstance(tool_result, dict) and tool_result.get("is_notification") is True:
-                                        # Set notification data to be yielded later
-                                        logger.debug("NOTIFICATION DATA CREATED IN OPENAI PROVIDER")
-                                        logger.debug(f"Tool result: {tool_result}")
-                                        
-                                        notification_data = {
-                                            "is_notification": True,
-                                            "notification_type": tool_result.get("notification_type", "features"),
-                                            "notification_marker": "__NOTIFICATION__"  # Special marker
-                                        }
-                                        
-                                        logger.debug(f"Notification data to be yielded: {notification_data}")
-                                        
-                                        # Use the message_to_agent as the result content
-                                        result_content = str(tool_result.get("message_to_agent", ""))
-                                    else:
-                                        # Normal case without notification or when tool_result is a string
-                                        if isinstance(tool_result, str):
-                                            result_content = tool_result
-                                        elif isinstance(tool_result, dict):
-                                            result_content = str(tool_result.get("message_to_agent", ""))
-                                        else:
-                                            # If tool_result is neither a string nor a dict
-                                            result_content = str(tool_result) if tool_result is not None else ""
-                                    
-                                    logger.debug(f"Tool Success. Result: {result_content}")
-                                except json.JSONDecodeError as e:
-                                    error_message = f"Failed to parse JSON arguments: {e}. Args: {tool_call_args_str}"
-                                    logger.error(error_message)
-                                    result_content = f"Error: {error_message}"
-                                    notification_data = None
-                                except Exception as e:
-                                    error_message = f"Error executing tool {tool_call_name}: {e}"
-                                    logger.error(f"{error_message}\n{traceback.format_exc()}")
-                                    result_content = f"Error: {error_message}"
-                                    notification_data = None
+                                # Use the shared execute_tool_call function
+                                result_content, notification_data, yielded_content = await execute_tool_call(
+                                    tool_call_name, tool_call_args_str, project_id, conversation_id
+                                )
+                                
+                                # Yield any content that needs to be streamed
+                                if yielded_content:
+                                    yield yielded_content
                                 
                                 # Append tool result message
                                 tool_results_messages.append({
@@ -659,34 +703,20 @@ class AnthropicProvider(AIProvider):
                                 
                                 # Send early notification
                                 function_name = event.content_block.name
-                                notification_type = None
-                                if function_name == "extract_features":
-                                    notification_type = "features"
-                                elif function_name == "extract_personas":
-                                    notification_type = "personas"
-                                elif function_name == "start_server":
-                                    notification_type = "start_server"
-                                elif function_name == "execute_command":
-                                    notification_type = "execute_command"
-                                elif function_name == "create_implementation":
-                                    notification_type = "implementation"
-                                elif function_name == "get_implementation":
-                                    notification_type = "implementation"
-                                elif function_name == "update_implementation":
-                                    notification_type = "implementation"
+                                notification_type = get_notification_type_for_tool(function_name)
                                 
-                                if notification_type:
-                                    logger.debug(f"SENDING EARLY NOTIFICATION FOR {function_name}")
-                                    early_notification = {
-                                        "is_notification": True,
-                                        "notification_type": notification_type,
-                                        "early_notification": True,
-                                        "function_name": function_name,
-                                        "notification_marker": "__NOTIFICATION__"
-                                    }
-                                    notification_json = json.dumps(early_notification)
-                                    logger.debug(f"Early notification sent: {notification_json}")
-                                    yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                # Always send early notification for any tool use
+                                logger.info(f"SENDING EARLY NOTIFICATION FOR {function_name}")
+                                early_notification = {
+                                    "is_notification": True,
+                                    "notification_type": notification_type or "tool",
+                                    "early_notification": True,
+                                    "function_name": function_name,
+                                    "notification_marker": "__NOTIFICATION__"
+                                }
+                                notification_json = json.dumps(early_notification)
+                                logger.info(f"Early notification JSON: {notification_json}")
+                                yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
                         
                         elif event.type == "content_block_delta":
                             if event.delta.type == "text_delta":
@@ -811,95 +841,13 @@ class AnthropicProvider(AIProvider):
         tool_call_name = tool_call["function"]["name"]
         tool_call_args_str = tool_call["function"]["arguments"]
         
-        logger.debug(f"[AnthropicProvider] Executing Tool: {tool_call_name} (ID: {tool_call_id})")
+        logger.debug(f"[AnthropicProvider] Tool Call ID: {tool_call_id}")
         logger.debug(f"[AnthropicProvider] Project ID: {project_id}, Conversation ID: {conversation_id}")
-        logger.debug(f"[AnthropicProvider] Raw Args: {tool_call_args_str}")
         
-        result_content = ""
-        notification_data = None
-        yielded_content = ""
-        
-        try:
-            # Handle empty arguments string
-            if not tool_call_args_str.strip():
-                parsed_args = {}
-                logger.debug("Empty arguments string, defaulting to empty object")
-            else:
-                parsed_args = json.loads(tool_call_args_str)
-                # Check for explanation
-                explanation = parsed_args.get("explanation", parsed_args.get("explaination", ""))
-                
-                if explanation:
-                    logger.debug(f"Found explanation: {explanation}")
-                    formatted_explanation = f"\n\n{explanation}\n\n"
-                    yielded_content = "*"
-            
-            # Execute the function
-            logger.debug(f"[AnthropicProvider] Calling app_functions with:")
-            logger.debug(f"  - tool_call_name: {tool_call_name}")
-            logger.debug(f"  - parsed_args: {parsed_args}")
-            logger.debug(f"  - project_id: {project_id}")
-            logger.debug(f"  - conversation_id: {conversation_id}")
-            
-            tool_result = await app_functions(
-                tool_call_name, parsed_args, project_id, conversation_id
-            )
-            logger.debug(f"[AnthropicProvider] app_functions call successful for {tool_call_name}")
-            logger.debug(f"[AnthropicProvider] Tool Result: {tool_result}")
-            
-            # Send special notification for extraction functions
-            if tool_call_name in ["extract_features", "extract_personas", "save_implementation", "get_implementation"]:
-                if tool_call_name == "extract_features":
-                    notification_type = "features"
-                elif tool_call_name == "extract_personas":
-                    notification_type = "personas"
-                else:
-                    notification_type = "implementation"
-                
-                logger.debug(f"FORCING NOTIFICATION FOR {tool_call_name}")
-                notification_data = {
-                    "is_notification": True,
-                    "notification_type": notification_type,
-                    "function_name": tool_call_name,
-                    "notification_marker": "__NOTIFICATION__"
-                }
-                logger.debug(f"Forced notification: {notification_data}")
-            
-            # Handle the result
-            if tool_result is None:
-                result_content = "The function returned no result."
-            elif isinstance(tool_result, dict) and tool_result.get("is_notification") is True:
-                logger.debug("NOTIFICATION DATA CREATED IN ANTHROPIC PROVIDER")
-                logger.debug(f"Tool result: {tool_result}")
-                
-                notification_data = {
-                    "is_notification": True,
-                    "notification_type": tool_result.get("notification_type", "features"),
-                    "notification_marker": "__NOTIFICATION__"
-                }
-                
-                logger.debug(f"Notification data to be yielded: {notification_data}")
-                result_content = str(tool_result.get("message_to_agent", ""))
-            else:
-                if isinstance(tool_result, str):
-                    result_content = tool_result
-                elif isinstance(tool_result, dict):
-                    result_content = str(tool_result.get("message_to_agent", ""))
-                else:
-                    result_content = str(tool_result) if tool_result is not None else ""
-            
-            logger.debug(f"Tool Success. Result: {result_content}")
-            
-        except json.JSONDecodeError as e:
-            error_message = f"Failed to parse JSON arguments: {e}. Args: {tool_call_args_str}"
-            logger.error(error_message)
-            result_content = f"Error: {error_message}"
-            notification_data = None
-        except Exception as e:
-            error_message = f"Error executing tool {tool_call_name}: {e}"
-            logger.error(f"{error_message}\n{traceback.format_exc()}")
-            result_content = f"Error: {error_message}"
-            notification_data = None
+        # Use the shared execute_tool_call function
+        result_content, notification_data, yielded_content = await execute_tool_call(
+            tool_call_name, tool_call_args_str, project_id, conversation_id
+        )
         
         return result_content, notification_data, yielded_content
     

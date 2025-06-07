@@ -80,6 +80,81 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize WebSocket connection
     connectWebSocket();
     
+    // Test backend notification sending
+    window.testBackendNotification = function() {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            console.log('%c SENDING TEST NOTIFICATION REQUEST ', 'background: #00ff00; color: #000; font-weight: bold; padding: 5px;');
+            socket.send(JSON.stringify({
+                type: 'test_notification'
+            }));
+            console.log('Test notification request sent. Check console for WebSocket messages...');
+        } else {
+            console.error('WebSocket not connected');
+        }
+    };
+
+    // Test function for execute_command
+    window.testExecuteCommand = function() {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            console.log('%c SENDING TEST EXECUTE_COMMAND REQUEST ', 'background: #ffa500; color: #000; font-weight: bold; padding: 5px;');
+            socket.send(JSON.stringify({
+                type: 'test_execute_command'
+            }));
+            console.log('Test execute_command request sent. Check console for WebSocket messages...');
+        } else {
+            console.error('WebSocket not connected');
+        }
+    };
+    
+    // Add manual animation trigger for testing
+    window.triggerToolAnimation = function(toolName = 'extract_features') {
+        console.log('Manually triggering tool animation for:', toolName);
+        
+        // 1. Show tool execution indicator
+        const indicator = window.showToolExecutionIndicator(toolName);
+        console.log('Tool execution indicator created:', indicator);
+        
+        // 2. Show function call indicator
+        const funcIndicator = showFunctionCallIndicator(toolName);
+        console.log('Function call indicator created:', funcIndicator);
+        
+        // 3. Add separator
+        const separator = document.createElement('div');
+        separator.className = 'function-call-separator';
+        separator.innerHTML = `<div class="separator-line"></div>
+                              <div class="separator-text">Manually triggered: ${toolName}</div>
+                              <div class="separator-line"></div>`;
+        messageContainer.appendChild(separator);
+        
+        // 4. Show progress for supported functions
+        if (['extract_features', 'extract_personas'].includes(toolName)) {
+            handleToolProgress({
+                tool_name: toolName,
+                message: `Starting ${toolName.replace('_', ' ')}...`,
+                progress_percentage: 0
+            });
+            
+            // Simulate progress
+            setTimeout(() => {
+                handleToolProgress({
+                    tool_name: toolName,
+                    message: `Processing...`,
+                    progress_percentage: 50
+                });
+            }, 1000);
+            
+            setTimeout(() => {
+                handleToolProgress({
+                    tool_name: toolName,
+                    message: `Completing...`,
+                    progress_percentage: 100
+                });
+            }, 2000);
+        }
+        
+        return true;
+    };
+    
     // Auto-resize the text area based on content
     chatInput.addEventListener('input', function() {
         this.style.height = 'auto';
@@ -413,6 +488,14 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
+    // Connection management variables
+    let reconnectAttempts = 0;
+    const maxReconnectAttempts = 5;
+    const reconnectDelay = 3000;
+    let heartbeatInterval = null;
+    let lastHeartbeatResponse = Date.now();
+    let connectionMonitorInterval = null;
+    
     // Function to connect WebSocket and receive messages
     function connectWebSocket() {
         // Determine if we're on HTTPS or HTTP
@@ -461,19 +544,47 @@ document.addEventListener('DOMContentLoaded', () => {
         socket.onopen = function(e) {
             console.log('WebSocket connection established');
             isSocketConnected = true;
+            reconnectAttempts = 0;  // Reset reconnect attempts
+            
+            // Show connected status
+            showConnectionStatus('connected');
+            
+            // Start heartbeat monitoring
+            startHeartbeat();
+            startConnectionMonitor();
             
             // Send any queued messages
             while (messageQueue.length > 0) {
                 const queuedMessage = messageQueue.shift();
                 socket.send(JSON.stringify(queuedMessage));
             }
+            
+            // Load any saved draft
+            loadDraftMessage();
         };
         
         socket.onmessage = function(event) {
             const data = JSON.parse(event.data);
             
+            // Handle heartbeat
+            if (data.type === 'heartbeat') {
+                lastHeartbeatResponse = Date.now();
+                // Send acknowledgment
+                if (socket.readyState === WebSocket.OPEN) {
+                    socket.send(JSON.stringify({ type: 'heartbeat_ack' }));
+                }
+                return;
+            }
+            
             // Enhanced logging for debugging purposes
-            console.log('WebSocket message received:', data);
+            console.log('=== WebSocket message received ===');
+            console.log('Full data:', JSON.stringify(data, null, 2));
+            console.log('data.type:', data.type);
+            console.log('data.is_notification:', data.is_notification);
+            console.log('Type of is_notification:', typeof data.is_notification);
+            console.log('data.notification_type:', data.notification_type);
+            console.log('data.early_notification:', data.early_notification);
+            console.log('data.function_name:', data.function_name);
             
             // Special handling for notifications - Use the same improved detection logic
             const isNotification = data.is_notification === true || 
@@ -483,6 +594,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const isEarlyNotification = isNotification && 
                                        (data.early_notification === true || 
                                         data.early_notification === "true");
+            
+            console.log('Computed isNotification:', isNotification);
+            console.log('Computed isEarlyNotification:', isEarlyNotification);
+            console.log('=================================');
             
             if (data.type === 'ai_chunk' && isNotification) {
                 console.log('%c NOTIFICATION DATA RECEIVED IN WEBSOCKET! ', 'background: #ffa500; color: #000; font-weight: bold; padding: 2px 5px;');
@@ -526,12 +641,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 case 'ai_chunk':
                     // Handle AI response chunk for streaming
                     // Skip entirely empty chunks that aren't typing indicators or final messages
-                    if (data.chunk === '' && !data.is_final && document.querySelector('.message.assistant:last-child')) {
-                        console.log('Skipping empty non-final chunk');
+                    // BUT don't skip notifications!
+                    if (data.chunk === '' && !data.is_final && document.querySelector('.message.assistant:last-child') && !data.is_notification) {
+                        console.log('Skipping empty non-final chunk...');
                         break;
                     }
                     
                     handleAIChunk(data);
+                    break;
+                
+                case 'tool_progress':
+                    // Handle tool progress updates
+                    handleToolProgress(data);
                     break;
                 
                 case 'stop_confirmed':
@@ -582,17 +703,38 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         
         socket.onclose = function(event) {
+            stopHeartbeat();
+            stopConnectionMonitor();
+            isSocketConnected = false;
+            
             if (event.wasClean) {
                 console.log(`WebSocket connection closed cleanly, code=${event.code}, reason=${event.reason}`);
             } else {
                 console.error('WebSocket connection died');
                 
-                // Attempt to reconnect after a delay
-                setTimeout(() => {
-                    isSocketConnected = false;
-                    console.log('Attempting to reconnect...');
-                    connectWebSocket();
-                }, 3000);
+                // Save current input as draft
+                if (chatInput.value.trim()) {
+                    saveDraftMessage(chatInput.value);
+                }
+                
+                // Show connection lost indicator
+                showConnectionStatus('disconnected');
+                
+                // Attempt to reconnect with exponential backoff
+                if (reconnectAttempts < maxReconnectAttempts) {
+                    const delay = reconnectDelay * Math.pow(1.5, reconnectAttempts);
+                    reconnectAttempts++;
+                    
+                    console.log(`Attempting to reconnect (attempt ${reconnectAttempts}/${maxReconnectAttempts}) in ${delay}ms...`);
+                    showConnectionStatus('reconnecting', reconnectAttempts, maxReconnectAttempts);
+                    
+                    setTimeout(() => {
+                        connectWebSocket();
+                    }, delay);
+                } else {
+                    showConnectionStatus('failed');
+                    console.error('Max reconnection attempts reached');
+                }
             }
         };
         
@@ -608,9 +750,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const isFinal = data.is_final;
         
         // Add explicit debug for notification property
-        console.log('Data object type:', typeof data);
-        console.log('is_notification raw value:', data.is_notification);
-        console.log('is_notification type:', typeof data.is_notification);
+        console.log('\n=== handleAIChunk Debug ===');
+        console.log('Full data object:', JSON.stringify(data, null, 2));
+        console.log('chunk:', chunk);
+        console.log('is_final:', isFinal);
+        console.log('is_notification:', data.is_notification);
+        console.log('notification_type:', data.notification_type);
+        console.log('early_notification:', data.early_notification);
+        console.log('function_name:', data.function_name);
+        console.log('===========================\n');
         
         // Fix notification detection by checking for either boolean true, string "true", or existence of notification_type
         // This handles cases where is_notification is undefined but we still want to process regular chunks
@@ -684,15 +832,19 @@ document.addEventListener('DOMContentLoaded', () => {
             removeFunctionCallIndicator();
             
             // Show function call indicator for the function
-            showFunctionCallIndicator(data.function_name);
+            const indicator = showFunctionCallIndicator(data.function_name);
+            console.log('Function call indicator created:', indicator);
             
-            // Add a visual "calling function" separator
-            const separator = document.createElement('div');
-            separator.className = 'function-call-separator';
-            separator.innerHTML = `<div class="separator-line"></div>
-                                  <div class="separator-text">Calling early notification function: ${data.function_name}</div>
-                                  <div class="separator-line"></div>`;
-            messageContainer.appendChild(separator);
+            // Also show the tool progress indicator immediately for supported functions
+            if (['extract_features', 'extract_personas'].includes(data.function_name)) {
+                handleToolProgress({
+                    tool_name: data.function_name,
+                    message: `Starting ${data.function_name.replace('_', ' ')}...`,
+                    progress_percentage: 0
+                });
+            }
+            
+            
             scrollToBottom();
             
             return;
@@ -711,15 +863,24 @@ document.addEventListener('DOMContentLoaded', () => {
             const functionName = data.notification_type === 'features' ? 'extract_features' : 
                                data.notification_type === 'personas' ? 'extract_personas' : 
                                data.notification_type === 'execute_command' ? 'execute_command' : 
+                               data.notification_type === 'command_output' ? 'execute_command' : 
                                data.notification_type === 'start_server' ? 'start_server' : 
                                data.notification_type === 'implementation' ? 'save_implementation' : 
+                               data.notification_type === 'prd' ? 'create_prd' :
+                               data.notification_type === 'design' ? 'design_schema' :
+                               data.notification_type === 'tickets' ? 'generate_tickets' :
+                               data.notification_type === 'checklist' ? 'checklist_tickets' :
                                data.function_name || data.notification_type;
             
             // Remove any previous function call indicators
             removeFunctionCallIndicator();
             
-            // Show success message
-            showFunctionCallSuccess(functionName, data.notification_type);
+            // Remove tool execution indicator
+            const toolExecutionIndicator = document.querySelector('.tool-execution-indicator');
+            if (toolExecutionIndicator) {
+                toolExecutionIndicator.remove();
+            }
+            
             
             // Check if we have a valid project ID from somewhere
             if (!currentProjectId) {
@@ -777,63 +938,65 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Make sure artifacts panel is visible
             let panelOpenSuccess = false;
+
+            // Update logic to pop open the artifacts panel when needed
             
-            if (window.ArtifactsPanel && typeof window.ArtifactsPanel.toggle === 'function') {
-                console.log('Opening artifacts panel with ArtifactsPanel.toggle');
-                try {
-                    window.ArtifactsPanel.toggle(true); // Use forceOpen parameter to ensure it opens
-                    console.log('ArtifactsPanel.toggle called successfully');
+            // if (window.ArtifactsPanel && typeof window.ArtifactsPanel.toggle === 'function') {
+            //     console.log('Opening artifacts panel with ArtifactsPanel.toggle');
+            //     try {
+            //         window.ArtifactsPanel.toggle(true); // Use forceOpen parameter to ensure it opens
+            //         console.log('ArtifactsPanel.toggle called successfully');
                     
-                    // Double check if panel is actually open now
-                    const panel = document.getElementById('artifacts-panel');
-                    if (panel) {
-                        console.log('Panel element found, expanded status:', panel.classList.contains('expanded'));
-                        panelOpenSuccess = panel.classList.contains('expanded');
+            //         // Double check if panel is actually open now
+            //         const panel = document.getElementById('artifacts-panel');
+            //         if (panel) {
+            //             console.log('Panel element found, expanded status:', panel.classList.contains('expanded'));
+            //             panelOpenSuccess = panel.classList.contains('expanded');
                         
-                        if (!panelOpenSuccess) {
-                            console.log('Panel still not expanded after toggle, adding expanded class directly');
-                            panel.classList.add('expanded');
-                            document.querySelector('.app-container')?.classList.add('artifacts-expanded');
-                            document.getElementById('artifacts-button')?.classList.add('active');
-                            panelOpenSuccess = true;
-                        }
-                    } else {
-                        console.error('Could not find artifacts-panel element in DOM');
-                    }
-                } catch (err) {
-                    console.error('Error toggling artifacts panel:', err);
-                }
-            } else {
-                console.error('ArtifactsPanel not available!', window.ArtifactsPanel);
-            }
+            //             if (!panelOpenSuccess) {
+            //                 console.log('Panel still not expanded after toggle, adding expanded class directly');
+            //                 panel.classList.add('expanded');
+            //                 document.querySelector('.app-container')?.classList.add('artifacts-expanded');
+            //                 document.getElementById('artifacts-button')?.classList.add('active');
+            //                 panelOpenSuccess = true;
+            //             }
+            //         } else {
+            //             console.error('Could not find artifacts-panel element in DOM');
+            //         }
+            //     } catch (err) {
+            //         console.error('Error toggling artifacts panel:', err);
+            //     }
+            // } else {
+            //     console.error('ArtifactsPanel not available!', window.ArtifactsPanel);
+            // }
             
             // If the panel still isn't open, try the direct approach
-            if (!panelOpenSuccess && window.forceOpenArtifactsPanel) {
-                console.log('Using forceOpenArtifactsPanel as fallback');
-                window.forceOpenArtifactsPanel(data.notification_type);
-                panelOpenSuccess = true;
-            }
+            // if (!panelOpenSuccess && window.forceOpenArtifactsPanel) {
+            //     console.log('Using forceOpenArtifactsPanel as fallback');
+            //     window.forceOpenArtifactsPanel(data.notification_type);
+            //     panelOpenSuccess = true;
+            // }
             
             // Last resort - direct DOM manipulation if all else fails
-            if (!panelOpenSuccess) {
-                console.log('Attempting direct DOM manipulation to open panel');
-                try {
-                    // Try to manipulate DOM directly
-                    const panel = document.getElementById('artifacts-panel');
-                    const appContainer = document.querySelector('.app-container');
-                    const button = document.getElementById('artifacts-button');
+            // if (!panelOpenSuccess) {
+            //     console.log('Attempting direct DOM manipulation to open panel');
+            //     try {
+            //         // Try to manipulate DOM directly
+            //         const panel = document.getElementById('artifacts-panel');
+            //         const appContainer = document.querySelector('.app-container');
+            //         const button = document.getElementById('artifacts-button');
                     
-                    if (panel && appContainer) {
-                        panel.classList.add('expanded');
-                        appContainer.classList.add('artifacts-expanded');
-                        if (button) button.classList.add('active');
-                        console.log('Panel forced open with direct DOM manipulation');
-                        panelOpenSuccess = true;
-                    }
-                } catch (e) {
-                    console.error('Error in direct DOM manipulation:', e);
-                }
-            }
+            //         if (panel && appContainer) {
+            //             panel.classList.add('expanded');
+            //             appContainer.classList.add('artifacts-expanded');
+            //             if (button) button.classList.add('active');
+            //             console.log('Panel forced open with direct DOM manipulation');
+            //             panelOpenSuccess = true;
+            //         }
+            //     } catch (e) {
+            //         console.error('Error in direct DOM manipulation:', e);
+            //     }
+            // }
             
             console.log('\n\nTab Switching Status:');
             console.log('switchTab available:', !!window.switchTab);
@@ -939,33 +1102,98 @@ document.addEventListener('DOMContentLoaded', () => {
             existingContent.setAttribute('data-raw-content', newContent);
             existingContent.innerHTML = marked.parse(newContent);
             
-            // Check if this chunk seems to finalize a function call statement
-            if (chunk.includes("function") && 
-                (chunk.includes("extract_features") || 
-                 chunk.includes("extract_personas") || 
-                 chunk.includes("get_features") || 
-                 chunk.includes("get_personas"))) {
-                
-                // Identify which function is being called
-                let functionName = "";
-                if (chunk.includes("extract_features")) functionName = "extract_features";
-                else if (chunk.includes("extract_personas")) functionName = "extract_personas";
-                else if (chunk.includes("get_features")) functionName = "get_features";
-                else if (chunk.includes("get_personas")) functionName = "get_personas";
-                
-                if (functionName && !document.querySelector('.function-call-indicator')) {
-                    // Show the function call indicator
-                    showFunctionCallIndicator(functionName);
-                    
-                    // Add a visual "calling function" separator
-                    const separator = document.createElement('div');
-                    separator.className = 'function-call-separator';
-                    separator.innerHTML = `<div class="separator-line"></div>
-                                          <div class="separator-text">Calling function: ${functionName}</div>
-                                          <div class="separator-line"></div>`;
-                    messageContainer.appendChild(separator);
-                    scrollToBottom();
+            // Quick trigger for common tool call indicators
+            const quickTriggers = [
+                'I\'ll use', 'I will use', 'Let me use', 'I\'ll call', 'Let me call',
+                'I\'ll execute', 'Let me execute', 'I\'ll run', 'Let me run',
+                'Using the', 'Calling the', 'Executing', 'Running'
+            ];
+            
+            const lowerChunk = chunk.toLowerCase();
+            const shouldQuickTrigger = quickTriggers.some(trigger => lowerChunk.includes(trigger.toLowerCase()));
+            
+            if (shouldQuickTrigger && !document.querySelector('.tool-execution-indicator')) {
+                console.log('Quick trigger activated - showing tool animation');
+                // Show a generic tool execution indicator immediately
+                window.showToolExecutionIndicator('Processing...');
+            }
+            
+            // Check if this chunk mentions any tool/function calls
+            const toolFunctions = [
+                'extract_features', 'extract_personas', 'get_features', 'get_personas',
+                'save_implementation', 'execute_command', 'start_server', 'create_implementation',
+                'update_implementation', 'get_implementation', 'save_prd', 'get_prd'
+            ];
+            
+            // More aggressive detection - check if any function name appears
+            let detectedFunction = null;
+            for (const func of toolFunctions) {
+                if (newContent.includes(func) || chunk.includes(func)) {
+                    detectedFunction = func;
+                    console.log(`Tool function "${func}" detected in chunk`);
+                    break;
                 }
+            }
+            
+            // Also check for common patterns that indicate a function is being called
+            const functionPatterns = [
+                /I'll (?:now )?(?:use|call|execute|run) (?:the )?(\w+)/i,
+                /(?:Using|Calling|Executing|Running) (?:the )?(\w+) (?:function|tool|command)?/i,
+                /Let me (?:use|call|execute|run) (?:the )?(\w+)/i,
+                /I (?:will|am going to) (?:use|call|execute|run) (?:the )?(\w+)/i,
+                /(?:extract|save|get|create|update)_(?:features|personas|implementation|prd)/i,
+                /(?:execute)_command/i,
+                /(?:start)_server/i
+            ];
+            
+            for (const pattern of functionPatterns) {
+                const match = chunk.match(pattern) || newContent.match(pattern);
+                if (match) {
+                    // Check if it's a direct function name match or if match[1] exists
+                    const funcName = match[1] || match[0];
+                    const normalizedFunc = funcName.toLowerCase().replace(/-/g, '_');
+                    
+                    // Check if this matches any known tool
+                    for (const tool of toolFunctions) {
+                        if (tool === normalizedFunc || funcName.includes(tool)) {
+                            detectedFunction = tool;
+                            console.log(`Tool function "${tool}" detected via pattern: ${pattern}`);
+                            break;
+                        }
+                    }
+                    
+                    if (detectedFunction) break;
+                }
+            }
+            
+            if (detectedFunction && !document.querySelector('.function-call-indicator') && !document.querySelector('.tool-execution-indicator')) {
+                console.log('Function call detected in text:', detectedFunction);
+                
+                // Show the prominent tool execution indicator
+                window.showToolExecutionIndicator(detectedFunction);
+                
+                // Also show the function call indicator
+                showFunctionCallIndicator(detectedFunction);
+                
+                // For extract_features and extract_personas, also show progress
+                if (['extract_features', 'extract_personas'].includes(detectedFunction)) {
+                    setTimeout(() => {
+                        handleToolProgress({
+                            tool_name: detectedFunction,
+                            message: `Preparing to ${detectedFunction.replace('_', ' ')}...`,
+                            progress_percentage: 0
+                        });
+                    }, 500);
+                }
+                
+                // Add a visual "calling function" separator
+                const separator = document.createElement('div');
+                separator.className = 'function-call-separator';
+                separator.innerHTML = `<div class="separator-line"></div>
+                                      <div class="separator-text">Calling function: ${detectedFunction}</div>
+                                      <div class="separator-line"></div>`;
+                messageContainer.appendChild(separator);
+                scrollToBottom();
             }
         } else {
             // Remove typing indicator if present
@@ -1450,11 +1678,58 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Function to add a message to the chat
+    // Function to check if a message contains tool-related content
+    function checkForToolMention(message) {
+        if (!message) return null;
+        
+        const toolPatterns = [
+            /(?:calling|using|executing|running)\s+(?:the\s+)?(\w+)\s+(?:function|tool)/i,
+            /I'll\s+(?:now\s+)?(?:use|call|execute)\s+(?:the\s+)?(\w+)/i,
+            /Let\s+me\s+(?:use|call|execute)\s+(?:the\s+)?(\w+)/i,
+            /(\w+)\s+function\s+(?:to|will)/i
+        ];
+        
+        const knownTools = [
+            'extract_features', 'extract_personas', 'get_features', 'get_personas',
+            'save_implementation', 'execute_command', 'start_server', 'create_implementation',
+            'update_implementation', 'get_implementation', 'save_prd', 'get_prd'
+        ];
+        
+        // Direct tool name check
+        for (const tool of knownTools) {
+            if (message.toLowerCase().includes(tool)) {
+                return tool;
+            }
+        }
+        
+        // Pattern matching
+        for (const pattern of toolPatterns) {
+            const match = message.match(pattern);
+            if (match && match[1]) {
+                const toolName = match[1].toLowerCase();
+                if (knownTools.includes(toolName)) {
+                    return toolName;
+                }
+            }
+        }
+        
+        return null;
+    }
+    
     function addMessageToChat(role, content, fileData = null, userRole = null) {
         // Skip adding empty messages
         if (!content || content.trim() === '') {
             console.log(`Skipping empty ${role} message`);
             return;
+        }
+        
+        // Check for tool mentions in AI messages
+        if (role === 'assistant') {
+            const detectedTool = checkForToolMention(content);
+            if (detectedTool && !document.querySelector('.tool-execution-indicator')) {
+                console.log('Tool detected in complete message:', detectedTool);
+                window.triggerToolAnimation(detectedTool);
+            }
         }
         
         // Create message element
@@ -1515,6 +1790,16 @@ document.addEventListener('DOMContentLoaded', () => {
         // Create the indicator element
         const indicator = document.createElement('div');
         indicator.className = 'function-call-indicator';
+        
+        // Add function-specific class for styling
+        const functionType = functionName.includes('features') ? 'features' :
+                           functionName.includes('personas') ? 'personas' :
+                           functionName.includes('implementation') ? 'implementation' :
+                           functionName === 'execute_command' ? 'execute_command' :
+                           functionName === 'start_server' ? 'start_server' :
+                           'generic';
+        indicator.classList.add(`function-${functionType}`);
+        
         indicator.innerHTML = `
             <div class="function-call-spinner"></div>
             <div class="function-call-text">
@@ -1544,6 +1829,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const successElement = document.createElement('div');
         successElement.className = 'function-call-success';
         
+        // Add function-specific class for styling
+        const functionType = functionName.includes('features') ? 'features' :
+                           functionName.includes('personas') ? 'personas' :
+                           functionName.includes('implementation') ? 'implementation' :
+                           functionName === 'execute_command' ? 'execute_command' :
+                           functionName === 'start_server' ? 'start_server' :
+                           type || 'generic';
+        successElement.classList.add(`function-${functionType}`);
+        
         let message = '';
         if (type === 'features') {
             message = 'Features extracted and saved successfully!';
@@ -1551,6 +1845,16 @@ document.addEventListener('DOMContentLoaded', () => {
             message = 'Personas extracted and saved successfully!';
         } else if (type === 'prd') {
             message = 'PRD generated and saved successfully!';
+        } else if (type === 'command_output' || functionName === 'execute_command') {
+            message = 'Command executed successfully!';
+        } else if (type === 'implementation') {
+            message = 'Implementation saved successfully!';
+        } else if (type === 'design') {
+            message = 'Design schema created successfully!';
+        } else if (type === 'tickets') {
+            message = 'Tickets generated successfully!';
+        } else if (type === 'checklist') {
+            message = 'Checklist updated successfully!';
         } else {
             message = 'Function call completed successfully!';
         }
@@ -1569,9 +1873,6 @@ document.addEventListener('DOMContentLoaded', () => {
         // Add to message container
         messageContainer.appendChild(successElement);
         scrollToBottom();
-        
-        // Also add a permanent mini indicator
-        addFunctionCallMiniIndicator(functionName, type);
         
         // Remove after a delay
         setTimeout(() => {
@@ -1650,6 +1951,50 @@ document.addEventListener('DOMContentLoaded', () => {
             'save_implementation': {
                 description: 'Saving implementation...',
                 successMessage: 'Implementation saved successfully.'
+            },
+            'create_prd': {
+                description: 'Creating and saving PRD document...',
+                successMessage: 'PRD has been created and saved to the project.'
+            },
+            'create_implementation': {
+                description: 'Creating implementation document...',
+                successMessage: 'Implementation document has been created and saved.'
+            },
+            'update_implementation': {
+                description: 'Updating implementation document...',
+                successMessage: 'Implementation document has been updated.'
+            },
+            'get_implementation': {
+                description: 'Retrieving implementation document...',
+                successMessage: 'Implementation document has been loaded.'
+            },
+            'save_features': {
+                description: 'Saving features to the project...',
+                successMessage: 'Features have been saved successfully.'
+            },
+            'save_personas': {
+                description: 'Saving personas to the project...',
+                successMessage: 'Personas have been saved successfully.'
+            },
+            'design_schema': {
+                description: 'Creating database design schema...',
+                successMessage: 'Database schema has been designed and saved.'
+            },
+            'generate_tickets': {
+                description: 'Generating development tickets...',
+                successMessage: 'Development tickets have been generated successfully.'
+            },
+            'checklist_tickets': {
+                description: 'Creating checklist for tickets...',
+                successMessage: 'Ticket checklist has been created.'
+            },
+            'update_checklist_ticket': {
+                description: 'Updating ticket checklist...',
+                successMessage: 'Checklist has been updated.'
+            },
+            'get_next_ticket': {
+                description: 'Getting next ticket to work on...',
+                successMessage: 'Next ticket has been retrieved.'
             }
         };
         
@@ -1723,6 +2068,330 @@ document.addEventListener('DOMContentLoaded', () => {
     function scrollToBottom() {
         chatMessages.scrollTop = chatMessages.scrollHeight;
     }
+    
+    // Function to handle tool progress updates
+    function handleToolProgress(data) {
+        const { tool_name, message, progress_percentage } = data;
+        
+        // Find or create progress indicator
+        let progressIndicator = document.querySelector('.tool-progress-indicator');
+        if (!progressIndicator) {
+            progressIndicator = document.createElement('div');
+            progressIndicator.className = 'tool-progress-indicator';
+            messageContainer.appendChild(progressIndicator);
+        }
+        
+        // Update progress UI
+        let progressBar = '';
+        if (progress_percentage !== null && progress_percentage >= 0) {
+            progressBar = `
+                <div class="progress-bar-container">
+                    <div class="progress-bar" style="width: ${progress_percentage}%"></div>
+                </div>
+            `;
+        }
+        
+        // Error state
+        const isError = progress_percentage < 0;
+        const statusClass = isError ? 'error' : (progress_percentage === 100 ? 'success' : 'active');
+        
+        progressIndicator.className = `tool-progress-indicator ${statusClass}`;
+        progressIndicator.innerHTML = `
+            <div class="tool-progress-content">
+                <div class="tool-progress-header">
+                    <i class="fas ${isError ? 'fa-exclamation-circle' : (progress_percentage === 100 ? 'fa-check-circle' : 'fa-cog fa-spin')}"></i>
+                    <span class="tool-name">${tool_name}</span>
+                </div>
+                <div class="tool-progress-message">${message}</div>
+                ${progressBar}
+            </div>
+        `;
+        
+        // Remove on completion or error
+        if (progress_percentage === 100 || progress_percentage < 0) {
+            setTimeout(() => {
+                progressIndicator.classList.add('fade-out');
+                setTimeout(() => progressIndicator.remove(), 500);
+            }, 2000);
+        }
+        
+        scrollToBottom();
+    }
+    
+    // Heartbeat and connection monitoring functions
+    function startHeartbeat() {
+        // Clear any existing interval
+        if (heartbeatInterval) {
+            clearInterval(heartbeatInterval);
+        }
+        
+        lastHeartbeatResponse = Date.now();
+    }
+    
+    function stopHeartbeat() {
+        if (heartbeatInterval) {
+            clearInterval(heartbeatInterval);
+            heartbeatInterval = null;
+        }
+    }
+    
+    function startConnectionMonitor() {
+        connectionMonitorInterval = setInterval(() => {
+            const timeSinceLastHeartbeat = Date.now() - lastHeartbeatResponse;
+            
+            if (timeSinceLastHeartbeat > 60000) {  // 60 seconds
+                console.warn('No heartbeat received for 60 seconds, connection may be dead');
+                showConnectionStatus('unstable');
+                
+                // Force reconnect
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    socket.close();
+                }
+            }
+        }, 5000);  // Check every 5 seconds
+    }
+    
+    function stopConnectionMonitor() {
+        if (connectionMonitorInterval) {
+            clearInterval(connectionMonitorInterval);
+            connectionMonitorInterval = null;
+        }
+    }
+    
+    function showConnectionStatus(status, current = 0, max = 0) {
+        let statusElement = document.querySelector('.connection-status');
+        if (!statusElement) {
+            statusElement = document.createElement('div');
+            statusElement.className = 'connection-status';
+            document.body.appendChild(statusElement);
+        }
+        
+        switch (status) {
+            case 'disconnected':
+                statusElement.innerHTML = `
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <span>Connection lost. Attempting to reconnect...</span>
+                `;
+                statusElement.className = 'connection-status warning';
+                break;
+                
+            case 'reconnecting':
+                statusElement.innerHTML = `
+                    <i class="fas fa-sync fa-spin"></i>
+                    <span>Reconnecting... (${current}/${max})</span>
+                `;
+                statusElement.className = 'connection-status warning';
+                break;
+                
+            case 'failed':
+                statusElement.innerHTML = `
+                    <i class="fas fa-times-circle"></i>
+                    <span>Connection failed. Please refresh the page.</span>
+                    <button onclick="location.reload()" class="refresh-btn">Refresh</button>
+                `;
+                statusElement.className = 'connection-status error';
+                break;
+                
+            case 'unstable':
+                statusElement.innerHTML = `
+                    <i class="fas fa-wifi"></i>
+                    <span>Connection unstable...</span>
+                `;
+                statusElement.className = 'connection-status warning';
+                break;
+                
+            case 'connected':
+                statusElement.innerHTML = `
+                    <i class="fas fa-check-circle"></i>
+                    <span>Connected</span>
+                `;
+                statusElement.className = 'connection-status success';
+                setTimeout(() => {
+                    statusElement.classList.add('fade-out');
+                    setTimeout(() => statusElement.remove(), 500);
+                }, 3000);
+                break;
+        }
+    }
+    
+    // Draft message management
+    function saveDraftMessage(message) {
+        if (message && message.trim()) {
+            const draftData = {
+                message: message,
+                conversationId: currentConversationId || '',
+                timestamp: Date.now()
+            };
+            localStorage.setItem('chat_draft', JSON.stringify(draftData));
+        }
+    }
+    
+    function loadDraftMessage() {
+        try {
+            const draftJson = localStorage.getItem('chat_draft');
+            if (draftJson) {
+                const draftData = JSON.parse(draftJson);
+                
+                // Check if draft is less than 24 hours old
+                const ageInHours = (Date.now() - draftData.timestamp) / (1000 * 60 * 60);
+                if (ageInHours < 24 && draftData.conversationId === (currentConversationId || '')) {
+                    chatInput.value = draftData.message;
+                    
+                    // Show draft indicator
+                    const draftIndicator = document.createElement('div');
+                    draftIndicator.className = 'draft-indicator';
+                    draftIndicator.innerHTML = `
+                        <i class="fas fa-info-circle"></i>
+                        Draft message restored
+                        <button onclick="clearDraftMessage(); this.parentElement.remove();" class="clear-draft">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    `;
+                    chatInput.parentElement.appendChild(draftIndicator);
+                    
+                    setTimeout(() => {
+                        if (draftIndicator.parentNode) {
+                            draftIndicator.classList.add('fade-out');
+                            setTimeout(() => draftIndicator.remove(), 500);
+                        }
+                    }, 5000);
+                } else {
+                    // Clear old draft
+                    clearDraftMessage();
+                }
+            }
+        } catch (e) {
+            console.error('Error loading draft:', e);
+        }
+    }
+    
+    function clearDraftMessage() {
+        localStorage.removeItem('chat_draft');
+    }
+    
+    // Make clearDraftMessage available globally for onclick handler
+    window.clearDraftMessage = clearDraftMessage;
+    
+    // Auto-save draft as user types (debounced)
+    chatInput.addEventListener('input', debounce(function() {
+        if (this.value.trim()) {
+            saveDraftMessage(this.value);
+        }
+    }, 1000));
+    
+    // Clear draft when message is sent successfully
+    const originalSendMessage = sendMessage;
+    sendMessage = function(message) {
+        const result = originalSendMessage(message);
+        // Clear draft after successful send
+        if (result !== false) {
+            clearDraftMessage();
+        }
+        return result;
+    };
+    
+    // Utility function for debouncing
+    function debounce(func, wait) {
+        let timeout;
+        return function executedFunction(...args) {
+            const later = () => {
+                clearTimeout(timeout);
+                func.apply(this, args);
+            };
+            clearTimeout(timeout);
+            timeout = setTimeout(later, wait);
+        };
+    }
+    
+    // Add event listener for beforeunload to save draft
+    window.addEventListener('beforeunload', () => {
+        if (chatInput.value.trim()) {
+            saveDraftMessage(chatInput.value);
+        }
+    });
+    
+    // Load draft on DOMContentLoaded
+    document.addEventListener('DOMContentLoaded', () => {
+        setTimeout(() => {
+            loadDraftMessage();
+        }, 100);
+    });
+    
+    // Test function for tool progress (for debugging)
+    window.testToolProgress = function() {
+        console.log('Testing tool progress indicator...');
+        const progressSteps = [
+            { message: "Starting extraction...", percentage: 10 },
+            { message: "Analyzing data...", percentage: 40 },
+            { message: "Processing results...", percentage: 70 },
+            { message: "Saving to database...", percentage: 90 },
+            { message: "Complete!", percentage: 100 }
+        ];
+        
+        progressSteps.forEach((step, index) => {
+            setTimeout(() => {
+                console.log(`Sending progress: ${step.message} (${step.percentage}%)`);
+                handleToolProgress({
+                    tool_name: 'test_function',
+                    message: step.message,
+                    progress_percentage: step.percentage
+                });
+            }, index * 1000);
+        });
+    };
+    
+    // Test all animations
+    window.testAllAnimations = function() {
+        console.log('Testing all tool animations...');
+        
+        // 1. Show tool execution indicator
+        console.log('1. Showing tool execution indicator...');
+        window.showToolExecutionIndicator('extract_features');
+        
+        // 2. Show function call indicator after 1 second
+        setTimeout(() => {
+            console.log('2. Showing function call indicator...');
+            showFunctionCallIndicator('extract_features');
+        }, 1000);
+        
+        // 3. Show tool progress after 2 seconds
+        setTimeout(() => {
+            console.log('3. Starting tool progress...');
+            window.testToolProgress();
+        }, 2000);
+        
+        // 4. Clean up after 8 seconds
+        setTimeout(() => {
+            console.log('4. Cleaning up...');
+            document.querySelector('.tool-execution-indicator')?.remove();
+            removeFunctionCallIndicator();
+            document.querySelector('.tool-progress-indicator')?.remove();
+        }, 8000);
+    };
+    
+    // Simple function to show a tool execution indicator
+    window.showToolExecutionIndicator = function(toolName) {
+        // Remove any existing indicators
+        const existing = document.querySelector('.tool-execution-indicator');
+        if (existing) existing.remove();
+        
+        const indicator = document.createElement('div');
+        indicator.className = 'tool-execution-indicator';
+        indicator.innerHTML = `
+            <div class="tool-execution-content">
+                <div class="tool-execution-spinner"></div>
+                <div class="tool-execution-text">
+                    <div class="tool-execution-title">Executing Tool</div>
+                    <div class="tool-execution-name">${toolName || 'Processing...'}</div>
+                </div>
+            </div>
+        `;
+        
+        messageContainer.appendChild(indicator);
+        scrollToBottom();
+        
+        return indicator;
+    };
     
     // Function to load conversation list
     async function loadConversations() {
@@ -2043,7 +2712,6 @@ document.addEventListener('DOMContentLoaded', () => {
         // After a delay, show the success message
         setTimeout(() => {
             const type = fn.includes('features') ? 'features' : 'personas';
-            showFunctionCallSuccess(fn, type);
             
             // Add a simulated response message
             setTimeout(() => {

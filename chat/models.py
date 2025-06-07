@@ -47,9 +47,15 @@ class Message(models.Model):
     content_if_file = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     user_role = models.CharField(max_length=50, blank=True, null=True, default='default')
+    is_partial = models.BooleanField(default=False, help_text="Whether this is a partially saved message")
+    last_updated = models.DateTimeField(auto_now=True)
     
     class Meta:
         ordering = ['created_at']
+        indexes = [
+            models.Index(fields=['conversation', '-created_at']),
+            models.Index(fields=['conversation', 'is_partial']),
+        ]
     
     def __str__(self):
         return f"{self.role}: {self.content[:50]}..."

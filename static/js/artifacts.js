@@ -496,6 +496,20 @@ document.addEventListener('DOMContentLoaded', function() {
                     console.warn('[ArtifactsPanel] ArtifactsLoader.loadFeatures not found');
                 }
                 break;
+            case 'prd':
+                if (window.ArtifactsLoader && typeof window.ArtifactsLoader.loadPRD === 'function') {
+                    window.ArtifactsLoader.loadPRD(projectId);
+                } else {
+                    console.warn('[ArtifactsPanel] ArtifactsLoader.loadPRD not found');
+                }
+                break;
+            case 'implementation':
+                if (window.ArtifactsLoader && typeof window.ArtifactsLoader.loadImplementation === 'function') {
+                    window.ArtifactsLoader.loadImplementation(projectId);
+                } else {
+                    console.warn('[ArtifactsPanel] ArtifactsLoader.loadImplementation not found');
+                }
+                break;
             case 'personas':
                 if (window.ArtifactsLoader && typeof window.ArtifactsLoader.loadPersonas === 'function') {
                     window.ArtifactsLoader.loadPersonas(projectId);
