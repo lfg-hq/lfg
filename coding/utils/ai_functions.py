@@ -14,6 +14,7 @@ from projects.models import Project, ProjectFeature, ProjectPersona, \
                             ProjectImplementation
 from coding.utils.prd_functions import analyze_features, analyze_personas, \
                     design_schema, generate_tickets_per_feature
+from coding.models import ServerConfig
 
 # Import Django-Q functions
 from .ai_django_q import (
@@ -1733,20 +1734,13 @@ async def run_command_locally(command: str, project_id: int | str = None, conver
         "message_to_agent": f"Local command output: {stdout}\n\nFix if there is any error, otherwise you can proceed to next step",
     }
 
-async def run_server_locally(command: str, project_id: int | str = None, conversation_id: int | str = None, application_port: int | str = None, type: str = None) -> dict:
+# Updated run_server_locally function
+async def run_server_locally(command: str, project_id: int | str = None, 
+                           conversation_id: int | str = None, 
+                           application_port: int | str = None, 
+                           type: str = None) -> dict:
     """
-    Run a server command locally using subprocess in background.
-    Creates a local workspace directory if it doesn't exist.
-    
-    Args:
-        command: The command to run
-        project_id: The project ID
-        conversation_id: The conversation ID  
-        application_port: The port the application listens on locally
-        type: The type of application (frontend, backend, etc.)
-        
-    Returns:
-        Dict containing command output and local server information
+    Run a server command locally in background.
     """
     print(f"\n\nLocal Application port: {application_port}")
     print(f"\n\nLocal Type: {type}")
@@ -1755,97 +1749,138 @@ async def run_server_locally(command: str, project_id: int | str = None, convers
     workspace_path = Path.home() / "LFG" / "workspace"
     workspace_path.mkdir(parents=True, exist_ok=True)
     
-    # Handle application port validation if provided
-    if application_port:
-        try:
-            # Convert application_port to integer if it's a string
-            application_port = int(application_port)
-            
-            # Check if port is in valid range
-            if application_port < 1 or application_port > 65535:
-                return {
-                    "is_notification": True,
-                    "notification_type": "command_error",
-                    "message_to_agent": f"Invalid application port: {application_port}. Port must be between 1 and 65535."
-                }
-        except (ValueError, TypeError):
+    # Validate port
+    if not application_port:
+        return {
+            "is_notification": True,
+            "notification_type": "command_error",
+            "message_to_agent": "Port is required to run a server."
+        }
+    
+    try:
+        application_port = int(application_port)
+        if application_port < 1 or application_port > 65535:
             return {
                 "is_notification": True,
                 "notification_type": "command_error",
-                "message_to_agent": f"Invalid application port: {application_port}. Must be a valid integer."
+                "message_to_agent": f"Invalid application port: {application_port}. Port must be between 1 and 65535."
             }
-            
-        # Standardize port type
-        port_type = type.lower() if type else "application"
-        if port_type not in ["frontend", "backend", "application"]:
-            port_type = "application"
+    except (ValueError, TypeError):
+        return {
+            "is_notification": True,
+            "notification_type": "command_error",
+            "message_to_agent": f"Invalid application port: {application_port}. Must be a valid integer."
+        }
     
-    print(f"\n\nLocal Server Command: {command}")
-
-    # Create command record in database
-    cmd_record = await sync_to_async(lambda: (
-        CommandExecution.objects.create(
-            project_id=project_id,
-            command=command,
-            output=None  # Will update after execution
-        )
+    # 1. Save server config to database
+    await sync_to_async(lambda: ServerConfig.objects.update_or_create(
+        project_id=project_id,
+        port=application_port,
+        defaults={
+            'command': command,
+            'type': type or 'application'
+        }
     ))()
-
-    success = False
-    stdout = ""
-    stderr = ""
-
-    try:
-        # Execute the server command locally using subprocess in thread pool (background)
-        success, stdout, stderr = await asyncio.get_event_loop().run_in_executor(
-            None, execute_local_server_command, command, str(workspace_path)
-        )
-
-        print(f"\n\nLocal Server Command output: {stdout}")
-        if stderr:
-            print(f"\n\nLocal Server Command stderr: {stderr}")
-
-        # Update command record with output
-        await sync_to_async(lambda: (
-            setattr(cmd_record, 'output', stdout if success else stderr),
-            cmd_record.save()
-        )[1])()
-
-    except Exception as e:
-        error_msg = f"Failed to execute server command locally: {str(e)}"
-        stderr = error_msg
-        
-        # Update command record with error
-        await sync_to_async(lambda: (
-            setattr(cmd_record, 'output', error_msg),
-            cmd_record.save()
-        )[1])()
-
+    
+    # 2. Check if server is running on the port and kill it
+    kill_command = f"lsof -ti:{application_port} | xargs kill -9 2>/dev/null || true"
+    success, stdout, stderr = execute_local_command(kill_command, str(workspace_path))
+    print(f"Killed existing process on port {application_port}")
+    
+    # Wait a moment for port to be freed
+    await asyncio.sleep(1)
+    
+    # 3. Run the server command in background using nohup
+    # Create a log file for the server
+    log_file = workspace_path / f"server_{project_id}_{application_port}.log"
+    
+    # Use nohup to run in background and redirect output to log file
+    background_command = f"nohup {command} > {log_file} 2>&1 &"
+    
+    success, stdout, stderr = execute_local_command(background_command, str(workspace_path))
+    
     if not success:
         return {
             "is_notification": True,
             "notification_type": "command_error",
-            "message_to_agent": f"{stderr}\n\nThe local server command execution failed. Stop generating further steps and inform the user that the command could not be executed.",
+            "message_to_agent": f"Failed to start server: {stderr}"
         }
     
-    # Prepare success message with port information if applicable
-    message = f"{stdout}\n\nLocal server command executed successfully."
+    # 4. Wait a bit for server to start
+    await asyncio.sleep(3)
     
-    if application_port:
-        # For local execution, the server will be accessible on localhost
-        local_url = f"http://localhost:{application_port}"
-        
-        # Add URL information to the message
-        message += f"\n\n{port_type.capitalize()} is running on port {application_port} locally."
-        message += f"\nYou can access it at: {local_url}"
-        message += f"\nServer logs are available at: {workspace_path}/tmp/server_output.log"
+    # 5. Check if server is running by checking if port is listening
+    check_command = f"lsof -i:{application_port} | grep LISTEN"
+    success, stdout, stderr = execute_local_command(check_command, str(workspace_path))
+    
+    if success and stdout:
+        # Server is running
+        return {
+            "is_notification": True,
+            "notification_type": "server_started",
+            "message_to_agent": f"✅ Server started successfully!\n\n"
+                               f"📍 Running on port {application_port}\n"
+                               f"🔗 URL: http://localhost:{application_port}\n"
+                               f"📄 Logs: {log_file}\n\n"
+                               f"The server is running in the background. Proceed with next steps.\n"
+                               f"To view logs: tail -f {log_file}"
+        }
     else:
-        message += f"\nServer logs are available at: {workspace_path}/tmp/server_output.log"
+        # Check logs for errors
+        try:
+            with open(log_file, 'r') as f:
+                log_content = f.read()
+                last_lines = '\n'.join(log_content.split('\n')[-20:])
+        except:
+            last_lines = "Could not read log file"
+        
+        return {
+            "is_notification": True,
+            "notification_type": "server_error",
+            "message_to_agent": f"⚠️ Server may not have started properly.\n\n"
+                               f"Recent logs:\n```\n{last_lines}\n```\n\n"
+                               f"Please check the logs and fix any issues."
+        }
+
+
+# Simple helper function to stop a server
+async def stop_server(project_id: int, port: int) -> dict:
+    """Stop a server running on a specific port"""
+    workspace_path = Path.home() / "LFG" / "workspace"
+    
+    kill_command = f"lsof -ti:{port} | xargs kill -9 2>/dev/null || true"
+    success, stdout, stderr = execute_local_command(kill_command, str(workspace_path))
     
     return {
         "is_notification": True,
-        "notification_type": "command_output",
-        "message_to_agent": message + "\n\nProceed to next step",
+        "notification_type": "server_stopped",
+        "message_to_agent": f"Server on port {port} has been stopped."
+    }
+
+
+# Function to restart server (can be called from a button)
+async def restart_server_from_config(project_id: int) -> dict:
+    """Restart all servers for a project using saved config"""
+    
+    configs = await sync_to_async(list)(
+        ServerConfig.objects.filter(project_id=project_id)
+    )
+    
+    results = []
+    for config in configs:
+        result = await run_server_locally(
+            command=config.command,
+            project_id=project_id,
+            application_port=config.port,
+            type=config.type
+        )
+        # results.append(f"Port {config.port}: {result['message_to_agent'].split('\\n')[0]}")
+        results.append(result['message_to_agent'])
+    
+    return {
+        "is_notification": True,
+        "notification_type": "servers_restarted",
+        "message_to_agent": "\n".join(results)
     }
 
 async def implement_ticket(ticket_id, project_id, conversation_id, ticket_details, implementation_plan):

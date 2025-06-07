@@ -1,6 +1,8 @@
 from django.db import models
 from django.utils import timezone
 
+from projects.models import Project
+
 # Create your models here.
 
 class DockerSandbox(models.Model):
@@ -313,3 +315,19 @@ class CommandExecution(models.Model):
     
     def __str__(self):
         return f"Command: {self.command[:50]}{'...' if len(self.command) > 50 else ''}"
+
+
+class ServerConfig(models.Model):
+    project = models.OneToOneField(Project, 
+                                   on_delete=models.CASCADE, 
+                                   related_name="server_config"
+                                )
+    command = models.TextField()
+    port = models.IntegerField()
+    type = models.CharField(max_length=50, default='application')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'server_configs'
+        unique_together = ['project_id', 'port']
