@@ -456,6 +456,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function switchTab(tabId) {
         console.log(`[ArtifactsPanel] Switching to tab: ${tabId}`);
+        console.log(`[ArtifactsPanel] Tab switching called at:`, new Date().toISOString());
         
         // Remove active class from all buttons and panes
         tabButtons.forEach(button => button.classList.remove('active'));
@@ -465,12 +466,18 @@ document.addEventListener('DOMContentLoaded', function() {
         const activeButton = document.querySelector(`[data-tab="${tabId}"]`);
         const activePane = document.getElementById(tabId);
         
+        console.log(`[ArtifactsPanel] Active button found:`, !!activeButton);
+        console.log(`[ArtifactsPanel] Active pane found:`, !!activePane);
+        
         if (activeButton && activePane) {
             activeButton.classList.add('active');
             activePane.classList.add('active');
             
+            console.log(`[ArtifactsPanel] About to call loadTabData for tab: ${tabId}`);
             // Automatically load data when switching to certain tabs
             loadTabData(tabId);
+        } else {
+            console.error(`[ArtifactsPanel] Could not find elements for tab: ${tabId}`);
         }
     }
     
@@ -532,11 +539,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 break;
             case 'codebase':
+                console.log('[ArtifactsPanel] Codebase tab selected');
+                console.log('[ArtifactsPanel] ArtifactsLoader available:', !!window.ArtifactsLoader);
+                console.log('[ArtifactsPanel] loadCodebase function available:', !!(window.ArtifactsLoader && typeof window.ArtifactsLoader.loadCodebase === 'function'));
+                
                 // Load codebase explorer in iframe
                 if (window.ArtifactsLoader && typeof window.ArtifactsLoader.loadCodebase === 'function') {
+                    console.log('[ArtifactsPanel] Calling ArtifactsLoader.loadCodebase with project ID:', projectId);
                     window.ArtifactsLoader.loadCodebase(projectId);
                 } else {
                     // Fallback to internal function if loader not available
+                    console.log('[ArtifactsPanel] ArtifactsLoader not available, using fallback function');
                     loadCodebaseExplorer(projectId);
                 }
                 break;

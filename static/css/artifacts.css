@@ -182,6 +182,7 @@
 /* Empty state */
 .empty-state {
     display: flex;
+    width: 100%;
     flex-direction: column;
     align-items: center;
     justify-content: center;
@@ -467,7 +468,7 @@
     flex: 1;
     overflow: hidden;
     position: relative;
-    height: calc(100% - 40px); /* Adjust based on tab button height */
+    height: calc(100% - 10px); /* Adjust based on tab button height */
     background: rgba(30, 30, 30, 0.6);
 }
 
