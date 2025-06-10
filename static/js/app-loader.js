@@ -1,6 +1,8 @@
 /**
  * App Loader JavaScript
  * Handles loading the app running on the sandbox port into an iframe
+ * NOTE: This file is now deprecated in favor of the loadAppPreview function in artifacts-loader.js
+ * which uses ServerConfig data instead of sandbox port mappings.
  */
 
 // Create a self-contained module for the app loader to avoid scope issues
@@ -8,21 +10,28 @@
     // Flag to track if loadAppPreview has been defined
     let isAppPreviewDefined = false;
 
-    // Main initialization function
+    // Main initialization function - now disabled to avoid conflicts
     function initAppLoader() {
-        console.log('[AppLoader] Initializing app loader...');
+        console.log('[AppLoader] App loader initialization disabled - using artifacts-loader.js implementation');
         
-        // Define loadAppPreview function on ArtifactsLoader if it exists
-        if (window.ArtifactsLoader && !isAppPreviewDefined) {
-            console.log('[AppLoader] ArtifactsLoader found, adding loadAppPreview function');
+        // Don't override loadAppPreview if it already exists in ArtifactsLoader
+        if (window.ArtifactsLoader && window.ArtifactsLoader.loadAppPreview) {
+            console.log('[AppLoader] loadAppPreview already defined in ArtifactsLoader, skipping override');
+            return;
+        }
+        
+        // Only define if ArtifactsLoader doesn't have it yet (fallback)
+        if (window.ArtifactsLoader && !window.ArtifactsLoader.loadAppPreview) {
+            console.log('[AppLoader] Defining fallback loadAppPreview function (sandbox-based)');
             
             /**
-             * Load running app from the sandbox port for the current project or conversation
+             * FALLBACK: Load running app from the sandbox port for the current project or conversation
+             * This is a fallback implementation that uses sandbox port mappings
              * @param {number} projectId - The ID of the current project
              * @param {number} conversationId - The ID of the current conversation (optional)
              */
             window.ArtifactsLoader.loadAppPreview = function(projectId, conversationId) {
-                console.log(`[AppLoader] loadAppPreview called with project ID: ${projectId}, conversation ID: ${conversationId}`);
+                console.log(`[AppLoader] FALLBACK loadAppPreview called with project ID: ${projectId}, conversation ID: ${conversationId}`);
                 
                 if (!projectId && !conversationId) {
                     console.warn('[AppLoader] No project ID or conversation ID provided for loading app');
@@ -154,9 +163,7 @@
             };
             
             isAppPreviewDefined = true;
-            console.log('[AppLoader] loadAppPreview function has been defined');
-        } else if (!window.ArtifactsLoader) {
-            console.warn('[AppLoader] ArtifactsLoader not found, will try again later');
+            console.log('[AppLoader] FALLBACK loadAppPreview function has been defined');
         }
     }
 
@@ -176,30 +183,31 @@
                 if (tabId === 'apps') {
                     console.log('[AppLoader] Apps tab selected, loading app preview');
                     
-                    // If ArtifactsLoader doesn't exist yet or loadAppPreview isn't defined, try to initialize
-                    if (!window.ArtifactsLoader || !window.ArtifactsLoader.loadAppPreview) {
-                        console.log('[AppLoader] ArtifactsLoader or loadAppPreview not ready, initializing now');
-                        initAppLoader();
-                    }
-                    
-                    // Get project or conversation ID
-                    const projectId = window.getCurrentProjectId ? window.getCurrentProjectId() : null;
-                    const conversationId = window.getCurrentConversationId ? window.getCurrentConversationId() : null;
-                    
-                    console.log(`[AppLoader] Project ID: ${projectId}, Conversation ID: ${conversationId}`);
-                    
+                    // Check if ArtifactsLoader has the proper loadAppPreview function
                     if (window.ArtifactsLoader && typeof window.ArtifactsLoader.loadAppPreview === 'function') {
+                        console.log('[AppLoader] Using ArtifactsLoader.loadAppPreview (preferred)');
+                        
+                        // Get project or conversation ID
+                        const projectId = window.getCurrentProjectId ? window.getCurrentProjectId() : null;
+                        const conversationId = window.getCurrentConversationId ? window.getCurrentConversationId() : null;
+                        
+                        console.log(`[AppLoader] Project ID: ${projectId}, Conversation ID: ${conversationId}`);
                         window.ArtifactsLoader.loadAppPreview(projectId, conversationId);
                     } else {
-                        console.error('[AppLoader] loadAppPreview function not available despite initialization attempt');
-                        // Create ArtifactsLoader if it doesn't exist as a fallback
-                        if (!window.ArtifactsLoader) {
-                            console.log('[AppLoader] Creating ArtifactsLoader as fallback');
-                            window.ArtifactsLoader = {};
-                            initAppLoader();
-                            if (typeof window.ArtifactsLoader.loadAppPreview === 'function') {
-                                window.ArtifactsLoader.loadAppPreview(projectId, conversationId);
-                            }
+                        // If ArtifactsLoader doesn't exist yet or loadAppPreview isn't defined, try to initialize fallback
+                        console.log('[AppLoader] ArtifactsLoader or loadAppPreview not ready, initializing fallback');
+                        initAppLoader();
+                        
+                        // Get project or conversation ID
+                        const projectId = window.getCurrentProjectId ? window.getCurrentProjectId() : null;
+                        const conversationId = window.getCurrentConversationId ? window.getCurrentConversationId() : null;
+                        
+                        console.log(`[AppLoader] Project ID: ${projectId}, Conversation ID: ${conversationId}`);
+                        
+                        if (window.ArtifactsLoader && typeof window.ArtifactsLoader.loadAppPreview === 'function') {
+                            window.ArtifactsLoader.loadAppPreview(projectId, conversationId);
+                        } else {
+                            console.error('[AppLoader] loadAppPreview function not available despite initialization attempt');
                         }
                     }
                 }

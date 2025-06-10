@@ -5,6 +5,16 @@ from django.contrib import messages
 from .models import Project, ProjectFeature, ProjectPersona, ProjectPRD, ProjectImplementation, ProjectDesignSchema, ProjectTickets, ProjectChecklist
 from django.views.decorators.http import require_POST
 from django.core.exceptions import PermissionDenied
+import asyncio
+import subprocess
+import time
+from pathlib import Path
+
+# Import ServerConfig from coding app
+from coding.models import ServerConfig
+
+# Import the functions from ai_functions
+from coding.utils.ai_functions import execute_local_command, restart_server_from_config
 
 # Create your views here.
 
@@ -44,7 +54,7 @@ def create_project(request):
             owner=request.user
         )
         
-        messages.success(request, f"Project '{name}' created successfully!")
+        # messages.success(request, f"Project '{name}' created successfully!")
         
         # Redirect to create a conversation for this project
         return redirect('create_conversation', project_id=project.id)
@@ -220,6 +230,28 @@ def project_checklist_api(request, project_id):
     return JsonResponse({'checklist': checklist_list})
 
 @login_required
+def project_server_configs_api(request, project_id):
+    """API view to get server configurations for a project"""
+    project = get_object_or_404(Project, id=project_id, owner=request.user)
+    
+    # Get all server configs for this project
+    server_configs = ServerConfig.objects.filter(project=project).order_by('port')
+    
+    configs_list = []
+    for config in server_configs:
+        configs_list.append({
+            'id': config.id,
+            'command': config.command,
+            'start_server_command': config.start_server_command,
+            'port': config.port,
+            'type': config.type,
+            'created_at': config.created_at.isoformat(),
+            'updated_at': config.updated_at.isoformat(),
+        })
+    
+    return JsonResponse({'server_configs': configs_list})
+
+@login_required
 def project_terminal(request, project_id):
     """
     View for the terminal page of a project.
@@ -262,4 +294,127 @@ def project_implementation_api(request, project_id):
     }
     
     return JsonResponse(implementation_data)
+
+@login_required
+def check_server_status_api(request, project_id):
+    """API view to check server status and restart if needed"""
+    project = get_object_or_404(Project, id=project_id, owner=request.user)
+    
+    try:
+        # Get server configurations for this project
+        server_configs = ServerConfig.objects.filter(project=project)
+        
+        if not server_configs.exists():
+            return JsonResponse({
+                'status': 'no_config',
+                'message': 'No server configurations found for this project',
+                'servers': []
+            })
+        
+        # Create workspace directory if it doesn't exist
+        workspace_path = Path.home() / "LFG" / "workspace"
+        workspace_path.mkdir(parents=True, exist_ok=True)
+        
+        server_status = []
+        
+        for config in server_configs:
+            port = config.port
+            server_type = config.type or 'application'
+            
+            # Check if server is running on this port
+            check_command = f"lsof -i:{port} | grep LISTEN"
+            success, stdout, stderr = execute_local_command(check_command, str(workspace_path))
+            
+            is_running = success and stdout.strip()
+            
+            if is_running:
+                server_status.append({
+                    'port': port,
+                    'type': server_type,
+                    'status': 'running',
+                    'url': f'http://localhost:{port}',
+                    'message': f'{server_type.capitalize()} server is running on port {port}'
+                })
+            else:
+                # Server is not running, attempt to restart
+                server_command = config.start_server_command or config.command
+                
+                if server_command:
+                    # Kill any existing process on the port first
+                    kill_command = f"lsof -ti:{port} | xargs kill -9 2>/dev/null || true"
+                    execute_local_command(kill_command, str(workspace_path))
+                    
+                    # Wait a moment for port to be freed
+                    time.sleep(1)
+                    
+                    # Create log file for the server
+                    log_file = workspace_path / f"server_{project_id}_{port}.log"
+                    
+                    # Use nohup to run in background
+                    background_command = f"nohup {server_command} > {log_file} 2>&1 &"
+                    restart_success, restart_stdout, restart_stderr = execute_local_command(background_command, str(workspace_path))
+                    
+                    if restart_success:
+                        # Wait a bit for server to start
+                        time.sleep(3)
+                        
+                        # Check again if server is running
+                        recheck_success, recheck_stdout, recheck_stderr = execute_local_command(check_command, str(workspace_path))
+                        
+                        if recheck_success and recheck_stdout.strip():
+                            server_status.append({
+                                'port': port,
+                                'type': server_type,
+                                'status': 'restarted',
+                                'url': f'http://localhost:{port}',
+                                'message': f'{server_type.capitalize()} server restarted successfully on port {port}'
+                            })
+                        else:
+                            server_status.append({
+                                'port': port,
+                                'type': server_type,
+                                'status': 'failed',
+                                'url': f'http://localhost:{port}',
+                                'message': f'Failed to restart {server_type} server on port {port}. Check logs at {log_file}'
+                            })
+                    else:
+                        server_status.append({
+                            'port': port,
+                            'type': server_type,
+                            'status': 'failed',
+                            'url': f'http://localhost:{port}',
+                            'message': f'Failed to restart {server_type} server: {restart_stderr}'
+                        })
+                else:
+                    server_status.append({
+                        'port': port,
+                        'type': server_type,
+                        'status': 'no_command',
+                        'url': f'http://localhost:{port}',
+                        'message': f'No start command configured for {server_type} server on port {port}'
+                    })
+        
+        # Determine overall status
+        if all(server['status'] in ['running', 'restarted'] for server in server_status):
+            overall_status = 'all_running'
+            overall_message = 'All servers are running successfully'
+        elif any(server['status'] in ['running', 'restarted'] for server in server_status):
+            overall_status = 'partial_running'
+            overall_message = 'Some servers are running'
+        else:
+            overall_status = 'none_running'
+            overall_message = 'No servers are currently running'
+        
+        return JsonResponse({
+            'status': overall_status,
+            'message': overall_message,
+            'servers': server_status
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Error checking server status: {str(e)}',
+            'servers': []
+        })
 

@@ -3,6 +3,99 @@
  * Handles loading artifact data from the server and updating the artifacts panel
  */
 document.addEventListener('DOMContentLoaded', function() {
+    
+    // Helper function to get current conversation ID from URL or global variables
+    function getCurrentConversationId() {
+        // Try to get conversation ID from URL first
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlConversationId = urlParams.get('conversation_id');
+        
+        if (urlConversationId) {
+            return urlConversationId;
+        }
+        
+        // Then try from path (format: /chat/conversation/{id}/)
+        const pathMatch = window.location.pathname.match(/\/chat\/conversation\/(\d+)\//);
+        if (pathMatch && pathMatch[1]) {
+            return pathMatch[1];
+        }
+        
+        // Try global variables if available
+        if (window.conversation_id) {
+            return window.conversation_id;
+        }
+        
+        if (window.CONVERSATION_DATA && window.CONVERSATION_DATA.id) {
+            return window.CONVERSATION_DATA.id;
+        }
+        
+        return null;
+    }
+    
+    // Helper function to get current project ID from URL or global variables
+    function getCurrentProjectId() {
+        // Try several methods to get the project ID
+        
+        // Method 1: URL pathname (for direct project URLs)
+        const pathMatch = window.location.pathname.match(/\/projects\/(\d+)/);
+        if (pathMatch) {
+            console.log('[ArtifactsLoader] Found project ID in URL path:', pathMatch[1]);
+            return parseInt(pathMatch[1]);
+        }
+        
+        // Method 2: URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const projectIdParam = urlParams.get('project_id');
+        if (projectIdParam) {
+            console.log('[ArtifactsLoader] Found project ID in URL params:', projectIdParam);
+            return parseInt(projectIdParam);
+        }
+        
+        // Method 3: Global variables
+        if (window.project_id) {
+            console.log('[ArtifactsLoader] Found project ID in global variable:', window.project_id);
+            return parseInt(window.project_id);
+        }
+        
+        // Method 4: Data attributes on body or main container
+        const bodyProjectId = document.body.getAttribute('data-project-id');
+        if (bodyProjectId) {
+            console.log('[ArtifactsLoader] Found project ID in body data attribute:', bodyProjectId);
+            return parseInt(bodyProjectId);
+        }
+        
+        console.warn('[ArtifactsLoader] Could not find project ID using any method');
+        return null;
+    }
+
+    // Helper function to get CSRF token
+    function getCsrfToken() {
+        // Try to get it from the meta tag first (Django's standard location)
+        const metaToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+        if (metaToken) {
+            return metaToken;
+        }
+        
+        // Then try the input field (another common location)
+        const inputToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+        if (inputToken) {
+            return inputToken;
+        }
+        
+        // Finally try to get it from cookies
+        const cookieValue = document.cookie
+            .split('; ')
+            .find(row => row.startsWith('csrftoken='))
+            ?.split('=')[1];
+        
+        if (cookieValue) {
+            return cookieValue;
+        }
+        
+        console.error('[ArtifactsLoader] CSRF token not found in any location');
+        return '';
+    }
+
     // Initialize the artifact loaders
     window.ArtifactsLoader = {
         /**
@@ -777,6 +870,8 @@ document.addEventListener('DOMContentLoaded', function() {
          */
         loadCodebase: function(projectId) {
             console.log(`[ArtifactsLoader] loadCodebase called with project ID: ${projectId}`);
+            console.log(`[ArtifactsLoader] Project ID type: ${typeof projectId}`);
+            console.log(`[ArtifactsLoader] Project ID truthy: ${!!projectId}`);
             
             if (!projectId) {
                 console.warn('[ArtifactsLoader] No project ID provided for loading codebase');
@@ -796,6 +891,13 @@ document.addEventListener('DOMContentLoaded', function() {
             const codebaseFrameContainer = document.getElementById('codebase-frame-container');
             const codebaseIframe = document.getElementById('codebase-iframe');
             
+            console.log('[ArtifactsLoader] UI Elements found:', {
+                codebaseLoading: !!codebaseLoading,
+                codebaseEmpty: !!codebaseEmpty,
+                codebaseFrameContainer: !!codebaseFrameContainer,
+                codebaseIframe: !!codebaseIframe
+            });
+            
             if (!codebaseLoading || !codebaseEmpty || !codebaseFrameContainer || !codebaseIframe) {
                 console.warn('[ArtifactsLoader] Codebase UI elements not found');
                 return;
@@ -809,6 +911,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Get conversation ID using the helper function
             const conversationId = getCurrentConversationId();
+            console.log(`[ArtifactsLoader] Conversation ID: ${conversationId}`);
             
             // Build the editor URL with appropriate parameters
             let editorUrl = `/coding/editor/?project_id=${projectId}`;
@@ -820,6 +923,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             console.log(`[ArtifactsLoader] Loading codebase explorer from URL: ${editorUrl}`);
+            console.log(`[ArtifactsLoader] About to set iframe.src - this should trigger network request`);
             
             // Set up iframe event handlers
             codebaseIframe.onload = function() {
@@ -827,6 +931,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 codebaseLoading.style.display = 'none';
                 codebaseFrameContainer.style.display = 'block';
                 console.log('[ArtifactsLoader] Codebase iframe loaded successfully');
+                console.log('[ArtifactsLoader] Iframe content window:', codebaseIframe.contentWindow);
             };
             
             codebaseIframe.onerror = function() {
@@ -847,7 +952,9 @@ document.addEventListener('DOMContentLoaded', function() {
             };
             
             // Set the iframe source to load the editor
+            console.log('[ArtifactsLoader] Setting iframe src now...');
             codebaseIframe.src = editorUrl;
+            console.log('[ArtifactsLoader] Iframe src set to:', codebaseIframe.src);
         },
         
         /**
@@ -1616,6 +1723,410 @@ document.addEventListener('DOMContentLoaded', function() {
                         </div>
                     `;
                 });
+        },
+
+        /**
+         * Load app preview from ServerConfig for the current project
+         * @param {number} projectId - The ID of the current project
+         * @param {number} conversationId - Optional conversation ID (not used for ServerConfig)
+         */
+        loadAppPreview: function(projectId, conversationId) {
+            console.log(`[ArtifactsLoader] loadAppPreview called with project ID: ${projectId}, conversation ID: ${conversationId}`);
+            
+            if (!projectId) {
+                console.warn('[ArtifactsLoader] No project ID provided for loading app preview');
+                return;
+            }
+            
+            // Get app tab elements
+            const appTab = document.getElementById('apps');
+            const appLoading = document.getElementById('app-loading');
+            const appEmpty = document.getElementById('app-empty');
+            const appFrameContainer = document.getElementById('app-frame-container');
+            const appIframe = document.getElementById('app-iframe');
+            
+            if (!appTab || !appLoading || !appEmpty || !appFrameContainer || !appIframe) {
+                console.warn('[ArtifactsLoader] One or more app tab elements not found');
+                return;
+            }
+            
+            // Show loading state
+            appEmpty.style.display = 'none';
+            appFrameContainer.style.display = 'none';
+            appLoading.style.display = 'block';
+            
+            // Fetch server configs from API
+            const url = `/projects/${projectId}/api/server-configs/`;
+            console.log(`[ArtifactsLoader] Fetching server configs from API: ${url}`);
+            
+            fetch(url)
+                .then(response => {
+                    console.log(`[ArtifactsLoader] Server configs API response received, status: ${response.status}`);
+                    if (!response.ok) {
+                        throw new Error(`Network response was not ok: ${response.status} ${response.statusText}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('[ArtifactsLoader] Server configs API data received:', data);
+                    
+                    // Process server configs
+                    const serverConfigs = data.server_configs || [];
+                    console.log(`[ArtifactsLoader] Found ${serverConfigs.length} server configurations`);
+                    
+                    if (serverConfigs.length === 0) {
+                        // Show empty state if no server configs found
+                        console.log('[ArtifactsLoader] No server configs found, showing empty state');
+                        showEmptyState("No application servers found. Start a server using the chat interface by running commands like 'npm start' or 'python manage.py runserver'.");
+                        return;
+                    }
+                    
+                    // Find the first application server or use the first config
+                    let selectedConfig = serverConfigs.find(config => config.type === 'application') || serverConfigs[0];
+                    console.log(`[ArtifactsLoader] Selected server config:`, selectedConfig);
+                    
+                    // If there are multiple configs, you could potentially show a selector here
+                    if (serverConfigs.length > 1) {
+                        console.log(`[ArtifactsLoader] Multiple server configs available, using: ${selectedConfig.type} on port ${selectedConfig.port}`);
+                    }
+                    
+                    // Construct the URL for the iframe using localhost and the configured port
+                    const appUrl = `http://localhost:${selectedConfig.port}/`;
+                    console.log(`[ArtifactsLoader] Loading app from URL: ${appUrl}`);
+                    
+                    // First, check if the server is actually running by testing the URL
+                    console.log(`[ArtifactsLoader] Testing server connectivity at: ${appUrl}`);
+                    
+                    // Test server connectivity before loading iframe
+                    fetch(appUrl, {
+                        method: 'GET',
+                        mode: 'no-cors', // Avoid CORS issues for connectivity test
+                        cache: 'no-cache'
+                    })
+                    .then(() => {
+                        console.log(`[ArtifactsLoader] Server connectivity test passed for ${appUrl}`);
+                        loadIframeApp(appUrl, selectedConfig);
+                    })
+                    .catch((error) => {
+                        console.error(`[ArtifactsLoader] Server connectivity test failed for ${appUrl}:`, error);
+                        showServerNotRunningError(selectedConfig.port);
+                    });
+                    
+                    // Function to load the app in iframe after connectivity is confirmed
+                    function loadIframeApp(url, config) {
+                        console.log(`[ArtifactsLoader] Loading verified server in iframe: ${url}`);
+                        
+                        // Set up iframe load tracking
+                        let hasLoaded = false;
+                        let timeoutId = null;
+                        
+                        // Set up iframe event handlers
+                        appIframe.onload = function() {
+                            console.log('[ArtifactsLoader] Iframe onload event triggered');
+                            hasLoaded = true;
+                            clearTimeout(timeoutId);
+                            
+                            appLoading.style.display = 'none';
+                            appFrameContainer.style.display = 'block';
+                            console.log('[ArtifactsLoader] App iframe loaded successfully');
+                        };
+                        
+                        appIframe.onerror = function(e) {
+                            console.error('[ArtifactsLoader] Error loading app iframe:', e);
+                            hasLoaded = true;
+                            clearTimeout(timeoutId);
+                            showErrorState(`Failed to load application from port ${config.port}. The server may have stopped or encountered an error.`);
+                        };
+                        
+                        // Set up timeout as fallback
+                        timeoutId = setTimeout(() => {
+                            if (!hasLoaded) {
+                                console.warn('[ArtifactsLoader] App iframe taking too long to load');
+                                showErrorState(`Application is taking too long to load from port ${config.port}. The server may be slow to respond.`);
+                            }
+                        }, 10000); // 10 second timeout for verified servers
+                        
+                        // Set the iframe source to load the app
+                        appIframe.src = url;
+                        
+                        // Adjust the container to fill available space
+                        appTab.style.overflow = 'hidden';
+                    }
+                    
+                    // Function to show server not running error
+                    function showServerNotRunningError(port) {
+                        appLoading.style.display = 'none';
+                        appEmpty.style.display = 'block';
+                        appEmpty.innerHTML = `
+                            <div class="error-state" style="display: flex; flex-direction: column; align-items: center; padding: 2rem;">
+                                <div class="error-state-icon">
+                                    <i class="fas fa-server" style="font-size: 3rem; color: #ff6b6b; margin-bottom: 1rem;"></i>
+                                </div>
+                                <div class="error-state-title" style="font-size: 1.2rem; font-weight: 600; margin-bottom: 0.5rem; color: #ff6b6b;">
+                                    Server Not Running
+                                </div>
+                                <div class="error-state-text" style="color: #666; line-height: 1.5; margin-bottom: 1rem;">
+                                    The application server on port <strong>${port}</strong> is not accessible.
+                                </div>
+                                 
+                                <div style="margin-top: 1rem;">
+                                    <button onclick="window.ArtifactsLoader.checkAndRestartServers(${projectId})" style="background: #007bff; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; margin-right: 0.5rem;">
+                                        <i class="fas fa-refresh"></i> Check Again
+                                    </button>
+                                    <button onclick="window.open('http://localhost:${port}', '_blank')" style="background: #6c757d; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer;">
+                                        <i class="fas fa-external-link-alt"></i> Open in New Tab
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    }
+                })
+                .catch(error => {
+                    console.error('[ArtifactsLoader] Error fetching server configs:', error);
+                    showErrorState(`Error loading server configurations: ${error.message}. Please try refreshing the page or check if the server is running.`);
+                });
+                
+            // Helper function to show the empty state
+            function showEmptyState(message) {
+                appLoading.style.display = 'none';
+                appEmpty.style.display = 'block';
+                appEmpty.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">
+                            <i class="fas fa-server" style="font-size: 3rem; color: #666; margin-bottom: 1rem;"></i>
+                        </div>
+                        <div class="empty-state-title" style="font-size: 1.2rem; font-weight: 600; margin-bottom: 0.5rem; color: #333;">
+                            No Application Server Running
+                        </div>
+                        <div class="empty-state-text" style="color: #666; line-height: 1.5; white-space: pre-line;">
+                            ${message}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Helper function to show error state
+            function showErrorState(message) {
+                appLoading.style.display = 'none';
+                appEmpty.style.display = 'block';
+                appEmpty.innerHTML = `
+                    <div class="error-state">
+                        <div class="error-state-icon">
+                            <i class="fas fa-exclamation-triangle" style="font-size: 3rem; color: #ff6b6b; margin-bottom: 1rem;"></i>
+                        </div>
+                        <div class="error-state-title" style="font-size: 1.2rem; font-weight: 600; margin-bottom: 0.5rem; color: #ff6b6b;">
+                            Server Connection Failed
+                        </div>
+                        <div class="error-state-text" style="color: #666; line-height: 1.5; white-space: pre-line;">
+                            ${message}
+                        </div>
+                        <div style="margin-top: 1rem;">
+                            <button onclick="window.ArtifactsLoader.loadAppPreview(${projectId})" style="background: #007bff; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer;">
+                                <i class="fas fa-refresh"></i> Try Again
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+        },
+
+        /**
+         * Check server status and restart if needed
+         * @param {number} projectId - The ID of the current project
+         */
+        checkAndRestartServers: function(projectId) {
+            console.log(`[ArtifactsLoader] checkAndRestartServers called with project ID: ${projectId}`);
+            
+            if (!projectId) {
+                console.warn('[ArtifactsLoader] No project ID provided for checking servers');
+                return;
+            }
+            
+            // Get app tab elements
+            const appLoading = document.getElementById('app-loading');
+            const appEmpty = document.getElementById('app-empty');
+            const appFrameContainer = document.getElementById('app-frame-container');
+            
+            if (!appLoading || !appEmpty || !appFrameContainer) {
+                console.warn('[ArtifactsLoader] One or more app tab elements not found');
+                return;
+            }
+            
+            // Show loading state
+            appEmpty.style.display = 'none';
+            appFrameContainer.style.display = 'none';
+            appLoading.style.display = 'block';
+            
+            // Update loading message to indicate server check
+            appLoading.innerHTML = '<div class="spinner"></div><div>Checking and restarting servers...</div>';
+            
+            // Call the new check servers API
+            const url = `/projects/${projectId}/api/check-servers/`;
+            console.log(`[ArtifactsLoader] Calling server check API: ${url}`);
+            
+            fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken(),
+                }
+            })
+            .then(response => {
+                console.log(`[ArtifactsLoader] Server check API response received, status: ${response.status}`);
+                if (!response.ok) {
+                    throw new Error(`Network response was not ok: ${response.status} ${response.statusText}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('[ArtifactsLoader] Server check API data received:', data);
+                
+                // Check the overall status
+                if (data.status === 'all_running') {
+                    // All servers are running, reload the app preview
+                    console.log('[ArtifactsLoader] All servers running, reloading app preview');
+                    setTimeout(() => {
+                        this.loadAppPreview(projectId);
+                    }, 1000); // Small delay to ensure servers are fully ready
+                } else if (data.status === 'partial_running') {
+                    // Some servers are running
+                    this.showServerCheckResult(data, projectId);
+                } else {
+                    // Show error or status information
+                    this.showServerCheckResult(data, projectId);
+                }
+            })
+            .catch(error => {
+                console.error('[ArtifactsLoader] Error checking servers:', error);
+                appLoading.style.display = 'none';
+                appEmpty.style.display = 'block';
+                appEmpty.innerHTML = `
+                    <div class="error-state">
+                        <div class="error-state-icon">
+                            <i class="fas fa-exclamation-triangle" style="font-size: 3rem; color: #ff6b6b; margin-bottom: 1rem;"></i>
+                        </div>
+                        <div class="error-state-title" style="font-size: 1.2rem; font-weight: 600; margin-bottom: 0.5rem; color: #ff6b6b;">
+                            Server Check Failed
+                        </div>
+                        <div class="error-state-text" style="color: #666; line-height: 1.5; margin-bottom: 1rem;">
+                            Error checking server status: ${error.message}
+                        </div>
+                        <div style="margin-top: 1rem;">
+                            <button onclick="window.ArtifactsLoader.checkAndRestartServers(${projectId})" style="background: #007bff; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer;">
+                                <i class="fas fa-refresh"></i> Try Again
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+        },
+
+        /**
+         * Show server check results
+         * @param {object} data - Server check result data
+         * @param {number} projectId - The project ID
+         */
+        showServerCheckResult: function(data, projectId) {
+            const appLoading = document.getElementById('app-loading');
+            const appEmpty = document.getElementById('app-empty');
+            
+            appLoading.style.display = 'none';
+            appEmpty.style.display = 'block';
+            
+            let statusIcon = 'fas fa-server';
+            let statusColor = '#666';
+            let statusTitle = 'Server Status';
+            
+            if (data.status === 'all_running') {
+                statusIcon = 'fas fa-check-circle';
+                statusColor = '#28a745';
+                statusTitle = 'All Servers Running';
+            } else if (data.status === 'partial_running') {
+                statusIcon = 'fas fa-exclamation-triangle';
+                statusColor = '#ffc107';
+                statusTitle = 'Some Servers Running';
+            } else if (data.status === 'none_running') {
+                statusIcon = 'fas fa-times-circle';
+                statusColor = '#dc3545';
+                statusTitle = 'No Servers Running';
+            } else if (data.status === 'error') {
+                statusIcon = 'fas fa-exclamation-triangle';
+                statusColor = '#dc3545';
+                statusTitle = 'Server Check Error';
+            }
+            
+            let serversHtml = '';
+            if (data.servers && data.servers.length > 0) {
+                serversHtml = '<div style="margin-top: 1rem; text-align: left;">';
+                data.servers.forEach(server => {
+                    let serverStatusColor = '#666';
+                    let serverStatusIcon = 'fas fa-circle';
+                    
+                    switch(server.status) {
+                        case 'running':
+                            serverStatusColor = '#28a745';
+                            serverStatusIcon = 'fas fa-check-circle';
+                            break;
+                        case 'restarted':
+                            serverStatusColor = '#17a2b8';
+                            serverStatusIcon = 'fas fa-sync';
+                            break;
+                        case 'failed':
+                            serverStatusColor = '#dc3545';
+                            serverStatusIcon = 'fas fa-times-circle';
+                            break;
+                        case 'no_command':
+                            serverStatusColor = '#ffc107';
+                            serverStatusIcon = 'fas fa-exclamation-circle';
+                            break;
+                    }
+                    
+                    serversHtml += `
+                        <div style="margin-bottom: 0.5rem; padding: 0.5rem; background: #f8f9fa; border-radius: 4px;">
+                            <div style="display: flex; align-items: center; margin-bottom: 0.25rem;">
+                                <i class="${serverStatusIcon}" style="color: ${serverStatusColor}; margin-right: 0.5rem;"></i>
+                                <strong>${server.type.charAt(0).toUpperCase() + server.type.slice(1)} Server (Port ${server.port})</strong>
+                            </div>
+                            <div style="color: #666; font-size: 0.9rem;">
+                                ${server.message}
+                            </div>
+                            ${server.status === 'running' || server.status === 'restarted' ? 
+                                `<div style="margin-top: 0.25rem;">
+                                    <a href="${server.url}" target="_blank" style="color: #007bff; text-decoration: none; font-size: 0.9rem;">
+                                        <i class="fas fa-external-link-alt"></i> Open ${server.url}
+                                    </a>
+                                </div>` : ''
+                            }
+                        </div>
+                    `;
+                });
+                serversHtml += '</div>';
+            }
+            
+            appEmpty.innerHTML = `
+                <div class="server-status-state" style="display: flex; flex-direction: column; align-items: center; padding: 2rem;">
+                    <div class="status-icon">
+                        <i class="${statusIcon}" style="font-size: 3rem; color: ${statusColor}; margin-bottom: 1rem;"></i>
+                    </div>
+                    <div class="status-title" style="font-size: 1.2rem; font-weight: 600; margin-bottom: 0.5rem; color: ${statusColor};">
+                        ${statusTitle}
+                    </div>
+                    <div class="status-message" style="color: #666; line-height: 1.5; margin-bottom: 1rem; text-align: center;">
+                        ${data.message}
+                    </div>
+                    ${serversHtml}
+                    <div style="margin-top: 1rem;">
+                        <button onclick="window.ArtifactsLoader.checkAndRestartServers(${projectId})" style="background: #007bff; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; margin-right: 0.5rem;">
+                            <i class="fas fa-refresh"></i> Check Again
+                        </button>
+                        ${data.status === 'all_running' || data.status === 'partial_running' ? 
+                            `<button onclick="window.ArtifactsLoader.loadAppPreview(${projectId})" style="background: #28a745; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer;">
+                                <i class="fas fa-eye"></i> View App
+                            </button>` : ''
+                        }
+                    </div>
+                </div>
+            `;
         },
     };
 

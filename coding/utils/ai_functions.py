@@ -1778,6 +1778,7 @@ async def run_server_locally(command: str, project_id: int | str = None,
         port=application_port,
         defaults={
             'command': command,
+            'start_server_command': command,
             'type': type or 'application'
         }
     ))()
@@ -1868,8 +1869,10 @@ async def restart_server_from_config(project_id: int) -> dict:
     
     results = []
     for config in configs:
+        # Use start_server_command if available, otherwise fall back to command
+        server_command = config.start_server_command or config.command
         result = await run_server_locally(
-            command=config.command,
+            command=server_command,
             project_id=project_id,
             application_port=config.port,
             type=config.type

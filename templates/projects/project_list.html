@@ -18,7 +18,7 @@
         <div class="grid grid-3">
             {% for project in projects %}
                 <div class="card project-card">
-                    <a href="{% url 'projects:project_detail' project.id %}" class="project-card-link">
+                    <a href="{% url 'create_conversation' project.id %}" class="project-card-link">
                         <div class="project-card-header">
                             <div class="project-icon">{{ project.icon }}</div>
                             <h2 class="project-name">{{ project.name }}</h2>
@@ -41,9 +41,6 @@
                                 <i class="fas fa-ellipsis-v"></i>
                             </button>
                             <div class="dropdown-menu">
-                                <a href="{% url 'projects:project_detail' project.id %}" class="dropdown-item">
-                                    <i class="fas fa-eye"></i> View
-                                </a>
                                 <a href="{% url 'projects:update_project' project.id %}" class="dropdown-item">
                                     <i class="fas fa-edit"></i> Edit
                                 </a>

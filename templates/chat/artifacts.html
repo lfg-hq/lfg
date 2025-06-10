@@ -2,17 +2,12 @@
 <div class="artifacts-container" id="artifacts-panel">
     <div class="resize-handle" id="resize-handle"></div>
     
-    <button class="artifacts-toggle" id="artifacts-toggle">
-        <i class="fas fa-chevron-right"></i>
-    </button>
+    <!-- Top accent bar for smoothening effect -->
+    <div style="height: 3px; background: linear-gradient(90deg, #8b5cf6, #a855f7, #c084fc); opacity: 0.8;"></div>
     
-    <div class="artifacts-header">
-        <h2>Artifacts</h2>
-    </div>
-    
-    <div class="artifacts-content">
-        <!-- Tabs Navigation -->
-        <div class="artifacts-tabs">
+    <!-- Tabs Navigation - moved to top -->
+    <div class="artifacts-tabs" style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex;">
             <button class="tab-button active" data-tab="prd">PRD</button>
             <button class="tab-button" data-tab="implementation">Implementation</button>
             <!-- <button class="tab-button" data-tab="features">Features</button> -->
@@ -20,10 +15,17 @@
             <!-- <button class="tab-button" data-tab="design">Design</button> -->
             <!-- <button class="tab-button" data-tab="tickets">Tickets</button> -->
             <button class="tab-button" data-tab="checklist">Task List</button>
-            <button class="tab-button" data-tab="apps">Apps</button>
+            <button class="tab-button" data-tab="apps">Preview</button>
             <button class="tab-button" data-tab="codebase">Codebase</button>
+            
         </div>
-
+        
+        <button class="panel-arrow-right" id="artifacts-toggle" style="margin-left: auto; padding: 8px; background: none; border: none; color: #ccc; cursor: pointer;">
+            <i class="fas fa-chevron-right"></i>
+        </button>
+    </div>
+    
+    <div class="artifacts-content">
         <!-- Tab Content -->
         <div class="tab-content">
             <!-- PRD Tab -->

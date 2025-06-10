@@ -318,11 +318,12 @@ class CommandExecution(models.Model):
 
 
 class ServerConfig(models.Model):
-    project = models.OneToOneField(Project, 
-                                   on_delete=models.CASCADE, 
-                                   related_name="server_config"
-                                )
+    project = models.ForeignKey(Project, 
+                               on_delete=models.CASCADE, 
+                               related_name="server_configs"
+                              )
     command = models.TextField()
+    start_server_command = models.TextField(blank=True, null=True, help_text="Command to start the server")
     port = models.IntegerField()
     type = models.CharField(max_length=50, default='application')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -330,4 +331,4 @@ class ServerConfig(models.Model):
     
     class Meta:
         db_table = 'server_configs'
-        unique_together = ['project_id', 'port']
+        unique_together = ['project', 'port']
