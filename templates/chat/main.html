@@ -72,17 +72,25 @@
                             autofocus
                         ></textarea>
                         <div class="input-actions">
-                            <button type="button" id="file-upload-btn" class="action-btn" title="Upload file">
+                            <div class="turbo-switch-container" title="Enable turbo mode">
+                                <label class="turbo-switch">
+                                    <input type="checkbox" disabled="true" id="turbo-mode-toggle">
+                                    <span class="turbo-slider"></span>
+                                </label>
+                                <span class="turbo-label">Turbo</span>
+                            </div>
+                            <!-- <button hidden="true" type="button" id="file-upload-btn" class="action-btn" title="Upload file">
                                 <i class="fas fa-paperclip"></i>
-                            </button>
-                            <input type="file" id="file-upload-input" style="display: none">
-                            <select id="role-dropdown" class="role-dropdown" title="Select a role">
+                            </button> -->
+                            <input hidden="true" type="file" id="file-upload-input" style="display: none">
+                            <select id="role-dropdown" hidden="true" title="Select a role">
                                 <option value="developer">Developer</option>
                                 <option value="designer">Designer</option>
                                 <option value="product_analyst">Analyst</option>
                             </select>
                             <select id="model-dropdown" class="model-dropdown" title="Select a model">
                                 <option value="claude_4_sonnet">Claude 4 Sonnet</option>
+                                <option value="o3">OpenAI O3</option>
                                 <option value="gpt_4_1">OpenAI GPT-4.1</option>
                                 <option value="gpt_4o">OpenAI GPT-4o</option>
                             </select>

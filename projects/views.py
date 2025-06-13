@@ -9,6 +9,8 @@ import asyncio
 import subprocess
 import time
 from pathlib import Path
+from django.views.decorators.csrf import csrf_exempt
+from django.utils import timezone
 
 # Import ServerConfig from coding app
 from coding.models import ServerConfig
@@ -417,4 +419,38 @@ def check_server_status_api(request, project_id):
             'message': f'Error checking server status: {str(e)}',
             'servers': []
         })
+
+@csrf_exempt
+@login_required
+@require_POST
+def update_checklist_item_api(request, project_id):
+    """API endpoint to update status or role of a checklist item"""
+    import json
+    try:
+        data = json.loads(request.body.decode('utf-8'))
+        item_id = data.get('item_id')
+        new_status = data.get('status')
+        new_role = data.get('role')
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': 'Invalid request data', 'details': str(e)}, status=400)
+
+    project = get_object_or_404(Project, id=project_id, owner=request.user)
+    try:
+        item = ProjectChecklist.objects.get(id=item_id, project=project)
+    except ProjectChecklist.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Checklist item not found'}, status=404)
+
+    changed = False
+    if new_status and new_status != item.status:
+        item.status = new_status
+        changed = True
+    if new_role and new_role != item.role:
+        item.role = new_role
+        changed = True
+    if changed:
+        item.updated_at = timezone.now()
+        item.save()
+        return JsonResponse({'success': True, 'id': item.id, 'status': item.status, 'role': item.role, 'updated_at': item.updated_at})
+    else:
+        return JsonResponse({'success': False, 'error': 'No changes made'})
 

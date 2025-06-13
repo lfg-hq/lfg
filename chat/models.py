@@ -84,6 +84,7 @@ class ModelSelection(models.Model):
         ('claude_4_sonnet', 'Claude 4 Sonnet'),
         ('gpt_4_1', 'OpenAI GPT-4.1'),
         ('gpt_4o', 'OpenAI GPT-4o'),
+        ('o3', 'OpenAI O3'),
     ]
     
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='model_selection')

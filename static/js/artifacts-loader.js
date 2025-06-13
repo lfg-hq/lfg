@@ -37,7 +37,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Try several methods to get the project ID
         
         // Method 1: URL pathname (for direct project URLs)
-        const pathMatch = window.location.pathname.match(/\/projects\/(\d+)/);
+        const pathMatch = window.location.pathname.match(/\/project\/(\d+)/);
         if (pathMatch) {
             console.log('[ArtifactsLoader] Found project ID in URL path:', pathMatch[1]);
             return parseInt(pathMatch[1]);
@@ -981,10 +981,10 @@ document.addEventListener('DOMContentLoaded', function() {
             checklistTab.innerHTML = '<div class="loading-state"><div class="spinner"></div><div>Loading checklist...</div></div>';
             
             // Fetch checklist from API
-            const url = `/projects/${projectId}/api/checklist/`;
-            console.log(`[ArtifactsLoader] Fetching checklist from API: ${url}`);
+            const checklistUrl = `/projects/${projectId}/api/checklist/`;
+            console.log(`[ArtifactsLoader] Fetching checklist from API: ${checklistUrl}`);
             
-            fetch(url)
+            fetch(checklistUrl)
                 .then(response => {
                     console.log(`[ArtifactsLoader] Checklist API response received, status: ${response.status}`);
                     if (!response.ok) {
@@ -1514,130 +1514,142 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Function to update checklist item status
                     const updateChecklistItemStatus = (itemId, newStatus, oldStatus) => {
                         console.log(`[ArtifactsLoader] Updating checklist item ${itemId} status from ${oldStatus} to ${newStatus}`);
-                        
                         const projectId = getCurrentProjectId();
                         if (!projectId) {
                             console.warn('[ArtifactsLoader] No project ID available for status update');
                             showStatusUpdateError('Project ID not available');
                             return;
                         }
-
-                        // Show loading state
                         const dropdown = document.querySelector(`.status-dropdown[data-item-id="${itemId}"]`);
                         if (dropdown) {
                             dropdown.disabled = true;
                             dropdown.style.opacity = '0.6';
                         }
-
-                        // TODO: Replace with actual API call
-                        // For now, simulate the update
-                        setTimeout(() => {
-                            // Re-enable dropdown
+                        // Call backend API
+                        fetch(`/projects/${projectId}/api/checklist/update/`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': getCsrfToken(),
+                            },
+                            body: JSON.stringify({ item_id: itemId, status: newStatus })
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                if (dropdown) {
+                                    dropdown.disabled = false;
+                                    dropdown.style.opacity = '1';
+                                    dropdown.setAttribute('data-current-status', newStatus);
+                                }
+                                // Update the item in the checklist array (if available)
+                                const item = checklist.find(i => i.id == itemId);
+                                if (item) {
+                                    item.status = newStatus;
+                                    item.updated_at = data.updated_at || new Date().toISOString();
+                                }
+                                // Update the visual state in the main list
+                                const itemElement = document.querySelector(`[data-id="${itemId}"]`);
+                                if (itemElement) {
+                                    itemElement.classList.remove('open', 'in-progress', 'done', 'failed', 'blocked');
+                                    itemElement.classList.add(newStatus.replace('_', '-'));
+                                    const statusIcon = itemElement.querySelector('.status-icon');
+                                    if (statusIcon) {
+                                        let newIconClass = 'fas fa-circle';
+                                        switch(newStatus) {
+                                            case 'open': newIconClass = 'fas fa-circle'; break;
+                                            case 'in_progress': newIconClass = 'fas fa-play-circle'; break;
+                                            case 'done': newIconClass = 'fas fa-check-circle'; break;
+                                            case 'failed': newIconClass = 'fas fa-times-circle'; break;
+                                            case 'blocked': newIconClass = 'fas fa-ban'; break;
+                                        }
+                                        statusIcon.className = `${newIconClass} status-icon`;
+                                    }
+                                }
+                                console.log(`[ArtifactsLoader] Status updated successfully to: ${newStatus}`);
+                                showStatusUpdateSuccess(newStatus);
+                            } else {
+                                showStatusUpdateError(data.error || 'Failed to update status');
+                                if (dropdown) {
+                                    dropdown.disabled = false;
+                                    dropdown.style.opacity = '1';
+                                }
+                            }
+                        })
+                        .catch(error => {
+                            showStatusUpdateError(error.message || 'Failed to update status');
                             if (dropdown) {
                                 dropdown.disabled = false;
                                 dropdown.style.opacity = '1';
-                                dropdown.setAttribute('data-current-status', newStatus);
                             }
-                            
-                            // Update the item in the checklist array
-                            const item = checklist.find(i => i.id == itemId);
-                            if (item) {
-                                item.status = newStatus;
-                                item.updated_at = new Date().toISOString();
-                            }
-                            
-                            // Update the visual state in the main list
-                            const itemElement = document.querySelector(`[data-id="${itemId}"]`);
-                            if (itemElement) {
-                                // Remove old status classes
-                                itemElement.classList.remove('open', 'in-progress', 'done', 'failed', 'blocked');
-                                // Add new status class
-                                itemElement.classList.add(newStatus.replace('_', '-'));
-                                
-                                // Update status icon
-                                const statusIcon = itemElement.querySelector('.status-icon');
-                                if (statusIcon) {
-                                    let newIconClass = 'fas fa-circle';
-                                    switch(newStatus) {
-                                        case 'open':
-                                            newIconClass = 'fas fa-circle';
-                                            break;
-                                        case 'in_progress':
-                                            newIconClass = 'fas fa-play-circle';
-                                            break;
-                                        case 'done':
-                                            newIconClass = 'fas fa-check-circle';
-                                            break;
-                                        case 'failed':
-                                            newIconClass = 'fas fa-times-circle';
-                                            break;
-                                        case 'blocked':
-                                            newIconClass = 'fas fa-ban';
-                                            break;
-                                    }
-                                    statusIcon.className = `${newIconClass} status-icon`;
-                                }
-                            }
-                            
-                            console.log(`[ArtifactsLoader] Status updated successfully to: ${newStatus}`);
-                            showStatusUpdateSuccess(newStatus);
-                        }, 300);
+                        });
                     };
 
                     // Function to update checklist item role/assignment
                     const updateChecklistItemRole = (itemId, newRole, oldRole) => {
                         console.log(`[ArtifactsLoader] Updating checklist item ${itemId} role from ${oldRole} to ${newRole}`);
-                        
                         const projectId = getCurrentProjectId();
                         if (!projectId) {
                             console.warn('[ArtifactsLoader] No project ID available for role update');
                             showRoleUpdateError('Project ID not available');
                             return;
                         }
-
-                        // Show loading state
                         const dropdown = document.querySelector(`.role-dropdown[data-item-id="${itemId}"]`);
                         if (dropdown) {
                             dropdown.disabled = true;
                             dropdown.style.opacity = '0.6';
                         }
-
-                        // TODO: Replace with actual API call
-                        // For now, simulate the update
-                        setTimeout(() => {
-                            // Re-enable dropdown
+                        // Call backend API
+                        fetch(`/projects/${projectId}/api/checklist/update/`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': getCsrfToken(),
+                            },
+                            body: JSON.stringify({ item_id: itemId, role: newRole })
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                if (dropdown) {
+                                    dropdown.disabled = false;
+                                    dropdown.style.opacity = '1';
+                                    dropdown.setAttribute('data-current-role', newRole);
+                                }
+                                // Update the item in the checklist array (if available)
+                                const item = checklist.find(i => i.id == itemId);
+                                if (item) {
+                                    item.role = newRole;
+                                    item.updated_at = data.updated_at || new Date().toISOString();
+                                }
+                                // Update the visual state in the main list
+                                const itemElement = document.querySelector(`[data-id="${itemId}"]`);
+                                if (itemElement) {
+                                    itemElement.classList.remove('user', 'agent');
+                                    itemElement.classList.add(newRole);
+                                    const roleBadge = itemElement.querySelector('.role-badge');
+                                    if (roleBadge) {
+                                        roleBadge.className = `role-badge ${newRole}`;
+                                        roleBadge.textContent = newRole.charAt(0).toUpperCase() + newRole.slice(1);
+                                    }
+                                }
+                                console.log(`[ArtifactsLoader] Role updated successfully to: ${newRole}`);
+                                showRoleUpdateSuccess(newRole);
+                            } else {
+                                showRoleUpdateError(data.error || 'Failed to update role');
+                                if (dropdown) {
+                                    dropdown.disabled = false;
+                                    dropdown.style.opacity = '1';
+                                }
+                            }
+                        })
+                        .catch(error => {
+                            showRoleUpdateError(error.message || 'Failed to update role');
                             if (dropdown) {
                                 dropdown.disabled = false;
                                 dropdown.style.opacity = '1';
-                                dropdown.setAttribute('data-current-role', newRole);
                             }
-                            
-                            // Update the item in the checklist array
-                            const item = checklist.find(i => i.id == itemId);
-                            if (item) {
-                                item.role = newRole;
-                                item.updated_at = new Date().toISOString();
-                            }
-                            
-                            // Update the visual state in the main list
-                            const itemElement = document.querySelector(`[data-id="${itemId}"]`);
-                            if (itemElement) {
-                                // Remove old role classes
-                                itemElement.classList.remove('user', 'agent');
-                                // Add new role class
-                                itemElement.classList.add(newRole);
-                                
-                                // Update role badge
-                                const roleBadge = itemElement.querySelector('.role-badge');
-                                if (roleBadge) {
-                                    roleBadge.className = `role-badge ${newRole}`;
-                                    roleBadge.textContent = newRole.charAt(0).toUpperCase() + newRole.slice(1);
-                                }
-                            }
-                            
-                            console.log(`[ArtifactsLoader] Role updated successfully to: ${newRole}`);
-                            showRoleUpdateSuccess(newRole);
-                        }, 300);
+                        });
                     };
 
                     // Function to show status update success message
@@ -1756,10 +1768,10 @@ document.addEventListener('DOMContentLoaded', function() {
             appLoading.style.display = 'block';
             
             // Fetch server configs from API
-            const url = `/projects/${projectId}/api/server-configs/`;
-            console.log(`[ArtifactsLoader] Fetching server configs from API: ${url}`);
+            const serverConfigsUrl = `/projects/${projectId}/api/server-configs/`;
+            console.log(`[ArtifactsLoader] Fetching server configs from API: ${serverConfigsUrl}`);
             
-            fetch(url)
+            fetch(serverConfigsUrl)
                 .then(response => {
                     console.log(`[ArtifactsLoader] Server configs API response received, status: ${response.status}`);
                     if (!response.ok) {
@@ -1813,8 +1825,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     });
                     
                     // Function to load the app in iframe after connectivity is confirmed
-                    function loadIframeApp(url, config) {
-                        console.log(`[ArtifactsLoader] Loading verified server in iframe: ${url}`);
+                    function loadIframeApp(iframeUrl, config) {
+                        console.log(`[ArtifactsLoader] Loading verified server in iframe: ${iframeUrl}`);
                         
                         // Set up iframe load tracking
                         let hasLoaded = false;
@@ -1847,7 +1859,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         }, 10000); // 10 second timeout for verified servers
                         
                         // Set the iframe source to load the app
-                        appIframe.src = url;
+                        appIframe.src = iframeUrl;
                         
                         // Adjust the container to fill available space
                         appTab.style.overflow = 'hidden';

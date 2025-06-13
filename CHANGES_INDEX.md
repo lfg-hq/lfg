@@ -164,7 +164,7 @@ Added new fields to support detailed specifications:
    ```
 
 3. Test parallel execution:
-   - Create tickets with `checklist_tickets()`
+   - Create tickets with `create_checklist_tickets()`
    - Execute with `execute_tickets_in_parallel()`
    - Monitor with `get_ticket_execution_status()`
 

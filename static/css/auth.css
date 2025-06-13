@@ -1,6 +1,11 @@
 :root {
-    /* Remove the custom color definitions and use variables from common.css */
-    /* No need to redefine variables that are already in common.css */
+    /* Extended color palette for enhanced styling */
+    --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --gradient-secondary: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    --gradient-accent: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    --shadow-glow: 0 0 30px rgba(99, 102, 241, 0.4);
+    --animation-duration: 0.3s;
+    --animation-timing: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .auth-page {
@@ -25,22 +30,7 @@
     z-index: 10;
 }
 
-.logo {
-    display: flex;
-    align-items: center;
-    font-size: 1.8rem;
-    font-weight: 700;
-}
 
-.logo-text {
-    color: var(--primary-color);
-    margin-right: 0.25rem;
-}
-
-.logo-emoji {
-    font-size: 1.5rem;
-    animation: float 6s ease-in-out infinite;
-}
 
 .auth-nav {
     display: flex;
@@ -69,22 +59,41 @@
 
 .auth-form-container {
     background-color: var(--card-bg);
-    backdrop-filter: blur(10px);
-    border-radius: var(--radius-md);
-    padding: 2.5rem;
+    backdrop-filter: blur(20px);
+    border-radius: 20px;
+    padding: 3rem;
     width: 100%;
     max-width: 480px;
-    box-shadow: var(--shadow-lg);
-    border: 1px solid var(--border-color);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3), var(--shadow-glow);
+    border: 1px solid rgba(255, 255, 255, 0.1);
     position: relative;
     z-index: 10;
     overflow: hidden;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    transition: all var(--animation-duration) var(--animation-timing);
 }
 
 .auth-form-container:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 0 15px rgba(99, 102, 241, 0.3);
+    transform: translateY(-5px) scale(1.01);
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.4), 0 0 40px rgba(99, 102, 241, 0.5);
+    border-color: rgba(99, 102, 241, 0.3);
+}
+
+.auth-form-container::before {
+    content: '';
+    position: absolute;
+    top: -2px;
+    left: -2px;
+    right: -2px;
+    bottom: -2px;
+    background: var(--gradient-primary);
+    border-radius: 20px;
+    opacity: 0;
+    z-index: -1;
+    transition: opacity var(--animation-duration) var(--animation-timing);
+}
+
+.auth-form-container:hover::before {
+    opacity: 0.1;
 }
 
 .auth-form-header {
@@ -100,10 +109,20 @@
 }
 
 .logo-container .logo-text {
-    font-size: 2.5rem;
-    font-weight: 700;
+    font-size: 2.8rem;
+    font-weight: 900;
     margin-right: 0.5rem;
-    color: var(--primary-color);
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-shadow: 0 0 30px rgba(99, 102, 241, 0.5);
+    animation: glow 2s ease-in-out infinite alternate;
+}
+
+@keyframes glow {
+    from { text-shadow: 0 0 20px rgba(99, 102, 241, 0.5); }
+    to { text-shadow: 0 0 40px rgba(99, 102, 241, 0.8), 0 0 60px rgba(99, 102, 241, 0.6); }
 }
 
 .logo-container .logo-emoji {
@@ -154,19 +173,23 @@
 
 .form-group input {
     width: 100%;
-    padding: 0.75rem 1rem 0.75rem 2.5rem;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    background-color: var(--light-bg);
+    padding: 1rem 1.25rem 1rem 3rem;
+    border: 2px solid transparent;
+    border-radius: 12px;
+    background-color: rgba(255, 255, 255, 0.05);
     color: var(--text-color);
-    transition: all 0.3s ease;
+    transition: all var(--animation-duration) var(--animation-timing);
     font-family: var(--font-family);
+    font-size: 1rem;
+    backdrop-filter: blur(10px);
 }
 
 .form-group input:focus {
     border-color: var(--primary-color);
-    box-shadow: 0 0 0 3px rgba(var(--primary-color), 0.2);
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.2), 0 0 20px rgba(99, 102, 241, 0.3);
     outline: none;
+    background-color: rgba(255, 255, 255, 0.08);
+    transform: translateY(-1px);
 }
 
 .form-error {
@@ -180,22 +203,43 @@
     align-items: center;
     justify-content: center;
     width: 100%;
-    padding: 0.75rem 1.5rem;
-    background-color: var(--primary-color);
-    color: var(--text-color);
+    padding: 1rem 2rem;
+    background: var(--gradient-primary);
+    color: white;
     border: none;
-    border-radius: var(--radius-md);
-    font-weight: 600;
-    font-size: 1rem;
+    border-radius: 12px;
+    font-weight: 700;
+    font-size: 1.1rem;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: all var(--animation-duration) var(--animation-timing);
     position: relative;
     overflow: hidden;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
 }
 
 .auth-button:hover {
-    background-color: var(--primary-hover);
-    transform: translateY(-2px);
+    transform: translateY(-3px) scale(1.02);
+    box-shadow: 0 8px 25px rgba(99, 102, 241, 0.5);
+}
+
+.auth-button::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.3);
+    transform: translate(-50%, -50%);
+    transition: width 0.5s, height 0.5s;
+}
+
+.auth-button:active::after {
+    width: 300px;
+    height: 300px;
 }
 
 .auth-button span {
@@ -264,9 +308,11 @@
 .particle {
     position: absolute;
     border-radius: 50%;
-    background: linear-gradient(45deg, var(--primary-color), transparent);
-    opacity: 0.3;
+    background: radial-gradient(circle, var(--primary-color), transparent);
+    opacity: 0.4;
     animation: float-particle 20s infinite ease-in-out;
+    filter: blur(1px);
+    box-shadow: 0 0 20px var(--primary-color);
 }
 
 /* Keep all particle styles */
@@ -362,12 +408,25 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    width: 50px;
-    height: 50px;
+    width: 60px;
+    height: 60px;
     border-radius: 50%;
     background: radial-gradient(circle, var(--primary-color), transparent);
-    box-shadow: 0 0 20px var(--primary-color);
+    box-shadow: 0 0 40px var(--primary-color), inset 0 0 20px rgba(255, 255, 255, 0.2);
     animation: pulse 4s ease-in-out infinite;
+}
+
+.center-sphere::before {
+    content: '';
+    position: absolute;
+    top: -10px;
+    left: -10px;
+    right: -10px;
+    bottom: -10px;
+    border-radius: 50%;
+    background: radial-gradient(circle, transparent, var(--primary-color));
+    opacity: 0.3;
+    animation: pulse 4s ease-in-out infinite reverse;
 }
 
 @keyframes float {

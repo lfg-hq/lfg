@@ -195,8 +195,8 @@ async def app_functions(function_name, function_args, project_id, conversation_i
             return await save_personas(project_id)
         case "design_schema":
             return await save_design_schema(function_args, project_id)
-        case "checklist_tickets":
-            return await checklist_tickets(function_args, project_id)
+        case "create_checklist_tickets":
+            return await create_checklist_tickets(function_args, project_id)
         case "update_checklist_ticket":
             return await update_individual_checklist_ticket(project_id, function_args.get('ticket_id'), function_args.get('status'))
         case "get_pending_tickets":
@@ -238,8 +238,13 @@ async def app_functions(function_name, function_args, project_id, conversation_i
         case "implement_ticket":
             ticket_id = function_args.get('ticket_id')
             ticket_details = function_args.get('ticket_details')
+            print(f"\n\nTicket details: {ticket_details}\n\n")
             implementation_plan = function_args.get('implementation_plan')
             return await implement_ticket(ticket_id, project_id, conversation_id, ticket_details, implementation_plan)
+        
+        case "copy_boilerplate_code":
+            project_name = function_args.get('project_name')
+            return await copy_boilerplate_code(project_id, project_name)
 
         # case "implement_ticket_async":
         #     ticket_id = function_args.get('ticket_id')
@@ -1124,7 +1129,7 @@ async def save_design_schema(function_args, project_id):
             "message_to_agent": f"Error saving design schema: {str(e)}"
         }
 
-async def checklist_tickets(function_args, project_id):
+async def create_checklist_tickets(function_args, project_id):
     """
     Generate checklist tickets for a project
     """
@@ -1182,7 +1187,7 @@ async def checklist_tickets(function_args, project_id):
         
         return {
             "is_notification": True,
-            "notification_type": "checklist_tickets",
+            "notification_type": "create_checklist_tickets",
             "message_to_agent": f"Successfully created {len(created_tickets)} detailed tickets with design specifications"
         }
     except Exception as e:
@@ -1253,7 +1258,7 @@ async def update_individual_checklist_ticket(project_id, ticket_id, status):
 
         return {
             "is_notification": True,
-            "notification_type": "checklist_tickets",
+            "notification_type": "create_checklist_tickets",
             "message_to_agent": f"Checklist ticket {ticket_id} has been successfully updated in the database. Proceed to next checklist item, unless otherwise specified by the user"
         }
     except Exception as e:
@@ -1886,21 +1891,74 @@ async def restart_server_from_config(project_id: int) -> dict:
         "message_to_agent": "\n".join(results)
     }
 
+async def copy_boilerplate_code(project_id, project_name):
+    """Copy the boilerplate code from the project"""
+    print("Copy boilerplate code function called \n\n")
+    print(f"\n\nProject name: {project_name}\n\n")
+    
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+    
+    project = await get_project(project_id)
+    if not project:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Project with ID {project_id} does not exist"
+        }
+    
+    try:
+        
+        # Define source and destination paths
+        source_path = os.path.join(os.getcwd(), "boilerplate", "lfg-template")
+        dest_path = os.path.join(os.path.expanduser("~"), "LFG", "workspace", project_name)
+        print(f"\n\nSource path: {source_path}\n\n")
+        print(f"\n\nDestination path: {dest_path}\n\n")
+        
+        # Create destination directory if it doesn't exist
+        os.makedirs(dest_path, exist_ok=True)
+        
+        # Copy files using shutil
+        import shutil
+        shutil.copytree(source_path, dest_path, dirs_exist_ok=True)
+        
+        # Initialize git repository if not already initialized
+        if not os.path.exists(os.path.join(dest_path, ".git")):
+            subprocess.run(["git", "init"], cwd=dest_path, check=True)
+            
+            # Create initial commit
+            subprocess.run(["git", "add", "."], cwd=dest_path, check=True)
+            subprocess.run(["git", "commit", "-m", "Initial commit: Copy boilerplate code"], cwd=dest_path, check=True)
+        
+        return {
+            "is_notification": True,
+            "notification_type": "boilerplate_code_copied",
+            "message_to_agent": f"Boilerplate code has been successfully copied to ~/LFG/workspace/{project_name}. The project has been initialized with git."
+        }
+    except Exception as e:
+        print(f"Error copying boilerplate code: {str(e)}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error copying boilerplate code: {str(e)}"
+        }
+
 async def implement_ticket(ticket_id, project_id, conversation_id, ticket_details, implementation_plan):
     """
     Implement a specific ticket with all its requirements
     """
     try:
+        print(f"\nTicket details: {ticket_details}\n\n")
         # Local import to avoid circular import issue
         from coding.utils.ai_providers import AIProvider
         
         # Extract key details
         ticket_name = ticket_details.get('name', 'Unknown')
+        project_name = ticket_details.get('project_name', 'Unknown')
         requires_worktree = ticket_details.get('details', {}).get('requires_worktree', False)
         
         user_message = f"""
         You are implementing ticket #{ticket_id}: {ticket_name}
-        Project: {project_id}
+        Project Name: {ticket_details.get('project_name')}
         Requires Worktree: {requires_worktree}
         
         **Full Ticket Details:**
@@ -1909,11 +1967,12 @@ async def implement_ticket(ticket_id, project_id, conversation_id, ticket_detail
         **Implementation Instructions:**
         1. Setup ticket tracking and worktree (if required) using execute_command
         2. Get project context using get_prd() and get_implementation()
-        3. Write all files using git patch format with execute_command (see examples in your prompt)
-        4. Update .gitignore if needed
-        5. Follow UI/UX requirements precisely
-        6. Run tests using execute_command
-        7. Commit with: git commit -m "Implement ticket {ticket_id}: {ticket_name}"
+        3. Project will be implemented in the project directory: ~/LFG/workspace/{ticket_details.get('project_name')}
+        4. Write all files using git patch format with execute_command (see examples in your prompt)
+        5. Update .gitignore if needed
+        6. Follow UI/UX requirements precisely
+        7. Run tests using execute_command
+        8. Commit with: git commit -m "Implement ticket {ticket_id}: {ticket_name}"
         
         **Important:**
         - Use git patch format for ALL file creation/modification
@@ -1959,3 +2018,4 @@ async def implement_ticket(ticket_id, project_id, conversation_id, ticket_detail
             "message_to_agent": f"Error implementing ticket {ticket_id}: {str(e)}",
             "error": str(e)
         }
+        

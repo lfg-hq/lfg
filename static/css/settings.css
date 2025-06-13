@@ -1,4 +1,4 @@
-/* Settings Page Styles */
+/* Enhanced Settings Page Styles */
 :root {
     /* Core colors */
     --dark-bg: #000000;
@@ -9,25 +9,48 @@
     --connected: #10b981;
     --not-connected: #71717a;
     
-    /* Brand colors */
+    /* Brand colors with gradients */
     --github: #6e5494;
+    --github-gradient: linear-gradient(135deg, #6e5494 0%, #8b69b1 100%);
     --openai: #10a37f;
+    --openai-gradient: linear-gradient(135deg, #10a37f 0%, #15d49e 100%);
     --anthropic: #b300ff;
+    --anthropic-gradient: linear-gradient(135deg, #b300ff 0%, #d633ff 100%);
     --groq: #ff5f1f;
+    --groq-gradient: linear-gradient(135deg, #ff5f1f 0%, #ff8a4c 100%);
     
     /* UI Colors */
     --primary: #7c3aed;
+    --primary-gradient: linear-gradient(135deg, #7c3aed 0%, #9f67ff 100%);
     --button-bg: #252525;
     --button-hover-bg: #333333;
+    
+    /* Animations */
+    --transition-speed: 0.3s;
+    --transition-timing: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 body {
     background-color: var(--dark-bg);
     color: var(--text-primary);
-    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     margin: 0;
     padding: 0;
     line-height: 1.5;
+    position: relative;
+}
+
+body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: 
+        radial-gradient(circle at 20% 30%, rgba(124, 58, 237, 0.1) 0%, transparent 50%),
+        radial-gradient(circle at 80% 70%, rgba(179, 0, 255, 0.08) 0%, transparent 50%);
+    pointer-events: none;
+    z-index: 0;
 }
   
 .integrations-grid {
@@ -43,17 +66,37 @@ body {
   }
   
   .integration-card {
-    background-color: #1e1e1e;
-    border-radius: 0.5rem;
-    padding: 1.5rem;
-    border: 1px solid #333;
-    transition: all 0.3s ease;
+    background: linear-gradient(135deg, #1e1e1e 0%, #252525 100%);
+    border-radius: 1rem;
+    padding: 2rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all var(--transition-speed) var(--transition-timing);
+    position: relative;
+    overflow: hidden;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  }
+  
+  .integration-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--primary-gradient);
+    transform: translateX(-100%);
+    transition: transform var(--transition-speed) var(--transition-timing);
   }
   
   .integration-card:hover {
-    border-color: #a78bfa;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    border-color: rgba(167, 139, 250, 0.5);
+    transform: translateY(-4px) scale(1.02);
+    box-shadow: 0 8px 32px rgba(124, 58, 237, 0.2), 0 0 40px rgba(167, 139, 250, 0.1);
+  }
+  
+  .integration-card:hover::before {
+    transform: translateX(0);
   }
   
   .integration-header {
@@ -70,8 +113,15 @@ body {
   }
   
   .integration-icon {
-    width: 1.75rem;
-    height: 1.75rem;
+    width: 2rem;
+    height: 2rem;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+    transition: all var(--transition-speed) var(--transition-timing);
+  }
+  
+  .integration-card:hover .integration-icon {
+    transform: scale(1.1) rotate(5deg);
+    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
   }
   
   .integration-name {
@@ -80,16 +130,28 @@ body {
   }
   
   .connection-status {
-    background-color: #333;
+    background: linear-gradient(135deg, #333 0%, #404040 100%);
     color: #a0a0a0;
     font-size: 0.75rem;
-    padding: 0.25rem 0.5rem;
-    border-radius: 0.25rem;
+    padding: 0.4rem 0.8rem;
+    border-radius: 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    transition: all var(--transition-speed) var(--transition-timing);
   }
   
   .connection-status.connected {
-    background-color: #10b981;
+    background: linear-gradient(135deg, #10b981 0%, #14d48a 100%);
     color: white;
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.4);
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+  
+  @keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 20px rgba(16, 185, 129, 0.4); }
+    50% { box-shadow: 0 0 30px rgba(16, 185, 129, 0.6); }
   }
   
   .integration-description {
@@ -100,36 +162,84 @@ body {
   }
   
   .connect-button {
-    background-color: #8b5cf6;
+    background: var(--primary-gradient);
     color: white;
     border: none;
-    padding: 0.625rem 1rem;
-    border-radius: 0.375rem;
+    padding: 0.875rem 1.25rem;
+    border-radius: 0.75rem;
     width: 100%;
     cursor: pointer;
-    font-weight: 500;
-    transition: background-color 0.2s;
+    font-weight: 600;
+    font-size: 0.95rem;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    transition: all var(--transition-speed) var(--transition-timing);
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 4px 15px rgba(139, 92, 246, 0.3);
+  }
+  
+  .connect-button::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    transition: width 0.5s, height 0.5s;
   }
   
   .connect-button:hover {
-    background-color: #7c3aed;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 25px rgba(139, 92, 246, 0.5);
+  }
+  
+  .connect-button:active::before {
+    width: 300px;
+    height: 300px;
   }
   
   .disconnect-button {
-    background-color: #4b5563;
+    background: linear-gradient(135deg, #4b5563 0%, #6b7280 100%);
     color: white;
     border: none;
-    padding: 0.625rem 1rem;
-    border-radius: 0.375rem;
+    padding: 0.875rem 1.25rem;
+    border-radius: 0.75rem;
     width: 100%;
     cursor: pointer;
-    font-weight: 500;
-    transition: background-color 0.2s;
-    margin-top: 0.5rem;
+    font-weight: 600;
+    font-size: 0.95rem;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    transition: all var(--transition-speed) var(--transition-timing);
+    margin-top: 0.75rem;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 4px 15px rgba(75, 85, 99, 0.3);
+  }
+  
+  .disconnect-button::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent 0%, rgba(239, 68, 68, 0.4) 50%, transparent 100%);
+    transition: left 0.5s;
   }
   
   .disconnect-button:hover {
-    background-color: #ef4444;
+    background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 25px rgba(239, 68, 68, 0.4);
+  }
+  
+  .disconnect-button:hover::before {
+    left: 100%;
   }
   
   .api-form {
@@ -143,17 +253,25 @@ body {
   
   .api-input {
     width: 100%;
-    padding: 0.625rem;
-    border-radius: 0.375rem;
-    border: 1px solid #4b5563;
-    background-color: #111827;
+    padding: 0.875rem 1rem;
+    border-radius: 0.75rem;
+    border: 2px solid transparent;
+    background: linear-gradient(135deg, #111827 0%, #1a202c 100%);
     color: #e5e7eb;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.75rem;
+    transition: all var(--transition-speed) var(--transition-timing);
+    font-size: 0.95rem;
   }
   
   .api-input:focus {
     outline: none;
-    border-color: #8b5cf6;
+    border-color: rgba(139, 92, 246, 0.5);
+    box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.1), 0 0 20px rgba(139, 92, 246, 0.2);
+    transform: translateY(-1px);
+  }
+  
+  .api-input::placeholder {
+    color: rgba(229, 231, 235, 0.4);
   }
   
   .api-button {
@@ -189,17 +307,39 @@ body {
     color: #e5e7eb;
   }
   
-  /* External link styles */
+  /* Enhanced external link styles */
   .external-link {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: 0.5rem;
     color: #a78bfa;
     text-decoration: none;
     font-size: 0.875rem;
     margin-top: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+    transition: all var(--transition-speed) var(--transition-timing);
+    position: relative;
+  }
+  
+  .external-link::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0.75rem;
+    right: 0.75rem;
+    height: 2px;
+    background: var(--primary-gradient);
+    transform: scaleX(0);
+    transition: transform var(--transition-speed) var(--transition-timing);
   }
   
   .external-link:hover {
-    text-decoration: underline;
+    color: #c4b5fd;
+    background: rgba(167, 139, 250, 0.1);
+    transform: translateX(2px);
+  }
+  
+  .external-link:hover::after {
+    transform: scaleX(1);
   }

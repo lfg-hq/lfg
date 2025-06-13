@@ -57,7 +57,8 @@ def get_notification_type_for_tool(tool_name):
         "generate_tickets": "tickets",
         "checklist_tickets": "checklist",
         "update_checklist_ticket": "checklist",
-        "get_next_ticket": "tickets"
+        "get_next_ticket": "tickets",
+        "implement_ticket": "checklist"
     }
     
     return notification_mappings.get(tool_name)
@@ -242,8 +243,8 @@ class AIProvider:
     def get_provider(provider_name, selected_model):
         """Factory method to get the appropriate provider"""
         providers = {
-            # 'openai': lambda: OpenAIProvider(selected_model),
-            'anthropic': lambda: AnthropicProvider(selected_model),
+            'openai': lambda: OpenAIProvider(selected_model),
+            # 'anthropic': lambda: AnthropicProvider(selected_model),
         }
         provider_factory = providers.get(provider_name)
         if provider_factory:
@@ -271,6 +272,9 @@ class OpenAIProvider(AIProvider):
             self.client = openai.OpenAI(api_key=openai_api_key)
         elif selected_model == "gpt_4.1":
             self.model = "gpt-4.1"
+            self.client = openai.OpenAI(api_key=openai_api_key)
+        elif selected_model == "o3":
+            self.model = "o3"
             self.client = openai.OpenAI(api_key=openai_api_key)
         elif selected_model == "claude_4_sonnet":
             self.model = "claude-sonnet-4-20250514"

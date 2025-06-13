@@ -221,10 +221,10 @@ generate_tickets = {
     }
 }
 
-checklist_tickets = {
+create_checklist_tickets = {
     "type": "function",
     "function": {
-        "name": "checklist_tickets",
+        "name": "create_checklist_tickets",
         "description": "Call this function to generate the checklist tickets for the project. You will review the implementation plan for this.",
         "parameters": {
             "type": "object",
@@ -299,6 +299,7 @@ implement_ticket = {
                     "properties": {
                         "name": {"type": "string"},
                         "description": {"type": "string"},
+                        "project_name": {"type": "string", "description": "Pass the name of the application"},
                         "files_to_create": {"type": "array", "items": {"type": "string"}},
                         "files_to_modify": {"type": "array", "items": {"type": "string"}},
                         "requires_worktree": {"type": "boolean"},
@@ -462,17 +463,32 @@ get_github_access_token = {
     }
 }
 
+copy_boilerplate_code = {
+    "type": "function",
+    "function": {
+        "name": "copy_boilerplate_code",
+        "description": "Call this function to copy over the boilerplate code from the project",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "project_name": {"type": "string", "description": "The name of the project to copy the boilerplate code from"}
+            },
+            "required": ["project_name"]
+        }
+    }
+}
+
 # tools = [create_prd, get_prd, save_features, save_personas, design_schema, generate_tickets, write_code_file, read_code_file]
 
 tools_code = [create_prd, get_prd, execute_command, start_server, \
               get_github_access_token, \
-              checklist_tickets, update_checklist_ticket, \
+              create_checklist_tickets, update_checklist_ticket, \
               get_next_ticket, get_pending_tickets, \
               create_implementation, get_implementation, update_implementation, \
               implement_ticket]
 
 tools_product = [create_prd, get_prd, save_features, save_personas, extract_features, extract_personas, design_schema, generate_tickets]
 
-tools_ticket = [execute_command, get_prd, get_implementation]
+tools_ticket = [execute_command, get_prd, get_implementation, copy_boilerplate_code]
 
 tools_design = [get_prd, execute_command, start_server, get_github_access_token]
