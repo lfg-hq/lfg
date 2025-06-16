@@ -4,10 +4,10 @@ const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
   port: parseInt(process.env.SMTP_PORT || '587'),
   secure: process.env.SMTP_SECURE === 'true',
-  auth: {
+  auth: process.env.SMTP_USER && process.env.SMTP_PASSWORD ? {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASSWORD,
-  },
+  } : undefined,
 })
 
 export async function sendVerificationEmail(email: string, token: string) {
@@ -25,6 +25,16 @@ export async function sendVerificationEmail(email: string, token: string) {
       <p>${verificationUrl}</p>
       <p>This link will expire in 24 hours.</p>
     `,
+  }
+  
+  // Development mode: Log to console instead of sending
+  if (process.env.NODE_ENV === 'development' || !process.env.SMTP_HOST || process.env.SMTP_HOST === 'smtp.gmail.com' && process.env.SMTP_PASSWORD === 'your-app-password') {
+    console.log('\n📧 EMAIL DEBUG (Development Mode):')
+    console.log('To:', email)
+    console.log('Subject:', mailOptions.subject)
+    console.log('Verification URL:', verificationUrl)
+    console.log('---\n')
+    return
   }
   
   await transporter.sendMail(mailOptions)
@@ -45,6 +55,16 @@ export async function sendPasswordResetEmail(email: string, token: string) {
       <p>${resetUrl}</p>
       <p>This link will expire in 1 hour.</p>
     `,
+  }
+  
+  // Development mode: Log to console instead of sending
+  if (process.env.NODE_ENV === 'development' || !process.env.SMTP_HOST || process.env.SMTP_HOST === 'smtp.gmail.com' && process.env.SMTP_PASSWORD === 'your-app-password') {
+    console.log('\n📧 EMAIL DEBUG (Development Mode):')
+    console.log('To:', email)
+    console.log('Subject:', mailOptions.subject)
+    console.log('Reset URL:', resetUrl)
+    console.log('---\n')
+    return
   }
   
   await transporter.sendMail(mailOptions)

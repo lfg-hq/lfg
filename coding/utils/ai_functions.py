@@ -1945,77 +1945,38 @@ async def copy_boilerplate_code(project_id, project_name):
 async def implement_ticket(ticket_id, project_id, conversation_id, ticket_details, implementation_plan):
     """
     Implement a specific ticket with all its requirements
+    Returns a special marker that indicates this tool should stream its implementation
     """
     try:
         print(f"\nTicket details: {ticket_details}\n\n")
-        # Local import to avoid circular import issue
-        from coding.utils.ai_providers import AIProvider
         
         # Extract key details
         ticket_name = ticket_details.get('name', 'Unknown')
         project_name = ticket_details.get('project_name', 'Unknown')
         requires_worktree = ticket_details.get('details', {}).get('requires_worktree', False)
         
-        user_message = f"""
-        You are implementing ticket #{ticket_id}: {ticket_name}
-        Project Name: {ticket_details.get('project_name')}
-        Requires Worktree: {requires_worktree}
-        
-        **Full Ticket Details:**
-        {json.dumps(ticket_details, indent=2)}
-        
-        **Implementation Instructions:**
-        1. Setup ticket tracking and worktree (if required) using execute_command
-        2. Get project context using get_prd() and get_implementation()
-        3. Project will be implemented in the project directory: ~/LFG/workspace/{ticket_details.get('project_name')}
-        4. Write all files using git patch format with execute_command (see examples in your prompt)
-        5. Update .gitignore if needed
-        6. Follow UI/UX requirements precisely
-        7. Run tests using execute_command
-        8. Commit with: git commit -m "Implement ticket {ticket_id}: {ticket_name}"
-        
-        **Important:**
-        - Use git patch format for ALL file creation/modification
-        - Always use execute_command() for shell operations
-        - Focus only on this ticket's scope
-        
-        Begin implementation now.
-        """
-        
-        # Create messages list
-        messages = [
-            {"role": "system", "content": await get_task_implementaion_developer()},
-            {"role": "user", "content": user_message}
-        ]
-        
-        # Get the provider
-        provider = AIProvider.get_provider("anthropic", "claude_4_sonnet")
-        
-        # Collect the streaming response
-        full_content = ""
-        
-        async for chunk in provider.generate_stream(messages, project_id, conversation_id, tools_ticket):
-            if isinstance(chunk, str) and ("__NOTIFICATION__" in chunk):
-                continue
-            full_content += chunk
-        
+        # Instead of executing here, return a special response that tells the system
+        # to create a streaming implementation
         return {
-            "is_notification": True,
-            "notification_type": "ticket_complete",
-            "message_to_agent": f"Ticket {ticket_id} ({ticket_name}) implementation completed",
-            "details": {
+            "is_streaming_tool": True,
+            "tool_name": "implement_ticket",
+            "streaming_config": {
                 "ticket_id": ticket_id,
                 "ticket_name": ticket_name,
-                "branch": f"ticket-{ticket_id}" if requires_worktree else "main"
-            }
+                "project_name": project_name,
+                "requires_worktree": requires_worktree,
+                "ticket_details": ticket_details,
+                "implementation_plan": implementation_plan
+            },
+            "message_to_agent": f"I'll now implement ticket #{ticket_id}: {ticket_name}. Let me work through this step by step..."
         }
         
     except Exception as e:
-        print(f"Error implementing ticket {ticket_id}: {str(e)}")
+        print(f"Error setting up ticket implementation {ticket_id}: {str(e)}")
         return {
             "is_notification": True,
             "notification_type": "ticket_error",
-            "message_to_agent": f"Error implementing ticket {ticket_id}: {str(e)}",
+            "message_to_agent": f"Error setting up ticket implementation {ticket_id}: {str(e)}",
             "error": str(e)
         }
         

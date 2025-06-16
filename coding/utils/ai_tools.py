@@ -485,10 +485,10 @@ tools_code = [create_prd, get_prd, execute_command, start_server, \
               create_checklist_tickets, update_checklist_ticket, \
               get_next_ticket, get_pending_tickets, \
               create_implementation, get_implementation, update_implementation, \
-              implement_ticket]
+              copy_boilerplate_code]
 
 tools_product = [create_prd, get_prd, save_features, save_personas, extract_features, extract_personas, design_schema, generate_tickets]
 
-tools_ticket = [execute_command, get_prd, get_implementation, copy_boilerplate_code]
+tools_ticket = [execute_command, get_prd, get_implementation, copy_boilerplate_code, start_server]
 
 tools_design = [get_prd, execute_command, start_server, get_github_access_token]

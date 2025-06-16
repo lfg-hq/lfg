@@ -58,7 +58,7 @@ def get_notification_type_for_tool(tool_name):
         "checklist_tickets": "checklist",
         "update_checklist_ticket": "checklist",
         "get_next_ticket": "tickets",
-        "implement_ticket": "checklist"
+        "implement_ticket": "implement_ticket"
     }
     
     return notification_mappings.get(tool_name)
@@ -126,7 +126,7 @@ async def execute_tool_call(tool_call_name, tool_call_args_str, project_id, conv
             "get_features", "get_personas", "create_prd", "get_prd",
             "save_implementation", "get_implementation", "update_implementation", "create_implementation",
             "execute_command", "start_server", "design_schema", "generate_tickets",
-            "checklist_tickets", "update_checklist_ticket", "get_next_ticket"
+            "checklist_tickets", "update_checklist_ticket", "get_next_ticket", "implement_ticket"
         ]:
             logger.debug(f"FORCING NOTIFICATION FOR {tool_call_name}")
             notification_data = {

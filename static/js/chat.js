@@ -1995,6 +1995,10 @@ document.addEventListener('DOMContentLoaded', () => {
             'get_next_ticket': {
                 description: 'Getting next ticket to work on...',
                 successMessage: 'Next ticket has been retrieved.'
+            },
+            'implement_ticket': {
+                description: 'Implementing ticket...',
+                successMessage: 'Ticket has been implemented.'
             }
         };
         
