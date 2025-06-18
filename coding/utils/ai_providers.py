@@ -15,7 +15,7 @@ from google.genai.types import (
 )
 from coding.utils.ai_functions import app_functions
 from chat.models import AgentRole, ModelSelection, Conversation
-from projects.models import Project
+from projects.models import Project, ToolCallHistory
 from accounts.models import TokenUsage
 from django.contrib.auth.models import User
 import traceback # Import traceback for better error logging
@@ -177,6 +177,44 @@ async def execute_tool_call(tool_call_name, tool_call_args_str, project_id, conv
         logger.error(f"{error_message}\n{traceback.format_exc()}")
         result_content = f"Error: {error_message}"
         notification_data = None
+    
+    # Save the tool call history to database
+    try:
+        # Get the project and conversation objects
+        project = await asyncio.to_thread(Project.objects.get, id=project_id) if project_id else None
+        conversation = await asyncio.to_thread(Conversation.objects.get, id=conversation_id) if conversation_id else None
+        
+        if project:
+            # Get the latest message from the conversation if available
+            message = None
+            if conversation:
+                try:
+                    message = await asyncio.to_thread(
+                        lambda: conversation.messages.filter(role='assistant').order_by('-created_at').first()
+                    )
+                except:
+                    pass
+            
+            # Create the tool call history record
+            tool_history = await asyncio.to_thread(
+                ToolCallHistory.objects.create,
+                project=project,
+                conversation=conversation,
+                message=message,
+                tool_name=tool_call_name,
+                tool_input=parsed_args if 'parsed_args' in locals() else {},
+                generated_content=result_content,
+                content_type='text',
+                metadata={
+                    'notification_data': notification_data,
+                    'yielded_content': yielded_content,
+                    'has_error': 'Error:' in result_content
+                }
+            )
+            logger.debug(f"Tool call history saved: {tool_history.id}")
+    except Exception as save_error:
+        logger.error(f"Failed to save tool call history: {save_error}")
+        # Don't fail the tool execution if saving history fails
     
     return result_content, notification_data, yielded_content
 
@@ -381,21 +419,20 @@ class OpenAIProvider(AIProvider):
                                     # Determine notification type based on function name
                                     notification_type = get_notification_type_for_tool(function_name)
                                     
-                                    # Send early notification if it's an extraction function
-                                    if notification_type:
-                                        logger.debug(f"SENDING EARLY NOTIFICATION FOR {function_name}")
-                                        # Create a notification with a special marker to make it clearly identifiable
-                                        early_notification = {
-                                            "is_notification": True,
-                                            "notification_type": notification_type,
-                                            "early_notification": True,
-                                            "function_name": function_name,
-                                            "notification_marker": "__NOTIFICATION__"  # Special marker
-                                        }
-                                        notification_json = json.dumps(early_notification)
-                                        logger.debug(f"Early notification sent: {notification_json}")
-                                        # Yield as a special formatted string that can be easily detected
-                                        yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                    # Always send early notification for any function
+                                    logger.debug(f"SENDING EARLY NOTIFICATION FOR {function_name}")
+                                    # Create a notification with a special marker to make it clearly identifiable
+                                    early_notification = {
+                                        "is_notification": True,
+                                        "notification_type": notification_type or "tool",
+                                        "early_notification": True,
+                                        "function_name": function_name,
+                                        "notification_marker": "__NOTIFICATION__"  # Special marker
+                                    }
+                                    notification_json = json.dumps(early_notification)
+                                    logger.debug(f"Early notification sent: {notification_json}")
+                                    # Yield as a special formatted string that can be easily detected
+                                    yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
                                 
                                 if tool_call_chunk.function.arguments:
                                     current_tc["function"]["arguments"] += tool_call_chunk.function.arguments
@@ -782,7 +819,7 @@ class AnthropicProvider(AIProvider):
                                 tool_results = await asyncio.gather(*tool_tasks, return_exceptions=True)
                                 
                                 # Process results
-                                for i, (tool_call_to_execute, result) in enumerate(zip(tool_calls_requested, tool_results)):
+                                for tool_call_to_execute, result in zip(tool_calls_requested, tool_results):
                                     tool_call_id = tool_call_to_execute["id"]
                                     tool_call_name = tool_call_to_execute["function"]["name"]
                                     

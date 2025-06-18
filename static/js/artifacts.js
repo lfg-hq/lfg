@@ -561,6 +561,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     console.warn('[ArtifactsPanel] ArtifactsLoader.loadAppPreview not found');
                 }
                 break;
+            case 'toolhistory':
+                if (window.ArtifactsLoader && typeof window.ArtifactsLoader.loadToolHistory === 'function') {
+                    console.log('[ArtifactsPanel] Loading tool history from artifacts.js');
+                    window.ArtifactsLoader.loadToolHistory(projectId);
+                } else {
+                    console.warn('[ArtifactsPanel] ArtifactsLoader.loadToolHistory not found');
+                }
+                break;
             // Add more cases as needed for other tabs
         }
     }

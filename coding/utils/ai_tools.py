@@ -480,12 +480,37 @@ copy_boilerplate_code = {
 
 # tools = [create_prd, get_prd, save_features, save_personas, design_schema, generate_tickets, write_code_file, read_code_file]
 
+capture_name = {
+    "type": "function",
+    "function": {
+        "name": "capture_name",
+        "description": "Save or retrieve the project name. Use this to store the project name when confirmed by the user or to get the stored project name.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["save", "get"],
+                    "description": "Action to perform: 'save' to store project name, 'get' to retrieve project name"
+                },
+                "project_name": {
+                    "type": "string",
+                    "description": "The project name to save (required when action is 'save')"
+                }
+            },
+            "required": ["action"],
+            "additionalProperties": False,
+        }
+    }
+}
+
+
 tools_code = [create_prd, get_prd, execute_command, start_server, \
               get_github_access_token, \
               create_checklist_tickets, update_checklist_ticket, \
               get_next_ticket, get_pending_tickets, \
               create_implementation, get_implementation, update_implementation, \
-              copy_boilerplate_code]
+              copy_boilerplate_code, capture_name]
 
 tools_product = [create_prd, get_prd, save_features, save_personas, extract_features, extract_personas, design_schema, generate_tickets]
 

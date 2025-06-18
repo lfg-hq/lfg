@@ -1,3 +1,24 @@
+/* Partial message styles */
+.message.partial-message {
+    opacity: 0.9;
+    position: relative;
+}
+
+.partial-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    font-size: 0.875rem;
+    color: #94a3b8;
+    font-style: italic;
+}
+
+.partial-indicator i {
+    font-size: 0.75rem;
+}
+
+
 /* Function call indicator styles - SUBTLE VERSION */
 .function-call-indicator, .function-mini-indicator {
     display: flex;
@@ -581,18 +602,18 @@
 /* Connection Status Indicators */
 .connection-status {
     position: fixed;
-    top: 20px;
-    right: 20px;
-    padding: 12px 20px;
-    border-radius: 8px;
+    top: 10px;
+    right: 10px;
+    padding: 6px 12px;
+    border-radius: 6px;
     display: flex;
     align-items: center;
-    gap: 10px;
-    font-size: 14px;
+    gap: 6px;
+    font-size: 12px;
     font-weight: 500;
-    z-index: 1000;
+    z-index: 50;
     animation: slideIn 0.3s ease-out;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .connection-status.warning {
@@ -614,13 +635,13 @@
 }
 
 .connection-status .refresh-btn {
-    margin-left: 10px;
-    padding: 4px 12px;
+    margin-left: 6px;
+    padding: 2px 8px;
     background: white;
     border: 1px solid currentColor;
     border-radius: 4px;
     cursor: pointer;
-    font-size: 12px;
+    font-size: 11px;
 }
 
 .connection-status .refresh-btn:hover {
@@ -629,6 +650,12 @@
 
 .connection-status.fade-out {
     animation: fadeOut 0.5s ease-out forwards;
+}
+
+.connection-status.hidden {
+    opacity: 0;
+    transform: translateX(20px);
+    pointer-events: none;
 }
 
 /* Draft Indicator */

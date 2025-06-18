@@ -22,4 +22,5 @@ urlpatterns = [
     path('<int:project_id>/api/checklist/update/', views.update_checklist_item_api, name='update_checklist_item_api'),
     path('<int:project_id>/api/server-configs/', views.project_server_configs_api, name='project_server_configs_api'),
     path('<int:project_id>/api/check-servers/', views.check_server_status_api, name='check_server_status_api'),
+    path('<int:project_id>/api/tool-call-history/', views.project_tool_call_history_api, name='project_tool_call_history_api'),
 ]

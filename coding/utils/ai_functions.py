@@ -245,6 +245,11 @@ async def app_functions(function_name, function_args, project_id, conversation_i
         case "copy_boilerplate_code":
             project_name = function_args.get('project_name')
             return await copy_boilerplate_code(project_id, project_name)
+        
+        case "capture_name":
+            action = function_args.get('action')
+            project_name = function_args.get('project_name')
+            return await capture_name(action, project_name, project_id)
 
         # case "implement_ticket_async":
         #     ticket_id = function_args.get('ticket_id')
@@ -1940,6 +1945,93 @@ async def copy_boilerplate_code(project_id, project_name):
         return {
             "is_notification": False,
             "message_to_agent": f"Error copying boilerplate code: {str(e)}"
+        }
+
+async def capture_name(action, project_name, project_id):
+    """
+    Save or retrieve the project name
+    """
+    print(f"Capture name function called with action: {action}, project_name: {project_name}")
+    
+    if action == "save":
+        return await save_project_name(project_name, project_id)
+    elif action == "get":
+        return await get_project_name(project_id)
+    else:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: Invalid action. Must be 'save' or 'get'"
+        }
+
+async def save_project_name(project_name, project_id):
+    """
+    Save the project name to the project model
+    """
+    print(f"Save project name function called: {project_name}")
+    
+    if not project_name:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: project_name is required when action is 'save'"
+        }
+    
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+    
+    project = await get_project(project_id)
+    if not project:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Project with ID {project_id} does not exist"
+        }
+    
+    try:
+        # Update the project name
+        await sync_to_async(lambda: (
+            setattr(project, 'name', project_name),
+            project.save()
+        )[1])()
+        
+        return {
+            "is_notification": True,
+            "notification_type": "project_name_saved",
+            "message_to_agent": f"Project name '{project_name}' has been saved successfully"
+        }
+    except Exception as e:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error saving project name: {str(e)}"
+        }
+
+async def get_project_name(project_id):
+    """
+    Retrieve the project name from the project model
+    """
+    print(f"Get project name function called for project_id: {project_id}")
+    
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+    
+    project = await get_project(project_id)
+    if not project:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Project with ID {project_id} does not exist"
+        }
+    
+    try:
+        project_name = project.name
+        return {
+            "is_notification": True,
+            "notification_type": "project_name_retrieved",
+            "message_to_agent": f"Project name is: {project_name}"
+        }
+    except Exception as e:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error retrieving project name: {str(e)}"
         }
 
 async def implement_ticket(ticket_id, project_id, conversation_id, ticket_details, implementation_plan):

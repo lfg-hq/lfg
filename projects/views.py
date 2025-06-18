@@ -2,7 +2,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.contrib import messages
-from .models import Project, ProjectFeature, ProjectPersona, ProjectPRD, ProjectImplementation, ProjectDesignSchema, ProjectTickets, ProjectChecklist
+from .models import Project, ProjectFeature, ProjectPersona, ProjectPRD, ProjectImplementation, ProjectDesignSchema, ProjectTickets, ProjectChecklist, ToolCallHistory
 from django.views.decorators.http import require_POST
 from django.core.exceptions import PermissionDenied
 import asyncio
@@ -92,7 +92,7 @@ def delete_project(request, project_id):
     project.delete()
     
     messages.success(request, f"Project '{project_name}' deleted successfully")
-    return redirect('project_list')
+    return redirect('projects:project_list')
 
 @login_required
 def project_features_api(request, project_id):
@@ -453,4 +453,49 @@ def update_checklist_item_api(request, project_id):
         return JsonResponse({'success': True, 'id': item.id, 'status': item.status, 'role': item.role, 'updated_at': item.updated_at})
     else:
         return JsonResponse({'success': False, 'error': 'No changes made'})
+
+@login_required
+def project_tool_call_history_api(request, project_id):
+    """API view to get tool call history for a project"""
+    project = get_object_or_404(Project, id=project_id, owner=request.user)
+    
+    # Get query parameters for filtering
+    tool_name = request.GET.get('tool_name')
+    limit = int(request.GET.get('limit', 50))
+    offset = int(request.GET.get('offset', 0))
+    
+    # Build query
+    query = ToolCallHistory.objects.filter(project=project)
+    
+    if tool_name:
+        query = query.filter(tool_name=tool_name)
+    
+    # Get total count before pagination
+    total_count = query.count()
+    
+    # Apply pagination
+    tool_calls = query[offset:offset+limit]
+    
+    # Serialize the data
+    history_data = []
+    for call in tool_calls:
+        history_data.append({
+            'id': call.id,
+            'tool_name': call.tool_name,
+            'tool_input': call.tool_input,
+            'generated_content': call.generated_content,
+            'content_type': call.content_type,
+            'metadata': call.metadata,
+            'created_at': call.created_at.isoformat(),
+            'conversation_id': call.conversation_id if call.conversation else None,
+            'message_id': call.message_id if call.message else None
+        })
+    
+    return JsonResponse({
+        'tool_call_history': history_data,
+        'total_count': total_count,
+        'limit': limit,
+        'offset': offset,
+        'has_more': (offset + limit) < total_count
+    })
 

@@ -1828,6 +1828,83 @@ document.addEventListener('DOMContentLoaded', function() {
                     function loadIframeApp(iframeUrl, config) {
                         console.log(`[ArtifactsLoader] Loading verified server in iframe: ${iframeUrl}`);
                         
+                        // Use setTimeout to ensure DOM is ready
+                        setTimeout(() => {
+                            // Show URL panel and update URL
+                            const urlPanel = document.getElementById('app-url-panel');
+                            const urlInput = document.getElementById('app-url-input');
+                            const refreshBtn = document.getElementById('app-refresh-btn');
+                            const restartServerBtn = document.getElementById('app-restart-server-btn');
+                            
+                            if (urlPanel && urlInput) {
+                                console.log('[ArtifactsLoader] Setting URL in panel to:', iframeUrl);
+                                urlPanel.style.display = 'block';
+                                urlInput.value = iframeUrl;
+                            
+                            // Handle URL input
+                            urlInput.onkeypress = function(e) {
+                                if (e.key === 'Enter') {
+                                    const newUrl = this.value.trim();
+                                    if (newUrl) {
+                                        console.log('[ArtifactsLoader] Navigating to:', newUrl);
+                                        appIframe.src = newUrl;
+                                    }
+                                }
+                            };
+                            
+                            // Select all on focus
+                            urlInput.onfocus = function() {
+                                this.select();
+                            };
+                        } else {
+                            console.error('[ArtifactsLoader] URL panel elements not found', {urlPanel, urlInput});
+                        }
+                        
+                        // Set up refresh button
+                        if (refreshBtn) {
+                            refreshBtn.onclick = function() {
+                                console.log('[ArtifactsLoader] Refreshing iframe');
+                                // Force reload by clearing and resetting src
+                                const currentSrc = appIframe.src;
+                                appIframe.src = '';
+                                setTimeout(() => {
+                                    appIframe.src = currentSrc;
+                                }, 100);
+                            };
+                            
+                            // Add hover effect
+                            refreshBtn.onmouseover = function() {
+                                this.style.background = '#5a6578';
+                            };
+                            refreshBtn.onmouseout = function() {
+                                this.style.background = '#4a5568';
+                            };
+                        }
+                        
+                        // Set up restart server button
+                        if (restartServerBtn) {
+                            restartServerBtn.onclick = function() {
+                                console.log('[ArtifactsLoader] Restarting server');
+                                // Disable button and show loading state
+                                this.disabled = true;
+                                this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Restarting...';
+                                window.ArtifactsLoader.checkAndRestartServers(projectId);
+                            };
+                            
+                            // Add hover effect
+                            restartServerBtn.onmouseover = function() {
+                                if (!this.disabled) {
+                                    this.style.background = '#7c3aed';
+                                }
+                            };
+                            restartServerBtn.onmouseout = function() {
+                                if (!this.disabled) {
+                                    this.style.background = '#8b5cf6';
+                                }
+                            };
+                        }
+                        }, 100); // Small delay to ensure DOM is ready
+                        
                         // Set up iframe load tracking
                         let hasLoaded = false;
                         let timeoutId = null;
@@ -1839,7 +1916,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             clearTimeout(timeoutId);
                             
                             appLoading.style.display = 'none';
-                            appFrameContainer.style.display = 'block';
+                            appFrameContainer.style.display = 'flex';
                             console.log('[ArtifactsLoader] App iframe loaded successfully');
                         };
                         
@@ -1863,12 +1940,234 @@ document.addEventListener('DOMContentLoaded', function() {
                         
                         // Adjust the container to fill available space
                         appTab.style.overflow = 'hidden';
+                        
+                        // Set up console functionality
+                        setupConsole();
+                    }
+                    
+                    // Function to set up console functionality
+                    function setupConsole() {
+                        const consolePanel = document.getElementById('console-panel');
+                        const consoleOutput = document.getElementById('console-output');
+                        const showConsoleBtn = document.getElementById('show-console-btn');
+                        const toggleConsoleBtn = document.getElementById('toggle-console-btn');
+                        const clearConsoleBtn = document.getElementById('clear-console-btn');
+                        const pipeConsoleBtn = document.getElementById('pipe-console-btn');
+                        
+                        if (!consolePanel || !consoleOutput || !showConsoleBtn) {
+                            console.warn('[ArtifactsLoader] Console elements not found');
+                            return;
+                        }
+                        
+                        // Show the console button
+                        showConsoleBtn.style.display = 'block';
+                        
+                        // Console visibility state
+                        let isConsoleVisible = false;
+                        
+                        // Store all console logs
+                        const consoleLogs = [];
+                        
+                        // Function to toggle console visibility
+                        function toggleConsole() {
+                            isConsoleVisible = !isConsoleVisible;
+                            if (isConsoleVisible) {
+                                consolePanel.style.display = 'flex';
+                                showConsoleBtn.style.display = 'none';
+                                // Adjust iframe container height
+                                const iframeContainer = appIframe.parentElement;
+                                if (iframeContainer) {
+                                    iframeContainer.style.height = 'calc(100% - 200px)';
+                                }
+                            } else {
+                                consolePanel.style.display = 'none';
+                                showConsoleBtn.style.display = 'block';
+                                // Restore iframe container height
+                                const iframeContainer = appIframe.parentElement;
+                                if (iframeContainer) {
+                                    iframeContainer.style.height = '100%';
+                                }
+                            }
+                        }
+                        
+                        // Set up event handlers
+                        showConsoleBtn.onclick = toggleConsole;
+                        if (toggleConsoleBtn) {
+                            toggleConsoleBtn.onclick = toggleConsole;
+                        }
+                        
+                        if (clearConsoleBtn) {
+                            clearConsoleBtn.onclick = function() {
+                                consoleOutput.innerHTML = '';
+                                consoleLogs.length = 0; // Clear the logs array
+                            };
+                        }
+                        
+                        if (pipeConsoleBtn) {
+                            // Add hover effect
+                            pipeConsoleBtn.onmouseover = function() {
+                                this.style.color = '#8b5cf6';
+                            };
+                            pipeConsoleBtn.onmouseout = function() {
+                                this.style.color = '#999';
+                            };
+                            
+                            pipeConsoleBtn.onclick = function() {
+                                if (consoleLogs.length === 0) {
+                                    alert('No console logs to send');
+                                    return;
+                                }
+                                
+                                // Format logs for chat
+                                let formattedLogs = "```console\n";
+                                consoleLogs.forEach(log => {
+                                    const typeIcon = {
+                                        'error': '❌',
+                                        'warn': '⚠️',
+                                        'info': 'ℹ️',
+                                        'log': '📝'
+                                    }[log.type] || '';
+                                    
+                                    formattedLogs += `${typeIcon} [${log.type.toUpperCase()}] ${log.message}\n`;
+                                });
+                                formattedLogs += "```";
+                                
+                                // Get the chat input element
+                                const chatInput = document.getElementById('chat-input');
+                                if (chatInput) {
+                                    // Set the formatted logs as the input value
+                                    chatInput.value = `Here are the console logs from the preview:\n\n${formattedLogs}`;
+                                    
+                                    // Focus the input
+                                    chatInput.focus();
+                                    
+                                    // Optionally scroll to the chat input
+                                    chatInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                    
+                                    // Add a visual feedback
+                                    this.innerHTML = '<i class="fas fa-check"></i> Sent!';
+                                    setTimeout(() => {
+                                        this.innerHTML = '<i class="fas fa-paper-plane"></i> Send to Chat';
+                                    }, 2000);
+                                } else {
+                                    alert('Could not find chat input');
+                                }
+                            };
+                        }
+                        
+                        // Function to add log to console
+                        function addLog(type, ...args) {
+                            const logEntry = document.createElement('div');
+                            logEntry.style.marginBottom = '4px';
+                            logEntry.style.fontFamily = 'monospace';
+                            logEntry.style.fontSize = '12px';
+                            
+                            // Format the log message
+                            const message = args.map(arg => {
+                                if (typeof arg === 'object') {
+                                    try {
+                                        return JSON.stringify(arg, null, 2);
+                                    } catch (e) {
+                                        return String(arg);
+                                    }
+                                }
+                                return String(arg);
+                            }).join(' ');
+                            
+                            // Store the log
+                            consoleLogs.push({
+                                type: type,
+                                message: message,
+                                timestamp: new Date().toISOString()
+                            });
+                            
+                            // Style based on type
+                            switch(type) {
+                                case 'error':
+                                    logEntry.style.color = '#ff6b6b';
+                                    logEntry.innerHTML = `<span style="color: #ff4444;">✖</span> ${escapeHtml(message)}`;
+                                    break;
+                                case 'warn':
+                                    logEntry.style.color = '#ffd93d';
+                                    logEntry.innerHTML = `<span style="color: #ffaa00;">⚠</span> ${escapeHtml(message)}`;
+                                    break;
+                                case 'info':
+                                    logEntry.style.color = '#6bcfff';
+                                    logEntry.innerHTML = `<span style="color: #4444ff;">ℹ</span> ${escapeHtml(message)}`;
+                                    break;
+                                default:
+                                    logEntry.style.color = '#e2e8f0';
+                                    logEntry.textContent = message;
+                            }
+                            
+                            consoleOutput.appendChild(logEntry);
+                            consoleOutput.scrollTop = consoleOutput.scrollHeight;
+                        }
+                        
+                        // Helper function to escape HTML
+                        function escapeHtml(text) {
+                            const div = document.createElement('div');
+                            div.textContent = text;
+                            return div.innerHTML;
+                        }
+                        
+                        // Try to intercept console logs from the iframe
+                        try {
+                            // Store original console methods
+                            const originalLog = appIframe.contentWindow.console.log;
+                            const originalError = appIframe.contentWindow.console.error;
+                            const originalWarn = appIframe.contentWindow.console.warn;
+                            const originalInfo = appIframe.contentWindow.console.info;
+                            
+                            // Override console methods in iframe
+                            appIframe.contentWindow.console.log = function(...args) {
+                                addLog('log', ...args);
+                                originalLog.apply(this, args);
+                            };
+                            
+                            appIframe.contentWindow.console.error = function(...args) {
+                                addLog('error', ...args);
+                                originalError.apply(this, args);
+                            };
+                            
+                            appIframe.contentWindow.console.warn = function(...args) {
+                                addLog('warn', ...args);
+                                originalWarn.apply(this, args);
+                            };
+                            
+                            appIframe.contentWindow.console.info = function(...args) {
+                                addLog('info', ...args);
+                                originalInfo.apply(this, args);
+                            };
+                            
+                            // Listen for errors in iframe
+                            appIframe.contentWindow.addEventListener('error', function(event) {
+                                addLog('error', `${event.message} at ${event.filename}:${event.lineno}:${event.colno}`);
+                            });
+                            
+                        } catch (e) {
+                            console.warn('[ArtifactsLoader] Cannot intercept iframe console due to cross-origin restrictions');
+                            addLog('warn', 'Console interception not available due to cross-origin restrictions');
+                        }
                     }
                     
                     // Function to show server not running error
                     function showServerNotRunningError(port) {
                         appLoading.style.display = 'none';
                         appEmpty.style.display = 'block';
+                        
+                        // Hide URL panel when showing error
+                        const urlPanel = document.getElementById('app-url-panel');
+                        if (urlPanel) {
+                            urlPanel.style.display = 'none';
+                        }
+                        
+                        // Hide console button
+                        const showConsoleBtn = document.getElementById('show-console-btn');
+                        if (showConsoleBtn) {
+                            showConsoleBtn.style.display = 'none';
+                        }
+                        
                         appEmpty.innerHTML = `
                             <div class="error-state" style="display: flex; flex-direction: column; align-items: center; padding: 2rem;">
                                 <div class="error-state-icon">
@@ -1921,6 +2220,19 @@ document.addEventListener('DOMContentLoaded', function() {
             function showErrorState(message) {
                 appLoading.style.display = 'none';
                 appEmpty.style.display = 'block';
+                
+                // Hide URL panel when showing error
+                const urlPanel = document.getElementById('app-url-panel');
+                if (urlPanel) {
+                    urlPanel.style.display = 'none';
+                }
+                
+                // Hide console button
+                const showConsoleBtn = document.getElementById('show-console-btn');
+                if (showConsoleBtn) {
+                    showConsoleBtn.style.display = 'none';
+                }
+                
                 appEmpty.innerHTML = `
                     <div class="error-state">
                         <div class="error-state-icon">
@@ -2139,6 +2451,150 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                 </div>
             `;
+        },
+
+        /**
+         * Load Tool Call History for a project
+         * @param {number} projectId - The project ID
+         */
+        loadToolHistory: function(projectId) {
+            console.log(`[ArtifactsLoader] Loading tool history for project ${projectId}`);
+            
+            const toolhistoryContainer = document.getElementById('toolhistory');
+            const toolhistoryLoading = document.getElementById('toolhistory-loading');
+            const toolhistoryEmpty = document.getElementById('toolhistory-empty');
+            const toolhistoryList = document.getElementById('toolhistory-list');
+            const toolFilter = document.getElementById('tool-filter');
+            const refreshButton = document.getElementById('refresh-toolhistory');
+            
+            if (!toolhistoryContainer || !toolhistoryLoading || !toolhistoryEmpty || !toolhistoryList) {
+                console.error('[ArtifactsLoader] Tool history UI elements not found');
+                return;
+            }
+            
+            // Function to fetch and display tool history
+            const fetchToolHistory = (filterValue = '') => {
+                // Show loading state
+                toolhistoryLoading.style.display = 'block';
+                toolhistoryEmpty.style.display = 'none';
+                toolhistoryList.style.display = 'none';
+                
+                let url = `/projects/${projectId}/api/tool-call-history/`;
+                if (filterValue) {
+                    url += `?tool_name=${encodeURIComponent(filterValue)}`;
+                }
+                
+                fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken(),
+                    }
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    toolhistoryLoading.style.display = 'none';
+                    
+                    if (data.tool_call_history && data.tool_call_history.length > 0) {
+                        toolhistoryList.style.display = 'block';
+                        toolhistoryEmpty.style.display = 'none';
+                        
+                        // Build the HTML for tool history items
+                        let html = '';
+                        data.tool_call_history.forEach(item => {
+                            const date = new Date(item.created_at);
+                            const formattedDate = date.toLocaleString();
+                            const hasError = item.metadata && item.metadata.has_error;
+                            
+                            html += `
+                                <div class="tool-history-item" style="background: #2a2a2a; border: 1px solid #333; border-radius: 8px; padding: 15px; margin-bottom: 15px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                        <h4 style="margin: 0; color: ${hasError ? '#ff6b6b' : '#8b5cf6'};">
+                                            <i class="fas ${hasError ? 'fa-exclamation-circle' : 'fa-tools'}"></i> ${item.tool_name}
+                                        </h4>
+                                        <span style="color: #666; font-size: 0.875rem;">${formattedDate}</span>
+                                    </div>
+                                    ${item.tool_input && Object.keys(item.tool_input).length > 0 ? `
+                                        <div style="margin-bottom: 10px;">
+                                            <strong style="color: #999;">Input:</strong>
+                                            <pre style="background: #1a1a1a; padding: 10px; border-radius: 4px; overflow-x: auto; margin-top: 5px; font-size: 0.875rem;">${JSON.stringify(item.tool_input, null, 2)}</pre>
+                                        </div>
+                                    ` : ''}
+                                    <div>
+                                        <strong style="color: #999;">Generated Content:</strong>
+                                        <div style="background: #1a1a1a; padding: 10px; border-radius: 4px; margin-top: 5px; max-height: 300px; overflow-y: auto;">
+                                            <pre style="white-space: pre-wrap; margin: 0; font-size: 0.875rem;">${item.generated_content}</pre>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                        
+                        toolhistoryList.innerHTML = html;
+                        
+                        // Add "Load More" button if there are more items
+                        if (data.has_more) {
+                            toolhistoryList.innerHTML += `
+                                <div style="text-align: center; margin-top: 20px;">
+                                    <button id="load-more-toolhistory" class="btn btn-primary" style="background: #8b5cf6; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;">
+                                        Load More
+                                    </button>
+                                </div>
+                            `;
+                            
+                            // Add event listener for load more button
+                            const loadMoreBtn = document.getElementById('load-more-toolhistory');
+                            if (loadMoreBtn) {
+                                loadMoreBtn.addEventListener('click', () => {
+                                    const newOffset = data.offset + data.limit;
+                                    fetchToolHistory(filterValue, newOffset);
+                                });
+                            }
+                        }
+                    } else {
+                        toolhistoryList.style.display = 'none';
+                        toolhistoryEmpty.style.display = 'block';
+                    }
+                })
+                .catch(error => {
+                    console.error('[ArtifactsLoader] Error loading tool history:', error);
+                    toolhistoryLoading.style.display = 'none';
+                    toolhistoryEmpty.style.display = 'block';
+                    toolhistoryEmpty.innerHTML = `
+                        <div class="empty-state-icon">
+                            <i class="fas fa-exclamation-triangle"></i>
+                        </div>
+                        <div class="empty-state-text">
+                            Error loading tool history: ${error.message}
+                        </div>
+                    `;
+                });
+            };
+            
+            // Initial load
+            fetchToolHistory();
+            
+            // Add event listeners
+            if (toolFilter) {
+                let filterTimeout;
+                toolFilter.addEventListener('input', (e) => {
+                    clearTimeout(filterTimeout);
+                    filterTimeout = setTimeout(() => {
+                        fetchToolHistory(e.target.value);
+                    }, 300);
+                });
+            }
+            
+            if (refreshButton) {
+                refreshButton.addEventListener('click', () => {
+                    fetchToolHistory(toolFilter ? toolFilter.value : '');
+                });
+            }
         },
     };
 

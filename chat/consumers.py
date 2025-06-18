@@ -145,6 +145,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if self.heartbeat_task:
             self.heartbeat_task.cancel()
             
+        # Cancel any active generation task
+        if hasattr(self, 'active_generation_task') and self.active_generation_task and not self.active_generation_task.done():
+            self.should_stop_generation = True
+            # Give it a moment to stop gracefully
+            try:
+                await asyncio.wait_for(self.active_generation_task, timeout=2.0)
+            except asyncio.TimeoutError:
+                logger.warning("Active generation task did not stop gracefully")
+            
         # Save any pending AI message
         if self.pending_message:
             await self.force_save_message()
@@ -596,8 +605,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 # Small delay to simulate natural typing
                 await asyncio.sleep(0.03)
             
-            # Save the complete message
-            await self.save_message('assistant', full_response)
+            # Finalize any partial message or save the complete message
+            await self.finalize_streaming_message(full_response)
             
             # Update conversation title if it's new
             if self.conversation and (not self.conversation.title or self.conversation.title == str(self.conversation.id)):
@@ -698,6 +707,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
         try:
             conversation_id = self.conversation.id if self.conversation else None
             
+            # Initialize message accumulator for auto-save
+            accumulated_content = ""
+            last_save_length = 0
+            save_threshold = 500  # Save every 500 characters
+            
             # Stream content directly from the now-async provider
             async for content in provider.generate_stream(messages, project_id, conversation_id, tools):
                 # Check if we should stop generation
@@ -794,9 +808,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
                         # Not a valid JSON notification, treat as normal text
                         pass
                 
-                # Normal text chunk - yield it
-                # Note: We don't accumulate in pending_message anymore to avoid duplicate saves
-                # The message is saved once in generate_ai_response after all streaming is complete
+                # Normal text chunk - accumulate and yield it
+                accumulated_content += content
+                
+                # Auto-save periodically during streaming
+                if len(accumulated_content) - last_save_length >= save_threshold:
+                    await self.auto_save_streaming_message(accumulated_content)
+                    last_save_length = len(accumulated_content)
                 
                 # Yield the content for streaming
                 yield content
@@ -965,7 +983,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
             {
                 'role': msg.role,
                 'content': msg.content if msg.content is not None or msg.content != "" else msg.content_if_file,
-                'timestamp': msg.created_at.isoformat()
+                'timestamp': msg.created_at.isoformat(),
+                'is_partial': msg.is_partial  # Include partial status
             } for msg in messages
         ]
     
@@ -1155,4 +1174,64 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 await self.finalize_message()
                 logger.info(f"Force saved message on disconnect: {len(self.pending_message)} chars")
             except Exception as e:
-                logger.error(f"Error force saving message: {e}") 
+                logger.error(f"Error force saving message: {e}")
+    
+    async def auto_save_streaming_message(self, content):
+        """Auto-save streaming AI message to prevent loss on disconnect"""
+        if self.conversation:
+            try:
+                # Check if we already have a partial message for this conversation
+                last_message = await database_sync_to_async(
+                    lambda: Message.objects.filter(
+                        conversation=self.conversation,
+                        role='assistant',
+                        is_partial=True
+                    ).order_by('-created_at').first()
+                )()
+                
+                if last_message:
+                    # Update existing partial message
+                    last_message.content = content
+                    await database_sync_to_async(last_message.save)()
+                    logger.debug(f"Updated partial streaming message: {len(content)} chars")
+                else:
+                    # Create new partial message
+                    await database_sync_to_async(Message.objects.create)(
+                        conversation=self.conversation,
+                        role='assistant',
+                        content=content,
+                        is_partial=True
+                    )
+                    logger.debug(f"Created new partial streaming message: {len(content)} chars")
+                    
+            except Exception as e:
+                logger.error(f"Error auto-saving streaming message: {e}")
+    
+    async def finalize_streaming_message(self, full_content):
+        """Finalize the streaming message - convert partial to complete"""
+        if self.conversation and full_content:
+            try:
+                # Find any partial message
+                partial_message = await database_sync_to_async(
+                    lambda: Message.objects.filter(
+                        conversation=self.conversation,
+                        role='assistant',
+                        is_partial=True
+                    ).order_by('-created_at').first()
+                )()
+                
+                if partial_message:
+                    # Update and finalize the partial message
+                    partial_message.content = full_content
+                    partial_message.is_partial = False
+                    await database_sync_to_async(partial_message.save)()
+                    logger.debug(f"Finalized streaming message: {len(full_content)} chars")
+                else:
+                    # No partial message exists, create a complete one
+                    await self.save_message('assistant', full_content)
+                    logger.debug(f"Created final message (no partial found): {len(full_content)} chars")
+                    
+            except Exception as e:
+                logger.error(f"Error finalizing streaming message: {e}")
+                # Fallback to regular save
+                await self.save_message('assistant', full_content) 

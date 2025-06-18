@@ -498,6 +498,12 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Function to connect WebSocket and receive messages
     function connectWebSocket() {
+        // Check if already connected
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            console.log('WebSocket already connected');
+            return;
+        }
+        
         // Determine if we're on HTTPS or HTTP
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}/ws/chat/`;
@@ -626,7 +632,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     data.messages.forEach(msg => {
                         // Skip empty messages
                         if (msg.content && msg.content.trim() !== '') {
-                            addMessageToChat(msg.role, msg.content);
+                            addMessageToChat(msg.role, msg.content, msg.is_partial);
                         }
                     });
                     scrollToBottom();
@@ -804,19 +810,31 @@ document.addEventListener('DOMContentLoaded', () => {
                 currentProjectId = data.project_id;
             }
             
-            // Re-enable the input
-            chatInput.disabled = false;
-            chatInput.focus();
-            
-            // Restore send button
-            hideStopButton();
-            
-            // Reset the stop requested flag
-            stopRequested = false;
+            // Check if this is the final chunk
+            if (data.is_final) {
+                // Streaming is complete
+                isStreaming = false;
+                
+                // Re-enable the input
+                chatInput.disabled = false;
+                chatInput.focus();
+                
+                // Restore send button
+                hideStopButton();
+                
+                // Reset the stop requested flag
+                stopRequested = false;
+            }
             
             // Reload the conversations list to include the new one
-            loadConversations();
-            return;
+            if (data.conversation_id) {
+                loadConversations();
+            }
+            
+            // Only return if this is the final chunk
+            if (data.is_final) {
+                return;
+            }
         }
         
         // Handle early notifications (show a function call indicator but don't open artifacts yet)
@@ -1049,23 +1067,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.log(`loadPRD function available:`, !!(window.ArtifactsLoader && typeof window.ArtifactsLoader.loadPRD === 'function'));
                 
                 // Load the appropriate content based on notification type
-                if (data.notification_type === 'features' && 
-                    window.ArtifactsLoader && 
-                    typeof window.ArtifactsLoader.loadFeatures === 'function') {
-                    console.log(`Calling ArtifactsLoader.loadFeatures(${currentProjectId})`);
-                    window.ArtifactsLoader.loadFeatures(currentProjectId);
-                } else if (data.notification_type === 'personas' && 
-                          window.ArtifactsLoader && 
-                          typeof window.ArtifactsLoader.loadPersonas === 'function') {
-                    console.log(`Calling ArtifactsLoader.loadPersonas(${currentProjectId})`);
-                    window.ArtifactsLoader.loadPersonas(currentProjectId);
-                } else if (data.notification_type === 'prd' && 
-                          window.ArtifactsLoader && 
-                          typeof window.ArtifactsLoader.loadPRD === 'function') {
-                    console.log(`Calling ArtifactsLoader.loadPRD(${currentProjectId})`);
-                    window.ArtifactsLoader.loadPRD(currentProjectId);
-                } else {
-                    console.error(`ArtifactsLoader.load${data.notification_type} not available!`, window.ArtifactsLoader);
+                if (window.ArtifactsLoader && currentProjectId) {
+                    const loaderMap = {
+                        'features': 'loadFeatures',
+                        'personas': 'loadPersonas',
+                        'prd': 'loadPRD',
+                        'implementation': 'loadImplementation',
+                        'design': 'loadDesignSchema',
+                        'tickets': 'loadTickets',
+                        'checklist': 'loadChecklist'
+                    };
+                    
+                    const loaderMethod = loaderMap[data.notification_type];
+                    if (loaderMethod && typeof window.ArtifactsLoader[loaderMethod] === 'function') {
+                        console.log(`Calling ArtifactsLoader.${loaderMethod}(${currentProjectId})`);
+                        window.ArtifactsLoader[loaderMethod](currentProjectId);
+                    } else if (data.notification_type === 'command_output' || 
+                              data.notification_type === 'execute_command' ||
+                              data.notification_type === 'start_server' ||
+                              data.notification_type === 'implement_ticket') {
+                        // These notification types don't have corresponding tabs/loaders
+                        console.log(`Notification type '${data.notification_type}' doesn't require tab loading`);
+                    } else {
+                        console.log(`No loader method found for notification type: ${data.notification_type}`);
+                    }
                 }
             } else {
                 console.error(`switchTab not available or no notification_type provided!`);
@@ -1716,7 +1741,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return null;
     }
     
-    function addMessageToChat(role, content, fileData = null, userRole = null) {
+    function addMessageToChat(role, content, fileData = null, userRole = null, isPartial = false) {
         // Skip adding empty messages
         if (!content || content.trim() === '') {
             console.log(`Skipping empty ${role} message`);
@@ -1736,6 +1761,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${role}`;
         
+        // If this is a partial message, add a special class
+        if (isPartial) {
+            messageDiv.classList.add('partial-message');
+        }
+        
         // If this is a user message and userRole is provided, add it as a data attribute
         if (role === 'user' && userRole) {
             messageDiv.dataset.userRole = userRole;
@@ -1750,8 +1780,15 @@ document.addEventListener('DOMContentLoaded', () => {
         if (role === 'assistant' || role === 'system') {
             contentDiv.innerHTML = marked.parse(content);
         } else {
-            // For user messages, just escape HTML and replace newlines with <br>
-            contentDiv.textContent = content;
+            // For user messages, escape HTML and preserve line breaks
+            const escapedContent = content
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;')
+                // .replace(/\n/g, '<br>');
+            contentDiv.innerHTML = escapedContent;
 
             
             // Add file attachment indicator if fileData is provided
@@ -1768,8 +1805,32 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         
+        // Create copy button
+        const copyButton = document.createElement('button');
+        copyButton.className = 'message-copy-btn';
+        copyButton.innerHTML = '<i class="fas fa-copy"></i>';
+        copyButton.title = 'Copy message';
+        copyButton.onclick = function() {
+            copyMessageToClipboard(content, this);
+        };
+        
+        // Create a message actions container
+        const messageActions = document.createElement('div');
+        messageActions.className = 'message-actions';
+        messageActions.appendChild(copyButton);
+        
         // Append elements
         messageDiv.appendChild(contentDiv);
+        messageDiv.appendChild(messageActions);
+        
+        // Add partial message indicator if needed
+        if (isPartial) {
+            const partialIndicator = document.createElement('div');
+            partialIndicator.className = 'partial-indicator';
+            partialIndicator.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> <span>Message in progress...</span>';
+            messageDiv.appendChild(partialIndicator);
+        }
+        
         messageContainer.appendChild(messageDiv);
         
         // Remove typing indicator if it exists
@@ -1777,6 +1838,61 @@ document.addEventListener('DOMContentLoaded', () => {
         if (typingIndicator) {
             typingIndicator.remove();
         }
+    }
+    
+    // Function to copy message to clipboard
+    function copyMessageToClipboard(content, button) {
+        // Use the Clipboard API if available
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(content).then(() => {
+                // Show success feedback
+                const originalHTML = button.innerHTML;
+                button.innerHTML = '<i class="fas fa-check"></i>';
+                button.classList.add('copied');
+                
+                setTimeout(() => {
+                    button.innerHTML = originalHTML;
+                    button.classList.remove('copied');
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy text: ', err);
+                // Fallback to older method
+                fallbackCopyToClipboard(content, button);
+            });
+        } else {
+            // Fallback for older browsers or non-secure contexts
+            fallbackCopyToClipboard(content, button);
+        }
+    }
+    
+    // Fallback copy method for older browsers
+    function fallbackCopyToClipboard(content, button) {
+        const textArea = document.createElement("textarea");
+        textArea.value = content;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-999999px";
+        textArea.style.top = "-999999px";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        
+        try {
+            document.execCommand('copy');
+            // Show success feedback
+            const originalHTML = button.innerHTML;
+            button.innerHTML = '<i class="fas fa-check"></i>';
+            button.classList.add('copied');
+            
+            setTimeout(() => {
+                button.innerHTML = originalHTML;
+                button.classList.remove('copied');
+            }, 2000);
+        } catch (err) {
+            console.error('Failed to copy text: ', err);
+            alert('Failed to copy message');
+        }
+        
+        document.body.removeChild(textArea);
     }
     
     // Function to show a function call indicator

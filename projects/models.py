@@ -173,5 +173,29 @@ class ProjectCodeGeneration(models.Model):
     
     def __str__(self):
         return f"{self.project.name} - Code Generation Folder: {self.folder_name}"
+
+class ToolCallHistory(models.Model):
+    """Model to store content generated during tool calls"""
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='tool_call_histories')
+    conversation = models.ForeignKey('chat.Conversation', on_delete=models.CASCADE, related_name='tool_call_histories', null=True, blank=True)
+    message = models.ForeignKey('chat.Message', on_delete=models.CASCADE, related_name='tool_call_histories', null=True, blank=True)
+    tool_name = models.CharField(max_length=100)
+    tool_input = models.JSONField(default=dict, blank=True)
+    generated_content = models.TextField()
+    content_type = models.CharField(max_length=50, default='text')
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['project', '-created_at']),
+            models.Index(fields=['project', 'tool_name']),
+            models.Index(fields=['conversation', '-created_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.tool_name} - {self.project.name} - {self.created_at}"
     
     

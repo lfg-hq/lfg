@@ -474,6 +474,74 @@ body, html {
     overflow-wrap: break-word;
 }
 
+/* Preserve line breaks only for user messages */
+.message.user .message-content {
+    white-space: pre-wrap;
+}
+
+/* Message actions container */
+.message-actions {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+/* Show actions on hover */
+.message:hover .message-actions {
+    opacity: 1;
+}
+
+/* Copy button styling */
+.message-copy-btn {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+    padding: 4px 8px;
+    cursor: pointer;
+    color: var(--text-color);
+    font-size: 12px;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.message-copy-btn .fas {
+    font-weight: 100;
+}
+
+.message-copy-btn:hover {
+    background: transparent;
+    border-color: rgba(255, 255, 255, 0.6);
+    transform: scale(1.05);
+}
+
+.message-copy-btn.copied {
+    background: transparent;
+    border-color: #10b981;
+    color: #10b981;
+}
+
+/* Adjust button color for user messages */
+.message.user .message-copy-btn {
+    background: transparent;
+    border-color: rgba(0, 0, 0, 0.3);
+    color: #121212;
+}
+
+.message.user .message-copy-btn:hover {
+    background: transparent;
+    border-color: rgba(0, 0, 0, 0.6);
+    transform: scale(1.05);
+}
+
+/* Make message position relative for absolute positioning of actions */
+.message {
+    position: relative;
+}
+
 .chat-input-container {
     padding: 0 16px 24px; /* Remove top padding */
     border-top: none;
