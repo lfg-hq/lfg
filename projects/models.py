@@ -5,6 +5,7 @@ from django.urls import reverse
 # Create your models here.
 class Project(models.Model):
     name = models.CharField(max_length=255)
+    provided_name = models.CharField(max_length=255, blank=True, null=True)  # User-provided name for project references
     description = models.TextField(blank=True, null=True)
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="projects")
     created_at = models.DateTimeField(auto_now_add=True)

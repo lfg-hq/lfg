@@ -4,6 +4,7 @@ import logging
 import os
 import base64
 import uuid
+import time
 from datetime import datetime
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
@@ -30,6 +31,11 @@ from coding.utils.ai_tools import tools_code, tools_product, tools_design
 # Set up logger
 logger = logging.getLogger(__name__)
 
+# Message chunking constants
+MAX_CHUNK_SIZE = 4096  # 4KB chunks for WebSocket frames
+HEARTBEAT_INTERVAL = 10  # Send heartbeat every 10 seconds during long operations
+PROGRESS_UPDATE_INTERVAL = 5  # Send progress updates every 5 seconds
+
 class ChatConsumer(AsyncWebsocketConsumer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -37,6 +43,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
         self.pending_message = None
         self.auto_save_task = None
         self.last_save_time = None
+        self.message_sequence = 0  # Track message sequence numbers
+        self.last_heartbeat_time = None  # Track last heartbeat sent
+        self.chunk_buffer = {}  # Buffer for assembling chunked messages
     async def connect(self):
         """
         Handle WebSocket connection
@@ -582,9 +591,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 
                 full_response += content
                 
-                # Send each chunk to the client
+                # Send each chunk to the client using chunking if needed
                 try:
                     if hasattr(self, 'using_groups') and self.using_groups:
+                        # For large content, we need to handle chunking at the group level too
+                        if len(content) > MAX_CHUNK_SIZE:
+                            logger.warning("Large content detected for group send - may need chunking implementation")
                         await self.channel_layer.group_send(
                             self.room_group_name,
                             {
@@ -594,11 +606,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             }
                         )
                     else:
-                        await self.send(text_data=json.dumps({
-                            'type': 'ai_chunk',
-                            'chunk': content,
-                            'is_final': False
-                        }))
+                        # Use our chunked message sending for direct WebSocket
+                        await self.send_chunked_message(content, 'ai_chunk', is_final=False)
                 except Exception as e:
                     logger.error(f"Error sending AI chunk: {str(e)}")
                 
@@ -699,9 +708,73 @@ class ChatConsumer(AsyncWebsocketConsumer):
             # Clear the active task reference
             self.active_generation_task = None
     
+    async def send_chunked_message(self, content, message_type='ai_chunk', **extra_data):
+        """
+        Send a message in chunks with sequence numbers for reliable delivery
+        """
+        try:
+            # Calculate total chunks needed
+            total_chunks = (len(content) + MAX_CHUNK_SIZE - 1) // MAX_CHUNK_SIZE if content else 1
+            
+            # If content fits in one chunk, send it directly
+            if len(content) <= MAX_CHUNK_SIZE:
+                await self.send(text_data=json.dumps({
+                    'type': message_type,
+                    'chunk': content,
+                    'sequence': self.message_sequence,
+                    'is_chunked': False,
+                    **extra_data
+                }))
+                self.message_sequence += 1
+                return
+            
+            # Send content in multiple chunks
+            chunk_sequence = 0
+            for i in range(0, len(content), MAX_CHUNK_SIZE):
+                chunk = content[i:i + MAX_CHUNK_SIZE]
+                
+                await self.send(text_data=json.dumps({
+                    'type': message_type,
+                    'chunk': chunk,
+                    'sequence': self.message_sequence,
+                    'chunk_sequence': chunk_sequence,
+                    'total_chunks': total_chunks,
+                    'is_chunked': True,
+                    'is_final_chunk': chunk_sequence == total_chunks - 1,
+                    **extra_data
+                }))
+                
+                chunk_sequence += 1
+                
+                # Small delay between chunks to prevent overwhelming the client
+                await asyncio.sleep(0.001)
+            
+            self.message_sequence += 1
+            
+        except Exception as e:
+            logger.error(f"Error sending chunked message: {str(e)}")
+            raise
+    
+    async def send_heartbeat_if_needed(self):
+        """
+        Send a heartbeat if enough time has passed since the last one
+        """
+        current_time = time.time()
+        if self.last_heartbeat_time is None or current_time - self.last_heartbeat_time >= HEARTBEAT_INTERVAL:
+            try:
+                await self.send(text_data=json.dumps({
+                    'type': 'heartbeat',
+                    'timestamp': datetime.now().isoformat(),
+                    'during_operation': True
+                }))
+                self.last_heartbeat_time = current_time
+                logger.debug("Sent heartbeat during operation")
+            except Exception as e:
+                logger.error(f"Error sending heartbeat: {e}")
+    
     async def process_ai_stream(self, provider, messages, project_id, tools):
         """
-        Enhanced process_ai_stream with auto-save
+        Enhanced process_ai_stream with auto-save and heartbeat
         """
         logger.debug(f"Messages: {messages}")
         try:
@@ -712,8 +785,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
             last_save_length = 0
             save_threshold = 500  # Save every 500 characters
             
+            # Reset heartbeat tracking for this operation
+            self.last_heartbeat_time = time.time()
+            
             # Stream content directly from the now-async provider
             async for content in provider.generate_stream(messages, project_id, conversation_id, tools):
+                # Send heartbeat if needed during long operations
+                await self.send_heartbeat_if_needed()
                 # Check if we should stop generation
                 if self.should_stop_generation:
                     logger.debug("Stopping AI stream generation due to user request")

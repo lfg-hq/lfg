@@ -1685,8 +1685,9 @@ async def run_command_locally(command: str, project_id: int | str = None, conver
     Run a command in the local terminal using subprocess.
     Creates a local workspace directory if it doesn't exist.
     """
+    project = await get_project(project_id)
     # Create workspace directory if it doesn't exist
-    workspace_path = Path.home() / "LFG" / "workspace"
+    workspace_path = Path.home() / "LFG" / "workspace" / project.provided_name
     workspace_path.mkdir(parents=True, exist_ok=True)
     
     command_to_run = f"cd {workspace_path} && {command}"
@@ -1913,10 +1914,12 @@ async def copy_boilerplate_code(project_id, project_name):
         }
     
     try:
+        # Use provided_name if available, otherwise use the passed project_name
+        folder_name = project.provided_name if project.provided_name else project_name
         
         # Define source and destination paths
         source_path = os.path.join(os.getcwd(), "boilerplate", "lfg-template")
-        dest_path = os.path.join(os.path.expanduser("~"), "LFG", "workspace", project_name)
+        dest_path = os.path.join(os.path.expanduser("~"), "LFG", "workspace", folder_name)
         print(f"\n\nSource path: {source_path}\n\n")
         print(f"\n\nDestination path: {dest_path}\n\n")
         
@@ -1938,7 +1941,7 @@ async def copy_boilerplate_code(project_id, project_name):
         return {
             "is_notification": True,
             "notification_type": "boilerplate_code_copied",
-            "message_to_agent": f"Boilerplate code has been successfully copied to ~/LFG/workspace/{project_name}. The project has been initialized with git."
+            "message_to_agent": f"Boilerplate code has been successfully copied to ~/LFG/workspace/{folder_name}. The project has been initialized with git."
         }
     except Exception as e:
         print(f"Error copying boilerplate code: {str(e)}")
@@ -1987,16 +1990,16 @@ async def save_project_name(project_name, project_id):
         }
     
     try:
-        # Update the project name
+        # Update the provided_name field with user-confirmed name
         await sync_to_async(lambda: (
-            setattr(project, 'name', project_name),
+            setattr(project, 'provided_name', project_name),
             project.save()
         )[1])()
         
         return {
             "is_notification": True,
             "notification_type": "project_name_saved",
-            "message_to_agent": f"Project name '{project_name}' has been saved successfully"
+            "message_to_agent": f"Project name '{project_name}' has been saved successfully as provided_name"
         }
     except Exception as e:
         return {
@@ -2022,12 +2025,18 @@ async def get_project_name(project_id):
         }
     
     try:
-        project_name = project.name
-        return {
-            "is_notification": True,
-            "notification_type": "project_name_retrieved",
-            "message_to_agent": f"Project name is: {project_name}"
-        }
+        if project.provided_name:
+            return {
+                "is_notification": True,
+                "notification_type": "project_name_retrieved",
+                "message_to_agent": f"Project name is: {project.provided_name}"
+            }
+        else:
+            return {
+                "is_notification": True,
+                "notification_type": "project_name_not_confirmed",
+                "message_to_agent": f"User has not provided name. You can ask user if they want to save this name: '{project.name}'? Do not proceed until user responds."
+            }
     except Exception as e:
         return {
             "is_notification": False,

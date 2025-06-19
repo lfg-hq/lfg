@@ -74,10 +74,25 @@ ASGI_APPLICATION = 'LFG.asgi.application'
 CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels.layers.InMemoryChannelLayer',
-        # For production, consider using Redis:
+        # IMPORTANT: The in-memory channel layer has limitations:
+        # - Messages are limited in size (default ~100KB)
+        # - No persistence across restarts
+        # - No support for multiple server instances
+        # 
+        # For production or to fix message cutoff issues with large responses,
+        # uncomment the Redis configuration below:
+        #
         # 'BACKEND': 'channels_redis.core.RedisChannelLayer',
         # 'CONFIG': {
-        #     "hosts": [(os.environ.get('REDIS_HOST', 'redis'), 6379)],
+        #     "hosts": [(os.environ.get('REDIS_HOST', 'localhost'), 6379)],
+        #     "capacity": 1000,  # Number of messages to store per channel
+        #     "expiry": 60,      # Seconds until a message expires
+        #     "group_expiry": 86400,  # Seconds until a group expires (24 hours)
+        #     "channel_capacity": {
+        #         # Specific capacity limits per channel pattern
+        #         "chat_*": 100,  # Limit chat channels to 100 messages
+        #     },
+        #     "symmetric_encryption_keys": [os.environ.get('CHANNEL_ENCRYPTION_KEY', '')],
         # },
     },
 }
@@ -153,12 +168,12 @@ X_FRAME_OPTIONS = 'SAMEORIGIN'  # Allow pages to be displayed in frames on the s
 AI_PROVIDER_DEFAULT = 'anthropic'  # Alternate provider 
 
 # Kubernetes SSH server settings
-K8S_SSH_HOST = os.environ.get('K8S_SSH_HOST', '127.0.0.1')
-K8S_SSH_PORT = int(os.environ.get('K8S_SSH_PORT', 22))
-K8S_SSH_USERNAME = os.environ.get('K8S_SSH_USERNAME', 'root')
-K8S_SSH_KEY_FILE = os.environ.get('K8S_SSH_KEY_FILE', os.path.expanduser('~/.ssh/id_rsa'))
-K8S_SSH_KEY_STRING = os.environ.get('K8S_SSH_KEY_STRING', None)  # SSH private key as a string
-K8S_SSH_KEY_PASSPHRASE = os.environ.get('K8S_SSH_KEY_PASSPHRASE', None)
+# K8S_SSH_HOST = os.environ.get('K8S_SSH_HOST', '127.0.0.1')
+# K8S_SSH_PORT = int(os.environ.get('K8S_SSH_PORT', 22))
+# K8S_SSH_USERNAME = os.environ.get('K8S_SSH_USERNAME', 'root')
+# K8S_SSH_KEY_FILE = os.environ.get('K8S_SSH_KEY_FILE', os.path.expanduser('~/.ssh/id_rsa'))
+# K8S_SSH_KEY_STRING = os.environ.get('K8S_SSH_KEY_STRING', None)  # SSH private key as a string
+# K8S_SSH_KEY_PASSPHRASE = os.environ.get('K8S_SSH_KEY_PASSPHRASE', None)
 
 # Authentication URLs
 LOGIN_URL = '/accounts/login/'
@@ -199,9 +214,43 @@ SSH_KEY_STRING=os.getenv('SSH_KEY_STRING', None)
 ENVIRONMENT = os.getenv('environment', 'local')
 
 # Django Q Configuration
-if ENVIRONMENT in ['production', 'staging']:
-    # Use Redis for production/staging
-    Q_CLUSTER = {
+# if ENVIRONMENT in ['production', 'staging']:
+#     # Use Redis for production/staging
+#     Q_CLUSTER = {
+#         'name': 'LFG_Tasks',
+#         'workers': 1,  # Reduced to single worker to prevent timer conflicts
+#         'recycle': 100,  # Reduced recycle count
+#         'timeout': 30,   # Reduced timeout
+#         'retry': 60,     # Reduced retry time
+#         'queue_limit': 10,  # Reduced queue limit
+#         'bulk': 1,       # Single task processing
+#         'orm': 'default',
+#         'guard_cycle': 10,  # Longer guard cycle
+#         'daemonize_workers': False,  # Disable daemon mode
+#         'max_attempts': 1,
+#         'sync': False,   # Keep async for production
+#         'redis': {
+#             'host': os.getenv('REDIS_HOST', 'localhost'),
+#             'port': int(os.getenv('REDIS_PORT', 6379)),
+#             'db': int(os.getenv('REDIS_DB', 0)),
+#             'password': os.getenv('REDIS_PASSWORD', None),
+#         }
+#     }
+# else:
+#     # Use Django ORM (SQLite) for local development with safer settings
+#     Q_CLUSTER = {
+#     'name': 'DjangORM',
+#     'workers': 1,
+#     'timeout': 90,
+#     'retry': 120,
+#     'queue_limit': 50,
+#     'bulk': 10,
+#     'orm': 'default',
+#     'broker': 'django_q.brokers.orm.ORM',  # Explicitly set ORM broker
+#     'sync': False,
+# }
+
+Q_CLUSTER = {
         'name': 'LFG_Tasks',
         'workers': 1,  # Reduced to single worker to prevent timer conflicts
         'recycle': 100,  # Reduced recycle count
@@ -221,19 +270,6 @@ if ENVIRONMENT in ['production', 'staging']:
             'password': os.getenv('REDIS_PASSWORD', None),
         }
     }
-else:
-    # Use Django ORM (SQLite) for local development with safer settings
-    Q_CLUSTER = {
-    'name': 'DjangORM',
-    'workers': 1,
-    'timeout': 90,
-    'retry': 120,
-    'queue_limit': 50,
-    'bulk': 10,
-    'orm': 'default',
-    'broker': 'django_q.brokers.orm.ORM',  # Explicitly set ORM broker
-    'sync': False,
-}
 
 # Logging Configuration
 LOGGING = {

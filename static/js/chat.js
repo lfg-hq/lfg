@@ -42,6 +42,10 @@ document.addEventListener('DOMContentLoaded', () => {
     let isStreaming = false; // Track whether we're currently streaming a response
     let stopRequested = false; // Track if user has already requested to stop generation
     
+    // Chunk reassembly tracking
+    let chunkBuffers = {};  // Store partial chunks by sequence number
+    let expectedSequence = 0;  // Track expected sequence number
+    
     // Get or create the send button
     const sendBtn = document.getElementById('send-btn') || createSendButton();
     let stopBtn = null; // Will be created when needed
@@ -689,6 +693,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     stopRequested = false;
                     break;
                     
+                case 'heartbeat':
+                    // Handle heartbeat - acknowledge it
+                    lastHeartbeatResponse = Date.now();
+                    socket.send(JSON.stringify({ type: 'heartbeat_ack' }));
+                    
+                    // Check if this is a heartbeat during operation
+                    if (data.during_operation) {
+                        console.log('Heartbeat during operation received - connection is alive');
+                    }
+                    break;
+                    
                 case 'error':
                     console.error('WebSocket error:', data.message);
                     // Display error message to user
@@ -752,6 +767,56 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Function to handle AI response chunks
     function handleAIChunk(data) {
+        // Handle chunked messages first
+        if (data.is_chunked) {
+            console.log(`Received chunk ${data.chunk_sequence}/${data.total_chunks} for sequence ${data.sequence}`);
+            
+            // Initialize buffer for this sequence if needed
+            if (!chunkBuffers[data.sequence]) {
+                chunkBuffers[data.sequence] = {
+                    chunks: {},
+                    totalChunks: data.total_chunks,
+                    receivedChunks: 0
+                };
+            }
+            
+            // Store the chunk
+            chunkBuffers[data.sequence].chunks[data.chunk_sequence] = data.chunk;
+            chunkBuffers[data.sequence].receivedChunks++;
+            
+            // Check if we have all chunks
+            if (chunkBuffers[data.sequence].receivedChunks === data.total_chunks) {
+                // Reassemble the message
+                let fullContent = '';
+                for (let i = 0; i < data.total_chunks; i++) {
+                    fullContent += chunkBuffers[data.sequence].chunks[i] || '';
+                }
+                
+                // Clean up the buffer
+                delete chunkBuffers[data.sequence];
+                
+                // Process the reassembled message
+                data.chunk = fullContent;
+                data.is_chunked = false;
+                console.log('Reassembled full message:', fullContent.length, 'characters');
+            } else {
+                // Still waiting for more chunks
+                console.log(`Waiting for ${data.total_chunks - chunkBuffers[data.sequence].receivedChunks} more chunks`);
+                return;
+            }
+        }
+        
+        // Handle sequence validation
+        if (data.sequence !== undefined) {
+            if (data.sequence < expectedSequence) {
+                console.warn(`Received old sequence ${data.sequence}, expected ${expectedSequence}. Ignoring.`);
+                return;
+            } else if (data.sequence > expectedSequence) {
+                console.warn(`Received future sequence ${data.sequence}, expected ${expectedSequence}. Messages may be out of order.`);
+            }
+            expectedSequence = data.sequence + 1;
+        }
+        
         const chunk = data.chunk;
         const isFinal = data.is_final;
         
@@ -843,6 +908,35 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('EARLY NOTIFICATION RECEIVED:');
             console.log('Function name early notification:', data.function_name);
             console.log('Notification type:', data.notification_type);
+            
+            // Add pending tool call to Tool History immediately
+            if (window.ArtifactsLoader && typeof window.ArtifactsLoader.addPendingToolCall === 'function') {
+                // Open artifacts panel if not already open
+                if (window.ArtifactsPanel && !window.ArtifactsPanel.isOpen()) {
+                    window.ArtifactsPanel.open();
+                    console.log('Opened artifacts panel for tool history');
+                }
+                
+                // Switch to Tool History tab
+                if (window.switchTab) {
+                    try {
+                        window.switchTab('toolhistory');
+                        console.log('Switched to Tool History tab for early notification');
+                    } catch (err) {
+                        console.error('Error switching to Tool History tab:', err);
+                    }
+                }
+                
+                // Add the pending tool call
+                const pendingId = window.ArtifactsLoader.addPendingToolCall(data.function_name, {});
+                console.log(`Added pending tool call with ID: ${pendingId}`);
+                
+                // Store the pending ID for later update
+                if (!window.pendingToolCalls) {
+                    window.pendingToolCalls = {};
+                }
+                window.pendingToolCalls[data.function_name] = pendingId;
+            }
             console.log('Is early notification:', data.early_notification);
             console.log('==========================================\n\n');
             
@@ -1024,21 +1118,38 @@ document.addEventListener('DOMContentLoaded', () => {
             if (window.switchTab && data.notification_type) {
                 console.log(`Switching to tab: ${data.notification_type}`);
                 
+                // Map non-existent tabs to existing ones
+                const tabMapping = {
+                    'features': 'checklist',
+                    'personas': 'checklist',
+                    'design': 'implementation',
+                    'tickets': 'checklist',
+                    'execute_command': 'toolhistory',
+                    'command_output': 'toolhistory',
+                    'start_server': 'apps',
+                    'get_pending_tickets': 'checklist',
+                    'create_checklist_tickets': 'checklist',
+                    'implement_ticket': 'implementation'
+                };
+                
+                // Use mapped tab if original doesn't exist
+                const targetTab = tabMapping[data.notification_type] || data.notification_type;
+                
                 // Try the standard tab switching first
                 try {
-                    window.switchTab(data.notification_type);
-                    console.log('Tab switched successfully using window.switchTab');
+                    window.switchTab(targetTab);
+                    console.log(`Tab switched successfully to ${targetTab} using window.switchTab`);
                 } catch (err) {
-                    console.error('Error switching tab with window.switchTab:', err);
+                    console.error(`Error switching tab to ${targetTab} with window.switchTab:`, err);
                     
                     // Try direct DOM manipulation as fallback
                     try {
                         const tabButtons = document.querySelectorAll('.tab-button');
                         const tabPanes = document.querySelectorAll('.tab-pane');
                         
-                        // Find the right tab
-                        const targetButton = document.querySelector(`.tab-button[data-tab="${data.notification_type}"]`);
-                        const targetPane = document.getElementById(data.notification_type);
+                        // Find the right tab using the mapped target
+                        const targetButton = document.querySelector(`.tab-button[data-tab="${targetTab}"]`);
+                        const targetPane = document.getElementById(targetTab);
                         
                         if (targetButton && targetPane) {
                             // Remove active class from all tabs
@@ -1048,9 +1159,9 @@ document.addEventListener('DOMContentLoaded', () => {
                             // Set active class on the target tab
                             targetButton.classList.add('active');
                             targetPane.classList.add('active');
-                            console.log('Tab switched successfully using direct DOM manipulation');
+                            console.log(`Tab switched successfully to ${targetTab} using direct DOM manipulation`);
                         } else {
-                            console.error(`Could not find tab elements for ${data.notification_type}`);
+                            console.error(`Could not find tab elements for ${targetTab} (original: ${data.notification_type})`);
                         }
                     } catch (domErr) {
                         console.error('Error switching tab with direct DOM manipulation:', domErr);

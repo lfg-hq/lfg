@@ -2596,6 +2596,67 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
             }
         },
+        
+        /**
+         * Add a pending tool call to the history immediately
+         * @param {string} toolName - The name of the tool being called
+         * @param {object} toolInput - The input parameters for the tool
+         * @returns {string} - The ID of the pending element
+         */
+        addPendingToolCall: function(toolName, toolInput) {
+            console.log(`[ArtifactsLoader] Adding pending tool call: ${toolName}`);
+            
+            const toolhistoryList = document.getElementById('toolhistory-list');
+            const toolhistoryEmpty = document.getElementById('toolhistory-empty');
+            
+            if (!toolhistoryList) {
+                console.warn('[ArtifactsLoader] Tool history list not found');
+                return;
+            }
+            
+            // Hide empty state
+            if (toolhistoryEmpty) {
+                toolhistoryEmpty.style.display = 'none';
+            }
+            
+            // Make sure list is visible
+            toolhistoryList.style.display = 'block';
+            
+            // Create a unique ID for this pending call
+            const pendingId = `pending-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            
+            // Create the pending tool call HTML
+            const pendingHtml = `
+                <div id="${pendingId}" class="tool-history-item pending-tool-call" style="background: #2a2a2a; border: 1px solid #666; border-radius: 8px; padding: 15px; margin-bottom: 15px; opacity: 0.8;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <h4 style="margin: 0; color: #fbbf24;">
+                            <i class="fas fa-spinner fa-spin"></i> ${toolName}
+                        </h4>
+                        <span style="color: #666; font-size: 0.875rem;">Executing...</span>
+                    </div>
+                    ${toolInput && Object.keys(toolInput).length > 0 ? `
+                        <div style="margin-bottom: 10px;">
+                            <strong style="color: #999;">Input:</strong>
+                            <pre style="background: #1a1a1a; padding: 10px; border-radius: 4px; overflow-x: auto; margin-top: 5px; font-size: 0.875rem;">${JSON.stringify(toolInput, null, 2)}</pre>
+                        </div>
+                    ` : ''}
+                    <div>
+                        <strong style="color: #999;">Generated Content:</strong>
+                        <div style="background: #1a1a1a; padding: 10px; border-radius: 4px; margin-top: 5px;">
+                            <div style="color: #666; font-style: italic;">
+                                <i class="fas fa-hourglass-half"></i> Waiting for response...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Prepend to the list
+            toolhistoryList.insertAdjacentHTML('afterbegin', pendingHtml);
+            
+            // Return the pending ID so it can be updated later
+            return pendingId;
+        }
     };
 
     // Initialize the ArtifactsLoader

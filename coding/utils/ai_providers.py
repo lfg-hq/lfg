@@ -25,6 +25,9 @@ from coding.utils.ai_tools import tools_ticket
 # Set up logger
 logger = logging.getLogger(__name__)
 
+# Maximum tool output size (50KB)
+MAX_TOOL_OUTPUT_SIZE = 50 * 1024
+
 def get_notification_type_for_tool(tool_name):
     """
     Determine the notification type based on the tool/function name.
@@ -39,26 +42,28 @@ def get_notification_type_for_tool(tool_name):
     print(f"\n\\n\n\n\n\nGetting notification type for tool: {tool_name}")
     
     notification_mappings = {
-        "extract_features": "features",
-        "extract_personas": "personas",
-        "save_features": "features",
-        "save_personas": "personas",
-        "get_features": "features",
-        "get_personas": "personas",
+        "extract_features": "checklist",  # Features tab is commented out, use checklist
+        "extract_personas": "checklist",  # Personas tab is commented out, use checklist
+        "save_features": "checklist",
+        "save_personas": "checklist",
+        "get_features": "checklist",
+        "get_personas": "checklist",
         "create_prd": "prd",
         "get_prd": "prd",
-        "start_server": "start_server",
-        "execute_command": "execute_command",
+        "start_server": "apps",  # Server starts should show in apps/preview tab
+        "execute_command": "toolhistory",  # Show command execution in tool history
         "save_implementation": "implementation",
         "get_implementation": "implementation",
         "update_implementation": "implementation",
         "create_implementation": "implementation",
-        "design_schema": "design",
-        "generate_tickets": "tickets",
+        "design_schema": "implementation",  # Design tab is commented out, use implementation
+        "generate_tickets": "checklist",  # Tickets tab is commented out, use checklist
         "checklist_tickets": "checklist",
+        "create_checklist_tickets": "checklist",  # Add this mapping
         "update_checklist_ticket": "checklist",
-        "get_next_ticket": "tickets",
-        "implement_ticket": "implement_ticket"
+        "get_next_ticket": "checklist",
+        "get_pending_tickets": "checklist",  # Add this mapping
+        "implement_ticket": "implementation"  # Implementation tasks go to implementation tab
     }
     
     return notification_mappings.get(tool_name)
@@ -101,6 +106,11 @@ async def execute_tool_call(tool_call_name, tool_call_args_str, project_id, conv
                 # Return the actual explanation to be yielded with formatting
                 # Add a newline before and after for better readability
                 yielded_content = f"\n*{explanation}*\n"
+                
+                # Limit the size of yielded content
+                if len(yielded_content) > MAX_TOOL_OUTPUT_SIZE:
+                    truncated_size = len(yielded_content) - MAX_TOOL_OUTPUT_SIZE
+                    yielded_content = yielded_content[:MAX_TOOL_OUTPUT_SIZE] + f"\n\n... [Explanation truncated - {truncated_size} characters removed]*\n"
         
         # Log the function call with clean arguments
         logger.debug(f"Calling app_functions with {tool_call_name}, {parsed_args}, {project_id}, {conversation_id}")
@@ -164,6 +174,12 @@ async def execute_tool_call(tool_call_name, tool_call_args_str, project_id, conv
             else:
                 # If tool_result is neither a string nor a dict
                 result_content = str(tool_result) if tool_result is not None else ""
+        
+        # Limit the size of the result content
+        if len(result_content) > MAX_TOOL_OUTPUT_SIZE:
+            truncated_size = len(result_content) - MAX_TOOL_OUTPUT_SIZE
+            result_content = result_content[:MAX_TOOL_OUTPUT_SIZE] + f"\n\n... [Output truncated - {truncated_size} characters removed]"
+            logger.warning(f"Tool output truncated from {len(result_content) + truncated_size} to {MAX_TOOL_OUTPUT_SIZE} characters")
         
         logger.debug(f"Tool Success. Result: {result_content}")
         
