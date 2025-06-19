@@ -131,7 +131,7 @@ def project_personas_api(request, project_id):
 
 @login_required
 def project_prd_api(request, project_id):
-    """API view to get PRD for a project"""
+    """API view to get or update PRD for a project"""
     project = get_object_or_404(Project, id=project_id, owner=request.user)
     
     # Get the PRD or create it if it doesn't exist
@@ -139,6 +139,24 @@ def project_prd_api(request, project_id):
         project=project,
         defaults={'prd': ''}  # Default empty content if we're creating a new PRD
     )
+    
+    if request.method == 'POST':
+        # Update PRD content
+        import json
+        try:
+            data = json.loads(request.body)
+            prd.prd = data.get('content', '')
+            prd.save()
+            
+            return JsonResponse({
+                'success': True,
+                'id': prd.id,
+                'content': prd.prd,
+                'title': 'Product Requirement Document',
+                'updated_at': prd.updated_at.strftime('%Y-%m-%d %H:%M') if prd.updated_at else None
+            })
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=400)
     
     # Convert to JSON-serializable format
     prd_data = {
@@ -278,7 +296,7 @@ def project_terminal(request, project_id):
 
 @login_required
 def project_implementation_api(request, project_id):
-    """API view to get implementation for a project"""
+    """API view to get or update implementation for a project"""
     project = get_object_or_404(Project, id=project_id, owner=request.user)
     
     # Get the implementation or create it if it doesn't exist
@@ -286,6 +304,24 @@ def project_implementation_api(request, project_id):
         project=project,
         defaults={'implementation': ''}  # Default empty content if we're creating a new implementation
     )
+    
+    if request.method == 'POST':
+        # Update implementation content
+        import json
+        try:
+            data = json.loads(request.body)
+            implementation.implementation = data.get('content', '')
+            implementation.save()
+            
+            return JsonResponse({
+                'success': True,
+                'id': implementation.id,
+                'content': implementation.implementation,
+                'title': 'Implementation Plan',
+                'updated_at': implementation.updated_at.strftime('%Y-%m-%d %H:%M') if implementation.updated_at else None
+            })
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=400)
     
     # Convert to JSON-serializable format
     implementation_data = {
@@ -314,7 +350,7 @@ def check_server_status_api(request, project_id):
             })
         
         # Create workspace directory if it doesn't exist
-        workspace_path = Path.home() / "LFG" / "workspace"
+        workspace_path = Path.home() / "LFG" / "workspace" / project.provided_name
         workspace_path.mkdir(parents=True, exist_ok=True)
         
         server_status = []
@@ -323,78 +359,64 @@ def check_server_status_api(request, project_id):
             port = config.port
             server_type = config.type or 'application'
             
-            # Check if server is running on this port
-            check_command = f"lsof -i:{port} | grep LISTEN"
-            success, stdout, stderr = execute_local_command(check_command, str(workspace_path))
+            # Always kill any existing process on the port first
+            kill_command = f"lsof -ti:{port} | xargs kill -9 2>/dev/null || true"
+            execute_local_command(kill_command, str(workspace_path))
             
-            is_running = success and stdout.strip()
+            # Wait a moment for port to be freed
+            time.sleep(1)
             
-            if is_running:
-                server_status.append({
-                    'port': port,
-                    'type': server_type,
-                    'status': 'running',
-                    'url': f'http://localhost:{port}',
-                    'message': f'{server_type.capitalize()} server is running on port {port}'
-                })
-            else:
-                # Server is not running, attempt to restart
-                server_command = config.start_server_command or config.command
+            # Now attempt to start the server
+            server_command = config.start_server_command or config.command
+            
+            if server_command:
+                # Create log file for the server
+                log_file = workspace_path / f"server_{project_id}_{port}.log"
                 
-                if server_command:
-                    # Kill any existing process on the port first
-                    kill_command = f"lsof -ti:{port} | xargs kill -9 2>/dev/null || true"
-                    execute_local_command(kill_command, str(workspace_path))
+                # Use nohup to run in background
+                background_command = f"nohup {server_command} > {log_file} 2>&1 &"
+                restart_success, restart_stdout, restart_stderr = execute_local_command(background_command, str(workspace_path))
+                
+                if restart_success:
+                    # Wait a bit for server to start
+                    time.sleep(3)
                     
-                    # Wait a moment for port to be freed
-                    time.sleep(1)
+                    # Check if server is running
+                    check_command = f"lsof -i:{port} | grep LISTEN"
+                    recheck_success, recheck_stdout, recheck_stderr = execute_local_command(check_command, str(workspace_path))
                     
-                    # Create log file for the server
-                    log_file = workspace_path / f"server_{project_id}_{port}.log"
-                    
-                    # Use nohup to run in background
-                    background_command = f"nohup {server_command} > {log_file} 2>&1 &"
-                    restart_success, restart_stdout, restart_stderr = execute_local_command(background_command, str(workspace_path))
-                    
-                    if restart_success:
-                        # Wait a bit for server to start
-                        time.sleep(3)
-                        
-                        # Check again if server is running
-                        recheck_success, recheck_stdout, recheck_stderr = execute_local_command(check_command, str(workspace_path))
-                        
-                        if recheck_success and recheck_stdout.strip():
-                            server_status.append({
-                                'port': port,
-                                'type': server_type,
-                                'status': 'restarted',
-                                'url': f'http://localhost:{port}',
-                                'message': f'{server_type.capitalize()} server restarted successfully on port {port}'
-                            })
-                        else:
-                            server_status.append({
-                                'port': port,
-                                'type': server_type,
-                                'status': 'failed',
-                                'url': f'http://localhost:{port}',
-                                'message': f'Failed to restart {server_type} server on port {port}. Check logs at {log_file}'
-                            })
+                    if recheck_success and recheck_stdout.strip():
+                        server_status.append({
+                            'port': port,
+                            'type': server_type,
+                            'status': 'restarted',
+                            'url': f'http://localhost:{port}',
+                            'message': f'{server_type.capitalize()} server started successfully on port {port}'
+                        })
                     else:
                         server_status.append({
                             'port': port,
                             'type': server_type,
                             'status': 'failed',
                             'url': f'http://localhost:{port}',
-                            'message': f'Failed to restart {server_type} server: {restart_stderr}'
+                            'message': f'Failed to start {server_type} server on port {port}. Check logs at {log_file}'
                         })
                 else:
                     server_status.append({
                         'port': port,
                         'type': server_type,
-                        'status': 'no_command',
+                        'status': 'failed',
                         'url': f'http://localhost:{port}',
-                        'message': f'No start command configured for {server_type} server on port {port}'
+                        'message': f'Failed to start {server_type} server: {restart_stderr}'
                     })
+            else:
+                server_status.append({
+                    'port': port,
+                    'type': server_type,
+                    'status': 'no_command',
+                    'url': f'http://localhost:{port}',
+                    'message': f'No start command configured for {server_type} server on port {port}'
+                })
         
         # Determine overall status
         if all(server['status'] in ['running', 'restarted'] for server in server_status):

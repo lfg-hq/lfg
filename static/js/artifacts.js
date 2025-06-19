@@ -38,6 +38,16 @@ document.addEventListener('DOMContentLoaded', function() {
         appContainer.classList.add('artifacts-expanded');
         artifactsButton.classList.add('active');
         updateChatContainerPosition(true);
+        
+        // Load data for the active tab when panel starts expanded
+        setTimeout(() => {
+            const activeTab = document.querySelector('.tab-button.active');
+            if (activeTab) {
+                const tabId = activeTab.getAttribute('data-tab');
+                console.log(`[ArtifactsPanel] Panel started expanded, loading data for active tab: ${tabId}`);
+                loadTabData(tabId);
+            }
+        }, 100); // Small delay to ensure everything is initialized
     }
     
     // Toggle panel visibility when floating button is clicked

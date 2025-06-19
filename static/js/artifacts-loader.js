@@ -99,6 +99,12 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize the artifact loaders
     window.ArtifactsLoader = {
         /**
+         * Get the current project ID from various sources
+         * @returns {number|null} The current project ID or null if not found
+         */
+        getCurrentProjectId: getCurrentProjectId,
+        
+        /**
          * Load features from the API for the current project
          * @param {number} projectId - The ID of the current project
          */
@@ -356,8 +362,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         <div class="prd-container">
                             <div class="prd-header">
                                 <h2>${data.title || 'Product Requirement Document'}</h2>
-                                <div class="prd-meta">
-                                    ${data.updated_at ? `<span>Last updated: ${data.updated_at}</span>` : ''}
+                                <div class="prd-meta" style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span>${data.updated_at ? `Last updated: ${data.updated_at}` : ''}</span>
+                                    <button class="artifact-edit-btn" id="prd-edit-btn" data-project-id="${projectId}">
+                                        <i class="fas fa-edit"></i> Edit
+                                    </button>
                                 </div>
                             </div>
                             <div class="prd-content markdown-content">
@@ -365,6 +374,14 @@ document.addEventListener('DOMContentLoaded', function() {
                             </div>
                         </div>
                     `;
+                    
+                    // Add click event listener for the edit button
+                    const editBtn = document.getElementById('prd-edit-btn');
+                    if (editBtn) {
+                        editBtn.addEventListener('click', function() {
+                            ArtifactsEditor.enablePRDEdit(projectId, prdContent);
+                        });
+                    }
                 })
                 .catch(error => {
                     console.error('Error fetching PRD:', error);
@@ -442,8 +459,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         <div class="implementation-container">
                             <div class="implementation-header">
                                 <h2>${data.title || 'Implementation Plan'}</h2>
-                                <div class="implementation-meta">
-                                    ${data.updated_at ? `<span>Last updated: ${data.updated_at}</span>` : ''}
+                                <div class="implementation-meta" style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span>${data.updated_at ? `Last updated: ${data.updated_at}` : ''}</span>
+                                    <button class="artifact-edit-btn" id="implementation-edit-btn" data-project-id="${projectId}">
+                                        <i class="fas fa-edit"></i> Edit
+                                    </button>
                                 </div>
                             </div>
                             <div class="implementation-content markdown-content">
@@ -451,6 +471,14 @@ document.addEventListener('DOMContentLoaded', function() {
                             </div>
                         </div>
                     `;
+                    
+                    // Add click event listener for the edit button
+                    const editBtn = document.getElementById('implementation-edit-btn');
+                    if (editBtn) {
+                        editBtn.addEventListener('click', function() {
+                            ArtifactsEditor.enableImplementationEdit(projectId, implementationContent);
+                        });
+                    }
                 })
                 .catch(error => {
                     console.error('Error fetching implementation:', error);
@@ -721,6 +749,12 @@ document.addEventListener('DOMContentLoaded', function() {
                                                 ${ticket.implementation_steps ? ticket.implementation_steps.replace(/\n/g, '<br>') : 'No implementation steps specified.'}
                                             </div>
                                         </div>
+                                        
+                                        <div class="drawer-section" style="margin-top: 20px;">
+                                            <button class="execute-ticket-btn" onclick="ArtifactsLoader.executeTicket(${ticket.id})" style="width: 100%; padding: 12px; background: #8b5cf6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                                                <i class="fas fa-play"></i> Execute (Build Now)
+                                            </button>
+                                        </div>
                                     `;
                                     
                                     // Show the drawer
@@ -955,6 +989,36 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log('[ArtifactsLoader] Setting iframe src now...');
             codebaseIframe.src = editorUrl;
             console.log('[ArtifactsLoader] Iframe src set to:', codebaseIframe.src);
+        },
+        
+        /**
+         * Render implementation content properly handling XML/HTML-like content
+         * @param {string} content - The implementation content to render
+         * @returns {string} The rendered HTML content
+         */
+        renderImplementationContent: function(content) {
+            if (!content) return '';
+            
+            // Check if content looks like XML/HTML (contains tags)
+            if (content.includes('<') && content.includes('>')) {
+                // If it looks like structured data, wrap it in a code block
+                const escapedContent = content
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+                
+                return `<pre><code>${escapedContent}</code></pre>`;
+            }
+            
+            // Otherwise, render as markdown
+            if (typeof marked !== 'undefined') {
+                return marked.parse(content);
+            }
+            
+            // Fallback to plain text with basic escaping
+            return content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
         },
         
         /**
@@ -2656,6 +2720,85 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Return the pending ID so it can be updated later
             return pendingId;
+        },
+        
+        /**
+         * Execute a ticket by sending a command to build the feature
+         * @param {number} ticketId - The ID of the ticket to execute
+         */
+        executeTicket: function(ticketId) {
+            console.log(`[ArtifactsLoader] Executing ticket ${ticketId}`);
+            
+            // Find the ticket data
+            const projectId = this.getCurrentProjectId();
+            if (!projectId) {
+                console.error('[ArtifactsLoader] No project ID found');
+                alert('Unable to execute ticket: No project ID found');
+                return;
+            }
+            
+            // Get ticket details from the stored tickets data
+            fetch(`/projects/${projectId}/api/tickets/`)
+                .then(response => response.json())
+                .then(data => {
+                    const tickets = data.tickets || [];
+                    const ticket = tickets.find(t => t.id == ticketId);
+                    
+                    if (!ticket) {
+                        console.error('[ArtifactsLoader] Ticket not found:', ticketId);
+                        alert('Unable to execute ticket: Ticket not found');
+                        return;
+                    }
+                    
+                    // Construct the command to send
+                    let command = `Build the following feature from ticket #${ticket.ticket_id}: "${ticket.title}"\n\n`;
+                    command += `Description: ${ticket.description}\n\n`;
+                    
+                    if (ticket.frontend_tasks) {
+                        command += `Frontend Tasks:\n${ticket.frontend_tasks}\n\n`;
+                    }
+                    
+                    if (ticket.backend_tasks) {
+                        command += `Backend Tasks:\n${ticket.backend_tasks}\n\n`;
+                    }
+                    
+                    if (ticket.implementation_steps) {
+                        command += `Implementation Steps:\n${ticket.implementation_steps}\n\n`;
+                    }
+                    
+                    command += `Please implement this feature following the specifications above.`;
+                    
+                    // Close the ticket drawer
+                    const detailsDrawer = document.getElementById('ticket-details-drawer');
+                    const drawerOverlay = document.getElementById('drawer-overlay');
+                    if (detailsDrawer) detailsDrawer.classList.remove('open');
+                    if (drawerOverlay) drawerOverlay.classList.remove('active');
+                    
+                    // Send the command to the chat
+                    if (window.sendMessage && typeof window.sendMessage === 'function') {
+                        console.log('[ArtifactsLoader] Sending ticket execution command to chat');
+                        window.sendMessage(command);
+                    } else {
+                        // Fallback: try to find the chat input and trigger send
+                        const chatInput = document.getElementById('chat-input');
+                        const sendButton = document.getElementById('send-btn');
+                        
+                        if (chatInput && sendButton) {
+                            chatInput.value = command;
+                            // Trigger input event to update any listeners
+                            chatInput.dispatchEvent(new Event('input', { bubbles: true }));
+                            // Click the send button
+                            sendButton.click();
+                        } else {
+                            console.error('[ArtifactsLoader] Unable to send message - no chat interface found');
+                            alert('Unable to send command to chat. Please copy the command manually.');
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('[ArtifactsLoader] Error fetching ticket details:', error);
+                    alert('Error executing ticket: ' + error.message);
+                });
         }
     };
 
