@@ -1,43 +1,24 @@
 import json
 import os
-import string
-import random
-import shlex
 import asyncio
 import subprocess
+import logging
 from pathlib import Path
 from asgiref.sync import sync_to_async
-from django.db import transaction
 from projects.models import Project, ProjectFeature, ProjectPersona, \
-                            ProjectPRD, ProjectDesignSchema, ProjectTickets, \
-                            ProjectCodeGeneration, ProjectChecklist, \
+                            ProjectPRD, ProjectDesignSchema, ProjectChecklist, \
                             ProjectImplementation
 from coding.utils.prd_functions import analyze_features, analyze_personas, \
-                    design_schema, generate_tickets_per_feature
+                    design_schema
 from coding.models import ServerConfig
 
-# Import Django-Q functions
-from .ai_django_q import (
-    implement_ticket_async,
-    execute_tickets_in_parallel,
-    get_ticket_execution_status
-) 
+# Configure logger
+logger = logging.getLogger(__name__)
 
-from coding.utils.ai_tools import tools_ticket
-from coding.utils.task_prompt import get_task_implementaion_developer
-
-from coding.docker.docker_utils import (
-    Sandbox, 
-    get_or_create_sandbox,
-    get_sandbox_by_project_id, 
-    list_running_sandboxes,
-    get_client_project_folder_path,
-    add_port_to_sandbox
-)
 from django.conf import settings
-from coding.k8s_manager.manage_pods import execute_command_in_pod, manage_kubernetes_pod
+from coding.k8s_manager.manage_pods import execute_command_in_pod
 
-from coding.models import KubernetesPod, KubernetesPortMapping
+from coding.models import KubernetesPod
 from coding.models import CommandExecution
 from accounts.models import GitHubToken
 
@@ -161,8 +142,8 @@ async def app_functions(function_name, function_args, project_id, conversation_i
     """
     Return a list of all the functions that can be called by the AI
     """
-    print(f"Function name: {function_name}")
-    print(f"Function args: {function_args}")
+    logger.info(f"Function name: {function_name}")
+    logger.debug(f"Function args: {function_args}")
 
     # Validate project_id for most functions
     if function_name not in ["get_github_access_token"] and project_id:
@@ -206,7 +187,7 @@ async def app_functions(function_name, function_args, project_id, conversation_i
         
         case "execute_command":
             command = function_args.get('commands', '')
-            print(f"Running command: {command}")
+            logger.debug(f"Running command: {command}")
             if settings.ENVIRONMENT == "local":
                 result = await run_command_locally(command, project_id=project_id, conversation_id=conversation_id)
             else:
@@ -217,7 +198,7 @@ async def app_functions(function_name, function_args, project_id, conversation_i
             command = function_args.get('start_server_command', '')
             application_port = function_args.get('application_port', '')
             type = function_args.get('type', '')
-            print(f"Running server: {command}")
+            logger.debug(f"Running server: {command}")
             if settings.ENVIRONMENT == "local":
                 result = await run_server_locally(command, project_id=project_id, conversation_id=conversation_id, application_port=application_port, type=type)
             else:
@@ -228,7 +209,7 @@ async def app_functions(function_name, function_args, project_id, conversation_i
             command = function_args.get('start_server_command', '')
             application_port = function_args.get('application_port', '')
             type = function_args.get('type', '')
-            print(f"Running local server: {command}")
+            logger.debug(f"Running local server: {command}")
             result = await run_server_locally(command, project_id=project_id, conversation_id=conversation_id, application_port=application_port, type=type)
             return result
         
@@ -238,7 +219,7 @@ async def app_functions(function_name, function_args, project_id, conversation_i
         case "implement_ticket":
             ticket_id = function_args.get('ticket_id')
             ticket_details = function_args.get('ticket_details')
-            print(f"\n\nTicket details: {ticket_details}\n\n")
+            logger.debug(f"Ticket details: {ticket_details}")
             implementation_plan = function_args.get('implementation_plan')
             return await implement_ticket(ticket_id, project_id, conversation_id, ticket_details, implementation_plan)
         
@@ -273,7 +254,7 @@ async def save_features(project_id):
     """
     Save the features from the PRD into a different list
     """
-    print("Save features function called \n\n")
+    logger.info("Save features function called ")
     
     error_response = validate_project_id(project_id)
     if error_response:
@@ -325,7 +306,7 @@ async def save_features(project_id):
         else:
             new_features = new_features_dict
 
-        print(f"\n\n New features: {new_features}")
+        logger.debug(f" New features: {new_features}")
     
         # Create new features using async database operations
         await sync_to_async(lambda: [
@@ -344,7 +325,7 @@ async def save_features(project_id):
             "message_to_agent": f"Features have been saved in the database"
         }
     except Exception as e:
-        print(f"Error saving features: {str(e)}")
+        logger.error(f"Error saving features: {str(e)}")
         return {
             "is_notification": False,
             "message_to_agent": f"Error saving features: {str(e)}"
@@ -354,7 +335,7 @@ async def save_personas(project_id):
     """
     Save the personas from the PRD into a different list
     """
-    print("Save personas function called \n\n")
+    logger.info("Save personas function called ")
     
     error_response = validate_project_id(project_id)
     if error_response:
@@ -405,7 +386,7 @@ async def save_personas(project_id):
         else:
             new_personas = new_personas_dict
 
-        print(f"\n\n New personas: {new_personas}")
+        logger.debug(f" New personas: {new_personas}")
     
         # Create new personas using async database operations
         await sync_to_async(lambda: [
@@ -423,7 +404,7 @@ async def save_personas(project_id):
             "message_to_agent": f"Personas have been successfully saved in the database"
         }
     except Exception as e:
-        print(f"Error saving personas: {str(e)}")
+        logger.error(f"Error saving personas: {str(e)}")
         return {
             "is_notification": False,
             "message_to_agent": f"Error saving personas: {str(e)}"
@@ -433,7 +414,7 @@ async def extract_features(function_args, project_id, conversation_id=None):
     """
     Extract the features from the project into a different list and save them to the database
     """
-    print("Feature extraction function called \n\n")
+    logger.info("Feature extraction function called ")
     
     # Import progress utility
     from coding.utils.progress_utils import send_tool_progress
@@ -538,7 +519,7 @@ async def extract_features(function_args, project_id, conversation_id=None):
             "message_to_agent": f"Features have been saved in the database"
         }
     except Exception as e:
-        print(f"Error saving features: {str(e)}")
+        logger.error(f"Error saving features: {str(e)}")
         if conversation_id:
             await send_tool_progress(
                 conversation_id, 
@@ -555,7 +536,7 @@ async def extract_personas(function_args, project_id, conversation_id=None):
     """
     Extract the personas from the project and save them to the database
     """
-    print("Persona extraction function called \n\n")
+    logger.info("Persona extraction function called ")
     
     # Import progress utility
     from coding.utils.progress_utils import send_tool_progress
@@ -659,7 +640,7 @@ async def extract_personas(function_args, project_id, conversation_id=None):
             "message_to_agent": f"Personas have been saved in the database"
         }
     except Exception as e:
-        print(f"Error saving personas: {str(e)}")
+        logger.error(f"Error saving personas: {str(e)}")
         if conversation_id:
             await send_tool_progress(
                 conversation_id, 
@@ -676,7 +657,7 @@ async def get_features(project_id):
     """
     Retrieve existing features for a project
     """
-    print("Get features function called \n\n")
+    logger.info("Get features function called ")
     
     error_response = validate_project_id(project_id)
     if error_response:
@@ -722,7 +703,7 @@ async def get_personas(project_id):
     """
     Retrieve existing personas for a project
     """
-    print("Get personas function called \n\n")
+    logger.info("Get personas function called ")
     
     error_response = validate_project_id(project_id)
     if error_response:
@@ -767,7 +748,7 @@ async def create_prd(function_args, project_id):
     """
     Save the PRD for a project
     """
-    print(f"PRD saving function called \n\n: {function_args}")
+    logger.info(f"PRD saving function called : {function_args}")
     
     error_response = validate_project_id(project_id)
     if error_response:
@@ -792,7 +773,7 @@ async def create_prd(function_args, project_id):
             "message_to_agent": "Error: PRD content cannot be empty"
         }
 
-    print(f"\n\n\nPRD Content: {prd_content}")
+    logger.debug(f"\nPRD Content: {prd_content}")
 
     try:
         # Save PRD to database
@@ -830,7 +811,7 @@ async def get_prd(project_id):
     """
     Retrieve the PRD for a project
     """
-    print("Get PRD function called \n\n")
+    logger.info("Get PRD function called ")
     
     error_response = validate_project_id(project_id)
     if error_response:
@@ -852,7 +833,7 @@ async def get_prd(project_id):
         return {
             "is_notification": True,
             "notification_type": "prd",
-            "message_to_agent": f"Here is the existing version of the PRD: {prd_content} \n\n Please update this as needed."
+            "message_to_agent": f"Here is the existing version of the PRD: {prd_content}  Please update this as needed."
         }
     except ProjectPRD.DoesNotExist:
         return {
@@ -869,7 +850,7 @@ async def create_implementation(function_args, project_id):
     """
     Save the implementation for a project
     """
-    print(f"Implementation saving function called \n\n: {function_args}")
+    logger.info(f"Implementation saving function called : {function_args}")
     
     error_response = validate_project_id(project_id)
     if error_response:
@@ -894,7 +875,7 @@ async def create_implementation(function_args, project_id):
             "message_to_agent": "Error: PRD content cannot be empty"
         }
 
-    print(f"\n\n\nImplementation Content: {implementation_content}")
+    logger.debug(f"\nImplementation Content: {implementation_content}")
 
     try:
         # Save PRD to database
@@ -928,7 +909,7 @@ async def get_implementation(project_id):
     """
     Retrieve the Implementation for a project
     """
-    print("Get Implementation function called \n\n")
+    logger.info("Get Implementation function called ")
     
     error_response = validate_project_id(project_id)
     if error_response:
@@ -950,7 +931,7 @@ async def get_implementation(project_id):
         return {
             "is_notification": True,
             "notification_type": "implementation",
-            "message_to_agent": f"Here is the existing version of the Implementation: {implementation_content} \n\n Please update this as needed."
+            "message_to_agent": f"Here is the existing version of the Implementation: {implementation_content}  Please update this as needed."
         }
     except ProjectImplementation.DoesNotExist:
         return {
@@ -967,7 +948,7 @@ async def update_implementation(function_args, project_id):
     """
     Update the implementation for a project by adding new sections or modifications
     """
-    print(f"Update Implementation function called \n\n: {function_args}")
+    logger.info(f"Update Implementation function called : {function_args}")
     
     error_response = validate_project_id(project_id)
     if error_response:
@@ -994,8 +975,8 @@ async def update_implementation(function_args, project_id):
             "message_to_agent": "Error: Update content cannot be empty"
         }
 
-    print(f"\n\n\nUpdate Type: {update_type}")
-    print(f"Update Summary: {update_summary}")
+    logger.debug(f"\nUpdate Type: {update_type}")
+    logger.debug(f"Update Summary: {update_summary}")
 
     try:
         # Get existing implementation or create new one
@@ -1061,7 +1042,7 @@ async def save_design_schema(function_args, project_id):
     """
     Save the design schema for a project
     """
-    print("Save design schema function called \n\n")
+    logger.info("Save design schema function called ")
     
     error_response = validate_project_id(project_id)
     if error_response:
@@ -1138,7 +1119,7 @@ async def create_checklist_tickets(function_args, project_id):
     """
     Generate checklist tickets for a project
     """
-    print("Checklist tickets function called \n\n")
+    logger.info("Checklist tickets function called ")
     
     error_response = validate_project_id(project_id)
     if error_response:
@@ -1205,7 +1186,7 @@ async def get_next_ticket(project_id):
     """
     Get the latest ticket for a project
     """
-    print("Get pending tickets function called \n\n")
+    logger.info("Get pending tickets function called ")
 
     error_response = validate_project_id(project_id)
     if error_response:
@@ -1223,16 +1204,16 @@ async def get_next_ticket(project_id):
     )()
     
     # Print ticket ID instead of the object to avoid triggering __str__ method
-    print(f"\n\nPending ticket ID: {pending_ticket.id if pending_ticket else None}")
+    logger.debug(f"Pending ticket ID: {pending_ticket.id if pending_ticket else None}")
 
     if pending_ticket:
         # Access the fields directly without triggering related queries
         message_to_agent = f"Pending ticket: \nTicket Id: {pending_ticket.id}, \nTicket Name: {pending_ticket.name},\
-              \nTicket Description: {pending_ticket.description}, \nTicket Priority: {pending_ticket.priority}. \n\nBuild this ticket first."
+              \nTicket Description: {pending_ticket.description}, \nTicket Priority: {pending_ticket.priority}. Build this ticket first."
     else:
         message_to_agent = "No pending tickets found"
 
-    print(f"\n\nMessage to agent: {message_to_agent}")
+    logger.debug(f"Message to agent: {message_to_agent}")
 
     return {
         "is_notification": True,
@@ -1244,8 +1225,8 @@ async def update_individual_checklist_ticket(project_id, ticket_id, status):
     """
     Update an individual checklist ticket for a project
     """
-    print("Update individual checklist ticket function called \n\n")
-    print(f"\n\nTicket ID: {ticket_id} and status: {status}")
+    logger.info("Update individual checklist ticket function called ")
+    logger.debug(f"Ticket ID: {ticket_id} and status: {status}")
     
     if not ticket_id or not status:
         return {
@@ -1259,7 +1240,7 @@ async def update_individual_checklist_ticket(project_id, ticket_id, status):
             ProjectChecklist.objects.filter(id=ticket_id).update(status=status)
         ))()
 
-        print(f"\n\nChecklist ticket {ticket_id} has been successfully updated in the database. Proceed to next checklist item, unless otherwise specified by the user")
+        logger.info(f"Checklist ticket {ticket_id} has been successfully updated in the database. Proceed to next checklist item, unless otherwise specified by the user")
 
         return {
             "is_notification": True,
@@ -1276,7 +1257,7 @@ async def get_pending_tickets(project_id):
     """
     Get pending tickets for a project
     """
-    print("Get pending tickets function called \n\n")
+    logger.info("Get pending tickets function called ")
 
     error_response = validate_project_id(project_id)
     if error_response:
@@ -1384,7 +1365,7 @@ async def run_command_in_k8s(command: str, project_id: int | str = None, convers
         )()
 
     command_to_run = f"cd /workspace && {command}"
-    print(f"\n\nCommand: {command_to_run}")
+    logger.debug(f"Command: {command_to_run}")
 
     # Create command record in database
     cmd_record = await sync_to_async(lambda: (
@@ -1405,7 +1386,7 @@ async def run_command_in_k8s(command: str, project_id: int | str = None, convers
             None, execute_command_in_pod, project_id, conversation_id, command_to_run
         )
 
-        print(f"\n\nCommand output: {stdout}")
+        logger.debug(f"Command output: {stdout}")
 
         # Update command record with output
         await sync_to_async(lambda: (
@@ -1424,13 +1405,13 @@ async def run_command_in_k8s(command: str, project_id: int | str = None, convers
         return {
             "is_notification": True,
             "notification_type": "command_error",
-            "message_to_agent": f"{stderr}\n\nThe command execution failed. Stop generating further steps and inform the user that the command could not be executed.",
+            "message_to_agent": f"{stderr}The command execution failed. Stop generating further steps and inform the user that the command could not be executed.",
         }
     
     return {
         "is_notification": True,
         "notification_type": "command_output", 
-        "message_to_agent": f"Command output: {stdout}\n\nFix if there is any error, otherwise you can proceed to next step",
+        "message_to_agent": f"Command output: {stdout}Fix if there is any error, otherwise you can proceed to next step",
     }
 
 async def server_command_in_k8s(command: str, project_id: int | str = None, conversation_id: int | str = None, application_port: int | str = None, type: str = None) -> dict:
@@ -1452,8 +1433,8 @@ async def server_command_in_k8s(command: str, project_id: int | str = None, conv
     from kubernetes import client as k8s_client
     from kubernetes.client.rest import ApiException
 
-    print(f"\n\nApplication port: {application_port}")
-    print(f"\n\nType: {type}")
+    logger.debug(f"Application port: {application_port}")
+    logger.debug(f"Type: {type}")
 
     if project_id:
         pod = await sync_to_async(
@@ -1510,11 +1491,11 @@ async def server_command_in_k8s(command: str, project_id: int | str = None, conv
         
         if existing_mapping:
             # Use existing mapping
-            print(f"Using existing port mapping for {port_type} port {application_port}")
+            logger.debug(f"Using existing port mapping for {port_type} port {application_port}")
             node_port = existing_mapping.node_port
         else:
             # Need to add port to service and create mapping using Kubernetes API
-            print(f"Creating new port mapping for {port_type} port {application_port}")
+            logger.debug(f"Creating new port mapping for {port_type} port {application_port}")
             
             # Get Kubernetes API client in thread pool
             api_client, core_v1_api, apps_v1_api = await asyncio.get_event_loop().run_in_executor(
@@ -1549,7 +1530,7 @@ async def server_command_in_k8s(command: str, project_id: int | str = None, conv
                 
                 if existing_port:
                     node_port = existing_port.node_port
-                    print(f"Port {application_port} already exists in service with nodePort {node_port}")
+                    logger.debug(f"Port {application_port} already exists in service with nodePort {node_port}")
                 else:
                     # Add new port to service
                     new_port = k8s_client.V1ServicePort(
@@ -1584,7 +1565,7 @@ async def server_command_in_k8s(command: str, project_id: int | str = None, conv
                             "message_to_agent": f"Failed to get nodePort for port {application_port}"
                         }
                     
-                    print(f"Kubernetes assigned nodePort {node_port} for {port_type} port {application_port}")
+                    logger.debug(f"Kubernetes assigned nodePort {node_port} for {port_type} port {application_port}")
                 
                 # Get node IP using Kubernetes API in thread pool
                 try:
@@ -1598,7 +1579,7 @@ async def server_command_in_k8s(command: str, project_id: int | str = None, conv
                                 node_ip = address.address
                                 break
                 except Exception as e:
-                    print(f"Warning: Could not get node IP: {e}")
+                    logger.warning(f"Could not get node IP: {e}")
                     node_ip = "localhost"
                 
                 # Create port mapping in database if it doesn't exist
@@ -1646,24 +1627,24 @@ async def server_command_in_k8s(command: str, project_id: int | str = None, conv
     
     # Prepare and run the command in the pod using Kubernetes API
     full_command = f"mkdir -p /workspace/tmp && cd /workspace && {command} > /workspace/tmp/cmd_output.log 2>&1 &"
-    print(f"\n\nCommand: {full_command}")
+    logger.debug(f"Command: {full_command}")
 
     # Execute the command using the Kubernetes API function in thread pool
     success, stdout, stderr = await asyncio.get_event_loop().run_in_executor(
         None, execute_command_in_pod, project_id, conversation_id, full_command
     )
     
-    print(f"\n\nCommand output: {stdout}")
+    logger.debug(f"Command output: {stdout}")
 
     if not success:
         return {
             "is_notification": True,
             "notification_type": "command_error",
-            "message_to_agent": f"{stderr}\n\nThe command execution failed. Stop generating further steps and inform the user that the command could not be executed.",
+            "message_to_agent": f"{stderr}The command execution failed. Stop generating further steps and inform the user that the command could not be executed.",
         }
     
     # Prepare success message with port information if applicable
-    message = f"{stdout}\n\nCommand to run server is successful."
+    message = f"{stdout}Command to run server is successful."
     
     if application_port:
         # Get the pod's service details
@@ -1671,13 +1652,13 @@ async def server_command_in_k8s(command: str, project_id: int | str = None, conv
         node_ip = service_details.get('nodeIP', 'localhost')
         
         # Add URL information to the message
-        message += f"\n\n{port_type.capitalize()} is running on port {application_port} inside the container."
+        message += f"{port_type.capitalize()} is running on port {application_port} inside the container."
         message += f"\nYou can access it at: http://{node_ip}:{node_port}"
     
     return {
         "is_notification": True,
         "notification_type": "command_output",
-        "message_to_agent": message + "\n\nProceed to next step",
+        "message_to_agent": message + "Proceed to next step",
     }
 
 async def run_command_locally(command: str, project_id: int | str = None, conversation_id: int | str = None) -> dict:
@@ -1691,7 +1672,7 @@ async def run_command_locally(command: str, project_id: int | str = None, conver
     workspace_path.mkdir(parents=True, exist_ok=True)
     
     command_to_run = f"cd {workspace_path} && {command}"
-    print(f"\n\nLocal Command: {command_to_run}")
+    logger.debug(f"Local Command: {command_to_run}")
 
     # Create command record in database
     cmd_record = await sync_to_async(lambda: (
@@ -1712,9 +1693,9 @@ async def run_command_locally(command: str, project_id: int | str = None, conver
             None, execute_local_command, command, str(workspace_path)
         )
 
-        print(f"\n\nLocal Command output: {stdout}")
+        logger.debug(f"Local Command output: {stdout}")
         if stderr:
-            print(f"\n\nLocal Command stderr: {stderr}")
+            logger.warning(f"Local Command stderr: {stderr}")
 
         # Update command record with output
         await sync_to_async(lambda: (
@@ -1736,13 +1717,13 @@ async def run_command_locally(command: str, project_id: int | str = None, conver
         return {
             "is_notification": True,
             "notification_type": "command_error",
-            "message_to_agent": f"{stderr}\n\nThe local command execution failed. Stop generating further steps and inform the user that the command could not be executed.",
+            "message_to_agent": f"{stderr}The local command execution failed. Stop generating further steps and inform the user that the command could not be executed.",
         }
     
     return {
         "is_notification": True,
         "notification_type": "command_output", 
-        "message_to_agent": f"Local command output: {stdout}\n\nFix if there is any error, otherwise you can proceed to next step",
+        "message_to_agent": f"Local command output: {stdout}Fix if there is any error, otherwise you can proceed to next step",
     }
 
 # Updated run_server_locally function
@@ -1753,8 +1734,8 @@ async def run_server_locally(command: str, project_id: int | str = None,
     """
     Run a server command locally in background.
     """
-    print(f"\n\nLocal Application port: {application_port}")
-    print(f"\n\nLocal Type: {type}")
+    logger.debug(f"Local Application port: {application_port}")
+    logger.debug(f"Local Type: {type}")
 
     # Create workspace directory if it doesn't exist
     workspace_path = Path.home() / "LFG" / "workspace"
@@ -1797,7 +1778,7 @@ async def run_server_locally(command: str, project_id: int | str = None,
     # 2. Check if server is running on the port and kill it
     kill_command = f"lsof -ti:{application_port} | xargs kill -9 2>/dev/null || true"
     success, stdout, stderr = execute_local_command(kill_command, str(workspace_path))
-    print(f"Killed existing process on port {application_port}")
+    logger.info(f"Killed existing process on port {application_port}")
     
     # Wait a moment for port to be freed
     await asyncio.sleep(1)
@@ -1830,10 +1811,10 @@ async def run_server_locally(command: str, project_id: int | str = None,
         return {
             "is_notification": True,
             "notification_type": "server_started",
-            "message_to_agent": f"✅ Server started successfully!\n\n"
+            "message_to_agent": f"✅ Server started successfully!"
                                f"📍 Running on port {application_port}\n"
                                f"🔗 URL: http://localhost:{application_port}\n"
-                               f"📄 Logs: {log_file}\n\n"
+                               f"📄 Logs: {log_file}"
                                f"The server is running in the background. Proceed with next steps.\n"
                                f"To view logs: tail -f {log_file}"
         }
@@ -1849,8 +1830,8 @@ async def run_server_locally(command: str, project_id: int | str = None,
         return {
             "is_notification": True,
             "notification_type": "server_error",
-            "message_to_agent": f"⚠️ Server may not have started properly.\n\n"
-                               f"Recent logs:\n```\n{last_lines}\n```\n\n"
+            "message_to_agent": f"⚠️ Server may not have started properly."
+                               f"Recent logs:\n```\n{last_lines}\n```"
                                f"Please check the logs and fix any issues."
         }
 
@@ -1899,8 +1880,8 @@ async def restart_server_from_config(project_id: int) -> dict:
 
 async def copy_boilerplate_code(project_id, project_name):
     """Copy the boilerplate code from the project"""
-    print("Copy boilerplate code function called \n\n")
-    print(f"\n\nProject name: {project_name}\n\n")
+    logger.info("Copy boilerplate code function called ")
+    logger.debug(f"Project name: {project_name}")
     
     error_response = validate_project_id(project_id)
     if error_response:
@@ -1920,8 +1901,8 @@ async def copy_boilerplate_code(project_id, project_name):
         # Define source and destination paths
         source_path = os.path.join(os.getcwd(), "boilerplate", "lfg-template")
         dest_path = os.path.join(os.path.expanduser("~"), "LFG", "workspace", folder_name)
-        print(f"\n\nSource path: {source_path}\n\n")
-        print(f"\n\nDestination path: {dest_path}\n\n")
+        logger.debug(f"Source path: {source_path}")
+        logger.debug(f"Destination path: {dest_path}")
         
         # Create destination directory if it doesn't exist
         os.makedirs(dest_path, exist_ok=True)
@@ -1944,7 +1925,7 @@ async def copy_boilerplate_code(project_id, project_name):
             "message_to_agent": f"Boilerplate code has been successfully copied to ~/LFG/workspace/{folder_name}. The project has been initialized with git."
         }
     except Exception as e:
-        print(f"Error copying boilerplate code: {str(e)}")
+        logger.error(f"Error copying boilerplate code: {str(e)}")
         return {
             "is_notification": False,
             "message_to_agent": f"Error copying boilerplate code: {str(e)}"
@@ -1954,7 +1935,7 @@ async def capture_name(action, project_name, project_id):
     """
     Save or retrieve the project name
     """
-    print(f"Capture name function called with action: {action}, project_name: {project_name}")
+    logger.info(f"Capture name function called with action: {action}, project_name: {project_name}")
     
     if action == "save":
         return await save_project_name(project_name, project_id)
@@ -1970,7 +1951,7 @@ async def save_project_name(project_name, project_id):
     """
     Save the project name to the project model
     """
-    print(f"Save project name function called: {project_name}")
+    logger.info(f"Save project name function called: {project_name}")
     
     if not project_name:
         return {
@@ -2011,7 +1992,7 @@ async def get_project_name(project_id):
     """
     Retrieve the project name from the project model
     """
-    print(f"Get project name function called for project_id: {project_id}")
+    logger.info(f"Get project name function called for project_id: {project_id}")
     
     error_response = validate_project_id(project_id)
     if error_response:
@@ -2049,7 +2030,7 @@ async def implement_ticket(ticket_id, project_id, conversation_id, ticket_detail
     Returns a special marker that indicates this tool should stream its implementation
     """
     try:
-        print(f"\nTicket details: {ticket_details}\n\n")
+        logger.debug(f"\nTicket details: {ticket_details}")
         
         # Extract key details
         ticket_name = ticket_details.get('name', 'Unknown')
@@ -2073,7 +2054,7 @@ async def implement_ticket(ticket_id, project_id, conversation_id, ticket_detail
         }
         
     except Exception as e:
-        print(f"Error setting up ticket implementation {ticket_id}: {str(e)}")
+        logger.error(f"Error setting up ticket implementation {ticket_id}: {str(e)}")
         return {
             "is_notification": True,
             "notification_type": "ticket_error",

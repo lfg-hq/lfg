@@ -13,13 +13,14 @@ from google.genai.types import (
     HttpOptions,
     Tool,
 )
+from asgiref.sync import sync_to_async
 from coding.utils.ai_functions import app_functions
 from chat.models import AgentRole, ModelSelection, Conversation
 from projects.models import Project, ToolCallHistory
-from accounts.models import TokenUsage
+from accounts.models import TokenUsage, Profile
 from django.contrib.auth.models import User
 import traceback # Import traceback for better error logging
-
+from channels.db import database_sync_to_async
 from coding.utils.ai_tools import tools_ticket
 
 # Set up logger
@@ -260,8 +261,30 @@ async def get_ai_response(user_message, system_prompt, project_id, conversation_
         {"role": "user", "content": user_message}
     ]
     
+    # Get the conversation or project to extract the user
+    conversation = None
+    project = None
+    user = None
+    
+    try:
+        if conversation_id:
+            conversation = await asyncio.to_thread(
+                Conversation.objects.select_related('user', 'project').get,
+                id=conversation_id
+            )
+            user = conversation.user
+            project = conversation.project
+        elif project_id:
+            project = await asyncio.to_thread(
+                Project.objects.select_related('owner').get,
+                id=project_id
+            )
+            user = project.owner
+    except Exception as e:
+        logger.warning(f"Could not get user/conversation/project: {e}")
+    
     # Get the default provider (can be enhanced later to support provider selection)
-    provider = AIProvider.get_provider("anthropic", "claude_4_sonnet")
+    provider = AIProvider.get_provider("anthropic", "claude_4_sonnet", user, conversation, project)
     
     # Collect the streaming response
     full_content = ""
@@ -294,17 +317,18 @@ class AIProvider:
     """Base class for AI providers"""
     
     @staticmethod
-    def get_provider(provider_name, selected_model):
+    def get_provider(provider_name, selected_model, user=None, conversation=None, project=None):
         """Factory method to get the appropriate provider"""
+        print(f"\n\n\nCreating provider with provider_name: {provider_name}, selected_model: {selected_model}, user: {user}")
         providers = {
-            'openai': lambda: OpenAIProvider(selected_model),
-            # 'anthropic': lambda: AnthropicProvider(selected_model),
+            'openai': lambda: OpenAIProvider(selected_model, user, conversation, project),
+            'anthropic': lambda: AnthropicProvider(selected_model, user, conversation, project),
         }
         provider_factory = providers.get(provider_name)
         if provider_factory:
             return provider_factory()
         else:
-            return OpenAIProvider(selected_model)  # Default fallback
+            return OpenAIProvider(selected_model, user, conversation, project)  # Default fallback
     
     async def generate_stream(self, messages, project_id, conversation_id, tools):
         """Generate streaming response from the AI provider"""
@@ -314,29 +338,74 @@ class AIProvider:
 class OpenAIProvider(AIProvider):
     """OpenAI provider implementation"""
     
-    def __init__(self, selected_model):
+    def __init__(self, selected_model, user=None, conversation=None, project=None):
 
         logger.debug(f"Selected model: {selected_model}")
-
-        openai_api_key = os.getenv('OPENAI_API_KEY') 
-        anthropic_api_key = os.getenv('ANTHROPIC_API_KEY')
+        
+        # Get user from conversation or project if not provided
+        if not user:
+            if conversation:
+                user = conversation.user
+            elif project:
+                user = project.owner
+        
+        # Store user and model info for async profile fetching
+        self.user = user
+        self.selected_model = selected_model
+        # self.openai_api_key = os.getenv('OPENAI_API_KEY', '')
 
         if selected_model == "gpt_4o":
             self.model = "gpt-4o"
-            self.client = openai.OpenAI(api_key=openai_api_key)
         elif selected_model == "gpt_4.1":
             self.model = "gpt-4.1"
-            self.client = openai.OpenAI(api_key=openai_api_key)
         elif selected_model == "o3":
             self.model = "o3"
-            self.client = openai.OpenAI(api_key=openai_api_key)
-        elif selected_model == "claude_4_sonnet":
-            self.model = "claude-sonnet-4-20250514"
-            logger.debug(f"Selected model: {self.model}")
-            self.client = openai.OpenAI(api_key=anthropic_api_key, base_url="https://api.anthropic.com/v1/")
+        else:
+            # Default to gpt-4o if unknown model
+            self.model = "gpt-4o"
+            logger.warning(f"Unknown model {selected_model}, defaulting to gpt-4o")
+        
+        # Client will be initialized in async method
+        self.client = None
+    
+    @database_sync_to_async
+    def _get_openai_key(self, user):
+        """Get user profile synchronously"""
+        profile = Profile.objects.get(user=user)
+        print(f"\n\n\nOpenAI key: {profile.openai_api_key}")
+        if profile.openai_api_key:
+            return profile.openai_api_key
+        return ""
+
+    async def _ensure_client(self):
+        """Ensure the client is initialized with API key"""
+        
+        # Try to fetch API key from user profile if available and not already set
+        if self.user:
+            try:
+                self.openai_api_key = await self._get_openai_key(self.user)
+                logger.info(f"Fetched OpenAI API key from user {self.user.id} profile")
+            except Profile.DoesNotExist:
+                logger.warning(f"Profile does not exist for user {self.user.id}")
+            except Exception as e:
+                logger.warning(f"Could not fetch OpenAI API key from user profile for user {self.user.id}: {e}")
+        
+        # Initialize client
+        if self.openai_api_key:
+            self.client = openai.OpenAI(api_key=self.openai_api_key)
+        else:
+            logger.warning("No OpenAI API key found")
 
 
     async def generate_stream(self, messages, project_id, conversation_id, tools):
+        # Ensure client is initialized with API keys
+        await self._ensure_client()
+        
+        # Check if client is initialized
+        if not self.client:
+            yield "Error: No OpenAI API key configured. Please add API key here http://localhost:8000/accounts/integrations/."
+            return
+            
         current_messages = list(messages) # Work on a copy
         
         # Get user and project/conversation for token tracking
@@ -589,10 +658,25 @@ class OpenAIProvider(AIProvider):
 class AnthropicProvider(AIProvider):
     """Anthropic Claude provider implementation"""
     
-    def __init__(self, selected_model):
+    def __init__(self, selected_model, user=None, conversation=None, project=None):
         logger.debug(f"Selected model: {selected_model}")
         
-        anthropic_api_key = os.getenv('ANTHROPIC_API_KEY')
+        # Get user from conversation or project if not provided
+        if not user:
+            if conversation:
+                user = conversation.user
+            elif project:
+                user = project.owner
+        
+        # Store user for async profile fetching
+        self.user = user
+
+        print(f"\n\n\nUser: {user}")
+
+        profile = self._get_profile(user)
+        print(f"\n\n\nProfile for user {user}: {profile}")
+        
+        self.anthropic_api_key = ''
         
         if selected_model == "claude_4_sonnet":
             self.model = "claude-sonnet-4-20250514"
@@ -605,7 +689,40 @@ class AnthropicProvider(AIProvider):
             self.model = "claude-sonnet-4-20250514"
             
         logger.debug(f"Using Claude model: {self.model}")
-        self.client = anthropic.AsyncAnthropic(api_key=anthropic_api_key)
+        
+        # Client will be initialized in async method
+        self.client = None
+    
+    @database_sync_to_async
+    def _get_anthropic_key(self, user):
+        """Get user profile synchronously"""
+        profile = Profile.objects.get(user=user)
+        print(f"\n\n\nKey: {profile.anthropic_api_key}")
+        if profile.anthropic_api_key:
+            return profile.anthropic_api_key
+        return ""
+
+    async def _ensure_client(self):
+        """Ensure the client is initialized with API key"""
+        print(f"\n\n\nEnsuring client is initialized with API key for user: {self.user}")
+        
+        # Try to fetch API key from user profile if available and not already set
+        if self.user:
+            try:
+                print(f"\n\n\nUser exists: {self.user} (ID: {self.user.id})")
+                self.anthropic_api_key = await self._get_anthropic_key(self.user)
+                logger.info(f"Fetched Anthropic API key from user {self.user.id} profile")
+
+            except Profile.DoesNotExist:
+                logger.warning(f"Profile does not exist for user {self.user.id}")
+            except Exception as e:
+                logger.warning(f"Could not fetch Anthropic API key from user profile for user {self.user.id}: {e}")
+        
+        # Initialize client
+        if self.anthropic_api_key:
+            self.client = anthropic.AsyncAnthropic(api_key=self.anthropic_api_key)
+        else:
+            logger.warning("No Anthropic API key found")
 
     def _convert_messages_to_claude_format(self, messages):
         """Convert OpenAI format messages to Claude format"""
@@ -669,6 +786,15 @@ class AnthropicProvider(AIProvider):
         return claude_tools
 
     async def generate_stream(self, messages, project_id, conversation_id, tools):
+        # Ensure client is initialized with API key
+        print(f"\n\n\nGenerating stream for user ")
+        await self._ensure_client()
+        
+        # Check if client is initialized
+        if not self.client:
+            yield "Error: No Anthropic API key configured. Please add API key here http://localhost:8000/accounts/integrations/."
+            return
+            
         current_messages = list(messages) # Work on a copy
         
         # Get user and project/conversation for token tracking

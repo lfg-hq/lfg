@@ -1,4 +1,4 @@
-# LFG 🚀 | AI-Powered Product Development Platform
+# LFG 🚀 | Agentic framework for AI dev team.
 
 > **Build Products with AI Agents** - The ultimate open-source platform that combines Product Managers, Developers, and Designers in one intelligent workspace.
 
@@ -11,7 +11,7 @@
 
 ## 🌟 Overview
 
-LFG is an open-source AI-powered product development platform that helps you build software. The goal is to help you at every stage of product development, from ideation to deployment, and fixing bugs. 
+LFG is an open-source AI-powered product development platform that helps you build software. The goal is to help you at every stage of product development, from ideation to deployment, and fixing bugs. (Still a work in progress)
 
 
 
@@ -20,7 +20,7 @@ LFG is an open-source AI-powered product development platform that helps you bui
 - 🤖 **Specialized AI Agents** working as your virtual team (product manager, developer, designer)
 - 📝 **Smart PRD Generation** with AI-powered requirements
 - 🎯 **Intelligent Ticket Creation** with automated task breakdown
-- 💻 **Built-in Code Editor**
+- 💻 **Built-in Code Editor** (Only when configured with Kubernetes)
 - 🌐 **Full-Stack Web Apps** from frontend to backend
 
 #### Coming Soon
@@ -36,6 +36,8 @@ LFG is an open-source AI-powered product development platform that helps you bui
 - **Intelligent Ticket Creation**: Automatically break down complex features into manageable tickets with proper prioritization
 - **Built-in Code Editor**: Professional-grade editor with AI assistance, syntax highlighting, and real-time collaboration
 - **Full-Stack Development**: Build complete web applications with AI guidance and best practices
+
+Coming soon:
 - **Automated Bug Fixing**: Intelligent detection and resolution with suggested fixes and automated testing
 - **One-Click Deployment**: Deploy instantly with multiple hosting options and automated CI/CD pipelines
 
@@ -55,6 +57,7 @@ LFG is an open-source AI-powered product development platform that helps you bui
 
 ### Prerequisites
 - Python 3.11+
+- Redis
 - Docker (optional, for containerized development)
 - Git
 
@@ -143,11 +146,6 @@ lfg/
 ### Environment Variables
 
 Create a `.env` file or configure `env.sh` with the following variables:
-
-
-## ☸️ Kubernetes Integration
-
-LFG provides powerful Kubernetes integration for creating isolated development environments and managing remote code execution. For detailed setup instructions and configuration options, see our [Kubernetes Integration Guide](README-K8S.md).
 
 ## 🤝 Contributing
 

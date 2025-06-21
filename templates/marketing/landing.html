@@ -1,3 +1,4 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -359,6 +360,30 @@
             box-shadow: 0 10px 30px rgba(139, 92, 246, 0.2);
         }
 
+        /* Disabled agent cards */
+        .feature-card.disabled {
+            opacity: 0.5;
+            filter: grayscale(1);
+            pointer-events: none;
+            position: relative;
+        }
+
+        .feature-card.disabled:hover {
+            transform: none;
+            border-color: var(--border-color);
+            box-shadow: none;
+        }
+
+        .feature-card.disabled .feature-icon {
+            background: linear-gradient(135deg, var(--text-muted), var(--border-color));
+        }
+
+        .feature-card.disabled h3,
+        .feature-card.disabled .feature-role,
+        .feature-card.disabled p {
+            color: var(--text-muted);
+        }
+
         .feature-icon {
             width: 60px;
             height: 60px;
@@ -538,6 +563,13 @@
             color: var(--text-primary);
         }
 
+        .custom-card.disabled {
+            opacity: 0.5;
+            filter: grayscale(1);
+            pointer-events: none;
+            position: relative;
+        }
+
         .custom-list {
             list-style: none;
             padding: 0;
@@ -710,11 +742,11 @@
                 <a href="#features">Features</a>
                 <a href="#agents">AI Agents</a>
                 <a href="#customization">Customize</a>
-                <a href="https://github.com/yourusername/lfg" class="github-btn" target="_blank">
+                <a href="https://github.com/lfg-hq/lfg" class="github-btn" target="_blank">
                     <i class="fab fa-github"></i>
                     Open Source
                 </a>
-                <a href="#get-started" class="cta-btn">Get Started</a>
+                <a href="{% url 'auth' %}" class="cta-btn">Get Started</a>
             </div>
         </div>
     </nav>
@@ -726,10 +758,10 @@
                 <i class="fas fa-rocket"></i>
                 Open Source AI Platform
             </div>
-            <h1>Build Products with AI Agents</h1>
+            <h1>Agentic framework for AI dev team.</h1>
             <p>The AI-powered platform that combines Product Managers, Developers, and Designers in one intelligent workspace. Create PRDs, build apps, fix bugs, and ship faster than ever.</p>
             <div class="hero-buttons">
-                <a href="#get-started" class="btn-primary">
+                <a href="{% url 'auth' %}" class="btn-primary">
                     <i class="fas fa-play"></i>
                     Start Building
                 </a>
@@ -776,14 +808,14 @@
                 <h3>Full-Stack Web Apps</h3>
                 <p>Build complete web applications from frontend to backend with AI guidance and best practices built-in.</p>
             </div>
-            <div class="feature-card">
+            <div class="feature-card disabled">
                 <div class="feature-icon">
                     <i class="fas fa-bug"></i>
                 </div>
                 <h3>Automated Bug Fixing</h3>
                 <p>Intelligent bug detection and resolution with suggested fixes and automated testing to ensure quality.</p>
             </div>
-            <div class="feature-card">
+            <div class="feature-card disabled">
                 <div class="feature-icon">
                     <i class="fas fa-rocket"></i>
                 </div>
@@ -817,7 +849,7 @@
                     <div class="agent-role">Implementation & Architecture</div>
                     <p>Builds robust applications, implements features, optimizes performance, and ensures code quality.</p>
                 </div>
-                <div class="agent-card">
+                <div class="agent-card disabled">
                     <div class="agent-avatar">
                         <i class="fas fa-palette"></i>
                     </div>
@@ -825,33 +857,7 @@
                     <div class="agent-role">Design & Experience</div>
                     <p>Creates beautiful interfaces, designs user experiences, and ensures accessibility and usability.</p>
                 </div>
-                <div class="agent-card disabled">
-                    <div class="coming-soon-badge">Coming Soon</div>
-                    <div class="agent-avatar">
-                        <i class="fas fa-shield-alt"></i>
-                    </div>
-                    <h3>QA Engineer</h3>
-                    <div class="agent-role">Quality & Testing</div>
-                    <p>Performs automated testing, identifies bugs, ensures quality standards, and validates functionality.</p>
-                </div>
-                <div class="agent-card disabled">
-                    <div class="coming-soon-badge">Coming Soon</div>
-                    <div class="agent-avatar">
-                        <i class="fas fa-cloud"></i>
-                    </div>
-                    <h3>DevOps Engineer</h3>
-                    <div class="agent-role">Deployment & Infrastructure</div>
-                    <p>Manages deployments, configures infrastructure, monitors performance, and ensures scalability.</p>
-                </div>
-                <div class="agent-card disabled">
-                    <div class="coming-soon-badge">Coming Soon</div>
-                    <div class="agent-avatar">
-                        <i class="fas fa-chart-line"></i>
-                    </div>
-                    <h3>Data Analyst</h3>
-                    <div class="agent-role">Insights & Analytics</div>
-                    <p>Analyzes user behavior, provides insights, creates reports, and drives data-informed decisions.</p>
-                </div>
+
             </div>
         </div>
     </section>
@@ -869,11 +875,8 @@
                 </div>
                 <h3>AI Models</h3>
                 <ul class="custom-list">
-                    <li>OpenAI GPT-4 & GPT-3.5</li>
+                    <li>OpenAI</li>
                     <li>Anthropic Claude</li>
-                    <li>Google Gemini</li>
-                    <li>Local LLMs (Ollama)</li>
-                    <li>Custom fine-tuned models</li>
                 </ul>
             </div>
             <div class="custom-card">
@@ -882,11 +885,8 @@
                 </div>
                 <h3>Tech Stacks</h3>
                 <ul class="custom-list">
-                    <li>React, Vue, Angular</li>
-                    <li>Node.js, Python, Go</li>
-                    <li>PostgreSQL, MongoDB</li>
-                    <li>Docker, Kubernetes</li>
-                    <li>Custom frameworks</li>
+                    <li>Next.js</li>
+                    <li>Customizable in Prompt</li>
                 </ul>
             </div>
             <!-- <div class="custom-card">
@@ -902,7 +902,7 @@
                     <li>Hybrid cloud setups</li>
                 </ul>
             </div> -->
-            <div class="custom-card">
+            <div class="custom-card disabled">
                 <div class="custom-icon">
                     <i class="fas fa-plug"></i>
                 </div>
@@ -924,8 +924,8 @@
             <h2>Ready to Build the Future?</h2>
             <p>Join thousands of developers and product teams who are shipping faster with AI-powered development.</p>
             <div class="cta-buttons">
-                <a href="https://github.com/yourusername/lfg" class="btn-primary" target="_blank">
-                    <i class="fab fa-github"></i>
+                <a href="{% url 'auth' %}" class="btn-primary">
+                    <i class="fas fa-rocket"></i>
                     Get Started Free
                 </a>
                 <a href="#" class="btn-secondary">
@@ -943,7 +943,7 @@
                 <h3>LFG Platform</h3>
                 <p>The open-source AI-powered product development platform that brings together the best of human creativity and artificial intelligence.</p>
                 <div class="social-links">
-                    <a href="https://github.com/yourusername/lfg" target="_blank">
+                    <a href="https://github.com/lfg-hq/lfg" target="_blank">
                         <i class="fab fa-github"></i>
                     </a>
                     <a href="#" target="_blank">
@@ -962,12 +962,12 @@
                 <a href="#features">Features</a>
                 <a href="#agents">AI Agents</a>
                 <a href="#customization">Customization</a>
-                <a href="https://github.com/yourusername/lfg" target="_blank">GitHub</a>
+                <a href="https://github.com/lfg-hq/lfg" target="_blank">GitHub</a>
             </div>
             <div class="footer-section">
                 <h3>Support</h3>
-                <a href="#get-started">Get Started</a>
-                <a href="https://github.com/yourusername/lfg/issues" target="_blank">Report Issue</a>
+                <a href="{% url 'auth' %}">Get Started</a>
+                <a href="https://github.com/lfg-hq/lfg/issues" target="_blank">Report Issue</a>
                 <a href="#">Contact</a>
             </div>
         </div>

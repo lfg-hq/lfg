@@ -4,7 +4,6 @@ import logging
 import os
 import base64
 import uuid
-import time
 from datetime import datetime
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
@@ -12,6 +11,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import User
 from django.core.files.base import ContentFile
+from django.urls import reverse
 from chat.models import (
     Conversation, 
     Message,
@@ -31,11 +31,6 @@ from coding.utils.ai_tools import tools_code, tools_product, tools_design
 # Set up logger
 logger = logging.getLogger(__name__)
 
-# Message chunking constants
-MAX_CHUNK_SIZE = 4096  # 4KB chunks for WebSocket frames
-HEARTBEAT_INTERVAL = 10  # Send heartbeat every 10 seconds during long operations
-PROGRESS_UPDATE_INTERVAL = 5  # Send progress updates every 5 seconds
-
 class ChatConsumer(AsyncWebsocketConsumer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -43,9 +38,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         self.pending_message = None
         self.auto_save_task = None
         self.last_save_time = None
-        self.message_sequence = 0  # Track message sequence numbers
-        self.last_heartbeat_time = None  # Track last heartbeat sent
-        self.chunk_buffer = {}  # Buffer for assembling chunked messages
+        self.message_save_lock = asyncio.Lock()  # Lock to prevent concurrent message saves
     async def connect(self):
         """
         Handle WebSocket connection
@@ -410,7 +403,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """Send periodic heartbeat messages to keep connection alive"""
         while True:
             try:
-                await asyncio.sleep(30)  # Send heartbeat every 30 seconds
+                await asyncio.sleep(20)  # Send heartbeat every 20 seconds (reduced from 30)
                 await self.send(text_data=json.dumps({
                     'type': 'heartbeat',
                     'timestamp': datetime.now().isoformat()
@@ -483,9 +476,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 selected_model='claude_4_sonnet'
             )
             selected_model = model_selection.selected_model
+
+        if selected_model == "claude_4_sonnet":
+            provider_name = "anthropic"
+        else:
+            provider_name = "openai"
         
         # Get the appropriate AI provider
-        provider = AIProvider.get_provider(provider_name, selected_model)
+        print(f"\n\n\nCreating provider with user: {self.user} (type: {type(self.user)})")
+        provider = AIProvider.get_provider(provider_name, selected_model, user=self.user)
         
         # Debug log to verify settings
         logger.debug(f"Using provider: {provider_name}")
@@ -591,12 +590,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 
                 full_response += content
                 
-                # Send each chunk to the client using chunking if needed
+                # Send each chunk to the client
                 try:
                     if hasattr(self, 'using_groups') and self.using_groups:
-                        # For large content, we need to handle chunking at the group level too
-                        if len(content) > MAX_CHUNK_SIZE:
-                            logger.warning("Large content detected for group send - may need chunking implementation")
                         await self.channel_layer.group_send(
                             self.room_group_name,
                             {
@@ -606,8 +602,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             }
                         )
                     else:
-                        # Use our chunked message sending for direct WebSocket
-                        await self.send_chunked_message(content, 'ai_chunk', is_final=False)
+                        await self.send(text_data=json.dumps({
+                            'type': 'ai_chunk',
+                            'chunk': content,
+                            'is_final': False
+                        }))
                 except Exception as e:
                     logger.error(f"Error sending AI chunk: {str(e)}")
                 
@@ -708,73 +707,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
             # Clear the active task reference
             self.active_generation_task = None
     
-    async def send_chunked_message(self, content, message_type='ai_chunk', **extra_data):
-        """
-        Send a message in chunks with sequence numbers for reliable delivery
-        """
-        try:
-            # Calculate total chunks needed
-            total_chunks = (len(content) + MAX_CHUNK_SIZE - 1) // MAX_CHUNK_SIZE if content else 1
-            
-            # If content fits in one chunk, send it directly
-            if len(content) <= MAX_CHUNK_SIZE:
-                await self.send(text_data=json.dumps({
-                    'type': message_type,
-                    'chunk': content,
-                    'sequence': self.message_sequence,
-                    'is_chunked': False,
-                    **extra_data
-                }))
-                self.message_sequence += 1
-                return
-            
-            # Send content in multiple chunks
-            chunk_sequence = 0
-            for i in range(0, len(content), MAX_CHUNK_SIZE):
-                chunk = content[i:i + MAX_CHUNK_SIZE]
-                
-                await self.send(text_data=json.dumps({
-                    'type': message_type,
-                    'chunk': chunk,
-                    'sequence': self.message_sequence,
-                    'chunk_sequence': chunk_sequence,
-                    'total_chunks': total_chunks,
-                    'is_chunked': True,
-                    'is_final_chunk': chunk_sequence == total_chunks - 1,
-                    **extra_data
-                }))
-                
-                chunk_sequence += 1
-                
-                # Small delay between chunks to prevent overwhelming the client
-                await asyncio.sleep(0.001)
-            
-            self.message_sequence += 1
-            
-        except Exception as e:
-            logger.error(f"Error sending chunked message: {str(e)}")
-            raise
-    
-    async def send_heartbeat_if_needed(self):
-        """
-        Send a heartbeat if enough time has passed since the last one
-        """
-        current_time = time.time()
-        if self.last_heartbeat_time is None or current_time - self.last_heartbeat_time >= HEARTBEAT_INTERVAL:
-            try:
-                await self.send(text_data=json.dumps({
-                    'type': 'heartbeat',
-                    'timestamp': datetime.now().isoformat(),
-                    'during_operation': True
-                }))
-                self.last_heartbeat_time = current_time
-                logger.debug("Sent heartbeat during operation")
-            except Exception as e:
-                logger.error(f"Error sending heartbeat: {e}")
-    
     async def process_ai_stream(self, provider, messages, project_id, tools):
         """
-        Enhanced process_ai_stream with auto-save and heartbeat
+        Enhanced process_ai_stream with auto-save
         """
         logger.debug(f"Messages: {messages}")
         try:
@@ -783,15 +718,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
             # Initialize message accumulator for auto-save
             accumulated_content = ""
             last_save_length = 0
-            save_threshold = 500  # Save every 500 characters
-            
-            # Reset heartbeat tracking for this operation
-            self.last_heartbeat_time = time.time()
+            save_threshold = 100  # Save every 100 characters (reduced from 500)
             
             # Stream content directly from the now-async provider
             async for content in provider.generate_stream(messages, project_id, conversation_id, tools):
-                # Send heartbeat if needed during long operations
-                await self.send_heartbeat_if_needed()
                 # Check if we should stop generation
                 if self.should_stop_generation:
                     logger.debug("Stopping AI stream generation due to user request")
@@ -889,6 +819,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 # Normal text chunk - accumulate and yield it
                 accumulated_content += content
                 
+                # Store as pending message for disconnect handling
+                self.pending_message = accumulated_content
+                
                 # Auto-save periodically during streaming
                 if len(accumulated_content) - last_save_length >= save_threshold:
                     await self.auto_save_streaming_message(accumulated_content)
@@ -899,10 +832,26 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 
         except Exception as e:
             logger.error(f"Error in process_ai_stream: {str(e)}")
-            yield f"Error generating response: {str(e)}"
+            error_message = str(e)
+            
+            # Check for missing API key attributes
+            if "'AnthropicProvider' object has no attribute 'anthropic_api_key'" in error_message:
+                try:
+                    integrations_url = f"http://localhost:8000{reverse('integrations')}"
+                    error_message = f"No Anthropic API key configured. Please add API key here http://localhost:8000/accounts/integrations/."
+                except:
+                    error_message = "No Anthropic API key configured. Please add API key here http://localhost:8000/accounts/integrations/."
+            elif "'OpenAIProvider' object has no attribute 'openai_api_key'" in error_message:
+                try:
+                    integrations_url = f"http://localhost:8000{reverse('integrations')}"
+                    error_message = f"No OpenAI API key configured. Please add API key here http://localhost:8000/accounts/integrations/."
+                except:
+                    error_message = "No OpenAI API key configured. Please add API key here http://localhost:8000/accounts/integrations/."
+            
+            yield f"Error generating response: {error_message}"
         finally:
-            # Clean up - no need to save here as it's handled in generate_ai_response
-            self.pending_message = None
+            # Don't clear pending_message here - it's needed for disconnect handling
+            pass
     
     
     async def send_error(self, error_message):
@@ -1137,8 +1086,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
         
         # Get model selection for the user
         try:
+            print(f"\n\n\nBefore model selection: {self.user}")
             model_selection = await database_sync_to_async(ModelSelection.objects.get)(user=self.user)
+            print(f"\n\n\nModel selection: {model_selection}")
             selected_model = model_selection.selected_model
+            print(f"\n\n\nSelected model... #3: {selected_model}")
         except ModelSelection.DoesNotExist:
             # Create a default model selection if none exists
             model_selection = await database_sync_to_async(ModelSelection.objects.create)(
@@ -1146,6 +1098,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 selected_model='claude_4_sonnet'
             )
             selected_model = model_selection.selected_model
+
+        if selected_model == "claude_4_sonnet":
+            provider_name = "anthropic"
+        else:
+            provider_name = "openai"
         
         provider = AIProvider.get_provider(provider_name, selected_model)
         
@@ -1257,59 +1214,61 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def auto_save_streaming_message(self, content):
         """Auto-save streaming AI message to prevent loss on disconnect"""
         if self.conversation:
-            try:
-                # Check if we already have a partial message for this conversation
-                last_message = await database_sync_to_async(
-                    lambda: Message.objects.filter(
-                        conversation=self.conversation,
-                        role='assistant',
-                        is_partial=True
-                    ).order_by('-created_at').first()
-                )()
-                
-                if last_message:
-                    # Update existing partial message
-                    last_message.content = content
-                    await database_sync_to_async(last_message.save)()
-                    logger.debug(f"Updated partial streaming message: {len(content)} chars")
-                else:
-                    # Create new partial message
-                    await database_sync_to_async(Message.objects.create)(
-                        conversation=self.conversation,
-                        role='assistant',
-                        content=content,
-                        is_partial=True
-                    )
-                    logger.debug(f"Created new partial streaming message: {len(content)} chars")
+            async with self.message_save_lock:  # Use lock to prevent concurrent saves
+                try:
+                    # Check if we already have a partial message for this conversation
+                    last_message = await database_sync_to_async(
+                        lambda: Message.objects.filter(
+                            conversation=self.conversation,
+                            role='assistant',
+                            is_partial=True
+                        ).order_by('-created_at').first()
+                    )()
                     
-            except Exception as e:
-                logger.error(f"Error auto-saving streaming message: {e}")
+                    if last_message:
+                        # Update existing partial message
+                        last_message.content = content
+                        await database_sync_to_async(last_message.save)()
+                        logger.debug(f"Updated partial streaming message: {len(content)} chars")
+                    else:
+                        # Create new partial message
+                        await database_sync_to_async(Message.objects.create)(
+                            conversation=self.conversation,
+                            role='assistant',
+                            content=content,
+                            is_partial=True
+                        )
+                        logger.debug(f"Created new partial streaming message: {len(content)} chars")
+                        
+                except Exception as e:
+                    logger.error(f"Error auto-saving streaming message: {e}")
     
     async def finalize_streaming_message(self, full_content):
         """Finalize the streaming message - convert partial to complete"""
         if self.conversation and full_content:
-            try:
-                # Find any partial message
-                partial_message = await database_sync_to_async(
-                    lambda: Message.objects.filter(
-                        conversation=self.conversation,
-                        role='assistant',
-                        is_partial=True
-                    ).order_by('-created_at').first()
-                )()
-                
-                if partial_message:
-                    # Update and finalize the partial message
-                    partial_message.content = full_content
-                    partial_message.is_partial = False
-                    await database_sync_to_async(partial_message.save)()
-                    logger.debug(f"Finalized streaming message: {len(full_content)} chars")
-                else:
-                    # No partial message exists, create a complete one
-                    await self.save_message('assistant', full_content)
-                    logger.debug(f"Created final message (no partial found): {len(full_content)} chars")
+            async with self.message_save_lock:  # Use lock to prevent concurrent saves
+                try:
+                    # Find any partial message
+                    partial_message = await database_sync_to_async(
+                        lambda: Message.objects.filter(
+                            conversation=self.conversation,
+                            role='assistant',
+                            is_partial=True
+                        ).order_by('-created_at').first()
+                    )()
                     
-            except Exception as e:
-                logger.error(f"Error finalizing streaming message: {e}")
-                # Fallback to regular save
-                await self.save_message('assistant', full_content) 
+                    if partial_message:
+                        # Update and finalize the partial message
+                        partial_message.content = full_content
+                        partial_message.is_partial = False
+                        await database_sync_to_async(partial_message.save)()
+                        logger.debug(f"Finalized streaming message: {len(full_content)} chars")
+                    else:
+                        # No partial message exists, create a complete one
+                        await self.save_message('assistant', full_content)
+                        logger.debug(f"Created final message (no partial found): {len(full_content)} chars")
+                        
+                except Exception as e:
+                    logger.error(f"Error finalizing streaming message: {e}")
+                    # Fallback to regular save
+                    await self.save_message('assistant', full_content) 
