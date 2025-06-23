@@ -672,9 +672,6 @@ class AnthropicProvider(AIProvider):
         self.user = user
 
         print(f"\n\n\nUser: {user}")
-
-        profile = self._get_profile(user)
-        print(f"\n\n\nProfile for user {user}: {profile}")
         
         self.anthropic_api_key = ''
         

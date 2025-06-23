@@ -824,6 +824,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 
                 # Auto-save periodically during streaming
                 if len(accumulated_content) - last_save_length >= save_threshold:
+                    logger.info(f"[STREAM] Calling auto_save_streaming_message at position {len(accumulated_content)}")
                     await self.auto_save_streaming_message(accumulated_content)
                     last_save_length = len(accumulated_content)
                 
@@ -836,17 +837,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
             
             # Check for missing API key attributes
             if "'AnthropicProvider' object has no attribute 'anthropic_api_key'" in error_message:
-                try:
-                    integrations_url = f"http://localhost:8000{reverse('integrations')}"
-                    error_message = f"No Anthropic API key configured. Please add API key here http://localhost:8000/accounts/integrations/."
-                except:
-                    error_message = "No Anthropic API key configured. Please add API key here http://localhost:8000/accounts/integrations/."
+                error_message = "No Anthropic API key configured. Please add API key here http://localhost:8000/accounts/integrations/."
             elif "'OpenAIProvider' object has no attribute 'openai_api_key'" in error_message:
-                try:
-                    integrations_url = f"http://localhost:8000{reverse('integrations')}"
-                    error_message = f"No OpenAI API key configured. Please add API key here http://localhost:8000/accounts/integrations/."
-                except:
-                    error_message = "No OpenAI API key configured. Please add API key here http://localhost:8000/accounts/integrations/."
+                error_message = "No OpenAI API key configured. Please add API key here http://localhost:8000/accounts/integrations/."
             
             yield f"Error generating response: {error_message}"
         finally:
@@ -1213,62 +1206,77 @@ class ChatConsumer(AsyncWebsocketConsumer):
     
     async def auto_save_streaming_message(self, content):
         """Auto-save streaming AI message to prevent loss on disconnect"""
+        logger.info(f"[AUTO_SAVE] Starting auto_save_streaming_message for conversation {self.conversation.id if self.conversation else 'None'}, content length: {len(content)}")
+        
         if self.conversation:
-            async with self.message_save_lock:  # Use lock to prevent concurrent saves
-                try:
-                    # Check if we already have a partial message for this conversation
-                    last_message = await database_sync_to_async(
-                        lambda: Message.objects.filter(
-                            conversation=self.conversation,
-                            role='assistant',
-                            is_partial=True
-                        ).order_by('-created_at').first()
-                    )()
+            try:
+                # Check if we already have a partial message for this conversation
+                last_message = await database_sync_to_async(
+                    lambda: Message.objects.filter(
+                        conversation=self.conversation,
+                        role='assistant',
+                        is_partial=True
+                    ).order_by('-created_at').first()
+                )()
+                
+                logger.info(f"[AUTO_SAVE] Found existing partial message ID: {last_message.id if last_message else 'None'}")
+                
+                if last_message:
+                    # Update existing partial message
+                    logger.info(f"[AUTO_SAVE] Updating partial message")
+                    last_message.content = content
+                    await database_sync_to_async(last_message.save)()
+                    logger.debug(f"Updated partial streaming message: {len(content)} chars")
+                else:
+                    # Create new partial message
+                    logger.info(f"[AUTO_SAVE] Creating partial message")
+                    await database_sync_to_async(Message.objects.create)(
+                        conversation=self.conversation,
+                        role='assistant',
+                        content=content,
+                        is_partial=True
+                    )
+                    logger.debug(f"Created new partial streaming message: {len(content)} chars")
                     
-                    if last_message:
-                        # Update existing partial message
-                        last_message.content = content
-                        await database_sync_to_async(last_message.save)()
-                        logger.debug(f"Updated partial streaming message: {len(content)} chars")
-                    else:
-                        # Create new partial message
-                        await database_sync_to_async(Message.objects.create)(
-                            conversation=self.conversation,
-                            role='assistant',
-                            content=content,
-                            is_partial=True
-                        )
-                        logger.debug(f"Created new partial streaming message: {len(content)} chars")
-                        
-                except Exception as e:
-                    logger.error(f"Error auto-saving streaming message: {e}")
+            except Exception as e:
+                logger.error(f"Error auto-saving streaming message: {e}")
     
     async def finalize_streaming_message(self, full_content):
         """Finalize the streaming message - convert partial to complete"""
+        logger.info(f"[FINALIZE] Starting finalize_streaming_message for conversation {self.conversation.id if self.conversation else 'None'}, content length: {len(full_content)}")
+        
         if self.conversation and full_content:
-            async with self.message_save_lock:  # Use lock to prevent concurrent saves
-                try:
-                    # Find any partial message
-                    partial_message = await database_sync_to_async(
-                        lambda: Message.objects.filter(
-                            conversation=self.conversation,
-                            role='assistant',
-                            is_partial=True
-                        ).order_by('-created_at').first()
-                    )()
+            try:
+                # Find any partial message
+                partial_message = await database_sync_to_async(
+                    lambda: Message.objects.filter(
+                        conversation=self.conversation,
+                        role='assistant',
+                        is_partial=True
+                    ).order_by('-created_at').first()
+                )()
+                
+                logger.info(f"[FINALIZE] Found partial message ID: {partial_message.id if partial_message else 'None'}")
+                
+                if partial_message:
+                    # Update and finalize the partial message
+                    logger.info(f"[FINALIZE] Updating final message")
+                    partial_message.content = full_content
+                    partial_message.is_partial = False
+                    await database_sync_to_async(partial_message.save)()
+                    logger.debug(f"Finalized streaming message: {len(full_content)} chars")
+                else:
+                    # No partial message exists, create a complete one
+                    logger.info(f"[FINALIZE] Creating final message")
+                    await self.save_message('assistant', full_content)
+                    logger.debug(f"Created final message (no partial found): {len(full_content)} chars")
+                
+                # Clear the pending message to prevent duplicate saves on disconnect
+                self.pending_message = None
                     
-                    if partial_message:
-                        # Update and finalize the partial message
-                        partial_message.content = full_content
-                        partial_message.is_partial = False
-                        await database_sync_to_async(partial_message.save)()
-                        logger.debug(f"Finalized streaming message: {len(full_content)} chars")
-                    else:
-                        # No partial message exists, create a complete one
-                        await self.save_message('assistant', full_content)
-                        logger.debug(f"Created final message (no partial found): {len(full_content)} chars")
-                        
-                except Exception as e:
-                    logger.error(f"Error finalizing streaming message: {e}")
-                    # Fallback to regular save
-                    await self.save_message('assistant', full_content) 
+            except Exception as e:
+                logger.error(f"Error finalizing streaming message: {e}")
+                # Fallback to regular save
+                await self.save_message('assistant', full_content)
+                # Clear pending message even in error case
+                self.pending_message = None 
