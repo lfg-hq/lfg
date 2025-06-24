@@ -731,6 +731,266 @@
                 align-items: center;
             }
         }
+
+        /* Local Setup Section Styles */
+        .local-setup {
+            padding: 4rem 0;
+            background: var(--bg-darker);
+            border-top: 1px solid var(--border-color);
+        }
+
+        .setup-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        .setup-content {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 3rem;
+            margin-top: 3rem;
+        }
+
+        .setup-steps {
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+        }
+
+        .setup-step {
+            display: flex;
+            gap: 1.5rem;
+            padding: 1.5rem;
+            background: var(--bg-card);
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            transition: all 0.3s ease;
+        }
+
+        .setup-step:hover {
+            transform: translateX(5px);
+            border-color: var(--primary-purple);
+            box-shadow: 0 4px 20px rgba(139, 92, 246, 0.1);
+        }
+
+        .step-number {
+            width: 40px;
+            height: 40px;
+            background: var(--primary-purple);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .step-content {
+            flex: 1;
+        }
+
+        .step-content h3 {
+            font-size: 1.2rem;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+
+        .step-content p {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-top: 0.5rem;
+        }
+
+        .code-block {
+            background: var(--bg-darker);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin: 0.5rem 0;
+            font-family: 'Monaco', 'Courier New', monospace;
+            position: relative;
+        }
+
+        .code-block code {
+            color: var(--accent-purple);
+            font-size: 0.9rem;
+            white-space: nowrap;
+            overflow-x: auto;
+            padding-right: 2rem;
+        }
+
+        .copy-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 0.5rem;
+            transition: all 0.2s ease;
+            position: absolute;
+            right: 0.5rem;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        .copy-btn:hover {
+            color: var(--primary-purple);
+        }
+
+        .setup-requirements {
+            background: var(--bg-card);
+            padding: 2rem;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+        }
+
+        .setup-requirements h3 {
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+        }
+
+        .requirements-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            margin-bottom: 2rem;
+        }
+
+        .requirement-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .requirement-item i {
+            color: var(--success);
+        }
+
+        .api-keys-section {
+            margin-top: 2rem;
+            padding-top: 2rem;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .api-keys-section h3 {
+            margin-bottom: 0.5rem;
+        }
+
+        .api-keys-section p {
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+        }
+
+        .api-keys-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+        }
+
+        .api-key-card {
+            background: var(--bg-darker);
+            padding: 1.5rem;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .api-key-card:hover {
+            transform: translateY(-2px);
+            border-color: var(--primary-purple);
+        }
+
+        .api-key-card i {
+            font-size: 2rem;
+            color: var(--primary-purple);
+            margin-bottom: 0.5rem;
+        }
+
+        .api-key-card h4 {
+            font-size: 1.1rem;
+            margin-bottom: 0.25rem;
+            color: var(--text-primary);
+        }
+
+        .api-key-card p {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.75rem;
+        }
+
+        .api-key-card a {
+            color: var(--primary-purple);
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 0.9rem;
+            transition: color 0.2s ease;
+        }
+
+        .api-key-card a:hover {
+            color: var(--accent-purple);
+        }
+
+        .setup-footer {
+            text-align: center;
+            margin-top: 3rem;
+            padding-top: 2rem;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .setup-footer p {
+            color: var(--text-secondary);
+        }
+
+        .setup-footer a {
+            color: var(--primary-purple);
+            text-decoration: none;
+            transition: color 0.2s ease;
+        }
+
+        .setup-footer a:hover {
+            color: var(--accent-purple);
+        }
+
+        /* Mobile Responsive for Local Setup */
+        @media (max-width: 768px) {
+            .setup-content {
+                grid-template-columns: 1fr;
+            }
+
+            .setup-step {
+                flex-direction: column;
+                text-align: center;
+            }
+
+            .step-number {
+                margin: 0 auto;
+            }
+
+            .code-block {
+                flex-direction: column;
+                padding: 1rem;
+            }
+
+            .code-block code {
+                margin-bottom: 0.5rem;
+                padding-right: 0;
+            }
+
+            .copy-btn {
+                position: static;
+                transform: none;
+                margin-top: 0.5rem;
+            }
+
+            .api-keys-grid {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
 <body>
@@ -936,6 +1196,148 @@
         </div>
     </section>
 
+    <!-- Local Setup Section -->
+    <section class="local-setup" id="local-setup">
+        <div class="setup-container">
+            <div class="section-header">
+                <h2>Get Started Locally</h2>
+                <p>Set up LFG on your machine in just a few minutes</p>
+            </div>
+            <div class="setup-content">
+                <div class="setup-steps">
+                    <div class="setup-step">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <h3>Clone the Repository</h3>
+                            <div class="code-block">
+                                <code>git clone https://github.com/lfg-hq/lfg.git</code>
+                                <button class="copy-btn" onclick="copyToClipboard('git clone https://github.com/lfg-hq/lfg.git')">
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                            </div>
+                            <p>Get the latest version of LFG from our GitHub repository</p>
+                        </div>
+                    </div>
+                    
+                    <div class="setup-step">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <h3>Create Virtual Environment</h3>
+                            <div class="code-block">
+                                <code>cd lfg && python -m venv venv && source venv/bin/activate</code>
+                                <button class="copy-btn" onclick="copyToClipboard('cd lfg && python -m venv venv && source venv/bin/activate')">
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                            </div>
+                            <p>Set up an isolated Python environment for the project</p>
+                        </div>
+                    </div>
+                    
+                    <div class="setup-step">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <h3>Install Dependencies</h3>
+                            <div class="code-block">
+                                <code>pip install -r requirements.txt</code>
+                                <button class="copy-btn" onclick="copyToClipboard('pip install -r requirements.txt')">
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                            </div>
+                            <p>Install all required Python packages and dependencies</p>
+                        </div>
+                    </div>
+                    
+                    <div class="setup-step">
+                        <div class="step-number">4</div>
+                        <div class="step-content">
+                            <h3>Set Up Environment</h3>
+                            <div class="code-block">
+                                <code>cp .env.example .env</code>
+                                <button class="copy-btn" onclick="copyToClipboard('cp .env.example .env')">
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                            </div>
+                            <p>Configure your environment variables and add your API keys</p>
+                        </div>
+                    </div>
+                    
+                    <div class="setup-step">
+                        <div class="step-number">5</div>
+                        <div class="step-content">
+                            <h3>Run Database Migrations</h3>
+                            <div class="code-block">
+                                <code>python manage.py migrate</code>
+                                <button class="copy-btn" onclick="copyToClipboard('python manage.py migrate')">
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                            </div>
+                            <p>Set up the database schema and initial data</p>
+                        </div>
+                    </div>
+                    
+                    <div class="setup-step">
+                        <div class="step-number">6</div>
+                        <div class="step-content">
+                            <h3>Start the Development Server</h3>
+                            <div class="code-block">
+                                <code>uvicorn LFG.asgi:application --host 0.0.0.0 --port 8000 --workers 2</code>
+                                <button class="copy-btn" onclick="copyToClipboard('uvicorn LFG.asgi:application --host 0.0.0.0 --port 8000 --workers 2')">
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                            </div>
+                            <p>Launch LFG locally and access it at <a href="http://localhost:8000" target="_blank">http://localhost:8000</a></p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="setup-requirements">
+                    <h3>System Requirements</h3>
+                    <div class="requirements-list">
+                        <div class="requirement-item">
+                            <i class="fas fa-check-circle"></i>
+                            <span>Python 3.8 or higher</span>
+                        </div>
+                        <div class="requirement-item">
+                            <i class="fas fa-check-circle"></i>
+                            <span>PostgreSQL or SQLite</span>
+                        </div>
+                        <div class="requirement-item">
+                            <i class="fas fa-check-circle"></i>
+                            <span>Node.js 16+ (for frontend assets)</span>
+                        </div>
+                        <div class="requirement-item">
+                            <i class="fas fa-check-circle"></i>
+                            <span>Git</span>
+                        </div>
+                    </div>
+                    
+                    <div class="api-keys-section">
+                        <h3>Required API Keys</h3>
+                        <p>You'll need at least one of these AI provider API keys:</p>
+                        <div class="api-keys-grid">
+                            <div class="api-key-card">
+                                <i class="fas fa-robot"></i>
+                                <h4>OpenAI</h4>
+                                <p>GPT-4 models</p>
+                                <a href="https://platform.openai.com/api-keys" target="_blank">Get API Key →</a>
+                            </div>
+                            <div class="api-key-card">
+                                <i class="fas fa-brain"></i>
+                                <h4>Anthropic</h4>
+                                <p>Claude models</p>
+                                <a href="https://www.anthropic.com/api" target="_blank">Get API Key →</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="setup-footer">
+                <p>Need help? Check out our <a href="https://github.com/lfg-hq/lfg/blob/main/README.md" target="_blank">documentation</a> or <a href="https://github.com/lfg-hq/lfg/issues" target="_blank">open an issue</a> on GitHub.</p>
+            </div>
+        </div>
+    </section>
+
     <!-- Footer -->
     <footer class="footer">
         <div class="footer-content">
@@ -1023,6 +1425,27 @@
             card.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
             observer.observe(card);
         });
+
+        // Copy to clipboard function
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(function() {
+                // Find the button that was clicked
+                const button = event.target.closest('.copy-btn');
+                const originalHTML = button.innerHTML;
+                
+                // Change to checkmark temporarily
+                button.innerHTML = '<i class="fas fa-check"></i>';
+                button.style.color = 'var(--success)';
+                
+                // Reset after 2 seconds
+                setTimeout(() => {
+                    button.innerHTML = originalHTML;
+                    button.style.color = '';
+                }, 2000);
+            }).catch(function(err) {
+                console.error('Failed to copy text: ', err);
+            });
+        }
     </script>
 </body>
 </html> 
