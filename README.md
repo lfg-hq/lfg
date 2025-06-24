@@ -195,14 +195,6 @@ We welcome contributions from the community! Here's how you can help:
 - Update documentation for new features
 - Ensure all tests pass before submitting
 
-## 📚 Documentation
-
-- [Quick Start Guide](docs/quickstart.md)
-- [API Documentation](docs/api.md)
-- [Kubernetes Setup](README-K8S.md)
-- [Deployment Guide](docs/deployment.md)
-- [Contributing Guidelines](CONTRIBUTING.md)
-- [Architecture Overview](docs/architecture.md)
 
 ## 🆘 Support
 
@@ -210,7 +202,6 @@ Need help? We're here for you!
 
 - **📚 Documentation**: Check our comprehensive [docs](https://github.com/lfg-hq/lfg/blob/main/README.md)
 - **🐛 Issues**: Report bugs on [GitHub Issues](https://github.com/lfg-hq/lfg/issues)
-- **💬 Discussions**: Join our [GitHub Discussions](https://github.com/lfg-hq/lfg/discussions)
 - **🌟 Star us**: If you find LFG helpful, [give us a star](https://github.com/lfg-hq/lfg)!
 
 ## 🌟 Why Open Source?
