@@ -37,6 +37,14 @@
 
         html {
             scroll-behavior: smooth;
+            /* Hide scrollbar for IE, Edge and Firefox */
+            -ms-overflow-style: none;  /* IE and Edge */
+            scrollbar-width: none;  /* Firefox */
+        }
+
+        /* Hide scrollbar for Chrome, Safari and Opera */
+        html::-webkit-scrollbar {
+            display: none;
         }
 
         body {
@@ -46,6 +54,14 @@
             line-height: 1.6;
             overflow-x: hidden;
             position: relative;
+            /* Hide scrollbar for IE, Edge and Firefox */
+            -ms-overflow-style: none;  /* IE and Edge */
+            scrollbar-width: none;  /* Firefox */
+        }
+
+        /* Hide scrollbar for Chrome, Safari and Opera */
+        body::-webkit-scrollbar {
+            display: none;
         }
 
         /* Animated background */
@@ -668,30 +684,6 @@
             color: var(--text-muted);
         }
 
-        .social-links {
-            display: flex;
-            gap: 1rem;
-            margin-top: 1rem;
-        }
-
-        .social-links a {
-            width: 40px;
-            height: 40px;
-            background: var(--bg-card);
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: var(--text-secondary);
-            transition: all 0.3s ease;
-        }
-
-        .social-links a:hover {
-            background: var(--primary-purple);
-            color: white;
-            transform: translateY(-2px);
-        }
 
         /* Mobile Responsiveness */
         @media (max-width: 768px) {
@@ -1344,20 +1336,6 @@
             <div class="footer-section">
                 <h3>LFG Platform</h3>
                 <p>The open-source AI-powered product development platform that brings together the best of human creativity and artificial intelligence.</p>
-                <div class="social-links">
-                    <a href="https://github.com/lfg-hq/lfg" target="_blank">
-                        <i class="fab fa-github"></i>
-                    </a>
-                    <a href="#" target="_blank">
-                        <i class="fab fa-twitter"></i>
-                    </a>
-                    <a href="#" target="_blank">
-                        <i class="fab fa-discord"></i>
-                    </a>
-                    <a href="#" target="_blank">
-                        <i class="fab fa-linkedin"></i>
-                    </a>
-                </div>
             </div>
             <div class="footer-section">
                 <h3>Product</h3>

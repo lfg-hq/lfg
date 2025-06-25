@@ -402,6 +402,28 @@ document.addEventListener('DOMContentLoaded', function() {
         },
         
         /**
+         * Check if the artifacts panel is currently open
+         * @returns {boolean} True if the panel is open, false otherwise
+         */
+        isOpen: function() {
+            return artifactsPanel.classList.contains('expanded');
+        },
+        
+        /**
+         * Open the artifacts panel
+         */
+        open: function() {
+            this.toggle(true);
+        },
+        
+        /**
+         * Close the artifacts panel
+         */
+        close: function() {
+            this.toggle(false);
+        },
+        
+        /**
          * Toggle the artifacts panel visibility
          * If forceOpen is true, ensures the panel is opened
          */

@@ -71,31 +71,38 @@ WSGI_APPLICATION = 'LFG.wsgi.application'
 ASGI_APPLICATION = 'LFG.asgi.application'
 
 # Channel layers configuration
-CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels.layers.InMemoryChannelLayer',
-        # IMPORTANT: The in-memory channel layer has limitations:
-        # - Messages are limited in size (default ~100KB)
-        # - No persistence across restarts
-        # - No support for multiple server instances
-        # 
-        # For production or to fix message cutoff issues with large responses,
-        # uncomment the Redis configuration below:
-        #
-        # 'BACKEND': 'channels_redis.core.RedisChannelLayer',
-        # 'CONFIG': {
-        #     "hosts": [(os.environ.get('REDIS_HOST', 'localhost'), 6379)],
-        #     "capacity": 1000,  # Number of messages to store per channel
-        #     "expiry": 60,      # Seconds until a message expires
-        #     "group_expiry": 86400,  # Seconds until a group expires (24 hours)
-        #     "channel_capacity": {
-        #         # Specific capacity limits per channel pattern
-        #         "chat_*": 100,  # Limit chat channels to 100 messages
-        #     },
-        #     "symmetric_encryption_keys": [os.environ.get('CHANNEL_ENCRYPTION_KEY', '')],
-        # },
-    },
-}
+# Set USE_REDIS_CHANNELS=True in environment to use Redis, otherwise uses InMemory
+USE_REDIS_CHANNELS = os.environ.get('USE_REDIS_CHANNELS', 'False').lower() == 'true'
+
+if USE_REDIS_CHANNELS:
+    # Redis Channel Layer - Recommended for production
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels_redis.core.RedisChannelLayer',
+            'CONFIG': {
+                "hosts": [(os.environ.get('REDIS_HOST', 'localhost'), int(os.environ.get('REDIS_PORT', 6379)))],
+                "capacity": 1000,  # Number of messages to store per channel
+                "expiry": 60,      # Seconds until a message expires
+                "group_expiry": 86400,  # Seconds until a group expires (24 hours)
+                "channel_capacity": {
+                    # Specific capacity limits per channel pattern
+                    "chat_*": 100,  # Limit chat channels to 100 messages
+                },
+                "symmetric_encryption_keys": [os.environ.get('CHANNEL_ENCRYPTION_KEY', '')],
+            },
+        },
+    }
+else:
+    # InMemory Channel Layer - For development
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels.layers.InMemoryChannelLayer',
+            # IMPORTANT: The in-memory channel layer has limitations:
+            # - Messages are limited in size (default ~100KB)
+            # - No persistence across restarts
+            # - No support for multiple server instances
+        },
+    }
 
 DATABASES = {
     # 'default': {
