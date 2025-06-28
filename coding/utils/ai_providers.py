@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 # Maximum tool output size (50KB)
 MAX_TOOL_OUTPUT_SIZE = 50 * 1024
 
+
 def get_notification_type_for_tool(tool_name):
     """
     Determine the notification type based on the tool/function name.
@@ -64,10 +65,51 @@ def get_notification_type_for_tool(tool_name):
         "update_checklist_ticket": "checklist",
         "get_next_ticket": "checklist",
         "get_pending_tickets": "checklist",  # Add this mapping
-        "implement_ticket": "implementation"  # Implementation tasks go to implementation tab
+        "implement_ticket": "implementation",  # Implementation tasks go to implementation tab
+        "save_project_name": "toolhistory",  # Project name saving goes to tool history
+        "get_project_name": "toolhistory"  # Project name retrieval goes to tool history
     }
     
-    return notification_mappings.get(tool_name)
+    # Default to toolhistory if no specific mapping exists
+    return notification_mappings.get(tool_name, "toolhistory")
+
+def map_notification_type_to_tab(notification_type):
+    """
+    Map custom notification types to valid tab names.
+    This handles cases where functions return custom notification types.
+    
+    Args:
+        notification_type: The notification type from the tool result
+        
+    Returns:
+        str: A valid tab name
+    """
+    # Valid tabs from the HTML template
+    valid_tabs = ["prd", "implementation", "checklist", "apps", "toolhistory", "codebase"]
+    
+    # Map custom notification types to valid tabs
+    custom_mappings = {
+        "features": "checklist",
+        "personas": "checklist",
+        "design_schema": "implementation",
+        "create_checklist_tickets": "checklist",
+        "get_pending_tickets": "checklist",
+        "command_error": "toolhistory",
+        "project_name_saved": "toolhistory",
+        # Add more custom mappings as needed
+    }
+    
+    # If it's already a valid tab, return it
+    if notification_type in valid_tabs:
+        return notification_type
+    
+    # Check custom mappings
+    if notification_type in custom_mappings:
+        return custom_mappings[notification_type]
+    
+    # Default to toolhistory for unknown types
+    logger.warning(f"Unknown notification type '{notification_type}', defaulting to toolhistory")
+    return "toolhistory"
 
 async def execute_tool_call(tool_call_name, tool_call_args_str, project_id, conversation_id):
     """
@@ -87,6 +129,9 @@ async def execute_tool_call(tool_call_name, tool_call_args_str, project_id, conv
     """
     logger.debug(f"Executing Tool: {tool_call_name}")
     logger.debug(f"Raw Args: {tool_call_args_str}")
+    
+    # Note: web_search is handled by Claude through the web_search_20250305 tool type
+    # and results are included in Claude's response content automatically
     
     result_content = ""
     notification_data = None
@@ -137,12 +182,15 @@ async def execute_tool_call(tool_call_name, tool_call_args_str, project_id, conv
             "get_features", "get_personas", "create_prd", "get_prd",
             "save_implementation", "get_implementation", "update_implementation", "create_implementation",
             "execute_command", "start_server", "design_schema", "generate_tickets",
-            "checklist_tickets", "update_checklist_ticket", "get_next_ticket", "implement_ticket"
+            "checklist_tickets", "update_checklist_ticket", "get_next_ticket", "implement_ticket",
+            "save_project_name", "get_project_name"  # Add project name functions
         ]:
             logger.debug(f"FORCING NOTIFICATION FOR {tool_call_name}")
+            # Ensure notification type is mapped to a valid tab
+            mapped_notification_type = map_notification_type_to_tab(notification_type)
             notification_data = {
                 "is_notification": True,
-                "notification_type": notification_type,
+                "notification_type": mapped_notification_type,
                 "function_name": tool_call_name,
                 "notification_marker": "__NOTIFICATION__"
             }
@@ -156,9 +204,13 @@ async def execute_tool_call(tool_call_name, tool_call_args_str, project_id, conv
             logger.debug("NOTIFICATION DATA CREATED IN TOOL EXECUTION")
             logger.debug(f"Tool result: {tool_result}")
             
+            # Map the notification type to a valid tab
+            raw_notification_type = tool_result.get("notification_type", "toolhistory")
+            mapped_notification_type = map_notification_type_to_tab(raw_notification_type)
+            
             notification_data = {
                 "is_notification": True,
-                "notification_type": tool_result.get("notification_type", "features"),
+                "notification_type": mapped_notification_type,
                 "notification_marker": "__NOTIFICATION__"
             }
             
@@ -821,6 +873,15 @@ class AnthropicProvider(AIProvider):
                 # Convert messages and tools to Claude format
                 claude_messages = self._convert_messages_to_claude_format(current_messages)
                 claude_tools = self._convert_tools_to_claude_format(tools)
+
+                # Add web search tool using the correct format
+                web_search_tool = {
+                    "type": "web_search_20250305",
+                    "name": "web_search",
+                    "max_uses": 5  # Optional: limit number of searches per request
+                }
+                claude_tools.append(web_search_tool)
+                logger.info("Added web_search_20250305 tool to Claude tools")
                 
                 # Log available tools
                 logger.debug(f"Available tools for Claude: {[tool['name'] for tool in claude_tools]}")
@@ -852,6 +913,7 @@ class AnthropicProvider(AIProvider):
                     params["system"] = system_message
                 
                 logger.debug(f"Making Claude API call with {len(claude_messages)} messages.")
+                logger.info(f"Claude model: {self.model} - web_search is built-in for Claude Sonnet 4")
                 
                 # Variables for this specific API call
                 tool_calls_requested = [] # Stores {id, function_name, function_args_str}
@@ -906,6 +968,10 @@ class AnthropicProvider(AIProvider):
                                 if full_assistant_message["content"] is None:
                                     full_assistant_message["content"] = ""
                                 full_assistant_message["content"] += text
+                                
+                                # Check if this might be web search results
+                                if "search result" in text.lower() or "web search" in text.lower():
+                                    logger.debug("Detected potential web search results in Claude's response")
                             elif event.delta.type == "input_json_delta":
                                 # Accumulate tool arguments
                                 if current_tool_use:
@@ -944,50 +1010,52 @@ class AnthropicProvider(AIProvider):
                                 # --- Execute Tools and Prepare Next Call --- 
                                 tool_results_messages = []
                                 
-                                # Execute tools in parallel
-                                tool_tasks = []
-                                for tool_call_to_execute in tool_calls_requested:
-                                    task = self._execute_tool(
-                                        tool_call_to_execute,
-                                        project_id,
-                                        conversation_id
-                                    )
-                                    tool_tasks.append(task)
-                                
-                                # Wait for all tools to complete
-                                tool_results = await asyncio.gather(*tool_tasks, return_exceptions=True)
-                                
-                                # Process results
-                                for tool_call_to_execute, result in zip(tool_calls_requested, tool_results):
-                                    tool_call_id = tool_call_to_execute["id"]
-                                    tool_call_name = tool_call_to_execute["function"]["name"]
+                                # Process all tool calls
+                                if tool_calls_requested:
+                                    # Execute tools in parallel
+                                    tool_tasks = []
+                                    for tool_call_to_execute in tool_calls_requested:
+                                        task = self._execute_tool(
+                                            tool_call_to_execute,
+                                            project_id,
+                                            conversation_id
+                                        )
+                                        tool_tasks.append(task)
                                     
-                                    if isinstance(result, Exception):
-                                        # Handle exception
-                                        error_message = f"Error executing tool {tool_call_name}: {result}"
-                                        logger.error(f"{error_message}\n{traceback.format_exc()}")
-                                        result_content = f"Error: {error_message}"
-                                        notification_data = None
-                                    else:
-                                        result_content, notification_data, yielded_content = result
+                                    # Wait for all tools to complete
+                                    tool_results = await asyncio.gather(*tool_tasks, return_exceptions=True)
+                                    
+                                    # Process results
+                                    for tool_call_to_execute, result in zip(tool_calls_requested, tool_results):
+                                        tool_call_id = tool_call_to_execute["id"]
+                                        tool_call_name = tool_call_to_execute["function"]["name"]
                                         
-                                        # Yield any content that needs to be streamed
-                                        if yielded_content:
-                                            yield yielded_content
-                                    
-                                    # Append tool result message
-                                    tool_results_messages.append({
-                                        "role": "tool",
-                                        "tool_call_id": tool_call_id,
-                                        "content": f"Tool call {tool_call_name}() completed. {result_content}."
-                                    })
-                                    
-                                    # If we have notification data, yield it
-                                    if notification_data:
-                                        logger.debug("YIELDING NOTIFICATION DATA TO CONSUMER")
-                                        notification_json = json.dumps(notification_data)
-                                        logger.debug(f"Notification JSON: {notification_json}")
-                                        yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                        if isinstance(result, Exception):
+                                            # Handle exception
+                                            error_message = f"Error executing tool {tool_call_name}: {result}"
+                                            logger.error(f"{error_message}\n{traceback.format_exc()}")
+                                            result_content = f"Error: {error_message}"
+                                            notification_data = None
+                                        else:
+                                            result_content, notification_data, yielded_content = result
+                                            
+                                            # Yield any content that needs to be streamed
+                                            if yielded_content:
+                                                yield yielded_content
+                                        
+                                        # Append tool result message
+                                        tool_results_messages.append({
+                                            "role": "tool",
+                                            "tool_call_id": tool_call_id,
+                                            "content": f"Tool call {tool_call_name}() completed. {result_content}."
+                                        })
+                                        
+                                        # If we have notification data, yield it
+                                        if notification_data:
+                                            logger.debug("YIELDING NOTIFICATION DATA TO CONSUMER")
+                                            notification_json = json.dumps(notification_data)
+                                            logger.debug(f"Notification JSON: {notification_json}")
+                                            yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
                                 
                                 current_messages.extend(tool_results_messages)
                                 # Continue the outer while loop to make the next API call

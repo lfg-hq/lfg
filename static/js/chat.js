@@ -111,53 +111,53 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     
     // Add manual animation trigger for testing
-    window.triggerToolAnimation = function(toolName = 'extract_features') {
-        console.log('Manually triggering tool animation for:', toolName);
+    // window.triggerToolAnimation = function(toolName = 'extract_features') {
+    //     console.log('Manually triggering tool animation for:', toolName);
         
-        // 1. Show tool execution indicator
-        const indicator = window.showToolExecutionIndicator(toolName);
-        console.log('Tool execution indicator created:', indicator);
+    //     // 1. Show tool execution indicator
+    //     const indicator = window.showToolExecutionIndicator(toolName);
+    //     console.log('Tool execution indicator created:', indicator);
         
-        // 2. Show function call indicator
-        const funcIndicator = showFunctionCallIndicator(toolName);
-        console.log('Function call indicator created:', funcIndicator);
+    //     // 2. Show function call indicator
+    //     const funcIndicator = showFunctionCallIndicator(toolName);
+    //     console.log('Function call indicator created:', funcIndicator);
         
-        // 3. Add separator
-        const separator = document.createElement('div');
-        separator.className = 'function-call-separator';
-        separator.innerHTML = `<div class="separator-line"></div>
-                              <div class="separator-text">Manually triggered: ${toolName}</div>
-                              <div class="separator-line"></div>`;
-        messageContainer.appendChild(separator);
+    //     // 3. Add separator
+    //     const separator = document.createElement('div');
+    //     separator.className = 'function-call-separator';
+    //     separator.innerHTML = `<div class="separator-line"></div>
+    //                           <div class="separator-text">Manually triggered: ${toolName}</div>
+    //                           <div class="separator-line"></div>`;
+    //     messageContainer.appendChild(separator);
         
-        // 4. Show progress for supported functions
-        if (['extract_features', 'extract_personas'].includes(toolName)) {
-            handleToolProgress({
-                tool_name: toolName,
-                message: `Starting ${toolName.replace('_', ' ')}...`,
-                progress_percentage: 0
-            });
+    //     // 4. Show progress for supported functions
+    //     if (['extract_features', 'extract_personas'].includes(toolName)) {
+    //         handleToolProgress({
+    //             tool_name: toolName,
+    //             message: `Starting ${toolName.replace('_', ' ')}...`,
+    //             progress_percentage: 0
+    //         });
             
-            // Simulate progress
-            setTimeout(() => {
-                handleToolProgress({
-                    tool_name: toolName,
-                    message: `Processing...`,
-                    progress_percentage: 50
-                });
-            }, 1000);
+    //         // Simulate progress
+    //         setTimeout(() => {
+    //             handleToolProgress({
+    //                 tool_name: toolName,
+    //                 message: `Processing...`,
+    //                 progress_percentage: 50
+    //             });
+    //         }, 1000);
             
-            setTimeout(() => {
-                handleToolProgress({
-                    tool_name: toolName,
-                    message: `Completing...`,
-                    progress_percentage: 100
-                });
-            }, 2000);
-        }
+    //         setTimeout(() => {
+    //             handleToolProgress({
+    //                 tool_name: toolName,
+    //                 message: `Completing...`,
+    //                 progress_percentage: 100
+    //             });
+    //         }, 2000);
+    //     }
         
-        return true;
-    };
+    //     return true;
+    // };
     
     // Auto-resize the text area based on content
     chatInput.addEventListener('input', function() {
@@ -1238,21 +1238,21 @@ document.addEventListener('DOMContentLoaded', () => {
             existingContent.setAttribute('data-raw-content', newContent);
             existingContent.innerHTML = marked.parse(newContent);
             
-            // Quick trigger for common tool call indicators
-            const quickTriggers = [
-                'I\'ll use', 'I will use', 'Let me use', 'I\'ll call', 'Let me call',
-                'I\'ll execute', 'Let me execute', 'I\'ll run', 'Let me run',
-                'Using the', 'Calling the', 'Executing', 'Running'
-            ];
+            // // Quick trigger for common tool call indicators
+            // const quickTriggers = [
+            //     'I\'ll use', 'I will use', 'Let me use', 'I\'ll call', 'Let me call',
+            //     'I\'ll execute', 'Let me execute', 'I\'ll run', 'Let me run',
+            //     'Using the', 'Calling the', 'Executing', 'Running'
+            // ];
             
-            const lowerChunk = chunk.toLowerCase();
-            const shouldQuickTrigger = quickTriggers.some(trigger => lowerChunk.includes(trigger.toLowerCase()));
+            // const lowerChunk = chunk.toLowerCase();
+            // const shouldQuickTrigger = quickTriggers.some(trigger => lowerChunk.includes(trigger.toLowerCase()));
             
-            if (shouldQuickTrigger && !document.querySelector('.tool-execution-indicator')) {
-                console.log('Quick trigger activated - showing tool animation');
-                // Show a generic tool execution indicator immediately
-                window.showToolExecutionIndicator('Processing...');
-            }
+            // if (shouldQuickTrigger && !document.querySelector('.tool-execution-indicator')) {
+            //     console.log('Quick trigger activated - showing tool animation');
+            //     // Show a generic tool execution indicator immediately
+            //     window.showToolExecutionIndicator('Processing...');
+            // }
             
             // Check if this chunk mentions any tool/function calls
             const toolFunctions = [
@@ -1306,7 +1306,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.log('Function call detected in text:', detectedFunction);
                 
                 // Show the prominent tool execution indicator
-                window.showToolExecutionIndicator(detectedFunction);
+                // window.showToolExecutionIndicator(detectedFunction);
                 
                 // Also show the function call indicator
                 showFunctionCallIndicator(detectedFunction);
@@ -2572,33 +2572,33 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     
     // Test all animations
-    window.testAllAnimations = function() {
-        console.log('Testing all tool animations...');
+    // window.testAllAnimations = function() {
+    //     console.log('Testing all tool animations...');
         
-        // 1. Show tool execution indicator
-        console.log('1. Showing tool execution indicator...');
-        window.showToolExecutionIndicator('extract_features');
+    //     // 1. Show tool execution indicator
+    //     console.log('1. Showing tool execution indicator...');
+    //     window.showToolExecutionIndicator('extract_features');
         
-        // 2. Show function call indicator after 1 second
-        setTimeout(() => {
-            console.log('2. Showing function call indicator...');
-            showFunctionCallIndicator('extract_features');
-        }, 1000);
+    //     // 2. Show function call indicator after 1 second
+    //     setTimeout(() => {
+    //         console.log('2. Showing function call indicator...');
+    //         showFunctionCallIndicator('extract_features');
+    //     }, 1000);
         
-        // 3. Show tool progress after 2 seconds
-        setTimeout(() => {
-            console.log('3. Starting tool progress...');
-            window.testToolProgress();
-        }, 2000);
+    //     // 3. Show tool progress after 2 seconds
+    //     setTimeout(() => {
+    //         console.log('3. Starting tool progress...');
+    //         window.testToolProgress();
+    //     }, 2000);
         
-        // 4. Clean up after 8 seconds
-        setTimeout(() => {
-            console.log('4. Cleaning up...');
-            document.querySelector('.tool-execution-indicator')?.remove();
-            removeFunctionCallIndicator();
-            document.querySelector('.tool-progress-indicator')?.remove();
-        }, 8000);
-    };
+    //     // 4. Clean up after 8 seconds
+    //     setTimeout(() => {
+    //         console.log('4. Cleaning up...');
+    //         document.querySelector('.tool-execution-indicator')?.remove();
+    //         removeFunctionCallIndicator();
+    //         document.querySelector('.tool-progress-indicator')?.remove();
+    //     }, 8000);
+    // };
     
     // Simple function to show a tool execution indicator
     window.showToolExecutionIndicator = function(toolName) {

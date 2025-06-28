@@ -505,7 +505,7 @@ capture_name = {
 }
 
 
-tools_code = [create_prd, get_prd, execute_command, start_server, \
+tools_code = [create_prd, get_prd, start_server, \
               get_github_access_token, \
               create_checklist_tickets, update_checklist_ticket, \
               get_next_ticket, get_pending_tickets, \
