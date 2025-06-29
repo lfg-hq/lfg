@@ -21,8 +21,8 @@
             <a href="{% url 'projects:project_terminal' project.id %}" class="btn btn-outline-secondary">
                 <i class="fas fa-terminal"></i> Terminal
             </a>
-            <a href="{% url 'projects:update_project' project.id %}" class="btn btn-outline">
-                <i class="fas fa-edit"></i> Edit
+            <a href="{% url 'projects:update_project' project.id %}" class="btn btn-outline" title="Edit">
+                <i class="fas fa-edit"></i>
             </a>
             <form action="{% url 'projects:delete_project' project.id %}" method="post" class="d-inline">
                 {% csrf_token %}
@@ -125,6 +125,8 @@
 
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
 <script src="/static/js/project_detail.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css">

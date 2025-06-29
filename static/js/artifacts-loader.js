@@ -364,9 +364,17 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <h2>${data.title || 'Product Requirement Document'}</h2>
                                 <div class="prd-meta" style="display: flex; justify-content: space-between; align-items: center;">
                                     <span>${data.updated_at ? `Last updated: ${data.updated_at}` : ''}</span>
-                                    <button class="artifact-edit-btn" id="prd-edit-btn" data-project-id="${projectId}">
-                                        <i class="fas fa-edit"></i> Edit
-                                    </button>
+                                    <div class="prd-actions" style="display: flex; gap: 4px;">
+                                        <button class="artifact-edit-btn" id="prd-edit-btn" data-project-id="${projectId}" title="Edit" style="padding: 4px 6px; background: transparent; border: none; color: #fff; cursor: pointer; transition: all 0.2s; opacity: 0.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                        <button class="artifact-download-btn" id="prd-download-btn" data-project-id="${projectId}" title="Download PDF" style="padding: 4px 6px; background: transparent; border: none; color: #fff; cursor: pointer; transition: all 0.2s; opacity: 0.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+                                            <i class="fas fa-download"></i>
+                                        </button>
+                                        <button class="artifact-copy-btn" id="prd-copy-btn" data-project-id="${projectId}" title="Copy" style="padding: 4px 6px; background: transparent; border: none; color: #fff; cursor: pointer; transition: all 0.2s; opacity: 0.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+                                            <i class="fas fa-copy"></i>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                             <div class="prd-content markdown-content">
@@ -380,6 +388,22 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (editBtn) {
                         editBtn.addEventListener('click', function() {
                             ArtifactsEditor.enablePRDEdit(projectId, prdContent);
+                        });
+                    }
+                    
+                    // Add click event listener for the PDF download button
+                    const downloadBtn = document.getElementById('prd-download-btn');
+                    if (downloadBtn) {
+                        downloadBtn.addEventListener('click', function() {
+                            ArtifactsLoader.downloadPRDAsPDF(projectId, data.title || 'Product Requirement Document', prdContent);
+                        });
+                    }
+                    
+                    // Add click event listener for the copy button
+                    const copyBtn = document.getElementById('prd-copy-btn');
+                    if (copyBtn) {
+                        copyBtn.addEventListener('click', function() {
+                            ArtifactsLoader.copyToClipboard(prdContent, 'PRD content');
                         });
                     }
                 })
@@ -461,9 +485,14 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <h2>${data.title || 'Implementation Plan'}</h2>
                                 <div class="implementation-meta" style="display: flex; justify-content: space-between; align-items: center;">
                                     <span>${data.updated_at ? `Last updated: ${data.updated_at}` : ''}</span>
-                                    <button class="artifact-edit-btn" id="implementation-edit-btn" data-project-id="${projectId}">
-                                        <i class="fas fa-edit"></i> Edit
-                                    </button>
+                                    <div class="implementation-actions" style="display: flex; gap: 4px;">
+                                        <button class="artifact-edit-btn" id="implementation-edit-btn" data-project-id="${projectId}" title="Edit" style="padding: 4px 6px; background: transparent; border: none; color: #fff; cursor: pointer; transition: all 0.2s; opacity: 0.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                        <button class="artifact-copy-btn" id="implementation-copy-btn" data-project-id="${projectId}" title="Copy" style="padding: 4px 6px; background: transparent; border: none; color: #fff; cursor: pointer; transition: all 0.2s; opacity: 0.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+                                            <i class="fas fa-copy"></i>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                             <div class="implementation-content markdown-content">
@@ -477,6 +506,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (editBtn) {
                         editBtn.addEventListener('click', function() {
                             ArtifactsEditor.enableImplementationEdit(projectId, implementationContent);
+                        });
+                    }
+                    
+                    // Add click event listener for the copy button
+                    const copyBtn = document.getElementById('implementation-copy-btn');
+                    if (copyBtn) {
+                        copyBtn.addEventListener('click', function() {
+                            ArtifactsLoader.copyToClipboard(implementationContent, 'Implementation plan');
                         });
                     }
                 })
@@ -1496,11 +1533,11 @@ document.addEventListener('DOMContentLoaded', function() {
                                         <div class="drawer-section">
                                             <h4 class="section-title">Actions</h4>
                                             <div class="drawer-actions">
-                                                <button class="drawer-action-btn edit-btn" onclick="editChecklistItem(${item.id})">
-                                                    <i class="fas fa-edit"></i> Edit Item
+                                                <button class="drawer-action-btn edit-btn" onclick="editChecklistItem(${item.id})" title="Edit Item" style="padding: 8px 10px;">
+                                                    <i class="fas fa-edit"></i>
                                                 </button>
-                                                <button class="drawer-action-btn toggle-btn" onclick="toggleChecklistStatus(${item.id}, '${item.status}')">
-                                                    <i class="fas fa-sync-alt"></i> Toggle Status
+                                                <button class="drawer-action-btn toggle-btn" onclick="toggleChecklistStatus(${item.id}, '${item.status}')" title="Toggle Status" style="padding: 8px 10px;">
+                                                    <i class="fas fa-sync-alt"></i>
                                                 </button>
                                             </div>
                                         </div>
@@ -2799,6 +2836,345 @@ document.addEventListener('DOMContentLoaded', function() {
                     console.error('[ArtifactsLoader] Error fetching ticket details:', error);
                     alert('Error executing ticket: ' + error.message);
                 });
+        },
+        
+        /**
+         * Download PRD content as PDF
+         * @param {number} projectId - The ID of the current project
+         * @param {string} title - The title of the PRD document
+         * @param {string} content - The markdown content of the PRD
+         */
+        downloadPRDAsPDF: function(projectId, title, content) {
+            console.log('[ArtifactsLoader] downloadPRDAsPDF called');
+            
+            // Check if jsPDF is available
+            if (typeof window.jspdf === 'undefined' || typeof window.jspdf.jsPDF === 'undefined') {
+                console.error('[ArtifactsLoader] jsPDF library not loaded');
+                alert('PDF generation library not loaded. Please refresh the page and try again.');
+                return;
+            }
+            
+            // Create progress indicator
+            const progressOverlay = document.createElement('div');
+            progressOverlay.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.5);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 10000;
+            `;
+            
+            const progressContent = document.createElement('div');
+            progressContent.style.cssText = `
+                background: white;
+                padding: 30px;
+                border-radius: 8px;
+                text-align: center;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            `;
+            progressContent.innerHTML = `
+                <div style="margin-bottom: 15px;">
+                    <div class="spinner" style="border: 3px solid #f3f3f3; border-top: 3px solid #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto;"></div>
+                </div>
+                <div style="color: #333; font-family: Arial, sans-serif;">Generating PDF...</div>
+            `;
+            
+            // Add spinner animation
+            const style = document.createElement('style');
+            style.textContent = `
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+            `;
+            document.head.appendChild(style);
+            
+            progressOverlay.appendChild(progressContent);
+            document.body.appendChild(progressOverlay);
+            
+            // Use setTimeout to allow the progress indicator to render
+            setTimeout(() => {
+                try {
+                    // Initialize jsPDF
+                    const { jsPDF } = window.jspdf;
+                    const doc = new jsPDF({
+                        orientation: 'portrait',
+                        unit: 'mm',
+                        format: 'a4'
+                    });
+                    
+                    // Parse markdown to plain text and HTML structure
+                    const htmlContent = typeof marked !== 'undefined' ? marked.parse(content) : content;
+                    
+                    // Create temporary div to parse HTML
+                    const tempDiv = document.createElement('div');
+                    tempDiv.innerHTML = htmlContent;
+                    
+                    // Define margins and spacing
+                    const leftMargin = 20;
+                    const rightMargin = 20;
+                    const topMargin = 25;  // Header space
+                    const bottomMargin = 20;  // Footer space  
+                    const pageWidth = 210 - leftMargin - rightMargin;
+                    const pageHeight = 297;
+                    const maxY = pageHeight - bottomMargin;
+                    let currentY = topMargin;
+                    let pageNumber = 1;
+                    
+                    // Function to check if we need a new page
+                    const checkNewPage = (additionalHeight = 10) => {
+                        if (currentY + additionalHeight > maxY) {
+                            addPageNumber();
+                            doc.addPage();
+                            currentY = topMargin;
+                            pageNumber++;
+                            return true;
+                        }
+                        return false;
+                    };
+                    
+                    // Function to add page number
+                    const addPageNumber = () => {
+                        doc.setFontSize(10);
+                        doc.setTextColor(100, 100, 100);
+                        const pageNumText = `Page ${pageNumber}`;
+                        const textWidth = doc.getTextWidth(pageNumText);
+                        doc.text(pageNumText, (210 - textWidth) / 2, pageHeight - 10);
+                        doc.setTextColor(0, 0, 0); // Reset to black
+                    };
+                    
+                    // Add title
+                    doc.setFont('helvetica', 'bold');
+                    doc.setFontSize(24);
+                    doc.setTextColor(0, 0, 0);
+                    const titleLines = doc.splitTextToSize(title, pageWidth);
+                    titleLines.forEach(line => {
+                        checkNewPage();
+                        doc.text(line, leftMargin, currentY);
+                        currentY += 10;
+                    });
+                    currentY += 15; // Extra space after title
+                    
+                    // Process content
+                    const processNode = (node) => {
+                        if (node.nodeType === Node.TEXT_NODE) {
+                            const text = node.textContent.trim();
+                            if (text) {
+                                doc.setFont('helvetica', 'normal');
+                                doc.setFontSize(11);
+                                const lines = doc.splitTextToSize(text, pageWidth);
+                                lines.forEach(line => {
+                                    checkNewPage();
+                                    doc.text(line, leftMargin, currentY);
+                                    currentY += 6;
+                                });
+                            }
+                        } else if (node.nodeType === Node.ELEMENT_NODE) {
+                            const tagName = node.tagName.toLowerCase();
+                            
+                            switch (tagName) {
+                                case 'h1':
+                                case 'h2':
+                                case 'h3':
+                                case 'h4':
+                                case 'h5':
+                                case 'h6':
+                                    currentY += 8; // Space before heading
+                                    const headingSize = 20 - (parseInt(tagName.charAt(1)) * 2);
+                                    doc.setFont('helvetica', 'bold');
+                                    doc.setFontSize(headingSize);
+                                    const headingLines = doc.splitTextToSize(node.textContent.trim(), pageWidth);
+                                    headingLines.forEach(line => {
+                                        checkNewPage();
+                                        doc.text(line, leftMargin, currentY);
+                                        currentY += headingSize * 0.4;
+                                    });
+                                    currentY += 6; // Space after heading
+                                    doc.setFont('helvetica', 'normal');
+                                    break;
+                                    
+                                case 'p':
+                                    node.childNodes.forEach(child => processNode(child));
+                                    currentY += 8; // Paragraph spacing
+                                    break;
+                                    
+                                case 'ul':
+                                case 'ol':
+                                    currentY += 4; // Space before list
+                                    Array.from(node.children).forEach((li, index) => {
+                                        checkNewPage();
+                                        const bullet = tagName === 'ol' ? `${index + 1}. ` : '• ';
+                                        doc.setFont('helvetica', 'normal');
+                                        doc.setFontSize(11);
+                                        const text = li.textContent.trim();
+                                        const bulletWidth = doc.getTextWidth(bullet);
+                                        
+                                        // Add bullet
+                                        doc.text(bullet, leftMargin + 5, currentY);
+                                        
+                                        // Add text with indent
+                                        const lines = doc.splitTextToSize(text, pageWidth - 10);
+                                        lines.forEach((line, lineIndex) => {
+                                            if (lineIndex > 0) {
+                                                checkNewPage();
+                                            }
+                                            doc.text(line, leftMargin + 5 + bulletWidth, currentY);
+                                            currentY += 6;
+                                        });
+                                        currentY += 2; // Space between list items
+                                    });
+                                    currentY += 4; // Space after list
+                                    break;
+                                    
+                                case 'br':
+                                    currentY += 6;
+                                    break;
+                                    
+                                case 'strong':
+                                case 'b':
+                                    doc.setFont('helvetica', 'bold');
+                                    node.childNodes.forEach(child => processNode(child));
+                                    doc.setFont('helvetica', 'normal');
+                                    break;
+                                    
+                                case 'em':
+                                case 'i':
+                                    doc.setFont('helvetica', 'italic');
+                                    node.childNodes.forEach(child => processNode(child));
+                                    doc.setFont('helvetica', 'normal');
+                                    break;
+                                    
+                                case 'code':
+                                    doc.setFont('courier', 'normal');
+                                    doc.setFontSize(10);
+                                    const codeText = node.textContent.trim();
+                                    const codeLines = doc.splitTextToSize(codeText, pageWidth - 10);
+                                    codeLines.forEach(line => {
+                                        checkNewPage();
+                                        doc.text(line, leftMargin + 5, currentY);
+                                        currentY += 5;
+                                    });
+                                    doc.setFont('helvetica', 'normal');
+                                    doc.setFontSize(11);
+                                    break;
+                                    
+                                case 'pre':
+                                    currentY += 4;
+                                    doc.setFont('courier', 'normal');
+                                    doc.setFontSize(9);
+                                    const preText = node.textContent;
+                                    const preLines = preText.split('\n');
+                                    preLines.forEach(line => {
+                                        const wrappedLines = doc.splitTextToSize(line || ' ', pageWidth - 10);
+                                        wrappedLines.forEach(wrappedLine => {
+                                            checkNewPage();
+                                            doc.text(wrappedLine, leftMargin + 5, currentY);
+                                            currentY += 5;
+                                        });
+                                    });
+                                    doc.setFont('helvetica', 'normal');
+                                    doc.setFontSize(11);
+                                    currentY += 4;
+                                    break;
+                                    
+                                default:
+                                    // Process children for other elements
+                                    node.childNodes.forEach(child => processNode(child));
+                            }
+                        }
+                    };
+                    
+                    // Process all content nodes
+                    tempDiv.childNodes.forEach(node => processNode(node));
+                    
+                    // Add page number to last page
+                    addPageNumber();
+                    
+                    // Remove progress indicator
+                    document.body.removeChild(progressOverlay);
+                    document.head.removeChild(style);
+                    
+                    // Save the PDF
+                    const fileName = `${title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_prd.pdf`;
+                    doc.save(fileName);
+                    
+                } catch (error) {
+                    console.error('[ArtifactsLoader] Error generating PDF:', error);
+                    alert('Error generating PDF: ' + error.message);
+                    
+                    // Clean up
+                    if (progressOverlay.parentNode) {
+                        document.body.removeChild(progressOverlay);
+                    }
+                    if (style.parentNode) {
+                        document.head.removeChild(style);
+                    }
+                }
+            }, 100); // Small delay to show progress indicator
+        },
+
+        copyToClipboard: function(text, contentType) {
+            if (!text) {
+                console.error('No text to copy');
+                return;
+            }
+
+            // Use the Clipboard API if available
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text)
+                    .then(() => {
+                        // Show success message
+                        const message = document.createElement('div');
+                        message.style.cssText = `
+                            position: fixed;
+                            top: 20px;
+                            right: 20px;
+                            background: #28a745;
+                            color: white;
+                            padding: 12px 20px;
+                            border-radius: 4px;
+                            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+                            z-index: 10000;
+                            font-size: 14px;
+                            animation: slideIn 0.3s ease-out;
+                        `;
+                        message.textContent = `${contentType || 'Content'} copied to clipboard!`;
+                        document.body.appendChild(message);
+
+                        // Remove the message after 3 seconds
+                        setTimeout(() => {
+                            message.style.animation = 'slideOut 0.3s ease-out';
+                            setTimeout(() => document.body.removeChild(message), 300);
+                        }, 3000);
+                    })
+                    .catch(err => {
+                        console.error('Failed to copy text: ', err);
+                        alert('Failed to copy to clipboard. Please try again.');
+                    });
+            } else {
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = text;
+                textArea.style.position = 'fixed';
+                textArea.style.left = '-9999px';
+                document.body.appendChild(textArea);
+                textArea.select();
+                
+                try {
+                    document.execCommand('copy');
+                    alert(`${contentType || 'Content'} copied to clipboard!`);
+                } catch (err) {
+                    console.error('Fallback copy failed: ', err);
+                    alert('Failed to copy to clipboard. Please try again.');
+                }
+                
+                document.body.removeChild(textArea);
+            }
         }
     };
 
