@@ -80,11 +80,6 @@ if USE_REDIS_CHANNELS:
     redis_port = int(os.environ.get('REDIS_PORT', 6379))
     redis_db = int(os.environ.get('REDIS_DB', 0))
     redis_password = os.environ.get('REDIS_PASSWORD', '')
-
-    print(f"Redis host: {redis_host}")
-    print(f"Redis port: {redis_port}")
-    print(f"Redis db: {redis_db}")
-    print(f"Redis password: {redis_password}")
     
     # Build the connection URL based on available credentials
     if redis_password:
