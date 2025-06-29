@@ -81,6 +81,13 @@ if USE_REDIS_CHANNELS:
             'BACKEND': 'channels_redis.core.RedisChannelLayer',
             'CONFIG': {
                 "hosts": [(os.environ.get('REDIS_HOST', 'localhost'), int(os.environ.get('REDIS_PORT', 6379)))],
+                # "hosts": [
+                #     {
+                #         'address': (os.environ.get('REDIS_HOST', 'localhost'), int(os.environ.get('REDIS_PORT', 6379))),
+                #         # 'db': int(os.environ.get('REDIS_DB', 0)),
+                #         # 'password': os.environ.get('REDIS_PASSWORD', None),
+                #     }
+                # ],
                 "capacity": 1000,  # Number of messages to store per channel
                 "expiry": 60,      # Seconds until a message expires
                 "group_expiry": 86400,  # Seconds until a group expires (24 hours)
