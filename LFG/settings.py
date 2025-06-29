@@ -76,18 +76,29 @@ USE_REDIS_CHANNELS = os.environ.get('USE_REDIS_CHANNELS', 'False').lower() == 't
 
 if USE_REDIS_CHANNELS:
     # Redis Channel Layer - Recommended for production
+    redis_host = os.environ.get('REDIS_HOST', 'localhost')
+    redis_port = int(os.environ.get('REDIS_PORT', 6379))
+    redis_db = int(os.environ.get('REDIS_DB', 0))
+    redis_password = os.environ.get('REDIS_PASSWORD', '')
+
+    print(f"Redis host: {redis_host}")
+    print(f"Redis port: {redis_port}")
+    print(f"Redis db: {redis_db}")
+    print(f"Redis password: {redis_password}")
+    
+    # Build the connection URL based on available credentials
+    if redis_password:
+        # Production configuration with password and DB
+        redis_url = f"redis://:{redis_password}@{redis_host}:{redis_port}/{redis_db}"
+    else:
+        # Local development without password
+        redis_url = f"redis://{redis_host}:{redis_port}/{redis_db}"
+    
     CHANNEL_LAYERS = {
         'default': {
             'BACKEND': 'channels_redis.core.RedisChannelLayer',
             'CONFIG': {
-                "hosts": [(os.environ.get('REDIS_HOST', 'localhost'), int(os.environ.get('REDIS_PORT', 6379)))],
-                # "hosts": [
-                #     {
-                #         'address': (os.environ.get('REDIS_HOST', 'localhost'), int(os.environ.get('REDIS_PORT', 6379))),
-                #         # 'db': int(os.environ.get('REDIS_DB', 0)),
-                #         # 'password': os.environ.get('REDIS_PASSWORD', None),
-                #     }
-                # ],
+                "hosts": [redis_url],
                 "capacity": 1000,  # Number of messages to store per channel
                 "expiry": 60,      # Seconds until a message expires
                 "group_expiry": 86400,  # Seconds until a group expires (24 hours)
@@ -111,25 +122,38 @@ else:
         },
     }
 
-DATABASES = {
-    # 'default': {
-    #     'ENGINE': 'django.db.backends.postgresql',
-    #     'NAME': os.environ.get('POSTGRES_DB', 'easylogs_dev'),
-    #     'USER': os.environ.get('POSTGRES_USER', 'postgres'),
-    #     'PASSWORD': os.environ.get('POSTGRES_PASSWORD', 'Test0123!'),
-    #     'HOST': os.environ.get('POSTGRES_HOST', 'localhost'),
-    #     'PORT': os.environ.get('POSTGRES_PORT', '5432'),
-    # },
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+# Database configuration
+# Set USE_POSTGRES_DB=True in environment to use PostgreSQL, otherwise uses SQLite
+USE_POSTGRES_DB = os.environ.get('USE_POSTGRES_DB', 'False').lower() == 'true'
+
+if USE_POSTGRES_DB:
+    # PostgreSQL for production/staging
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.environ.get('POSTGRES_DB', 'lfg_prod'),
+            'USER': os.environ.get('POSTGRES_USER', 'postgres'),
+            'PASSWORD': os.environ.get('POSTGRES_PASSWORD', ''),
+            'HOST': os.environ.get('POSTGRES_HOST', 'localhost'),
+            'PORT': os.environ.get('POSTGRES_PORT', '5432'),
+        }
     }
-}
+else:
+    # SQLite for local development
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 # Use SQLite for testing
 import sys
 if 'test' in sys.argv:
-    DATABASES['default'] = DATABASES['sqlite']
+    DATABASES['default'] = {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'test_db.sqlite3',
+    }
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
