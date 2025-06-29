@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+import sys
 
 # Load environment variables from .env file
 load_dotenv()
@@ -8,13 +9,22 @@ load_dotenv()
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-your-secret-key-here'
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ["lfg.run", "*"]
+CSRF_TRUSTED_ORIGINS = [
+    'https://lfg.run',
+    'https://www.lfg.run', 
+    'http://localhost:8000',
+    'http://localhost:3000',
+]
+ALLOWED_HOSTS = [
+    'lfg.run',
+    'www.lfg.run',
+    'localhost',
+]
 
 # Application definition
 INSTALLED_APPS = [
@@ -143,7 +153,6 @@ else:
     }
 
 # Use SQLite for testing
-import sys
 if 'test' in sys.argv:
     DATABASES['default'] = {
         'ENGINE': 'django.db.backends.sqlite3',
@@ -245,43 +254,6 @@ SSH_USERNAME=os.getenv('SSH_USERNAME', 'root')
 SSH_KEY_STRING=os.getenv('SSH_KEY_STRING', None)
 
 ENVIRONMENT = os.getenv('environment', 'local')
-
-# Django Q Configuration
-# if ENVIRONMENT in ['production', 'staging']:
-#     # Use Redis for production/staging
-#     Q_CLUSTER = {
-#         'name': 'LFG_Tasks',
-#         'workers': 1,  # Reduced to single worker to prevent timer conflicts
-#         'recycle': 100,  # Reduced recycle count
-#         'timeout': 30,   # Reduced timeout
-#         'retry': 60,     # Reduced retry time
-#         'queue_limit': 10,  # Reduced queue limit
-#         'bulk': 1,       # Single task processing
-#         'orm': 'default',
-#         'guard_cycle': 10,  # Longer guard cycle
-#         'daemonize_workers': False,  # Disable daemon mode
-#         'max_attempts': 1,
-#         'sync': False,   # Keep async for production
-#         'redis': {
-#             'host': os.getenv('REDIS_HOST', 'localhost'),
-#             'port': int(os.getenv('REDIS_PORT', 6379)),
-#             'db': int(os.getenv('REDIS_DB', 0)),
-#             'password': os.getenv('REDIS_PASSWORD', None),
-#         }
-#     }
-# else:
-#     # Use Django ORM (SQLite) for local development with safer settings
-#     Q_CLUSTER = {
-#     'name': 'DjangORM',
-#     'workers': 1,
-#     'timeout': 90,
-#     'retry': 120,
-#     'queue_limit': 50,
-#     'bulk': 10,
-#     'orm': 'default',
-#     'broker': 'django_q.brokers.orm.ORM',  # Explicitly set ORM broker
-#     'sync': False,
-# }
 
 Q_CLUSTER = {
         'name': 'LFG_Tasks',
