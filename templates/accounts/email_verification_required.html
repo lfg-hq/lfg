@@ -1,0 +1,229 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Verification Required - LFG</title>
+    <link rel="shortcut icon" type="image/x-icon" href="/static/images/favicon.ico">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #6d28d9;
+            --primary-light: #8b5cf6;
+            --primary-dark: #5b21b6;
+            --secondary-color: #10b981;
+            --accent-color: #f97316;
+            --dark-bg: #0f172a;
+            --darker-bg: #020617;
+            --light-text: #e5e7eb;
+            --muted-text: #9ca3af;
+            --border-color: #374151;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Space Grotesk', sans-serif;
+            background-color: var(--dark-bg);
+            color: var(--light-text);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .container {
+            width: 100%;
+            max-width: 420px;
+            padding: 1rem;
+        }
+        
+        .logo {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        
+        .logo-text {
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary-light), var(--secondary-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .card {
+            background: var(--darker-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 1rem;
+            padding: 2rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+        
+        .icon-container {
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+        
+        .email-icon {
+            width: 60px;
+            height: 60px;
+            color: var(--primary-light);
+        }
+        
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+        
+        .email-display {
+            text-align: center;
+            background: rgba(109, 40, 217, 0.1);
+            border: 1px solid rgba(109, 40, 217, 0.3);
+            border-radius: 0.5rem;
+            padding: 0.75rem;
+            margin-bottom: 1.5rem;
+            font-weight: 500;
+            color: var(--primary-light);
+        }
+        
+        .message {
+            text-align: center;
+            color: var(--muted-text);
+            margin-bottom: 2rem;
+            line-height: 1.6;
+        }
+        
+        .button {
+            display: block;
+            width: 100%;
+            padding: 0.75rem 1.5rem;
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-light));
+            color: white;
+            border: none;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+            text-decoration: none;
+        }
+        
+        .button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(109, 40, 217, 0.4);
+        }
+        
+        .sign-out-link {
+            display: block;
+            text-align: center;
+            margin-top: 1.5rem;
+            color: var(--muted-text);
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+        
+        .sign-out-link:hover {
+            color: var(--primary-light);
+        }
+        
+        .help-text {
+            text-align: center;
+            margin-top: 2rem;
+            color: var(--muted-text);
+            font-size: 0.875rem;
+        }
+        
+        .messages {
+            margin-bottom: 1rem;
+        }
+        
+        .message-item {
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            margin-bottom: 0.5rem;
+            animation: slideIn 0.3s ease;
+        }
+        
+        .message-success {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            color: var(--secondary-color);
+        }
+        
+        .message-error {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #ef4444;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        {% if messages %}
+            <div class="messages">
+                {% for message in messages %}
+                    <div class="message-item message-{{ message.tags }}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+        
+        <div class="logo">
+            <div class="logo-text">LFG 🚀</div>
+        </div>
+        
+        <div class="card">
+            <div class="icon-container">
+                <svg class="email-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+            </div>
+            
+            <h1>Verify Your Email</h1>
+            
+            <p class="message">We've sent a verification email to:</p>
+            
+            <div class="email-display">{{ email }}</div>
+            
+            <p class="message">Please check your inbox and click the verification link to continue.</p>
+            
+            <form method="post" action="{% url 'resend_verification_email' %}">
+                {% csrf_token %}
+                <button type="submit" class="button">
+                    Resend Verification Email
+                </button>
+            </form>
+            
+            <a href="{% url 'logout' %}" class="sign-out-link">Sign out</a>
+        </div>
+        
+        <p class="help-text">
+            Didn't receive the email? Check your spam folder or try resending.
+        </p>
+    </div>
+</body>
+</html>

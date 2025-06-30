@@ -3,6 +3,8 @@ from django.contrib.auth.models import User
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
+import secrets
+from datetime import timedelta
 
 class Profile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
@@ -18,6 +20,38 @@ class Profile(models.Model):
     
     def __str__(self):
         return f"{self.user.username}'s profile"
+
+
+class EmailVerificationToken(models.Model):
+    """Model to store email verification tokens"""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='email_verification_tokens')
+    token = models.CharField(max_length=128, unique=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used = models.BooleanField(default=False)
+    
+    def __str__(self):
+        return f"Token for {self.user.email}"
+    
+    @classmethod
+    def create_token(cls, user):
+        """Create a new verification token for the user"""
+        # Invalidate any existing unused tokens
+        cls.objects.filter(user=user, used=False).update(used=True)
+        
+        # Create new token
+        token = secrets.token_urlsafe(48)
+        expires_at = timezone.now() + timedelta(hours=24)
+        
+        return cls.objects.create(
+            user=user,
+            token=token,
+            expires_at=expires_at
+        )
+    
+    def is_valid(self):
+        """Check if token is still valid"""
+        return not self.used and timezone.now() < self.expires_at
 
 class GitHubToken(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
