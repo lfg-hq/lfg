@@ -48,10 +48,20 @@ def auth(request):
             login_form = EmailAuthenticationForm(request, data=request.POST)
             if login_form.is_valid():
                 user = login_form.get_user()
+                
+                # Check if email is verified
+                profile = user.profile
+                if not profile.email_verified:
+                    messages.error(request, 'Please verify your email address before logging in. Check your inbox for the verification email.')
+                    return render(request, 'accounts/auth.html', {
+                        'login_form': login_form,
+                        'register_form': register_form,
+                        'active_tab': 'login'
+                    })
+                
                 login(request, user)
                 
                 # Check if user has required API keys set up
-                profile = user.profile
                 openai_key_missing = not bool(profile.openai_api_key)
                 anthropic_key_missing = not bool(profile.anthropic_api_key)
                 

@@ -59,6 +59,7 @@ Before you proceed with technical analysis, ask the user if they have any specif
 ### 3. Technical Implementation Plan
 
 * Outline architecture, database schema, API routes, and file structure—aligned with the Tech Stack above.
+You will create the implementation using the tool `create_implementation()`.
 * **Present the full implementation plan** and say: "Please review the technical implementation plan. Should I generate detailed tickets, or would you like modifications?"
 * **Wait for explicit approval** before proceeding.
 

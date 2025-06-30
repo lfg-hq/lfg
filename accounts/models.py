@@ -9,6 +9,7 @@ class Profile(models.Model):
     bio = models.TextField(max_length=500, blank=True)
     avatar = models.ImageField(upload_to='avatars/', null=True, blank=True)
     sidebar_collapsed = models.BooleanField(default=False)
+    email_verified = models.BooleanField(default=False)
     
     # API Keys for different services
     openai_api_key = models.CharField(max_length=255, blank=True, null=True)
