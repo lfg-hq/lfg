@@ -176,9 +176,9 @@ async def app_functions(function_name, function_args, project_id, conversation_i
             return await save_personas(project_id)
         case "design_schema":
             return await save_design_schema(function_args, project_id)
-        case "create_checklist_tickets":
-            return await create_checklist_tickets(function_args, project_id)
-        case "update_checklist_ticket":
+        case "create_tickets":
+            return await create_tickets(function_args, project_id)
+        case "update_ticket":
             return await update_individual_checklist_ticket(project_id, function_args.get('ticket_id'), function_args.get('status'))
         case "get_pending_tickets":
             return await get_pending_tickets(project_id)
@@ -1115,7 +1115,7 @@ async def save_design_schema(function_args, project_id):
             "message_to_agent": f"Error saving design schema: {str(e)}"
         }
 
-async def create_checklist_tickets(function_args, project_id):
+async def create_tickets(function_args, project_id):
     """
     Generate checklist tickets for a project
     """
@@ -1173,7 +1173,7 @@ async def create_checklist_tickets(function_args, project_id):
         
         return {
             "is_notification": True,
-            "notification_type": "create_checklist_tickets",
+            "notification_type": "create_tickets",
             "message_to_agent": f"Successfully created {len(created_tickets)} detailed tickets with design specifications"
         }
     except Exception as e:
@@ -1244,7 +1244,7 @@ async def update_individual_checklist_ticket(project_id, ticket_id, status):
 
         return {
             "is_notification": True,
-            "notification_type": "create_checklist_tickets",
+            "notification_type": "create_tickets",
             "message_to_agent": f"Checklist ticket {ticket_id} has been successfully updated in the database. Proceed to next checklist item, unless otherwise specified by the user"
         }
     except Exception as e:

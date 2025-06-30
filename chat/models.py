@@ -14,7 +14,7 @@ class AgentRole(models.Model):
     ]
     
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='agent_role')
-    name = models.CharField(max_length=50, choices=ROLE_CHOICES, default='product_analyst')
+    name = models.CharField(max_length=50, choices=ROLE_CHOICES, default='developer')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     

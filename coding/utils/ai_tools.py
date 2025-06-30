@@ -221,10 +221,10 @@ generate_tickets = {
     }
 }
 
-create_checklist_tickets = {
+create_tickets = {
     "type": "function",
     "function": {
-        "name": "create_checklist_tickets",
+        "name": "create_tickets",
         "description": "Call this function to generate the checklist tickets for the project. You will review the implementation plan for this.",
         "parameters": {
             "type": "object",
@@ -252,11 +252,10 @@ create_checklist_tickets = {
     }
 }
 
-update_checklist_ticket = {""
-
+update_ticket = {
     "type": "function",
     "function": {
-        "name": "update_checklist_ticket",
+        "name": "update_ticket",
         "description": "Call this function to update the status of a checklist ticket to done. You need to pass the id.",
         "parameters": {
             "type": "object",
@@ -507,7 +506,7 @@ capture_name = {
 
 tools_code = [create_prd, get_prd, start_server, \
               get_github_access_token, \
-              create_checklist_tickets, update_checklist_ticket, \
+              create_tickets, update_ticket, \
               get_next_ticket, get_pending_tickets, \
               create_implementation, get_implementation, update_implementation, \
               copy_boilerplate_code, capture_name]
