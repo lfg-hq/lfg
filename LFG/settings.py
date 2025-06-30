@@ -208,7 +208,6 @@ CORS_ALLOWED_ORIGINS = [
     'https://lfg.run',
     'https://www.lfg.run', 
     'http://localhost:8000',
-    'localhost:8000',
     'http://localhost:3000',
 ]
 
