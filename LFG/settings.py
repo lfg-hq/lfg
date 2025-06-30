@@ -18,6 +18,9 @@ CSRF_TRUSTED_ORIGINS = [
     'https://lfg.run',
     'https://www.lfg.run', 
     'http://localhost:8000',
+    'localhost:8000',
+    'localhost',
+    'http://127.0.0.1:8000',
     'http://localhost:3000',
 ]
 ALLOWED_HOSTS = [
@@ -25,6 +28,8 @@ ALLOWED_HOSTS = [
     'www.lfg.run',
     'localhost',
 ]
+
+CSRF_COOKIE_SECURE = True
 
 # Application definition
 INSTALLED_APPS = [
@@ -200,7 +205,14 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # CORS settings
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOWED_ORIGINS = [
+    'https://lfg.run',
+    'https://www.lfg.run', 
+    'http://localhost:8000',
+    'localhost:8000',
+    'http://localhost:3000',
+]
 
 # Security settings
 X_FRAME_OPTIONS = 'SAMEORIGIN'  # Allow pages to be displayed in frames on the same origin
@@ -238,6 +250,10 @@ EMAIL_BACKEND = 'accounts.email_backend.EmailBackend'
 SENDGRID_API_KEY = os.environ.get('SENDGRID_API_KEY', '')
 SENDGRID_ECHO_TO_STDOUT = False  # Set to True to show emails in console instead of sending
 SENDGRID_SANDBOX_MODE_IN_DEBUG = False  # Set to True to prevent actual email sending in debug mode
+# # Disable SendGrid click and open tracking for all emails (important for password reset links)
+# SENDGRID_TRACK_CLICKS_HTML = False
+# SENDGRID_TRACK_CLICKS_PLAIN = False
+# SENDGRID_TRACK_EMAIL_OPENS = False
 
 # SMTP Configuration (fallback when SendGrid is not available)
 EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')

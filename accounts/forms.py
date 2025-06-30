@@ -1,10 +1,11 @@
 from django import forms
 from django.contrib.auth.models import User
-from django.contrib.auth.forms import UserCreationForm, AuthenticationForm
+from django.contrib.auth.forms import UserCreationForm, AuthenticationForm, PasswordResetForm as BasePasswordResetForm
 from django.core.mail import send_mail
 from django.conf import settings
 from django.utils.translation import gettext_lazy as _
 from .models import Profile
+from django.core.exceptions import ValidationError
 
 class EmailAuthenticationForm(AuthenticationForm):
     """
@@ -29,24 +30,19 @@ class UserRegisterForm(UserCreationForm):
         model = User
         fields = ['email', 'password1', 'password2']
     
+    def clean_email(self):
+        email = self.cleaned_data.get('email')
+        # Check both email and username fields since we use email as username
+        if User.objects.filter(email=email).exists() or User.objects.filter(username=email).exists():
+            raise ValidationError("A user with this email already exists.")
+        return email
+    
     def save(self, commit=True):
         user = super().save(commit=False)
         user.username = self.cleaned_data['email']  # Set username to email
         user.email = self.cleaned_data['email']
         if commit:
             user.save()
-            # Send welcome email using Django's console backend for development
-            try:
-                send_mail(
-                    subject='Welcome to LFG',
-                    message=f'Hi there,\n\nThank you for joining LFG! Your account has been created successfully.\n\nRegards,\nThe LFG Team',
-                    from_email=settings.DEFAULT_FROM_EMAIL,
-                    recipient_list=[user.email],
-                    fail_silently=True,  # Don't raise exceptions for email errors
-                )
-            except Exception as e:
-                # Log the error but don't prevent account creation
-                print(f"Error sending welcome email: {e}")
         return user
 
 class UserUpdateForm(forms.ModelForm):
@@ -66,4 +62,30 @@ class UserUpdateForm(forms.ModelForm):
 class ProfileUpdateForm(forms.ModelForm):
     class Meta:
         model = Profile
-        fields = ['bio', 'avatar'] 
+        fields = ['bio', 'avatar']
+
+
+class PasswordResetForm(BasePasswordResetForm):
+    """
+    Custom password reset form that finds users by email
+    (since we use email as username)
+    """
+    email = forms.EmailField(
+        label=_("Email"),
+        max_length=254,
+        widget=forms.EmailInput(attrs={
+            'class': 'form-input',
+            'placeholder': 'Enter your email address',
+            'autocomplete': 'email'
+        })
+    )
+    
+    def get_users(self, email):
+        """
+        Override to find users by email field regardless of username
+        """
+        active_users = User.objects.filter(
+            email__iexact=email,
+            is_active=True
+        )
+        return (u for u in active_users if u.has_usable_password()) 

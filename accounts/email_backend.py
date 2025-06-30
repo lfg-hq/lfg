@@ -3,6 +3,7 @@ Custom email backend that uses SendGrid when available,
 falls back to SMTP when SendGrid is not configured.
 """
 import logging
+import json
 from django.conf import settings
 from django.core.mail.backends.smtp import EmailBackend as SMTPBackend
 
@@ -33,6 +34,17 @@ class EmailBackend:
     def send_messages(self, messages):
         """Send email messages using the configured backend."""
         try:
+            # If using SendGrid, disable click tracking for all messages
+            if hasattr(self.backend, '__class__') and 'Sendgrid' in self.backend.__class__.__name__:
+                for message in messages:
+                    # For django-sendgrid-v5, we need to set tracking settings
+                    if not hasattr(message, 'track_clicks'):
+                        # Disable click tracking for this message
+                        message.track_clicks = False
+                    if not hasattr(message, 'track_opens'):
+                        # Also disable open tracking for privacy
+                        message.track_opens = False
+            
             return self.backend.send_messages(messages)
         except Exception as e:
             logger.error(f"Failed to send email: {str(e)}")

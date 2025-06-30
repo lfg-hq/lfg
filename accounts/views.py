@@ -4,14 +4,20 @@ from django.contrib.auth.decorators import login_required
 from django.urls import reverse
 from django.contrib.auth import authenticate, login
 from django.conf import settings
-from .forms import UserRegisterForm, UserUpdateForm, ProfileUpdateForm, EmailAuthenticationForm
+from .forms import UserRegisterForm, UserUpdateForm, ProfileUpdateForm, EmailAuthenticationForm, PasswordResetForm
 from django.contrib.auth.models import User
-from .models import GitHubToken
+from .models import GitHubToken, EmailVerificationToken
 import requests
 import uuid
 import json
 from urllib.parse import urlencode
 from django.http import JsonResponse
+from django.core.mail import send_mail
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
+from django.contrib.auth.tokens import default_token_generator
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode
 
 # Define GitHub OAuth constants
 GITHUB_CLIENT_ID = settings.GITHUB_CLIENT_ID if hasattr(settings, 'GITHUB_CLIENT_ID') else None
@@ -23,10 +29,17 @@ def register(request):
     if request.method == 'POST':
         form = UserRegisterForm(request.POST)
         if form.is_valid():
-            form.save()
+            user = form.save()
             email = form.cleaned_data.get('email')
-            messages.success(request, f'Account created for {email}! You can now log in.')
-            return redirect('login')
+            
+            # Send verification email
+            send_verification_email(request, user)
+            
+            # Auto-login the user
+            login(request, user)
+            
+            # Redirect to email verification page
+            return redirect('email_verification_required')
     else:
         form = UserRegisterForm()
     return render(request, 'accounts/auth.html', {'form': form, 'active_tab': 'register'})
@@ -53,12 +66,9 @@ def auth(request):
                 # Check if email is verified (skip for local environment)
                 profile = user.profile
                 if not profile.email_verified and ENVIRONMENT != 'local':
-                    messages.error(request, 'Please verify your email address before logging in. Check your inbox for the verification email.')
-                    return render(request, 'accounts/auth.html', {
-                        'login_form': login_form,
-                        'register_form': register_form,
-                        'active_tab': 'login'
-                    })
+                    # Login the user but redirect to verification page
+                    login(request, user)
+                    return redirect('email_verification_required')
                 
                 login(request, user)
                 
@@ -80,10 +90,17 @@ def auth(request):
         elif form_type == 'register':
             register_form = UserRegisterForm(request.POST)
             if register_form.is_valid():
-                register_form.save()
+                user = register_form.save()
                 email = register_form.cleaned_data.get('email')
-                messages.success(request, f'Account created for {email}! You can now log in.')
-                return redirect('login')
+                
+                # Send verification email
+                send_verification_email(request, user)
+                
+                # Auto-login the user
+                login(request, user)
+                
+                # Redirect to email verification page
+                return redirect('email_verification_required')
     
     # Render the template with both forms
     context = {
@@ -246,7 +263,7 @@ def disconnect_api_key(request, provider):
     return redirect('integrations')
 
 @login_required
-def settings(request):
+def user_settings(request):
     """
     User settings page with integrations like GitHub
     """
@@ -450,4 +467,182 @@ def integrations(request):
         'groq_connected': groq_connected,
     }
     
-    return render(request, 'accounts/integrations.html', context) 
+    return render(request, 'accounts/integrations.html', context)
+
+
+def send_verification_email(request, user):
+    """Send email verification link to user"""
+    try:
+        # Create verification token
+        token = EmailVerificationToken.create_token(user)
+        
+        # Build verification URL
+        verification_url = request.build_absolute_uri(
+            reverse('verify_email', kwargs={'token': token.token})
+        )
+        
+        # Email content
+        subject = 'Verify your email for LFG'
+        html_message = render_to_string('accounts/email_verification.html', {
+            'user': user,
+            'verification_url': verification_url,
+            'expiration_hours': 24,
+        })
+        plain_message = strip_tags(html_message)
+        
+        # Send email
+        send_mail(
+            subject=subject,
+            message=plain_message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user.email],
+            html_message=html_message,
+            fail_silently=False,
+        )
+        return True
+    except Exception as e:
+        print(f"Error sending verification email: {e}")
+        return False
+
+
+@login_required
+def email_verification_required(request):
+    """Show email verification required page"""
+    user = request.user
+    
+    # Check if already verified
+    if user.profile.email_verified:
+        return redirect('projects:project_list')
+    
+    context = {
+        'email': user.email,
+    }
+    return render(request, 'accounts/email_verification_required.html', context)
+
+
+@login_required
+def resend_verification_email(request):
+    """Resend verification email"""
+    if request.method == 'POST':
+        user = request.user
+        
+        # Check if already verified
+        if user.profile.email_verified:
+            messages.info(request, 'Your email is already verified.')
+            return redirect('projects:project_list')
+        
+        # Send new verification email
+        if send_verification_email(request, user):
+            messages.success(request, 'Verification email sent! Please check your inbox.')
+        else:
+            messages.error(request, 'Failed to send verification email. Please try again later.')
+        
+        return redirect('email_verification_required')
+    
+    return redirect('email_verification_required')
+
+
+def verify_email(request, token):
+    """Verify email with token"""
+    try:
+        # Find the token
+        verification_token = EmailVerificationToken.objects.get(token=token)
+        
+        # Check if token is valid
+        if not verification_token.is_valid():
+            messages.error(request, 'This verification link has expired or been used already.')
+            return redirect('login')
+        
+        # Mark email as verified
+        user = verification_token.user
+        profile = user.profile
+        profile.email_verified = True
+        profile.save()
+        
+        # Mark token as used
+        verification_token.used = True
+        verification_token.save()
+        
+        messages.success(request, 'Your email has been verified successfully!')
+        
+        # If user is logged in, redirect to appropriate page
+        if request.user.is_authenticated:
+            # Check if user has required API keys set up
+            openai_key_missing = not bool(profile.openai_api_key)
+            anthropic_key_missing = not bool(profile.anthropic_api_key)
+            
+            # If both keys are missing, redirect to integrations
+            if openai_key_missing and anthropic_key_missing:
+                messages.success(request, 'Please set up OpenAI or Anthropic API keys to get started.')
+                return redirect('integrations')
+            
+            return redirect('projects:project_list')
+        else:
+            return redirect('login')
+            
+    except EmailVerificationToken.DoesNotExist:
+        messages.error(request, 'Invalid verification link.')
+        return redirect('login')
+
+
+def send_password_reset_email(request, user):
+    """Send password reset email - similar to send_verification_email"""
+    try:
+        # Generate token and uid for password reset
+        token = default_token_generator.make_token(user)
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        
+        # Build password reset URL
+        reset_url = request.build_absolute_uri(
+            reverse('password_reset_confirm', kwargs={'uidb64': uid, 'token': token})
+        )
+        
+        # Email content
+        subject = 'Reset your password for LFG'
+        html_message = render_to_string('accounts/password_reset_email.html', {
+            'user': user,
+            'reset_url': reset_url,
+            'protocol': 'https' if request.is_secure() else 'http',
+            'domain': request.get_host(),
+            'uid': uid,
+            'token': token,
+        })
+        plain_message = strip_tags(html_message)
+        
+        # Send email
+        send_mail(
+            subject=subject,
+            message=plain_message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user.email],
+            html_message=html_message,
+            fail_silently=False,
+        )
+        return True
+    except Exception as e:
+        print(f"Error sending password reset email: {e}")
+        return False
+
+
+def password_reset(request):
+    """Custom password reset view"""
+    if request.method == 'POST':
+        form = PasswordResetForm(request.POST)
+        if form.is_valid():
+            email = form.cleaned_data['email']
+            # Find users with this email
+            users = User.objects.filter(email__iexact=email, is_active=True)
+            
+            # Send reset email to each user
+            email_sent = False
+            for user in users:
+                if user.has_usable_password():
+                    if send_password_reset_email(request, user):
+                        email_sent = True
+            
+            # Always redirect to done page (don't reveal if email exists)
+            return redirect('password_reset_done')
+    else:
+        form = PasswordResetForm()
+    
+    return render(request, 'accounts/password_reset.html', {'form': form}) 
