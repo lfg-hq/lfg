@@ -230,13 +230,28 @@ LOGOUT_REDIRECT_URL = '/accounts/login/'
 
 # Email Configuration
 # EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # For development - outputs to console
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'  # For production
+
+# Use custom email backend that automatically chooses between SendGrid and SMTP
+EMAIL_BACKEND = 'accounts.email_backend.EmailBackend'
+
+# SendGrid Configuration
+SENDGRID_API_KEY = os.environ.get('SENDGRID_API_KEY', '')
+SENDGRID_ECHO_TO_STDOUT = False  # Set to True to show emails in console instead of sending
+SENDGRID_SANDBOX_MODE_IN_DEBUG = False  # Set to True to prevent actual email sending in debug mode
+
+# SMTP Configuration (fallback when SendGrid is not available)
 EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
 EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 587))
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
+
+# Default email settings
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'noreply@lfg.run')
+SERVER_EMAIL = DEFAULT_FROM_EMAIL
+
+# Email subject prefix for admin emails
+EMAIL_SUBJECT_PREFIX = '[LFG] '
 
 # GitHub OAuth Settings
 # You should set these in environment variables or .env file
