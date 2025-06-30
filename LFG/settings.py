@@ -18,8 +18,6 @@ CSRF_TRUSTED_ORIGINS = [
     'https://lfg.run',
     'https://www.lfg.run', 
     'http://localhost:8000',
-    'localhost:8000',
-    'localhost',
     'http://127.0.0.1:8000',
     'http://localhost:3000',
 ]
