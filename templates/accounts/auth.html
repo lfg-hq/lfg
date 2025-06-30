@@ -1,3 +1,4 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -643,7 +644,7 @@
                     </div>
 
                     <div class="forgot-password">
-                        <a href="#">Forgot your password?</a>
+                        <a href="{% url 'password_reset' %}">Forgot your password?</a>
                     </div>
 
                     <button type="submit" class="submit-btn">Sign In <i class="fas fa-arrow-right"></i></button>
