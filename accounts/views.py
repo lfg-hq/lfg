@@ -17,6 +17,7 @@ from django.http import JsonResponse
 GITHUB_CLIENT_ID = settings.GITHUB_CLIENT_ID if hasattr(settings, 'GITHUB_CLIENT_ID') else None
 GITHUB_CLIENT_SECRET = settings.GITHUB_CLIENT_SECRET if hasattr(settings, 'GITHUB_CLIENT_SECRET') else None
 GITHUB_REDIRECT_URI = None  # Will be set dynamically
+ENVIRONMENT = settings.ENVIRONMENT if hasattr(settings, 'ENVIRONMENT') else 'local'
 
 def register(request):
     if request.method == 'POST':
@@ -49,9 +50,9 @@ def auth(request):
             if login_form.is_valid():
                 user = login_form.get_user()
                 
-                # Check if email is verified
+                # Check if email is verified (skip for local environment)
                 profile = user.profile
-                if not profile.email_verified:
+                if not profile.email_verified and ENVIRONMENT != 'local':
                     messages.error(request, 'Please verify your email address before logging in. Check your inbox for the verification email.')
                     return render(request, 'accounts/auth.html', {
                         'login_form': login_form,
