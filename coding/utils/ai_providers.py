@@ -61,8 +61,8 @@ def get_notification_type_for_tool(tool_name):
         "design_schema": "implementation",  # Design tab is commented out, use implementation
         "generate_tickets": "checklist",  # Tickets tab is commented out, use checklist
         "checklist_tickets": "checklist",
-        "create_checklist_tickets": "checklist",  # Add this mapping
-        "update_checklist_ticket": "checklist",
+        "create_tickets": "checklist",  # Add this mapping
+        "update_ticket": "checklist",
         "get_next_ticket": "checklist",
         "get_pending_tickets": "checklist",  # Add this mapping
         "implement_ticket": "implementation",  # Implementation tasks go to implementation tab
@@ -92,7 +92,7 @@ def map_notification_type_to_tab(notification_type):
         "features": "checklist",
         "personas": "checklist",
         "design_schema": "implementation",
-        "create_checklist_tickets": "checklist",
+        "create_tickets": "checklist",
         "get_pending_tickets": "checklist",
         "command_error": "toolhistory",
         "project_name_saved": "toolhistory",
@@ -182,7 +182,7 @@ async def execute_tool_call(tool_call_name, tool_call_args_str, project_id, conv
             "get_features", "get_personas", "create_prd", "get_prd",
             "save_implementation", "get_implementation", "update_implementation", "create_implementation",
             "execute_command", "start_server", "design_schema", "generate_tickets",
-            "checklist_tickets", "update_checklist_ticket", "get_next_ticket", "implement_ticket",
+            "checklist_tickets", "update_ticket", "get_next_ticket", "implement_ticket",
             "save_project_name", "get_project_name"  # Add project name functions
         ]:
             logger.debug(f"FORCING NOTIFICATION FOR {tool_call_name}")
