@@ -268,7 +268,7 @@ K8S_DEFAULT_NAMESPACE = "lfg"
 SSH_USERNAME=os.getenv('SSH_USERNAME', 'root')
 SSH_KEY_STRING=os.getenv('SSH_KEY_STRING', None)
 
-ENVIRONMENT = os.getenv('environment', 'local')
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'local')
 
 Q_CLUSTER = {
         'name': 'LFG_Tasks',
