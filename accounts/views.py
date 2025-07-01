@@ -509,9 +509,19 @@ def send_verification_email(request, user):
 def email_verification_required(request):
     """Show email verification required page"""
     user = request.user
+    profile = user.profile
     
     # Check if already verified
-    if user.profile.email_verified:
+    if profile.email_verified:
+        # Check if user has required API keys set up
+        openai_key_missing = not bool(profile.openai_api_key)
+        anthropic_key_missing = not bool(profile.anthropic_api_key)
+        
+        # If both OpenAI and Anthropic keys are missing, redirect to integrations
+        if openai_key_missing and anthropic_key_missing:
+            messages.success(request, 'Please set up OpenAI or Anthropic API keys to get started.')
+            return redirect('integrations')
+        
         return redirect('projects:project_list')
     
     context = {
