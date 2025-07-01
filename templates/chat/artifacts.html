@@ -20,6 +20,77 @@
             height: 100%;
             position: relative;
         }
+        
+        /* PRD Streaming Styles */
+        #prd-container {
+            height: 100%;
+            overflow-y: auto;
+        }
+        
+        .prd-streaming-container {
+            color: #e2e8f0 !important;
+        }
+        
+        /* Basic markdown styles for PRD content */
+        .markdown-content h1,
+        .markdown-content h2,
+        .markdown-content h3,
+        .markdown-content h4,
+        .markdown-content h5,
+        .markdown-content h6 {
+            color: #e2e8f0;
+            margin-top: 1em;
+            margin-bottom: 0.5em;
+            font-weight: bold;
+        }
+        
+        .markdown-content h1 { font-size: 2em; }
+        .markdown-content h2 { font-size: 1.5em; }
+        .markdown-content h3 { font-size: 1.17em; }
+        
+        .markdown-content p {
+            color: #e2e8f0;
+            margin: 1em 0;
+            line-height: 1.6;
+        }
+        
+        .markdown-content ul,
+        .markdown-content ol {
+            color: #e2e8f0;
+            margin: 1em 0;
+            padding-left: 2em;
+        }
+        
+        .markdown-content li {
+            color: #e2e8f0;
+            margin: 0.5em 0;
+        }
+        
+        .markdown-content code {
+            background: #2a2a2a;
+            color: #e2e8f0;
+            padding: 0.2em 0.4em;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        
+        .markdown-content pre {
+            background: #1a1a1a;
+            color: #e2e8f0;
+            padding: 1em;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        
+        .markdown-content strong {
+            color: #e2e8f0;
+            font-weight: bold;
+        }
+        
+        .markdown-content em {
+            color: #e2e8f0;
+            font-style: italic;
+        }
     </style>
     
     <!-- Tabs Navigation - moved to top -->
@@ -47,12 +118,28 @@
         <div class="tab-content">
             <!-- PRD Tab -->
             <div class="tab-pane active" id="prd">
-                <div class="empty-state">
+                <!-- Empty state (shown by default) -->
+                <div class="empty-state" id="prd-empty-state">
                     <div class="empty-state-icon">
                         <i class="fas fa-file-alt"></i>
                     </div>
                     <div class="empty-state-text">
                         No PRD content available yet.
+                    </div>
+                </div>
+                
+                <!-- PRD Container (hidden by default, shown during streaming) -->
+                <div class="prd-container" id="prd-container" style="display: none;">
+                    <div class="prd-header">
+                        <h2>Product Requirement Document</h2>
+                        <div class="prd-meta" style="display: flex; justify-content: space-between; align-items: center;">
+                            <span class="streaming-status" id="prd-streaming-status" style="color: #8b5cf6;">
+                                <i class="fas fa-circle-notch fa-spin"></i> Generating PRD...
+                            </span>
+                        </div>
+                    </div>
+                    <div class="prd-streaming-container prd-content markdown-content" id="prd-streaming-content" style="color: #e2e8f0; padding: 20px;">
+                        <!-- Content will be streamed here -->
                     </div>
                 </div>
             </div>

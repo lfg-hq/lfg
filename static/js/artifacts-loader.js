@@ -313,6 +313,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
             
+            // Check if we're currently streaming PRD content
+            if (window.prdStreamingState && window.prdStreamingState.isStreaming) {
+                console.log('[ArtifactsLoader] PRD is currently streaming, skipping loadPRD');
+                return;
+            }
+            
             // Get PRD tab content element
             const prdTab = document.getElementById('prd');
             if (!prdTab) {
@@ -320,9 +326,25 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
             
+            // Hide streaming container and show loading state
+            const streamingContainer = document.getElementById('prd-container');
+            const emptyState = document.getElementById('prd-empty-state');
+            if (streamingContainer) streamingContainer.style.display = 'none';
+            if (emptyState) emptyState.style.display = 'none';
+            
             // Show loading state
             console.log('[ArtifactsLoader] Showing loading state for PRD');
-            prdTab.innerHTML = '<div class="loading-state"><div class="spinner"></div><div>Loading PRD...</div></div>';
+            
+            // Create a temporary loading element
+            let loadingElement = prdTab.querySelector('.loading-state');
+            if (!loadingElement) {
+                loadingElement = document.createElement('div');
+                loadingElement.className = 'loading-state';
+                loadingElement.innerHTML = '<div class="spinner"></div><div>Loading PRD...</div>';
+                prdTab.appendChild(loadingElement);
+            } else {
+                loadingElement.style.display = 'block';
+            }
             
             // Fetch PRD from API
             const url = `/projects/${projectId}/api/prd/`;
@@ -341,47 +363,59 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Process PRD data
                     const prdContent = data.content || '';
                     
+                    // Remove loading element
+                    if (loadingElement) {
+                        loadingElement.remove();
+                    }
+                    
                     if (!prdContent) {
                         // Show empty state if no PRD found
                         console.log('[ArtifactsLoader] No PRD found, showing empty state');
-                        prdTab.innerHTML = `
-                            <div class="empty-state">
-                                <div class="empty-state-icon">
-                                    <i class="fas fa-file-alt"></i>
-                                </div>
-                                <div class="empty-state-text">
-                                    No PRD available yet.
-                                </div>
-                            </div>
-                        `;
+                        const emptyState = document.getElementById('prd-empty-state');
+                        const prdContainer = document.getElementById('prd-container');
+                        
+                        if (emptyState) emptyState.style.display = 'block';
+                        if (prdContainer) prdContainer.style.display = 'none';
                         return;
                     }
                     
-                    // Render PRD content with markdown
-                    prdTab.innerHTML = `
-                        <div class="prd-container">
-                            <div class="prd-header">
-                                <h2>${data.title || 'Product Requirement Document'}</h2>
-                                <div class="prd-meta" style="display: flex; justify-content: space-between; align-items: center;">
-                                    <span>${data.updated_at ? `Last updated: ${data.updated_at}` : ''}</span>
-                                    <div class="prd-actions" style="display: flex; gap: 4px;">
-                                        <button class="artifact-edit-btn" id="prd-edit-btn" data-project-id="${projectId}" title="Edit" style="padding: 4px 6px; background: transparent; border: none; color: #fff; cursor: pointer; transition: all 0.2s; opacity: 0.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
-                                            <i class="fas fa-edit"></i>
-                                        </button>
-                                        <button class="artifact-download-btn" id="prd-download-btn" data-project-id="${projectId}" title="Download PDF" style="padding: 4px 6px; background: transparent; border: none; color: #fff; cursor: pointer; transition: all 0.2s; opacity: 0.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
-                                            <i class="fas fa-download"></i>
-                                        </button>
-                                        <button class="artifact-copy-btn" id="prd-copy-btn" data-project-id="${projectId}" title="Copy" style="padding: 4px 6px; background: transparent; border: none; color: #fff; cursor: pointer; transition: all 0.2s; opacity: 0.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
-                                            <i class="fas fa-copy"></i>
-                                        </button>
-                                    </div>
-                                </div>
+                    // Use existing containers to display PRD content
+                    const emptyState = document.getElementById('prd-empty-state');
+                    const prdContainer = document.getElementById('prd-container');
+                    const streamingContent = document.getElementById('prd-streaming-content');
+                    const streamingStatus = document.getElementById('prd-streaming-status');
+                    
+                    if (emptyState) emptyState.style.display = 'none';
+                    if (prdContainer) prdContainer.style.display = 'block';
+                    
+                    // Update status to show it's a loaded PRD
+                    if (streamingStatus) {
+                        streamingStatus.innerHTML = `
+                            <span>${data.updated_at ? `Last updated: ${data.updated_at}` : 'Loaded from server'}</span>
+                            <div class="prd-actions" style="display: flex; gap: 4px;">
+                                <button class="artifact-edit-btn" id="prd-edit-btn" data-project-id="${projectId}" title="Edit" style="padding: 4px 6px; background: transparent; border: none; color: #fff; cursor: pointer; transition: all 0.2s; opacity: 0.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button class="artifact-download-btn" id="prd-download-btn" data-project-id="${projectId}" title="Download PDF" style="padding: 4px 6px; background: transparent; border: none; color: #fff; cursor: pointer; transition: all 0.2s; opacity: 0.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+                                    <i class="fas fa-download"></i>
+                                </button>
+                                <button class="artifact-copy-btn" id="prd-copy-btn" data-project-id="${projectId}" title="Copy" style="padding: 4px 6px; background: transparent; border: none; color: #fff; cursor: pointer; transition: all 0.2s; opacity: 0.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+                                    <i class="fas fa-copy"></i>
+                                </button>
                             </div>
-                            <div class="prd-content markdown-content">
-                                ${typeof marked !== 'undefined' ? marked.parse(prdContent) : prdContent}
-                            </div>
-                        </div>
-                    `;
+                        `;
+                    }
+                    
+                    // Render the PRD content
+                    if (streamingContent) {
+                        streamingContent.innerHTML = typeof marked !== 'undefined' ? marked.parse(prdContent) : prdContent;
+                    }
+                    
+                    // Clear streaming state since we're loading saved content
+                    if (window.prdStreamingState) {
+                        window.prdStreamingState.isStreaming = false;
+                        window.prdStreamingState.fullContent = prdContent;
+                    }
                     
                     // Add click event listener for the edit button
                     const editBtn = document.getElementById('prd-edit-btn');
@@ -420,6 +454,149 @@ document.addEventListener('DOMContentLoaded', function() {
                         </div>
                     `;
                 });
+        },
+        
+        /**
+         * Stream PRD content live as it's being generated
+         * @param {string} contentChunk - The chunk of PRD content to append
+         * @param {boolean} isComplete - Whether this is the final chunk
+         * @param {number} projectId - The ID of the current project
+         */
+        streamPRDContent: function(contentChunk, isComplete, projectId) {
+            console.log(`[ArtifactsLoader] streamPRDContent called with chunk length: ${contentChunk ? contentChunk.length : 0}, isComplete: ${isComplete}`);
+            console.log(`[ArtifactsLoader] Content chunk preview: ${contentChunk ? contentChunk.substring(0, 100) : 'null/undefined'}...`);
+            console.log(`[ArtifactsLoader] Project ID: ${projectId}`);
+            
+            // CONSOLE STREAMING OUTPUT IN ARTIFACTS LOADER
+            console.log('\n' + '='.repeat(80));
+            console.log('🟡 PRD STREAM IN ARTIFACTS LOADER');
+            console.log(`📅 Time: ${new Date().toISOString()}`);
+            console.log(`📏 Length: ${contentChunk ? contentChunk.length : 0} chars`);
+            console.log(`✅ Complete: ${isComplete}`);
+            if (contentChunk) {
+                console.log(`📝 Content: ${contentChunk.substring(0, 200)}${contentChunk.length > 200 ? '...' : ''}`);
+            }
+            console.log('='.repeat(80) + '\n');
+            
+            // Initialize PRD streaming state if not exists
+            if (!window.prdStreamingState) {
+                window.prdStreamingState = {
+                    fullContent: '',
+                    isStreaming: false,
+                    projectId: projectId
+                };
+            }
+            
+            // Get the elements from the template
+            const emptyState = document.getElementById('prd-empty-state');
+            const prdContainer = document.getElementById('prd-container');
+            const streamingStatus = document.getElementById('prd-streaming-status');
+            const streamingContent = document.getElementById('prd-streaming-content');
+            
+            if (!prdContainer || !streamingContent) {
+                console.error('[ArtifactsLoader] PRD container or streaming content element not found');
+                return;
+            }
+            
+            // Start streaming if not already started
+            if (!window.prdStreamingState.isStreaming) {
+                window.prdStreamingState.isStreaming = true;
+                window.prdStreamingState.fullContent = '';
+                window.prdStreamingState.projectId = projectId;
+                
+                // Hide empty state and show container when streaming starts
+                if (emptyState) emptyState.style.display = 'none';
+                prdContainer.style.display = 'block';
+                
+                // Reset streaming status
+                if (streamingStatus) {
+                    streamingStatus.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Generating PRD...';
+                    streamingStatus.style.color = '#8b5cf6';
+                }
+                
+                console.log('[ArtifactsLoader] PRD Streaming started - showing streaming container');
+            }
+            
+            // Append the new content chunk
+            if (contentChunk) {
+                console.log('[ArtifactsLoader] Appending content chunk to streaming container');
+                console.log('[DEBUG] streamingContent element exists:', !!streamingContent);
+                console.log('[DEBUG] streamingContent ID:', streamingContent?.id);
+                
+                // Store the raw content
+                window.prdStreamingState.fullContent += contentChunk;
+                
+                // For better streaming experience, we'll render the full content each time
+                // This ensures markdown formatting is properly applied across chunks
+                const fullParsedContent = typeof marked !== 'undefined' ? 
+                    marked.parse(window.prdStreamingState.fullContent) : 
+                    window.prdStreamingState.fullContent;
+                
+                console.log('[DEBUG] About to set innerHTML, parsed content length:', fullParsedContent.length);
+                streamingContent.innerHTML = fullParsedContent;
+                console.log('[DEBUG] innerHTML set successfully');
+                console.log('[ArtifactsLoader] Total content length now:', window.prdStreamingState.fullContent.length);
+                
+                // Auto-scroll to show new content
+                if (prdContainer) {
+                    prdContainer.scrollTop = prdContainer.scrollHeight;
+                }
+            } else if (!isComplete) {
+                console.warn('[ArtifactsLoader] Empty content chunk received (not complete)');
+            }
+            
+            // If streaming is complete, update the status
+            if (isComplete) {
+                if (streamingStatus) {
+                    streamingStatus.innerHTML = '<i class="fas fa-check-circle" style="color: #10b981;"></i> PRD generation complete';
+                }
+                
+                // Mark streaming as complete but keep the content visible
+                window.prdStreamingState.isStreaming = false;
+                
+                // Add action buttons after completion
+                const prdMeta = document.querySelector('.prd-meta');
+                if (prdMeta && projectId) {
+                    prdMeta.innerHTML = `
+                        <span>PRD generated successfully</span>
+                        <div class="prd-actions" style="display: flex; gap: 4px;">
+                            <button class="artifact-edit-btn" id="prd-edit-btn" data-project-id="${projectId}" title="Edit" style="padding: 4px 6px; background: transparent; border: none; color: #fff; cursor: pointer; transition: all 0.2s; opacity: 0.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="artifact-download-btn" id="prd-download-btn" data-project-id="${projectId}" title="Download PDF" style="padding: 4px 6px; background: transparent; border: none; color: #fff; cursor: pointer; transition: all 0.2s; opacity: 0.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+                                <i class="fas fa-download"></i>
+                            </button>
+                            <button class="artifact-copy-btn" id="prd-copy-btn" data-project-id="${projectId}" title="Copy" style="padding: 4px 6px; background: transparent; border: none; color: #fff; cursor: pointer; transition: all 0.2s; opacity: 0.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </div>
+                    `;
+                    
+                    // Add event listeners for buttons
+                    const editBtn = document.getElementById('prd-edit-btn');
+                    if (editBtn) {
+                        editBtn.addEventListener('click', () => {
+                            if (window.ArtifactsEditor && window.ArtifactsEditor.enablePRDEdit) {
+                                window.ArtifactsEditor.enablePRDEdit(projectId, window.prdStreamingState.fullContent);
+                            }
+                        });
+                    }
+                    
+                    const downloadBtn = document.getElementById('prd-download-btn');
+                    if (downloadBtn) {
+                        downloadBtn.addEventListener('click', () => {
+                            this.downloadPRDAsPDF(projectId, 'Product Requirement Document', window.prdStreamingState.fullContent);
+                        });
+                    }
+                    
+                    const copyBtn = document.getElementById('prd-copy-btn');
+                    if (copyBtn) {
+                        copyBtn.addEventListener('click', () => {
+                            this.copyToClipboard(window.prdStreamingState.fullContent, 'PRD content');
+                        });
+                    }
+                }
+            }
         },
         
         /**
@@ -3178,6 +3355,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     };
 
-    // Initialize the ArtifactsLoader
-    ArtifactsLoader.init();
+    // ArtifactsLoader is now ready to use
+    console.log('[ArtifactsLoader] Loaded and ready');
 })();

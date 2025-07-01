@@ -536,6 +536,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 break;
             case 'prd':
+                // Check if PRD is currently streaming before loading
+                if (window.prdStreamingState && window.prdStreamingState.isStreaming) {
+                    console.log('[ArtifactsPanel] PRD is currently streaming, skipping loadPRD in loadTabData');
+                    break;
+                }
+                // Also check if we already have content
+                const streamingContent = document.getElementById('prd-streaming-content');
+                if (streamingContent && streamingContent.innerHTML.trim() !== '') {
+                    console.log('[ArtifactsPanel] PRD already has content, skipping loadPRD');
+                    break;
+                }
                 if (window.ArtifactsLoader && typeof window.ArtifactsLoader.loadPRD === 'function') {
                     window.ArtifactsLoader.loadPRD(projectId);
                 } else {

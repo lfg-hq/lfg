@@ -3,6 +3,7 @@ import os
 import asyncio
 import subprocess
 import logging
+from datetime import datetime
 from pathlib import Path
 from asgiref.sync import sync_to_async
 from projects.models import Project, ProjectFeature, ProjectPersona, \
@@ -164,6 +165,8 @@ async def app_functions(function_name, function_args, project_id, conversation_i
             return await create_prd(function_args, project_id)
         case "get_prd":
             return await get_prd(project_id)
+        case "stream_prd_content":
+            return await stream_prd_content(function_args, project_id)
         case "create_implementation":
             return await create_implementation(function_args, project_id)
         case "get_implementation":
@@ -845,6 +848,119 @@ async def get_prd(project_id):
             "is_notification": False,
             "message_to_agent": f"Error retrieving PRD: {str(e)}"
         }
+
+# Global dictionary to store streaming PRD content per project
+_streaming_prd_content = {}
+
+async def stream_prd_content(function_args, project_id):
+    """
+    Stream PRD content chunk by chunk as it's being generated
+    This function is called multiple times during PRD generation to provide live updates
+    """
+    logger.info(f"Stream PRD content function called with args: {function_args}")
+    logger.info(f"Project ID: {project_id}")
+    
+    error_response = validate_project_id(project_id)
+    if error_response:
+        logger.error(f"Project ID validation failed: {error_response}")
+        return error_response
+    
+    validation_error = validate_function_args(function_args, ['content_chunk', 'is_complete'])
+    if validation_error:
+        logger.error(f"Function args validation failed: {validation_error}")
+        return validation_error
+    
+    project = await get_project(project_id)
+    if not project:
+        logger.error(f"Project not found for ID: {project_id}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Project with ID {project_id} does not exist"
+        }
+    
+    content_chunk = function_args.get('content_chunk', '')
+    is_complete = function_args.get('is_complete', False)
+    
+    logger.info(f"Streaming PRD chunk - Length: {len(content_chunk)}, Is Complete: {is_complete}")
+    logger.info(f"First 100 chars of chunk: {content_chunk[:100]}...")
+    
+    # CONSOLE OUTPUT FOR DEBUGGING
+    print("\n" + "="*80)
+    print(f"🔵 PRD STREAM CHUNK - Project {project_id}")
+    print(f"📅 Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"📏 Length: {len(content_chunk)} chars")
+    print(f"✅ Complete: {is_complete}")
+    if content_chunk:
+        print(f"📝 Content Preview: {content_chunk[:200]}..." if len(content_chunk) > 200 else f"📝 Content: {content_chunk}")
+    print("="*80 + "\n")
+    
+    # Initialize storage for this project if not exists
+    if project_id not in _streaming_prd_content:
+        _streaming_prd_content[project_id] = ""
+        logger.info(f"Initialized PRD content storage for project {project_id}")
+    
+    # Accumulate content
+    if content_chunk:
+        _streaming_prd_content[project_id] += content_chunk
+        logger.info(f"Accumulated PRD content length: {len(_streaming_prd_content[project_id])}")
+    
+    # If streaming is complete, save the PRD to database
+    if is_complete:
+        full_prd_content = _streaming_prd_content.get(project_id, "")
+        logger.info(f"Streaming complete. Saving PRD with total length: {len(full_prd_content)}")
+        
+        # CONSOLE OUTPUT FOR COMPLETION
+        print("\n" + "="*80)
+        print(f"🟢 PRD STREAM COMPLETE - Project {project_id}")
+        print(f"📄 Total Length: {len(full_prd_content)} chars")
+        print(f"💾 Saving to database...")
+        print("="*80 + "\n")
+        
+        if full_prd_content:
+            try:
+                # Save PRD to database
+                created = await sync_to_async(lambda: (
+                    lambda: (
+                        lambda prd, created: created
+                    )(*ProjectPRD.objects.get_or_create(project=project, defaults={'prd': full_prd_content}))
+                )())()
+                
+                # Update existing PRD if it wasn't created
+                if not created:
+                    await sync_to_async(lambda: (
+                        ProjectPRD.objects.filter(project=project).update(prd=full_prd_content)
+                    ))()
+                
+                logger.info(f"PRD {'created' if created else 'updated'} successfully in database")
+                
+                # Clear the temporary storage
+                del _streaming_prd_content[project_id]
+                
+                # Also save features and personas
+                # await save_features(project_id)
+                # await save_personas(project_id)
+                
+            except Exception as e:
+                logger.error(f"Error saving streamed PRD: {str(e)}")
+                return {
+                    "is_notification": True,
+                    "notification_type": "prd_stream",
+                    "content_chunk": "",
+                    "is_complete": True,
+                    "message_to_agent": f"PRD streaming complete but error saving: {str(e)}"
+                }
+    
+    # Return notification to stream the chunk to frontend
+    result = {
+        "is_notification": True,
+        "notification_type": "prd_stream",
+        "content_chunk": content_chunk,
+        "is_complete": is_complete,
+        "message_to_agent": "PRD content chunk streamed" if not is_complete else "PRD streaming complete and saved"
+    }
+    
+    logger.info(f"Returning stream result: {result}")
+    return result
 
 async def create_implementation(function_args, project_id):
     """

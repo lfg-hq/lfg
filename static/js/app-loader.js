@@ -262,8 +262,20 @@
                     console.log('[AppLoader] Successfully set up tab handler after waiting');
                     clearInterval(checkInterval);
                 } else if (attempts >= maxAttempts) {
-                    console.error('[AppLoader] loadTabData still not available after maximum attempts');
+                    console.warn('[AppLoader] loadTabData not available after maximum attempts - this is not critical');
                     clearInterval(checkInterval);
+                    // Define a basic loadTabData if it doesn't exist
+                    if (typeof window.loadTabData !== 'function') {
+                        window.loadTabData = function(tabId) {
+                            console.log(`[AppLoader] Basic loadTabData called for tab: ${tabId}`);
+                            if (tabId === 'apps' && window.ArtifactsLoader && window.ArtifactsLoader.loadAppPreview) {
+                                const projectId = window.currentProjectId || getCurrentProjectId();
+                                if (projectId) {
+                                    window.ArtifactsLoader.loadAppPreview(projectId);
+                                }
+                            }
+                        };
+                    }
                 }
             }, 1000);
         }

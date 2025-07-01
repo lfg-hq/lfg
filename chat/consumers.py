@@ -364,7 +364,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         }
         
         # Check all possible notification fields
-        notification_fields = ['is_notification', 'notification_type', 'early_notification', 'function_name']
+        notification_fields = ['is_notification', 'notification_type', 'early_notification', 'function_name', 'content_chunk', 'is_complete']
         for field in notification_fields:
             if field in event:
                 response_data[field] = event[field]
@@ -549,6 +549,22 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             'function_name': notification_data.get('function_name', '')
                         }
                         
+                        # Add additional fields for prd_stream notifications
+                        if notification_data.get('notification_type') == 'prd_stream':
+                            notification_message['content_chunk'] = notification_data.get('content_chunk', '')
+                            notification_message['is_complete'] = notification_data.get('is_complete', False)
+                            
+                            # CONSOLE OUTPUT FOR PRD STREAMING
+                            print("\n" + "="*80)
+                            print(f"🟣 PRD STREAM IN WEBSOCKET CONSUMER")
+                            print(f"📅 Time: {datetime.now().isoformat()}")
+                            print(f"📏 Content Length: {len(notification_data.get('content_chunk', ''))} chars")
+                            print(f"✅ Complete: {notification_data.get('is_complete', False)}")
+                            if notification_data.get('content_chunk'):
+                                content_preview = notification_data['content_chunk'][:200]
+                                print(f"📝 Content: {content_preview}{'...' if len(notification_data['content_chunk']) > 200 else ''}")
+                            print("="*80 + "\n")
+                        
                         logger.info(f"SENDING NOTIFICATION MESSAGE: {notification_message}")
                         
                         if hasattr(self, 'using_groups') and self.using_groups:
@@ -563,6 +579,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
                                 'early_notification': notification_data.get('early_notification', False),
                                 'function_name': notification_data.get('function_name', '')
                             }
+                            
+                            # Add additional fields for prd_stream notifications
+                            if notification_data.get('notification_type') == 'prd_stream':
+                                group_message['content_chunk'] = notification_data.get('content_chunk', '')
+                                group_message['is_complete'] = notification_data.get('is_complete', False)
                             logger.info(f"Group message being sent: {group_message}")
                             await self.channel_layer.group_send(self.room_group_name, group_message)
                         else:

@@ -1,0 +1,121 @@
+/**
+ * CSS fix for PRD streaming content visibility
+ * Add this to your main CSS or include it in the page
+ */
+
+/* Ensure PRD container is visible and properly styled */
+#prd-container {
+    display: block !important;
+    height: 100%;
+    overflow-y: auto;
+    padding: 20px;
+}
+
+/* Style the PRD content area */
+#prd-streaming-content {
+    display: block !important;
+    color: #e2e8f0 !important; /* Light text color for dark theme */
+    font-size: 14px;
+    line-height: 1.6;
+    max-width: 100%;
+    word-wrap: break-word;
+}
+
+/* Style markdown content */
+.prd-content.markdown-content {
+    /* Headings */
+    h1 { 
+        font-size: 2em; 
+        margin: 0.67em 0; 
+        color: #e2e8f0;
+        font-weight: bold;
+    }
+    
+    h2 { 
+        font-size: 1.5em; 
+        margin: 0.75em 0; 
+        color: #e2e8f0;
+        font-weight: bold;
+    }
+    
+    h3 { 
+        font-size: 1.17em; 
+        margin: 0.83em 0; 
+        color: #e2e8f0;
+        font-weight: bold;
+    }
+    
+    /* Paragraphs and lists */
+    p { 
+        margin: 1em 0; 
+        color: #e2e8f0;
+    }
+    
+    ul, ol { 
+        margin: 1em 0; 
+        padding-left: 2em;
+        color: #e2e8f0;
+    }
+    
+    li { 
+        margin: 0.5em 0;
+        color: #e2e8f0;
+    }
+    
+    /* Code blocks */
+    pre {
+        background: #1a1a1a;
+        border: 1px solid #333;
+        border-radius: 4px;
+        padding: 1em;
+        overflow-x: auto;
+        color: #e2e8f0;
+    }
+    
+    code {
+        background: #2a2a2a;
+        padding: 0.2em 0.4em;
+        border-radius: 3px;
+        font-family: 'Monaco', 'Consolas', monospace;
+        color: #e2e8f0;
+    }
+    
+    /* Links */
+    a {
+        color: #8b5cf6;
+        text-decoration: none;
+    }
+    
+    a:hover {
+        text-decoration: underline;
+    }
+}
+
+/* Fix for nested markdown content */
+.markdown-content * {
+    color: inherit !important;
+}
+
+/* Ensure empty state is properly hidden when streaming */
+#prd-empty-state {
+    display: none;
+}
+
+/* PRD header styling */
+.prd-header {
+    margin-bottom: 20px;
+    border-bottom: 1px solid #333;
+    padding-bottom: 10px;
+}
+
+.prd-header h2 {
+    margin: 0;
+    color: #e2e8f0;
+    font-size: 1.5em;
+}
+
+.prd-meta {
+    margin-top: 10px;
+    color: #999;
+    font-size: 0.9em;
+}

@@ -52,6 +52,7 @@ def get_notification_type_for_tool(tool_name):
         "get_personas": "checklist",
         "create_prd": "prd",
         "get_prd": "prd",
+        "stream_prd_content": "prd_stream",  # Stream PRD content to PRD tab
         "start_server": "apps",  # Server starts should show in apps/preview tab
         "execute_command": "toolhistory",  # Show command execution in tool history
         "save_implementation": "implementation",
@@ -96,6 +97,7 @@ def map_notification_type_to_tab(notification_type):
         "get_pending_tickets": "checklist",
         "command_error": "toolhistory",
         "project_name_saved": "toolhistory",
+        "prd_stream": "prd_stream",  # Map prd_stream to prd tab
         # Add more custom mappings as needed
     }
     
@@ -177,7 +179,12 @@ async def execute_tool_call(tool_call_name, tool_call_args_str, project_id, conv
         # Send special notification for extraction functions regardless of result
         notification_type = get_notification_type_for_tool(tool_call_name)
         print(f"\n\n\n\n\nNotification type: {notification_type}")
-        if notification_type and tool_call_name in [
+        
+        # For stream_prd_content, skip forcing notification if it already has notification data
+        if tool_call_name == "stream_prd_content" and isinstance(tool_result, dict) and tool_result.get("is_notification"):
+            # Use the notification data from the tool result itself
+            logger.info(f"stream_prd_content already has notification data, not forcing")
+        elif notification_type and tool_call_name in [
             "extract_features", "extract_personas", "save_features", "save_personas",
             "get_features", "get_personas", "create_prd", "get_prd",
             "save_implementation", "get_implementation", "update_implementation", "create_implementation",
@@ -194,6 +201,7 @@ async def execute_tool_call(tool_call_name, tool_call_args_str, project_id, conv
                 "function_name": tool_call_name,
                 "notification_marker": "__NOTIFICATION__"
             }
+            
             logger.debug(f"Forced notification: {notification_data}")
         
         # Handle the tool result
@@ -213,6 +221,12 @@ async def execute_tool_call(tool_call_name, tool_call_args_str, project_id, conv
                 "notification_type": mapped_notification_type,
                 "notification_marker": "__NOTIFICATION__"
             }
+            
+            # Special handling for PRD streaming
+            if raw_notification_type == "prd_stream":
+                notification_data["content_chunk"] = tool_result.get("content_chunk", "")
+                notification_data["is_complete"] = tool_result.get("is_complete", False)
+                logger.info(f"PRD_STREAM in notification handler: chunk_length={len(notification_data['content_chunk'])}, is_complete={notification_data['is_complete']}")
             
             logger.debug(f"Notification data to be yielded: {notification_data}")
             
@@ -556,20 +570,24 @@ class OpenAIProvider(AIProvider):
                                     # Determine notification type based on function name
                                     notification_type = get_notification_type_for_tool(function_name)
                                     
-                                    # Always send early notification for any function
-                                    logger.debug(f"SENDING EARLY NOTIFICATION FOR {function_name}")
-                                    # Create a notification with a special marker to make it clearly identifiable
-                                    early_notification = {
-                                        "is_notification": True,
-                                        "notification_type": notification_type or "tool",
-                                        "early_notification": True,
-                                        "function_name": function_name,
-                                        "notification_marker": "__NOTIFICATION__"  # Special marker
-                                    }
-                                    notification_json = json.dumps(early_notification)
-                                    logger.debug(f"Early notification sent: {notification_json}")
-                                    # Yield as a special formatted string that can be easily detected
-                                    yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                    # Skip early notification for stream_prd_content since we need the actual content
+                                    if function_name != "stream_prd_content":
+                                        # Send early notification for other functions
+                                        logger.debug(f"SENDING EARLY NOTIFICATION FOR {function_name}")
+                                        # Create a notification with a special marker to make it clearly identifiable
+                                        early_notification = {
+                                            "is_notification": True,
+                                            "notification_type": notification_type or "tool",
+                                            "early_notification": True,
+                                            "function_name": function_name,
+                                            "notification_marker": "__NOTIFICATION__"  # Special marker
+                                        }
+                                        notification_json = json.dumps(early_notification)
+                                        logger.debug(f"Early notification sent: {notification_json}")
+                                        # Yield as a special formatted string that can be easily detected
+                                        yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                    else:
+                                        logger.debug(f"Skipping early notification for {function_name} - will send with content later")
                                 
                                 if tool_call_chunk.function.arguments:
                                     current_tc["function"]["arguments"] += tool_call_chunk.function.arguments
@@ -625,6 +643,9 @@ class OpenAIProvider(AIProvider):
                                 # If we have notification data, yield it to the consumer with the special format
                                 if notification_data:
                                     logger.debug("YIELDING NOTIFICATION DATA TO CONSUMER")
+                                    logger.debug(f"Notification data type: {notification_data.get('notification_type')}")
+                                    if notification_data.get('notification_type') == 'prd':
+                                        logger.info(f"PRD STREAM NOTIFICATION: chunk_length={len(notification_data.get('content_chunk', ''))}, is_complete={notification_data.get('is_complete')}")
                                     notification_json = json.dumps(notification_data)
                                     logger.debug(f"Notification JSON: {notification_json}")
                                     yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
@@ -947,18 +968,22 @@ class AnthropicProvider(AIProvider):
                                 function_name = event.content_block.name
                                 notification_type = get_notification_type_for_tool(function_name)
                                 
-                                # Always send early notification for any tool use
-                                logger.info(f"SENDING EARLY NOTIFICATION FOR {function_name}")
-                                early_notification = {
-                                    "is_notification": True,
-                                    "notification_type": notification_type or "tool",
-                                    "early_notification": True,
-                                    "function_name": function_name,
-                                    "notification_marker": "__NOTIFICATION__"
-                                }
-                                notification_json = json.dumps(early_notification)
-                                logger.info(f"Early notification JSON: {notification_json}")
-                                yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                # Skip early notification for stream_prd_content since we need the actual content
+                                if function_name != "stream_prd_content":
+                                    # Send early notification for other tool uses
+                                    logger.info(f"SENDING EARLY NOTIFICATION FOR {function_name}")
+                                    early_notification = {
+                                        "is_notification": True,
+                                        "notification_type": notification_type or "tool",
+                                        "early_notification": True,
+                                        "function_name": function_name,
+                                        "notification_marker": "__NOTIFICATION__"
+                                    }
+                                    notification_json = json.dumps(early_notification)
+                                    logger.info(f"Early notification JSON: {notification_json}")
+                                    yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                else:
+                                    logger.info(f"Skipping early notification for {function_name} - will send with content later")
                         
                         elif event.type == "content_block_delta":
                             if event.delta.type == "text_delta":
