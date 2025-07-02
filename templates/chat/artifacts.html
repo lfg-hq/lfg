@@ -31,6 +31,16 @@
             color: #e2e8f0 !important;
         }
         
+        /* Implementation Streaming Styles */
+        #implementation-container {
+            height: 100%;
+            overflow-y: auto;
+        }
+        
+        .implementation-streaming-container {
+            color: #e2e8f0 !important;
+        }
+        
         /* Basic markdown styles for PRD content */
         .markdown-content h1,
         .markdown-content h2,
@@ -146,7 +156,8 @@
 
             <!-- Implementation Tab -->
             <div class="tab-pane" id="implementation">
-                <div class="empty-state">
+                <!-- Empty state (shown by default) -->
+                <div class="empty-state" id="implementation-empty-state">
                     <div class="empty-state-icon">
                         <i class="fas fa-code"></i>
                     </div>
@@ -154,7 +165,21 @@
                         No implementation plan available yet.
                     </div>
                 </div>
-                <!-- Implementation content will be loaded dynamically -->
+                
+                <!-- Implementation Container (hidden by default, shown during streaming) -->
+                <div class="implementation-container" id="implementation-container" style="display: none;">
+                    <div class="implementation-header">
+                        <h2>Implementation Plan</h2>
+                        <div class="implementation-meta" style="display: flex; justify-content: space-between; align-items: center;">
+                            <span class="streaming-status" id="implementation-streaming-status" style="color: #8b5cf6;">
+                                <i class="fas fa-circle-notch fa-spin"></i> Generating implementation plan...
+                            </span>
+                        </div>
+                    </div>
+                    <div class="implementation-streaming-container implementation-content markdown-content" id="implementation-streaming-content" style="color: #e2e8f0; padding: 20px;">
+                        <!-- Content will be streamed here -->
+                    </div>
+                </div>
             </div>
 
             <!-- Features Tab -->

@@ -52,6 +52,7 @@ def get_notification_type_for_tool(tool_name):
         "get_personas": "checklist",
         "create_prd": "prd",
         "get_prd": "prd",
+        "stream_implementation_content": "implementation_stream",  # Stream implementation content to implementation tab
         "stream_prd_content": "prd_stream",  # Stream PRD content to PRD tab
         "start_server": "apps",  # Server starts should show in apps/preview tab
         "execute_command": "toolhistory",  # Show command execution in tool history
@@ -98,6 +99,7 @@ def map_notification_type_to_tab(notification_type):
         "command_error": "toolhistory",
         "project_name_saved": "toolhistory",
         "prd_stream": "prd_stream",  # Map prd_stream to prd tab
+        "implementation_stream": "implementation_stream",  # Map implementation_stream to implementation tab
         # Add more custom mappings as needed
     }
     
@@ -180,10 +182,10 @@ async def execute_tool_call(tool_call_name, tool_call_args_str, project_id, conv
         notification_type = get_notification_type_for_tool(tool_call_name)
         print(f"\n\n\n\n\nNotification type: {notification_type}")
         
-        # For stream_prd_content, skip forcing notification if it already has notification data
-        if tool_call_name == "stream_prd_content" and isinstance(tool_result, dict) and tool_result.get("is_notification"):
+        # For stream_prd_content and stream_implementation_content, skip forcing notification if it already has notification data
+        if tool_call_name in ["stream_prd_content", "stream_implementation_content"] and isinstance(tool_result, dict) and tool_result.get("is_notification"):
             # Use the notification data from the tool result itself
-            logger.info(f"stream_prd_content already has notification data, not forcing")
+            logger.info(f"{tool_call_name} already has notification data, not forcing")
         elif notification_type and tool_call_name in [
             "extract_features", "extract_personas", "save_features", "save_personas",
             "get_features", "get_personas", "create_prd", "get_prd",
@@ -222,11 +224,15 @@ async def execute_tool_call(tool_call_name, tool_call_args_str, project_id, conv
                 "notification_marker": "__NOTIFICATION__"
             }
             
-            # Special handling for PRD streaming
+            # Special handling for PRD and Implementation streaming
             if raw_notification_type == "prd_stream":
                 notification_data["content_chunk"] = tool_result.get("content_chunk", "")
                 notification_data["is_complete"] = tool_result.get("is_complete", False)
                 logger.info(f"PRD_STREAM in notification handler: chunk_length={len(notification_data['content_chunk'])}, is_complete={notification_data['is_complete']}")
+            elif raw_notification_type == "implementation_stream":
+                notification_data["content_chunk"] = tool_result.get("content_chunk", "")
+                notification_data["is_complete"] = tool_result.get("is_complete", False)
+                logger.info(f"IMPLEMENTATION_STREAM in notification handler: chunk_length={len(notification_data['content_chunk'])}, is_complete={notification_data['is_complete']}")
             
             logger.debug(f"Notification data to be yielded: {notification_data}")
             
@@ -570,8 +576,8 @@ class OpenAIProvider(AIProvider):
                                     # Determine notification type based on function name
                                     notification_type = get_notification_type_for_tool(function_name)
                                     
-                                    # Skip early notification for stream_prd_content since we need the actual content
-                                    if function_name != "stream_prd_content":
+                                    # Skip early notification for stream_prd_content and stream_implementation_content since we need the actual content
+                                    if function_name not in ["stream_prd_content", "stream_implementation_content"]:
                                         # Send early notification for other functions
                                         logger.debug(f"SENDING EARLY NOTIFICATION FOR {function_name}")
                                         # Create a notification with a special marker to make it clearly identifiable
@@ -968,8 +974,8 @@ class AnthropicProvider(AIProvider):
                                 function_name = event.content_block.name
                                 notification_type = get_notification_type_for_tool(function_name)
                                 
-                                # Skip early notification for stream_prd_content since we need the actual content
-                                if function_name != "stream_prd_content":
+                                # Skip early notification for stream_prd_content and stream_implementation_content since we need the actual content
+                                if function_name not in ["stream_prd_content", "stream_implementation_content"]:
                                     # Send early notification for other tool uses
                                     logger.info(f"SENDING EARLY NOTIFICATION FOR {function_name}")
                                     early_notification = {

@@ -705,6 +705,253 @@ document.addEventListener('DOMContentLoaded', function() {
         },
         
         /**
+         * Stream implementation content chunk by chunk
+         * @param {string} contentChunk - The content chunk to add
+         * @param {boolean} isComplete - Whether streaming is complete
+         * @param {number} projectId - The project ID
+         */
+        streamImplementationContent: function(contentChunk, isComplete, projectId) {
+            console.log(`[ArtifactsLoader] streamImplementationContent called with chunk length: ${contentChunk ? contentChunk.length : 0}, isComplete: ${isComplete}`);
+            console.log(`[ArtifactsLoader] Content chunk preview: ${contentChunk ? contentChunk.substring(0, 100) : 'null/undefined'}...`);
+            console.log(`[ArtifactsLoader] Project ID: ${projectId}`);
+            
+            // CONSOLE STREAMING OUTPUT IN ARTIFACTS LOADER
+            console.log('\n' + '='.repeat(80));
+            console.log('🟢 IMPLEMENTATION STREAM IN ARTIFACTS LOADER');
+            console.log(`📅 Time: ${new Date().toISOString()}`);
+            console.log(`📏 Length: ${contentChunk ? contentChunk.length : 0} chars`);
+            console.log(`✅ Complete: ${isComplete}`);
+            if (contentChunk) {
+                console.log(`📝 Content: ${contentChunk.substring(0, 200)}${contentChunk.length > 200 ? '...' : ''}`);
+            }
+            console.log('='.repeat(80) + '\n');
+            
+            // Initialize Implementation streaming state if not exists
+            if (!window.implementationStreamingState) {
+                window.implementationStreamingState = {
+                    fullContent: '',
+                    isStreaming: false,
+                    projectId: projectId
+                };
+            }
+            
+            // Ensure Implementation tab is active FIRST before getting elements
+            const implementationTabButton = document.querySelector('.tab-button[data-tab="implementation"]');
+            const implementationTabPane = document.getElementById('implementation');
+            if (implementationTabButton && !implementationTabButton.classList.contains('active')) {
+                console.log('[ArtifactsLoader] Activating Implementation tab for streaming');
+                // Remove active class from all tabs and panes
+                document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+                document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
+                // Activate Implementation tab
+                implementationTabButton.classList.add('active');
+                if (implementationTabPane) implementationTabPane.classList.add('active');
+            }
+            
+            // Get the elements from the template AFTER ensuring tab is active
+            const emptyState = document.getElementById('implementation-empty-state');
+            const implementationContainer = document.getElementById('implementation-container');
+            const streamingStatus = document.getElementById('implementation-streaming-status');
+            const streamingContent = document.getElementById('implementation-streaming-content');
+            
+            console.log('[ArtifactsLoader] Element check:', {
+                emptyState: !!emptyState,
+                implementationContainer: !!implementationContainer,
+                streamingStatus: !!streamingStatus,
+                streamingContent: !!streamingContent
+            });
+            
+            if (!implementationContainer || !streamingContent) {
+                console.log('[ArtifactsLoader] Implementation container not found, creating structure');
+                
+                // Try to create the HTML structure if elements are missing
+                const implementationTab = document.getElementById('implementation');
+                if (implementationTab) {
+                    console.log('[ArtifactsLoader] Creating Implementation HTML structure');
+                    implementationTab.innerHTML = `
+                        <!-- Empty state (shown by default) -->
+                        <div class="empty-state" id="implementation-empty-state" style="display: none;">
+                            <div class="empty-state-icon">
+                                <i class="fas fa-code"></i>
+                            </div>
+                            <div class="empty-state-text">
+                                No implementation plan available yet.
+                            </div>
+                        </div>
+                        
+                        <!-- Implementation Container (hidden by default, shown during streaming) -->
+                        <div class="implementation-container" id="implementation-container" style="display: block;">
+                            <div class="implementation-header">
+                                <h2>Implementation Plan</h2>
+                                <div class="implementation-meta" style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span class="streaming-status" id="implementation-streaming-status" style="color: #8b5cf6;">
+                                        <i class="fas fa-circle-notch fa-spin"></i> Generating implementation plan...
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="implementation-streaming-container implementation-content markdown-content" id="implementation-streaming-content" style="color: #e2e8f0; padding: 20px;">
+                                <!-- Content will be streamed here -->
+                            </div>
+                        </div>
+                    `;
+                    
+                    // Re-get the elements after creation
+                    const newImplementationContainer = document.getElementById('implementation-container');
+                    const newStreamingContent = document.getElementById('implementation-streaming-content');
+                    if (newImplementationContainer && newStreamingContent) {
+                        console.log('[ArtifactsLoader] HTML structure created successfully');
+                        // Continue with the created elements
+                        return this.streamImplementationContent(contentChunk, isComplete, projectId);
+                    }
+                }
+                
+                return;
+            }
+            
+            // Start streaming if not already started
+            if (!window.implementationStreamingState.isStreaming) {
+                window.implementationStreamingState.isStreaming = true;
+                window.implementationStreamingState.fullContent = '';
+                window.implementationStreamingState.projectId = projectId;
+                
+                // Ensure empty state is hidden and container is visible
+                if (emptyState) {
+                    emptyState.style.display = 'none';
+                    console.log('[ArtifactsLoader] Empty state hidden');
+                }
+                if (implementationContainer) {
+                    implementationContainer.style.display = 'block';
+                    console.log('[ArtifactsLoader] Implementation container shown');
+                }
+                
+                // Reset streaming status
+                if (streamingStatus) {
+                    streamingStatus.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Generating implementation plan...';
+                    streamingStatus.style.color = '#8b5cf6';
+                }
+                
+                // Clear content for new streaming
+                if (streamingContent) {
+                    streamingContent.innerHTML = '';
+                    console.log('[ArtifactsLoader] Cleared existing content for new stream');
+                }
+                
+                // Open artifacts panel if not already open
+                if (window.ArtifactsPanel && !window.ArtifactsPanel.isOpen()) {
+                    window.ArtifactsPanel.open();
+                    console.log('[ArtifactsLoader] Opened artifacts panel for implementation streaming');
+                }
+            }
+            
+            // Append content chunk
+            if (contentChunk && streamingContent) {
+                // Ensure visibility is maintained during streaming
+                if (emptyState && emptyState.style.display !== 'none') {
+                    emptyState.style.display = 'none';
+                    console.log('[ArtifactsLoader] Empty state was visible during streaming, hiding it');
+                }
+                if (implementationContainer && implementationContainer.style.display !== 'block') {
+                    implementationContainer.style.display = 'block';
+                    console.log('[ArtifactsLoader] Implementation container was hidden during streaming, showing it');
+                }
+                
+                window.implementationStreamingState.fullContent += contentChunk;
+                
+                console.log('[ArtifactsLoader] Before rendering:');
+                console.log('  - streamingContent element exists:', !!streamingContent);
+                console.log('  - streamingContent id:', streamingContent.id);
+                console.log('  - Full content length:', window.implementationStreamingState.fullContent.length);
+                console.log('  - marked available:', typeof marked !== 'undefined');
+                
+                // Render markdown content if marked is available
+                if (typeof marked !== 'undefined') {
+                    const renderedHTML = marked.parse(window.implementationStreamingState.fullContent);
+                    streamingContent.innerHTML = renderedHTML;
+                    console.log('  - Rendered with marked, HTML length:', renderedHTML.length);
+                } else {
+                    // Fallback to plain text with basic formatting
+                    const formattedContent = window.implementationStreamingState.fullContent
+                        .replace(/\n/g, '<br>')
+                        .replace(/\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;');
+                    streamingContent.innerHTML = formattedContent;
+                    console.log('  - Rendered with fallback formatting, HTML length:', formattedContent.length);
+                }
+                
+                console.log('[ArtifactsLoader] After rendering:');
+                console.log('  - innerHTML length:', streamingContent.innerHTML.length);
+                console.log('  - Parent visible:', streamingContent.parentElement && window.getComputedStyle(streamingContent.parentElement).display !== 'none');
+                console.log('  - Element visible:', window.getComputedStyle(streamingContent).display !== 'none');
+                
+                console.log(`[ArtifactsLoader] Appended chunk, total content length: ${window.implementationStreamingState.fullContent.length}`);
+                
+                // Auto-scroll to show new content
+                if (implementationContainer) {
+                    implementationContainer.scrollTop = implementationContainer.scrollHeight;
+                }
+            } else if (!contentChunk && !isComplete) {
+                console.warn('[ArtifactsLoader] Empty content chunk received (not complete)');
+            }
+            
+            // If streaming is complete, update the status
+            if (isComplete) {
+                if (streamingStatus) {
+                    streamingStatus.innerHTML = '<i class="fas fa-check-circle" style="color: #10b981;"></i> Implementation plan generation complete';
+                }
+                
+                // Mark streaming as complete but keep the content visible
+                window.implementationStreamingState.isStreaming = false;
+                
+                // Add action buttons after completion
+                const implementationMeta = document.querySelector('.implementation-meta');
+                if (implementationMeta && projectId) {
+                    // Check if actions already exist
+                    let implementationActions = implementationMeta.querySelector('.implementation-actions');
+                    if (!implementationActions) {
+                        implementationActions = document.createElement('div');
+                        implementationActions.className = 'implementation-actions';
+                        implementationActions.style.cssText = 'display: flex; gap: 4px;';
+                        implementationActions.innerHTML = `
+                            <button class="artifact-edit-btn" id="implementation-edit-btn" data-project-id="${projectId}" title="Edit" style="padding: 4px 6px; background: transparent; border: none; color: #fff; cursor: pointer; transition: all 0.2s; opacity: 0.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="artifact-download-btn" id="implementation-download-btn" data-project-id="${projectId}" title="Download PDF" style="padding: 4px 6px; background: transparent; border: none; color: #fff; cursor: pointer; transition: all 0.2s; opacity: 0.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+                                <i class="fas fa-download"></i>
+                            </button>
+                            <button class="artifact-copy-btn" id="implementation-copy-btn" data-project-id="${projectId}" title="Copy" style="padding: 4px 6px; background: transparent; border: none; color: #fff; cursor: pointer; transition: all 0.2s; opacity: 0.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        `;
+                        implementationMeta.appendChild(implementationActions);
+                    }
+                    
+                    // Add event listeners for buttons
+                    const editBtn = document.getElementById('implementation-edit-btn');
+                    if (editBtn) {
+                        editBtn.addEventListener('click', () => {
+                            if (window.ArtifactsEditor && window.ArtifactsEditor.enableImplementationEdit) {
+                                window.ArtifactsEditor.enableImplementationEdit(projectId, window.implementationStreamingState.fullContent);
+                            }
+                        });
+                    }
+                    
+                    const downloadBtn = document.getElementById('implementation-download-btn');
+                    if (downloadBtn) {
+                        downloadBtn.addEventListener('click', () => {
+                            this.downloadImplementationAsPDF(projectId);
+                        });
+                    }
+                    
+                    const copyBtn = document.getElementById('implementation-copy-btn');
+                    if (copyBtn) {
+                        copyBtn.addEventListener('click', () => {
+                            this.copyToClipboard(window.implementationStreamingState.fullContent, 'Implementation content');
+                        });
+                    }
+                }
+            }
+        },
+        
+        /**
          * Load implementation from the API for the current project
          * @param {number} projectId - The ID of the current project
          */

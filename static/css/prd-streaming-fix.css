@@ -3,9 +3,15 @@
  * Add this to your main CSS or include it in the page
  */
 
-/* Ensure PRD container is visible and properly styled */
+/* Ensure PRD tab pane has proper positioning context and height */
+#prd.tab-pane {
+    position: relative !important;
+    height: 100% !important;
+    overflow: hidden !important;
+}
+
+/* Style PRD container when visible */
 #prd-container {
-    display: block !important;
     height: 100%;
     overflow-y: auto;
     padding: 20px;
@@ -96,9 +102,36 @@
     color: inherit !important;
 }
 
-/* Ensure empty state is properly hidden when streaming */
+/* Ensure empty state is properly centered when visible */
 #prd-empty-state {
-    display: none;
+    position: absolute !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    width: 100% !important;
+    max-width: 300px !important;
+    text-align: center !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+#prd-empty-state .empty-state-icon {
+    font-size: 48px !important;
+    margin-bottom: 16px !important;
+    color: rgba(187, 134, 252, 0.3) !important;
+}
+
+#prd-empty-state .empty-state-text {
+    font-size: 14px !important;
+    color: #94a3b8 !important;
+    margin: 0 !important;
+}
+
+/* Hide empty state only when PRD container is visible and has display block */
+#prd-container[style*="display: block"] ~ #prd-empty-state {
+    display: none !important;
 }
 
 /* PRD header styling */

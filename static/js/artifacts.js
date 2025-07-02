@@ -567,6 +567,30 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 break;
             case 'implementation':
+                // Check if Implementation is currently streaming before loading
+                if (window.implementationStreamingState && window.implementationStreamingState.isStreaming) {
+                    console.log('[ArtifactsPanel] Implementation is currently streaming, skipping loadImplementation in loadTabData');
+                    break;
+                }
+                
+                // Check if we should reload based on project ID change
+                const currentImplementationProjectId = window.implementationStreamingState?.projectId;
+                if (currentImplementationProjectId && currentImplementationProjectId !== projectId) {
+                    console.log('[ArtifactsPanel] Project ID changed, clearing Implementation content and reloading');
+                    // Clear the content when project changes
+                    const streamingContent = document.getElementById('implementation-streaming-content');
+                    if (streamingContent) {
+                        streamingContent.innerHTML = '';
+                    }
+                    // Reset the streaming state
+                    if (window.implementationStreamingState) {
+                        window.implementationStreamingState.fullContent = '';
+                        window.implementationStreamingState.projectId = projectId;
+                    }
+                }
+                
+                // Always load Implementation when tab is selected (unless currently streaming)
+                // This ensures fresh data is loaded when revisiting the tab
                 if (window.ArtifactsLoader && typeof window.ArtifactsLoader.loadImplementation === 'function') {
                     window.ArtifactsLoader.loadImplementation(projectId);
                 } else {

@@ -168,6 +168,8 @@ async def app_functions(function_name, function_args, project_id, conversation_i
             return await get_prd(project_id)
         case "stream_prd_content":
             return await stream_prd_content(function_args, project_id)
+        case "stream_implementation_content":
+            return await stream_implementation_content(function_args, project_id)
         case "create_implementation":
             return await create_implementation(function_args, project_id)
         case "get_implementation":
@@ -1156,6 +1158,117 @@ async def update_implementation(function_args, project_id):
             "is_notification": False,
             "message_to_agent": f"Error updating Implementation: {str(e)}"
         }
+
+async def stream_implementation_content(function_args, project_id):
+    """
+    Stream Implementation content chunk by chunk as it's being generated
+    This function is called multiple times during Implementation generation to provide live updates
+    """
+    logger.info(f"Stream Implementation content function called with args: {function_args}")
+    logger.info(f"Project ID: {project_id}")
+    
+    error_response = validate_project_id(project_id)
+    if error_response:
+        logger.error(f"Project ID validation failed: {error_response}")
+        return error_response
+    
+    validation_error = validate_function_args(function_args, ['content_chunk', 'is_complete'])
+    if validation_error:
+        logger.error(f"Function args validation failed: {validation_error}")
+        return validation_error
+    
+    project = await get_project(project_id)
+    if not project:
+        logger.error(f"Project not found for ID: {project_id}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Project with ID {project_id} does not exist"
+        }
+    
+    content_chunk = function_args.get('content_chunk', '')
+    is_complete = function_args.get('is_complete', False)
+    
+    logger.info(f"Streaming Implementation chunk - Length: {len(content_chunk)}, Is Complete: {is_complete}")
+    logger.info(f"First 100 chars of chunk: {content_chunk[:100]}...")
+    
+    # CONSOLE OUTPUT FOR DEBUGGING
+    print("\n" + "="*80)
+    print(f"🟣 IMPLEMENTATION STREAM CHUNK - Project {project_id}")
+    print(f"📅 Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"📏 Length: {len(content_chunk)} chars")
+    print(f"✅ Complete: {is_complete}")
+    if content_chunk:
+        print(f"📝 Content Preview: {content_chunk[:200]}..." if len(content_chunk) > 200 else f"📝 Content: {content_chunk}")
+    print("="*80 + "\n")
+    
+    # Create cache key for this project
+    cache_key = f"streaming_implementation_content_{project_id}"
+    
+    # Get existing content from cache or initialize
+    existing_content = cache.get(cache_key, "")
+    if not existing_content:
+        logger.info(f"Initialized Implementation content storage for project {project_id}")
+    
+    # Accumulate content
+    if content_chunk:
+        existing_content += content_chunk
+        # Store updated content in cache with 1 hour timeout
+        cache.set(cache_key, existing_content, timeout=3600)
+        logger.info(f"Accumulated Implementation content length: {len(existing_content)}")
+    
+    # If streaming is complete, save the Implementation to database
+    if is_complete:
+        full_implementation_content = cache.get(cache_key, "")
+        logger.info(f"Streaming complete. Saving Implementation with total length: {len(full_implementation_content)}")
+        
+        # CONSOLE OUTPUT FOR COMPLETION
+        print("\n" + "="*80)
+        print(f"🟢 IMPLEMENTATION STREAM COMPLETE - Project {project_id}")
+        print(f"📄 Total Length: {len(full_implementation_content)} chars")
+        print(f"💾 Saving to database...")
+        print("="*80 + "\n")
+        
+        if full_implementation_content:
+            try:
+                # Save Implementation to database
+                created = await sync_to_async(lambda: (
+                    lambda: (
+                        lambda implementation, created: created
+                    )(*ProjectImplementation.objects.get_or_create(project=project, defaults={'implementation': full_implementation_content}))
+                )())()
+                
+                # Update existing Implementation if it wasn't created
+                if not created:
+                    await sync_to_async(lambda: (
+                        ProjectImplementation.objects.filter(project=project).update(implementation=full_implementation_content)
+                    ))()
+                
+                logger.info(f"Implementation {'created' if created else 'updated'} successfully in database")
+                
+                # Clear the cache
+                cache.delete(cache_key)
+                
+            except Exception as e:
+                logger.error(f"Error saving streamed Implementation: {str(e)}")
+                return {
+                    "is_notification": True,
+                    "notification_type": "implementation_stream",
+                    "content_chunk": "",
+                    "is_complete": True,
+                    "message_to_agent": f"Implementation streaming complete but error saving: {str(e)}"
+                }
+    
+    # Return notification to stream the chunk to frontend
+    result = {
+        "is_notification": True,
+        "notification_type": "implementation_stream",
+        "content_chunk": content_chunk,
+        "is_complete": is_complete,
+        "message_to_agent": "Implementation content chunk streamed" if not is_complete else "Implementation streaming complete and saved"
+    }
+    
+    logger.info(f"Returning stream result: {result}")
+    return result
 
 async def save_design_schema(function_args, project_id):
     """

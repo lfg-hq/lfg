@@ -565,6 +565,22 @@ class ChatConsumer(AsyncWebsocketConsumer):
                                 print(f"📝 Content: {content_preview}{'...' if len(notification_data['content_chunk']) > 200 else ''}")
                             print("="*80 + "\n")
                         
+                        # Add additional fields for implementation_stream notifications
+                        if notification_data.get('notification_type') == 'implementation_stream':
+                            notification_message['content_chunk'] = notification_data.get('content_chunk', '')
+                            notification_message['is_complete'] = notification_data.get('is_complete', False)
+                            
+                            # CONSOLE OUTPUT FOR IMPLEMENTATION STREAMING
+                            print("\n" + "="*80)
+                            print(f"🔵 IMPLEMENTATION STREAM IN WEBSOCKET CONSUMER")
+                            print(f"📅 Time: {datetime.now().isoformat()}")
+                            print(f"📏 Content Length: {len(notification_data.get('content_chunk', ''))} chars")
+                            print(f"✅ Complete: {notification_data.get('is_complete', False)}")
+                            if notification_data.get('content_chunk'):
+                                content_preview = notification_data['content_chunk'][:200]
+                                print(f"📝 Content: {content_preview}{'...' if len(notification_data['content_chunk']) > 200 else ''}")
+                            print("="*80 + "\n")
+                        
                         logger.info(f"SENDING NOTIFICATION MESSAGE: {notification_message}")
                         
                         if hasattr(self, 'using_groups') and self.using_groups:
@@ -582,6 +598,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             
                             # Add additional fields for prd_stream notifications
                             if notification_data.get('notification_type') == 'prd_stream':
+                                group_message['content_chunk'] = notification_data.get('content_chunk', '')
+                                group_message['is_complete'] = notification_data.get('is_complete', False)
+                            
+                            # Add additional fields for implementation_stream notifications
+                            if notification_data.get('notification_type') == 'implementation_stream':
                                 group_message['content_chunk'] = notification_data.get('content_chunk', '')
                                 group_message['is_complete'] = notification_data.get('is_complete', False)
                             logger.info(f"Group message being sent: {group_message}")

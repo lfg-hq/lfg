@@ -893,6 +893,41 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('🎯 Access all chunks: window.PRD_STREAM_CHUNKS');
         }
         
+        // AUTOMATIC IMPLEMENTATION CONSOLE LOGGING
+        if (data.notification_type === 'implementation_stream') {
+            console.log('\n' + '💚'.repeat(50));
+            console.log('💚💚💚 IMPLEMENTATION STREAM CONTENT RECEIVED IN BROWSER! 💚💚💚');
+            console.log('💚 Has content_chunk:', 'content_chunk' in data);
+            console.log('💚 Content length:', data.content_chunk ? data.content_chunk.length : 0);
+            console.log('💚 Is complete:', data.is_complete);
+            console.log('💚 IMPLEMENTATION CONTENT:');
+            console.log('---START OF IMPLEMENTATION CHUNK---');
+            console.log(data.content_chunk || '[NO CONTENT]');
+            console.log('---END OF IMPLEMENTATION CHUNK---');
+            console.log('💚'.repeat(50) + '\n');
+            
+            // Store in global variable for easy access
+            if (!window.IMPLEMENTATION_STREAM_CONTENT) {
+                window.IMPLEMENTATION_STREAM_CONTENT = '';
+            }
+            if (!window.IMPLEMENTATION_STREAM_CHUNKS) {
+                window.IMPLEMENTATION_STREAM_CHUNKS = [];
+            }
+            if (data.content_chunk) {
+                window.IMPLEMENTATION_STREAM_CONTENT += data.content_chunk;
+                window.IMPLEMENTATION_STREAM_CHUNKS.push({
+                    timestamp: new Date().toISOString(),
+                    length: data.content_chunk.length,
+                    content: data.content_chunk,
+                    is_complete: data.is_complete
+                });
+            }
+            console.log('💚 Total Implementation content so far:', window.IMPLEMENTATION_STREAM_CONTENT.length, 'chars');
+            console.log('💚 Total chunks received:', window.IMPLEMENTATION_STREAM_CHUNKS.length);
+            console.log('💚 Access full content: window.IMPLEMENTATION_STREAM_CONTENT');
+            console.log('💚 Access all chunks: window.IMPLEMENTATION_STREAM_CHUNKS');
+        }
+        
         // Fix notification detection by checking for either boolean true, string "true", or existence of notification_type
         // This handles cases where is_notification is undefined but we still want to process regular chunks
         const isNotification = data.is_notification === true || 
@@ -1114,9 +1149,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // Make sure artifacts panel is visible
             let panelOpenSuccess = false;
             
-            // For PRD streaming, we should open the artifacts panel
-            if (data.notification_type === 'prd_stream') {
-                console.log('PRD stream detected - ensuring artifacts panel is open');
+            // For PRD and Implementation streaming, we should open the artifacts panel
+            if (data.notification_type === 'prd_stream' || data.notification_type === 'implementation_stream') {
+                console.log(`${data.notification_type} detected - ensuring artifacts panel is open`);
                 
                 // Try multiple methods to ensure panel opens
                 if (window.ArtifactsPanel && typeof window.ArtifactsPanel.toggle === 'function') {
@@ -1225,7 +1260,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     'get_pending_tickets': 'checklist',
                     'create_checklist_tickets': 'checklist',
                     'implement_ticket': 'implementation',
-                    'prd_stream': 'prd'  // Map prd_stream to prd tab
+                    'prd_stream': 'prd',  // Map prd_stream to prd tab
+                    'implementation_stream': 'implementation'  // Map implementation_stream to implementation tab
                 };
                 
                 // Use mapped tab if original doesn't exist
@@ -1320,6 +1356,52 @@ document.addEventListener('DOMContentLoaded', () => {
                             }
                         } else {
                             console.error('PRD stream notification missing content_chunk!');
+                        }
+                    } else if (data.notification_type === 'implementation_stream') {
+                        // Special handling for Implementation streaming
+                        console.log('Implementation stream notification detected');
+                        console.log('Full notification data:', data);
+                        console.log('Content chunk exists:', data.content_chunk !== undefined);
+                        console.log('Content chunk value:', data.content_chunk);
+                        console.log('Is complete:', data.is_complete);
+                        
+                        // CONSOLE STREAMING OUTPUT
+                        console.log('\n' + '='.repeat(80));
+                        console.log('🟢 IMPLEMENTATION STREAM RECEIVED IN BROWSER');
+                        console.log(`📅 Time: ${new Date().toISOString()}`);
+                        console.log(`📏 Length: ${data.content_chunk ? data.content_chunk.length : 0} chars`);
+                        console.log(`✅ Complete: ${data.is_complete}`);
+                        if (data.content_chunk) {
+                            console.log(`📝 Content: ${data.content_chunk.substring(0, 200)}${data.content_chunk.length > 200 ? '...' : ''}`);
+                        }
+                        console.log('='.repeat(80) + '\n');
+                        
+                        if (data.content_chunk !== undefined) {
+                            console.log(`Streaming Implementation chunk: ${data.content_chunk.substring(0, 50)}...`);
+                            console.log('Current project ID:', currentProjectId);
+                            // Ensure we have a project ID for streaming
+                            let projectIdForStreaming = currentProjectId;
+                            if (!projectIdForStreaming) {
+                                // Try to get it from various sources
+                                const urlParams = new URLSearchParams(window.location.search);
+                                projectIdForStreaming = urlParams.get('project_id') || 
+                                                       extractProjectIdFromPath() || 
+                                                       data.project_id;
+                                console.log(`Implementation Streaming: Using project ID: ${projectIdForStreaming}`);
+                            }
+                            
+                            if (projectIdForStreaming) {
+                                console.log('Streaming Implementation content with project ID:', projectIdForStreaming);
+                                window.ArtifactsLoader.streamImplementationContent(
+                                    data.content_chunk, 
+                                    data.is_complete || false, 
+                                    projectIdForStreaming
+                                );
+                            } else {
+                                console.error('Implementation stream: No project ID available for streaming!');
+                            }
+                        } else {
+                            console.error('Implementation stream notification missing content_chunk!');
                         }
                     } else {
                         const loaderMap = {
