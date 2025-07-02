@@ -3137,7 +3137,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         } else if (tabType === 'personas' && typeof window.ArtifactsLoader.loadPersonas === 'function') {
                             window.ArtifactsLoader.loadPersonas(projectId);
                         } else if (tabType === 'prd' && typeof window.ArtifactsLoader.loadPRD === 'function') {
-                            window.ArtifactsLoader.loadPRD(projectId);
+                            // Check if PRD is currently streaming before loading
+                            if (window.prdStreamingState && window.prdStreamingState.isStreaming) {
+                                console.log('[Chat] PRD is currently streaming, skipping loadPRD');
+                            } else {
+                                window.ArtifactsLoader.loadPRD(projectId);
+                            }
                         }
                     }
                 }

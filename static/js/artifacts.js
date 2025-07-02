@@ -541,12 +541,25 @@ document.addEventListener('DOMContentLoaded', function() {
                     console.log('[ArtifactsPanel] PRD is currently streaming, skipping loadPRD in loadTabData');
                     break;
                 }
-                // Also check if we already have content
-                const streamingContent = document.getElementById('prd-streaming-content');
-                if (streamingContent && streamingContent.innerHTML.trim() !== '') {
-                    console.log('[ArtifactsPanel] PRD already has content, skipping loadPRD');
-                    break;
+                
+                // Check if we should reload based on project ID change
+                const currentPrdProjectId = window.prdStreamingState?.projectId;
+                if (currentPrdProjectId && currentPrdProjectId !== projectId) {
+                    console.log('[ArtifactsPanel] Project ID changed, clearing PRD content and reloading');
+                    // Clear the content when project changes
+                    const streamingContent = document.getElementById('prd-streaming-content');
+                    if (streamingContent) {
+                        streamingContent.innerHTML = '';
+                    }
+                    // Reset the streaming state
+                    if (window.prdStreamingState) {
+                        window.prdStreamingState.fullContent = '';
+                        window.prdStreamingState.projectId = projectId;
+                    }
                 }
+                
+                // Always load PRD when tab is selected (unless currently streaming)
+                // This ensures fresh data is loaded when revisiting the tab
                 if (window.ArtifactsLoader && typeof window.ArtifactsLoader.loadPRD === 'function') {
                     window.ArtifactsLoader.loadPRD(projectId);
                 } else {

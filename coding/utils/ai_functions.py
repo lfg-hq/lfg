@@ -17,6 +17,7 @@ from coding.models import ServerConfig
 logger = logging.getLogger(__name__)
 
 from django.conf import settings
+from django.core.cache import cache
 from coding.k8s_manager.manage_pods import execute_command_in_pod
 
 from coding.models import KubernetesPod
@@ -849,9 +850,6 @@ async def get_prd(project_id):
             "message_to_agent": f"Error retrieving PRD: {str(e)}"
         }
 
-# Global dictionary to store streaming PRD content per project
-_streaming_prd_content = {}
-
 async def stream_prd_content(function_args, project_id):
     """
     Stream PRD content chunk by chunk as it's being generated
@@ -894,19 +892,24 @@ async def stream_prd_content(function_args, project_id):
         print(f"📝 Content Preview: {content_chunk[:200]}..." if len(content_chunk) > 200 else f"📝 Content: {content_chunk}")
     print("="*80 + "\n")
     
-    # Initialize storage for this project if not exists
-    if project_id not in _streaming_prd_content:
-        _streaming_prd_content[project_id] = ""
+    # Create cache key for this project
+    cache_key = f"streaming_prd_content_{project_id}"
+    
+    # Get existing content from cache or initialize
+    existing_content = cache.get(cache_key, "")
+    if not existing_content:
         logger.info(f"Initialized PRD content storage for project {project_id}")
     
     # Accumulate content
     if content_chunk:
-        _streaming_prd_content[project_id] += content_chunk
-        logger.info(f"Accumulated PRD content length: {len(_streaming_prd_content[project_id])}")
+        existing_content += content_chunk
+        # Store updated content in cache with 1 hour timeout
+        cache.set(cache_key, existing_content, timeout=3600)
+        logger.info(f"Accumulated PRD content length: {len(existing_content)}")
     
     # If streaming is complete, save the PRD to database
     if is_complete:
-        full_prd_content = _streaming_prd_content.get(project_id, "")
+        full_prd_content = cache.get(cache_key, "")
         logger.info(f"Streaming complete. Saving PRD with total length: {len(full_prd_content)}")
         
         # CONSOLE OUTPUT FOR COMPLETION
@@ -933,8 +936,8 @@ async def stream_prd_content(function_args, project_id):
                 
                 logger.info(f"PRD {'created' if created else 'updated'} successfully in database")
                 
-                # Clear the temporary storage
-                del _streaming_prd_content[project_id]
+                # Clear the cache
+                cache.delete(cache_key)
                 
                 # Also save features and personas
                 # await save_features(project_id)
