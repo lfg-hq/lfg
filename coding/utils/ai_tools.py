@@ -550,14 +550,14 @@ capture_name = {
 }
 
 
-tools_code = [create_prd, get_prd, stream_prd_content, start_server, \
+tools_code = [get_prd, start_server, \
               get_github_access_token, \
               create_tickets, update_ticket, \
               get_next_ticket, get_pending_tickets, \
               create_implementation, get_implementation, update_implementation, stream_implementation_content, \
               copy_boilerplate_code, capture_name]
 
-tools_product = [get_prd, stream_prd_content, stream_implementation_content, get_implementation, generate_tickets]
+tools_product = []
 
 tools_ticket = [execute_command, get_prd, get_implementation, copy_boilerplate_code, start_server]
 

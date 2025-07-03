@@ -444,7 +444,6 @@ class OpenAIProvider(AIProvider):
     def _get_openai_key(self, user):
         """Get user profile synchronously"""
         profile = Profile.objects.get(user=user)
-        print(f"\n\n\nOpenAI key: {profile.openai_api_key}")
         if profile.openai_api_key:
             return profile.openai_api_key
         return ""
@@ -502,6 +501,10 @@ class OpenAIProvider(AIProvider):
         except Exception as e:
             logger.warning(f"Could not get user/project/conversation for token tracking: {e}")
 
+        prd_data = ""
+        current_mode = ""
+        buffer = ""  # Buffer to handle split tags
+
         while True: # Loop to handle potential multi-turn tool calls (though typically one round)
             try:
                 params = {
@@ -534,6 +537,9 @@ class OpenAIProvider(AIProvider):
                 # Variables for token tracking
                 usage_data = None
                 
+                # Output buffer to handle incomplete tags
+                output_buffer = ""
+                
                 # --- Process the stream from the API --- 
                 # We need to wrap the stream iteration in a thread as well
                 async for chunk in self._process_stream_async(response_stream):
@@ -549,10 +555,78 @@ class OpenAIProvider(AIProvider):
 
                     # --- Accumulate Text Content --- 
                     if delta.content:
-                        yield delta.content # Stream text content immediately
+                        text = delta.content
+                        
+                        # Add to buffer for tag detection
+                        buffer += text
+                        
+                        # Check for complete tags in buffer
+                        if "<lfg-prd>" in buffer and current_mode != "prd":
+                            current_mode = "prd"
+                            print("\n\n[PRD MODE ACTIVATED - OpenAI]")
+                            # Clear buffer up to and including the tag
+                            tag_pos = buffer.find("<lfg-prd>")
+                            buffer = buffer[tag_pos + len("<lfg-prd>"):]
+                            
+                            # Show loading indicator in chat
+                            yield "\n\n*Generating PRD... (check the PRD tab for live updates)*\n\n"
+                        
+                        if "</lfg-prd>" in buffer and current_mode == "prd":
+                            current_mode = ""
+                            print("\n\n[PRD MODE DEACTIVATED - OpenAI]")
+                            # Clear buffer up to and including the tag
+                            tag_pos = buffer.find("</lfg-prd>")
+                            buffer = buffer[tag_pos + len("</lfg-prd>"):]
+                            
+                            # Send completion notification for PRD stream
+                            prd_complete_notification = {
+                                "is_notification": True,
+                                "notification_type": "prd_stream",
+                                "content_chunk": "",
+                                "is_complete": True,
+                                "notification_marker": "__NOTIFICATION__"
+                            }
+                            notification_json = json.dumps(prd_complete_notification)
+                            yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                        
+                        # Keep buffer size reasonable (only need enough for tag detection)
+                        if len(buffer) > 100 and "<lfg-prd" not in buffer and "</lfg-prd" not in buffer:
+                            buffer = buffer[-50:]  # Keep last 50 chars
+                        
+                        if current_mode == "prd":
+                            prd_data += text
+                            print(f"\n\n\n[CAPTURING PRD DATA - OpenAI]: {text}")
+                            
+                            # Stream PRD content to the panel
+                            prd_stream_notification = {
+                                "is_notification": True,
+                                "notification_type": "prd_stream",
+                                "content_chunk": text,
+                                "is_complete": False,
+                                "notification_marker": "__NOTIFICATION__"
+                            }
+                            notification_json = json.dumps(prd_stream_notification)
+                            yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                        
+                        # Handle buffering to prevent incomplete tags from being sent
+                        if current_mode != "prd":
+                            # Add text to output buffer
+                            output_buffer += text
+                            
+                            # Check if we have a complete tag or potential incomplete tag
+                            # Look for potential start of PRD tag
+                            if any(output_buffer.endswith(prefix) for prefix in ['<', '<l', '<lf', '<lfg', '<lfg-', '<lfg-p', '<lfg-pr', '<lfg-prd']):
+                                # Hold back - might be incomplete tag
+                                pass
+                            else:
+                                # Safe to yield everything in buffer
+                                if output_buffer:
+                                    yield output_buffer
+                                    output_buffer = ""
+                            
                         if full_assistant_message["content"] is None:
-                            full_assistant_message["content"] = "-"
-                        full_assistant_message["content"] += delta.content
+                            full_assistant_message["content"] = ""
+                        full_assistant_message["content"] += text
 
                     # --- Accumulate Tool Call Details --- 
                     if delta.tool_calls:
@@ -597,6 +671,9 @@ class OpenAIProvider(AIProvider):
                                 
                                 if tool_call_chunk.function.arguments:
                                     current_tc["function"]["arguments"] += tool_call_chunk.function.arguments
+                                    # Stream create_prd arguments to console as they arrive
+                                    if current_tc["function"]["name"] == "create_prd":
+                                        logger.info(f"[OpenAI] create_prd argument chunk: {tool_call_chunk.function.arguments}")
 
                     # --- Check Finish Reason --- 
                     if finish_reason:
@@ -630,6 +707,10 @@ class OpenAIProvider(AIProvider):
                                 
                                 logger.debug(f"OpenAI Provider - Tool Call ID: {tool_call_id}")
                                 
+                                # Log complete create_prd arguments before execution
+                                if tool_call_name == "create_prd":
+                                    logger.info(f"[OpenAI] Executing create_prd with complete arguments: {tool_call_args_str}")
+                                
                                 # Use the shared execute_tool_call function
                                 result_content, notification_data, yielded_content = await execute_tool_call(
                                     tool_call_name, tool_call_args_str, project_id, conversation_id
@@ -662,6 +743,32 @@ class OpenAIProvider(AIProvider):
                         
                         elif finish_reason == "stop":
                             # Conversation finished naturally
+                            
+                            # Flush any remaining buffered output
+                            if output_buffer and current_mode != "prd":
+                                yield output_buffer
+                                output_buffer = ""
+                            
+                            # Save captured PRD data if available
+                            if prd_data and project_id:
+                                print(f"\n\n[FINAL PRD DATA CAPTURED - OpenAI]:\n{prd_data}\n")
+                                print(f"[PRD DATA LENGTH - OpenAI]: {len(prd_data)} characters")
+                                
+                                # Import the save function
+                                from coding.utils.ai_functions import save_prd_from_stream
+                                
+                                # Save the PRD to database
+                                try:
+                                    save_result = await save_prd_from_stream(prd_data, project_id)
+                                    logger.info(f"OpenAI PRD save result: {save_result}")
+                                    
+                                    # Yield notification if save was successful
+                                    if save_result.get("is_notification"):
+                                        notification_json = json.dumps(save_result)
+                                        yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                except Exception as e:
+                                    logger.error(f"Error saving PRD from OpenAI stream: {str(e)}")
+                            
                             # Track token usage before exiting
                             if usage_data and user:
                                 await self._track_token_usage(
@@ -773,7 +880,6 @@ class AnthropicProvider(AIProvider):
     def _get_anthropic_key(self, user):
         """Get user profile synchronously"""
         profile = Profile.objects.get(user=user)
-        print(f"\n\n\nKey: {profile.anthropic_api_key}")
         if profile.anthropic_api_key:
             return profile.anthropic_api_key
         return ""
@@ -894,6 +1000,10 @@ class AnthropicProvider(AIProvider):
                 user = project.owner
         except Exception as e:
             logger.warning(f"Could not get user/project/conversation for token tracking: {e}")
+            
+        prd_data = ""
+        current_mode = ""
+        buffer = ""  # Buffer to handle split tags
 
         while True: # Loop to handle potential multi-turn tool calls
             try:
@@ -950,6 +1060,9 @@ class AnthropicProvider(AIProvider):
 
                 logger.debug("New Loop!!")
                 
+                # Output buffer to handle incomplete tags
+                output_buffer = ""
+                
                 # --- Process the stream from the API --- 
                 async with self.client.messages.stream(**params) as stream:
                     async for event in stream:
@@ -993,9 +1106,79 @@ class AnthropicProvider(AIProvider):
                         
                         elif event.type == "content_block_delta":
                             if event.delta.type == "text_delta":
+                                print(f"\n\n\nEvent delta: {event.delta}")
                                 # Stream text content
                                 text = event.delta.text
-                                yield text
+                                
+                                # Add to buffer for tag detection
+                                buffer += text
+                                
+                                # Check for complete tags in buffer
+                                if "<lfg-prd>" in buffer and current_mode != "prd":
+                                    current_mode = "prd"
+                                    print("\n\n[PRD MODE ACTIVATED]")
+                                    # Clear buffer up to and including the tag
+                                    tag_pos = buffer.find("<lfg-prd>")
+                                    buffer = buffer[tag_pos + len("<lfg-prd>"):]
+                                    
+                                    # Show loading indicator in chat
+                                    yield "\n\n*Generating PRD... (check the PRD tab for live updates)*\n\n"
+                                
+                                if "</lfg-prd>" in buffer and current_mode == "prd":
+                                    current_mode = ""
+                                    print("\n\n[PRD MODE DEACTIVATED]")
+                                    # Clear buffer up to and including the tag
+                                    tag_pos = buffer.find("</lfg-prd>")
+                                    buffer = buffer[tag_pos + len("</lfg-prd>"):]
+                                    
+                                    # Send completion notification for PRD stream
+                                    prd_complete_notification = {
+                                        "is_notification": True,
+                                        "notification_type": "prd_stream",
+                                        "content_chunk": "",
+                                        "is_complete": True,
+                                        "notification_marker": "__NOTIFICATION__"
+                                    }
+                                    notification_json = json.dumps(prd_complete_notification)
+                                    yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                
+                                # Keep buffer size reasonable (only need enough for tag detection)
+                                if len(buffer) > 100 and "<lfg-prd" not in buffer and "</lfg-prd" not in buffer:
+                                    buffer = buffer[-50:]  # Keep last 50 chars
+                                
+                                # print(f"\n\nCurrent mode: {current_mode}, Buffer tail: {buffer[-20:]}")
+                                
+                                if current_mode == "prd":
+                                    prd_data += text
+                                    print(f"\n\n\n[CAPTURING PRD DATA]: {text}")
+                                    
+                                    # Stream PRD content to the panel
+                                    prd_stream_notification = {
+                                        "is_notification": True,
+                                        "notification_type": "prd_stream",
+                                        "content_chunk": text,
+                                        "is_complete": False,
+                                        "notification_marker": "__NOTIFICATION__"
+                                    }
+                                    notification_json = json.dumps(prd_stream_notification)
+                                    yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                
+                                # Handle buffering to prevent incomplete tags from being sent
+                                if current_mode != "prd":
+                                    # Add text to output buffer
+                                    output_buffer += text
+                                    
+                                    # Check if we have a complete tag or potential incomplete tag
+                                    # Look for potential start of PRD tag
+                                    if any(output_buffer.endswith(prefix) for prefix in ['<', '<l', '<lf', '<lfg', '<lfg-', '<lfg-p', '<lfg-pr', '<lfg-prd']):
+                                        # Hold back - might be incomplete tag
+                                        pass
+                                    else:
+                                        # Safe to yield everything in buffer
+                                        if output_buffer:
+                                            yield output_buffer
+                                            output_buffer = ""
+                                    
                                 if full_assistant_message["content"] is None:
                                     full_assistant_message["content"] = ""
                                 full_assistant_message["content"] += text
@@ -1006,7 +1189,12 @@ class AnthropicProvider(AIProvider):
                             elif event.delta.type == "input_json_delta":
                                 # Accumulate tool arguments
                                 if current_tool_use:
+                                    print(f"\n\n\nCurrent tool use: {current_tool_use}")
                                     current_tool_args += event.delta.partial_json
+                                    print(f"\n\n\nCurrent tool args: {current_tool_args}")
+                                    # Stream create_prd arguments to console as they arrive
+                                    if current_tool_use["function"]["name"] == "create_prd":
+                                        print(f"[Anthropic] create_prd argument chunk: {event.delta.partial_json}")
                         
                         elif event.type == "content_block_stop":
                             if current_tool_use:
@@ -1097,6 +1285,32 @@ class AnthropicProvider(AIProvider):
                                 logger.debug(f"[AnthropicProvider] Claude finished without using tools. Stop reason: {stop_reason}")
                                 if full_assistant_message["content"]:
                                     logger.debug(f"[AnthropicProvider] Assistant response snippet: {full_assistant_message['content'][:100]}...")
+                                
+                                # Flush any remaining buffered output
+                                if output_buffer and current_mode != "prd":
+                                    yield output_buffer
+                                    output_buffer = ""
+                                
+                                # Save captured PRD data if available
+                                if prd_data and project_id:
+                                    print(f"\n\n[FINAL PRD DATA CAPTURED]:\n{prd_data}\n")
+                                    print(f"[PRD DATA LENGTH]: {len(prd_data)} characters")
+                                    
+                                    # Import the save function
+                                    from coding.utils.ai_functions import save_prd_from_stream
+                                    
+                                    # Save the PRD to database
+                                    try:
+                                        save_result = await save_prd_from_stream(prd_data, project_id)
+                                        logger.info(f"PRD save result: {save_result}")
+                                        
+                                        # Yield notification if save was successful
+                                        if save_result.get("is_notification"):
+                                            notification_json = json.dumps(save_result)
+                                            yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                    except Exception as e:
+                                        logger.error(f"Error saving PRD from stream: {str(e)}")
+                                
                                 return
                             else:
                                 logger.warning(f"[AnthropicProvider] Unhandled stop reason: {stop_reason}")
@@ -1122,6 +1336,10 @@ class AnthropicProvider(AIProvider):
         
         logger.debug(f"[AnthropicProvider] Tool Call ID: {tool_call_id}")
         logger.debug(f"[AnthropicProvider] Project ID: {project_id}, Conversation ID: {conversation_id}")
+        
+        # Log complete create_prd arguments before execution
+        if tool_call_name == "create_prd":
+            logger.info(f"[Anthropic] Executing create_prd with complete arguments: {tool_call_args_str}")
         
         # Use the shared execute_tool_call function
         result_content, notification_data, yielded_content = await execute_tool_call(

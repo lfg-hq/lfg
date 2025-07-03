@@ -2293,4 +2293,79 @@ async def implement_ticket(ticket_id, project_id, conversation_id, ticket_detail
             "message_to_agent": f"Error setting up ticket implementation {ticket_id}: {str(e)}",
             "error": str(e)
         }
+
+async def save_prd_from_stream(prd_content, project_id):
+    """
+    Save PRD content that was captured from the streaming response.
+    This function is called from ai_providers.py when PRD generation is complete.
+    
+    Args:
+        prd_content: The complete PRD content captured from streaming
+        project_id: The project ID to save the PRD for
+        
+    Returns:
+        Dict with notification data
+    """
+    logger.info(f"Saving PRD from stream for project {project_id}")
+    logger.info(f"PRD content length: {len(prd_content)} characters")
+    
+    # Validate project ID
+    if not project_id:
+        logger.error("No project_id provided")
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: project_id is required"
+        }
+    
+    # Get the project
+    try:
+        project = await get_project(project_id)
+        if not project:
+            logger.error(f"Project with ID {project_id} not found")
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Error: Project with ID {project_id} does not exist"
+            }
+    except Exception as e:
+        logger.error(f"Error fetching project: {str(e)}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error fetching project: {str(e)}"
+        }
+    
+    # Validate PRD content
+    if not prd_content or not prd_content.strip():
+        logger.error("PRD content is empty")
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: PRD content cannot be empty"
+        }
+    
+    try:
+        # Save PRD to database
+        prd_obj, created = await sync_to_async(
+            ProjectPRD.objects.get_or_create
+        )(project=project, defaults={'prd': prd_content})
+        
+        # Update existing PRD if it wasn't created
+        if not created:
+            prd_obj.prd = prd_content
+            await sync_to_async(prd_obj.save)()
+        
+        action = "created" if created else "updated"
+        logger.info(f"PRD {action} successfully for project {project_id}")
+        
+        
+        return {
+            "is_notification": True,
+            "notification_type": "prd",
+            "message_to_agent": f"PRD {action} successfully in the database"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error saving PRD from stream: {str(e)}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error saving PRD: {str(e)}"
+        }
         
