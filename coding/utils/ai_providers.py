@@ -502,6 +502,7 @@ class OpenAIProvider(AIProvider):
             logger.warning(f"Could not get user/project/conversation for token tracking: {e}")
 
         prd_data = ""
+        implementation_data = ""
         current_mode = ""
         buffer = ""  # Buffer to handle split tags
 
@@ -589,8 +590,36 @@ class OpenAIProvider(AIProvider):
                             notification_json = json.dumps(prd_complete_notification)
                             yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
                         
+                        if "<lfg-plan>" in buffer and current_mode != "implementation":
+                            current_mode = "implementation"
+                            print("\n\n[IMPLEMENTATION MODE ACTIVATED - OpenAI]")
+                            # Clear buffer up to and including the tag
+                            tag_pos = buffer.find("<lfg-plan>")
+                            buffer = buffer[tag_pos + len("<lfg-plan>"):]
+                            
+                            # Show loading indicator in chat
+                            yield "\n\n*Generating implementation plan... (check the Implementation tab for live updates)*\n\n"
+                        
+                        if "</lfg-plan>" in buffer and current_mode == "implementation":
+                            current_mode = ""
+                            print("\n\n[IMPLEMENTATION MODE DEACTIVATED - OpenAI]")
+                            # Clear buffer up to and including the tag
+                            tag_pos = buffer.find("</lfg-plan>")
+                            buffer = buffer[tag_pos + len("</lfg-plan>"):]
+                            
+                            # Send completion notification for implementation stream
+                            implementation_complete_notification = {
+                                "is_notification": True,
+                                "notification_type": "implementation_stream",
+                                "content_chunk": "",
+                                "is_complete": True,
+                                "notification_marker": "__NOTIFICATION__"
+                            }
+                            notification_json = json.dumps(implementation_complete_notification)
+                            yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                        
                         # Keep buffer size reasonable (only need enough for tag detection)
-                        if len(buffer) > 100 and "<lfg-prd" not in buffer and "</lfg-prd" not in buffer:
+                        if len(buffer) > 100 and "<lfg-prd" not in buffer and "</lfg-prd" not in buffer and "<lfg-plan" not in buffer and "</lfg-plan" not in buffer:
                             buffer = buffer[-50:]  # Keep last 50 chars
                         
                         if current_mode == "prd":
@@ -607,15 +636,29 @@ class OpenAIProvider(AIProvider):
                             }
                             notification_json = json.dumps(prd_stream_notification)
                             yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                        elif current_mode == "implementation":
+                            implementation_data += text
+                            print(f"\n\n\n[CAPTURING IMPLEMENTATION DATA - OpenAI]: {text}")
+                            
+                            # Stream implementation content to the panel
+                            implementation_stream_notification = {
+                                "is_notification": True,
+                                "notification_type": "implementation_stream",
+                                "content_chunk": text,
+                                "is_complete": False,
+                                "notification_marker": "__NOTIFICATION__"
+                            }
+                            notification_json = json.dumps(implementation_stream_notification)
+                            yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
                         
                         # Handle buffering to prevent incomplete tags from being sent
-                        if current_mode != "prd":
+                        if current_mode not in ["prd", "implementation"]:
                             # Add text to output buffer
                             output_buffer += text
                             
                             # Check if we have a complete tag or potential incomplete tag
-                            # Look for potential start of PRD tag
-                            if any(output_buffer.endswith(prefix) for prefix in ['<', '<l', '<lf', '<lfg', '<lfg-', '<lfg-p', '<lfg-pr', '<lfg-prd']):
+                            # Look for potential start of PRD or implementation tag
+                            if any(output_buffer.endswith(prefix) for prefix in ['<', '<l', '<lf', '<lfg', '<lfg-', '<lfg-p', '<lfg-pr', '<lfg-prd', '<lfg-pl', '<lfg-pla', '<lfg-plan']):
                                 # Hold back - might be incomplete tag
                                 pass
                             else:
@@ -745,7 +788,7 @@ class OpenAIProvider(AIProvider):
                             # Conversation finished naturally
                             
                             # Flush any remaining buffered output
-                            if output_buffer and current_mode != "prd":
+                            if output_buffer and current_mode not in ["prd", "implementation"]:
                                 yield output_buffer
                                 output_buffer = ""
                             
@@ -768,6 +811,26 @@ class OpenAIProvider(AIProvider):
                                         yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
                                 except Exception as e:
                                     logger.error(f"Error saving PRD from OpenAI stream: {str(e)}")
+                            
+                            # Save captured implementation data if available
+                            if implementation_data and project_id:
+                                print(f"\n\n[FINAL IMPLEMENTATION DATA CAPTURED - OpenAI]:\n{implementation_data}\n")
+                                print(f"[IMPLEMENTATION DATA LENGTH - OpenAI]: {len(implementation_data)} characters")
+                                
+                                # Import the save function
+                                from coding.utils.ai_functions import save_implementation_from_stream
+                                
+                                # Save the implementation to database
+                                try:
+                                    save_result = await save_implementation_from_stream(implementation_data, project_id)
+                                    logger.info(f"OpenAI Implementation save result: {save_result}")
+                                    
+                                    # Yield notification if save was successful
+                                    if save_result.get("is_notification"):
+                                        notification_json = json.dumps(save_result)
+                                        yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                except Exception as e:
+                                    logger.error(f"Error saving implementation from OpenAI stream: {str(e)}")
                             
                             # Track token usage before exiting
                             if usage_data and user:
@@ -1002,6 +1065,7 @@ class AnthropicProvider(AIProvider):
             logger.warning(f"Could not get user/project/conversation for token tracking: {e}")
             
         prd_data = ""
+        implementation_data = ""
         current_mode = ""
         buffer = ""  # Buffer to handle split tags
 
@@ -1142,8 +1206,39 @@ class AnthropicProvider(AIProvider):
                                     notification_json = json.dumps(prd_complete_notification)
                                     yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
                                 
+                                if "<lfg-plan>" in buffer and current_mode != "implementation":
+                                    current_mode = "implementation"
+                                    print("\n\n[IMPLEMENTATION MODE ACTIVATED]")
+                                    # Clear buffer up to and including the tag
+                                    tag_pos = buffer.find("<lfg-plan>")
+                                    buffer = buffer[tag_pos + len("<lfg-plan>"):]
+                                    
+                                    # Show loading indicator in chat
+                                    yield "\n\n*Generating implementation plan... (check the Implementation tab for live updates)*\n\n"
+                                
+                                if "</lfg-plan>" in buffer and current_mode == "implementation":
+                                    current_mode = ""
+                                    print("\n\n[IMPLEMENTATION MODE DEACTIVATED]")
+                                    # Clear buffer up to and including the tag
+                                    tag_pos = buffer.find("</lfg-plan>")
+                                    buffer = buffer[tag_pos + len("</lfg-plan>"):]
+                                    
+                                    # Send completion notification for implementation stream
+                                    implementation_complete_notification = {
+                                        "is_notification": True,
+                                        "notification_type": "implementation_stream",
+                                        "content_chunk": "",
+                                        "is_complete": True,
+                                        "notification_marker": "__NOTIFICATION__"
+                                    }
+                                    notification_json = json.dumps(implementation_complete_notification)
+                                    yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                
                                 # Keep buffer size reasonable (only need enough for tag detection)
-                                if len(buffer) > 100 and "<lfg-prd" not in buffer and "</lfg-prd" not in buffer:
+                                if len(buffer) > 100 and "<lfg-prd" not in buffer \
+                                    and "</lfg-prd" not in buffer \
+                                    and "<lfg-plan" not in buffer \
+                                    and "</lfg-plan" not in buffer:
                                     buffer = buffer[-50:]  # Keep last 50 chars
                                 
                                 # print(f"\n\nCurrent mode: {current_mode}, Buffer tail: {buffer[-20:]}")
@@ -1162,15 +1257,29 @@ class AnthropicProvider(AIProvider):
                                     }
                                     notification_json = json.dumps(prd_stream_notification)
                                     yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                elif current_mode == "implementation":
+                                    implementation_data += text
+                                    print(f"\n\n\n[CAPTURING IMPLEMENTATION DATA]: {text}")
+                                    
+                                    # Stream implementation content to the panel
+                                    implementation_stream_notification = {
+                                        "is_notification": True,
+                                        "notification_type": "implementation_stream",
+                                        "content_chunk": text,
+                                        "is_complete": False,
+                                        "notification_marker": "__NOTIFICATION__"
+                                    }
+                                    notification_json = json.dumps(implementation_stream_notification)
+                                    yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
                                 
                                 # Handle buffering to prevent incomplete tags from being sent
-                                if current_mode != "prd":
+                                if current_mode not in ["prd", "implementation"]:
                                     # Add text to output buffer
                                     output_buffer += text
                                     
                                     # Check if we have a complete tag or potential incomplete tag
-                                    # Look for potential start of PRD tag
-                                    if any(output_buffer.endswith(prefix) for prefix in ['<', '<l', '<lf', '<lfg', '<lfg-', '<lfg-p', '<lfg-pr', '<lfg-prd']):
+                                    # Look for potential start of PRD or implementation tag
+                                    if any(output_buffer.endswith(prefix) for prefix in ['<', '<l', '<lf', '<lfg', '<lfg-', '<lfg-p', '<lfg-pr', '<lfg-prd', '<lfg-pl', '<lfg-pla', '<lfg-plan']):
                                         # Hold back - might be incomplete tag
                                         pass
                                     else:
@@ -1287,7 +1396,7 @@ class AnthropicProvider(AIProvider):
                                     logger.debug(f"[AnthropicProvider] Assistant response snippet: {full_assistant_message['content'][:100]}...")
                                 
                                 # Flush any remaining buffered output
-                                if output_buffer and current_mode != "prd":
+                                if output_buffer and current_mode not in ["prd", "implementation"]:
                                     yield output_buffer
                                     output_buffer = ""
                                 
@@ -1310,6 +1419,26 @@ class AnthropicProvider(AIProvider):
                                             yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
                                     except Exception as e:
                                         logger.error(f"Error saving PRD from stream: {str(e)}")
+                                
+                                # Save captured implementation data if available
+                                if implementation_data and project_id:
+                                    print(f"\n\n[FINAL IMPLEMENTATION DATA CAPTURED]:\n{implementation_data}\n")
+                                    print(f"[IMPLEMENTATION DATA LENGTH]: {len(implementation_data)} characters")
+                                    
+                                    # Import the save function
+                                    from coding.utils.ai_functions import save_implementation_from_stream
+                                    
+                                    # Save the implementation to database
+                                    try:
+                                        save_result = await save_implementation_from_stream(implementation_data, project_id)
+                                        logger.info(f"Implementation save result: {save_result}")
+                                        
+                                        # Yield notification if save was successful
+                                        if save_result.get("is_notification"):
+                                            notification_json = json.dumps(save_result)
+                                            yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                    except Exception as e:
+                                        logger.error(f"Error saving implementation from stream: {str(e)}")
                                 
                                 return
                             else:

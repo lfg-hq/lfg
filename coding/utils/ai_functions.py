@@ -2294,6 +2294,85 @@ async def implement_ticket(ticket_id, project_id, conversation_id, ticket_detail
             "error": str(e)
         }
 
+async def save_implementation_from_stream(implementation_content, project_id):
+    """
+    Save implementation content that was captured from the streaming response.
+    This function is called from ai_providers.py when implementation generation is complete.
+    
+    Args:
+        implementation_content: The complete implementation content captured from streaming
+        project_id: The project ID to save the implementation for
+        
+    Returns:
+        Dict with notification data
+    """
+    logger.info(f"Saving implementation from stream for project {project_id}")
+    logger.info(f"Implementation content length: {len(implementation_content)} characters")
+    
+    # Validate project ID
+    if not project_id:
+        logger.error("No project_id provided")
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: project_id is required"
+        }
+    
+    # Get the project
+    try:
+        project = await get_project(project_id)
+        if not project:
+            logger.error(f"Project with ID {project_id} not found")
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Error: Project with ID {project_id} does not exist"
+            }
+    except Exception as e:
+        logger.error(f"Error fetching project: {str(e)}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error fetching project: {str(e)}"
+        }
+    
+    # Validate implementation content
+    if not implementation_content or not implementation_content.strip():
+        logger.error("Implementation content is empty")
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: Implementation content cannot be empty"
+        }
+    
+    try:
+        # Save implementation to database
+        impl_obj, created = await sync_to_async(
+            ProjectImplementation.objects.get_or_create
+        )(
+            project=project,
+            defaults={'implementation': implementation_content}
+        )
+        
+        # Update if it already existed
+        if not created:
+            impl_obj.implementation = implementation_content
+            await sync_to_async(impl_obj.save)()
+            logger.info(f"Updated existing implementation for project {project_id}")
+        else:
+            logger.info(f"Created new implementation for project {project_id}")
+        
+        action = "created" if created else "updated"
+        
+        return {
+            "is_notification": True,
+            "notification_type": "implementation",
+            "message_to_agent": f"Implementation {action} successfully in the database"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error saving implementation: {str(e)}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error saving implementation: {str(e)}"
+        }
+
 async def save_prd_from_stream(prd_content, project_id):
     """
     Save PRD content that was captured from the streaming response.
