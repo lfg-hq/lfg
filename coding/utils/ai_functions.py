@@ -2341,6 +2341,15 @@ async def save_implementation_from_stream(implementation_content, project_id):
             "message_to_agent": "Error: Implementation content cannot be empty"
         }
     
+    # Clean up any residual artifacts
+    implementation_content = implementation_content.strip()
+    # Remove leading '>' if present
+    if implementation_content.startswith('>'):
+        implementation_content = implementation_content[1:].strip()
+    # Remove any trailing tag fragments
+    if '</lfg-plan' in implementation_content:
+        implementation_content = implementation_content[:implementation_content.rfind('</lfg-plan')].strip()
+    
     try:
         # Save implementation to database
         impl_obj, created = await sync_to_async(
@@ -2419,6 +2428,15 @@ async def save_prd_from_stream(prd_content, project_id):
             "is_notification": False,
             "message_to_agent": "Error: PRD content cannot be empty"
         }
+    
+    # Clean up any residual artifacts
+    prd_content = prd_content.strip()
+    # Remove leading '>' if present
+    if prd_content.startswith('>'):
+        prd_content = prd_content[1:].strip()
+    # Remove any trailing tag fragments
+    if '</lfg-prd' in prd_content:
+        prd_content = prd_content[:prd_content.rfind('</lfg-prd')].strip()
     
     try:
         # Save PRD to database

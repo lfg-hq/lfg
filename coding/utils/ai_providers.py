@@ -436,6 +436,8 @@ class OpenAIProvider(AIProvider):
             # Default to gpt-4o if unknown model
             self.model = "gpt-4o"
             logger.warning(f"Unknown model {selected_model}, defaulting to gpt-4o")
+
+        print(f"\n\n\nSelected model: {self.model}")
         
         # Client will be initialized in async method
         self.client = None
@@ -568,6 +570,9 @@ class OpenAIProvider(AIProvider):
                             # Clear buffer up to and including the tag
                             tag_pos = buffer.find("<lfg-prd>")
                             buffer = buffer[tag_pos + len("<lfg-prd>"):]
+                            # Clean any leading '>' if present
+                            if buffer.startswith('>'):
+                                buffer = buffer[1:]
                             
                             # Show loading indicator in chat
                             yield "\n\n*Generating PRD... (check the PRD tab for live updates)*\n\n"
@@ -575,6 +580,9 @@ class OpenAIProvider(AIProvider):
                         if "</lfg-prd>" in buffer and current_mode == "prd":
                             current_mode = ""
                             print("\n\n[PRD MODE DEACTIVATED - OpenAI]")
+                            # Remove any trailing tag fragments from captured data
+                            if "</lfg-prd" in prd_data:
+                                prd_data = prd_data[:prd_data.rfind("</lfg-prd")]
                             # Clear buffer up to and including the tag
                             tag_pos = buffer.find("</lfg-prd>")
                             buffer = buffer[tag_pos + len("</lfg-prd>"):]
@@ -596,6 +604,9 @@ class OpenAIProvider(AIProvider):
                             # Clear buffer up to and including the tag
                             tag_pos = buffer.find("<lfg-plan>")
                             buffer = buffer[tag_pos + len("<lfg-plan>"):]
+                            # Clean any leading '>' if present
+                            if buffer.startswith('>'):
+                                buffer = buffer[1:]
                             
                             # Show loading indicator in chat
                             yield "\n\n*Generating implementation plan... (check the Implementation tab for live updates)*\n\n"
@@ -603,6 +614,9 @@ class OpenAIProvider(AIProvider):
                         if "</lfg-plan>" in buffer and current_mode == "implementation":
                             current_mode = ""
                             print("\n\n[IMPLEMENTATION MODE DEACTIVATED - OpenAI]")
+                            # Remove any trailing tag fragments from captured data
+                            if "</lfg-plan" in implementation_data:
+                                implementation_data = implementation_data[:implementation_data.rfind("</lfg-plan")]
                             # Clear buffer up to and including the tag
                             tag_pos = buffer.find("</lfg-plan>")
                             buffer = buffer[tag_pos + len("</lfg-plan>"):]
@@ -638,7 +652,7 @@ class OpenAIProvider(AIProvider):
                             yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
                         elif current_mode == "implementation":
                             implementation_data += text
-                            print(f"\n\n\n[CAPTURING IMPLEMENTATION DATA - OpenAI]: {text}")
+                            # print(f"\n\n\n[CAPTURING IMPLEMENTATION DATA - OpenAI]: {text}")
                             
                             # Stream implementation content to the panel
                             implementation_stream_notification = {
@@ -1184,6 +1198,9 @@ class AnthropicProvider(AIProvider):
                                     # Clear buffer up to and including the tag
                                     tag_pos = buffer.find("<lfg-prd>")
                                     buffer = buffer[tag_pos + len("<lfg-prd>"):]
+                                    # Clean any leading '>' if present
+                                    if buffer.startswith('>'):
+                                        buffer = buffer[1:]
                                     
                                     # Show loading indicator in chat
                                     yield "\n\n*Generating PRD... (check the PRD tab for live updates)*\n\n"
@@ -1191,6 +1208,9 @@ class AnthropicProvider(AIProvider):
                                 if "</lfg-prd>" in buffer and current_mode == "prd":
                                     current_mode = ""
                                     print("\n\n[PRD MODE DEACTIVATED]")
+                                    # Remove any trailing tag fragments from captured data
+                                    if "</lfg-prd" in prd_data:
+                                        prd_data = prd_data[:prd_data.rfind("</lfg-prd")]
                                     # Clear buffer up to and including the tag
                                     tag_pos = buffer.find("</lfg-prd>")
                                     buffer = buffer[tag_pos + len("</lfg-prd>"):]
@@ -1212,6 +1232,9 @@ class AnthropicProvider(AIProvider):
                                     # Clear buffer up to and including the tag
                                     tag_pos = buffer.find("<lfg-plan>")
                                     buffer = buffer[tag_pos + len("<lfg-plan>"):]
+                                    # Clean any leading '>' if present
+                                    if buffer.startswith('>'):
+                                        buffer = buffer[1:]
                                     
                                     # Show loading indicator in chat
                                     yield "\n\n*Generating implementation plan... (check the Implementation tab for live updates)*\n\n"
@@ -1219,6 +1242,9 @@ class AnthropicProvider(AIProvider):
                                 if "</lfg-plan>" in buffer and current_mode == "implementation":
                                     current_mode = ""
                                     print("\n\n[IMPLEMENTATION MODE DEACTIVATED]")
+                                    # Remove any trailing tag fragments from captured data
+                                    if "</lfg-plan" in implementation_data:
+                                        implementation_data = implementation_data[:implementation_data.rfind("</lfg-plan")]
                                     # Clear buffer up to and including the tag
                                     tag_pos = buffer.find("</lfg-plan>")
                                     buffer = buffer[tag_pos + len("</lfg-plan>"):]

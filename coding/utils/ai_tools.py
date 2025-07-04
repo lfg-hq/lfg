@@ -557,7 +557,7 @@ tools_code = [get_prd, start_server, \
               create_implementation, get_implementation, update_implementation, stream_implementation_content, \
               copy_boilerplate_code, capture_name]
 
-tools_product = []
+tools_product = [get_prd, get_implementation]
 
 tools_ticket = [execute_command, get_prd, get_implementation, copy_boilerplate_code, start_server]
 

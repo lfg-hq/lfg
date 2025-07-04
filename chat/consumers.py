@@ -368,11 +368,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
         for field in notification_fields:
             if field in event:
                 response_data[field] = event[field]
-                logger.info(f"Adding notification field {field}: {event[field]}")
+                # logger.info(f"Adding notification field {field}: {event[field]}")
         
         # Send the response to the client
         try:
-            logger.info(f"FINAL response_data being sent: {response_data}")
+            # logger.info(f"FINAL response_data being sent: {response_data}")
             await self.send(text_data=json.dumps(response_data))
             logger.info(f"Successfully sent {'notification' if response_data.get('is_notification') else 'chunk'} to client")
         except Exception as e:
@@ -537,7 +537,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     try:
                         notification_json = content[len("__NOTIFICATION__"):-len("__NOTIFICATION__")]
                         notification_data = json.loads(notification_json)
-                        logger.info(f"NOTIFICATION DETECTED in generate_ai_response: {notification_data}")
+                        # logger.info(f"NOTIFICATION DETECTED in generate_ai_response: {notification_data}")
                         
                         # Send notification to client
                         notification_message = {
