@@ -52,6 +52,8 @@ def get_notification_type_for_tool(tool_name):
         "get_personas": "checklist",
         "create_prd": "prd",
         "get_prd": "prd",
+        "stream_implementation_content": "implementation_stream",  # Stream implementation content to implementation tab
+        "stream_prd_content": "prd_stream",  # Stream PRD content to PRD tab
         "start_server": "apps",  # Server starts should show in apps/preview tab
         "execute_command": "toolhistory",  # Show command execution in tool history
         "save_implementation": "implementation",
@@ -96,6 +98,8 @@ def map_notification_type_to_tab(notification_type):
         "get_pending_tickets": "checklist",
         "command_error": "toolhistory",
         "project_name_saved": "toolhistory",
+        "prd_stream": "prd_stream",  # Map prd_stream to prd tab
+        "implementation_stream": "implementation_stream",  # Map implementation_stream to implementation tab
         # Add more custom mappings as needed
     }
     
@@ -177,7 +181,12 @@ async def execute_tool_call(tool_call_name, tool_call_args_str, project_id, conv
         # Send special notification for extraction functions regardless of result
         notification_type = get_notification_type_for_tool(tool_call_name)
         print(f"\n\n\n\n\nNotification type: {notification_type}")
-        if notification_type and tool_call_name in [
+        
+        # For stream_prd_content and stream_implementation_content, skip forcing notification if it already has notification data
+        if tool_call_name in ["stream_prd_content", "stream_implementation_content"] and isinstance(tool_result, dict) and tool_result.get("is_notification"):
+            # Use the notification data from the tool result itself
+            logger.info(f"{tool_call_name} already has notification data, not forcing")
+        elif notification_type and tool_call_name in [
             "extract_features", "extract_personas", "save_features", "save_personas",
             "get_features", "get_personas", "create_prd", "get_prd",
             "save_implementation", "get_implementation", "update_implementation", "create_implementation",
@@ -194,6 +203,7 @@ async def execute_tool_call(tool_call_name, tool_call_args_str, project_id, conv
                 "function_name": tool_call_name,
                 "notification_marker": "__NOTIFICATION__"
             }
+            
             logger.debug(f"Forced notification: {notification_data}")
         
         # Handle the tool result
@@ -213,6 +223,16 @@ async def execute_tool_call(tool_call_name, tool_call_args_str, project_id, conv
                 "notification_type": mapped_notification_type,
                 "notification_marker": "__NOTIFICATION__"
             }
+            
+            # Special handling for PRD and Implementation streaming
+            if raw_notification_type == "prd_stream":
+                notification_data["content_chunk"] = tool_result.get("content_chunk", "")
+                notification_data["is_complete"] = tool_result.get("is_complete", False)
+                logger.info(f"PRD_STREAM in notification handler: chunk_length={len(notification_data['content_chunk'])}, is_complete={notification_data['is_complete']}")
+            elif raw_notification_type == "implementation_stream":
+                notification_data["content_chunk"] = tool_result.get("content_chunk", "")
+                notification_data["is_complete"] = tool_result.get("is_complete", False)
+                logger.info(f"IMPLEMENTATION_STREAM in notification handler: chunk_length={len(notification_data['content_chunk'])}, is_complete={notification_data['is_complete']}")
             
             logger.debug(f"Notification data to be yielded: {notification_data}")
             
@@ -416,6 +436,8 @@ class OpenAIProvider(AIProvider):
             # Default to gpt-4o if unknown model
             self.model = "gpt-4o"
             logger.warning(f"Unknown model {selected_model}, defaulting to gpt-4o")
+
+        print(f"\n\n\nSelected model: {self.model}")
         
         # Client will be initialized in async method
         self.client = None
@@ -424,7 +446,6 @@ class OpenAIProvider(AIProvider):
     def _get_openai_key(self, user):
         """Get user profile synchronously"""
         profile = Profile.objects.get(user=user)
-        print(f"\n\n\nOpenAI key: {profile.openai_api_key}")
         if profile.openai_api_key:
             return profile.openai_api_key
         return ""
@@ -482,6 +503,12 @@ class OpenAIProvider(AIProvider):
         except Exception as e:
             logger.warning(f"Could not get user/project/conversation for token tracking: {e}")
 
+        prd_data = ""
+        implementation_data = ""
+        ticket_data = ""  # Buffer for current ticket being parsed
+        current_mode = ""
+        buffer = ""  # Buffer to handle split tags
+
         while True: # Loop to handle potential multi-turn tool calls (though typically one round)
             try:
                 params = {
@@ -514,6 +541,9 @@ class OpenAIProvider(AIProvider):
                 # Variables for token tracking
                 usage_data = None
                 
+                # Output buffer to handle incomplete tags
+                output_buffer = ""
+                
                 # --- Process the stream from the API --- 
                 # We need to wrap the stream iteration in a thread as well
                 async for chunk in self._process_stream_async(response_stream):
@@ -529,10 +559,228 @@ class OpenAIProvider(AIProvider):
 
                     # --- Accumulate Text Content --- 
                     if delta.content:
-                        yield delta.content # Stream text content immediately
+                        text = delta.content
+                        
+                        # Add to buffer for tag detection
+                        buffer += text
+                        
+                        # Check for complete tags in buffer
+                        if "<lfg-prd>" in buffer and current_mode != "prd":
+                            current_mode = "prd"
+                            print("\n\n[PRD MODE ACTIVATED - OpenAI]")
+                            # Clear buffer up to and including the tag
+                            tag_pos = buffer.find("<lfg-prd>")
+                            remaining_buffer = buffer[tag_pos + len("<lfg-prd>"):]
+                            # Clean any leading '>' and whitespace from remaining buffer
+                            remaining_buffer = remaining_buffer.lstrip()
+                            if remaining_buffer.startswith('>'):
+                                remaining_buffer = remaining_buffer[1:].lstrip()
+                            # Reset prd data and capture any remaining content
+                            prd_data = remaining_buffer
+                            buffer = ""  # Clear the buffer since we've processed it
+                            
+                            # Show loading indicator in chat
+                            yield "\n\n*Generating PRD... (check the PRD tab for live updates)*\n\n"
+                        
+                        if "</lfg-prd>" in buffer and current_mode == "prd":
+                            current_mode = ""
+                            print("\n\n[PRD MODE DEACTIVATED - OpenAI]")
+                            # Find where the closing tag starts in the buffer
+                            tag_pos = buffer.find("</lfg-prd>")
+                            # Check if we've captured part of the closing tag in prd_data
+                            # by looking for incomplete tag patterns at the end
+                            incomplete_patterns = ["<", "</", "</l", "</lf", "</lfg", "</lfg-", "</lfg-p", "</lfg-pr", "</lfg-prd"]
+                            for pattern in reversed(incomplete_patterns):
+                                if prd_data.endswith(pattern):
+                                    prd_data = prd_data[:-len(pattern)]
+                                    break
+                            # Clear buffer up to and including the tag
+                            buffer = buffer[tag_pos + len("</lfg-prd>"):]
+                            
+                            # Send completion notification for PRD stream
+                            prd_complete_notification = {
+                                "is_notification": True,
+                                "notification_type": "prd_stream",
+                                "content_chunk": "",
+                                "is_complete": True,
+                                "notification_marker": "__NOTIFICATION__"
+                            }
+                            notification_json = json.dumps(prd_complete_notification)
+                            yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                        
+                        if "<lfg-plan>" in buffer and current_mode != "implementation":
+                            current_mode = "implementation"
+                            print("\n\n[IMPLEMENTATION MODE ACTIVATED - OpenAI]")
+                            # Clear buffer up to and including the tag
+                            tag_pos = buffer.find("<lfg-plan>")
+                            remaining_buffer = buffer[tag_pos + len("<lfg-plan>"):]
+                            # Clean any leading '>' and whitespace from remaining buffer
+                            remaining_buffer = remaining_buffer.lstrip()
+                            if remaining_buffer.startswith('>'):
+                                remaining_buffer = remaining_buffer[1:].lstrip()
+                            # Reset implementation data and capture any remaining content
+                            implementation_data = remaining_buffer
+                            buffer = ""  # Clear the buffer since we've processed it
+                            
+                            # Show loading indicator in chat
+                            yield "\n\n*Generating implementation plan... (check the Implementation tab for live updates)*\n\n"
+                        
+                        if "</lfg-plan>" in buffer and current_mode == "implementation":
+                            current_mode = ""
+                            print("\n\n[IMPLEMENTATION MODE DEACTIVATED - OpenAI]")
+                            # Find where the closing tag starts in the buffer
+                            tag_pos = buffer.find("</lfg-plan>")
+                            # Check if we've captured part of the closing tag in implementation_data
+                            # by looking for incomplete tag patterns at the end
+                            incomplete_patterns = ["<", "</", "</l", "</lf", "</lfg", "</lfg-", "</lfg-p", "</lfg-pl", "</lfg-pla", "</lfg-plan"]
+                            for pattern in reversed(incomplete_patterns):
+                                if implementation_data.endswith(pattern):
+                                    implementation_data = implementation_data[:-len(pattern)]
+                                    break
+                            # Clear buffer up to and including the tag
+                            buffer = buffer[tag_pos + len("</lfg-plan>"):]
+                            
+                            # Send completion notification for implementation stream
+                            implementation_complete_notification = {
+                                "is_notification": True,
+                                "notification_type": "implementation_stream",
+                                "content_chunk": "",
+                                "is_complete": True,
+                                "notification_marker": "__NOTIFICATION__"
+                            }
+                            notification_json = json.dumps(implementation_complete_notification)
+                            yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                        
+                        # Check for ticket tags
+                        if "<lfg-ticket>" in buffer and current_mode != "ticket":
+                            current_mode = "ticket"
+                            print("\n\n[TICKET MODE ACTIVATED - OpenAI]")
+                            # Clear buffer up to and including the tag
+                            tag_pos = buffer.find("<lfg-ticket>")
+                            remaining_buffer = buffer[tag_pos + len("<lfg-ticket>"):]
+                            # Clean any leading '>' and whitespace from remaining buffer
+                            remaining_buffer = remaining_buffer.lstrip()
+                            if remaining_buffer.startswith('>'):
+                                remaining_buffer = remaining_buffer[1:].lstrip()
+                            # Reset ticket data and capture any remaining content
+                            ticket_data = remaining_buffer
+                            buffer = ""  # Clear the buffer since we've processed it
+                        
+                        if "</lfg-ticket>" in buffer and current_mode == "ticket":
+                            current_mode = ""
+                            print("\n\n[TICKET MODE DEACTIVATED - OpenAI]")
+                            # Find where the closing tag starts in the buffer
+                            tag_pos = buffer.find("</lfg-ticket>")
+                            # Check if we've captured part of the closing tag in ticket_data
+                            # by looking for incomplete tag patterns at the end
+                            incomplete_patterns = ["<", "</", "</l", "</lf", "</lfg", "</lfg-", "</lfg-t", "</lfg-ti", "</lfg-tic", "</lfg-tick", "</lfg-ticke", "</lfg-ticket"]
+                            for pattern in reversed(incomplete_patterns):
+                                if ticket_data.endswith(pattern):
+                                    ticket_data = ticket_data[:-len(pattern)]
+                                    break
+                            # Clear buffer up to and including the tag
+                            buffer = buffer[tag_pos + len("</lfg-ticket>"):]
+                            
+                            # Parse and save the ticket
+                            try:
+                                # Import the save function
+                                from coding.utils.ai_functions import save_ticket_from_stream
+                                
+                                # Clean ticket data before parsing
+                                cleaned_ticket_data = ticket_data.strip()
+                                # Remove any leading '>' that might have slipped through
+                                if cleaned_ticket_data.startswith('>'):
+                                    cleaned_ticket_data = cleaned_ticket_data[1:].strip()
+                                
+                                # Parse the JSON ticket data
+                                ticket_json = json.loads(cleaned_ticket_data)
+                                
+                                # Save the ticket to database
+                                save_result = await save_ticket_from_stream(ticket_json, project_id)
+                                logger.info(f"OpenAI Ticket save result: {save_result}")
+                                
+                                # Yield notification if save was successful
+                                if save_result.get("is_notification"):
+                                    notification_json = json.dumps(save_result)
+                                    yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                            except json.JSONDecodeError as e:
+                                logger.error(f"Error parsing ticket JSON from OpenAI stream: {str(e)}")
+                                logger.error(f"Ticket data was: {ticket_data}")
+                            except Exception as e:
+                                logger.error(f"Error saving ticket from OpenAI stream: {str(e)}")
+                        
+                        # Keep buffer size reasonable (only need enough for tag detection)
+                        if len(buffer) > 100 and "<lfg-prd" not in buffer and "</lfg-prd" not in buffer and "<lfg-plan" not in buffer and "</lfg-plan" not in buffer and "<lfg-ticket" not in buffer and "</lfg-ticket" not in buffer:
+                            buffer = buffer[-50:]  # Keep last 50 chars
+                        
+                        if current_mode == "prd":
+                            # Skip the closing '>' of the tag if it's the first character and prd_data is empty
+                            if prd_data == "" and text.startswith('>'):
+                                text = text[1:]
+                            prd_data += text
+                            print(f"\n\n\n[CAPTURING PRD DATA - OpenAI]: {text}")
+                            
+                            # Stream PRD content to the panel
+                            prd_stream_notification = {
+                                "is_notification": True,
+                                "notification_type": "prd_stream",
+                                "content_chunk": text,
+                                "is_complete": False,
+                                "notification_marker": "__NOTIFICATION__"
+                            }
+                            notification_json = json.dumps(prd_stream_notification)
+                            yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                        elif current_mode == "implementation":
+                            # Skip the closing '>' of the tag if it's the first character and implementation_data is empty
+                            if implementation_data == "" and text.startswith('>'):
+                                text = text[1:]
+                            implementation_data += text
+                            # print(f"\n\n\n[CAPTURING IMPLEMENTATION DATA - OpenAI]: {text}")
+                            
+                            # Stream implementation content to the panel
+                            implementation_stream_notification = {
+                                "is_notification": True,
+                                "notification_type": "implementation_stream",
+                                "content_chunk": text,
+                                "is_complete": False,
+                                "notification_marker": "__NOTIFICATION__"
+                            }
+                            notification_json = json.dumps(implementation_stream_notification)
+                            yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                        elif current_mode == "ticket":
+                            # Skip the closing '>' of the tag if it's the first character and ticket_data is empty
+                            if ticket_data == "" and text.startswith('>'):
+                                text = text[1:]
+                                print(f"[SKIPPING '>' - OpenAI] Remaining text: {repr(text)}")
+                            # Also check if ticket_data only contains whitespace and we're getting '>'
+                            elif ticket_data.strip() == "" and text.strip().startswith('>'):
+                                text = text.lstrip()
+                                if text.startswith('>'):
+                                    text = text[1:]
+                                print(f"[SKIPPING '>' after whitespace - OpenAI] Remaining text: {repr(text)}")
+                            ticket_data += text
+                            print(f"\n\n\n[CAPTURING TICKET DATA - OpenAI]: {repr(text)}")
+                            print(f"[TICKET DATA SO FAR - OpenAI]: {repr(ticket_data[:100])}...")
+                        
+                        # Handle buffering to prevent incomplete tags from being sent
+                        if current_mode not in ["prd", "implementation", "ticket"]:
+                            # Add text to output buffer
+                            output_buffer += text
+                            
+                            # Check if we have a complete tag or potential incomplete tag
+                            # Look for potential start of PRD, implementation, or ticket tag
+                            if any(output_buffer.endswith(prefix) for prefix in ['<', '<l', '<lf', '<lfg', '<lfg-', '<lfg-p', '<lfg-pr', '<lfg-prd', '<lfg-pl', '<lfg-pla', '<lfg-plan', '<lfg-t', '<lfg-ti', '<lfg-tic', '<lfg-tick', '<lfg-ticke', '<lfg-ticket']):
+                                # Hold back - might be incomplete tag
+                                pass
+                            else:
+                                # Safe to yield everything in buffer
+                                if output_buffer:
+                                    yield output_buffer
+                                    output_buffer = ""
+                            
                         if full_assistant_message["content"] is None:
-                            full_assistant_message["content"] = "-"
-                        full_assistant_message["content"] += delta.content
+                            full_assistant_message["content"] = ""
+                        full_assistant_message["content"] += text
 
                     # --- Accumulate Tool Call Details --- 
                     if delta.tool_calls:
@@ -556,23 +804,30 @@ class OpenAIProvider(AIProvider):
                                     # Determine notification type based on function name
                                     notification_type = get_notification_type_for_tool(function_name)
                                     
-                                    # Always send early notification for any function
-                                    logger.debug(f"SENDING EARLY NOTIFICATION FOR {function_name}")
-                                    # Create a notification with a special marker to make it clearly identifiable
-                                    early_notification = {
-                                        "is_notification": True,
-                                        "notification_type": notification_type or "tool",
-                                        "early_notification": True,
-                                        "function_name": function_name,
-                                        "notification_marker": "__NOTIFICATION__"  # Special marker
-                                    }
-                                    notification_json = json.dumps(early_notification)
-                                    logger.debug(f"Early notification sent: {notification_json}")
-                                    # Yield as a special formatted string that can be easily detected
-                                    yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                    # Skip early notification for stream_prd_content and stream_implementation_content since we need the actual content
+                                    if function_name not in ["stream_prd_content", "stream_implementation_content"]:
+                                        # Send early notification for other functions
+                                        logger.debug(f"SENDING EARLY NOTIFICATION FOR {function_name}")
+                                        # Create a notification with a special marker to make it clearly identifiable
+                                        early_notification = {
+                                            "is_notification": True,
+                                            "notification_type": notification_type or "tool",
+                                            "early_notification": True,
+                                            "function_name": function_name,
+                                            "notification_marker": "__NOTIFICATION__"  # Special marker
+                                        }
+                                        notification_json = json.dumps(early_notification)
+                                        logger.debug(f"Early notification sent: {notification_json}")
+                                        # Yield as a special formatted string that can be easily detected
+                                        yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                    else:
+                                        logger.debug(f"Skipping early notification for {function_name} - will send with content later")
                                 
                                 if tool_call_chunk.function.arguments:
                                     current_tc["function"]["arguments"] += tool_call_chunk.function.arguments
+                                    # Stream create_prd arguments to console as they arrive
+                                    if current_tc["function"]["name"] == "create_prd":
+                                        logger.info(f"[OpenAI] create_prd argument chunk: {tool_call_chunk.function.arguments}")
 
                     # --- Check Finish Reason --- 
                     if finish_reason:
@@ -606,6 +861,10 @@ class OpenAIProvider(AIProvider):
                                 
                                 logger.debug(f"OpenAI Provider - Tool Call ID: {tool_call_id}")
                                 
+                                # Log complete create_prd arguments before execution
+                                if tool_call_name == "create_prd":
+                                    logger.info(f"[OpenAI] Executing create_prd with complete arguments: {tool_call_args_str}")
+                                
                                 # Use the shared execute_tool_call function
                                 result_content, notification_data, yielded_content = await execute_tool_call(
                                     tool_call_name, tool_call_args_str, project_id, conversation_id
@@ -625,6 +884,9 @@ class OpenAIProvider(AIProvider):
                                 # If we have notification data, yield it to the consumer with the special format
                                 if notification_data:
                                     logger.debug("YIELDING NOTIFICATION DATA TO CONSUMER")
+                                    logger.debug(f"Notification data type: {notification_data.get('notification_type')}")
+                                    if notification_data.get('notification_type') == 'prd':
+                                        logger.info(f"PRD STREAM NOTIFICATION: chunk_length={len(notification_data.get('content_chunk', ''))}, is_complete={notification_data.get('is_complete')}")
                                     notification_json = json.dumps(notification_data)
                                     logger.debug(f"Notification JSON: {notification_json}")
                                     yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
@@ -635,6 +897,52 @@ class OpenAIProvider(AIProvider):
                         
                         elif finish_reason == "stop":
                             # Conversation finished naturally
+                            
+                            # Flush any remaining buffered output
+                            if output_buffer and current_mode not in ["prd", "implementation", "ticket"]:
+                                yield output_buffer
+                                output_buffer = ""
+                            
+                            # Save captured PRD data if available
+                            if prd_data and project_id:
+                                print(f"\n\n[FINAL PRD DATA CAPTURED - OpenAI]:\n{prd_data}\n")
+                                print(f"[PRD DATA LENGTH - OpenAI]: {len(prd_data)} characters")
+                                
+                                # Import the save function
+                                from coding.utils.ai_functions import save_prd_from_stream
+                                
+                                # Save the PRD to database
+                                try:
+                                    save_result = await save_prd_from_stream(prd_data, project_id)
+                                    logger.info(f"OpenAI PRD save result: {save_result}")
+                                    
+                                    # Yield notification if save was successful
+                                    if save_result.get("is_notification"):
+                                        notification_json = json.dumps(save_result)
+                                        yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                except Exception as e:
+                                    logger.error(f"Error saving PRD from OpenAI stream: {str(e)}")
+                            
+                            # Save captured implementation data if available
+                            if implementation_data and project_id:
+                                print(f"\n\n[FINAL IMPLEMENTATION DATA CAPTURED - OpenAI]:\n{implementation_data}\n")
+                                print(f"[IMPLEMENTATION DATA LENGTH - OpenAI]: {len(implementation_data)} characters")
+                                
+                                # Import the save function
+                                from coding.utils.ai_functions import save_implementation_from_stream
+                                
+                                # Save the implementation to database
+                                try:
+                                    save_result = await save_implementation_from_stream(implementation_data, project_id)
+                                    logger.info(f"OpenAI Implementation save result: {save_result}")
+                                    
+                                    # Yield notification if save was successful
+                                    if save_result.get("is_notification"):
+                                        notification_json = json.dumps(save_result)
+                                        yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                except Exception as e:
+                                    logger.error(f"Error saving implementation from OpenAI stream: {str(e)}")
+                            
                             # Track token usage before exiting
                             if usage_data and user:
                                 await self._track_token_usage(
@@ -746,7 +1054,6 @@ class AnthropicProvider(AIProvider):
     def _get_anthropic_key(self, user):
         """Get user profile synchronously"""
         profile = Profile.objects.get(user=user)
-        print(f"\n\n\nKey: {profile.anthropic_api_key}")
         if profile.anthropic_api_key:
             return profile.anthropic_api_key
         return ""
@@ -867,6 +1174,12 @@ class AnthropicProvider(AIProvider):
                 user = project.owner
         except Exception as e:
             logger.warning(f"Could not get user/project/conversation for token tracking: {e}")
+            
+        prd_data = ""
+        implementation_data = ""
+        ticket_data = ""  # Buffer for current ticket being parsed
+        current_mode = ""
+        buffer = ""  # Buffer to handle split tags
 
         while True: # Loop to handle potential multi-turn tool calls
             try:
@@ -923,6 +1236,9 @@ class AnthropicProvider(AIProvider):
 
                 logger.debug("New Loop!!")
                 
+                # Output buffer to handle incomplete tags
+                output_buffer = ""
+                
                 # --- Process the stream from the API --- 
                 async with self.client.messages.stream(**params) as stream:
                     async for event in stream:
@@ -947,24 +1263,245 @@ class AnthropicProvider(AIProvider):
                                 function_name = event.content_block.name
                                 notification_type = get_notification_type_for_tool(function_name)
                                 
-                                # Always send early notification for any tool use
-                                logger.info(f"SENDING EARLY NOTIFICATION FOR {function_name}")
-                                early_notification = {
-                                    "is_notification": True,
-                                    "notification_type": notification_type or "tool",
-                                    "early_notification": True,
-                                    "function_name": function_name,
-                                    "notification_marker": "__NOTIFICATION__"
-                                }
-                                notification_json = json.dumps(early_notification)
-                                logger.info(f"Early notification JSON: {notification_json}")
-                                yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                # Skip early notification for stream_prd_content and stream_implementation_content since we need the actual content
+                                if function_name not in ["stream_prd_content", "stream_implementation_content"]:
+                                    # Send early notification for other tool uses
+                                    logger.info(f"SENDING EARLY NOTIFICATION FOR {function_name}")
+                                    early_notification = {
+                                        "is_notification": True,
+                                        "notification_type": notification_type or "tool",
+                                        "early_notification": True,
+                                        "function_name": function_name,
+                                        "notification_marker": "__NOTIFICATION__"
+                                    }
+                                    notification_json = json.dumps(early_notification)
+                                    logger.info(f"Early notification JSON: {notification_json}")
+                                    yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                else:
+                                    logger.info(f"Skipping early notification for {function_name} - will send with content later")
                         
                         elif event.type == "content_block_delta":
                             if event.delta.type == "text_delta":
+                                print(f"\n\n\nEvent delta: {event.delta}")
                                 # Stream text content
                                 text = event.delta.text
-                                yield text
+                                
+                                # Add to buffer for tag detection
+                                buffer += text
+                                
+                                # Check for complete tags in buffer
+                                if "<lfg-prd>" in buffer and current_mode != "prd":
+                                    current_mode = "prd"
+                                    print("\n\n[PRD MODE ACTIVATED]")
+                                    # Clear buffer up to and including the tag
+                                    tag_pos = buffer.find("<lfg-prd>")
+                                    remaining_buffer = buffer[tag_pos + len("<lfg-prd>"):]
+                                    # Clean any leading '>' and whitespace from remaining buffer
+                                    remaining_buffer = remaining_buffer.lstrip()
+                                    if remaining_buffer.startswith('>'):
+                                        remaining_buffer = remaining_buffer[1:].lstrip()
+                                    # Reset prd data and capture any remaining content
+                                    prd_data = remaining_buffer
+                                    buffer = ""  # Clear the buffer since we've processed it
+                                    
+                                    # Show loading indicator in chat
+                                    yield "\n\n*Generating PRD... (check the PRD tab for live updates)*\n\n"
+                                
+                                if "</lfg-prd>" in buffer and current_mode == "prd":
+                                    current_mode = ""
+                                    print("\n\n[PRD MODE DEACTIVATED]")
+                                    # Find where the closing tag starts in the buffer
+                                    tag_pos = buffer.find("</lfg-prd>")
+                                    # Check if we've captured part of the closing tag in prd_data
+                                    # by looking for incomplete tag patterns at the end
+                                    incomplete_patterns = ["<", "</", "</l", "</lf", "</lfg", "</lfg-", "</lfg-p", "</lfg-pr", "</lfg-prd"]
+                                    for pattern in reversed(incomplete_patterns):
+                                        if prd_data.endswith(pattern):
+                                            prd_data = prd_data[:-len(pattern)]
+                                            break
+                                    # Clear buffer up to and including the tag
+                                    buffer = buffer[tag_pos + len("</lfg-prd>"):]
+                                    
+                                    # Send completion notification for PRD stream
+                                    prd_complete_notification = {
+                                        "is_notification": True,
+                                        "notification_type": "prd_stream",
+                                        "content_chunk": "",
+                                        "is_complete": True,
+                                        "notification_marker": "__NOTIFICATION__"
+                                    }
+                                    notification_json = json.dumps(prd_complete_notification)
+                                    yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                
+                                if "<lfg-plan>" in buffer and current_mode != "implementation":
+                                    current_mode = "implementation"
+                                    print("\n\n[IMPLEMENTATION MODE ACTIVATED]")
+                                    # Clear buffer up to and including the tag
+                                    tag_pos = buffer.find("<lfg-plan>")
+                                    remaining_buffer = buffer[tag_pos + len("<lfg-plan>"):]
+                                    # Clean any leading '>' and whitespace from remaining buffer
+                                    remaining_buffer = remaining_buffer.lstrip()
+                                    if remaining_buffer.startswith('>'):
+                                        remaining_buffer = remaining_buffer[1:].lstrip()
+                                    # Reset implementation data and capture any remaining content
+                                    implementation_data = remaining_buffer
+                                    buffer = ""  # Clear the buffer since we've processed it
+                                    
+                                    # Show loading indicator in chat
+                                    yield "\n\n*Generating implementation plan... (check the Implementation tab for live updates)*\n\n"
+                                
+                                if "</lfg-plan>" in buffer and current_mode == "implementation":
+                                    current_mode = ""
+                                    print("\n\n[IMPLEMENTATION MODE DEACTIVATED]")
+                                    # Find where the closing tag starts in the buffer
+                                    tag_pos = buffer.find("</lfg-plan>")
+                                    # Check if we've captured part of the closing tag in implementation_data
+                                    # by looking for incomplete tag patterns at the end
+                                    incomplete_patterns = ["<", "</", "</l", "</lf", "</lfg", "</lfg-", "</lfg-p", "</lfg-pl", "</lfg-pla", "</lfg-plan"]
+                                    for pattern in reversed(incomplete_patterns):
+                                        if implementation_data.endswith(pattern):
+                                            implementation_data = implementation_data[:-len(pattern)]
+                                            break
+                                    # Clear buffer up to and including the tag
+                                    buffer = buffer[tag_pos + len("</lfg-plan>"):]
+                                    
+                                    # Send completion notification for implementation stream
+                                    implementation_complete_notification = {
+                                        "is_notification": True,
+                                        "notification_type": "implementation_stream",
+                                        "content_chunk": "",
+                                        "is_complete": True,
+                                        "notification_marker": "__NOTIFICATION__"
+                                    }
+                                    notification_json = json.dumps(implementation_complete_notification)
+                                    yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                
+                                # Check for ticket tags
+                                if "<lfg-ticket>" in buffer and current_mode != "ticket":
+                                    current_mode = "ticket"
+                                    print("\n\n[TICKET MODE ACTIVATED]")
+                                    # Clear buffer up to and including the tag
+                                    tag_pos = buffer.find("<lfg-ticket>")
+                                    remaining_buffer = buffer[tag_pos + len("<lfg-ticket>"):]
+                                    # Clean any leading '>' and whitespace from remaining buffer
+                                    remaining_buffer = remaining_buffer.lstrip()
+                                    if remaining_buffer.startswith('>'):
+                                        remaining_buffer = remaining_buffer[1:].lstrip()
+                                    # Reset ticket data and capture any remaining content
+                                    ticket_data = remaining_buffer
+                                    buffer = ""  # Clear the buffer since we've processed it
+                                
+                                if "</lfg-ticket>" in buffer and current_mode == "ticket":
+                                    current_mode = ""
+                                    print("\n\n[TICKET MODE DEACTIVATED]")
+                                    # Find where the closing tag starts in the buffer
+                                    tag_pos = buffer.find("</lfg-ticket>")
+                                    # Check if we've captured part of the closing tag in ticket_data
+                                    # by looking for incomplete tag patterns at the end
+                                    incomplete_patterns = ["<", "</", "</l", "</lf", "</lfg", "</lfg-", "</lfg-t", "</lfg-ti", "</lfg-tic", "</lfg-tick", "</lfg-ticke", "</lfg-ticket"]
+                                    for pattern in reversed(incomplete_patterns):
+                                        if ticket_data.endswith(pattern):
+                                            ticket_data = ticket_data[:-len(pattern)]
+                                            break
+                                    # Clear buffer up to and including the tag
+                                    buffer = buffer[tag_pos + len("</lfg-ticket>"):]
+                                    
+                                    # Parse and save the ticket
+                                    try:
+                                        # Import the save function
+                                        from coding.utils.ai_functions import save_ticket_from_stream
+                                        
+                                        # Clean ticket data before parsing
+                                        cleaned_ticket_data = ticket_data.strip()
+                                        # Remove any leading '>' that might have slipped through
+                                        if cleaned_ticket_data.startswith('>'):
+                                            cleaned_ticket_data = cleaned_ticket_data[1:].strip()
+                                        
+                                        # Parse the JSON ticket data
+                                        ticket_json = json.loads(cleaned_ticket_data)
+                                        
+                                        # Save the ticket to database
+                                        save_result = await save_ticket_from_stream(ticket_json, project_id)
+                                        logger.info(f"Anthropic Ticket save result: {save_result}")
+                                        
+                                        # Yield notification if save was successful
+                                        if save_result.get("is_notification"):
+                                            notification_json = json.dumps(save_result)
+                                            yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                    except json.JSONDecodeError as e:
+                                        logger.error(f"Error parsing ticket JSON from Anthropic stream: {str(e)}")
+                                        logger.error(f"Ticket data was: {ticket_data}")
+                                    except Exception as e:
+                                        logger.error(f"Error saving ticket from Anthropic stream: {str(e)}")
+                                
+                                # Keep buffer size reasonable (only need enough for tag detection)
+                                if len(buffer) > 100 and "<lfg-prd" not in buffer \
+                                    and "</lfg-prd" not in buffer \
+                                    and "<lfg-plan" not in buffer \
+                                    and "</lfg-plan" not in buffer \
+                                    and "<lfg-ticket" not in buffer \
+                                    and "</lfg-ticket" not in buffer:
+                                    buffer = buffer[-50:]  # Keep last 50 chars
+                                
+                                # print(f"\n\nCurrent mode: {current_mode}, Buffer tail: {buffer[-20:]}")
+                                
+                                if current_mode == "prd":
+                                    # Skip the closing '>' of the tag if it's the first character and prd_data is empty
+                                    if prd_data == "" and text.startswith('>'):
+                                        text = text[1:]
+                                    prd_data += text
+                                    print(f"\n\n\n[CAPTURING PRD DATA]: {text}")
+                                    
+                                    # Stream PRD content to the panel
+                                    prd_stream_notification = {
+                                        "is_notification": True,
+                                        "notification_type": "prd_stream",
+                                        "content_chunk": text,
+                                        "is_complete": False,
+                                        "notification_marker": "__NOTIFICATION__"
+                                    }
+                                    notification_json = json.dumps(prd_stream_notification)
+                                    yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                elif current_mode == "implementation":
+                                    # Skip the closing '>' of the tag if it's the first character and implementation_data is empty
+                                    if implementation_data == "" and text.startswith('>'):
+                                        text = text[1:]
+                                    implementation_data += text
+                                    print(f"\n\n\n[CAPTURING IMPLEMENTATION DATA]: {text}")
+                                    
+                                    # Stream implementation content to the panel
+                                    implementation_stream_notification = {
+                                        "is_notification": True,
+                                        "notification_type": "implementation_stream",
+                                        "content_chunk": text,
+                                        "is_complete": False,
+                                        "notification_marker": "__NOTIFICATION__"
+                                    }
+                                    notification_json = json.dumps(implementation_stream_notification)
+                                    yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                elif current_mode == "ticket":
+                                    # Skip the closing '>' of the tag if it's the first character and ticket_data is empty
+                                    if ticket_data == "" and text.startswith('>'):
+                                        text = text[1:]
+                                    ticket_data += text
+                                    print(f"\n\n\n[CAPTURING TICKET DATA]: {text}")
+                                
+                                # Handle buffering to prevent incomplete tags from being sent
+                                if current_mode not in ["prd", "implementation", "ticket"]:
+                                    # Add text to output buffer
+                                    output_buffer += text
+                                    
+                                    # Check if we have a complete tag or potential incomplete tag
+                                    # Look for potential start of PRD, implementation, or ticket tag
+                                    if any(output_buffer.endswith(prefix) for prefix in ['<', '<l', '<lf', '<lfg', '<lfg-', '<lfg-p', '<lfg-pr', '<lfg-prd', '<lfg-pl', '<lfg-pla', '<lfg-plan', '<lfg-t', '<lfg-ti', '<lfg-tic', '<lfg-tick', '<lfg-ticke', '<lfg-ticket']):
+                                        # Hold back - might be incomplete tag
+                                        pass
+                                    else:
+                                        # Safe to yield everything in buffer
+                                        if output_buffer:
+                                            yield output_buffer
+                                            output_buffer = ""
+                                    
                                 if full_assistant_message["content"] is None:
                                     full_assistant_message["content"] = ""
                                 full_assistant_message["content"] += text
@@ -975,7 +1512,12 @@ class AnthropicProvider(AIProvider):
                             elif event.delta.type == "input_json_delta":
                                 # Accumulate tool arguments
                                 if current_tool_use:
+                                    print(f"\n\n\nCurrent tool use: {current_tool_use}")
                                     current_tool_args += event.delta.partial_json
+                                    print(f"\n\n\nCurrent tool args: {current_tool_args}")
+                                    # Stream create_prd arguments to console as they arrive
+                                    if current_tool_use["function"]["name"] == "create_prd":
+                                        print(f"[Anthropic] create_prd argument chunk: {event.delta.partial_json}")
                         
                         elif event.type == "content_block_stop":
                             if current_tool_use:
@@ -1066,6 +1608,52 @@ class AnthropicProvider(AIProvider):
                                 logger.debug(f"[AnthropicProvider] Claude finished without using tools. Stop reason: {stop_reason}")
                                 if full_assistant_message["content"]:
                                     logger.debug(f"[AnthropicProvider] Assistant response snippet: {full_assistant_message['content'][:100]}...")
+                                
+                                # Flush any remaining buffered output
+                                if output_buffer and current_mode not in ["prd", "implementation", "ticket"]:
+                                    yield output_buffer
+                                    output_buffer = ""
+                                
+                                # Save captured PRD data if available
+                                if prd_data and project_id:
+                                    print(f"\n\n[FINAL PRD DATA CAPTURED]:\n{prd_data}\n")
+                                    print(f"[PRD DATA LENGTH]: {len(prd_data)} characters")
+                                    
+                                    # Import the save function
+                                    from coding.utils.ai_functions import save_prd_from_stream
+                                    
+                                    # Save the PRD to database
+                                    try:
+                                        save_result = await save_prd_from_stream(prd_data, project_id)
+                                        logger.info(f"PRD save result: {save_result}")
+                                        
+                                        # Yield notification if save was successful
+                                        if save_result.get("is_notification"):
+                                            notification_json = json.dumps(save_result)
+                                            yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                    except Exception as e:
+                                        logger.error(f"Error saving PRD from stream: {str(e)}")
+                                
+                                # Save captured implementation data if available
+                                if implementation_data and project_id:
+                                    print(f"\n\n[FINAL IMPLEMENTATION DATA CAPTURED]:\n{implementation_data}\n")
+                                    print(f"[IMPLEMENTATION DATA LENGTH]: {len(implementation_data)} characters")
+                                    
+                                    # Import the save function
+                                    from coding.utils.ai_functions import save_implementation_from_stream
+                                    
+                                    # Save the implementation to database
+                                    try:
+                                        save_result = await save_implementation_from_stream(implementation_data, project_id)
+                                        logger.info(f"Implementation save result: {save_result}")
+                                        
+                                        # Yield notification if save was successful
+                                        if save_result.get("is_notification"):
+                                            notification_json = json.dumps(save_result)
+                                            yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                    except Exception as e:
+                                        logger.error(f"Error saving implementation from stream: {str(e)}")
+                                
                                 return
                             else:
                                 logger.warning(f"[AnthropicProvider] Unhandled stop reason: {stop_reason}")
@@ -1091,6 +1679,10 @@ class AnthropicProvider(AIProvider):
         
         logger.debug(f"[AnthropicProvider] Tool Call ID: {tool_call_id}")
         logger.debug(f"[AnthropicProvider] Project ID: {project_id}, Conversation ID: {conversation_id}")
+        
+        # Log complete create_prd arguments before execution
+        if tool_call_name == "create_prd":
+            logger.info(f"[Anthropic] Executing create_prd with complete arguments: {tool_call_args_str}")
         
         # Use the shared execute_tool_call function
         result_content, notification_data, yielded_content = await execute_tool_call(

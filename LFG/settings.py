@@ -304,6 +304,20 @@ Q_CLUSTER = {
         }
     }
 
+# Cache Configuration
+# Use Redis cache when available, otherwise use local memory
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache' if USE_REDIS_CHANNELS else 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': redis_url if USE_REDIS_CHANNELS else '',
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+        } if USE_REDIS_CHANNELS else {},
+        'KEY_PREFIX': 'lfg_cache',
+        'TIMEOUT': 3600,  # 1 hour default timeout
+    }
+}
+
 # Logging Configuration
 LOGGING = {
     'version': 1,

@@ -323,7 +323,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 
                 # Save an indicator that generation was stopped
                 if self.conversation:
-                    await self.save_message('system', '*Generation stopped by user*')
+                    await self.save_message('assistant', '*Generation stopped by user*')
                 
                 # Send stop confirmation to client
                 await self.send(text_data=json.dumps({
@@ -364,15 +364,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
         }
         
         # Check all possible notification fields
-        notification_fields = ['is_notification', 'notification_type', 'early_notification', 'function_name']
+        notification_fields = ['is_notification', 'notification_type', 'early_notification', 'function_name', 'content_chunk', 'is_complete']
         for field in notification_fields:
             if field in event:
                 response_data[field] = event[field]
-                logger.info(f"Adding notification field {field}: {event[field]}")
+                # logger.info(f"Adding notification field {field}: {event[field]}")
         
         # Send the response to the client
         try:
-            logger.info(f"FINAL response_data being sent: {response_data}")
+            # logger.info(f"FINAL response_data being sent: {response_data}")
             await self.send(text_data=json.dumps(response_data))
             logger.info(f"Successfully sent {'notification' if response_data.get('is_notification') else 'chunk'} to client")
         except Exception as e:
@@ -537,7 +537,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     try:
                         notification_json = content[len("__NOTIFICATION__"):-len("__NOTIFICATION__")]
                         notification_data = json.loads(notification_json)
-                        logger.info(f"NOTIFICATION DETECTED in generate_ai_response: {notification_data}")
+                        # logger.info(f"NOTIFICATION DETECTED in generate_ai_response: {notification_data}")
                         
                         # Send notification to client
                         notification_message = {
@@ -548,6 +548,38 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             'early_notification': notification_data.get('early_notification', False),
                             'function_name': notification_data.get('function_name', '')
                         }
+                        
+                        # Add additional fields for prd_stream notifications
+                        if notification_data.get('notification_type') == 'prd_stream':
+                            notification_message['content_chunk'] = notification_data.get('content_chunk', '')
+                            notification_message['is_complete'] = notification_data.get('is_complete', False)
+                            
+                            # CONSOLE OUTPUT FOR PRD STREAMING
+                            print("\n" + "="*80)
+                            print(f"🟣 PRD STREAM IN WEBSOCKET CONSUMER")
+                            print(f"📅 Time: {datetime.now().isoformat()}")
+                            print(f"📏 Content Length: {len(notification_data.get('content_chunk', ''))} chars")
+                            print(f"✅ Complete: {notification_data.get('is_complete', False)}")
+                            if notification_data.get('content_chunk'):
+                                content_preview = notification_data['content_chunk'][:200]
+                                print(f"📝 Content: {content_preview}{'...' if len(notification_data['content_chunk']) > 200 else ''}")
+                            print("="*80 + "\n")
+                        
+                        # Add additional fields for implementation_stream notifications
+                        if notification_data.get('notification_type') == 'implementation_stream':
+                            notification_message['content_chunk'] = notification_data.get('content_chunk', '')
+                            notification_message['is_complete'] = notification_data.get('is_complete', False)
+                            
+                            # CONSOLE OUTPUT FOR IMPLEMENTATION STREAMING
+                            print("\n" + "="*80)
+                            print(f"🔵 IMPLEMENTATION STREAM IN WEBSOCKET CONSUMER")
+                            print(f"📅 Time: {datetime.now().isoformat()}")
+                            print(f"📏 Content Length: {len(notification_data.get('content_chunk', ''))} chars")
+                            print(f"✅ Complete: {notification_data.get('is_complete', False)}")
+                            if notification_data.get('content_chunk'):
+                                content_preview = notification_data['content_chunk'][:200]
+                                print(f"📝 Content: {content_preview}{'...' if len(notification_data['content_chunk']) > 200 else ''}")
+                            print("="*80 + "\n")
                         
                         logger.info(f"SENDING NOTIFICATION MESSAGE: {notification_message}")
                         
@@ -563,6 +595,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
                                 'early_notification': notification_data.get('early_notification', False),
                                 'function_name': notification_data.get('function_name', '')
                             }
+                            
+                            # Add additional fields for prd_stream notifications
+                            if notification_data.get('notification_type') == 'prd_stream':
+                                group_message['content_chunk'] = notification_data.get('content_chunk', '')
+                                group_message['is_complete'] = notification_data.get('is_complete', False)
+                            
+                            # Add additional fields for implementation_stream notifications
+                            if notification_data.get('notification_type') == 'implementation_stream':
+                                group_message['content_chunk'] = notification_data.get('content_chunk', '')
+                                group_message['is_complete'] = notification_data.get('is_complete', False)
                             logger.info(f"Group message being sent: {group_message}")
                             await self.channel_layer.group_send(self.room_group_name, group_message)
                         else:

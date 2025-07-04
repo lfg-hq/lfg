@@ -25,7 +25,8 @@ uvicorn[standard]==0.29.0
 docker==7.1.0
 python-git==2018.2.1
 django-q2==1.4.5
-redis>=4.0.0
+redis>=4.5.4,<5.0.0
+django-redis>=5.2.0,<6.0.0
 psutil>=5.9.0
 sendgrid==6.11.0
 django-sendgrid-v5==1.2.3

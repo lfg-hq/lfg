@@ -30,6 +30,52 @@ get_prd = {
     }
 }
 
+stream_prd_content = {
+    "type": "function",
+    "function": {
+        "name": "stream_prd_content",
+        "description": "Stream PRD content chunk by chunk to provide live updates while generating the PRD. Call this function multiple times during PRD generation to show progress to the user.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "content_chunk": {
+                    "type": "string",
+                    "description": "A chunk of PRD content to stream (e.g., a section or paragraph)"
+                },
+                "is_complete": {
+                    "type": "boolean",
+                    "description": "Whether this is the final chunk of the PRD"
+                }
+            },
+            "required": ["content_chunk", "is_complete"],
+            "additionalProperties": False,
+        }
+    }
+}
+
+stream_implementation_content = {
+    "type": "function",
+    "function": {
+        "name": "stream_implementation_content",
+        "description": "Stream implementation content chunk by chunk to provide live updates while generating the implementation. Call this function multiple times during implementation generation to show progress to the user.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "content_chunk": {
+                    "type": "string",
+                    "description": "A chunk of implementation content to stream (e.g., a section or paragraph)"
+                },
+                "is_complete": {
+                    "type": "boolean",
+                    "description": "Whether this is the final chunk of the implementation"
+                }
+            },
+            "required": ["content_chunk", "is_complete"],
+            "additionalProperties": False,
+        }
+    }
+}
+
 create_implementation = {
     "type": "function",
     "function": {
@@ -504,14 +550,14 @@ capture_name = {
 }
 
 
-tools_code = [create_prd, get_prd, start_server, \
+tools_code = [get_prd, start_server, \
               get_github_access_token, \
               create_tickets, update_ticket, \
               get_next_ticket, get_pending_tickets, \
-              create_implementation, get_implementation, update_implementation, \
+              create_implementation, get_implementation, update_implementation, stream_implementation_content, \
               copy_boilerplate_code, capture_name]
 
-tools_product = [create_prd, get_prd, save_features, save_personas, extract_features, extract_personas, design_schema, generate_tickets]
+tools_product = [get_prd, get_implementation]
 
 tools_ticket = [execute_command, get_prd, get_implementation, copy_boilerplate_code, start_server]
 

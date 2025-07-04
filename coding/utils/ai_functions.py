@@ -3,6 +3,7 @@ import os
 import asyncio
 import subprocess
 import logging
+from datetime import datetime
 from pathlib import Path
 from asgiref.sync import sync_to_async
 from projects.models import Project, ProjectFeature, ProjectPersona, \
@@ -16,6 +17,7 @@ from coding.models import ServerConfig
 logger = logging.getLogger(__name__)
 
 from django.conf import settings
+from django.core.cache import cache
 from coding.k8s_manager.manage_pods import execute_command_in_pod
 
 from coding.models import KubernetesPod
@@ -164,6 +166,10 @@ async def app_functions(function_name, function_args, project_id, conversation_i
             return await create_prd(function_args, project_id)
         case "get_prd":
             return await get_prd(project_id)
+        case "stream_prd_content":
+            return await stream_prd_content(function_args, project_id)
+        case "stream_implementation_content":
+            return await stream_implementation_content(function_args, project_id)
         case "create_implementation":
             return await create_implementation(function_args, project_id)
         case "get_implementation":
@@ -846,6 +852,121 @@ async def get_prd(project_id):
             "message_to_agent": f"Error retrieving PRD: {str(e)}"
         }
 
+async def stream_prd_content(function_args, project_id):
+    """
+    Stream PRD content chunk by chunk as it's being generated
+    This function is called multiple times during PRD generation to provide live updates
+    """
+    logger.info(f"Stream PRD content function called with args: {function_args}")
+    logger.info(f"Project ID: {project_id}")
+    
+    error_response = validate_project_id(project_id)
+    if error_response:
+        logger.error(f"Project ID validation failed: {error_response}")
+        return error_response
+    
+    validation_error = validate_function_args(function_args, ['content_chunk', 'is_complete'])
+    if validation_error:
+        logger.error(f"Function args validation failed: {validation_error}")
+        return validation_error
+    
+    project = await get_project(project_id)
+    if not project:
+        logger.error(f"Project not found for ID: {project_id}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Project with ID {project_id} does not exist"
+        }
+    
+    content_chunk = function_args.get('content_chunk', '')
+    is_complete = function_args.get('is_complete', False)
+    
+    logger.info(f"Streaming PRD chunk - Length: {len(content_chunk)}, Is Complete: {is_complete}")
+    logger.info(f"First 100 chars of chunk: {content_chunk[:100]}...")
+    
+    # CONSOLE OUTPUT FOR DEBUGGING
+    print("\n" + "="*80)
+    print(f"🔵 PRD STREAM CHUNK - Project {project_id}")
+    print(f"📅 Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"📏 Length: {len(content_chunk)} chars")
+    print(f"✅ Complete: {is_complete}")
+    if content_chunk:
+        print(f"📝 Content Preview: {content_chunk[:200]}..." if len(content_chunk) > 200 else f"📝 Content: {content_chunk}")
+    print("="*80 + "\n")
+    
+    # Create cache key for this project
+    cache_key = f"streaming_prd_content_{project_id}"
+    
+    # Get existing content from cache or initialize
+    existing_content = cache.get(cache_key, "")
+    if not existing_content:
+        logger.info(f"Initialized PRD content storage for project {project_id}")
+    
+    # Accumulate content
+    if content_chunk:
+        existing_content += content_chunk
+        # Store updated content in cache with 1 hour timeout
+        cache.set(cache_key, existing_content, timeout=3600)
+        logger.info(f"Accumulated PRD content length: {len(existing_content)}")
+    
+    # If streaming is complete, save the PRD to database
+    if is_complete:
+        full_prd_content = cache.get(cache_key, "")
+        logger.info(f"Streaming complete. Saving PRD with total length: {len(full_prd_content)}")
+        
+        # CONSOLE OUTPUT FOR COMPLETION
+        print("\n" + "="*80)
+        print(f"🟢 PRD STREAM COMPLETE - Project {project_id}")
+        print(f"📄 Total Length: {len(full_prd_content)} chars")
+        print(f"💾 Saving to database...")
+        print("="*80 + "\n")
+        
+        if full_prd_content:
+            try:
+                # Save PRD to database
+                created = await sync_to_async(lambda: (
+                    lambda: (
+                        lambda prd, created: created
+                    )(*ProjectPRD.objects.get_or_create(project=project, defaults={'prd': full_prd_content}))
+                )())()
+                
+                # Update existing PRD if it wasn't created
+                if not created:
+                    await sync_to_async(lambda: (
+                        ProjectPRD.objects.filter(project=project).update(prd=full_prd_content)
+                    ))()
+                
+                logger.info(f"PRD {'created' if created else 'updated'} successfully in database")
+                
+                # Clear the cache
+                cache.delete(cache_key)
+                
+                # Also save features and personas
+                # await save_features(project_id)
+                # await save_personas(project_id)
+                
+            except Exception as e:
+                logger.error(f"Error saving streamed PRD: {str(e)}")
+                return {
+                    "is_notification": True,
+                    "notification_type": "prd_stream",
+                    "content_chunk": "",
+                    "is_complete": True,
+                    "message_to_agent": f"PRD streaming complete but error saving: {str(e)}"
+                }
+    
+    # Return notification to stream the chunk to frontend
+    result = {
+        "is_notification": True,
+        "notification_type": "prd_stream",
+        "content_chunk": content_chunk,
+        "is_complete": is_complete,
+        "message_to_agent": "PRD content chunk streamed" if not is_complete else "PRD streaming complete and saved"
+    }
+    
+    logger.info(f"Returning stream result: {result}")
+    return result
+
 async def create_implementation(function_args, project_id):
     """
     Save the implementation for a project
@@ -1037,6 +1158,117 @@ async def update_implementation(function_args, project_id):
             "is_notification": False,
             "message_to_agent": f"Error updating Implementation: {str(e)}"
         }
+
+async def stream_implementation_content(function_args, project_id):
+    """
+    Stream Implementation content chunk by chunk as it's being generated
+    This function is called multiple times during Implementation generation to provide live updates
+    """
+    logger.info(f"Stream Implementation content function called with args: {function_args}")
+    logger.info(f"Project ID: {project_id}")
+    
+    error_response = validate_project_id(project_id)
+    if error_response:
+        logger.error(f"Project ID validation failed: {error_response}")
+        return error_response
+    
+    validation_error = validate_function_args(function_args, ['content_chunk', 'is_complete'])
+    if validation_error:
+        logger.error(f"Function args validation failed: {validation_error}")
+        return validation_error
+    
+    project = await get_project(project_id)
+    if not project:
+        logger.error(f"Project not found for ID: {project_id}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Project with ID {project_id} does not exist"
+        }
+    
+    content_chunk = function_args.get('content_chunk', '')
+    is_complete = function_args.get('is_complete', False)
+    
+    logger.info(f"Streaming Implementation chunk - Length: {len(content_chunk)}, Is Complete: {is_complete}")
+    logger.info(f"First 100 chars of chunk: {content_chunk[:100]}...")
+    
+    # CONSOLE OUTPUT FOR DEBUGGING
+    print("\n" + "="*80)
+    print(f"🟣 IMPLEMENTATION STREAM CHUNK - Project {project_id}")
+    print(f"📅 Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"📏 Length: {len(content_chunk)} chars")
+    print(f"✅ Complete: {is_complete}")
+    if content_chunk:
+        print(f"📝 Content Preview: {content_chunk[:200]}..." if len(content_chunk) > 200 else f"📝 Content: {content_chunk}")
+    print("="*80 + "\n")
+    
+    # Create cache key for this project
+    cache_key = f"streaming_implementation_content_{project_id}"
+    
+    # Get existing content from cache or initialize
+    existing_content = cache.get(cache_key, "")
+    if not existing_content:
+        logger.info(f"Initialized Implementation content storage for project {project_id}")
+    
+    # Accumulate content
+    if content_chunk:
+        existing_content += content_chunk
+        # Store updated content in cache with 1 hour timeout
+        cache.set(cache_key, existing_content, timeout=3600)
+        logger.info(f"Accumulated Implementation content length: {len(existing_content)}")
+    
+    # If streaming is complete, save the Implementation to database
+    if is_complete:
+        full_implementation_content = cache.get(cache_key, "")
+        logger.info(f"Streaming complete. Saving Implementation with total length: {len(full_implementation_content)}")
+        
+        # CONSOLE OUTPUT FOR COMPLETION
+        print("\n" + "="*80)
+        print(f"🟢 IMPLEMENTATION STREAM COMPLETE - Project {project_id}")
+        print(f"📄 Total Length: {len(full_implementation_content)} chars")
+        print(f"💾 Saving to database...")
+        print("="*80 + "\n")
+        
+        if full_implementation_content:
+            try:
+                # Save Implementation to database
+                created = await sync_to_async(lambda: (
+                    lambda: (
+                        lambda implementation, created: created
+                    )(*ProjectImplementation.objects.get_or_create(project=project, defaults={'implementation': full_implementation_content}))
+                )())()
+                
+                # Update existing Implementation if it wasn't created
+                if not created:
+                    await sync_to_async(lambda: (
+                        ProjectImplementation.objects.filter(project=project).update(implementation=full_implementation_content)
+                    ))()
+                
+                logger.info(f"Implementation {'created' if created else 'updated'} successfully in database")
+                
+                # Clear the cache
+                cache.delete(cache_key)
+                
+            except Exception as e:
+                logger.error(f"Error saving streamed Implementation: {str(e)}")
+                return {
+                    "is_notification": True,
+                    "notification_type": "implementation_stream",
+                    "content_chunk": "",
+                    "is_complete": True,
+                    "message_to_agent": f"Implementation streaming complete but error saving: {str(e)}"
+                }
+    
+    # Return notification to stream the chunk to frontend
+    result = {
+        "is_notification": True,
+        "notification_type": "implementation_stream",
+        "content_chunk": content_chunk,
+        "is_complete": is_complete,
+        "message_to_agent": "Implementation content chunk streamed" if not is_complete else "Implementation streaming complete and saved"
+    }
+    
+    logger.info(f"Returning stream result: {result}")
+    return result
 
 async def save_design_schema(function_args, project_id):
     """
@@ -2060,5 +2292,239 @@ async def implement_ticket(ticket_id, project_id, conversation_id, ticket_detail
             "notification_type": "ticket_error",
             "message_to_agent": f"Error setting up ticket implementation {ticket_id}: {str(e)}",
             "error": str(e)
+        }
+
+async def save_implementation_from_stream(implementation_content, project_id):
+    """
+    Save implementation content that was captured from the streaming response.
+    This function is called from ai_providers.py when implementation generation is complete.
+    
+    Args:
+        implementation_content: The complete implementation content captured from streaming
+        project_id: The project ID to save the implementation for
+        
+    Returns:
+        Dict with notification data
+    """
+    logger.info(f"Saving implementation from stream for project {project_id}")
+    logger.info(f"Implementation content length: {len(implementation_content)} characters")
+    
+    # Validate project ID
+    if not project_id:
+        logger.error("No project_id provided")
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: project_id is required"
+        }
+    
+    # Get the project
+    try:
+        project = await get_project(project_id)
+        if not project:
+            logger.error(f"Project with ID {project_id} not found")
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Error: Project with ID {project_id} does not exist"
+            }
+    except Exception as e:
+        logger.error(f"Error fetching project: {str(e)}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error fetching project: {str(e)}"
+        }
+    
+    # Validate implementation content
+    if not implementation_content or not implementation_content.strip():
+        logger.error("Implementation content is empty")
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: Implementation content cannot be empty"
+        }
+    
+    # Clean up any residual artifacts
+    implementation_content = implementation_content.strip()
+    # Remove leading '>' if present
+    if implementation_content.startswith('>'):
+        implementation_content = implementation_content[1:].strip()
+    # Remove any trailing tag fragments
+    if '</lfg-plan' in implementation_content:
+        implementation_content = implementation_content[:implementation_content.rfind('</lfg-plan')].strip()
+    
+    try:
+        # Save implementation to database
+        impl_obj, created = await sync_to_async(
+            ProjectImplementation.objects.get_or_create
+        )(
+            project=project,
+            defaults={'implementation': implementation_content}
+        )
+        
+        # Update if it already existed
+        if not created:
+            impl_obj.implementation = implementation_content
+            await sync_to_async(impl_obj.save)()
+            logger.info(f"Updated existing implementation for project {project_id}")
+        else:
+            logger.info(f"Created new implementation for project {project_id}")
+        
+        action = "created" if created else "updated"
+        
+        return {
+            "is_notification": True,
+            "notification_type": "implementation",
+            "message_to_agent": f"Implementation {action} successfully in the database"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error saving implementation: {str(e)}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error saving implementation: {str(e)}"
+        }
+
+async def save_prd_from_stream(prd_content, project_id):
+    """
+    Save PRD content that was captured from the streaming response.
+    This function is called from ai_providers.py when PRD generation is complete.
+    
+    Args:
+        prd_content: The complete PRD content captured from streaming
+        project_id: The project ID to save the PRD for
+        
+    Returns:
+        Dict with notification data
+    """
+    logger.info(f"Saving PRD from stream for project {project_id}")
+    logger.info(f"PRD content length: {len(prd_content)} characters")
+    
+    # Validate project ID
+    if not project_id:
+        logger.error("No project_id provided")
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: project_id is required"
+        }
+    
+    # Get the project
+    try:
+        project = await get_project(project_id)
+        if not project:
+            logger.error(f"Project with ID {project_id} not found")
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Error: Project with ID {project_id} does not exist"
+            }
+    except Exception as e:
+        logger.error(f"Error fetching project: {str(e)}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error fetching project: {str(e)}"
+        }
+    
+    # Validate PRD content
+    if not prd_content or not prd_content.strip():
+        logger.error("PRD content is empty")
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: PRD content cannot be empty"
+        }
+    
+    # Clean up any residual artifacts
+    prd_content = prd_content.strip()
+    # Remove leading '>' if present
+    if prd_content.startswith('>'):
+        prd_content = prd_content[1:].strip()
+    # Remove any trailing tag fragments
+    if '</lfg-prd' in prd_content:
+        prd_content = prd_content[:prd_content.rfind('</lfg-prd')].strip()
+    
+    try:
+        # Save PRD to database
+        prd_obj, created = await sync_to_async(
+            ProjectPRD.objects.get_or_create
+        )(project=project, defaults={'prd': prd_content})
+        
+        # Update existing PRD if it wasn't created
+        if not created:
+            prd_obj.prd = prd_content
+            await sync_to_async(prd_obj.save)()
+        
+        action = "created" if created else "updated"
+        logger.info(f"PRD {action} successfully for project {project_id}")
+        
+        
+        return {
+            "is_notification": True,
+            "notification_type": "prd",
+            "message_to_agent": f"PRD {action} successfully in the database"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error saving PRD from stream: {str(e)}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error saving PRD: {str(e)}"
+        }
+
+async def save_ticket_from_stream(ticket_data, project_id):
+    """
+    Save a single ticket that was captured from the streaming response.
+    This function is called from ai_providers.py when a complete ticket is parsed.
+    
+    Args:
+        ticket_data: The complete ticket data parsed from <lfg-ticket> tags
+        project_id: The project ID to save the ticket for
+        
+    Returns:
+        Dict with notification data
+    """
+    logger.info(f"Saving ticket from stream for project {project_id}")
+    logger.debug(f"Ticket data: {ticket_data}")
+    
+    # Validate project ID
+    if not project_id:
+        logger.error("No project_id provided")
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: project_id is required"
+        }
+    
+    # Get project
+    project = await get_project(project_id)
+    if not project:
+        logger.error(f"Project with ID {project_id} not found")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Project with ID {project_id} does not exist"
+        }
+    
+    try:
+        # Create ticket with enhanced details
+        new_ticket = await sync_to_async(ProjectChecklist.objects.create)(
+            project=project,
+            name=ticket_data.get('name', ''),
+            description=ticket_data.get('description', ''),
+            priority=ticket_data.get('priority', 'Medium'),
+            status='open',
+            role=ticket_data.get('role', 'agent'),
+            ui_requirements=ticket_data.get('ui_requirements', {}),
+            component_specs=ticket_data.get('component_specs', {}),
+            acceptance_criteria=ticket_data.get('acceptance_criteria', []),
+            dependencies=ticket_data.get('dependencies', [])
+        )
+        
+        logger.info(f"Ticket created successfully with ID {new_ticket.id}")
+        
+        return {
+            "is_notification": True,
+            "notification_type": "checklist",
+            "message_to_agent": f"Ticket '{ticket_data.get('name', 'Unnamed')}' created successfully"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error saving ticket from stream: {str(e)}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error saving ticket: {str(e)}"
         }
         
