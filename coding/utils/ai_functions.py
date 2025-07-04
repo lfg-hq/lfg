@@ -2465,4 +2465,66 @@ async def save_prd_from_stream(prd_content, project_id):
             "is_notification": False,
             "message_to_agent": f"Error saving PRD: {str(e)}"
         }
+
+async def save_ticket_from_stream(ticket_data, project_id):
+    """
+    Save a single ticket that was captured from the streaming response.
+    This function is called from ai_providers.py when a complete ticket is parsed.
+    
+    Args:
+        ticket_data: The complete ticket data parsed from <lfg-ticket> tags
+        project_id: The project ID to save the ticket for
+        
+    Returns:
+        Dict with notification data
+    """
+    logger.info(f"Saving ticket from stream for project {project_id}")
+    logger.debug(f"Ticket data: {ticket_data}")
+    
+    # Validate project ID
+    if not project_id:
+        logger.error("No project_id provided")
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: project_id is required"
+        }
+    
+    # Get project
+    project = await get_project(project_id)
+    if not project:
+        logger.error(f"Project with ID {project_id} not found")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Project with ID {project_id} does not exist"
+        }
+    
+    try:
+        # Create ticket with enhanced details
+        new_ticket = await sync_to_async(ProjectChecklist.objects.create)(
+            project=project,
+            name=ticket_data.get('name', ''),
+            description=ticket_data.get('description', ''),
+            priority=ticket_data.get('priority', 'Medium'),
+            status='open',
+            role=ticket_data.get('role', 'agent'),
+            ui_requirements=ticket_data.get('ui_requirements', {}),
+            component_specs=ticket_data.get('component_specs', {}),
+            acceptance_criteria=ticket_data.get('acceptance_criteria', []),
+            dependencies=ticket_data.get('dependencies', [])
+        )
+        
+        logger.info(f"Ticket created successfully with ID {new_ticket.id}")
+        
+        return {
+            "is_notification": True,
+            "notification_type": "checklist",
+            "message_to_agent": f"Ticket '{ticket_data.get('name', 'Unnamed')}' created successfully"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error saving ticket from stream: {str(e)}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error saving ticket: {str(e)}"
+        }
         

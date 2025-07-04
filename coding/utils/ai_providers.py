@@ -505,6 +505,7 @@ class OpenAIProvider(AIProvider):
 
         prd_data = ""
         implementation_data = ""
+        ticket_data = ""  # Buffer for current ticket being parsed
         current_mode = ""
         buffer = ""  # Buffer to handle split tags
 
@@ -569,10 +570,14 @@ class OpenAIProvider(AIProvider):
                             print("\n\n[PRD MODE ACTIVATED - OpenAI]")
                             # Clear buffer up to and including the tag
                             tag_pos = buffer.find("<lfg-prd>")
-                            buffer = buffer[tag_pos + len("<lfg-prd>"):]
-                            # Clean any leading '>' if present
-                            if buffer.startswith('>'):
-                                buffer = buffer[1:]
+                            remaining_buffer = buffer[tag_pos + len("<lfg-prd>"):]
+                            # Clean any leading '>' and whitespace from remaining buffer
+                            remaining_buffer = remaining_buffer.lstrip()
+                            if remaining_buffer.startswith('>'):
+                                remaining_buffer = remaining_buffer[1:].lstrip()
+                            # Reset prd data and capture any remaining content
+                            prd_data = remaining_buffer
+                            buffer = ""  # Clear the buffer since we've processed it
                             
                             # Show loading indicator in chat
                             yield "\n\n*Generating PRD... (check the PRD tab for live updates)*\n\n"
@@ -580,11 +585,16 @@ class OpenAIProvider(AIProvider):
                         if "</lfg-prd>" in buffer and current_mode == "prd":
                             current_mode = ""
                             print("\n\n[PRD MODE DEACTIVATED - OpenAI]")
-                            # Remove any trailing tag fragments from captured data
-                            if "</lfg-prd" in prd_data:
-                                prd_data = prd_data[:prd_data.rfind("</lfg-prd")]
-                            # Clear buffer up to and including the tag
+                            # Find where the closing tag starts in the buffer
                             tag_pos = buffer.find("</lfg-prd>")
+                            # Check if we've captured part of the closing tag in prd_data
+                            # by looking for incomplete tag patterns at the end
+                            incomplete_patterns = ["<", "</", "</l", "</lf", "</lfg", "</lfg-", "</lfg-p", "</lfg-pr", "</lfg-prd"]
+                            for pattern in reversed(incomplete_patterns):
+                                if prd_data.endswith(pattern):
+                                    prd_data = prd_data[:-len(pattern)]
+                                    break
+                            # Clear buffer up to and including the tag
                             buffer = buffer[tag_pos + len("</lfg-prd>"):]
                             
                             # Send completion notification for PRD stream
@@ -603,10 +613,14 @@ class OpenAIProvider(AIProvider):
                             print("\n\n[IMPLEMENTATION MODE ACTIVATED - OpenAI]")
                             # Clear buffer up to and including the tag
                             tag_pos = buffer.find("<lfg-plan>")
-                            buffer = buffer[tag_pos + len("<lfg-plan>"):]
-                            # Clean any leading '>' if present
-                            if buffer.startswith('>'):
-                                buffer = buffer[1:]
+                            remaining_buffer = buffer[tag_pos + len("<lfg-plan>"):]
+                            # Clean any leading '>' and whitespace from remaining buffer
+                            remaining_buffer = remaining_buffer.lstrip()
+                            if remaining_buffer.startswith('>'):
+                                remaining_buffer = remaining_buffer[1:].lstrip()
+                            # Reset implementation data and capture any remaining content
+                            implementation_data = remaining_buffer
+                            buffer = ""  # Clear the buffer since we've processed it
                             
                             # Show loading indicator in chat
                             yield "\n\n*Generating implementation plan... (check the Implementation tab for live updates)*\n\n"
@@ -614,11 +628,16 @@ class OpenAIProvider(AIProvider):
                         if "</lfg-plan>" in buffer and current_mode == "implementation":
                             current_mode = ""
                             print("\n\n[IMPLEMENTATION MODE DEACTIVATED - OpenAI]")
-                            # Remove any trailing tag fragments from captured data
-                            if "</lfg-plan" in implementation_data:
-                                implementation_data = implementation_data[:implementation_data.rfind("</lfg-plan")]
-                            # Clear buffer up to and including the tag
+                            # Find where the closing tag starts in the buffer
                             tag_pos = buffer.find("</lfg-plan>")
+                            # Check if we've captured part of the closing tag in implementation_data
+                            # by looking for incomplete tag patterns at the end
+                            incomplete_patterns = ["<", "</", "</l", "</lf", "</lfg", "</lfg-", "</lfg-p", "</lfg-pl", "</lfg-pla", "</lfg-plan"]
+                            for pattern in reversed(incomplete_patterns):
+                                if implementation_data.endswith(pattern):
+                                    implementation_data = implementation_data[:-len(pattern)]
+                                    break
+                            # Clear buffer up to and including the tag
                             buffer = buffer[tag_pos + len("</lfg-plan>"):]
                             
                             # Send completion notification for implementation stream
@@ -632,11 +651,72 @@ class OpenAIProvider(AIProvider):
                             notification_json = json.dumps(implementation_complete_notification)
                             yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
                         
+                        # Check for ticket tags
+                        if "<lfg-ticket>" in buffer and current_mode != "ticket":
+                            current_mode = "ticket"
+                            print("\n\n[TICKET MODE ACTIVATED - OpenAI]")
+                            # Clear buffer up to and including the tag
+                            tag_pos = buffer.find("<lfg-ticket>")
+                            remaining_buffer = buffer[tag_pos + len("<lfg-ticket>"):]
+                            # Clean any leading '>' and whitespace from remaining buffer
+                            remaining_buffer = remaining_buffer.lstrip()
+                            if remaining_buffer.startswith('>'):
+                                remaining_buffer = remaining_buffer[1:].lstrip()
+                            # Reset ticket data and capture any remaining content
+                            ticket_data = remaining_buffer
+                            buffer = ""  # Clear the buffer since we've processed it
+                        
+                        if "</lfg-ticket>" in buffer and current_mode == "ticket":
+                            current_mode = ""
+                            print("\n\n[TICKET MODE DEACTIVATED - OpenAI]")
+                            # Find where the closing tag starts in the buffer
+                            tag_pos = buffer.find("</lfg-ticket>")
+                            # Check if we've captured part of the closing tag in ticket_data
+                            # by looking for incomplete tag patterns at the end
+                            incomplete_patterns = ["<", "</", "</l", "</lf", "</lfg", "</lfg-", "</lfg-t", "</lfg-ti", "</lfg-tic", "</lfg-tick", "</lfg-ticke", "</lfg-ticket"]
+                            for pattern in reversed(incomplete_patterns):
+                                if ticket_data.endswith(pattern):
+                                    ticket_data = ticket_data[:-len(pattern)]
+                                    break
+                            # Clear buffer up to and including the tag
+                            buffer = buffer[tag_pos + len("</lfg-ticket>"):]
+                            
+                            # Parse and save the ticket
+                            try:
+                                # Import the save function
+                                from coding.utils.ai_functions import save_ticket_from_stream
+                                
+                                # Clean ticket data before parsing
+                                cleaned_ticket_data = ticket_data.strip()
+                                # Remove any leading '>' that might have slipped through
+                                if cleaned_ticket_data.startswith('>'):
+                                    cleaned_ticket_data = cleaned_ticket_data[1:].strip()
+                                
+                                # Parse the JSON ticket data
+                                ticket_json = json.loads(cleaned_ticket_data)
+                                
+                                # Save the ticket to database
+                                save_result = await save_ticket_from_stream(ticket_json, project_id)
+                                logger.info(f"OpenAI Ticket save result: {save_result}")
+                                
+                                # Yield notification if save was successful
+                                if save_result.get("is_notification"):
+                                    notification_json = json.dumps(save_result)
+                                    yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                            except json.JSONDecodeError as e:
+                                logger.error(f"Error parsing ticket JSON from OpenAI stream: {str(e)}")
+                                logger.error(f"Ticket data was: {ticket_data}")
+                            except Exception as e:
+                                logger.error(f"Error saving ticket from OpenAI stream: {str(e)}")
+                        
                         # Keep buffer size reasonable (only need enough for tag detection)
-                        if len(buffer) > 100 and "<lfg-prd" not in buffer and "</lfg-prd" not in buffer and "<lfg-plan" not in buffer and "</lfg-plan" not in buffer:
+                        if len(buffer) > 100 and "<lfg-prd" not in buffer and "</lfg-prd" not in buffer and "<lfg-plan" not in buffer and "</lfg-plan" not in buffer and "<lfg-ticket" not in buffer and "</lfg-ticket" not in buffer:
                             buffer = buffer[-50:]  # Keep last 50 chars
                         
                         if current_mode == "prd":
+                            # Skip the closing '>' of the tag if it's the first character and prd_data is empty
+                            if prd_data == "" and text.startswith('>'):
+                                text = text[1:]
                             prd_data += text
                             print(f"\n\n\n[CAPTURING PRD DATA - OpenAI]: {text}")
                             
@@ -651,6 +731,9 @@ class OpenAIProvider(AIProvider):
                             notification_json = json.dumps(prd_stream_notification)
                             yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
                         elif current_mode == "implementation":
+                            # Skip the closing '>' of the tag if it's the first character and implementation_data is empty
+                            if implementation_data == "" and text.startswith('>'):
+                                text = text[1:]
                             implementation_data += text
                             # print(f"\n\n\n[CAPTURING IMPLEMENTATION DATA - OpenAI]: {text}")
                             
@@ -664,15 +747,29 @@ class OpenAIProvider(AIProvider):
                             }
                             notification_json = json.dumps(implementation_stream_notification)
                             yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                        elif current_mode == "ticket":
+                            # Skip the closing '>' of the tag if it's the first character and ticket_data is empty
+                            if ticket_data == "" and text.startswith('>'):
+                                text = text[1:]
+                                print(f"[SKIPPING '>' - OpenAI] Remaining text: {repr(text)}")
+                            # Also check if ticket_data only contains whitespace and we're getting '>'
+                            elif ticket_data.strip() == "" and text.strip().startswith('>'):
+                                text = text.lstrip()
+                                if text.startswith('>'):
+                                    text = text[1:]
+                                print(f"[SKIPPING '>' after whitespace - OpenAI] Remaining text: {repr(text)}")
+                            ticket_data += text
+                            print(f"\n\n\n[CAPTURING TICKET DATA - OpenAI]: {repr(text)}")
+                            print(f"[TICKET DATA SO FAR - OpenAI]: {repr(ticket_data[:100])}...")
                         
                         # Handle buffering to prevent incomplete tags from being sent
-                        if current_mode not in ["prd", "implementation"]:
+                        if current_mode not in ["prd", "implementation", "ticket"]:
                             # Add text to output buffer
                             output_buffer += text
                             
                             # Check if we have a complete tag or potential incomplete tag
-                            # Look for potential start of PRD or implementation tag
-                            if any(output_buffer.endswith(prefix) for prefix in ['<', '<l', '<lf', '<lfg', '<lfg-', '<lfg-p', '<lfg-pr', '<lfg-prd', '<lfg-pl', '<lfg-pla', '<lfg-plan']):
+                            # Look for potential start of PRD, implementation, or ticket tag
+                            if any(output_buffer.endswith(prefix) for prefix in ['<', '<l', '<lf', '<lfg', '<lfg-', '<lfg-p', '<lfg-pr', '<lfg-prd', '<lfg-pl', '<lfg-pla', '<lfg-plan', '<lfg-t', '<lfg-ti', '<lfg-tic', '<lfg-tick', '<lfg-ticke', '<lfg-ticket']):
                                 # Hold back - might be incomplete tag
                                 pass
                             else:
@@ -802,7 +899,7 @@ class OpenAIProvider(AIProvider):
                             # Conversation finished naturally
                             
                             # Flush any remaining buffered output
-                            if output_buffer and current_mode not in ["prd", "implementation"]:
+                            if output_buffer and current_mode not in ["prd", "implementation", "ticket"]:
                                 yield output_buffer
                                 output_buffer = ""
                             
@@ -1080,6 +1177,7 @@ class AnthropicProvider(AIProvider):
             
         prd_data = ""
         implementation_data = ""
+        ticket_data = ""  # Buffer for current ticket being parsed
         current_mode = ""
         buffer = ""  # Buffer to handle split tags
 
@@ -1197,10 +1295,14 @@ class AnthropicProvider(AIProvider):
                                     print("\n\n[PRD MODE ACTIVATED]")
                                     # Clear buffer up to and including the tag
                                     tag_pos = buffer.find("<lfg-prd>")
-                                    buffer = buffer[tag_pos + len("<lfg-prd>"):]
-                                    # Clean any leading '>' if present
-                                    if buffer.startswith('>'):
-                                        buffer = buffer[1:]
+                                    remaining_buffer = buffer[tag_pos + len("<lfg-prd>"):]
+                                    # Clean any leading '>' and whitespace from remaining buffer
+                                    remaining_buffer = remaining_buffer.lstrip()
+                                    if remaining_buffer.startswith('>'):
+                                        remaining_buffer = remaining_buffer[1:].lstrip()
+                                    # Reset prd data and capture any remaining content
+                                    prd_data = remaining_buffer
+                                    buffer = ""  # Clear the buffer since we've processed it
                                     
                                     # Show loading indicator in chat
                                     yield "\n\n*Generating PRD... (check the PRD tab for live updates)*\n\n"
@@ -1208,11 +1310,16 @@ class AnthropicProvider(AIProvider):
                                 if "</lfg-prd>" in buffer and current_mode == "prd":
                                     current_mode = ""
                                     print("\n\n[PRD MODE DEACTIVATED]")
-                                    # Remove any trailing tag fragments from captured data
-                                    if "</lfg-prd" in prd_data:
-                                        prd_data = prd_data[:prd_data.rfind("</lfg-prd")]
-                                    # Clear buffer up to and including the tag
+                                    # Find where the closing tag starts in the buffer
                                     tag_pos = buffer.find("</lfg-prd>")
+                                    # Check if we've captured part of the closing tag in prd_data
+                                    # by looking for incomplete tag patterns at the end
+                                    incomplete_patterns = ["<", "</", "</l", "</lf", "</lfg", "</lfg-", "</lfg-p", "</lfg-pr", "</lfg-prd"]
+                                    for pattern in reversed(incomplete_patterns):
+                                        if prd_data.endswith(pattern):
+                                            prd_data = prd_data[:-len(pattern)]
+                                            break
+                                    # Clear buffer up to and including the tag
                                     buffer = buffer[tag_pos + len("</lfg-prd>"):]
                                     
                                     # Send completion notification for PRD stream
@@ -1231,10 +1338,14 @@ class AnthropicProvider(AIProvider):
                                     print("\n\n[IMPLEMENTATION MODE ACTIVATED]")
                                     # Clear buffer up to and including the tag
                                     tag_pos = buffer.find("<lfg-plan>")
-                                    buffer = buffer[tag_pos + len("<lfg-plan>"):]
-                                    # Clean any leading '>' if present
-                                    if buffer.startswith('>'):
-                                        buffer = buffer[1:]
+                                    remaining_buffer = buffer[tag_pos + len("<lfg-plan>"):]
+                                    # Clean any leading '>' and whitespace from remaining buffer
+                                    remaining_buffer = remaining_buffer.lstrip()
+                                    if remaining_buffer.startswith('>'):
+                                        remaining_buffer = remaining_buffer[1:].lstrip()
+                                    # Reset implementation data and capture any remaining content
+                                    implementation_data = remaining_buffer
+                                    buffer = ""  # Clear the buffer since we've processed it
                                     
                                     # Show loading indicator in chat
                                     yield "\n\n*Generating implementation plan... (check the Implementation tab for live updates)*\n\n"
@@ -1242,11 +1353,16 @@ class AnthropicProvider(AIProvider):
                                 if "</lfg-plan>" in buffer and current_mode == "implementation":
                                     current_mode = ""
                                     print("\n\n[IMPLEMENTATION MODE DEACTIVATED]")
-                                    # Remove any trailing tag fragments from captured data
-                                    if "</lfg-plan" in implementation_data:
-                                        implementation_data = implementation_data[:implementation_data.rfind("</lfg-plan")]
-                                    # Clear buffer up to and including the tag
+                                    # Find where the closing tag starts in the buffer
                                     tag_pos = buffer.find("</lfg-plan>")
+                                    # Check if we've captured part of the closing tag in implementation_data
+                                    # by looking for incomplete tag patterns at the end
+                                    incomplete_patterns = ["<", "</", "</l", "</lf", "</lfg", "</lfg-", "</lfg-p", "</lfg-pl", "</lfg-pla", "</lfg-plan"]
+                                    for pattern in reversed(incomplete_patterns):
+                                        if implementation_data.endswith(pattern):
+                                            implementation_data = implementation_data[:-len(pattern)]
+                                            break
+                                    # Clear buffer up to and including the tag
                                     buffer = buffer[tag_pos + len("</lfg-plan>"):]
                                     
                                     # Send completion notification for implementation stream
@@ -1260,16 +1376,79 @@ class AnthropicProvider(AIProvider):
                                     notification_json = json.dumps(implementation_complete_notification)
                                     yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
                                 
+                                # Check for ticket tags
+                                if "<lfg-ticket>" in buffer and current_mode != "ticket":
+                                    current_mode = "ticket"
+                                    print("\n\n[TICKET MODE ACTIVATED]")
+                                    # Clear buffer up to and including the tag
+                                    tag_pos = buffer.find("<lfg-ticket>")
+                                    remaining_buffer = buffer[tag_pos + len("<lfg-ticket>"):]
+                                    # Clean any leading '>' and whitespace from remaining buffer
+                                    remaining_buffer = remaining_buffer.lstrip()
+                                    if remaining_buffer.startswith('>'):
+                                        remaining_buffer = remaining_buffer[1:].lstrip()
+                                    # Reset ticket data and capture any remaining content
+                                    ticket_data = remaining_buffer
+                                    buffer = ""  # Clear the buffer since we've processed it
+                                
+                                if "</lfg-ticket>" in buffer and current_mode == "ticket":
+                                    current_mode = ""
+                                    print("\n\n[TICKET MODE DEACTIVATED]")
+                                    # Find where the closing tag starts in the buffer
+                                    tag_pos = buffer.find("</lfg-ticket>")
+                                    # Check if we've captured part of the closing tag in ticket_data
+                                    # by looking for incomplete tag patterns at the end
+                                    incomplete_patterns = ["<", "</", "</l", "</lf", "</lfg", "</lfg-", "</lfg-t", "</lfg-ti", "</lfg-tic", "</lfg-tick", "</lfg-ticke", "</lfg-ticket"]
+                                    for pattern in reversed(incomplete_patterns):
+                                        if ticket_data.endswith(pattern):
+                                            ticket_data = ticket_data[:-len(pattern)]
+                                            break
+                                    # Clear buffer up to and including the tag
+                                    buffer = buffer[tag_pos + len("</lfg-ticket>"):]
+                                    
+                                    # Parse and save the ticket
+                                    try:
+                                        # Import the save function
+                                        from coding.utils.ai_functions import save_ticket_from_stream
+                                        
+                                        # Clean ticket data before parsing
+                                        cleaned_ticket_data = ticket_data.strip()
+                                        # Remove any leading '>' that might have slipped through
+                                        if cleaned_ticket_data.startswith('>'):
+                                            cleaned_ticket_data = cleaned_ticket_data[1:].strip()
+                                        
+                                        # Parse the JSON ticket data
+                                        ticket_json = json.loads(cleaned_ticket_data)
+                                        
+                                        # Save the ticket to database
+                                        save_result = await save_ticket_from_stream(ticket_json, project_id)
+                                        logger.info(f"Anthropic Ticket save result: {save_result}")
+                                        
+                                        # Yield notification if save was successful
+                                        if save_result.get("is_notification"):
+                                            notification_json = json.dumps(save_result)
+                                            yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                    except json.JSONDecodeError as e:
+                                        logger.error(f"Error parsing ticket JSON from Anthropic stream: {str(e)}")
+                                        logger.error(f"Ticket data was: {ticket_data}")
+                                    except Exception as e:
+                                        logger.error(f"Error saving ticket from Anthropic stream: {str(e)}")
+                                
                                 # Keep buffer size reasonable (only need enough for tag detection)
                                 if len(buffer) > 100 and "<lfg-prd" not in buffer \
                                     and "</lfg-prd" not in buffer \
                                     and "<lfg-plan" not in buffer \
-                                    and "</lfg-plan" not in buffer:
+                                    and "</lfg-plan" not in buffer \
+                                    and "<lfg-ticket" not in buffer \
+                                    and "</lfg-ticket" not in buffer:
                                     buffer = buffer[-50:]  # Keep last 50 chars
                                 
                                 # print(f"\n\nCurrent mode: {current_mode}, Buffer tail: {buffer[-20:]}")
                                 
                                 if current_mode == "prd":
+                                    # Skip the closing '>' of the tag if it's the first character and prd_data is empty
+                                    if prd_data == "" and text.startswith('>'):
+                                        text = text[1:]
                                     prd_data += text
                                     print(f"\n\n\n[CAPTURING PRD DATA]: {text}")
                                     
@@ -1284,6 +1463,9 @@ class AnthropicProvider(AIProvider):
                                     notification_json = json.dumps(prd_stream_notification)
                                     yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
                                 elif current_mode == "implementation":
+                                    # Skip the closing '>' of the tag if it's the first character and implementation_data is empty
+                                    if implementation_data == "" and text.startswith('>'):
+                                        text = text[1:]
                                     implementation_data += text
                                     print(f"\n\n\n[CAPTURING IMPLEMENTATION DATA]: {text}")
                                     
@@ -1297,15 +1479,21 @@ class AnthropicProvider(AIProvider):
                                     }
                                     notification_json = json.dumps(implementation_stream_notification)
                                     yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                elif current_mode == "ticket":
+                                    # Skip the closing '>' of the tag if it's the first character and ticket_data is empty
+                                    if ticket_data == "" and text.startswith('>'):
+                                        text = text[1:]
+                                    ticket_data += text
+                                    print(f"\n\n\n[CAPTURING TICKET DATA]: {text}")
                                 
                                 # Handle buffering to prevent incomplete tags from being sent
-                                if current_mode not in ["prd", "implementation"]:
+                                if current_mode not in ["prd", "implementation", "ticket"]:
                                     # Add text to output buffer
                                     output_buffer += text
                                     
                                     # Check if we have a complete tag or potential incomplete tag
-                                    # Look for potential start of PRD or implementation tag
-                                    if any(output_buffer.endswith(prefix) for prefix in ['<', '<l', '<lf', '<lfg', '<lfg-', '<lfg-p', '<lfg-pr', '<lfg-prd', '<lfg-pl', '<lfg-pla', '<lfg-plan']):
+                                    # Look for potential start of PRD, implementation, or ticket tag
+                                    if any(output_buffer.endswith(prefix) for prefix in ['<', '<l', '<lf', '<lfg', '<lfg-', '<lfg-p', '<lfg-pr', '<lfg-prd', '<lfg-pl', '<lfg-pla', '<lfg-plan', '<lfg-t', '<lfg-ti', '<lfg-tic', '<lfg-tick', '<lfg-ticke', '<lfg-ticket']):
                                         # Hold back - might be incomplete tag
                                         pass
                                     else:
@@ -1422,7 +1610,7 @@ class AnthropicProvider(AIProvider):
                                     logger.debug(f"[AnthropicProvider] Assistant response snippet: {full_assistant_message['content'][:100]}...")
                                 
                                 # Flush any remaining buffered output
-                                if output_buffer and current_mode not in ["prd", "implementation"]:
+                                if output_buffer and current_mode not in ["prd", "implementation", "ticket"]:
                                     yield output_buffer
                                     output_buffer = ""
                                 

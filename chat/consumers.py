@@ -323,7 +323,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 
                 # Save an indicator that generation was stopped
                 if self.conversation:
-                    await self.save_message('system', '*Generation stopped by user*')
+                    await self.save_message('assistant', '*Generation stopped by user*')
                 
                 # Send stop confirmation to client
                 await self.send(text_data=json.dumps({
