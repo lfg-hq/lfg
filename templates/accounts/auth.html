@@ -167,16 +167,16 @@
         }
 
         .auth-container {
-            background: var(--darker-bg);
-            border-radius: 15px;
+            background: rgba(20, 25, 40, 0.95);
+            border-radius: 20px;
             box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
-            backdrop-filter: blur(8px);
+            backdrop-filter: blur(10px);
             width: 90%;
-            max-width: 420px;
-            padding: 2.5rem;
+            max-width: 450px;
+            padding: 3rem;
             position: relative;
             overflow: hidden;
-            border: 1px solid var(--border-color);
+            border: 1px solid rgba(139, 92, 246, 0.2);
         }
 
         .auth-container::before {
@@ -189,12 +189,12 @@
             background: var(--gradient-1);
             transform: rotate(30deg);
             z-index: -1;
-            opacity: 0.1;
+            opacity: 0.05;
         }
 
         .auth-tabs {
             display: flex;
-            margin-bottom: 30px;
+            margin-bottom: 2rem;
             border-bottom: 1px solid var(--input-border);
         }
 
@@ -232,25 +232,86 @@
 
         .auth-forms {
             position: relative;
-            height: 360px;
-            overflow: hidden;
+            min-height: 400px;
         }
 
         .auth-form {
-            position: absolute;
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .auth-form.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .google-btn {
             width: 100%;
-            height: 100%;
-            transition: transform 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55);
-            opacity: 0;
+            padding: 14px;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            background: rgba(30, 41, 59, 0.8);
+            color: var(--text-color);
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            text-decoration: none;
         }
 
-        .login-form {
-            transform: translateX(0);
-            opacity: 1;
+        .google-btn:hover {
+            background: rgba(30, 41, 59, 1);
+            border-color: rgba(139, 92, 246, 0.5);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
         }
 
-        .register-form {
-            transform: translateX(100%);
+        .google-icon {
+            width: 20px;
+            height: 20px;
+            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><path fill="%23EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="%234285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="%23FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="%2334A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/><path fill="none" d="M0 0h48v48H0z"/></svg>') no-repeat center;
+            background-size: contain;
+        }
+
+        .divider {
+            text-align: center;
+            margin: 1.5rem 0;
+            position: relative;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        .divider::before,
+        .divider::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            width: calc(50% - 60px);
+            height: 1px;
+            background: var(--border-color);
+        }
+
+        .divider::before {
+            left: 0;
+        }
+
+        .divider::after {
+            right: 0;
         }
 
         .form-group {
@@ -262,13 +323,13 @@
             margin-bottom: 8px;
             font-size: 0.9rem;
             font-weight: 500;
-            color: rgba(255, 255, 255, 0.8);
+            color: var(--text-color);
         }
 
         .form-input {
             width: 100%;
             padding: 12px 15px;
-            background: var(--input-bg);
+            background: rgba(30, 41, 59, 0.8);
             border: 1px solid var(--input-border);
             border-radius: 8px;
             color: var(--text-color);
@@ -305,14 +366,29 @@
             color: var(--primary-light);
         }
 
-        .forgot-password {
-            text-align: right;
+        .form-options {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             margin: -10px 0 20px;
+            font-size: 0.9rem;
+        }
+
+        .remember-me {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-muted);
+        }
+
+        .remember-me input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
         }
 
         .forgot-password a {
-            font-size: 0.85rem;
-            color: rgba(255, 255, 255, 0.6);
+            color: var(--primary-light);
             text-decoration: none;
             transition: color 0.3s ease;
         }
@@ -346,106 +422,6 @@
             transform: translateY(0);
         }
 
-        .submit-btn::after {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 5px;
-            height: 5px;
-            background: rgba(255, 255, 255, 0.5);
-            opacity: 0;
-            border-radius: 100%;
-            transform: scale(1, 1) translate(-50%);
-            transform-origin: 50% 50%;
-        }
-
-        .submit-btn:focus:not(:active)::after {
-            animation: ripple 1s ease-out;
-        }
-
-        @keyframes ripple {
-            0% {
-                transform: scale(0, 0);
-                opacity: 0.5;
-            }
-            100% {
-                transform: scale(20, 20);
-                opacity: 0;
-            }
-        }
-
-        .social-login {
-            margin-top: 25px;
-            text-align: center;
-        }
-
-        .social-login-text {
-            font-size: 0.9rem;
-            color: rgba(255, 255, 255, 0.6);
-            margin-bottom: 15px;
-            position: relative;
-        }
-
-        .social-login-text::before,
-        .social-login-text::after {
-            content: '';
-            position: absolute;
-            top: 50%;
-            width: 30%;
-            height: 1px;
-            background: rgba(255, 255, 255, 0.2);
-        }
-
-        .social-login-text::before {
-            left: 0;
-        }
-
-        .social-login-text::after {
-            right: 0;
-        }
-
-        .social-buttons {
-            display: flex;
-            justify-content: center;
-            gap: 15px;
-        }
-
-        .social-btn {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 50px;
-            height: 50px;
-            border-radius: 50%;
-            background: var(--input-bg);
-            border: 1px solid var(--input-border);
-            color: var(--text-color);
-            font-size: 1.2rem;
-            cursor: pointer;
-            transition: var(--transition);
-        }
-
-        .social-btn:hover {
-            transform: translateY(-3px);
-            background: rgba(255, 255, 255, 0.1);
-        }
-
-        .social-btn.google:hover {
-            color: #DB4437;
-            border-color: #DB4437;
-        }
-
-        .social-btn.twitter:hover {
-            color: #1DA1F2;
-            border-color: #1DA1F2;
-        }
-
-        .social-btn.github:hover {
-            color: #ffffff;
-            border-color: #ffffff;
-        }
-
         .terms {
             margin-top: 20px;
             font-size: 0.8rem;
@@ -462,61 +438,28 @@
             text-decoration: underline;
         }
 
-        .register-success {
-            display: none;
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: var(--card-bg);
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            text-align: center;
-            z-index: 10;
+        .form-error {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: var(--error-color);
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
         }
 
-        .success-icon {
-            width: 80px;
-            height: 80px;
-            background: rgba(16, 185, 129, 0.1);
-            border-radius: 50%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+        .form-messages {
             margin-bottom: 20px;
         }
 
-        .success-icon i {
+        .form-messages p {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
             color: var(--success-color);
-            font-size: 40px;
-        }
-
-        .success-title {
-            font-size: 1.8rem;
-            margin-bottom: 10px;
-        }
-
-        .success-message {
-            color: rgba(255, 255, 255, 0.7);
-            margin-bottom: 30px;
-        }
-
-        .go-to-login {
-            padding: 12px 25px;
-            background: var(--gradient-1);
-            color: white;
-            border: none;
+            padding: 10px 15px;
             border-radius: 8px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: var(--transition);
-        }
-
-        .go-to-login:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 7px 15px rgba(109, 40, 217, 0.3);
+            font-size: 0.9rem;
+            margin-bottom: 10px;
         }
 
         /* Create particles */
@@ -572,7 +515,8 @@
 
         @media (max-width: 480px) {
             .auth-container {
-                padding: 1.5rem;
+                padding: 2rem;
+                margin: 1rem;
             }
 
             .auth-tab {
@@ -582,6 +526,7 @@
             header {
                 padding: 15px 20px;
             }
+
         }
     </style>
 </head>
@@ -610,7 +555,14 @@
         </div>
 
         <div class="auth-forms">
-            <div class="auth-form login-form">
+            <div class="auth-form login-form active">
+                <a href="{% url 'google_login' %}" class="google-btn">
+                    <span class="google-icon"></span>
+                    <span>Sign in with Google</span>
+                </a>
+
+                <div class="divider">Or continue with email</div>
+
                 <form method="post" action="{% url 'auth' %}{% if request.GET.next %}?next={{ request.GET.next }}{% endif %}">
                     {% csrf_token %}
                     <input type="hidden" name="form_type" value="login">
@@ -631,7 +583,6 @@
                         <label for="id_username" class="form-label">Email</label>
                         <div class="input-icon-wrap">
                             <input type="email" name="username" id="id_username" class="form-input" placeholder="Enter your email" required>
-                            <span class="input-icon"><i class="fas fa-envelope"></i></span>
                         </div>
                     </div>
 
@@ -643,30 +594,28 @@
                         </div>
                     </div>
 
-                    <div class="forgot-password">
-                        <a href="{% url 'password_reset' %}">Forgot your password?</a>
+                    <div class="form-options">
+                        <label class="remember-me">
+                            <input type="checkbox" name="remember_me">
+                            <span>Remember me</span>
+                        </label>
+                        <div class="forgot-password">
+                            <a href="{% url 'password_reset' %}">Forgot password?</a>
+                        </div>
                     </div>
 
-                    <button type="submit" class="submit-btn">Sign In <i class="fas fa-arrow-right"></i></button>
+                    <button type="submit" class="submit-btn">Sign In</button>
                 </form>
-
-                <div class="social-login">
-                    <div class="social-login-text">Or sign in with</div>
-                    <div class="social-buttons">
-                        <div class="social-btn google">
-                            <i class="fab fa-google"></i>
-                        </div>
-                        <div class="social-btn twitter">
-                            <i class="fab fa-twitter"></i>
-                        </div>
-                        <div class="social-btn github">
-                            <i class="fab fa-github"></i>
-                        </div>
-                    </div>
-                </div>
             </div>
 
             <div class="auth-form register-form">
+                <a href="{% url 'google_login' %}" class="google-btn">
+                    <span class="google-icon"></span>
+                    <span>Sign up with Google</span>
+                </a>
+
+                <div class="divider">Or continue with email</div>
+
                 <form method="post" action="{% url 'auth' %}">
                     {% csrf_token %}
                     <input type="hidden" name="form_type" value="register">
@@ -683,7 +632,6 @@
                         <label for="id_email" class="form-label">Email</label>
                         <div class="input-icon-wrap">
                             <input type="email" name="email" id="id_email" class="form-input" placeholder="Enter your email" required>
-                            <span class="input-icon"><i class="fas fa-envelope"></i></span>
                         </div>
                     </div>
 
@@ -703,37 +651,13 @@
                         </div>
                     </div>
 
-                    <button type="submit" class="submit-btn">Sign Up <i class="fas fa-rocket"></i></button>
+                    <button type="submit" class="submit-btn">Create Account</button>
                 </form>
-
-                <div class="social-login">
-                    <div class="social-login-text">Or sign up with</div>
-                    <div class="social-buttons">
-                        <div class="social-btn google">
-                            <i class="fab fa-google"></i>
-                        </div>
-                        <div class="social-btn twitter">
-                            <i class="fab fa-twitter"></i>
-                        </div>
-                        <div class="social-btn github">
-                            <i class="fab fa-github"></i>
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
 
         <div class="terms">
             By continuing, you agree to LFG's <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>
-        </div>
-
-        <div class="register-success">
-            <div class="success-icon">
-                <i class="fas fa-check"></i>
-            </div>
-            <h2 class="success-title">Successfully Registered!</h2>
-            <p class="success-message">Check your email to activate your account.</p>
-            <button class="go-to-login">Go to Login</button>
         </div>
     </div>
 
@@ -743,21 +667,16 @@
             const registerTab = document.querySelector('.register-tab');
             const loginForm = document.querySelector('.login-form');
             const registerForm = document.querySelector('.register-form');
-
             if (tab === 'login') {
                 loginTab.classList.add('active');
                 registerTab.classList.remove('active');
-                loginForm.style.transform = 'translateX(0)';
-                loginForm.style.opacity = '1';
-                registerForm.style.transform = 'translateX(100%)';
-                registerForm.style.opacity = '0';
+                loginForm.classList.add('active');
+                registerForm.classList.remove('active');
             } else {
                 registerTab.classList.add('active');
                 loginTab.classList.remove('active');
-                loginForm.style.transform = 'translateX(-100%)';
-                loginForm.style.opacity = '0';
-                registerForm.style.transform = 'translateX(0)';
-                registerForm.style.opacity = '1';
+                registerForm.classList.add('active');
+                loginForm.classList.remove('active');
             }
         }
 
