@@ -12,6 +12,8 @@ urlpatterns = [
     path('auth/', views.auth, name='auth'),
     path('integrations/', views.integrations, name='integrations'),
     path('github-callback/', views.github_callback, name='github_callback'),
+    path('google-login/', views.google_login, name='google_login'),
+    path('google-callback/', views.google_callback, name='google_callback'),
     path('save-api-key/<str:provider>/', views.save_api_key, name='save_api_key'),
     path('disconnect-api-key/<str:provider>/', views.disconnect_api_key, name='disconnect_api_key'),
     

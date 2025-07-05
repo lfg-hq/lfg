@@ -25,6 +25,11 @@ GITHUB_CLIENT_SECRET = settings.GITHUB_CLIENT_SECRET if hasattr(settings, 'GITHU
 GITHUB_REDIRECT_URI = None  # Will be set dynamically
 ENVIRONMENT = settings.ENVIRONMENT if hasattr(settings, 'ENVIRONMENT') else 'local'
 
+# Define Google OAuth constants
+GOOGLE_CLIENT_ID = settings.GOOGLE_CLIENT_ID if hasattr(settings, 'GOOGLE_CLIENT_ID') else None
+GOOGLE_CLIENT_SECRET = settings.GOOGLE_CLIENT_SECRET if hasattr(settings, 'GOOGLE_CLIENT_SECRET') else None
+GOOGLE_REDIRECT_URI = None  # Will be set dynamically
+
 def register(request):
     if request.method == 'POST':
         form = UserRegisterForm(request.POST)
@@ -655,4 +660,140 @@ def password_reset(request):
     else:
         form = PasswordResetForm()
     
-    return render(request, 'accounts/password_reset.html', {'form': form}) 
+    return render(request, 'accounts/password_reset.html', {'form': form})
+
+
+def google_login(request):
+    """Initiate Google OAuth flow"""
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+        messages.error(request, 'Google OAuth is not configured. Please contact the administrator.')
+        return redirect('auth')
+    
+    # Build redirect URI
+    global GOOGLE_REDIRECT_URI
+    GOOGLE_REDIRECT_URI = request.build_absolute_uri(reverse('google_callback'))
+    
+    # Generate state for CSRF protection
+    state = str(uuid.uuid4())
+    request.session['google_oauth_state'] = state
+    
+    # Build Google OAuth URL
+    params = {
+        'client_id': GOOGLE_CLIENT_ID,
+        'redirect_uri': GOOGLE_REDIRECT_URI,
+        'response_type': 'code',
+        'scope': 'openid email profile',
+        'state': state,
+        'access_type': 'online',
+        'prompt': 'select_account'
+    }
+    
+    google_auth_url = f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
+    
+    return redirect(google_auth_url)
+
+
+def google_callback(request):
+    """Handle Google OAuth callback"""
+    code = request.GET.get('code')
+    state = request.GET.get('state')
+    stored_state = request.session.get('google_oauth_state')
+    
+    # Validate state to prevent CSRF
+    if not state or state != stored_state:
+        messages.error(request, 'Invalid OAuth state. Please try connecting to Google again.')
+        return redirect('auth')
+    
+    if not code:
+        messages.error(request, 'No authorization code received from Google.')
+        return redirect('auth')
+    
+    # Exchange code for access token
+    token_url = 'https://oauth2.googleapis.com/token'
+    token_data = {
+        'code': code,
+        'client_id': GOOGLE_CLIENT_ID,
+        'client_secret': GOOGLE_CLIENT_SECRET,
+        'redirect_uri': GOOGLE_REDIRECT_URI,
+        'grant_type': 'authorization_code'
+    }
+    
+    try:
+        response = requests.post(token_url, data=token_data)
+        response.raise_for_status()
+        token_response = response.json()
+        
+        if 'error' in token_response:
+            messages.error(request, f"Google authentication error: {token_response.get('error_description', 'Unknown error')}")
+            return redirect('auth')
+        
+        access_token = token_response.get('access_token')
+        
+        if not access_token:
+            messages.error(request, 'Failed to get access token from Google.')
+            return redirect('auth')
+        
+        # Get user info from Google
+        userinfo_url = 'https://www.googleapis.com/oauth2/v2/userinfo'
+        headers = {'Authorization': f'Bearer {access_token}'}
+        
+        userinfo_response = requests.get(userinfo_url, headers=headers)
+        userinfo_response.raise_for_status()
+        user_data = userinfo_response.json()
+        
+        # Get or create user
+        email = user_data.get('email')
+        if not email:
+            messages.error(request, 'Could not retrieve email from Google.')
+            return redirect('auth')
+        
+        # Check if user exists
+        try:
+            user = User.objects.get(email=email)
+            # If user exists, log them in
+            login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+            messages.success(request, 'Successfully logged in with Google!')
+        except User.DoesNotExist:
+            # Create new user
+            username = email.split('@')[0]
+            # Ensure unique username
+            base_username = username
+            counter = 1
+            while User.objects.filter(username=username).exists():
+                username = f"{base_username}{counter}"
+                counter += 1
+            
+            user = User.objects.create_user(
+                username=username,
+                email=email,
+                first_name=user_data.get('given_name', ''),
+                last_name=user_data.get('family_name', '')
+            )
+            
+            # Mark email as verified since it comes from Google
+            profile = user.profile
+            profile.email_verified = True
+            profile.save()
+            
+            # Log the user in
+            login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+            messages.success(request, 'Successfully registered and logged in with Google!')
+        
+        # Check if user has required API keys set up
+        openai_key_missing = not bool(user.profile.openai_api_key)
+        anthropic_key_missing = not bool(user.profile.anthropic_api_key)
+        
+        # If both keys are missing, redirect to integrations
+        if openai_key_missing and anthropic_key_missing:
+            messages.info(request, 'Please set up OpenAI or Anthropic API keys to get started.')
+            return redirect('integrations')
+        
+        # Redirect to projects list
+        return redirect('projects:project_list')
+        
+    except requests.exceptions.RequestException as e:
+        messages.error(request, f'Error communicating with Google: {str(e)}')
+        return redirect('auth')
+    except Exception as e:
+        messages.error(request, f'An unexpected error occurred: {str(e)}')
+        return redirect('auth') 

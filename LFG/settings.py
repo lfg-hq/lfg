@@ -269,7 +269,11 @@ EMAIL_SUBJECT_PREFIX = '[LFG] '
 # GitHub OAuth Settings
 # You should set these in environment variables or .env file
 GITHUB_CLIENT_ID = os.getenv('GITHUB_CLIENT_ID', '')
-GITHUB_CLIENT_SECRET = os.getenv('GITHUB_CLIENT_SECRET', '') 
+GITHUB_CLIENT_SECRET = os.getenv('GITHUB_CLIENT_SECRET', '')
+
+# Google OAuth Configuration
+GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '')
+GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET', '') 
 
 # Kubernetes API Configuration
 K8S_API_HOST = os.getenv('K8S_CLUSTER_HOST', "https://178.156.148.88:6443")
