@@ -2029,23 +2029,25 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Create container with filters
                     let checklistHTML = `
                         <div class="checklist-wrapper">
-                            <div class="checklist-filters">
-                                <div class="filter-options">
-                                    <div class="filter-group">
-                                        <button id="sync-checklist-linear" class="sync-linear-btn" title="Sync with Linear">
-                                            <i class="fas fa-sync"></i> Sync with Linear
-                                        </button>
-                                        <select id="status-filter" class="checklist-filter-dropdown">
-                                            <option value="all">All Statuses</option>
-                                            ${statuses.map(status => `<option value="${status}">${status.replace('_', ' ').charAt(0).toUpperCase() + status.replace('_', ' ').slice(1)}</option>`).join('')}
-                                        </select>
-                                        <select id="role-filter" class="checklist-filter-dropdown">
-                                            <option value="all">All Assigned</option>
-                                            ${roles.map(role => `<option value="${role}">${role.charAt(0).toUpperCase() + role.slice(1)}</option>`).join('')}
-                                        </select>
-                                        <button id="clear-checklist-filters" class="clear-filters-btn" title="Clear filters">
-                                            <i class="fas fa-times"></i>
-                                        </button>
+                            <div class="checklist-header">
+                                <button id="sync-checklist-linear" class="sync-linear-btn" title="Sync with Linear">
+                                    <i class="fas fa-sync"></i> Sync with Linear
+                                </button>
+                                <div class="checklist-filters">
+                                    <div class="filter-options">
+                                        <div class="filter-group">
+                                            <select id="status-filter" class="checklist-filter-dropdown">
+                                                <option value="all">All Statuses</option>
+                                                ${statuses.map(status => `<option value="${status}">${status.replace('_', ' ').charAt(0).toUpperCase() + status.replace('_', ' ').slice(1)}</option>`).join('')}
+                                            </select>
+                                            <select id="role-filter" class="checklist-filter-dropdown">
+                                                <option value="all">All Assigned</option>
+                                                ${roles.map(role => `<option value="${role}">${role.charAt(0).toUpperCase() + role.slice(1)}</option>`).join('')}
+                                            </select>
+                                            <button id="clear-checklist-filters" class="clear-filters-btn" title="Clear filters">
+                                                <i class="fas fa-times"></i>
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>

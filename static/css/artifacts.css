@@ -1187,13 +1187,22 @@
     flex-direction: column;
 }
 
-.checklist-filters {
+/* Checklist Header */
+.checklist-header {
     background-color: rgba(30, 30, 30, 0.8);
     padding: 8px 12px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     position: sticky;
     top: 0;
     z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.checklist-filters {
+    display: flex;
+    align-items: center;
 }
 
 .checklist-filters .filter-options {
@@ -2429,7 +2438,6 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    margin-right: auto;
     transition: background 0.2s ease;
 }
 
