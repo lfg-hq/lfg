@@ -95,6 +95,53 @@
 
   </div>
 
+  <!-- Project Management Section -->
+  <h2 class="section-heading section-divider">Project Management</h2>
+  <div class="integrations-grid">
+    <!-- Linear Integration -->
+    <div class="integration-card">
+      <div class="integration-header">
+        <div class="integration-title">
+          <svg class="integration-icon" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M2.66675 2.66699H29.3334V7.46732H2.66675V2.66699Z" fill="#a78bfa"/>
+            <path d="M2.66675 9.86719H29.3334V14.6675H2.66675V9.86719Z" fill="#a78bfa"/>
+            <path d="M2.66675 17.0674H29.3334V21.8677H2.66675V17.0674Z" fill="#a78bfa"/>
+            <path d="M2.66675 24.2676H17.0668V29.0679H2.66675V24.2676Z" fill="#a78bfa"/>
+          </svg>
+          <h3 class="integration-name">Linear</h3>
+        </div>
+        <span class="connection-status {% if linear_connected %}connected{% endif %}">
+          {% if linear_connected %}Connected{% else %}Not Connected{% endif %}
+        </span>
+      </div>
+      
+      <p class="integration-description">Sync your project tickets with Linear for seamless issue tracking.</p>
+      
+      {% if linear_connected %}
+        <form method="post" action="{% url 'disconnect_api_key' 'linear' %}">
+          {% csrf_token %}
+          <button type="submit" class="disconnect-button">Disconnect Linear</button>
+        </form>
+      {% else %}
+        <button class="connect-button" id="linear-toggle">Connect Linear</button>
+        <div class="api-form" id="linear-form">
+          <form method="post" action="{% url 'save_api_key' 'linear' %}">
+            {% csrf_token %}
+            <input type="password" name="api_key" class="api-input" placeholder="Enter your Linear API key" required>
+            <button type="submit" class="api-button">Save API Key</button>
+          </form>
+        </div>
+      {% endif %}
+      
+      <a href="https://linear.app/settings/api" target="_blank" class="external-link">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M10 6H6C4.89543 6 4 6.89543 4 8V18C4 19.1046 4.89543 20 6 20H16C17.1046 20 18 19.1046 18 18V14M14 4H20M20 4V10M20 4L10 14" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Get Linear API Key
+      </a>
+    </div>
+  </div>
+
   <!-- Code Repository Section -->
   <h2 class="section-heading  section-divider">Code Repository</h2>
   <div class="integrations-grid ">

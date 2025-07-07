@@ -17,6 +17,7 @@ class Profile(models.Model):
     openai_api_key = models.CharField(max_length=255, blank=True, null=True)
     anthropic_api_key = models.CharField(max_length=255, blank=True, null=True)
     groq_api_key = models.CharField(max_length=255, blank=True, null=True)
+    linear_api_key = models.CharField(max_length=255, blank=True, null=True)
     
     def __str__(self):
         return f"{self.user.username}'s profile"
