@@ -157,3 +157,6 @@ config/deploy.yml
 storage/
 
 prod_deploy.sh
+
+worktree/
+worktrees/

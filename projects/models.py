@@ -100,34 +100,6 @@ class ProjectDesignSchema(models.Model):
         return self.design_schema
     
     
-class ProjectTickets(models.Model):
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="tickets")
-    feature = models.ForeignKey(ProjectFeature, on_delete=models.CASCADE, related_name="tickets")
-    ticket_id = models.CharField(max_length=255)
-    title = models.CharField(max_length=255)
-    description = models.TextField()
-    status = models.CharField(max_length=20, choices=(
-        ('open', 'Open'),
-        ('in_progress', 'In Progress'),
-        ('agent', 'Agent'),
-        ('closed', 'Closed'),
-    ), default='open')
-    backend_tasks = models.TextField(default='')
-    frontend_tasks = models.TextField(default='')
-    implementation_steps = models.TextField(default='')
-    test_case = models.TextField(default='')
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    
-    # Linear integration fields
-    linear_issue_id = models.CharField(max_length=255, blank=True, null=True, help_text="Linear issue ID for this ticket")
-    linear_issue_url = models.URLField(blank=True, null=True, help_text="Direct URL to the Linear issue")
-    linear_state = models.CharField(max_length=50, blank=True, null=True, help_text="Current state in Linear (e.g., Todo, In Progress, Done)")
-    linear_priority = models.IntegerField(blank=True, null=True, help_text="Priority level from Linear (0-4)")
-    linear_assignee_id = models.CharField(max_length=255, blank=True, null=True, help_text="Linear user ID of assignee")
-    linear_synced_at = models.DateTimeField(blank=True, null=True, help_text="Last time this ticket was synced with Linear")
-    linear_sync_enabled = models.BooleanField(default=True, help_text="Whether to sync this specific ticket with Linear")
-    
 class ProjectChecklist(models.Model):
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="checklist")
     name = models.CharField(max_length=255)
@@ -176,6 +148,15 @@ class ProjectChecklist(models.Model):
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    
+    # Linear integration fields
+    linear_issue_id = models.CharField(max_length=255, blank=True, null=True, help_text="Linear issue ID for this ticket")
+    linear_issue_url = models.URLField(blank=True, null=True, help_text="Direct URL to the Linear issue")
+    linear_state = models.CharField(max_length=50, blank=True, null=True, help_text="Current state in Linear (e.g., Todo, In Progress, Done)")
+    linear_priority = models.IntegerField(blank=True, null=True, help_text="Priority level from Linear (0-4)")
+    linear_assignee_id = models.CharField(max_length=255, blank=True, null=True, help_text="Linear user ID of assignee")
+    linear_synced_at = models.DateTimeField(blank=True, null=True, help_text="Last time this ticket was synced with Linear")
+    linear_sync_enabled = models.BooleanField(default=True, help_text="Whether to sync this specific ticket with Linear")
     
     def __str__(self):
         return f"{self.project.name} - {self.name}"

@@ -1207,6 +1207,7 @@
     align-items: center;
     gap: 6px;
     position: relative;
+    justify-content: flex-start;
 }
 
 /* Checklist Filter Dropdowns */
@@ -2421,14 +2422,14 @@
     background: #5856d6;
     color: white;
     border: none;
-    padding: 8px 16px;
+    padding: 4px 8px;
     border-radius: 4px;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 11px;
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    margin-left: 12px;
+    gap: 4px;
+    margin-right: auto;
     transition: background 0.2s ease;
 }
 

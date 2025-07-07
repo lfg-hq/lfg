@@ -2,7 +2,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.contrib import messages
-from .models import Project, ProjectFeature, ProjectPersona, ProjectPRD, ProjectImplementation, ProjectDesignSchema, ProjectTickets, ProjectChecklist, ToolCallHistory
+from .models import Project, ProjectFeature, ProjectPersona, ProjectPRD, ProjectImplementation, ProjectDesignSchema, ProjectChecklist, ToolCallHistory
 from django.views.decorators.http import require_POST
 from django.core.exceptions import PermissionDenied
 import asyncio
@@ -212,46 +212,7 @@ def project_design_schema_api(request, project_id):
     
     return JsonResponse(design_schema_data)
 
-@login_required
-def project_tickets_api(request, project_id):
-    """API view to get tickets for a project, including feature information"""
-    project = get_object_or_404(Project, id=project_id, owner=request.user)
-    
-    # Get all tickets for this project
-    tickets = ProjectTickets.objects.filter(project=project).select_related('feature')
-    
-    tickets_list = []
-    for ticket in tickets:
-        tickets_list.append({
-            'id': ticket.id,
-            'ticket_id': ticket.ticket_id,
-            'title': ticket.title,
-            'description': ticket.description,
-            'status': ticket.status,
-            'feature': {
-                'id': ticket.feature.id,
-                'name': ticket.feature.name,
-                'priority': ticket.feature.priority
-            },
-            'backend_tasks': ticket.backend_tasks,
-            'frontend_tasks': ticket.frontend_tasks,
-            'implementation_steps': ticket.implementation_steps,
-            'created_at': ticket.created_at.isoformat(),
-            'updated_at': ticket.updated_at.isoformat(),
-            # Linear integration fields
-            'linear_issue_id': ticket.linear_issue_id,
-            'linear_issue_url': ticket.linear_issue_url,
-            'linear_state': ticket.linear_state,
-            'linear_priority': ticket.linear_priority,
-            'linear_assignee_id': ticket.linear_assignee_id,
-            'linear_synced_at': ticket.linear_synced_at.isoformat() if ticket.linear_synced_at else None,
-            'linear_sync_enabled': ticket.linear_sync_enabled,
-        })
-    
-    return JsonResponse({
-        'tickets': tickets_list,
-        'linear_sync_enabled': project.linear_sync_enabled
-    })
+# ProjectTickets has been removed - use ProjectChecklist instead
 
 @login_required
 def project_checklist_api(request, project_id):
@@ -279,6 +240,14 @@ def project_checklist_api(request, project_id):
             'dependencies': item.dependencies,
             'complexity': item.complexity,
             'requires_worktree': item.requires_worktree,
+            # Linear integration fields
+            'linear_issue_id': item.linear_issue_id,
+            'linear_issue_url': item.linear_issue_url,
+            'linear_state': item.linear_state,
+            'linear_priority': item.linear_priority,
+            'linear_assignee_id': item.linear_assignee_id,
+            'linear_synced_at': item.linear_synced_at.isoformat() if item.linear_synced_at else None,
+            'linear_sync_enabled': item.linear_sync_enabled,
         })
     
     return JsonResponse({'checklist': checklist_list})

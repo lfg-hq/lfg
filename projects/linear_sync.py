@@ -1,7 +1,7 @@
 import requests
 from datetime import datetime
 from django.utils import timezone
-from .models import ProjectTickets
+from .models import ProjectChecklist
 
 
 class LinearSyncService:
@@ -319,6 +319,10 @@ class LinearSyncService:
         checklist_items = project.checklist.exclude(status='done')
         
         for item in checklist_items:
+            # Skip if already synced and sync is disabled for this item
+            if item.linear_issue_id and not item.linear_sync_enabled:
+                continue
+                
             success, result = self.sync_checklist_item(
                 item, 
                 project.linear_team_id,
@@ -326,7 +330,10 @@ class LinearSyncService:
             )
             
             if success:
-                results["created"] += 1
+                if item.linear_issue_id:
+                    results["updated"] += 1
+                else:
+                    results["created"] += 1
             else:
                 results["errors"].append({
                     "ticket": item.name,
@@ -337,6 +344,10 @@ class LinearSyncService:
     
     def sync_checklist_item(self, checklist_item, team_id, project_id=None):
         """Sync a single checklist item to Linear as an issue"""
+        # If item already has a Linear issue, update it instead
+        if checklist_item.linear_issue_id:
+            return self.update_checklist_item(checklist_item, team_id, project_id)
+        
         # Map checklist priority to Linear priority
         priority_map = {
             'High': 1,    # Urgent
@@ -353,10 +364,59 @@ class LinearSyncService:
             'blocked': 'backlog'
         }
         
-        # Prepare issue data
+        # Prepare issue data with all fields
         description = checklist_item.description
+        
+        # Add Component Specifications
+        if checklist_item.component_specs:
+            description += "\n\n## Component Specifications\n"
+            if isinstance(checklist_item.component_specs, dict):
+                for key, value in checklist_item.component_specs.items():
+                    description += f"**{key}**: {value}\n"
+            else:
+                description += str(checklist_item.component_specs)
+        
+        # Add Acceptance Criteria
+        if checklist_item.acceptance_criteria:
+            description += "\n\n## Acceptance Criteria\n"
+            if isinstance(checklist_item.acceptance_criteria, list):
+                for idx, criteria in enumerate(checklist_item.acceptance_criteria, 1):
+                    description += f"{idx}. {criteria}\n"
+            else:
+                description += str(checklist_item.acceptance_criteria)
+        
+        # Add UI Requirements
+        if checklist_item.ui_requirements:
+            description += "\n\n## UI Requirements\n"
+            if isinstance(checklist_item.ui_requirements, dict):
+                for key, value in checklist_item.ui_requirements.items():
+                    description += f"**{key}**: {value}\n"
+            else:
+                description += str(checklist_item.ui_requirements)
+        
+        # Add Additional Details
         if checklist_item.details:
-            description += "\n\n## Details\n" + str(checklist_item.details)
+            description += "\n\n## Additional Details\n"
+            if isinstance(checklist_item.details, dict):
+                for key, value in checklist_item.details.items():
+                    description += f"**{key}**: {value}\n"
+            else:
+                description += str(checklist_item.details)
+        
+        # Add Dependencies
+        if checklist_item.dependencies:
+            description += "\n\n## Dependencies\n"
+            if isinstance(checklist_item.dependencies, list):
+                for dep in checklist_item.dependencies:
+                    description += f"- {dep}\n"
+            else:
+                description += str(checklist_item.dependencies)
+        
+        # Add Metadata
+        description += f"\n\n## Metadata\n"
+        description += f"**Complexity**: {checklist_item.complexity}\n"
+        description += f"**Role**: {checklist_item.role}\n"
+        description += f"**Requires Worktree**: {'Yes' if checklist_item.requires_worktree else 'No'}\n"
         
         issue_data = {
             "title": checklist_item.name,
@@ -396,7 +456,124 @@ class LinearSyncService:
         if response.status_code == 200:
             data = response.json()
             if "data" in data and data["data"]["issueCreate"]["success"]:
-                return True, data["data"]["issueCreate"]["issue"]
+                issue = data["data"]["issueCreate"]["issue"]
+                
+                # Update the checklist item with Linear issue information
+                checklist_item.linear_issue_id = issue["id"]
+                checklist_item.linear_issue_url = issue.get("url", "")
+                checklist_item.linear_synced_at = timezone.now()
+                checklist_item.save()
+                
+                return True, issue
+            elif "errors" in data:
+                return False, data["errors"][0].get("message", "Unknown error")
+        
+        return False, f"HTTP Error: {response.status_code}"
+    
+    def update_checklist_item(self, checklist_item, team_id, project_id=None):
+        """Update an existing Linear issue from a checklist item"""
+        # Map checklist priority to Linear priority
+        priority_map = {
+            'High': 1,    # Urgent
+            'Medium': 2,  # High  
+            'Low': 3      # Normal
+        }
+        
+        # Prepare updated description with all fields
+        description = checklist_item.description
+        
+        # Add Component Specifications
+        if checklist_item.component_specs:
+            description += "\n\n## Component Specifications\n"
+            if isinstance(checklist_item.component_specs, dict):
+                for key, value in checklist_item.component_specs.items():
+                    description += f"**{key}**: {value}\n"
+            else:
+                description += str(checklist_item.component_specs)
+        
+        # Add Acceptance Criteria
+        if checklist_item.acceptance_criteria:
+            description += "\n\n## Acceptance Criteria\n"
+            if isinstance(checklist_item.acceptance_criteria, list):
+                for idx, criteria in enumerate(checklist_item.acceptance_criteria, 1):
+                    description += f"{idx}. {criteria}\n"
+            else:
+                description += str(checklist_item.acceptance_criteria)
+        
+        # Add UI Requirements
+        if checklist_item.ui_requirements:
+            description += "\n\n## UI Requirements\n"
+            if isinstance(checklist_item.ui_requirements, dict):
+                for key, value in checklist_item.ui_requirements.items():
+                    description += f"**{key}**: {value}\n"
+            else:
+                description += str(checklist_item.ui_requirements)
+        
+        # Add Additional Details
+        if checklist_item.details:
+            description += "\n\n## Additional Details\n"
+            if isinstance(checklist_item.details, dict):
+                for key, value in checklist_item.details.items():
+                    description += f"**{key}**: {value}\n"
+            else:
+                description += str(checklist_item.details)
+        
+        # Add Dependencies
+        if checklist_item.dependencies:
+            description += "\n\n## Dependencies\n"
+            if isinstance(checklist_item.dependencies, list):
+                for dep in checklist_item.dependencies:
+                    description += f"- {dep}\n"
+            else:
+                description += str(checklist_item.dependencies)
+        
+        # Add Metadata
+        description += f"\n\n## Metadata\n"
+        description += f"**Complexity**: {checklist_item.complexity}\n"
+        description += f"**Role**: {checklist_item.role}\n"
+        description += f"**Requires Worktree**: {'Yes' if checklist_item.requires_worktree else 'No'}\n"
+        
+        # Update the issue
+        query = """
+        mutation UpdateIssue($id: String!, $input: IssueUpdateInput!) {
+            issueUpdate(id: $id, input: $input) {
+                success
+                issue {
+                    id
+                    identifier
+                    title
+                    url
+                }
+            }
+        }
+        """
+        
+        update_data = {
+            "title": checklist_item.name,
+            "description": description,
+            "priority": priority_map.get(checklist_item.priority, 3),
+        }
+        
+        response = requests.post(
+            self.BASE_URL,
+            json={
+                "query": query,
+                "variables": {
+                    "id": checklist_item.linear_issue_id,
+                    "input": update_data
+                }
+            },
+            headers=self.headers
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            if "data" in data and data["data"]["issueUpdate"]["success"]:
+                # Update sync timestamp
+                checklist_item.linear_synced_at = timezone.now()
+                checklist_item.save()
+                
+                return True, data["data"]["issueUpdate"]["issue"]
             elif "errors" in data:
                 return False, data["errors"][0].get("message", "Unknown error")
         
