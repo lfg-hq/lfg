@@ -23,4 +23,8 @@ urlpatterns = [
     path('<int:project_id>/api/server-configs/', views.project_server_configs_api, name='project_server_configs_api'),
     path('<int:project_id>/api/check-servers/', views.check_server_status_api, name='check_server_status_api'),
     path('<int:project_id>/api/tool-call-history/', views.project_tool_call_history_api, name='project_tool_call_history_api'),
+    path('<int:project_id>/api/linear/sync/', views.linear_sync_tickets_api, name='linear_sync_tickets_api'),
+    path('<int:project_id>/api/linear/teams/', views.linear_teams_api, name='linear_teams_api'),
+    path('<int:project_id>/api/linear/projects/', views.linear_projects_api, name='linear_projects_api'),
+    path('<int:project_id>/api/linear/create-project/', views.linear_create_project_api, name='linear_create_project_api'),
 ]

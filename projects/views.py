@@ -32,6 +32,18 @@ def project_list(request):
 def project_detail(request, project_id):
     """View to display a specific project"""
     project = get_object_or_404(Project, id=project_id, owner=request.user)
+    
+    # If it's an API request, return JSON
+    if request.headers.get('Accept') == 'application/json' or request.GET.get('format') == 'json':
+        return JsonResponse({
+            'id': project.id,
+            'name': project.name,
+            'description': project.description,
+            'linear_sync_enabled': project.linear_sync_enabled,
+            'linear_team_id': project.linear_team_id,
+            'linear_project_id': project.linear_project_id,
+        })
+    
     print(project.direct_conversations.all())
     return render(request, 'projects/project_detail.html', {
         'project': project
@@ -73,10 +85,21 @@ def update_project(request, project_id):
         project.description = request.POST.get('description', project.description)
         project.icon = request.POST.get('icon', project.icon)
         project.status = request.POST.get('status', project.status)
+        
+        # Handle Linear integration settings
+        project.linear_sync_enabled = request.POST.get('linear_sync_enabled') == 'on'
+        if project.linear_sync_enabled:
+            project.linear_team_id = request.POST.get('linear_team_id', '').strip()
+            project.linear_project_id = request.POST.get('linear_project_id', '').strip()
+        else:
+            # Clear Linear settings if sync is disabled
+            project.linear_team_id = ''
+            project.linear_project_id = ''
+        
         project.save()
         
         messages.success(request, "Project updated successfully!")
-        return redirect('project_detail', project_id=project.id)
+        return redirect('projects:project_detail', project_id=project.id)
     
     # For GET requests, render the update form
     return render(request, 'projects/update_project.html', {
@@ -215,9 +238,20 @@ def project_tickets_api(request, project_id):
             'implementation_steps': ticket.implementation_steps,
             'created_at': ticket.created_at.isoformat(),
             'updated_at': ticket.updated_at.isoformat(),
+            # Linear integration fields
+            'linear_issue_id': ticket.linear_issue_id,
+            'linear_issue_url': ticket.linear_issue_url,
+            'linear_state': ticket.linear_state,
+            'linear_priority': ticket.linear_priority,
+            'linear_assignee_id': ticket.linear_assignee_id,
+            'linear_synced_at': ticket.linear_synced_at.isoformat() if ticket.linear_synced_at else None,
+            'linear_sync_enabled': ticket.linear_sync_enabled,
         })
     
-    return JsonResponse({'tickets': tickets_list})
+    return JsonResponse({
+        'tickets': tickets_list,
+        'linear_sync_enabled': project.linear_sync_enabled
+    })
 
 @login_required
 def project_checklist_api(request, project_id):
@@ -520,4 +554,168 @@ def project_tool_call_history_api(request, project_id):
         'offset': offset,
         'has_more': (offset + limit) < total_count
     })
+
+
+@login_required
+def linear_sync_tickets_api(request, project_id):
+    """API view to sync project tickets with Linear"""
+    from .linear_sync import LinearSyncService
+    
+    project = get_object_or_404(Project, id=project_id, owner=request.user)
+    
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Method not allowed'}, status=405)
+    
+    # Check if user has Linear API key
+    if not request.user.profile.linear_api_key:
+        return JsonResponse({
+            'success': False, 
+            'error': 'Linear API key not configured. Please set it up in your integrations.'
+        })
+    
+    # Check if project has Linear team ID set
+    if not project.linear_team_id:
+        return JsonResponse({
+            'success': False,
+            'error': 'Linear team ID not set for this project. Please configure it in project settings.'
+        })
+    
+    # Initialize Linear sync service
+    linear_service = LinearSyncService(request.user.profile.linear_api_key)
+    
+    # Test connection first
+    connected, result = linear_service.test_connection()
+    if not connected:
+        return JsonResponse({
+            'success': False,
+            'error': f'Failed to connect to Linear: {result}'
+        })
+    
+    # Perform sync
+    success, sync_results = linear_service.sync_all_tickets(project)
+    
+    if success:
+        return JsonResponse({
+            'success': True,
+            'results': sync_results,
+            'message': f"Synced {sync_results['created']} new and {sync_results['updated']} existing tickets"
+        })
+    else:
+        return JsonResponse({
+            'success': False,
+            'error': sync_results
+        })
+
+
+@login_required
+def linear_teams_api(request, project_id):
+    """API view to get Linear teams for the current user"""
+    from .linear_sync import LinearSyncService
+    
+    project = get_object_or_404(Project, id=project_id, owner=request.user)
+    
+    # Check if user has Linear API key
+    if not request.user.profile.linear_api_key:
+        return JsonResponse({
+            'success': False,
+            'error': 'Linear API key not configured'
+        })
+    
+    # Initialize Linear sync service
+    linear_service = LinearSyncService(request.user.profile.linear_api_key)
+    
+    # Get teams
+    teams = linear_service.get_teams()
+    
+    return JsonResponse({
+        'success': True,
+        'teams': teams
+    })
+
+
+@login_required
+def linear_projects_api(request, project_id):
+    """API view to get Linear projects for a specific team"""
+    from .linear_sync import LinearSyncService
+    
+    project = get_object_or_404(Project, id=project_id, owner=request.user)
+    team_id = request.GET.get('team_id')
+    
+    if not team_id:
+        return JsonResponse({
+            'success': False,
+            'error': 'Team ID is required'
+        })
+    
+    # Check if user has Linear API key
+    if not request.user.profile.linear_api_key:
+        return JsonResponse({
+            'success': False,
+            'error': 'Linear API key not configured'
+        })
+    
+    # Initialize Linear sync service
+    linear_service = LinearSyncService(request.user.profile.linear_api_key)
+    
+    # Get projects
+    projects = linear_service.get_projects(team_id)
+    
+    return JsonResponse({
+        'success': True,
+        'projects': projects
+    })
+
+
+@login_required
+def linear_create_project_api(request, project_id):
+    """API view to create a new Linear project"""
+    from .linear_sync import LinearSyncService
+    import json
+    
+    project = get_object_or_404(Project, id=project_id, owner=request.user)
+    
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Method not allowed'}, status=405)
+    
+    try:
+        data = json.loads(request.body)
+        team_id = data.get('team_id')
+        project_name = data.get('name')
+        project_description = data.get('description', '')
+        
+        if not team_id or not project_name:
+            return JsonResponse({
+                'success': False,
+                'error': 'Team ID and project name are required'
+            })
+        
+        # Check if user has Linear API key
+        if not request.user.profile.linear_api_key:
+            return JsonResponse({
+                'success': False,
+                'error': 'Linear API key not configured'
+            })
+        
+        # Initialize Linear sync service
+        linear_service = LinearSyncService(request.user.profile.linear_api_key)
+        
+        # Create the project
+        success, result = linear_service.create_project(team_id, project_name, project_description)
+        
+        if success:
+            return JsonResponse({
+                'success': True,
+                'project': result
+            })
+        else:
+            return JsonResponse({
+                'success': False,
+                'error': result
+            })
+    
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        })
 

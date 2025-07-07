@@ -230,6 +230,8 @@ def save_api_key(request, provider):
         profile.anthropic_api_key = api_key
     elif provider == 'groq':
         profile.groq_api_key = api_key
+    elif provider == 'linear':
+        profile.linear_api_key = api_key
     else:
         messages.error(request, 'Invalid provider')
         return redirect('integrations')
@@ -257,6 +259,8 @@ def disconnect_api_key(request, provider):
         profile.anthropic_api_key = ''
     elif provider == 'groq':
         profile.groq_api_key = ''
+    elif provider == 'linear':
+        profile.linear_api_key = ''
     else:
         messages.error(request, 'Invalid provider')
         return redirect('integrations')
@@ -460,6 +464,7 @@ def integrations(request):
     openai_connected = bool(request.user.profile.openai_api_key)
     anthropic_connected = bool(request.user.profile.anthropic_api_key)
     groq_connected = bool(request.user.profile.groq_api_key)
+    linear_connected = bool(request.user.profile.linear_api_key)
     
     context = {
         'github_connected': github_connected,
@@ -470,6 +475,7 @@ def integrations(request):
         'openai_connected': openai_connected,
         'anthropic_connected': anthropic_connected,
         'groq_connected': groq_connected,
+        'linear_connected': linear_connected,
     }
     
     return render(request, 'accounts/integrations.html', context)

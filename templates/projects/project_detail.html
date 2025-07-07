@@ -43,6 +43,23 @@
                     <p class="text-muted">No description provided</p>
                 {% endif %}
             </div>
+            
+            {% if project.linear_sync_enabled %}
+            <div class="linear-integration-status">
+                <div class="integration-badge">
+                    <i class="fas fa-link"></i>
+                    Linear Integration Active
+                </div>
+                <div class="integration-details">
+                    {% if project.linear_team_id %}
+                        <span>Team: {{ project.linear_team_id }}</span>
+                    {% endif %}
+                    {% if project.linear_project_id %}
+                        <span>Project: {{ project.linear_project_id }}</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
         </div>
     </div>
 

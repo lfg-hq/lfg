@@ -1,3 +1,42 @@
+/* Linear Integration Status */
+.linear-integration-status {
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.integration-badge {
+    background-color: #5e72e4;
+    color: white;
+    padding: 0.375rem 0.75rem;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.integration-badge i {
+    font-size: 0.875rem;
+}
+
+.integration-details {
+    display: flex;
+    gap: 1.5rem;
+    font-size: 0.875rem;
+    color: var(--text-light);
+}
+
+.integration-details span {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
 /* Conversation History Styles */
 .conversation-history-section {
     margin-top: 2rem;

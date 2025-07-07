@@ -57,6 +57,53 @@
                 </select>
             </div>
             
+            <!-- Linear Integration Settings -->
+            <div class="form-section">
+                <h3 class="form-section-title">
+                    <i class="fas fa-link"></i> Linear Integration
+                </h3>
+                
+                <div class="form-group">
+                    <label for="linear-sync-enabled" class="form-label">
+                        <input type="checkbox" id="linear-sync-enabled" name="linear_sync_enabled" 
+                               {% if project.linear_sync_enabled %}checked{% endif %}>
+                        Enable Linear Sync
+                    </label>
+                    <small class="form-text text-muted">
+                        Automatically sync tickets with Linear when enabled
+                    </small>
+                </div>
+                
+                <div id="linear-settings" class="linear-settings {% if not project.linear_sync_enabled %}hidden{% endif %}">
+                    <div class="form-group">
+                        <label for="linear-team-id" class="form-label">Linear Team ID</label>
+                        <input type="text" id="linear-team-id" name="linear_team_id" 
+                               class="form-control" value="{{ project.linear_team_id|default:'' }}"
+                               placeholder="e.g., TEAM-123">
+                        <small class="form-text text-muted">
+                            The ID of your Linear team (found in Linear settings)
+                        </small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="linear-project-id" class="form-label">Linear Project ID</label>
+                        <input type="text" id="linear-project-id" name="linear_project_id" 
+                               class="form-control" value="{{ project.linear_project_id|default:'' }}"
+                               placeholder="e.g., PROJ-456">
+                        <small class="form-text text-muted">
+                            The ID of your Linear project (optional, uses default project if not specified)
+                        </small>
+                    </div>
+                    
+                    {% if not user.profile.linear_api_key %}
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        You need to add your Linear API key in <a href="{% url 'integrations' %}">Integrations</a> to use Linear sync.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            
             <div class="form-actions">
                 <button type="submit" class="btn btn-primary">Update Project</button>
                 <a href="{% url 'projects:project_detail' project.id %}" class="btn btn-outline">Cancel</a>
@@ -64,4 +111,24 @@
         </form>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Handle Linear sync toggle
+    const linearSyncCheckbox = document.getElementById('linear-sync-enabled');
+    const linearSettings = document.getElementById('linear-settings');
+    
+    if (linearSyncCheckbox) {
+        linearSyncCheckbox.addEventListener('change', function() {
+            if (this.checked) {
+                linearSettings.classList.remove('hidden');
+            } else {
+                linearSettings.classList.add('hidden');
+            }
+        });
+    }
+});
+</script>
 {% endblock %} 

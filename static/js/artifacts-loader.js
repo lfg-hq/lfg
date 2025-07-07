@@ -2,6 +2,250 @@
  * Artifacts Loader JavaScript
  * Handles loading artifact data from the server and updating the artifacts panel
  */
+
+// Global helper functions
+window.showToast = function(message, type = 'info') {
+    // Create toast element if it doesn't exist
+    let toastContainer = document.getElementById('toast-container');
+    if (!toastContainer) {
+        toastContainer = document.createElement('div');
+        toastContainer.id = 'toast-container';
+        toastContainer.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 9999;';
+        document.body.appendChild(toastContainer);
+    }
+    
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.style.cssText = 'background: #333; color: white; padding: 12px 24px; border-radius: 4px; margin-bottom: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); animation: slideIn 0.3s ease;';
+    
+    if (type === 'success') {
+        toast.style.background = '#4CAF50';
+    } else if (type === 'error') {
+        toast.style.background = '#f44336';
+    }
+    
+    toast.textContent = message;
+    toastContainer.appendChild(toast);
+    
+    // Remove toast after 5 seconds
+    setTimeout(() => {
+        toast.style.animation = 'slideOut 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+    }, 5000);
+};
+
+window.getCookie = function(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+};
+
+// Make showLinearProjectSelectionPopup globally accessible
+window.showLinearProjectSelectionPopup = async function(projectId, teams) {
+    const showToast = window.showToast;
+    const getCookie = window.getCookie;
+    
+    // Create popup overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'linear-popup-overlay';
+    overlay.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 10000; display: flex; align-items: center; justify-content: center;';
+    
+    // Create popup container
+    const popup = document.createElement('div');
+    popup.className = 'linear-popup';
+    popup.style.cssText = 'background: #2a2a2a; padding: 30px; border-radius: 8px; max-width: 500px; width: 90%; max-height: 80vh; overflow-y: auto; box-shadow: 0 4px 20px rgba(0,0,0,0.5);';
+    
+    // Check if we have teams
+    if (!teams || teams.length === 0) {
+        popup.innerHTML = `
+            <h3 style="color: #fff; margin-bottom: 20px;">No Linear Teams Found</h3>
+            <p style="color: #ccc; margin-bottom: 20px;">Please make sure your Linear API key has access to at least one team.</p>
+            <button class="close-popup-btn" style="background: #666; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;">Close</button>
+        `;
+        overlay.appendChild(popup);
+        document.body.appendChild(overlay);
+        
+        popup.querySelector('.close-popup-btn').addEventListener('click', () => {
+            overlay.remove();
+        });
+        return;
+    }
+    
+    // Get current project info
+    const projectResponse = await fetch(`/projects/${projectId}/?format=json`);
+    const projectData = await projectResponse.json();
+    const currentLinearProjectId = projectData.linear_project_id;
+    
+    let popupHTML = `
+        <h3 style="color: #fff; margin-bottom: 20px;">Sync with Linear Team</h3>
+        <div class="linear-teams-container">
+    `;
+    
+    // Always show team selection
+    popupHTML += `
+        <div style="margin-bottom: 20px;">
+            <label style="color: #ccc; display: block; margin-bottom: 8px;">Select Team:</label>
+            <select id="linear-team-select" style="width: 100%; padding: 8px; background: #1a1a1a; border: 1px solid #444; color: #fff; border-radius: 4px;">
+                ${teams.map(team => `<option value="${team.id}">${team.name}</option>`).join('')}
+            </select>
+        </div>
+    `;
+    
+    popupHTML += `
+        <div style="display: flex; justify-content: flex-end; gap: 10px;">
+            <button class="cancel-popup-btn" style="background: #666; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;">Cancel</button>
+            <button class="confirm-popup-btn" style="background: #5856d6; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;">Sync with Selected Team</button>
+        </div>
+    </div>
+    `;
+    
+    popup.innerHTML = popupHTML;
+    overlay.appendChild(popup);
+    document.body.appendChild(overlay);
+    
+    // Elements
+    const teamSelect = popup.querySelector('#linear-team-select');
+    // Project-related elements removed - syncing with teams only
+    const confirmBtn = popup.querySelector('.confirm-popup-btn');
+    const cancelBtn = popup.querySelector('.cancel-popup-btn');
+    
+    // Project-related code removed - syncing directly with teams
+    
+    // No team change handler needed since we're syncing with the selected team
+    
+    // Create project functionality removed - syncing with teams only
+    /* Removed create project handler */
+    
+    // Cancel handler
+    cancelBtn.addEventListener('click', () => {
+        overlay.remove();
+    });
+    
+    // Confirm handler
+    confirmBtn.addEventListener('click', async () => {
+        const selectedTeamId = teams.length === 1 ? teams[0].id : teamSelect.value;
+        
+        if (!selectedTeamId) {
+            showToast('Please select a team', 'error');
+            return;
+        }
+        
+        // Save the selected team to the backend
+        const saveResponse = await fetch(`/projects/${projectId}/update/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: new URLSearchParams({
+                'name': projectData.name || '',
+                'description': projectData.description || '',
+                'linear_sync_enabled': 'on',
+                'linear_team_id': selectedTeamId,
+                'linear_project_id': ''
+            })
+        });
+        
+        if (saveResponse.ok) {
+            // Close popup
+            overlay.remove();
+            
+            // Show progress overlay
+            const progressOverlay = document.createElement('div');
+            progressOverlay.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 10000;';
+            
+            const progressContainer = document.createElement('div');
+            progressContainer.style.cssText = 'background: #2a2a2a; padding: 30px; border-radius: 8px; min-width: 400px; text-align: center;';
+            
+            progressContainer.innerHTML = `
+                <h3 style="color: #fff; margin-bottom: 20px;">Syncing with Linear</h3>
+                <div style="margin-bottom: 15px;">
+                    <div style="background: #444; height: 20px; border-radius: 10px; overflow: hidden;">
+                        <div id="sync-progress-bar" style="background: #5856d6; height: 100%; width: 0%; transition: width 0.3s ease;"></div>
+                    </div>
+                </div>
+                <p id="sync-progress-text" style="color: #ccc; margin: 0;">Initializing sync...</p>
+            `;
+            
+            progressOverlay.appendChild(progressContainer);
+            document.body.appendChild(progressOverlay);
+            
+            // Simulate progress while waiting for response
+            const progressBar = document.getElementById('sync-progress-bar');
+            const progressText = document.getElementById('sync-progress-text');
+            
+            progressBar.style.width = '20%';
+            progressText.textContent = 'Connecting to Linear...';
+            
+            try {
+                const syncResponse = await fetch(`/projects/${projectId}/api/linear/sync/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                });
+                
+                progressBar.style.width = '60%';
+                progressText.textContent = 'Processing items...';
+                
+                const syncData = await syncResponse.json();
+                
+                progressBar.style.width = '100%';
+                
+                if (syncData.success) {
+                    progressText.textContent = `Synced ${syncData.results?.created || 0} items successfully!`;
+                    
+                    // Show completion for a moment
+                    setTimeout(() => {
+                        progressOverlay.remove();
+                        showToast(syncData.message || 'Tasks synced successfully!', 'success');
+                        // Reload the checklist if ArtifactsLoader is available
+                        if (window.ArtifactsLoader && window.ArtifactsLoader.loadChecklist) {
+                            window.ArtifactsLoader.loadChecklist(projectId);
+                        }
+                    }, 1500);
+                } else {
+                    progressText.textContent = 'Sync failed!';
+                    progressBar.style.background = '#f44336';
+                    
+                    setTimeout(() => {
+                        progressOverlay.remove();
+                        showToast(syncData.error || 'Failed to sync tasks', 'error');
+                    }, 1500);
+                }
+            } catch (error) {
+                progressBar.style.width = '100%';
+                progressBar.style.background = '#f44336';
+                progressText.textContent = 'Network error!';
+                
+                setTimeout(() => {
+                    progressOverlay.remove();
+                    showToast('Network error during sync', 'error');
+                }, 1500);
+            }
+        } else {
+            showToast('Failed to save Linear team selection', 'error');
+        }
+    });
+    
+    // Close on overlay click
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) {
+            overlay.remove();
+        }
+    });
+};
+
 document.addEventListener('DOMContentLoaded', function() {
     
     // Helper function to get current conversation ID from URL or global variables
@@ -1136,6 +1380,9 @@ document.addEventListener('DOMContentLoaded', function() {
                                         <button id="clear-filters" class="clear-filters-btn" title="Clear filters">
                                             <i class="fas fa-times"></i>
                                         </button>
+                                        <button id="sync-linear" class="sync-linear-btn" title="Sync with Linear">
+                                            <i class="fas fa-sync"></i> Sync with Linear
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -1245,6 +1492,17 @@ document.addEventListener('DOMContentLoaded', function() {
                                                     <span class="status-tag status-${status}">
                                                         ${status.replace('_', ' ').charAt(0).toUpperCase() + status.replace('_', ' ').slice(1)}
                                                     </span>
+                                                    ${ticket.linear_issue_id ? `
+                                                    <span class="linear-sync-tag" title="Synced with Linear">
+                                                        <svg viewBox="0 0 32 32" width="14" height="14" fill="currentColor">
+                                                            <path d="M2.66675 2.66699H29.3334V7.46732H2.66675V2.66699Z"/>
+                                                            <path d="M2.66675 9.86719H29.3334V14.6675H2.66675V9.86719Z"/>
+                                                            <path d="M2.66675 17.0674H29.3334V21.8677H2.66675V17.0674Z"/>
+                                                            <path d="M2.66675 24.2676H17.0668V29.0679H2.66675V24.2676Z"/>
+                                                        </svg>
+                                                        Synced
+                                                    </span>
+                                                    ` : ''}
                                                 </div>
                                                 <button class="view-details-btn" data-ticket-id="${ticket.id}" title="View details">
                                                     <i class="fas fa-info-circle"></i>
@@ -1287,6 +1545,27 @@ document.addEventListener('DOMContentLoaded', function() {
                                             <p class="ticket-status"><strong>Status:</strong> ${ticket.status.replace('_', ' ').charAt(0).toUpperCase() + ticket.status.replace('_', ' ').slice(1)}</p>
                                             <p class="ticket-feature"><strong>Feature:</strong> ${ticket.feature.name}</p>
                                         </div>
+                                        
+                                        ${ticket.linear_issue_id ? `
+                                        <div class="drawer-section">
+                                            <h4 class="section-title">Linear Integration</h4>
+                                            <p class="linear-info"><strong>Linear State:</strong> ${ticket.linear_state || 'Unknown'}</p>
+                                            ${ticket.linear_issue_url ? `
+                                            <p class="linear-link">
+                                                <a href="${ticket.linear_issue_url}" target="_blank" class="linear-issue-link">
+                                                    <svg viewBox="0 0 32 32" width="16" height="16" fill="currentColor">
+                                                        <path d="M2.66675 2.66699H29.3334V7.46732H2.66675V2.66699Z"/>
+                                                        <path d="M2.66675 9.86719H29.3334V14.6675H2.66675V9.86719Z"/>
+                                                        <path d="M2.66675 17.0674H29.3334V21.8677H2.66675V17.0674Z"/>
+                                                        <path d="M2.66675 24.2676H17.0668V29.0679H2.66675V24.2676Z"/>
+                                                    </svg>
+                                                    View in Linear
+                                                </a>
+                                            </p>
+                                            ` : ''}
+                                            ${ticket.linear_synced_at ? `<p class="linear-sync-info"><small>Last synced: ${new Date(ticket.linear_synced_at).toLocaleString()}</small></p>` : ''}
+                                        </div>
+                                        ` : ''}
                                         
                                         <div class="drawer-section">
                                             <h4 class="section-title">Description</h4>
@@ -1358,6 +1637,105 @@ document.addEventListener('DOMContentLoaded', function() {
                             featureFilter.value = 'all';
                             renderTickets('all');
                         });
+                    }
+                    
+                    // Add Linear sync button event listener
+                    const syncLinearBtn = document.getElementById('sync-linear');
+                    if (syncLinearBtn) {
+                        syncLinearBtn.addEventListener('click', function() {
+                            // Show confirmation or instructions if not configured
+                            if (!data.linear_sync_enabled) {
+                                showToast('Linear sync is not enabled for this project. Please go to project settings to configure Linear integration.', 'error');
+                                return;
+                            }
+                            
+                            this.disabled = true;
+                            this.innerHTML = '<i class="fas fa-sync fa-spin"></i> Syncing...';
+                            
+                            // Call Linear sync API
+                            fetch(`/projects/${projectId}/api/linear/sync/`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-CSRFToken': getCookie('csrftoken')
+                                },
+                            })
+                            .then(response => response.json())
+                            .then(data => {
+                                if (data.success) {
+                                    // Show success message
+                                    showToast(data.message || 'Tickets synced successfully!', 'success');
+                                    // Reload tickets to show updated sync status
+                                    ArtifactsLoader.loadTickets(projectId);
+                                } else {
+                                    // Check if it's a configuration error
+                                    if (data.error && data.error.includes('API key not configured')) {
+                                        showToast('Linear API key not configured. Please go to Integrations to add your Linear API key.', 'error');
+                                    } else if (data.error && data.error.includes('team ID not set')) {
+                                        showToast('Linear team ID not set. Please go to project settings to configure Linear integration.', 'error');
+                                    } else {
+                                        showToast(data.error || 'Failed to sync tickets', 'error');
+                                    }
+                                    // Re-enable button
+                                    this.disabled = false;
+                                    this.innerHTML = '<i class="fas fa-sync"></i> Sync with Linear';
+                                }
+                            })
+                            .catch(error => {
+                                console.error('Error syncing with Linear:', error);
+                                showToast('Error syncing with Linear', 'error');
+                                // Re-enable button
+                                this.disabled = false;
+                                this.innerHTML = '<i class="fas fa-sync"></i> Sync with Linear';
+                            });
+                        });
+                    }
+                    
+                    // Helper function to show toast notifications
+                    function showToast(message, type = 'info') {
+                        // Create toast element if it doesn't exist
+                        let toastContainer = document.getElementById('toast-container');
+                        if (!toastContainer) {
+                            toastContainer = document.createElement('div');
+                            toastContainer.id = 'toast-container';
+                            toastContainer.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 9999;';
+                            document.body.appendChild(toastContainer);
+                        }
+                        
+                        const toast = document.createElement('div');
+                        toast.className = `toast toast-${type}`;
+                        toast.style.cssText = 'background: #333; color: white; padding: 12px 24px; border-radius: 4px; margin-bottom: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); animation: slideIn 0.3s ease;';
+                        
+                        if (type === 'success') {
+                            toast.style.background = '#4CAF50';
+                        } else if (type === 'error') {
+                            toast.style.background = '#f44336';
+                        }
+                        
+                        toast.textContent = message;
+                        toastContainer.appendChild(toast);
+                        
+                        // Remove toast after 5 seconds
+                        setTimeout(() => {
+                            toast.style.animation = 'slideOut 0.3s ease';
+                            setTimeout(() => toast.remove(), 300);
+                        }, 5000);
+                    }
+                    
+                    // Helper function to get CSRF token
+                    function getCookie(name) {
+                        let cookieValue = null;
+                        if (document.cookie && document.cookie !== '') {
+                            const cookies = document.cookie.split(';');
+                            for (let i = 0; i < cookies.length; i++) {
+                                const cookie = cookies[i].trim();
+                                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                                    break;
+                                }
+                            }
+                        }
+                        return cookieValue;
                     }
                     
                     // Initial render with all tickets
@@ -1664,6 +2042,9 @@ document.addEventListener('DOMContentLoaded', function() {
                                         </select>
                                         <button id="clear-checklist-filters" class="clear-filters-btn" title="Clear filters">
                                             <i class="fas fa-times"></i>
+                                        </button>
+                                        <button id="sync-checklist-linear" class="sync-linear-btn" title="Sync with Linear">
+                                            <i class="fas fa-sync"></i> Sync with Linear
                                         </button>
                                     </div>
                                 </div>
@@ -2348,6 +2729,398 @@ document.addEventListener('DOMContentLoaded', function() {
                         roleFilter.value = 'all';
                         renderChecklist();
                     });
+
+                    // Add Linear sync button event listener for checklist
+                    const syncChecklistLinearBtn = document.getElementById('sync-checklist-linear');
+                    if (syncChecklistLinearBtn) {
+                        syncChecklistLinearBtn.addEventListener('click', async function() {
+                            try {
+                                // First check if Linear API key is configured
+                                const configResponse = await fetch(`/projects/${projectId}/api/linear/teams/`);
+                                const configData = await configResponse.json();
+                                
+                                if (!configData.success) {
+                                    window.showToast(configData.error || 'Linear API key not configured. Please go to Integrations to add your Linear API key.', 'error');
+                                    return;
+                                }
+                                
+                                // Show project selection popup
+                                window.showLinearProjectSelectionPopup(projectId, configData.teams);
+                            } catch (error) {
+                                console.error('Error checking Linear configuration:', error);
+                                window.showToast('Error connecting to Linear. Please check your configuration.', 'error');
+                            }
+                        });
+                    }
+                    
+                    // Helper function to show toast notifications
+                    function showToast(message, type = 'info') {
+                        // Create toast element if it doesn't exist
+                        let toastContainer = document.getElementById('toast-container');
+                        if (!toastContainer) {
+                            toastContainer = document.createElement('div');
+                            toastContainer.id = 'toast-container';
+                            toastContainer.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 9999;';
+                            document.body.appendChild(toastContainer);
+                        }
+                        
+                        const toast = document.createElement('div');
+                        toast.className = `toast toast-${type}`;
+                        toast.style.cssText = 'background: #333; color: white; padding: 12px 24px; border-radius: 4px; margin-bottom: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); animation: slideIn 0.3s ease;';
+                        
+                        if (type === 'success') {
+                            toast.style.background = '#4CAF50';
+                        } else if (type === 'error') {
+                            toast.style.background = '#f44336';
+                        }
+                        
+                        toast.textContent = message;
+                        toastContainer.appendChild(toast);
+                        
+                        // Remove toast after 5 seconds
+                        setTimeout(() => {
+                            toast.style.animation = 'slideOut 0.3s ease';
+                            setTimeout(() => toast.remove(), 300);
+                        }, 5000);
+                    }
+                    
+                    // Helper function to get CSRF token
+                    function getCookie(name) {
+                        let cookieValue = null;
+                        if (document.cookie && document.cookie !== '') {
+                            const cookies = document.cookie.split(';');
+                            for (let i = 0; i < cookies.length; i++) {
+                                const cookie = cookies[i].trim();
+                                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                                    break;
+                                }
+                            }
+                        }
+                        return cookieValue;
+                    }
+                    
+                    // Function to show Linear project selection popup
+                    async function showLinearProjectSelectionPopup(projectId, teams) {
+                        // Create popup overlay
+                        const overlay = document.createElement('div');
+                        overlay.className = 'linear-popup-overlay';
+                        overlay.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 10000; display: flex; align-items: center; justify-content: center;';
+                        
+                        // Create popup container
+                        const popup = document.createElement('div');
+                        popup.className = 'linear-popup';
+                        popup.style.cssText = 'background: #2a2a2a; padding: 30px; border-radius: 8px; max-width: 500px; width: 90%; max-height: 80vh; overflow-y: auto; box-shadow: 0 4px 20px rgba(0,0,0,0.5);';
+                        
+                        // Check if we have teams
+                        if (!teams || teams.length === 0) {
+                            popup.innerHTML = `
+                                <h3 style="color: #fff; margin-bottom: 20px;">No Linear Teams Found</h3>
+                                <p style="color: #ccc; margin-bottom: 20px;">Please make sure your Linear API key has access to at least one team.</p>
+                                <button class="close-popup-btn" style="background: #666; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;">Close</button>
+                            `;
+                            overlay.appendChild(popup);
+                            document.body.appendChild(overlay);
+                            
+                            popup.querySelector('.close-popup-btn').addEventListener('click', () => {
+                                overlay.remove();
+                            });
+                            return;
+                        }
+                        
+                        // Get current project info
+                        const projectResponse = await fetch(`/projects/${projectId}/`);
+                        const projectData = await projectResponse.json();
+                        const currentLinearProjectId = projectData.linear_project_id;
+                        
+                        let popupHTML = `
+                            <h3 style="color: #fff; margin-bottom: 20px;">Sync with Linear Team</h3>
+                            <div class="linear-teams-container">
+                        `;
+                        
+                        // Add team selection if multiple teams
+                        if (teams.length > 1) {
+                            popupHTML += `
+                                <div style="margin-bottom: 20px;">
+                                    <label style="color: #ccc; display: block; margin-bottom: 8px;">Select Team:</label>
+                                    <select id="linear-team-select" style="width: 100%; padding: 8px; background: #1a1a1a; border: 1px solid #444; color: #fff; border-radius: 4px;">
+                                        ${teams.map(team => `<option value="${team.id}">${team.name}</option>`).join('')}
+                                    </select>
+                                </div>
+                            `;
+                        }
+                        
+                        popupHTML += `
+                            <div style="margin-bottom: 20px;">
+                                <label style="color: #ccc; display: block; margin-bottom: 8px;">Select Project:</label>
+                                <div id="linear-projects-loading" style="color: #888; text-align: center; padding: 20px;">
+                                    <i class="fas fa-spinner fa-spin"></i> Loading projects...
+                                </div>
+                                <select id="linear-project-select" style="width: 100%; padding: 8px; background: #1a1a1a; border: 1px solid #444; color: #fff; border-radius: 4px; display: none;">
+                                    <option value="">Select a project...</option>
+                                </select>
+                            </div>
+                            
+                            <div style="margin-bottom: 20px;">
+                                <button id="create-new-project-btn" style="background: #5856d6; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin-right: 10px;">
+                                    <i class="fas fa-plus"></i> Create New Project
+                                </button>
+                            </div>
+                            
+                            <div id="new-project-form" style="display: none; margin-bottom: 20px; padding: 20px; background: #1a1a1a; border-radius: 4px;">
+                                <h4 style="color: #fff; margin-bottom: 15px;">Create New Linear Project</h4>
+                                <input type="text" id="new-project-name" placeholder="Project Name" style="width: 100%; padding: 8px; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 4px; margin-bottom: 10px;">
+                                <textarea id="new-project-description" placeholder="Project Description (optional)" style="width: 100%; padding: 8px; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 4px; min-height: 80px; margin-bottom: 10px;"></textarea>
+                                <button id="confirm-create-project" style="background: #4CAF50; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-right: 10px;">Create</button>
+                                <button id="cancel-create-project" style="background: #666; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Cancel</button>
+                            </div>
+                            
+                            <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                                <button class="cancel-popup-btn" style="background: #666; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;">Cancel</button>
+                                <button class="confirm-popup-btn" style="background: #5856d6; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;">Sync with Selected Team</button>
+                            </div>
+                        </div>
+                        `;
+                        
+                        popup.innerHTML = popupHTML;
+                        overlay.appendChild(popup);
+                        document.body.appendChild(overlay);
+                        
+                        // Elements
+                        const teamSelect = popup.querySelector('#linear-team-select');
+                        const projectSelect = popup.querySelector('#linear-project-select');
+                        const projectsLoading = popup.querySelector('#linear-projects-loading');
+                        const createNewBtn = popup.querySelector('#create-new-project-btn');
+                        const newProjectForm = popup.querySelector('#new-project-form');
+                        const confirmBtn = popup.querySelector('.confirm-popup-btn');
+                        const cancelBtn = popup.querySelector('.cancel-popup-btn');
+                        
+                        // Load projects for the selected team
+                        async function loadProjects(teamId) {
+                            projectsLoading.style.display = 'block';
+                            projectSelect.style.display = 'none';
+                            
+                            const response = await fetch(`/projects/${projectId}/api/linear/projects/?team_id=${teamId}`);
+                            const data = await response.json();
+                            
+                            if (data.success && data.projects) {
+                                projectSelect.innerHTML = '<option value="">Select a project...</option>';
+                                data.projects.forEach(project => {
+                                    const selected = project.id === currentLinearProjectId ? 'selected' : '';
+                                    projectSelect.innerHTML += `<option value="${project.id}" ${selected}>${project.name}</option>`;
+                                });
+                                projectsLoading.style.display = 'none';
+                                projectSelect.style.display = 'block';
+                                
+                                // Enable confirm button if a project is already selected
+                                if (currentLinearProjectId && projectSelect.value) {
+                                    confirmBtn.disabled = false;
+                                }
+                            }
+                        }
+                        
+                        // Initial load
+                        const initialTeamId = teams.length === 1 ? teams[0].id : teamSelect.value;
+                        loadProjects(initialTeamId);
+                        
+                        // Team change handler
+                        if (teamSelect) {
+                            teamSelect.addEventListener('change', (e) => {
+                                loadProjects(e.target.value);
+                            });
+                        }
+                        
+                        // Project selection handler
+                        projectSelect.addEventListener('change', (e) => {
+                            confirmBtn.disabled = !e.target.value;
+                        });
+                        
+                        // Create new project handlers
+                        createNewBtn.addEventListener('click', () => {
+                            newProjectForm.style.display = 'block';
+                            createNewBtn.style.display = 'none';
+                        });
+                        
+                        popup.querySelector('#cancel-create-project').addEventListener('click', () => {
+                            newProjectForm.style.display = 'none';
+                            createNewBtn.style.display = 'block';
+                        });
+                        
+                        popup.querySelector('#confirm-create-project').addEventListener('click', async () => {
+                            const projectName = popup.querySelector('#new-project-name').value;
+                            const projectDescription = popup.querySelector('#new-project-description').value;
+                            
+                            if (!projectName) {
+                                showToast('Please enter a project name', 'error');
+                                return;
+                            }
+                            
+                            const currentTeamId = teams.length === 1 ? teams[0].id : teamSelect.value;
+                            
+                            // Create the project via API
+                            showToast('Creating new Linear project...', 'info');
+                            
+                            try {
+                                const createResponse = await fetch(`/projects/${projectId}/api/linear/create-project/`, {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'X-CSRFToken': getCookie('csrftoken')
+                                    },
+                                    body: JSON.stringify({
+                                        team_id: currentTeamId,
+                                        name: projectName,
+                                        description: projectDescription
+                                    })
+                                });
+                                
+                                const createData = await createResponse.json();
+                                
+                                if (createData.success) {
+                                    showToast('Linear project created successfully!', 'success');
+                                    
+                                    // Hide the form
+                                    newProjectForm.style.display = 'none';
+                                    createNewBtn.style.display = 'block';
+                                    
+                                    // Clear form fields
+                                    popup.querySelector('#new-project-name').value = '';
+                                    popup.querySelector('#new-project-description').value = '';
+                                    
+                                    // Reload projects and select the new one
+                                    await loadProjects(currentTeamId);
+                                    
+                                    // Select the newly created project
+                                    if (createData.project && createData.project.id) {
+                                        projectSelect.value = createData.project.id;
+                                        confirmBtn.disabled = false;
+                                    }
+                                } else {
+                                    showToast(createData.error || 'Failed to create Linear project', 'error');
+                                }
+                            } catch (error) {
+                                console.error('Error creating Linear project:', error);
+                                showToast('Error creating Linear project', 'error');
+                            }
+                        });
+                        
+                        // Cancel handler
+                        cancelBtn.addEventListener('click', () => {
+                            overlay.remove();
+                        });
+                        
+                        // Confirm handler
+                        confirmBtn.addEventListener('click', async () => {
+                            const selectedTeamId = teams.length === 1 ? teams[0].id : teamSelect.value;
+                            
+                            if (!selectedTeamId) {
+                                showToast('Please select a team', 'error');
+                                return;
+                            }
+                            
+                            // Save the selected team to the backend
+                            const saveResponse = await fetch(`/projects/${projectId}/update/`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/x-www-form-urlencoded',
+                                    'X-CSRFToken': getCookie('csrftoken')
+                                },
+                                body: new URLSearchParams({
+                                    'name': projectData.name || '',
+                                    'description': projectData.description || '',
+                                    'linear_sync_enabled': 'on',
+                                    'linear_team_id': selectedTeamId,
+                                    'linear_project_id': ''
+                                })
+                            });
+                            
+                            if (saveResponse.ok) {
+                                // Close popup
+                                overlay.remove();
+                                
+                                // Show progress overlay
+                                const progressOverlay = document.createElement('div');
+                                progressOverlay.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 10000;';
+                                
+                                const progressContainer = document.createElement('div');
+                                progressContainer.style.cssText = 'background: #2a2a2a; padding: 30px; border-radius: 8px; min-width: 400px; text-align: center;';
+                                
+                                progressContainer.innerHTML = `
+                                    <h3 style="color: #fff; margin-bottom: 20px;">Syncing with Linear</h3>
+                                    <div style="margin-bottom: 15px;">
+                                        <div style="background: #444; height: 20px; border-radius: 10px; overflow: hidden;">
+                                            <div id="sync-progress-bar-2" style="background: #5856d6; height: 100%; width: 0%; transition: width 0.3s ease;"></div>
+                                        </div>
+                                    </div>
+                                    <p id="sync-progress-text-2" style="color: #ccc; margin: 0;">Initializing sync...</p>
+                                `;
+                                
+                                progressOverlay.appendChild(progressContainer);
+                                document.body.appendChild(progressOverlay);
+                                
+                                // Simulate progress while waiting for response
+                                const progressBar = document.getElementById('sync-progress-bar-2');
+                                const progressText = document.getElementById('sync-progress-text-2');
+                                
+                                progressBar.style.width = '20%';
+                                progressText.textContent = 'Connecting to Linear...';
+                                
+                                try {
+                                    const syncResponse = await fetch(`/projects/${projectId}/api/linear/sync/`, {
+                                        method: 'POST',
+                                        headers: {
+                                            'Content-Type': 'application/json',
+                                            'X-CSRFToken': getCookie('csrftoken')
+                                        },
+                                    });
+                                    
+                                    progressBar.style.width = '60%';
+                                    progressText.textContent = 'Processing items...';
+                                    
+                                    const syncData = await syncResponse.json();
+                                    
+                                    progressBar.style.width = '100%';
+                                    
+                                    if (syncData.success) {
+                                        progressText.textContent = `Synced ${syncData.results?.created || 0} items successfully!`;
+                                        
+                                        // Show completion for a moment
+                                        setTimeout(() => {
+                                            progressOverlay.remove();
+                                            showToast(syncData.message || 'Tasks synced successfully!', 'success');
+                                            ArtifactsLoader.loadChecklist(projectId);
+                                        }, 1500);
+                                    } else {
+                                        progressText.textContent = 'Sync failed!';
+                                        progressBar.style.background = '#f44336';
+                                        
+                                        setTimeout(() => {
+                                            progressOverlay.remove();
+                                            showToast(syncData.error || 'Failed to sync tasks', 'error');
+                                        }, 1500);
+                                    }
+                                } catch (error) {
+                                    progressBar.style.width = '100%';
+                                    progressBar.style.background = '#f44336';
+                                    progressText.textContent = 'Network error!';
+                                    
+                                    setTimeout(() => {
+                                        progressOverlay.remove();
+                                        showToast('Network error during sync', 'error');
+                                    }, 1500);
+                                }
+                            } else {
+                                showToast('Failed to save Linear team selection', 'error');
+                            }
+                        });
+                        
+                        // Close on overlay click
+                        overlay.addEventListener('click', (e) => {
+                            if (e.target === overlay) {
+                                overlay.remove();
+                            }
+                        });
+                    }
 
                     // Initial render
                     renderChecklist();
@@ -3709,4 +4482,5 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // ArtifactsLoader is now ready to use
     console.log('[ArtifactsLoader] Loaded and ready');
-})();
+    
+}); // End of DOMContentLoaded
