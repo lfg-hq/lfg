@@ -839,7 +839,7 @@ async def get_prd(project_id):
         return {
             "is_notification": True,
             "notification_type": "prd",
-            "message_to_agent": f"Here is the existing version of the PRD: {prd_content}  Please update this as needed."
+            "message_to_agent": f"Here is the existing version of the PRD: {prd_content}. Please proceed with users request."
         }
     except ProjectPRD.DoesNotExist:
         return {
@@ -1052,7 +1052,7 @@ async def get_implementation(project_id):
         return {
             "is_notification": True,
             "notification_type": "implementation",
-            "message_to_agent": f"Here is the existing version of the Implementation: {implementation_content}  Please update this as needed."
+            "message_to_agent": f"Here is the existing version of the Implementation: {implementation_content}. Proceed with user's request."
         }
     except ProjectImplementation.DoesNotExist:
         return {

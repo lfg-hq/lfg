@@ -657,14 +657,12 @@ class OpenAIProvider(AIProvider):
                             print("\n\n[TICKET MODE ACTIVATED - OpenAI]")
                             # Clear buffer up to and including the tag
                             tag_pos = buffer.find("<lfg-ticket>")
+                            # Only capture content after the tag
                             remaining_buffer = buffer[tag_pos + len("<lfg-ticket>"):]
-                            # Clean any leading '>' and whitespace from remaining buffer
-                            remaining_buffer = remaining_buffer.lstrip()
-                            if remaining_buffer.startswith('>'):
-                                remaining_buffer = remaining_buffer[1:].lstrip()
-                            # Reset ticket data and capture any remaining content
-                            ticket_data = remaining_buffer
                             buffer = ""  # Clear the buffer since we've processed it
+                            # Initialize ticket_data as empty - we'll capture actual content in subsequent chunks
+                            ticket_data = ""
+                            print(f"[TICKET MODE - OpenAI] Cleared buffer, ready to capture ticket JSON")
                         
                         if "</lfg-ticket>" in buffer and current_mode == "ticket":
                             current_mode = ""
@@ -748,17 +746,25 @@ class OpenAIProvider(AIProvider):
                             notification_json = json.dumps(implementation_stream_notification)
                             yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
                         elif current_mode == "ticket":
-                            # Skip the closing '>' of the tag if it's the first character and ticket_data is empty
-                            if ticket_data == "" and text.startswith('>'):
-                                text = text[1:]
-                                print(f"[SKIPPING '>' - OpenAI] Remaining text: {repr(text)}")
-                            # Also check if ticket_data only contains whitespace and we're getting '>'
-                            elif ticket_data.strip() == "" and text.strip().startswith('>'):
-                                text = text.lstrip()
-                                if text.startswith('>'):
-                                    text = text[1:]
-                                print(f"[SKIPPING '>' after whitespace - OpenAI] Remaining text: {repr(text)}")
-                            ticket_data += text
+                            # For ticket mode, we need to be extra careful about initial content
+                            # The JSON should start with { after any whitespace
+                            if ticket_data == "":
+                                # First chunk after entering ticket mode
+                                # Strip any leading whitespace and '>' characters
+                                clean_text = text.lstrip()
+                                if clean_text.startswith('>'):
+                                    clean_text = clean_text[1:].lstrip()
+                                # Only start capturing when we see the opening {
+                                if '{' in clean_text:
+                                    start_pos = clean_text.find('{')
+                                    ticket_data = clean_text[start_pos:]
+                                    print(f"[TICKET MODE - OpenAI] Started capturing from '{{'")
+                                else:
+                                    # Skip this chunk if no { found yet
+                                    print(f"[TICKET MODE - OpenAI] Skipping pre-JSON content: {repr(text)}")
+                            else:
+                                # Already capturing JSON
+                                ticket_data += text
                             print(f"\n\n\n[CAPTURING TICKET DATA - OpenAI]: {repr(text)}")
                             print(f"[TICKET DATA SO FAR - OpenAI]: {repr(ticket_data[:100])}...")
                         
@@ -1295,14 +1301,10 @@ class AnthropicProvider(AIProvider):
                                     print("\n\n[PRD MODE ACTIVATED]")
                                     # Clear buffer up to and including the tag
                                     tag_pos = buffer.find("<lfg-prd>")
-                                    remaining_buffer = buffer[tag_pos + len("<lfg-prd>"):]
-                                    # Clean any leading '>' and whitespace from remaining buffer
-                                    remaining_buffer = remaining_buffer.lstrip()
-                                    if remaining_buffer.startswith('>'):
-                                        remaining_buffer = remaining_buffer[1:].lstrip()
-                                    # Reset prd data and capture any remaining content
-                                    prd_data = remaining_buffer
                                     buffer = ""  # Clear the buffer since we've processed it
+                                    # Initialize prd_data as empty - we'll capture actual content in subsequent chunks
+                                    prd_data = ""
+                                    print(f"[PRD MODE] Cleared buffer, ready to capture PRD content")
                                     
                                     # Show loading indicator in chat
                                     yield "\n\n*Generating PRD... (check the PRD tab for live updates)*\n\n"
@@ -1338,14 +1340,10 @@ class AnthropicProvider(AIProvider):
                                     print("\n\n[IMPLEMENTATION MODE ACTIVATED]")
                                     # Clear buffer up to and including the tag
                                     tag_pos = buffer.find("<lfg-plan>")
-                                    remaining_buffer = buffer[tag_pos + len("<lfg-plan>"):]
-                                    # Clean any leading '>' and whitespace from remaining buffer
-                                    remaining_buffer = remaining_buffer.lstrip()
-                                    if remaining_buffer.startswith('>'):
-                                        remaining_buffer = remaining_buffer[1:].lstrip()
-                                    # Reset implementation data and capture any remaining content
-                                    implementation_data = remaining_buffer
                                     buffer = ""  # Clear the buffer since we've processed it
+                                    # Initialize implementation_data as empty - we'll capture actual content in subsequent chunks
+                                    implementation_data = ""
+                                    print(f"[IMPLEMENTATION MODE] Cleared buffer, ready to capture implementation content")
                                     
                                     # Show loading indicator in chat
                                     yield "\n\n*Generating implementation plan... (check the Implementation tab for live updates)*\n\n"
@@ -1382,14 +1380,12 @@ class AnthropicProvider(AIProvider):
                                     print("\n\n[TICKET MODE ACTIVATED]")
                                     # Clear buffer up to and including the tag
                                     tag_pos = buffer.find("<lfg-ticket>")
+                                    # Only capture content after the tag
                                     remaining_buffer = buffer[tag_pos + len("<lfg-ticket>"):]
-                                    # Clean any leading '>' and whitespace from remaining buffer
-                                    remaining_buffer = remaining_buffer.lstrip()
-                                    if remaining_buffer.startswith('>'):
-                                        remaining_buffer = remaining_buffer[1:].lstrip()
-                                    # Reset ticket data and capture any remaining content
-                                    ticket_data = remaining_buffer
                                     buffer = ""  # Clear the buffer since we've processed it
+                                    # Initialize ticket_data as empty - we'll capture actual content in subsequent chunks
+                                    ticket_data = ""
+                                    print(f"[TICKET MODE] Cleared buffer, ready to capture ticket JSON")
                                 
                                 if "</lfg-ticket>" in buffer and current_mode == "ticket":
                                     current_mode = ""
@@ -1446,45 +1442,98 @@ class AnthropicProvider(AIProvider):
                                 # print(f"\n\nCurrent mode: {current_mode}, Buffer tail: {buffer[-20:]}")
                                 
                                 if current_mode == "prd":
-                                    # Skip the closing '>' of the tag if it's the first character and prd_data is empty
-                                    if prd_data == "" and text.startswith('>'):
-                                        text = text[1:]
-                                    prd_data += text
+                                    # For PRD mode, we need to skip initial garbage content
+                                    should_stream = True
+                                    if prd_data == "":
+                                        # First chunk after entering PRD mode
+                                        # Skip content that looks like tag remnants
+                                        clean_text = text.lstrip()
+                                        if clean_text.startswith('>'):
+                                            clean_text = clean_text[1:].lstrip()
+                                        # If we see #<lfg-prd>, keep the # but remove <lfg-prd>
+                                        if '<lfg-prd>' in clean_text:
+                                            clean_text = clean_text.replace('<lfg-prd>', '')
+                                        # Only start capturing when we see actual PRD content
+                                        if clean_text and not clean_text.startswith('<'):
+                                            prd_data = clean_text
+                                            text = clean_text  # Update text for streaming
+                                            print(f"[PRD MODE] Started capturing PRD content")
+                                        else:
+                                            print(f"[PRD MODE] Skipping initial content: {repr(text)}")
+                                            should_stream = False  # Don't stream this chunk
+                                    else:
+                                        # Already capturing PRD content
+                                        prd_data += text
                                     print(f"\n\n\n[CAPTURING PRD DATA]: {text}")
                                     
-                                    # Stream PRD content to the panel
-                                    prd_stream_notification = {
-                                        "is_notification": True,
-                                        "notification_type": "prd_stream",
-                                        "content_chunk": text,
-                                        "is_complete": False,
-                                        "notification_marker": "__NOTIFICATION__"
-                                    }
-                                    notification_json = json.dumps(prd_stream_notification)
-                                    yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                    # Stream PRD content to the panel only if we should
+                                    if should_stream:
+                                        prd_stream_notification = {
+                                            "is_notification": True,
+                                            "notification_type": "prd_stream",
+                                            "content_chunk": text,
+                                            "is_complete": False,
+                                            "notification_marker": "__NOTIFICATION__"
+                                        }
+                                        notification_json = json.dumps(prd_stream_notification)
+                                        yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
                                 elif current_mode == "implementation":
-                                    # Skip the closing '>' of the tag if it's the first character and implementation_data is empty
-                                    if implementation_data == "" and text.startswith('>'):
-                                        text = text[1:]
-                                    implementation_data += text
+                                    # For implementation mode, we need to skip initial garbage content
+                                    should_stream = True
+                                    if implementation_data == "":
+                                        # First chunk after entering implementation mode
+                                        # Skip content that looks like tag remnants
+                                        clean_text = text.lstrip()
+                                        if clean_text.startswith('>'):
+                                            clean_text = clean_text[1:].lstrip()
+                                        # Remove <lfg-plan> tag if it appears in the text
+                                        if '<lfg-plan>' in clean_text:
+                                            clean_text = clean_text.replace('<lfg-plan>', '')
+                                        # Only start capturing when we see actual implementation content
+                                        if clean_text and not clean_text.startswith('<'):
+                                            implementation_data = clean_text
+                                            text = clean_text  # Update text for streaming
+                                            print(f"[IMPLEMENTATION MODE] Started capturing implementation content")
+                                        else:
+                                            print(f"[IMPLEMENTATION MODE] Skipping initial content: {repr(text)}")
+                                            should_stream = False  # Don't stream this chunk
+                                    else:
+                                        # Already capturing implementation content
+                                        implementation_data += text
                                     print(f"\n\n\n[CAPTURING IMPLEMENTATION DATA]: {text}")
                                     
-                                    # Stream implementation content to the panel
-                                    implementation_stream_notification = {
-                                        "is_notification": True,
-                                        "notification_type": "implementation_stream",
-                                        "content_chunk": text,
-                                        "is_complete": False,
-                                        "notification_marker": "__NOTIFICATION__"
-                                    }
-                                    notification_json = json.dumps(implementation_stream_notification)
-                                    yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                    # Stream implementation content to the panel only if we should
+                                    if should_stream:
+                                        implementation_stream_notification = {
+                                            "is_notification": True,
+                                            "notification_type": "implementation_stream",
+                                            "content_chunk": text,
+                                            "is_complete": False,
+                                            "notification_marker": "__NOTIFICATION__"
+                                        }
+                                        notification_json = json.dumps(implementation_stream_notification)
+                                        yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
                                 elif current_mode == "ticket":
-                                    # Skip the closing '>' of the tag if it's the first character and ticket_data is empty
-                                    if ticket_data == "" and text.startswith('>'):
-                                        text = text[1:]
-                                    ticket_data += text
-                                    print(f"\n\n\n[CAPTURING TICKET DATA]: {text}")
+                                    # For ticket mode, we need to be extra careful about initial content
+                                    # The JSON should start with { after any whitespace
+                                    if ticket_data == "":
+                                        # First chunk after entering ticket mode
+                                        # Strip any leading whitespace and '>' characters
+                                        clean_text = text.lstrip()
+                                        if clean_text.startswith('>'):
+                                            clean_text = clean_text[1:].lstrip()
+                                        # Only start capturing when we see the opening {
+                                        if '{' in clean_text:
+                                            start_pos = clean_text.find('{')
+                                            ticket_data = clean_text[start_pos:]
+                                            print(f"[TICKET MODE] Started capturing from '{{'")
+                                        else:
+                                            # Skip this chunk if no { found yet
+                                            print(f"[TICKET MODE] Skipping pre-JSON content: {repr(text)}")
+                                    else:
+                                        # Already capturing JSON
+                                        ticket_data += text
+                                    print(f"\n\n\n[CAPTURING TICKET DATA]: {repr(text)}")
                                 
                                 # Handle buffering to prevent incomplete tags from being sent
                                 if current_mode not in ["prd", "implementation", "ticket"]:
