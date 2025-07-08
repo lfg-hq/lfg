@@ -636,6 +636,34 @@ def linear_projects_api(request, project_id):
 
 
 @login_required
+def delete_checklist_item_api(request, project_id, item_id):
+    """API endpoint to delete a checklist item"""
+    if request.method != 'DELETE':
+        return JsonResponse({'success': False, 'error': 'Method not allowed'}, status=405)
+    
+    project = get_object_or_404(Project, id=project_id, owner=request.user)
+    
+    try:
+        checklist_item = ProjectChecklist.objects.get(id=item_id, project=project)
+        checklist_item.delete()
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Checklist item deleted successfully'
+        })
+    except ProjectChecklist.DoesNotExist:
+        return JsonResponse({
+            'success': False,
+            'error': 'Checklist item not found'
+        }, status=404)
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
 def linear_create_project_api(request, project_id):
     """API view to create a new Linear project"""
     from .linear_sync import LinearSyncService

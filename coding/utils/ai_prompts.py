@@ -571,41 +571,37 @@ Example pattern:
 **Creating Ticket #1: Database Schema Setup** - Setting up Prisma models and SQLite database
 
 <lfg-ticket>
-{
-  "name": "Database Schema Setup",
-  "description": "Initialize SQLite database with Prisma ORM and create all required models based on the technical implementation plan",
-  "role": "agent",
-  "ui_requirements": {},
-  "component_specs": {},
-  "acceptance_criteria": [
-    "Prisma schema file created with all models",
-    "Database migrations generated and applied",
-    "Seed data script created"
-  ],
-  "dependencies": [],
-  "priority": "High"
-}
+ <name>Database Schema Setup</name>
+ <description>Initialize SQLite database with Prisma ORM and create all required models based on the technical implementation plan</description>
+ <role>agent</role>
+ <ui_requirements />
+ <component_specs />
+ <acceptance_criteria>
+   <criterion>Prisma schema file created with all models</criterion>
+   <criterion>Database migrations generated and applied</criterion>
+   <criterion>Seed data script created</criterion>
+ </acceptance_criteria>
+ <dependencies />
+ <priority>High</priority>
 </lfg-ticket>
 
 **Creating Ticket #2: Environment Variables Setup** - Configure required API keys and secrets
 
 <lfg-ticket>
-{
-  "name": "Environment Variables Setup",
-  "description": "Create .env file with all required API keys and configuration values for third-party services",
-  "role": "user",
-  "ui_requirements": {},
-  "component_specs": {},
-  "acceptance_criteria": [
-    ".env.example file created with all required variables",
-    "User has added Google OAuth credentials",
-    "User has added Stripe API keys",
-    "User has added SendGrid API key",
-    "User has added AWS S3 credentials"
-  ],
-  "dependencies": [],
-  "priority": "High"
-}
+ <name>Environment Variables Setup</name>
+ <description>Create .env file with all required API keys and configuration values for third-party services</description>
+ <role>user</role>
+ <ui_requirements />
+ <component_specs />
+ <acceptance_criteria>
+   <criterion>.env.example file created with all required variables</criterion>
+   <criterion>User has added Google OAuth credentials</criterion>
+   <criterion>User has added Stripe API keys</criterion>
+   <criterion>User has added SendGrid API key</criterion>
+   <criterion>User has added AWS S3 credentials</criterion>
+ </acceptance_criteria>
+ <dependencies />
+ <priority>High</priority>
 </lfg-ticket>
 
 ### Ticket Format Requirements:
@@ -628,6 +624,7 @@ Example pattern:
 8. **Testing & Polish** (agent)
 
 ## CRITICAL INSTRUCTIONS:
+0. Note that there are no separate functions to create prd, create implementation plan, create tickets. You have to generate them with the defined tags.
 1. Skip greeting, if user has already provided a request.
 2. ALWAYS capture project name before generating PRD
 3. **ALWAYS write announcement BEFORE calling get_prd() or get_technical_implementation()**

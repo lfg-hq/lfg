@@ -20,6 +20,7 @@ urlpatterns = [
     # Removed - use project_checklist_api instead
     path('<int:project_id>/api/checklist/', views.project_checklist_api, name='project_checklist_api'),
     path('<int:project_id>/api/checklist/update/', views.update_checklist_item_api, name='update_checklist_item_api'),
+    path('<int:project_id>/api/checklist/<int:item_id>/delete/', views.delete_checklist_item_api, name='delete_checklist_item_api'),
     path('<int:project_id>/api/server-configs/', views.project_server_configs_api, name='project_server_configs_api'),
     path('<int:project_id>/api/check-servers/', views.check_server_status_api, name='check_server_status_api'),
     path('<int:project_id>/api/tool-call-history/', views.project_tool_call_history_api, name='project_tool_call_history_api'),

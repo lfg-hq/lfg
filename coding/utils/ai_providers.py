@@ -5,6 +5,7 @@ import requests
 import anthropic
 import logging
 import asyncio
+import re
 from django.conf import settings
 from google import genai
 from google.genai.types import (
@@ -22,6 +23,9 @@ from django.contrib.auth.models import User
 import traceback # Import traceback for better error logging
 from channels.db import database_sync_to_async
 from coding.utils.ai_tools import tools_ticket
+
+import xml.etree.ElementTree as ET
+
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -587,6 +591,9 @@ class OpenAIProvider(AIProvider):
                             print("\n\n[PRD MODE DEACTIVATED - OpenAI]")
                             # Find where the closing tag starts in the buffer
                             tag_pos = buffer.find("</lfg-prd>")
+                            # Clear buffer up to and including the tag
+                            buffer = buffer[tag_pos + len("</lfg-prd>"):]
+                            
                             # Check if we've captured part of the closing tag in prd_data
                             # by looking for incomplete tag patterns at the end
                             incomplete_patterns = ["<", "</", "</l", "</lf", "</lfg", "</lfg-", "</lfg-p", "</lfg-pr", "</lfg-prd"]
@@ -594,8 +601,6 @@ class OpenAIProvider(AIProvider):
                                 if prd_data.endswith(pattern):
                                     prd_data = prd_data[:-len(pattern)]
                                     break
-                            # Clear buffer up to and including the tag
-                            buffer = buffer[tag_pos + len("</lfg-prd>"):]
                             
                             # Send completion notification for PRD stream
                             prd_complete_notification = {
@@ -630,6 +635,9 @@ class OpenAIProvider(AIProvider):
                             print("\n\n[IMPLEMENTATION MODE DEACTIVATED - OpenAI]")
                             # Find where the closing tag starts in the buffer
                             tag_pos = buffer.find("</lfg-plan>")
+                            # Clear buffer up to and including the tag
+                            buffer = buffer[tag_pos + len("</lfg-plan>"):]
+                            
                             # Check if we've captured part of the closing tag in implementation_data
                             # by looking for incomplete tag patterns at the end
                             incomplete_patterns = ["<", "</", "</l", "</lf", "</lfg", "</lfg-", "</lfg-p", "</lfg-pl", "</lfg-pla", "</lfg-plan"]
@@ -637,8 +645,6 @@ class OpenAIProvider(AIProvider):
                                 if implementation_data.endswith(pattern):
                                     implementation_data = implementation_data[:-len(pattern)]
                                     break
-                            # Clear buffer up to and including the tag
-                            buffer = buffer[tag_pos + len("</lfg-plan>"):]
                             
                             # Send completion notification for implementation stream
                             implementation_complete_notification = {
@@ -657,58 +663,139 @@ class OpenAIProvider(AIProvider):
                             print("\n\n[TICKET MODE ACTIVATED - OpenAI]")
                             # Clear buffer up to and including the tag
                             tag_pos = buffer.find("<lfg-ticket>")
-                            # Only capture content after the tag
-                            remaining_buffer = buffer[tag_pos + len("<lfg-ticket>"):]
                             buffer = ""  # Clear the buffer since we've processed it
                             # Initialize ticket_data as empty - we'll capture actual content in subsequent chunks
                             ticket_data = ""
                             print(f"[TICKET MODE - OpenAI] Cleared buffer, ready to capture ticket JSON")
                         
                         if "</lfg-ticket>" in buffer and current_mode == "ticket":
-                            current_mode = ""
-                            print("\n\n[TICKET MODE DEACTIVATED - OpenAI]")
-                            # Find where the closing tag starts in the buffer
-                            tag_pos = buffer.find("</lfg-ticket>")
-                            # Check if we've captured part of the closing tag in ticket_data
-                            # by looking for incomplete tag patterns at the end
-                            incomplete_patterns = ["<", "</", "</l", "</lf", "</lfg", "</lfg-", "</lfg-t", "</lfg-ti", "</lfg-tic", "</lfg-tick", "</lfg-ticke", "</lfg-ticket"]
-                            for pattern in reversed(incomplete_patterns):
-                                if ticket_data.endswith(pattern):
-                                    ticket_data = ticket_data[:-len(pattern)]
-                                    break
-                            # Clear buffer up to and including the tag
-                            buffer = buffer[tag_pos + len("</lfg-ticket>"):]
-                            
-                            # Parse and save the ticket
-                            try:
-                                # Import the save function
-                                from coding.utils.ai_functions import save_ticket_from_stream
+                            # Before processing, ensure we have a complete JSON object
+                            # Check if ticket_data ends with a closing brace
+                            trimmed_data = ticket_data.rstrip()
+                            if trimmed_data and not trimmed_data.endswith('}'):
+                                # JSON is not complete yet, wait for more content
+                                print(f"[TICKET MODE - OpenAI] Detected closing tag but JSON not complete yet. Last chars: {repr(trimmed_data[-20:])}")
+                            else:
+                                current_mode = ""
+                                print("\n\n[TICKET MODE DEACTIVATED - OpenAI]")
+                                # Find where the closing tag starts in the buffer
+                                tag_pos = buffer.find("</lfg-ticket>")
+                                # Clear buffer up to and including the tag
+                                buffer = buffer[tag_pos + len("</lfg-ticket>"):]
                                 
-                                # Clean ticket data before parsing
-                                cleaned_ticket_data = ticket_data.strip()
-                                # Remove any leading '>' that might have slipped through
-                                if cleaned_ticket_data.startswith('>'):
-                                    cleaned_ticket_data = cleaned_ticket_data[1:].strip()
+                                # Check if we've captured part of the closing tag in ticket_data
+                                # by looking for incomplete tag patterns at the end
+                                incomplete_patterns = ["<", "</", "</l", "</lf", "</lfg", "</lfg-", "</lfg-t", "</lfg-ti", "</lfg-tic", "</lfg-tick", "</lfg-ticke", "</lfg-ticket"]
+                                for pattern in reversed(incomplete_patterns):
+                                    if ticket_data.endswith(pattern):
+                                        ticket_data = ticket_data[:-len(pattern)]
+                                        break
                                 
-                                # Parse the JSON ticket data
-                                ticket_json = json.loads(cleaned_ticket_data)
+                                # Parse and save the ticket
+                                try:
+                                    # Import the save function
+                                    from coding.utils.ai_functions import save_ticket_from_stream
+                                    
+                                    # Clean ticket data before parsing
+                                    cleaned_ticket_data = ticket_data.strip()
                                 
-                                # Save the ticket to database
-                                save_result = await save_ticket_from_stream(ticket_json, project_id)
-                                logger.info(f"OpenAI Ticket save result: {save_result}")
+                                    # Remove any leading '>' that might have slipped through
+                                    if cleaned_ticket_data.startswith('>'):
+                                        cleaned_ticket_data = cleaned_ticket_data[1:].strip()
+                                    
+                                    # Additional cleaning: remove any trailing incomplete closing tags
+                                    # This handles cases where we might have captured part of </lfg-ticket>
+                                    closing_tag_fragments = ["<", "</", "</l", "</lf", "</lfg", "</lfg-", "</lfg-t", "</lfg-ti", "</lfg-tic", "</lfg-tick", "</lfg-ticke", "</lfg-ticket"]
+                                    for fragment in closing_tag_fragments:
+                                        if cleaned_ticket_data.endswith(fragment):
+                                            cleaned_ticket_data = cleaned_ticket_data[:-len(fragment)].rstrip()
+                                            logger.debug(f"Removed trailing fragment '{fragment}' from ticket data")
+                                            break
                                 
-                                # Yield notification if save was successful
-                                if save_result.get("is_notification"):
-                                    notification_json = json.dumps(save_result)
-                                    yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
-                            except json.JSONDecodeError as e:
-                                logger.error(f"Error parsing ticket JSON from OpenAI stream: {str(e)}")
-                                logger.error(f"Ticket data was: {ticket_data}")
-                            except Exception as e:
-                                logger.error(f"Error saving ticket from OpenAI stream: {str(e)}")
+                                    # Try to fix common JSON issues
+                                    # 1. Ensure the JSON ends with a closing brace
+                                    if not cleaned_ticket_data.rstrip().endswith('}'):
+                                        # Count opening and closing braces
+                                        open_braces = cleaned_ticket_data.count('{')
+                                        close_braces = cleaned_ticket_data.count('}')
+                                        if open_braces > close_braces:
+                                            # Add missing closing braces
+                                            cleaned_ticket_data += '}' * (open_braces - close_braces)
+                                            logger.warning(f"Added {open_braces - close_braces} missing closing brace(s) to ticket JSON")
+                                
+                                    # 2. Fix unterminated strings by ensuring quotes are balanced
+                                    # This is a simple check - count quotes excluding escaped ones
+                                    quote_count = 0
+                                    i = 0
+                                    while i < len(cleaned_ticket_data):
+                                        if cleaned_ticket_data[i] == '"' and (i == 0 or cleaned_ticket_data[i-1] != '\\'):
+                                            quote_count += 1
+                                        i += 1
+                                
+                                    if quote_count % 2 != 0:
+                                        # Odd number of quotes - likely unterminated string
+                                        # Try to add a closing quote before the last closing brace
+                                        if cleaned_ticket_data.rstrip().endswith('}'):
+                                            last_brace_pos = cleaned_ticket_data.rfind('}')
+                                            cleaned_ticket_data = cleaned_ticket_data[:last_brace_pos] + '"' + cleaned_ticket_data[last_brace_pos:]
+                                            logger.warning("Added missing closing quote to fix unterminated string")
+                                
+                                    # Log the cleaned data for debugging
+                                    logger.debug(f"Cleaned ticket data (first 200 chars): {cleaned_ticket_data[:200]}...")
+                                    logger.debug(f"Cleaned ticket data (last 200 chars): ...{cleaned_ticket_data[-200:]}")
+                                    
+                                    # Parse the JSON ticket data
+                                    ticket_json = json.loads(cleaned_ticket_data)
+                                    
+                                    # Save the ticket to database
+                                    save_result = await save_ticket_from_stream(ticket_json, project_id)
+                                    logger.info(f"OpenAI Ticket save result: {save_result}")
+                                    
+                                    # Yield notification if save was successful
+                                    if save_result.get("is_notification"):
+                                        notification_json = json.dumps(save_result)
+                                        yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                except json.JSONDecodeError as e:
+                                    logger.error(f"Error parsing ticket JSON from OpenAI stream: {str(e)}")
+                                    logger.error(f"Original ticket data was: {ticket_data}")
+                                    logger.error(f"Cleaned ticket data was: {cleaned_ticket_data}")
+                                    # Log specific error details
+                                    logger.error(f"JSON error details - msg: {e.msg}, pos: {e.pos}, lineno: {e.lineno}, colno: {e.colno}")
+                                    
+                                    # Try one more recovery attempt - extract just the JSON object
+                                    try:
+                                        # Find the first { and last }
+                                        first_brace = cleaned_ticket_data.find('{')
+                                        last_brace = cleaned_ticket_data.rfind('}')
+                                        if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+                                            extracted_json = cleaned_ticket_data[first_brace:last_brace+1]
+                                            ticket_json = json.loads(extracted_json)
+                                            logger.info("Successfully recovered ticket JSON by extracting object boundaries")
+                                            
+                                            # Save the recovered ticket
+                                            save_result = await save_ticket_from_stream(ticket_json, project_id)
+                                            logger.info(f"OpenAI Ticket save result (recovered): {save_result}")
+                                            
+                                            if save_result.get("is_notification"):
+                                                notification_json = json.dumps(save_result)
+                                                yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                    except Exception as recovery_error:
+                                        logger.error(f"Recovery attempt also failed: {recovery_error}")
+                                except Exception as e:
+                                    logger.error(f"Error saving ticket from OpenAI stream: {str(e)}")
                         
                         # Keep buffer size reasonable (only need enough for tag detection)
-                        if len(buffer) > 100 and "<lfg-prd" not in buffer and "</lfg-prd" not in buffer and "<lfg-plan" not in buffer and "</lfg-plan" not in buffer and "<lfg-ticket" not in buffer and "</lfg-ticket" not in buffer:
+                        # When in special modes, we only need the buffer for detecting closing tags
+                        if current_mode in ["prd", "implementation", "ticket"]:
+                            # In special modes, only keep buffer content for closing tag detection
+                            # Look for the start of a potential closing tag
+                            closing_tags = ["</lfg-prd>", "</lfg-plan>", "</lfg-ticket>"]
+                            has_closing_tag = any(tag in buffer for tag in closing_tags)
+                            
+                            if not has_closing_tag and len(buffer) > 20:
+                                # No closing tag found, only keep last 20 chars for potential tag start
+                                buffer = buffer[-20:]
+                        elif len(buffer) > 100 and "<lfg-prd" not in buffer and "</lfg-prd" not in buffer and "<lfg-plan" not in buffer and "</lfg-plan" not in buffer and "<lfg-ticket" not in buffer and "</lfg-ticket" not in buffer:
                             buffer = buffer[-50:]  # Keep last 50 chars
                         
                         if current_mode == "prd":
@@ -764,7 +851,20 @@ class OpenAIProvider(AIProvider):
                                     print(f"[TICKET MODE - OpenAI] Skipping pre-JSON content: {repr(text)}")
                             else:
                                 # Already capturing JSON
-                                ticket_data += text
+                                # Check if we already have a complete JSON object
+                                if ticket_data.rstrip().endswith('}'):
+                                    # We have a complete JSON, check if it's valid
+                                    try:
+                                        # Try to parse what we have so far
+                                        json.loads(ticket_data)
+                                        # If successful, we have a complete ticket, don't capture more
+                                        print(f"[TICKET MODE - OpenAI] Complete JSON detected, not capturing more content")
+                                    except json.JSONDecodeError:
+                                        # JSON is not valid yet, continue capturing
+                                        ticket_data += text
+                                else:
+                                    # JSON is not complete, continue capturing
+                                    ticket_data += text
                             print(f"\n\n\n[CAPTURING TICKET DATA - OpenAI]: {repr(text)}")
                             print(f"[TICKET DATA SO FAR - OpenAI]: {repr(ticket_data[:100])}...")
                         
@@ -1147,6 +1247,7 @@ class AnthropicProvider(AIProvider):
         
         return claude_tools
 
+
     async def generate_stream(self, messages, project_id, conversation_id, tools):
         # Ensure client is initialized with API key
         print(f"\n\n\nGenerating stream for user ")
@@ -1288,7 +1389,6 @@ class AnthropicProvider(AIProvider):
                         
                         elif event.type == "content_block_delta":
                             if event.delta.type == "text_delta":
-                                print(f"\n\n\nEvent delta: {event.delta}")
                                 # Stream text content
                                 text = event.delta.text
                                 
@@ -1299,32 +1399,26 @@ class AnthropicProvider(AIProvider):
                                 if "<lfg-prd>" in buffer and current_mode != "prd":
                                     current_mode = "prd"
                                     print("\n\n[PRD MODE ACTIVATED]")
-                                    # Clear buffer up to and including the tag
                                     tag_pos = buffer.find("<lfg-prd>")
-                                    buffer = ""  # Clear the buffer since we've processed it
-                                    # Initialize prd_data as empty - we'll capture actual content in subsequent chunks
+                                    buffer = ""
                                     prd_data = ""
                                     print(f"[PRD MODE] Cleared buffer, ready to capture PRD content")
-                                    
-                                    # Show loading indicator in chat
                                     yield "\n\n*Generating PRD... (check the PRD tab for live updates)*\n\n"
                                 
                                 if "</lfg-prd>" in buffer and current_mode == "prd":
                                     current_mode = ""
                                     print("\n\n[PRD MODE DEACTIVATED]")
-                                    # Find where the closing tag starts in the buffer
                                     tag_pos = buffer.find("</lfg-prd>")
-                                    # Check if we've captured part of the closing tag in prd_data
-                                    # by looking for incomplete tag patterns at the end
+                                    buffer = buffer[tag_pos + len("</lfg-prd>"):]
+                                    
+                                    # Clean any incomplete closing tags from prd_data
                                     incomplete_patterns = ["<", "</", "</l", "</lf", "</lfg", "</lfg-", "</lfg-p", "</lfg-pr", "</lfg-prd"]
                                     for pattern in reversed(incomplete_patterns):
                                         if prd_data.endswith(pattern):
                                             prd_data = prd_data[:-len(pattern)]
                                             break
-                                    # Clear buffer up to and including the tag
-                                    buffer = buffer[tag_pos + len("</lfg-prd>"):]
                                     
-                                    # Send completion notification for PRD stream
+                                    # Send completion notification
                                     prd_complete_notification = {
                                         "is_notification": True,
                                         "notification_type": "prd_stream",
@@ -1338,32 +1432,26 @@ class AnthropicProvider(AIProvider):
                                 if "<lfg-plan>" in buffer and current_mode != "implementation":
                                     current_mode = "implementation"
                                     print("\n\n[IMPLEMENTATION MODE ACTIVATED]")
-                                    # Clear buffer up to and including the tag
                                     tag_pos = buffer.find("<lfg-plan>")
-                                    buffer = ""  # Clear the buffer since we've processed it
-                                    # Initialize implementation_data as empty - we'll capture actual content in subsequent chunks
+                                    buffer = ""
                                     implementation_data = ""
                                     print(f"[IMPLEMENTATION MODE] Cleared buffer, ready to capture implementation content")
-                                    
-                                    # Show loading indicator in chat
                                     yield "\n\n*Generating implementation plan... (check the Implementation tab for live updates)*\n\n"
                                 
                                 if "</lfg-plan>" in buffer and current_mode == "implementation":
                                     current_mode = ""
                                     print("\n\n[IMPLEMENTATION MODE DEACTIVATED]")
-                                    # Find where the closing tag starts in the buffer
                                     tag_pos = buffer.find("</lfg-plan>")
-                                    # Check if we've captured part of the closing tag in implementation_data
-                                    # by looking for incomplete tag patterns at the end
+                                    buffer = buffer[tag_pos + len("</lfg-plan>"):]
+                                    
+                                    # Clean any incomplete closing tags
                                     incomplete_patterns = ["<", "</", "</l", "</lf", "</lfg", "</lfg-", "</lfg-p", "</lfg-pl", "</lfg-pla", "</lfg-plan"]
                                     for pattern in reversed(incomplete_patterns):
                                         if implementation_data.endswith(pattern):
                                             implementation_data = implementation_data[:-len(pattern)]
                                             break
-                                    # Clear buffer up to and including the tag
-                                    buffer = buffer[tag_pos + len("</lfg-plan>"):]
                                     
-                                    # Send completion notification for implementation stream
+                                    # Send completion notification
                                     implementation_complete_notification = {
                                         "is_notification": True,
                                         "notification_type": "implementation_stream",
@@ -1377,180 +1465,374 @@ class AnthropicProvider(AIProvider):
                                 # Check for ticket tags
                                 if "<lfg-ticket>" in buffer and current_mode != "ticket":
                                     current_mode = "ticket"
-                                    print("\n\n[TICKET MODE ACTIVATED]")
-                                    # Clear buffer up to and including the tag
+                                    print("\n\n[TICKET MODE ACTIVATED - Anthropic]")
                                     tag_pos = buffer.find("<lfg-ticket>")
-                                    # Only capture content after the tag
-                                    remaining_buffer = buffer[tag_pos + len("<lfg-ticket>"):]
-                                    buffer = ""  # Clear the buffer since we've processed it
-                                    # Initialize ticket_data as empty - we'll capture actual content in subsequent chunks
-                                    ticket_data = ""
-                                    print(f"[TICKET MODE] Cleared buffer, ready to capture ticket JSON")
-                                
-                                if "</lfg-ticket>" in buffer and current_mode == "ticket":
-                                    current_mode = ""
-                                    print("\n\n[TICKET MODE DEACTIVATED]")
-                                    # Find where the closing tag starts in the buffer
+                                    
+                                    # IMPORTANT: Only keep content AFTER the opening tag
+                                    remaining_after_tag = buffer[tag_pos + len("<lfg-ticket>"):]
+                                    
+                                    # Clear buffer completely
+                                    buffer = ""
+                                    
+                                    # Start fresh with ONLY the opening tag
+                                    ticket_data = "<lfg-ticket>"
+                                    
+                                    # Only add content that comes AFTER the tag
+                                    if remaining_after_tag:
+                                        # Make sure we're not capturing any content before the tag
+                                        ticket_data += remaining_after_tag
+                                        print(f"[TICKET MODE - Anthropic] Initial content after tag: {repr(remaining_after_tag[:50])}")
+                                    
+                                    print(f"[TICKET MODE - Anthropic] Ready to capture ticket XML")
+                                    
+                                    # IMPORTANT: Skip processing the current text chunk since we've already 
+                                    # handled the buffer content
+                                    continue  # Skip to next iteration
+
+                                # CHECK FOR CLOSING TICKET TAG BEFORE PROCESSING CONTENT
+                                if current_mode == "ticket" and "</lfg-ticket>" in buffer:
+                                    # Don't add content from buffer - it's already been added to ticket_data
+                                    # during normal chunk processing. Just add the closing tag.
+                                    
+                                    # Find position of closing tag
                                     tag_pos = buffer.find("</lfg-ticket>")
-                                    # Check if we've captured part of the closing tag in ticket_data
-                                    # by looking for incomplete tag patterns at the end
-                                    incomplete_patterns = ["<", "</", "</l", "</lf", "</lfg", "</lfg-", "</lfg-t", "</lfg-ti", "</lfg-tic", "</lfg-tick", "</lfg-ticke", "</lfg-ticket"]
+                                    
+                                    # Clean any incomplete closing tags from ticket_data before adding the complete one
+                                    incomplete_patterns = ["<", "</", "</l", "</lf", "</lfg", "</lfg-", "</lfg-t", "</lfg-ti", 
+                                                         "</lfg-tic", "</lfg-tick", "</lfg-ticke", "</lfg-ticket"]
                                     for pattern in reversed(incomplete_patterns):
                                         if ticket_data.endswith(pattern):
                                             ticket_data = ticket_data[:-len(pattern)]
+                                            logger.debug(f"Cleaned partial closing tag: {repr(pattern)}")
                                             break
-                                    # Clear buffer up to and including the tag
+                                    
+                                    # Add the closing tag
+                                    ticket_data += "</lfg-ticket>"
+                                    
+                                    current_mode = ""
+                                    print("\n\n[TICKET MODE DEACTIVATED - Anthropic]")
+                                    logger.debug(f"Complete ticket XML: {repr(ticket_data[:200])}...{repr(ticket_data[-200:])}")
+                                    
+                                    # Clear buffer from the closing tag onwards
                                     buffer = buffer[tag_pos + len("</lfg-ticket>"):]
                                     
                                     # Parse and save the ticket
                                     try:
-                                        # Import the save function
                                         from coding.utils.ai_functions import save_ticket_from_stream
                                         
-                                        # Clean ticket data before parsing
+                                        # Parse XML data
                                         cleaned_ticket_data = ticket_data.strip()
-                                        # Remove any leading '>' that might have slipped through
-                                        if cleaned_ticket_data.startswith('>'):
-                                            cleaned_ticket_data = cleaned_ticket_data[1:].strip()
                                         
-                                        # Parse the JSON ticket data
-                                        ticket_json = json.loads(cleaned_ticket_data)
+                                        # Remove newlines before tags to prevent formatting issues
+                                        cleaned_ticket_data = re.sub(r'\n+<', '<', cleaned_ticket_data)
+                                        cleaned_ticket_data = re.sub(r'>\n+', '>', cleaned_ticket_data)
                                         
-                                        # Save the ticket to database
+                                        # Fix common XML issues
+                                        # Fix any malformed priority tags where closing > is missing or attached to </lfg-ticket>
+                                        cleaned_ticket_data = re.sub(r'<priority\s*</lfg-ticket>', '<priority>Medium</priority></lfg-ticket>', cleaned_ticket_data)
+                                        cleaned_ticket_data = re.sub(r'<priority>([^<]+)</priority\s*</lfg-ticket>', r'<priority>\1</priority></lfg-ticket>', cleaned_ticket_data)
+                                        cleaned_ticket_data = re.sub(r'<priority>([^<]+)</lfg-ticket>', r'<priority>\1</priority></lfg-ticket>', cleaned_ticket_data)
+                                        
+                                        # Replace empty priority tags with default value
+                                        cleaned_ticket_data = re.sub(r'<priority>\s*</priority>', '<priority>Medium</priority>', cleaned_ticket_data)
+                                        cleaned_ticket_data = re.sub(r'<priority></lfg-ticket>', '<priority>Medium</priority></lfg-ticket>', cleaned_ticket_data)
+                                        cleaned_ticket_data = re.sub(r'<priority>\s*</lfg-ticket>', '<priority>Medium</priority></lfg-ticket>', cleaned_ticket_data)
+                                        
+                                        logger.debug(f"Parsing XML ticket data: {repr(cleaned_ticket_data[:100])}")
+                                        
+                                        # Parse the XML
+                                        root = ET.fromstring(cleaned_ticket_data)
+                                        
+                                        # Extract data from XML elements
+                                        ticket_json = {
+                                            "name": root.findtext('name', ''),
+                                            "description": root.findtext('description', ''),
+                                            "role": root.findtext('role', 'agent'),
+                                            "priority": root.findtext('priority', 'Medium')
+                                        }
+                                        
+                                        # Handle ui_requirements
+                                        ui_req_elem = root.find('ui_requirements')
+                                        if ui_req_elem is not None and ui_req_elem.text:
+                                            ticket_json["ui_requirements"] = ui_req_elem.text
+                                        else:
+                                            ticket_json["ui_requirements"] = {}
+                                        
+                                        # Handle component_specs
+                                        comp_spec_elem = root.find('component_specs')
+                                        if comp_spec_elem is not None and comp_spec_elem.text:
+                                            ticket_json["component_specs"] = comp_spec_elem.text
+                                        else:
+                                            ticket_json["component_specs"] = {}
+                                        
+                                        # Handle acceptance_criteria
+                                        acceptance_criteria = []
+                                        criteria_elem = root.find('acceptance_criteria')
+                                        if criteria_elem is not None:
+                                            for criterion in criteria_elem.findall('criterion'):
+                                                if criterion.text:
+                                                    acceptance_criteria.append(criterion.text)
+                                        ticket_json["acceptance_criteria"] = acceptance_criteria
+                                        
+                                        # Handle dependencies
+                                        dependencies = []
+                                        deps_elem = root.find('dependencies')
+                                        if deps_elem is not None:
+                                            for dep in deps_elem.findall('dependency'):
+                                                if dep.text:
+                                                    dependencies.append(dep.text)
+                                            if not dependencies and deps_elem.text and deps_elem.text.strip():
+                                                dependencies = [deps_elem.text.strip()]
+                                        ticket_json["dependencies"] = dependencies
+                                        
+                                        logger.debug(f"Parsed ticket data: {ticket_json}")
+                                        
                                         save_result = await save_ticket_from_stream(ticket_json, project_id)
-                                        logger.info(f"Anthropic Ticket save result: {save_result}")
+                                        logger.info(f"Anthropic XML Ticket save result: {save_result}")
                                         
-                                        # Yield notification if save was successful
                                         if save_result.get("is_notification"):
                                             notification_json = json.dumps(save_result)
                                             yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
-                                    except json.JSONDecodeError as e:
-                                        logger.error(f"Error parsing ticket JSON from Anthropic stream: {str(e)}")
-                                        logger.error(f"Ticket data was: {ticket_data}")
+                                            
+                                        # Reset ticket_data for next ticket
+                                        ticket_data = ""
+                                        
+                                    except ET.ParseError as e:
+                                        logger.error(f"Error parsing ticket XML from Anthropic stream: {str(e)}")
+                                        logger.error(f"Ticket data was: {repr(ticket_data)}")
+                                        ticket_data = ""
                                     except Exception as e:
                                         logger.error(f"Error saving ticket from Anthropic stream: {str(e)}")
+                                        logger.error(f"Full error: {traceback.format_exc()}")
+                                        ticket_data = ""
+
+                                # Keep buffer size manageable
+                                if current_mode in ["prd", "implementation", "ticket"]:
+                                    if len(buffer) > 50 and not any(tag in buffer for tag in ["</lfg-prd>", "</lfg-plan>", "</lfg-ticket>"]):
+                                        buffer = buffer[-50:]  # Increased buffer size to prevent losing partial tags
+                                elif len(buffer) > 100:
+                                    important_tags = ["<lfg-prd", "</lfg-prd", "<lfg-plan", "</lfg-plan", "<lfg-ticket", "</lfg-ticket"]
+                                    if not any(tag in buffer for tag in important_tags):
+                                        buffer = buffer[-50:]
                                 
-                                # Keep buffer size reasonable (only need enough for tag detection)
-                                if len(buffer) > 100 and "<lfg-prd" not in buffer \
-                                    and "</lfg-prd" not in buffer \
-                                    and "<lfg-plan" not in buffer \
-                                    and "</lfg-plan" not in buffer \
-                                    and "<lfg-ticket" not in buffer \
-                                    and "</lfg-ticket" not in buffer:
-                                    buffer = buffer[-50:]  # Keep last 50 chars
-                                
-                                # print(f"\n\nCurrent mode: {current_mode}, Buffer tail: {buffer[-20:]}")
-                                
+                                # Process content based on current mode
                                 if current_mode == "prd":
-                                    # For PRD mode, we need to skip initial garbage content
-                                    should_stream = True
                                     if prd_data == "":
                                         # First chunk after entering PRD mode
-                                        # Skip content that looks like tag remnants
                                         clean_text = text.lstrip()
                                         if clean_text.startswith('>'):
                                             clean_text = clean_text[1:].lstrip()
-                                        # If we see #<lfg-prd>, keep the # but remove <lfg-prd>
                                         if '<lfg-prd>' in clean_text:
                                             clean_text = clean_text.replace('<lfg-prd>', '')
-                                        # Only start capturing when we see actual PRD content
                                         if clean_text and not clean_text.startswith('<'):
                                             prd_data = clean_text
-                                            text = clean_text  # Update text for streaming
                                             print(f"[PRD MODE] Started capturing PRD content")
                                         else:
                                             print(f"[PRD MODE] Skipping initial content: {repr(text)}")
-                                            should_stream = False  # Don't stream this chunk
                                     else:
-                                        # Already capturing PRD content
                                         prd_data += text
+                                    
                                     print(f"\n\n\n[CAPTURING PRD DATA]: {text}")
                                     
-                                    # Stream PRD content to the panel only if we should
-                                    if should_stream:
-                                        prd_stream_notification = {
-                                            "is_notification": True,
-                                            "notification_type": "prd_stream",
-                                            "content_chunk": text,
-                                            "is_complete": False,
-                                            "notification_marker": "__NOTIFICATION__"
-                                        }
-                                        notification_json = json.dumps(prd_stream_notification)
-                                        yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                    # Stream PRD content
+                                    prd_stream_notification = {
+                                        "is_notification": True,
+                                        "notification_type": "prd_stream",
+                                        "content_chunk": text,
+                                        "is_complete": False,
+                                        "notification_marker": "__NOTIFICATION__"
+                                    }
+                                    notification_json = json.dumps(prd_stream_notification)
+                                    yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                    
                                 elif current_mode == "implementation":
-                                    # For implementation mode, we need to skip initial garbage content
-                                    should_stream = True
                                     if implementation_data == "":
                                         # First chunk after entering implementation mode
-                                        # Skip content that looks like tag remnants
                                         clean_text = text.lstrip()
                                         if clean_text.startswith('>'):
                                             clean_text = clean_text[1:].lstrip()
-                                        # Remove <lfg-plan> tag if it appears in the text
                                         if '<lfg-plan>' in clean_text:
                                             clean_text = clean_text.replace('<lfg-plan>', '')
-                                        # Only start capturing when we see actual implementation content
                                         if clean_text and not clean_text.startswith('<'):
                                             implementation_data = clean_text
-                                            text = clean_text  # Update text for streaming
                                             print(f"[IMPLEMENTATION MODE] Started capturing implementation content")
                                         else:
                                             print(f"[IMPLEMENTATION MODE] Skipping initial content: {repr(text)}")
-                                            should_stream = False  # Don't stream this chunk
                                     else:
-                                        # Already capturing implementation content
                                         implementation_data += text
+                                    
                                     print(f"\n\n\n[CAPTURING IMPLEMENTATION DATA]: {text}")
                                     
-                                    # Stream implementation content to the panel only if we should
-                                    if should_stream:
-                                        implementation_stream_notification = {
-                                            "is_notification": True,
-                                            "notification_type": "implementation_stream",
-                                            "content_chunk": text,
-                                            "is_complete": False,
-                                            "notification_marker": "__NOTIFICATION__"
-                                        }
-                                        notification_json = json.dumps(implementation_stream_notification)
-                                        yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                    # Stream implementation content
+                                    implementation_stream_notification = {
+                                        "is_notification": True,
+                                        "notification_type": "implementation_stream",
+                                        "content_chunk": text,
+                                        "is_complete": False,
+                                        "notification_marker": "__NOTIFICATION__"
+                                    }
+                                    notification_json = json.dumps(implementation_stream_notification)
+                                    yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                    
                                 elif current_mode == "ticket":
-                                    # For ticket mode, we need to be extra careful about initial content
-                                    # The JSON should start with { after any whitespace
-                                    if ticket_data == "":
-                                        # First chunk after entering ticket mode
-                                        # Strip any leading whitespace and '>' characters
-                                        clean_text = text.lstrip()
-                                        if clean_text.startswith('>'):
-                                            clean_text = clean_text[1:].lstrip()
-                                        # Only start capturing when we see the opening {
-                                        if '{' in clean_text:
-                                            start_pos = clean_text.find('{')
-                                            ticket_data = clean_text[start_pos:]
-                                            print(f"[TICKET MODE] Started capturing from '{{'")
-                                        else:
-                                            # Skip this chunk if no { found yet
-                                            print(f"[TICKET MODE] Skipping pre-JSON content: {repr(text)}")
+                                    # For ticket mode, check if current text has closing tag
+                                    if '</lfg-ticket>' in text:
+                                        # Find where the closing tag is
+                                        tag_pos = text.find('</lfg-ticket>')
+                                        
+                                        # Capture everything up to but NOT including the closing tag
+                                        content_before_tag = text[:tag_pos]
+                                        ticket_data += content_before_tag
+                                        
+                                        # Clean any incomplete closing tags from ticket_data before adding the complete one
+                                        incomplete_patterns = ["<", "</", "</l", "</lf", "</lfg", "</lfg-", "</lfg-t", "</lfg-ti", 
+                                                             "</lfg-tic", "</lfg-tick", "</lfg-ticke", "</lfg-ticket"]
+                                        for pattern in reversed(incomplete_patterns):
+                                            if ticket_data.endswith(pattern):
+                                                ticket_data = ticket_data[:-len(pattern)]
+                                                logger.debug(f"Cleaned partial closing tag (inline): {repr(pattern)}")
+                                                break
+                                        
+                                        # Now add the complete closing tag
+                                        ticket_data += "</lfg-ticket>"
+                                        
+                                        # Process the complete ticket
+                                        current_mode = ""
+                                        print("\n\n[TICKET MODE DEACTIVATED - Anthropic (inline)]")
+                                        logger.debug(f"Complete ticket XML: {repr(ticket_data[:200])}...{repr(ticket_data[-200:])}")
+                                        
+                                        # Parse and save the ticket
+                                        try:
+                                            from coding.utils.ai_functions import save_ticket_from_stream
+                                            
+                                            # Parse XML data
+                                            cleaned_ticket_data = ticket_data.strip()
+                                            
+                                            # Remove newlines before tags to prevent formatting issues
+                                            cleaned_ticket_data = re.sub(r'\n+<', '<', cleaned_ticket_data)
+                                            cleaned_ticket_data = re.sub(r'>\n+', '>', cleaned_ticket_data)
+                                            
+                                            # Fix common XML issues
+                                            # Fix any malformed priority tags where closing > is missing or attached to </lfg-ticket>
+                                            cleaned_ticket_data = re.sub(r'<priority\s*</lfg-ticket>', '<priority>Medium</priority></lfg-ticket>', cleaned_ticket_data)
+                                            cleaned_ticket_data = re.sub(r'<priority>([^<]+)</priority\s*</lfg-ticket>', r'<priority>\1</priority></lfg-ticket>', cleaned_ticket_data)
+                                            cleaned_ticket_data = re.sub(r'<priority>([^<]+)</lfg-ticket>', r'<priority>\1</priority></lfg-ticket>', cleaned_ticket_data)
+                                            
+                                            # Replace empty priority tags with default value
+                                            cleaned_ticket_data = re.sub(r'<priority>\s*</priority>', '<priority>Medium</priority>', cleaned_ticket_data)
+                                            cleaned_ticket_data = re.sub(r'<priority></lfg-ticket>', '<priority>Medium</priority></lfg-ticket>', cleaned_ticket_data)
+                                            cleaned_ticket_data = re.sub(r'<priority>\s*</lfg-ticket>', '<priority>Medium</priority></lfg-ticket>', cleaned_ticket_data)
+                                            
+                                            # Parse the XML
+                                            root = ET.fromstring(cleaned_ticket_data)
+                                            
+                                            # Extract data from XML elements
+                                            ticket_json = {
+                                                "name": root.findtext('name', ''),
+                                                "description": root.findtext('description', ''),
+                                                "role": root.findtext('role', 'agent'),
+                                                "priority": root.findtext('priority', 'Medium')
+                                            }
+                                            
+                                            # Handle ui_requirements
+                                            ui_req_elem = root.find('ui_requirements')
+                                            if ui_req_elem is not None and ui_req_elem.text:
+                                                ticket_json["ui_requirements"] = ui_req_elem.text
+                                            else:
+                                                ticket_json["ui_requirements"] = {}
+                                            
+                                            # Handle component_specs
+                                            comp_spec_elem = root.find('component_specs')
+                                            if comp_spec_elem is not None and comp_spec_elem.text:
+                                                ticket_json["component_specs"] = comp_spec_elem.text
+                                            else:
+                                                ticket_json["component_specs"] = {}
+                                            
+                                            # Handle acceptance_criteria
+                                            acceptance_criteria = []
+                                            criteria_elem = root.find('acceptance_criteria')
+                                            if criteria_elem is not None:
+                                                for criterion in criteria_elem.findall('criterion'):
+                                                    if criterion.text:
+                                                        acceptance_criteria.append(criterion.text)
+                                            ticket_json["acceptance_criteria"] = acceptance_criteria
+                                            
+                                            # Handle dependencies
+                                            dependencies = []
+                                            deps_elem = root.find('dependencies')
+                                            if deps_elem is not None:
+                                                for dep in deps_elem.findall('dependency'):
+                                                    if dep.text:
+                                                        dependencies.append(dep.text)
+                                                if not dependencies and deps_elem.text and deps_elem.text.strip():
+                                                    dependencies = [deps_elem.text.strip()]
+                                            ticket_json["dependencies"] = dependencies
+                                            
+                                            logger.debug(f"Parsed ticket data: {ticket_json}")
+                                            
+                                            save_result = await save_ticket_from_stream(ticket_json, project_id)
+                                            logger.info(f"Anthropic XML Ticket save result: {save_result}")
+                                            
+                                            if save_result.get("is_notification"):
+                                                notification_json = json.dumps(save_result)
+                                                yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                                
+                                            # Reset ticket_data for next ticket
+                                            ticket_data = ""
+                                            
+                                        except ET.ParseError as e:
+                                            logger.error(f"Error parsing ticket XML: {str(e)}")
+                                            logger.error(f"Ticket data was: {repr(ticket_data)}")
+                                            ticket_data = ""
+                                        except Exception as e:
+                                            logger.error(f"Error saving ticket: {str(e)}")
+                                            ticket_data = ""
+                                        
+                                        # Process remaining text after closing tag
+                                        remaining_text = text[tag_pos + len('</lfg-ticket>'):]
+                                        if remaining_text:
+                                            buffer += remaining_text
+                                            
                                     else:
-                                        # Already capturing JSON
+                                        # No closing tag yet, keep capturing
                                         ticket_data += text
-                                    print(f"\n\n\n[CAPTURING TICKET DATA]: {repr(text)}")
-                                
-                                # Handle buffering to prevent incomplete tags from being sent
-                                if current_mode not in ["prd", "implementation", "ticket"]:
-                                    # Add text to output buffer
+                                        print(f"[TICKET MODE - Anthropic] Appending chunk: {repr(text[:50])}")
+                                    
+                                    print(f"[TICKET DATA SO FAR - Anthropic] Length: {len(ticket_data)}")
+                                    # Do NOT yield any content when in ticket mode
+                                    
+                                else:
+                                    # Normal mode - yield content to user
                                     output_buffer += text
                                     
-                                    # Check if we have a complete tag or potential incomplete tag
-                                    # Look for potential start of PRD, implementation, or ticket tag
-                                    if any(output_buffer.endswith(prefix) for prefix in ['<', '<l', '<lf', '<lfg', '<lfg-', '<lfg-p', '<lfg-pr', '<lfg-prd', '<lfg-pl', '<lfg-pla', '<lfg-plan', '<lfg-t', '<lfg-ti', '<lfg-tic', '<lfg-tick', '<lfg-ticke', '<lfg-ticket']):
-                                        # Hold back - might be incomplete tag
-                                        pass
-                                    else:
-                                        # Safe to yield everything in buffer
-                                        if output_buffer:
+                                    # Process buffer to handle incomplete tags
+                                    while output_buffer:
+                                        last_lt_pos = output_buffer.rfind('<')
+                                        
+                                        if last_lt_pos == -1:
                                             yield output_buffer
                                             output_buffer = ""
-                                    
+                                            break
+                                        
+                                        remaining = output_buffer[last_lt_pos:]
+                                        potential_tags = ['<lfg-prd>', '<lfg-plan>', '<lfg-ticket>', '</lfg-prd>', '</lfg-plan>', '</lfg-ticket>']
+                                        could_be_tag = False
+                                        
+                                        for tag in potential_tags:
+                                            if tag.startswith(remaining) or remaining == tag[:len(remaining)]:
+                                                could_be_tag = True
+                                                break
+                                        
+                                        if could_be_tag and len(remaining) < 14:  # Increased to handle </lfg-ticket>
+                                            if last_lt_pos > 0:
+                                                yield output_buffer[:last_lt_pos]
+                                                output_buffer = output_buffer[last_lt_pos:]
+                                            break
+                                        else:
+                                            yield output_buffer[:last_lt_pos + 1]
+                                            output_buffer = output_buffer[last_lt_pos + 1:]
+                                
+                                # Update the full assistant message
                                 if full_assistant_message["content"] is None:
                                     full_assistant_message["content"] = ""
                                 full_assistant_message["content"] += text
@@ -1558,16 +1840,12 @@ class AnthropicProvider(AIProvider):
                                 # Check if this might be web search results
                                 if "search result" in text.lower() or "web search" in text.lower():
                                     logger.debug("Detected potential web search results in Claude's response")
+                            
                             elif event.delta.type == "input_json_delta":
-                                # Accumulate tool arguments
+                                # Tool use arguments
                                 if current_tool_use:
-                                    print(f"\n\n\nCurrent tool use: {current_tool_use}")
                                     current_tool_args += event.delta.partial_json
-                                    print(f"\n\n\nCurrent tool args: {current_tool_args}")
-                                    # Stream create_prd arguments to console as they arrive
-                                    if current_tool_use["function"]["name"] == "create_prd":
-                                        print(f"[Anthropic] create_prd argument chunk: {event.delta.partial_json}")
-                        
+                                    
                         elif event.type == "content_block_stop":
                             if current_tool_use:
                                 # Finalize tool use

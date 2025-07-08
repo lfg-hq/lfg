@@ -1329,7 +1329,7 @@ document.addEventListener('DOMContentLoaded', function() {
             ticketsTab.innerHTML = '<div class="loading-state"><div class="spinner"></div><div>Loading tickets...</div></div>';
             
             // Fetch tickets from API - updated to new endpoint in projects app
-            const url = `/projects/${projectId}/api/tickets/`;
+            const url = `/projects/${projectId}/api/checklist/`;
             console.log(`[ArtifactsLoader] Fetching tickets from API: ${url}`);
             
             fetch(url)
@@ -1342,8 +1342,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 })
                 .then(data => {
                     console.log('[ArtifactsLoader] Tickets API data received:', data);
-                    // Process tickets data
-                    const tickets = data.tickets || [];
+                    // Process tickets data - checklist items are returned as 'checklist'
+                    const tickets = data.checklist || [];
                     console.log(`[ArtifactsLoader] Found ${tickets.length} tickets`);
                     
                     if (tickets.length === 0) {
@@ -1362,9 +1362,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         return;
                     }
                     
-                    // Extract unique features for filter dropdown
-                    const features = [...new Set(tickets.map(ticket => 
-                        ticket.feature ? ticket.feature.name : 'Unknown'
+                    // Extract unique priorities for filter dropdown
+                    const priorities = [...new Set(tickets.map(ticket => 
+                        ticket.priority || 'Medium'
                     ))].sort();
                     
                     // Create container for tickets with filter
@@ -1373,9 +1373,9 @@ document.addEventListener('DOMContentLoaded', function() {
                             <div class="ticket-filters">
                                 <div class="filter-options">
                                     <div class="filter-group">
-                                        <select id="feature-filter" class="feature-filter-dropdown">
-                                            <option value="all">All Features</option>
-                                            ${features.map(feature => `<option value="${feature}">${feature}</option>`).join('')}
+                                        <select id="priority-filter" class="priority-filter-dropdown">
+                                            <option value="all">All Priorities</option>
+                                            ${priorities.map(priority => `<option value="${priority}">${priority}</option>`).join('')}
                                         </select>
                                         <button id="clear-filters" class="clear-filters-btn" title="Clear filters">
                                             <i class="fas fa-times"></i>
@@ -1409,7 +1409,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     `;
                     
                     const ticketsContent = document.getElementById('tickets-content');
-                    const featureFilter = document.getElementById('feature-filter');
+                    const priorityFilter = document.getElementById('priority-filter');
                     const clearFiltersBtn = document.getElementById('clear-filters');
                     
                     // Group tickets by status for potential future use
@@ -1430,13 +1430,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     });
                     
                     // Function to render tickets based on filter
-                    const renderTickets = (filterFeature = 'all') => {
+                    const renderTickets = (filterPriority = 'all') => {
                         let filteredTickets = [...tickets];
                         
-                        // Apply feature filter if not 'all'
-                        if (filterFeature !== 'all') {
+                        // Apply priority filter if not 'all'
+                        if (filterPriority !== 'all') {
                             filteredTickets = filteredTickets.filter(ticket => 
-                                ticket.feature && ticket.feature.name === filterFeature
+                                (ticket.priority || 'Medium') === filterPriority
                             );
                         }
                         
@@ -1456,10 +1456,10 @@ document.addEventListener('DOMContentLoaded', function() {
                             `;
                         } else {
                             filteredTickets.forEach(ticket => {
-                                const featurePriority = ticket.feature ? ticket.feature.priority || 'medium' : 'medium';
-                                const priorityClass = `${featurePriority}-priority`;
+                                const priorityLevel = (ticket.priority || 'Medium').toLowerCase();
+                                const priorityClass = `${priorityLevel}-priority`;
                                 const status = ticket.status || 'open';
-                                const isHighlighted = filterFeature !== 'all' && ticket.feature && ticket.feature.name === filterFeature;
+                                const isHighlighted = filterPriority !== 'all' && ticket.priority === filterPriority;
                                 
                                 // Process description for better display
                                 let displayDescription = ticket.description || '';
@@ -1477,17 +1477,17 @@ document.addEventListener('DOMContentLoaded', function() {
                                 displayDescription = displayDescription.replace(/\n/g, '<br>');
                                 
                                 ticketsHTML += `
-                                    <div class="ticket-card" data-ticket-id="${ticket.id}" data-feature="${ticket.feature ? ticket.feature.name : 'Unknown'}">
+                                    <div class="ticket-card" data-ticket-id="${ticket.id}" data-priority="${ticket.priority || 'Medium'}">
                                         <div class="card-header ${status}">
-                                            <h4 class="card-title">${ticket.title}</h4>
+                                            <h4 class="card-title">${ticket.name}</h4>
                                         </div>
                                         <div class="card-body">
                                             <div class="card-description">${displayDescription}</div>
                                             
                                             <div class="card-meta">
                                                 <div class="card-tags">
-                                                    <span class="feature-tag ${priorityClass} ${isHighlighted ? 'filter-active' : ''}">
-                                                        <i class="fas fa-tag"></i> ${ticket.feature ? ticket.feature.name : 'Unknown Feature'}
+                                                    <span class="priority-tag ${priorityClass} ${isHighlighted ? 'filter-active' : ''}">
+                                                        <i class="fas fa-flag"></i> ${ticket.priority || 'Medium'} Priority
                                                     </span>
                                                     <span class="status-tag status-${status}">
                                                         ${status.replace('_', ' ').charAt(0).toUpperCase() + status.replace('_', ' ').slice(1)}
@@ -1506,6 +1506,9 @@ document.addEventListener('DOMContentLoaded', function() {
                                                 </div>
                                                 <button class="view-details-btn" data-ticket-id="${ticket.id}" title="View details">
                                                     <i class="fas fa-info-circle"></i>
+                                                </button>
+                                                <button class="delete-ticket-btn" data-ticket-id="${ticket.id}" title="Delete ticket">
+                                                    <i class="fas fa-trash"></i>
                                                 </button>
                                             </div>
                                         </div>
@@ -1540,10 +1543,10 @@ document.addEventListener('DOMContentLoaded', function() {
                                     drawerContent.innerHTML = `
                                         <div class="drawer-section">
                                             <h4 class="section-title">Ticket Information</h4>
-                                            <p class="ticket-id"><strong>ID:</strong> ${ticket.ticket_id}</p>
-                                            <p class="ticket-title"><strong>Title:</strong> ${ticket.title}</p>
+                                            <p class="ticket-id"><strong>ID:</strong> ${ticket.id}</p>
+                                            <p class="ticket-title"><strong>Title:</strong> ${ticket.name}</p>
                                             <p class="ticket-status"><strong>Status:</strong> ${ticket.status.replace('_', ' ').charAt(0).toUpperCase() + ticket.status.replace('_', ' ').slice(1)}</p>
-                                            <p class="ticket-feature"><strong>Feature:</strong> ${ticket.feature.name}</p>
+                                            <p class="ticket-priority"><strong>Priority:</strong> ${ticket.priority || 'Medium'}</p>
                                         </div>
                                         
                                         ${ticket.linear_issue_id ? `
@@ -1574,24 +1577,32 @@ document.addEventListener('DOMContentLoaded', function() {
                                             </div>
                                         </div>
                                         
+                                        ${ticket.details && Object.keys(ticket.details).length > 0 ? `
                                         <div class="drawer-section">
-                                            <h4 class="section-title">Frontend Tasks</h4>
+                                            <h4 class="section-title">Technical Details</h4>
                                             <div class="section-content">
-                                                ${ticket.frontend_tasks ? ticket.frontend_tasks.replace(/\n/g, '<br>') : 'No frontend tasks specified.'}
+                                                <pre style="background: #1a1a1a; padding: 10px; border-radius: 4px; overflow-x: auto;">${JSON.stringify(ticket.details, null, 2)}</pre>
                                             </div>
                                         </div>
+                                        ` : ''}
                                         
+                                        ${ticket.acceptance_criteria && ticket.acceptance_criteria.length > 0 ? `
                                         <div class="drawer-section">
-                                            <h4 class="section-title">Backend Tasks</h4>
+                                            <h4 class="section-title">Acceptance Criteria</h4>
                                             <div class="section-content">
-                                                ${ticket.backend_tasks ? ticket.backend_tasks.replace(/\n/g, '<br>') : 'No backend tasks specified.'}
+                                                <ul>
+                                                    ${ticket.acceptance_criteria.map(criteria => `<li>${criteria}</li>`).join('')}
+                                                </ul>
                                             </div>
                                         </div>
+                                        ` : ''}
                                         
                                         <div class="drawer-section">
-                                            <h4 class="section-title">Implementation Steps</h4>
+                                            <h4 class="section-title">Metadata</h4>
                                             <div class="section-content">
-                                                ${ticket.implementation_steps ? ticket.implementation_steps.replace(/\n/g, '<br>') : 'No implementation steps specified.'}
+                                                <p><strong>Complexity:</strong> ${ticket.complexity || 'medium'}</p>
+                                                <p><strong>Role:</strong> ${ticket.role || 'user'}</p>
+                                                <p><strong>Requires Worktree:</strong> ${ticket.requires_worktree ? 'Yes' : 'No'}</p>
                                             </div>
                                         </div>
                                         
@@ -1605,6 +1616,45 @@ document.addEventListener('DOMContentLoaded', function() {
                                     // Show the drawer
                                     detailsDrawer.classList.add('open');
                                     drawerOverlay.classList.add('active');
+                                }
+                            });
+                        });
+                        
+                        // Add event listeners for delete buttons
+                        const deleteButtons = document.querySelectorAll('.delete-ticket-btn');
+                        deleteButtons.forEach(button => {
+                            button.addEventListener('click', function(e) {
+                                e.stopPropagation(); // Prevent any parent click handlers
+                                const ticketId = this.getAttribute('data-ticket-id');
+                                const ticket = tickets.find(t => t.id == ticketId);
+                                
+                                if (ticket && confirm(`Are you sure you want to delete the ticket "${ticket.name}"?`)) {
+                                    // Call delete API
+                                    fetch(`/projects/${projectId}/api/checklist/${ticketId}/delete/`, {
+                                        method: 'DELETE',
+                                        headers: {
+                                            'X-CSRFToken': getCookie('csrftoken')
+                                        }
+                                    })
+                                    .then(response => {
+                                        if (!response.ok) {
+                                            throw new Error('Failed to delete ticket');
+                                        }
+                                        return response.json();
+                                    })
+                                    .then(data => {
+                                        if (data.success) {
+                                            showToast('Ticket deleted successfully', 'success');
+                                            // Reload tickets to reflect the deletion
+                                            ArtifactsLoader.loadTickets(projectId);
+                                        } else {
+                                            showToast(data.error || 'Failed to delete ticket', 'error');
+                                        }
+                                    })
+                                    .catch(error => {
+                                        console.error('Error deleting ticket:', error);
+                                        showToast('Error deleting ticket', 'error');
+                                    });
                                 }
                             });
                         });
@@ -1626,15 +1676,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     };
                     
                     // Add event listeners for filters
-                    if (featureFilter) {
-                        featureFilter.addEventListener('change', function() {
+                    if (priorityFilter) {
+                        priorityFilter.addEventListener('change', function() {
                             renderTickets(this.value);
                         });
                     }
                     
                     if (clearFiltersBtn) {
                         clearFiltersBtn.addEventListener('click', function() {
-                            featureFilter.value = 'all';
+                            priorityFilter.value = 'all';
                             renderTickets('all');
                         });
                     }
@@ -2033,6 +2083,9 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <button id="sync-checklist-linear" class="sync-linear-btn" title="Sync with Linear">
                                     <i class="fas fa-sync"></i> Sync with Linear
                                 </button>
+                                <button id="delete-all-checklist" class="delete-all-btn" title="Delete All" style="background: #dc2626; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-left: 10px;">
+                                    <i class="fas fa-trash-alt"></i> Delete All
+                                </button>
                                 <div class="checklist-filters">
                                     <div class="filter-options">
                                         <div class="filter-group">
@@ -2230,6 +2283,9 @@ document.addEventListener('DOMContentLoaded', function() {
                                             </button>
                                             <button class="action-btn toggle-btn" onclick="toggleChecklistStatus(${item.id}, '${item.status}')" title="Toggle Status">
                                                 <i class="fas fa-sync-alt"></i>
+                                            </button>
+                                            <button class="action-btn delete-checklist-btn" data-item-id="${item.id}" title="Delete">
+                                                <i class="fas fa-trash"></i>
                                             </button>
                                         </div>
                                     </div>
@@ -2451,6 +2507,9 @@ document.addEventListener('DOMContentLoaded', function() {
                                                 <button class="drawer-action-btn toggle-btn" onclick="toggleChecklistStatus(${item.id}, '${item.status}')" title="Toggle Status" style="padding: 8px 10px;">
                                                     <i class="fas fa-sync-alt"></i>
                                                 </button>
+                                                <button class="drawer-action-btn delete-btn" data-item-id="${item.id}" title="Delete Item" style="padding: 8px 10px; background: rgba(239, 68, 68, 0.2); color: #f87171;">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
                                             </div>
                                         </div>
                                     `;
@@ -2489,6 +2548,48 @@ document.addEventListener('DOMContentLoaded', function() {
                                     updateChecklistItemRole(itemId, newRole, oldRole);
                                 });
                             });
+                            
+                            // Add delete button listener in drawer
+                            const deleteBtn = document.querySelector('.drawer-action-btn.delete-btn');
+                            if (deleteBtn) {
+                                deleteBtn.addEventListener('click', function() {
+                                    const itemId = this.getAttribute('data-item-id');
+                                    const item = checklist.find(i => i.id == itemId);
+                                    
+                                    if (item && confirm(`Are you sure you want to delete "${item.name}"?`)) {
+                                        // Close the drawer first
+                                        checklistDrawer.classList.remove('open');
+                                        checklistDrawerOverlay.classList.remove('active');
+                                        
+                                        // Call delete API
+                                        fetch(`/projects/${projectId}/api/checklist/${itemId}/delete/`, {
+                                            method: 'DELETE',
+                                            headers: {
+                                                'X-CSRFToken': getCsrfToken()
+                                            }
+                                        })
+                                        .then(response => {
+                                            if (!response.ok) {
+                                                throw new Error('Failed to delete item');
+                                            }
+                                            return response.json();
+                                        })
+                                        .then(data => {
+                                            if (data.success) {
+                                                showToast('Item deleted successfully', 'success');
+                                                // Reload checklist to reflect the deletion
+                                                ArtifactsLoader.loadChecklist(projectId);
+                                            } else {
+                                                showToast(data.error || 'Failed to delete item', 'error');
+                                            }
+                                        })
+                                        .catch(error => {
+                                            console.error('Error deleting item:', error);
+                                            showToast('Error deleting item', 'error');
+                                        });
+                                    }
+                                });
+                            }
                         };
                         
                         // Add click handlers for view details buttons
@@ -2504,6 +2605,45 @@ document.addEventListener('DOMContentLoaded', function() {
                                     if (card) {
                                         card.click();
                                     }
+                                }
+                            });
+                        });
+                        
+                        // Add event listeners for delete buttons
+                        const deleteButtons = document.querySelectorAll('.delete-checklist-btn');
+                        deleteButtons.forEach(button => {
+                            button.addEventListener('click', function(e) {
+                                e.stopPropagation(); // Prevent card click
+                                const itemId = this.getAttribute('data-item-id');
+                                const item = checklist.find(i => i.id == itemId);
+                                
+                                if (item && confirm(`Are you sure you want to delete "${item.name}"?`)) {
+                                    // Call delete API
+                                    fetch(`/projects/${projectId}/api/checklist/${itemId}/delete/`, {
+                                        method: 'DELETE',
+                                        headers: {
+                                            'X-CSRFToken': getCsrfToken()
+                                        }
+                                    })
+                                    .then(response => {
+                                        if (!response.ok) {
+                                            throw new Error('Failed to delete item');
+                                        }
+                                        return response.json();
+                                    })
+                                    .then(data => {
+                                        if (data.success) {
+                                            showToast('Item deleted successfully', 'success');
+                                            // Reload checklist to reflect the deletion
+                                            ArtifactsLoader.loadChecklist(projectId);
+                                        } else {
+                                            showToast(data.error || 'Failed to delete item', 'error');
+                                        }
+                                    })
+                                    .catch(error => {
+                                        console.error('Error deleting item:', error);
+                                        showToast('Error deleting item', 'error');
+                                    });
                                 }
                             });
                         });
@@ -2731,6 +2871,52 @@ document.addEventListener('DOMContentLoaded', function() {
                         roleFilter.value = 'all';
                         renderChecklist();
                     });
+                    
+                    // Add delete all button event listener
+                    const deleteAllBtn = document.getElementById('delete-all-checklist');
+                    if (deleteAllBtn) {
+                        deleteAllBtn.addEventListener('click', function() {
+                            if (checklist.length === 0) {
+                                showToast('No items to delete', 'info');
+                                return;
+                            }
+                            
+                            if (confirm(`Are you sure you want to delete ALL ${checklist.length} checklist items? This action cannot be undone.`)) {
+                                // Show loading state
+                                this.disabled = true;
+                                this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Deleting...';
+                                
+                                // Delete all items
+                                const deletePromises = checklist.map(item => 
+                                    fetch(`/projects/${projectId}/api/checklist/${item.id}/delete/`, {
+                                        method: 'DELETE',
+                                        headers: {
+                                            'X-CSRFToken': getCsrfToken()
+                                        }
+                                    })
+                                );
+                                
+                                Promise.all(deletePromises)
+                                    .then(responses => {
+                                        const failedDeletions = responses.filter(r => !r.ok).length;
+                                        if (failedDeletions === 0) {
+                                            showToast('All checklist items deleted successfully', 'success');
+                                        } else {
+                                            showToast(`Deleted ${checklist.length - failedDeletions} items. ${failedDeletions} failed.`, 'warning');
+                                        }
+                                        // Reload the checklist
+                                        ArtifactsLoader.loadChecklist(projectId);
+                                    })
+                                    .catch(error => {
+                                        console.error('Error deleting items:', error);
+                                        showToast('Error deleting items', 'error');
+                                        // Re-enable button
+                                        this.disabled = false;
+                                        this.innerHTML = '<i class="fas fa-trash-alt"></i> Delete All';
+                                    });
+                            }
+                        });
+                    }
 
                     // Add Linear sync button event listener for checklist
                     const syncChecklistLinearBtn = document.getElementById('sync-checklist-linear');
@@ -4079,10 +4265,10 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             // Get ticket details from the stored tickets data
-            fetch(`/projects/${projectId}/api/tickets/`)
+            fetch(`/projects/${projectId}/api/checklist/`)
                 .then(response => response.json())
                 .then(data => {
-                    const tickets = data.tickets || [];
+                    const tickets = data.checklist || [];
                     const ticket = tickets.find(t => t.id == ticketId);
                     
                     if (!ticket) {
@@ -4092,19 +4278,19 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                     
                     // Construct the command to send
-                    let command = `Build the following feature from ticket #${ticket.ticket_id}: "${ticket.title}"\n\n`;
+                    let command = `Build the following feature from ticket #${ticket.id}: "${ticket.name}"\n\n`;
                     command += `Description: ${ticket.description}\n\n`;
                     
-                    if (ticket.frontend_tasks) {
-                        command += `Frontend Tasks:\n${ticket.frontend_tasks}\n\n`;
+                    if (ticket.details && Object.keys(ticket.details).length > 0) {
+                        command += `Technical Details:\n${JSON.stringify(ticket.details, null, 2)}\n\n`;
                     }
                     
-                    if (ticket.backend_tasks) {
-                        command += `Backend Tasks:\n${ticket.backend_tasks}\n\n`;
-                    }
-                    
-                    if (ticket.implementation_steps) {
-                        command += `Implementation Steps:\n${ticket.implementation_steps}\n\n`;
+                    if (ticket.acceptance_criteria && ticket.acceptance_criteria.length > 0) {
+                        command += `Acceptance Criteria:\n`;
+                        ticket.acceptance_criteria.forEach(criteria => {
+                            command += `- ${criteria}\n`;
+                        });
+                        command += `\n`;
                     }
                     
                     command += `Please implement this feature following the specifications above.`;

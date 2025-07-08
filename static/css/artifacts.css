@@ -984,6 +984,29 @@
     transform: translateY(-1px);
 }
 
+.delete-ticket-btn {
+    background-color: rgba(239, 68, 68, 0.2);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 50%;
+    width: 28px;
+    height: 28px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    flex-shrink: 0;
+    margin-left: 8px;
+}
+
+.delete-ticket-btn:hover {
+    background-color: rgba(239, 68, 68, 0.3);
+    transform: translateY(-1px);
+}
+
 /* Status Tags */
 .status-tag {
     font-size: 12px;
@@ -1586,6 +1609,12 @@
     border-color: rgba(34, 197, 94, 0.5);
 }
 
+.drawer-action-btn.delete-btn:hover {
+    background: rgba(239, 68, 68, 0.3);
+    color: #f87171;
+    border-color: rgba(239, 68, 68, 0.5);
+}
+
 /* Drawer Dropdown Styles */
 .checklist-details-drawer .status-dropdown,
 .checklist-details-drawer .role-dropdown {
@@ -1997,6 +2026,17 @@
 .checklist-card .toggle-btn:hover {
     background: rgba(34, 197, 94, 0.2) !important;
     color: #86efac !important;
+}
+
+.checklist-card .delete-checklist-btn:hover {
+    background: rgba(239, 68, 68, 0.2) !important;
+    color: #f87171 !important;
+}
+
+.delete-all-btn:hover {
+    background: #b91c1c !important;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 /* Expand/Collapse Indicator */
