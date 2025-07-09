@@ -881,7 +881,19 @@ class OpenAIProvider(AIProvider):
                             else:
                                 # Safe to yield everything in buffer
                                 if output_buffer:
-                                    yield output_buffer
+                                    # Clean any stray XML tags before yielding
+                                    clean_output = output_buffer
+                                    # Remove incomplete lfg tags
+                                    clean_output = re.sub(r'</?lfg[^>]*$', '', clean_output)
+                                    # Remove complete but stray lfg tags
+                                    clean_output = re.sub(r'</?lfg-[^>]*>', '', clean_output)
+                                    # Remove priority tags that might leak
+                                    clean_output = re.sub(r'</?priority[^>]*>', '', clean_output)
+                                    # Remove any remaining loose angle brackets at the end
+                                    clean_output = re.sub(r'[<>]+$', '', clean_output)
+                                    
+                                    if clean_output:
+                                        yield clean_output
                                     output_buffer = ""
                             
                         if full_assistant_message["content"] is None:
@@ -1004,9 +1016,54 @@ class OpenAIProvider(AIProvider):
                         elif finish_reason == "stop":
                             # Conversation finished naturally
                             
+                            # Check if we have any unsaved ticket data when the message ends
+                            if current_mode == "ticket" and ticket_data and ticket_data.strip():
+                                logger.warning(f"OpenAI message ended while in ticket mode with unsaved data: {repr(ticket_data[:100])}")
+                                
+                                # Try to save the ticket if it has a closing tag or can be completed
+                                # First check if we have a complete JSON structure
+                                try:
+                                    # Try to parse the JSON to see if it's complete
+                                    json.loads(ticket_data)
+                                    logger.info("Found complete JSON ticket data at message end")
+                                    
+                                    # Import the save function
+                                    from coding.utils.ai_functions import save_ticket_from_stream
+                                    
+                                    # Parse the JSON and save
+                                    ticket_json = json.loads(ticket_data)
+                                    save_result = await save_ticket_from_stream(ticket_json, project_id)
+                                    logger.info(f"OpenAI Final ticket save result: {save_result}")
+                                    
+                                    if save_result.get("is_notification"):
+                                        notification_json = json.dumps(save_result)
+                                        yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                        
+                                except json.JSONDecodeError as e:
+                                    logger.error(f"Error parsing final ticket JSON: {str(e)}")
+                                    logger.error(f"Final ticket data was: {repr(ticket_data)}")
+                                except Exception as e:
+                                    logger.error(f"Error saving final ticket: {str(e)}")
+                                
+                                # Reset ticket data
+                                ticket_data = ""
+                                current_mode = ""
+                            
                             # Flush any remaining buffered output
                             if output_buffer and current_mode not in ["prd", "implementation", "ticket"]:
-                                yield output_buffer
+                                # Clean any stray XML tags before yielding
+                                clean_output = output_buffer
+                                # Remove incomplete lfg tags
+                                clean_output = re.sub(r'</?lfg[^>]*$', '', clean_output)
+                                # Remove complete but stray lfg tags
+                                clean_output = re.sub(r'</?lfg-[^>]*>', '', clean_output)
+                                # Remove priority tags that might leak
+                                clean_output = re.sub(r'</?priority[^>]*>', '', clean_output)
+                                # Remove any remaining loose angle brackets at the end
+                                clean_output = re.sub(r'[<>]+$', '', clean_output)
+                                
+                                if clean_output:
+                                    yield clean_output
                                 output_buffer = ""
                             
                             # Save captured PRD data if available
@@ -1287,6 +1344,27 @@ class AnthropicProvider(AIProvider):
         ticket_data = ""  # Buffer for current ticket being parsed
         current_mode = ""
         buffer = ""  # Buffer to handle split tags
+        
+        # Helper function to clean XML fragments from text
+        def clean_xml_fragments(text):
+            if not text:
+                return text
+            # Remove complete lfg tags
+            text = re.sub(r'</?lfg-[^>]*>', '', text)
+            # Remove incomplete lfg tags at the end
+            text = re.sub(r'</?lfg[^>]*$', '', text)
+            # Remove priority tags
+            text = re.sub(r'</?priority[^>]*>', '', text)
+            # Remove loose > at the beginning
+            text = re.sub(r'^\s*>\s*', '', text)
+            # Remove loose < at the end
+            text = re.sub(r'\s*<\s*$', '', text)
+            # Remove standalone priority values like "High", "Medium", "Low" that appear alone
+            text = re.sub(r'^\s*(High|Medium|Low)\s*$', '', text, flags=re.MULTILINE)
+            # Remove any remaining XML fragments
+            text = re.sub(r'<[^>]*$', '', text)  # Remove incomplete tags at end
+            text = re.sub(r'^[^<]*>', '', text)  # Remove incomplete tags at start
+            return text
 
         while True: # Loop to handle potential multi-turn tool calls
             try:
@@ -1468,6 +1546,9 @@ class AnthropicProvider(AIProvider):
                                     print("\n\n[TICKET MODE ACTIVATED - Anthropic]")
                                     tag_pos = buffer.find("<lfg-ticket>")
                                     
+                                    # Don't yield content before the ticket tag - it should have already been yielded
+                                    # This prevents duplicate content in the output
+                                    
                                     # IMPORTANT: Only keep content AFTER the opening tag
                                     remaining_after_tag = buffer[tag_pos + len("<lfg-ticket>"):]
                                     
@@ -1516,6 +1597,9 @@ class AnthropicProvider(AIProvider):
                                     # Clear buffer from the closing tag onwards
                                     buffer = buffer[tag_pos + len("</lfg-ticket>"):]
                                     
+                                    # Clean any XML fragments from the remaining buffer
+                                    buffer = clean_xml_fragments(buffer)
+                                    
                                     # Parse and save the ticket
                                     try:
                                         from coding.utils.ai_functions import save_ticket_from_stream
@@ -1526,6 +1610,10 @@ class AnthropicProvider(AIProvider):
                                         # Remove newlines before tags to prevent formatting issues
                                         cleaned_ticket_data = re.sub(r'\n+<', '<', cleaned_ticket_data)
                                         cleaned_ticket_data = re.sub(r'>\n+', '>', cleaned_ticket_data)
+                                        
+                                        # Escape special XML characters in text content (but not in tags)
+                                        # Only escape & characters that aren't already part of an entity
+                                        cleaned_ticket_data = re.sub(r'&(?!amp;|lt;|gt;|quot;|apos;)', '&amp;', cleaned_ticket_data)
                                         
                                         # Fix common XML issues
                                         # Fix any malformed priority tags where closing > is missing or attached to </lfg-ticket>
@@ -1712,6 +1800,10 @@ class AnthropicProvider(AIProvider):
                                             cleaned_ticket_data = re.sub(r'\n+<', '<', cleaned_ticket_data)
                                             cleaned_ticket_data = re.sub(r'>\n+', '>', cleaned_ticket_data)
                                             
+                                            # Escape special XML characters in text content (but not in tags)
+                                            # Only escape & characters that aren't already part of an entity
+                                            cleaned_ticket_data = re.sub(r'&(?!amp;|lt;|gt;|quot;|apos;)', '&amp;', cleaned_ticket_data)
+                                            
                                             # Fix common XML issues
                                             # Fix any malformed priority tags where closing > is missing or attached to </lfg-ticket>
                                             cleaned_ticket_data = re.sub(r'<priority\s*</lfg-ticket>', '<priority>Medium</priority></lfg-ticket>', cleaned_ticket_data)
@@ -1791,6 +1883,8 @@ class AnthropicProvider(AIProvider):
                                         # Process remaining text after closing tag
                                         remaining_text = text[tag_pos + len('</lfg-ticket>'):]
                                         if remaining_text:
+                                            # Clean any XML fragments before adding to buffer
+                                            remaining_text = clean_xml_fragments(remaining_text)
                                             buffer += remaining_text
                                             
                                     else:
@@ -1803,14 +1897,20 @@ class AnthropicProvider(AIProvider):
                                     
                                 else:
                                     # Normal mode - yield content to user
-                                    output_buffer += text
+                                    # Clean the text before adding to output buffer
+                                    clean_text = clean_xml_fragments(text)
+                                    output_buffer += clean_text
                                     
                                     # Process buffer to handle incomplete tags
                                     while output_buffer:
                                         last_lt_pos = output_buffer.rfind('<')
                                         
                                         if last_lt_pos == -1:
-                                            yield output_buffer
+                                            # Clean any incomplete or stray XML tags before yielding
+                                            clean_output = clean_xml_fragments(output_buffer)
+                                            
+                                            if clean_output:
+                                                yield clean_output
                                             output_buffer = ""
                                             break
                                         
@@ -1825,11 +1925,17 @@ class AnthropicProvider(AIProvider):
                                         
                                         if could_be_tag and len(remaining) < 14:  # Increased to handle </lfg-ticket>
                                             if last_lt_pos > 0:
-                                                yield output_buffer[:last_lt_pos]
+                                                # Clean any stray tags before yielding
+                                                clean_output = clean_xml_fragments(output_buffer[:last_lt_pos])
+                                                if clean_output:
+                                                    yield clean_output
                                                 output_buffer = output_buffer[last_lt_pos:]
                                             break
                                         else:
-                                            yield output_buffer[:last_lt_pos + 1]
+                                            # Clean any stray tags before yielding
+                                            clean_output = clean_xml_fragments(output_buffer[:last_lt_pos + 1])
+                                            if clean_output:
+                                                yield clean_output
                                             output_buffer = output_buffer[last_lt_pos + 1:]
                                 
                                 # Update the full assistant message
@@ -1858,6 +1964,209 @@ class AnthropicProvider(AIProvider):
                             # Message completed
                             stop_reason = event.message.stop_reason
                             logger.debug(f"Stop Reason: {stop_reason}")
+                            
+                            # Check if we have any unsaved ticket data when the message ends
+                            if current_mode == "ticket" and ticket_data and ticket_data.strip():
+                                logger.warning(f"Message ended while in ticket mode with unsaved data: {repr(ticket_data[:100])}")
+                                
+                                # Check if we need to add content from buffer to complete the ticket
+                                if buffer and "</lfg-ticket>" in buffer and "</lfg-ticket>" not in ticket_data:
+                                    # Find the closing tag position in buffer
+                                    tag_pos = buffer.find("</lfg-ticket>")
+                                    # Add everything up to and including the closing tag
+                                    ticket_data += buffer[:tag_pos + len("</lfg-ticket>")]
+                                    logger.info(f"Added closing tag from buffer to complete ticket")
+                                
+                                # Try to save the incomplete ticket if it has a closing tag
+                                if "</lfg-ticket>" in ticket_data:
+                                    try:
+                                        from coding.utils.ai_functions import save_ticket_from_stream
+                                        
+                                        # Parse XML data
+                                        cleaned_ticket_data = ticket_data.strip()
+                                        
+                                        # Remove newlines before tags to prevent formatting issues
+                                        cleaned_ticket_data = re.sub(r'\n+<', '<', cleaned_ticket_data)
+                                        cleaned_ticket_data = re.sub(r'>\n+', '>', cleaned_ticket_data)
+                                        
+                                        # Escape special XML characters in text content (but not in tags)
+                                        # Only escape & characters that aren't already part of an entity
+                                        cleaned_ticket_data = re.sub(r'&(?!amp;|lt;|gt;|quot;|apos;)', '&amp;', cleaned_ticket_data)
+                                        
+                                        # Fix common XML issues
+                                        cleaned_ticket_data = re.sub(r'<priority\s*</lfg-ticket>', '<priority>Medium</priority></lfg-ticket>', cleaned_ticket_data)
+                                        cleaned_ticket_data = re.sub(r'<priority>([^<]+)</priority\s*</lfg-ticket>', r'<priority>\1</priority></lfg-ticket>', cleaned_ticket_data)
+                                        cleaned_ticket_data = re.sub(r'<priority>([^<]+)</lfg-ticket>', r'<priority>\1</priority></lfg-ticket>', cleaned_ticket_data)
+                                        
+                                        # Replace empty priority tags with default value
+                                        cleaned_ticket_data = re.sub(r'<priority>\s*</priority>', '<priority>Medium</priority>', cleaned_ticket_data)
+                                        cleaned_ticket_data = re.sub(r'<priority></lfg-ticket>', '<priority>Medium</priority></lfg-ticket>', cleaned_ticket_data)
+                                        cleaned_ticket_data = re.sub(r'<priority>\s*</lfg-ticket>', '<priority>Medium</priority></lfg-ticket>', cleaned_ticket_data)
+                                        
+                                        logger.debug(f"Parsing final ticket XML data: {repr(cleaned_ticket_data[:100])}")
+                                        
+                                        # Parse the XML
+                                        root = ET.fromstring(cleaned_ticket_data)
+                                        
+                                        # Extract data from XML elements
+                                        ticket_json = {
+                                            "name": root.findtext('name', ''),
+                                            "description": root.findtext('description', ''),
+                                            "role": root.findtext('role', 'agent'),
+                                            "priority": root.findtext('priority', 'Medium')
+                                        }
+                                        
+                                        # Handle ui_requirements
+                                        ui_req_elem = root.find('ui_requirements')
+                                        if ui_req_elem is not None and ui_req_elem.text:
+                                            ticket_json["ui_requirements"] = ui_req_elem.text
+                                        else:
+                                            ticket_json["ui_requirements"] = {}
+                                        
+                                        # Handle component_specs
+                                        comp_spec_elem = root.find('component_specs')
+                                        if comp_spec_elem is not None and comp_spec_elem.text:
+                                            ticket_json["component_specs"] = comp_spec_elem.text
+                                        else:
+                                            ticket_json["component_specs"] = {}
+                                        
+                                        # Handle acceptance_criteria
+                                        acceptance_criteria = []
+                                        criteria_elem = root.find('acceptance_criteria')
+                                        if criteria_elem is not None:
+                                            for criterion in criteria_elem.findall('criterion'):
+                                                if criterion.text:
+                                                    acceptance_criteria.append(criterion.text)
+                                        ticket_json["acceptance_criteria"] = acceptance_criteria
+                                        
+                                        # Handle dependencies
+                                        dependencies = []
+                                        deps_elem = root.find('dependencies')
+                                        if deps_elem is not None:
+                                            for dep in deps_elem.findall('dependency'):
+                                                if dep.text:
+                                                    dependencies.append(dep.text)
+                                            if not dependencies and deps_elem.text and deps_elem.text.strip():
+                                                dependencies = [deps_elem.text.strip()]
+                                        ticket_json["dependencies"] = dependencies
+                                        
+                                        logger.info(f"Saving final ticket at message end: {ticket_json}")
+                                        
+                                        save_result = await save_ticket_from_stream(ticket_json, project_id)
+                                        logger.info(f"Final ticket save result: {save_result}")
+                                        
+                                        if save_result.get("is_notification"):
+                                            notification_json = json.dumps(save_result)
+                                            yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                            
+                                    except ET.ParseError as e:
+                                        logger.error(f"Error parsing final ticket XML: {str(e)}")
+                                        logger.error(f"Final ticket data was: {repr(ticket_data)}")
+                                    except Exception as e:
+                                        logger.error(f"Error saving final ticket: {str(e)}")
+                                        logger.error(f"Full error: {traceback.format_exc()}")
+                                
+                                # Reset ticket data
+                                ticket_data = ""
+                                current_mode = ""
+                            
+                            # Also check if there's a complete ticket in the buffer that wasn't processed
+                            if buffer and "<lfg-ticket>" in buffer and "</lfg-ticket>" in buffer:
+                                logger.warning(f"Found complete ticket in buffer at message end: {repr(buffer[:100])}")
+                                # Extract the ticket
+                                start_pos = buffer.find("<lfg-ticket>")
+                                end_pos = buffer.find("</lfg-ticket>") + len("</lfg-ticket>")
+                                
+                                if start_pos < end_pos:
+                                    ticket_data = buffer[start_pos:end_pos]
+                                    logger.info(f"Extracted ticket from buffer: {repr(ticket_data[:100])}")
+                                    
+                                    try:
+                                        from coding.utils.ai_functions import save_ticket_from_stream
+                                        
+                                        # Parse XML data
+                                        cleaned_ticket_data = ticket_data.strip()
+                                        
+                                        # Remove newlines before tags to prevent formatting issues
+                                        cleaned_ticket_data = re.sub(r'\n+<', '<', cleaned_ticket_data)
+                                        cleaned_ticket_data = re.sub(r'>\n+', '>', cleaned_ticket_data)
+                                        
+                                        # Escape special XML characters in text content (but not in tags)
+                                        # Only escape & characters that aren't already part of an entity
+                                        cleaned_ticket_data = re.sub(r'&(?!amp;|lt;|gt;|quot;|apos;)', '&amp;', cleaned_ticket_data)
+                                        
+                                        # Fix common XML issues
+                                        cleaned_ticket_data = re.sub(r'<priority\s*</lfg-ticket>', '<priority>Medium</priority></lfg-ticket>', cleaned_ticket_data)
+                                        cleaned_ticket_data = re.sub(r'<priority>([^<]+)</priority\s*</lfg-ticket>', r'<priority>\1</priority></lfg-ticket>', cleaned_ticket_data)
+                                        cleaned_ticket_data = re.sub(r'<priority>([^<]+)</lfg-ticket>', r'<priority>\1</priority></lfg-ticket>', cleaned_ticket_data)
+                                        
+                                        # Replace empty priority tags with default value
+                                        cleaned_ticket_data = re.sub(r'<priority>\s*</priority>', '<priority>Medium</priority>', cleaned_ticket_data)
+                                        cleaned_ticket_data = re.sub(r'<priority></lfg-ticket>', '<priority>Medium</priority></lfg-ticket>', cleaned_ticket_data)
+                                        cleaned_ticket_data = re.sub(r'<priority>\s*</lfg-ticket>', '<priority>Medium</priority></lfg-ticket>', cleaned_ticket_data)
+                                        
+                                        logger.debug(f"Parsing buffered ticket XML data: {repr(cleaned_ticket_data[:100])}")
+                                        
+                                        # Parse the XML
+                                        root = ET.fromstring(cleaned_ticket_data)
+                                        
+                                        # Extract data from XML elements
+                                        ticket_json = {
+                                            "name": root.findtext('name', ''),
+                                            "description": root.findtext('description', ''),
+                                            "role": root.findtext('role', 'agent'),
+                                            "priority": root.findtext('priority', 'Medium')
+                                        }
+                                        
+                                        # Handle ui_requirements
+                                        ui_req_elem = root.find('ui_requirements')
+                                        if ui_req_elem is not None and ui_req_elem.text:
+                                            ticket_json["ui_requirements"] = ui_req_elem.text
+                                        else:
+                                            ticket_json["ui_requirements"] = {}
+                                        
+                                        # Handle component_specs
+                                        comp_spec_elem = root.find('component_specs')
+                                        if comp_spec_elem is not None and comp_spec_elem.text:
+                                            ticket_json["component_specs"] = comp_spec_elem.text
+                                        else:
+                                            ticket_json["component_specs"] = {}
+                                        
+                                        # Handle acceptance_criteria
+                                        acceptance_criteria = []
+                                        criteria_elem = root.find('acceptance_criteria')
+                                        if criteria_elem is not None:
+                                            for criterion in criteria_elem.findall('criterion'):
+                                                if criterion.text:
+                                                    acceptance_criteria.append(criterion.text)
+                                        ticket_json["acceptance_criteria"] = acceptance_criteria
+                                        
+                                        # Handle dependencies
+                                        dependencies = []
+                                        deps_elem = root.find('dependencies')
+                                        if deps_elem is not None:
+                                            for dep in deps_elem.findall('dependency'):
+                                                if dep.text:
+                                                    dependencies.append(dep.text)
+                                            if not dependencies and deps_elem.text and deps_elem.text.strip():
+                                                dependencies = [deps_elem.text.strip()]
+                                        ticket_json["dependencies"] = dependencies
+                                        
+                                        logger.info(f"Saving buffered ticket: {ticket_json}")
+                                        
+                                        save_result = await save_ticket_from_stream(ticket_json, project_id)
+                                        logger.info(f"Buffered ticket save result: {save_result}")
+                                        
+                                        if save_result.get("is_notification"):
+                                            notification_json = json.dumps(save_result)
+                                            yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                            
+                                    except ET.ParseError as e:
+                                        logger.error(f"Error parsing buffered ticket XML: {str(e)}")
+                                        logger.error(f"Buffered ticket data was: {repr(ticket_data)}")
+                                    except Exception as e:
+                                        logger.error(f"Error saving buffered ticket: {str(e)}")
+                                        logger.error(f"Full error: {traceback.format_exc()}")
                             
                             # Track token usage if available
                             if hasattr(event.message, 'usage') and event.message.usage and user:
