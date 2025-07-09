@@ -2079,14 +2079,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Create container with filters
                     let checklistHTML = `
                         <div class="checklist-wrapper">
-                            <div class="checklist-header">
-                                <button id="sync-checklist-linear" class="sync-linear-btn" title="Sync with Linear">
-                                    <i class="fas fa-sync"></i> Sync with Linear
-                                </button>
-                                <button id="delete-all-checklist" class="delete-all-btn" title="Delete All" style="background: #dc2626; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-left: 10px;">
-                                    <i class="fas fa-trash-alt"></i> Delete All
-                                </button>
-                                <div class="checklist-filters">
+                            <div class="checklist-header" style="display: flex; align-items: center; justify-content: flex-end; padding: 12px 16px;">
+                                <div class="checklist-filters" style="margin-right: 12px;">
                                     <div class="filter-options">
                                         <div class="filter-group">
                                             <select id="status-filter" class="checklist-filter-dropdown">
@@ -2101,6 +2095,24 @@ document.addEventListener('DOMContentLoaded', function() {
                                                 <i class="fas fa-times"></i>
                                             </button>
                                         </div>
+                                    </div>
+                                </div>
+                                <div class="dropdown" style="position: relative;">
+                                    <button class="dropdown-toggle" id="checklist-actions-dropdown" style="background: rgba(40, 40, 40, 0.8); color: #888; border: 1px solid rgba(255, 255, 255, 0.08); width: 24px; height: 24px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s ease; padding: 0;"
+                                            onmouseover="this.style.background='rgba(60, 60, 60, 0.9)'; this.style.color='#8b5cf6'; this.style.transform='scale(1.05)';" 
+                                            onmouseout="this.style.background='rgba(40, 40, 40, 0.8)'; this.style.color='#888'; this.style.transform='scale(1)';">
+                                        <i class="fas fa-ellipsis-v" style="font-size: 9px;"></i>
+                                    </button>
+                                    <div class="dropdown-menu" id="checklist-actions-menu" style="display: none; position: absolute; top: 100%; right: 0; background: #1e1e2e; border: 1px solid #313244; border-radius: 8px; min-width: 180px; box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3); z-index: 1000; margin-top: 8px; overflow: hidden;">
+                                        <button id="sync-checklist-linear" class="dropdown-item" style="display: block; width: 100%; text-align: left; padding: 12px 16px; background: none; border: none; color: #cdd6f4; cursor: pointer; transition: all 0.2s; font-size: 14px;" 
+                                                onmouseover="this.style.background='#313244'; this.style.color='#b4befe';" onmouseout="this.style.background='none'; this.style.color='#cdd6f4';">
+                                            <i class="fas fa-sync" style="margin-right: 10px; width: 14px; text-align: center; color: #8b5cf6;"></i> Sync with Linear
+                                        </button>
+                                        <div style="height: 1px; background: #313244;"></div>
+                                        <button id="delete-all-checklist" class="dropdown-item" style="display: block; width: 100%; text-align: left; padding: 12px 16px; background: none; border: none; color: #f38ba8; cursor: pointer; transition: all 0.2s; font-size: 14px;"
+                                                onmouseover="this.style.background='#313244'; this.style.color='#eba0ac';" onmouseout="this.style.background='none'; this.style.color='#f38ba8';">
+                                            <i class="fas fa-trash-alt" style="margin-right: 10px; width: 14px; text-align: center;"></i> Delete All
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -2938,6 +2950,31 @@ document.addEventListener('DOMContentLoaded', function() {
                                 console.error('Error checking Linear configuration:', error);
                                 window.showToast('Error connecting to Linear. Please check your configuration.', 'error');
                             }
+                        });
+                    }
+                    
+                    // Add dropdown toggle functionality
+                    const dropdownToggle = document.getElementById('checklist-actions-dropdown');
+                    const dropdownMenu = document.getElementById('checklist-actions-menu');
+                    
+                    if (dropdownToggle && dropdownMenu) {
+                        // Toggle dropdown on button click
+                        dropdownToggle.addEventListener('click', function(e) {
+                            e.stopPropagation();
+                            const isVisible = dropdownMenu.style.display === 'block';
+                            dropdownMenu.style.display = isVisible ? 'none' : 'block';
+                        });
+                        
+                        // Close dropdown when clicking outside
+                        document.addEventListener('click', function(e) {
+                            if (!dropdownToggle.contains(e.target) && !dropdownMenu.contains(e.target)) {
+                                dropdownMenu.style.display = 'none';
+                            }
+                        });
+                        
+                        // Prevent dropdown from closing when clicking inside the menu
+                        dropdownMenu.addEventListener('click', function(e) {
+                            e.stopPropagation();
                         });
                     }
                     
