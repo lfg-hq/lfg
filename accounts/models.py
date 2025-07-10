@@ -73,6 +73,7 @@ class TokenUsage(models.Model):
     PROVIDER_CHOICES = [
         ('openai', 'OpenAI'),
         ('anthropic', 'Anthropic'),
+        ('grok', 'Grok'),
     ]
     
     MODEL_CHOICES = [
@@ -83,6 +84,8 @@ class TokenUsage(models.Model):
         ('claude-sonnet-4-20250514', 'Claude Sonnet 4'),
         ('claude-opus-4-20250514', 'Claude Opus 4'),
         ('claude-3-5-sonnet-20241022', 'Claude 3.5 Sonnet'),
+        # Grok models
+        ('grok-4', 'Grok 4'),
     ]
     
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='token_usage')
@@ -124,6 +127,11 @@ class TokenUsage(models.Model):
                 'claude-sonnet-4-20250514': {'input': 0.003, 'output': 0.015},
                 'claude-opus-4-20250514': {'input': 0.015, 'output': 0.075},
                 'claude-3-5-sonnet-20241022': {'input': 0.003, 'output': 0.015},
+            },
+            'grok': {
+                # Grok pricing (estimated based on typical AI model pricing)
+                'grok-2': {'input': 0.005, 'output': 0.01},
+                'grok-beta': {'input': 0.003, 'output': 0.008},
             }
         }
         
