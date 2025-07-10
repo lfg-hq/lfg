@@ -87,8 +87,6 @@ class ModelSelection(models.Model):
         ('gpt_4_1', 'OpenAI GPT-4.1'),
         ('gpt_4o', 'OpenAI GPT-4o'),
         ('o3', 'OpenAI O3'),
-        ('grok_2', 'Grok 2'),
-        ('grok_beta', 'Grok Beta'),
         ('grok_4', 'Grok 4'),
     ]
     

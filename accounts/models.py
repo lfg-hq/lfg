@@ -130,8 +130,7 @@ class TokenUsage(models.Model):
             },
             'grok': {
                 # Grok pricing (estimated based on typical AI model pricing)
-                'grok-2': {'input': 0.005, 'output': 0.01},
-                'grok-beta': {'input': 0.003, 'output': 0.008},
+                'grok-4': {'input': 0.003, 'output': 0.008},
             }
         }
         
