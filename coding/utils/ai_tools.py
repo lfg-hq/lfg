@@ -140,6 +140,10 @@ save_features = {
     "function": {
         "name": "save_features",
         "description": "Call this function to save the features from the PRD into a different list",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
     }
 }
 
@@ -148,6 +152,10 @@ save_personas = {
     "function": {
         "name": "save_personas",
         "description": "Call this function to save the personas from the PRD into a different list",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
     }
 }
 
@@ -184,6 +192,10 @@ get_features = {
             {
                 "name": "get_features",
                 "description": "Call this function to check if Features already exist. If they do, it will return the list of features",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
             }
     }
 
@@ -193,6 +205,10 @@ get_personas = {
             {
                 "name": "get_personas",
                 "description": "Call this function to check if Personas already exist. If they do, it will return the list of personas",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
             }
     }
 
@@ -319,6 +335,10 @@ get_next_ticket = {
     "function": {
         "name": "get_next_ticket",
         "description": "Call this function to get the next available ticket for the project",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
     }
 }
 
@@ -327,6 +347,10 @@ get_pending_tickets = {
     "function": {
         "name": "get_pending_tickets",
         "description": "Call this function to get the pending tickets for the project",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
     }
 }
 
@@ -505,6 +529,10 @@ get_github_access_token = {
     "function": {
         "name": "get_github_access_token",
         "description": "Call this function to get the Github access token",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
     }
 }
 

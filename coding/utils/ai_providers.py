@@ -399,6 +399,7 @@ class AIProvider:
         providers = {
             'openai': lambda: OpenAIProvider(selected_model, user, conversation, project),
             'anthropic': lambda: AnthropicProvider(selected_model, user, conversation, project),
+            'grok': lambda: GrokProvider(selected_model, user, conversation, project),
         }
         provider_factory = providers.get(provider_name)
         if provider_factory:
@@ -964,6 +965,498 @@ class OpenAIProvider(AIProvider):
                 project=project,
                 conversation=conversation,
                 provider=provider,
+                model=self.model,
+                input_tokens=getattr(usage_data, 'prompt_tokens', 0),
+                output_tokens=getattr(usage_data, 'completion_tokens', 0),
+                total_tokens=getattr(usage_data, 'total_tokens', 0)
+            )
+            
+            # Calculate cost
+            token_usage.calculate_cost()
+            
+            # Save asynchronously
+            await asyncio.to_thread(token_usage.save)
+            
+            logger.debug(f"Token usage tracked: {token_usage}")
+            
+        except Exception as e:
+            logger.error(f"Error tracking token usage: {e}")
+
+
+class GrokProvider(AIProvider):
+    """Grok AI provider implementation"""
+    
+    def __init__(self, selected_model, user=None, conversation=None, project=None):
+        logger.debug(f"Selected model: {selected_model}")
+        
+        # Get user from conversation or project if not provided
+        if not user:
+            if conversation:
+                user = conversation.user
+            elif project:
+                user = project.owner
+        
+        # Store user and model info for async profile fetching
+        self.user = user
+        self.selected_model = selected_model
+        
+        # Map Grok model names
+        if selected_model == "grok_4":
+            self.model = "grok-4"
+        else:
+            # Default to grok-2
+            self.model = "grok-4"
+            logger.warning(f"Unknown model {selected_model}, defaulting to grok-4")
+        
+        print(f"\\n\\n\\nSelected Grok model: {self.model}")
+        
+        # Client will be initialized in async method
+        self.client = None
+        self.base_url = "https://api.x.ai/v1"
+    
+    @database_sync_to_async
+    def _get_grok_key(self, user):
+        """Get user profile synchronously"""
+        profile = Profile.objects.get(user=user)
+        # Note: Using groq_api_key field as it might be for Grok
+        # If this is incorrect, the field name should be updated in the Profile model
+        if hasattr(profile, 'grok_api_key') and profile.grok_api_key:
+            return profile.grok_api_key
+        elif hasattr(profile, 'groq_api_key') and profile.groq_api_key:
+            return profile.groq_api_key
+        return ""
+    
+    async def _ensure_client(self):
+        """Ensure the client is initialized with API key"""
+        
+        # Try to fetch API key from user profile if available
+        if self.user:
+            try:
+                self.grok_api_key = await self._get_grok_key(self.user)
+                logger.info(f"Fetched Grok API key from user {self.user.id} profile")
+            except Profile.DoesNotExist:
+                logger.warning(f"Profile does not exist for user {self.user.id}")
+            except Exception as e:
+                logger.warning(f"Could not fetch Grok API key from user profile for user {self.user.id}: {e}")
+        
+        # Initialize client using OpenAI-compatible interface
+        if self.grok_api_key:
+            self.client = openai.OpenAI(
+                api_key=self.grok_api_key,
+                base_url=self.base_url
+            )
+        else:
+            logger.warning("No Grok API key found")
+    
+    async def generate_stream(self, messages, project_id, conversation_id, tools):
+        # Ensure client is initialized with API keys
+        await self._ensure_client()
+        
+        # Check if client is initialized
+        if not self.client:
+            yield "Error: No Grok API key configured. Please add API key here http://localhost:8000/accounts/integrations/."
+            return
+            
+        current_messages = list(messages) # Work on a copy
+        
+        # Get user and project/conversation for token tracking
+        user = None
+        project = None
+        conversation = None
+        
+        try:
+            if conversation_id:
+                conversation = await asyncio.to_thread(
+                    Conversation.objects.select_related('user', 'project').get,
+                    id=conversation_id
+                )
+                user = conversation.user
+                project = conversation.project
+            elif project_id:
+                project = await asyncio.to_thread(
+                    Project.objects.select_related('owner').get,
+                    id=project_id
+                )
+                user = project.owner
+        except Exception as e:
+            logger.warning(f"Could not get user/project/conversation for token tracking: {e}")
+
+        prd_data = ""
+        implementation_data = ""
+        current_mode = ""
+        buffer = ""  # Buffer to handle split tags
+
+        while True: # Loop to handle potential multi-turn tool calls
+            try:
+                params = {
+                    "model": self.model,
+                    "messages": current_messages,
+                    "stream": True,
+                    "tool_choice": "auto", 
+                    "tools": tools,
+                    "stream_options": {"include_usage": True}  # Request usage info in stream
+                }
+                
+                logger.debug(f"Making Grok API call with {len(current_messages)} messages.")
+                
+                # Run the blocking API call in a thread
+                response_stream = await asyncio.to_thread(
+                    self.client.chat.completions.create, **params
+                )
+                
+                # Variables for this specific API call
+                tool_calls_requested = [] # Stores {id, function_name, function_args_str}
+                full_assistant_message = {"role": "assistant", "content": None, "tool_calls": []} # To store the complete assistant turn
+
+                logger.debug("New Loop!!")
+                
+                # Variables for token tracking
+                usage_data = None
+                
+                # Output buffer to handle incomplete tags
+                output_buffer = ""
+                
+                # --- Process the stream from the API --- 
+                async for chunk in self._process_stream_async(response_stream):
+                    delta = chunk.choices[0].delta if chunk.choices else None
+                    finish_reason = chunk.choices[0].finish_reason if chunk.choices else None
+                    
+                    # Check for usage information in the chunk
+                    if hasattr(chunk, 'usage') and chunk.usage:
+                        usage_data = chunk.usage
+                        logger.debug(f"Token usage received: {usage_data}")
+
+                    if not delta and not usage_data: continue # Skip empty chunks
+
+                    # --- Accumulate Text Content --- 
+                    if delta.content:
+                        text = delta.content
+                        
+                        # Add to buffer for tag detection
+                        buffer += text
+                        
+                        # Check for complete tags in buffer (similar to OpenAI provider)
+                        if "<lfg-prd>" in buffer and current_mode != "prd":
+                            current_mode = "prd"
+                            print("\\n\\n[PRD MODE ACTIVATED - Grok]")
+                            tag_pos = buffer.find("<lfg-prd>")
+                            remaining_buffer = buffer[tag_pos + len("<lfg-prd>"):]
+                            remaining_buffer = remaining_buffer.lstrip()
+                            if remaining_buffer.startswith('>'):
+                                remaining_buffer = remaining_buffer[1:].lstrip()
+                            prd_data = remaining_buffer
+                            buffer = ""
+                            yield "\\n\\n*Generating PRD... (check the PRD tab for live updates)*\\n\\n"
+                        
+                        if "</lfg-prd>" in buffer and current_mode == "prd":
+                            current_mode = ""
+                            print("\\n\\n[PRD MODE DEACTIVATED - Grok]")
+                            tag_pos = buffer.find("</lfg-prd>")
+                            buffer = buffer[tag_pos + len("</lfg-prd>"):]
+                            
+                            # Clean incomplete closing tags
+                            incomplete_patterns = ["<", "</", "</l", "</lf", "</lfg", "</lfg-", "</lfg-p", "</lfg-pr", "</lfg-prd"]
+                            for pattern in reversed(incomplete_patterns):
+                                if prd_data.endswith(pattern):
+                                    prd_data = prd_data[:-len(pattern)]
+                                    break
+                            
+                            # Send completion notification for PRD stream
+                            prd_complete_notification = {
+                                "is_notification": True,
+                                "notification_type": "prd_stream",
+                                "content_chunk": "",
+                                "is_complete": True,
+                                "notification_marker": "__NOTIFICATION__"
+                            }
+                            notification_json = json.dumps(prd_complete_notification)
+                            yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                        
+                        if "<lfg-plan>" in buffer and current_mode != "implementation":
+                            current_mode = "implementation"
+                            print("\\n\\n[IMPLEMENTATION MODE ACTIVATED - Grok]")
+                            tag_pos = buffer.find("<lfg-plan>")
+                            remaining_buffer = buffer[tag_pos + len("<lfg-plan>"):]
+                            remaining_buffer = remaining_buffer.lstrip()
+                            if remaining_buffer.startswith('>'):
+                                remaining_buffer = remaining_buffer[1:].lstrip()
+                            implementation_data = remaining_buffer
+                            buffer = ""
+                            yield "\\n\\n*Generating implementation plan... (check the Implementation tab for live updates)*\\n\\n"
+                        
+                        if "</lfg-plan>" in buffer and current_mode == "implementation":
+                            current_mode = ""
+                            print("\\n\\n[IMPLEMENTATION MODE DEACTIVATED - Grok]")
+                            tag_pos = buffer.find("</lfg-plan>")
+                            buffer = buffer[tag_pos + len("</lfg-plan>"):]
+                            
+                            # Clean incomplete closing tags
+                            incomplete_patterns = ["<", "</", "</l", "</lf", "</lfg", "</lfg-", "</lfg-p", "</lfg-pl", "</lfg-pla", "</lfg-plan"]
+                            for pattern in reversed(incomplete_patterns):
+                                if implementation_data.endswith(pattern):
+                                    implementation_data = implementation_data[:-len(pattern)]
+                                    break
+                            
+                            # Send completion notification for implementation stream
+                            implementation_complete_notification = {
+                                "is_notification": True,
+                                "notification_type": "implementation_stream",
+                                "content_chunk": "",
+                                "is_complete": True,
+                                "notification_marker": "__NOTIFICATION__"
+                            }
+                            notification_json = json.dumps(implementation_complete_notification)
+                            yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                        
+                        # Keep buffer size reasonable
+                        if current_mode in ["prd", "implementation"]:
+                            closing_tags = ["</lfg-prd>", "</lfg-plan>"]
+                            has_closing_tag = any(tag in buffer for tag in closing_tags)
+                            
+                            if not has_closing_tag and len(buffer) > 20:
+                                buffer = buffer[-20:]
+                        elif len(buffer) > 100 and "<lfg-prd" not in buffer and "</lfg-prd" not in buffer and "<lfg-plan" not in buffer and "</lfg-plan" not in buffer:
+                            buffer = buffer[-50:]
+                        
+                        if current_mode == "prd":
+                            if prd_data == "" and text.startswith('>'):
+                                text = text[1:]
+                            prd_data += text
+                            print(f"\\n\\n\\n[CAPTURING PRD DATA - Grok]: {text}")
+                            
+                            # Stream PRD content to the panel
+                            prd_stream_notification = {
+                                "is_notification": True,
+                                "notification_type": "prd_stream",
+                                "content_chunk": text,
+                                "is_complete": False,
+                                "notification_marker": "__NOTIFICATION__"
+                            }
+                            notification_json = json.dumps(prd_stream_notification)
+                            yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                        elif current_mode == "implementation":
+                            if implementation_data == "" and text.startswith('>'):
+                                text = text[1:]
+                            implementation_data += text
+                            
+                            # Stream implementation content to the panel
+                            implementation_stream_notification = {
+                                "is_notification": True,
+                                "notification_type": "implementation_stream",
+                                "content_chunk": text,
+                                "is_complete": False,
+                                "notification_marker": "__NOTIFICATION__"
+                            }
+                            notification_json = json.dumps(implementation_stream_notification)
+                            yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                        
+                        # Handle buffering to prevent incomplete tags from being sent
+                        if current_mode not in ["prd", "implementation"]:
+                            output_buffer += text
+                            
+                            # Check if we have a complete tag or potential incomplete tag
+                            if any(output_buffer.endswith(prefix) for prefix in ['<', '<l', '<lf', '<lfg', '<lfg-', '<lfg-p', '<lfg-pr', '<lfg-prd', '<lfg-pl', '<lfg-pla', '<lfg-plan']):
+                                pass
+                            else:
+                                # Safe to yield everything in buffer
+                                if output_buffer:
+                                    # Clean any stray XML tags before yielding
+                                    clean_output = output_buffer
+                                    clean_output = re.sub(r'</?lfg[^>]*$', '', clean_output)
+                                    clean_output = re.sub(r'</?lfg-[^>]*>', '', clean_output)
+                                    clean_output = re.sub(r'</?priority[^>]*>', '', clean_output)
+                                    clean_output = re.sub(r'[<>]+$', '', clean_output)
+                                    
+                                    if clean_output:
+                                        yield clean_output
+                                    output_buffer = ""
+                            
+                        if full_assistant_message["content"] is None:
+                            full_assistant_message["content"] = ""
+                        full_assistant_message["content"] += text
+
+                    # --- Accumulate Tool Call Details --- 
+                    if delta.tool_calls:
+                        for tool_call_chunk in delta.tool_calls:
+                            tc_index = tool_call_chunk.index
+                            while len(tool_calls_requested) <= tc_index:
+                                tool_calls_requested.append({"id": None, "type": "function", "function": {"name": None, "arguments": ""}})
+                            
+                            current_tc = tool_calls_requested[tc_index]
+                            
+                            if tool_call_chunk.id:
+                                current_tc["id"] = tool_call_chunk.id
+                            if tool_call_chunk.function:
+                                if tool_call_chunk.function.name:
+                                    function_name = tool_call_chunk.function.name
+                                    current_tc["function"]["name"] = function_name
+                                    
+                                    # Determine notification type based on function name
+                                    notification_type = get_notification_type_for_tool(function_name)
+                                    
+                                    # Skip early notification for stream functions
+                                    if function_name not in ["stream_prd_content", "stream_implementation_content"]:
+                                        logger.debug(f"SENDING EARLY NOTIFICATION FOR {function_name}")
+                                        early_notification = {
+                                            "is_notification": True,
+                                            "notification_type": notification_type or "tool",
+                                            "early_notification": True,
+                                            "function_name": function_name,
+                                            "notification_marker": "__NOTIFICATION__"
+                                        }
+                                        notification_json = json.dumps(early_notification)
+                                        logger.debug(f"Early notification sent: {notification_json}")
+                                        yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                
+                                if tool_call_chunk.function.arguments:
+                                    current_tc["function"]["arguments"] += tool_call_chunk.function.arguments
+
+                    # --- Check Finish Reason --- 
+                    if finish_reason:
+                        logger.debug(f"Finish Reason Detected: {finish_reason}")
+                        
+                        if finish_reason == "tool_calls":
+                            # Finalize tool_calls_requested
+                            for tc in tool_calls_requested:
+                                if not tc["function"]["arguments"].strip():
+                                    tc["function"]["arguments"] = "{}"
+
+                            # Build the assistant message
+                            full_assistant_message["tool_calls"] = tool_calls_requested
+
+                            # Remove the content field if it was just tool calls
+                            if full_assistant_message["content"] is None:
+                                full_assistant_message.pop("content")
+
+                            # Append to the running conversation history
+                            current_messages.append(full_assistant_message)
+                            
+                            # --- Execute Tools and Prepare Next Call --- 
+                            tool_results_messages = []
+                            for tool_call_to_execute in tool_calls_requested:
+                                tool_call_id = tool_call_to_execute["id"]
+                                tool_call_name = tool_call_to_execute["function"]["name"]
+                                tool_call_args_str = tool_call_to_execute["function"]["arguments"]
+                                
+                                logger.debug(f"Grok Provider - Tool Call ID: {tool_call_id}")
+                                
+                                # Use the shared execute_tool_call function
+                                result_content, notification_data, yielded_content = await execute_tool_call(
+                                    tool_call_name, tool_call_args_str, project_id, conversation_id
+                                )
+                                
+                                # Yield any content that needs to be streamed
+                                if yielded_content:
+                                    yield yielded_content
+                                
+                                # Append tool result message
+                                tool_results_messages.append({
+                                    "role": "tool",
+                                    "tool_call_id": tool_call_id,
+                                    "content": f"Tool call {tool_call_name}() completed. {result_content}."
+                                })
+                                
+                                # If we have notification data, yield it
+                                if notification_data:
+                                    logger.debug("YIELDING NOTIFICATION DATA TO CONSUMER")
+                                    notification_json = json.dumps(notification_data)
+                                    logger.debug(f"Notification JSON: {notification_json}")
+                                    yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                
+                            current_messages.extend(tool_results_messages)
+                            # Continue the outer while loop to make the next API call
+                            break
+                        
+                        elif finish_reason == "stop":
+                            # Conversation finished naturally
+                            
+                            # Flush any remaining buffered output
+                            if output_buffer and current_mode not in ["prd", "implementation"]:
+                                clean_output = output_buffer
+                                clean_output = re.sub(r'</?lfg[^>]*$', '', clean_output)
+                                clean_output = re.sub(r'</?lfg-[^>]*>', '', clean_output)
+                                clean_output = re.sub(r'</?priority[^>]*>', '', clean_output)
+                                clean_output = re.sub(r'[<>]+$', '', clean_output)
+                                
+                                if clean_output:
+                                    yield clean_output
+                                output_buffer = ""
+                            
+                            # Save captured PRD data if available
+                            if prd_data and project_id:
+                                print(f"\\n\\n[FINAL PRD DATA CAPTURED - Grok]:\\n{prd_data}\\n")
+                                print(f"[PRD DATA LENGTH - Grok]: {len(prd_data)} characters")
+                                
+                                from coding.utils.ai_functions import save_prd_from_stream
+                                
+                                try:
+                                    save_result = await save_prd_from_stream(prd_data, project_id)
+                                    logger.info(f"Grok PRD save result: {save_result}")
+                                    
+                                    if save_result.get("is_notification"):
+                                        notification_json = json.dumps(save_result)
+                                        yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                except Exception as e:
+                                    logger.error(f"Error saving PRD from Grok stream: {str(e)}")
+                            
+                            # Save captured implementation data if available
+                            if implementation_data and project_id:
+                                print(f"\\n\\n[FINAL IMPLEMENTATION DATA CAPTURED - Grok]:\\n{implementation_data}\\n")
+                                print(f"[IMPLEMENTATION DATA LENGTH - Grok]: {len(implementation_data)} characters")
+                                
+                                from coding.utils.ai_functions import save_implementation_from_stream
+                                
+                                try:
+                                    save_result = await save_implementation_from_stream(implementation_data, project_id)
+                                    logger.info(f"Grok Implementation save result: {save_result}")
+                                    
+                                    if save_result.get("is_notification"):
+                                        notification_json = json.dumps(save_result)
+                                        yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                except Exception as e:
+                                    logger.error(f"Error saving implementation from Grok stream: {str(e)}")
+                            
+                            # Track token usage before exiting
+                            if usage_data and user:
+                                await self._track_token_usage(
+                                    user, project, conversation, usage_data
+                                )
+                            return
+                        else:
+                            logger.warning(f"Unhandled finish reason: {finish_reason}")
+                            if usage_data and user:
+                                await self._track_token_usage(
+                                    user, project, conversation, usage_data
+                                )
+                            return
+                
+                # If the inner loop finished because of tool_calls, continue
+                if finish_reason == "tool_calls":
+                    continue
+                else:
+                    logger.warning("Stream ended unexpectedly.")
+                    return
+
+            except Exception as e:
+                logger.error(f"Critical Error: {str(e)}\\n{traceback.format_exc()}")
+                yield f"Error with Grok stream: {str(e)}"
+                return
+
+    async def _process_stream_async(self, response_stream):
+        """Process the response stream asynchronously by yielding control back to event loop"""
+        for chunk in response_stream:
+            yield chunk
+            await asyncio.sleep(0)
+    
+    async def _track_token_usage(self, user, project, conversation, usage_data):
+        """Track token usage in the database"""
+        try:
+            # Create token usage record
+            token_usage = TokenUsage(
+                user=user,
+                project=project,
+                conversation=conversation,
+                provider='grok',
                 model=self.model,
                 input_tokens=getattr(usage_data, 'prompt_tokens', 0),
                 output_tokens=getattr(usage_data, 'completion_tokens', 0),
