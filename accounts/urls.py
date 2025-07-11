@@ -43,4 +43,9 @@ urlpatterns = [
              template_name='accounts/password_reset_complete.html'
          ), 
          name='password_reset_complete'),
+    
+    # API endpoints
+    path('api/auth/status/', views.auth_status, name='api_auth_status'),
+    path('api/user/api-keys/', views.api_keys_status, name='api_keys_status'),
+    path('profile/api-keys/', views.save_api_keys, name='api_save_keys'),
 ] 

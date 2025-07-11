@@ -802,4 +802,53 @@ def google_callback(request):
         return redirect('auth')
     except Exception as e:
         messages.error(request, f'An unexpected error occurred: {str(e)}')
-        return redirect('auth') 
+        return redirect('auth')
+
+
+# API Endpoints
+def auth_status(request):
+    """Check if user is authenticated"""
+    return JsonResponse({
+        'authenticated': request.user.is_authenticated,
+        'username': request.user.username if request.user.is_authenticated else None
+    })
+
+
+@login_required
+def api_keys_status(request):
+    """Check if user has API keys configured"""
+    profile = request.user.profile
+    return JsonResponse({
+        'has_openai_key': bool(profile.openai_api_key),
+        'has_anthropic_key': bool(profile.anthropic_api_key)
+    })
+
+
+@login_required
+def save_api_keys(request):
+    """Save API keys via AJAX"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    try:
+        import json
+        data = json.loads(request.body)
+        profile = request.user.profile
+        
+        # Update API keys if provided
+        if 'openai_api_key' in data and data['openai_api_key']:
+            profile.openai_api_key = data['openai_api_key']
+        
+        if 'anthropic_api_key' in data and data['anthropic_api_key']:
+            profile.anthropic_api_key = data['anthropic_api_key']
+        
+        profile.save()
+        
+        return JsonResponse({
+            'success': True,
+            'has_openai_key': bool(profile.openai_api_key),
+            'has_anthropic_key': bool(profile.anthropic_api_key)
+        })
+    
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400) 

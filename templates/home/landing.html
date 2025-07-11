@@ -686,6 +686,599 @@
 
 
         /* Mobile Responsiveness */
+        /* New Hero Styles */
+        .requirements-container {
+            margin-top: 3rem;
+            max-width: 700px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .requirements-form {
+            width: 100%;
+        }
+
+        .input-group {
+            position: relative;
+            background: rgba(26, 26, 46, 0.6);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 1.5rem;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .input-group:focus-within {
+            border-color: var(--primary-purple);
+            box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+        }
+
+        .requirements-input {
+            width: 100%;
+            background: transparent;
+            border: none;
+            color: var(--text-primary);
+            font-size: 1.1rem;
+            font-family: 'Space Grotesk', sans-serif;
+            resize: none;
+            outline: none;
+            margin-bottom: 1rem;
+            line-height: 1.6;
+        }
+
+        .requirements-input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .get-started-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.875rem 2rem;
+            background: linear-gradient(135deg, var(--primary-purple), var(--secondary-purple));
+            border: none;
+            border-radius: 12px;
+            color: white;
+            font-weight: 600;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(139, 92, 246, 0.3);
+        }
+
+        .get-started-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(139, 92, 246, 0.4);
+        }
+
+        .suggestions {
+            margin-top: 1.5rem;
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .suggestion-label {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        .suggestion-chip {
+            padding: 0.5rem 1rem;
+            background: rgba(139, 92, 246, 0.1);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            border-radius: 20px;
+            color: var(--primary-purple);
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
+        .suggestion-chip:hover {
+            background: rgba(139, 92, 246, 0.2);
+            transform: translateY(-1px);
+        }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(10, 10, 15, 0.95);
+            backdrop-filter: blur(8px);
+            z-index: 2000;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .modal.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 1;
+        }
+
+        .modal-content {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            max-width: 480px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            transform: translateY(20px);
+            transition: transform 0.3s ease;
+        }
+
+        .modal.show .modal-content {
+            transform: translateY(0);
+        }
+
+        .modal-header {
+            text-align: center;
+            padding: 2.5rem 2.5rem 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .modal-header h2 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, var(--text-primary), var(--primary-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .modal-header p {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+        }
+
+        .modal-body {
+            padding: 2.5rem;
+        }
+
+        .google-auth-btn {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+            padding: 1rem;
+            background: white;
+            border: none;
+            border-radius: 12px;
+            color: #333;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
+        .google-auth-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+        }
+
+        .google-icon {
+            width: 24px;
+            height: 24px;
+        }
+
+        .divider-with-text {
+            text-align: center;
+            margin: 1.5rem 0;
+            position: relative;
+            color: var(--text-muted);
+        }
+
+        .divider-with-text::before,
+        .divider-with-text::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            width: calc(50% - 40px);
+            height: 1px;
+            background: var(--border-color);
+        }
+
+        .divider-with-text::before {
+            left: 0;
+        }
+
+        .divider-with-text::after {
+            right: 0;
+        }
+
+        .quick-auth-form .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .quick-auth-form .form-input {
+            width: 100%;
+            padding: 0.875rem 1rem;
+            background: rgba(10, 10, 15, 0.5);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 1rem;
+            font-family: 'Space Grotesk', sans-serif;
+            transition: all 0.3s ease;
+            outline: none;
+        }
+
+        .quick-auth-form .form-input:focus {
+            border-color: var(--primary-purple);
+            box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+        }
+
+        .quick-auth-form .submit-btn {
+            width: 100%;
+            padding: 0.875rem;
+            background: linear-gradient(135deg, var(--primary-purple), var(--secondary-purple));
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 1rem;
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
+        .quick-auth-form .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(139, 92, 246, 0.3);
+        }
+
+        .auth-footer {
+            text-align: center;
+            margin-top: 1.5rem;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        .auth-footer a {
+            color: var(--primary-purple);
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .auth-footer a:hover {
+            text-decoration: underline;
+        }
+
+        /* Auth tabs styles */
+        .auth-tabs {
+            display: flex;
+            margin-bottom: 2rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .auth-tab {
+            flex: 1;
+            padding: 1rem;
+            text-align: center;
+            cursor: pointer;
+            font-weight: 600;
+            color: var(--text-muted);
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .auth-tab.active {
+            color: var(--text-primary);
+        }
+
+        .auth-tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: linear-gradient(135deg, var(--primary-purple), var(--secondary-purple));
+            border-radius: 3px 3px 0 0;
+            animation: tab-enter 0.3s ease forwards;
+        }
+
+        @keyframes tab-enter {
+            from { transform: scaleX(0); }
+            to { transform: scaleX(1); }
+        }
+
+        .auth-forms {
+            position: relative;
+        }
+
+        .auth-form {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .auth-form.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .form-options {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: -0.5rem 0 1rem;
+            font-size: 0.875rem;
+        }
+
+        .remember-me {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--text-muted);
+        }
+
+        .remember-me input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .forgot-password a {
+            color: var(--primary-purple);
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .forgot-password a:hover {
+            text-decoration: underline;
+        }
+
+        .terms {
+            margin-top: 2rem;
+            text-align: center;
+            font-size: 0.875rem;
+            color: var(--text-muted);
+        }
+
+        .terms a {
+            color: var(--primary-purple);
+            text-decoration: none;
+        }
+
+        .terms a:hover {
+            text-decoration: underline;
+        }
+
+        /* API Keys Modal Styles */
+        .api-keys-modal-content {
+            max-width: 600px;
+        }
+
+        .api-key-section {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .api-provider {
+            background: rgba(10, 10, 15, 0.3);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.5rem;
+            transition: all 0.3s ease;
+        }
+
+        .api-provider:hover {
+            border-color: var(--primary-purple);
+        }
+
+        .provider-header {
+            display: grid;
+            grid-template-columns: 48px 1fr auto;
+            gap: 1rem;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .provider-logo {
+            width: 48px;
+            height: 48px;
+            border-radius: 8px;
+            object-fit: contain;
+            background: white;
+            padding: 8px;
+        }
+
+        .provider-info h3 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+            color: var(--text-primary);
+        }
+
+        .provider-info p {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .get-key-link {
+            color: var(--primary-purple);
+            text-decoration: none;
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: color 0.3s ease;
+            white-space: nowrap;
+        }
+
+        .get-key-link:hover {
+            color: var(--accent-purple);
+        }
+
+        .api-key-input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: rgba(10, 10, 15, 0.5);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-family: monospace;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+            outline: none;
+        }
+
+        .api-key-input:focus {
+            border-color: var(--primary-purple);
+            box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 1rem;
+            margin-top: 2rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .skip-btn {
+            flex: 1;
+            padding: 0.875rem;
+            background: transparent;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-secondary);
+            font-weight: 500;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
+        .skip-btn:hover {
+            border-color: var(--primary-purple);
+            color: var(--primary-purple);
+        }
+
+        /* Project Modal Styles */
+        .project-modal-content {
+            max-width: 420px;
+        }
+
+        .project-modal-content .modal-body {
+            padding: 2rem 2.5rem 2.5rem;
+        }
+        
+        .project-form {
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+        }
+
+        .project-form .form-group {
+            margin-bottom: 0;
+        }
+
+        .project-form .form-input {
+            width: 100%;
+            padding: 1rem 1.25rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            color: var(--text-primary);
+            font-size: 1rem;
+            font-family: 'Space Grotesk', sans-serif;
+            transition: all 0.3s ease;
+        }
+
+        .project-form .form-input:focus {
+            outline: none;
+            border-color: var(--primary-purple);
+            background: rgba(255, 255, 255, 0.08);
+            box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+        }
+
+        .project-form .form-actions {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            margin-top: 0.5rem;
+        }
+
+        .projects-link {
+            color: var(--primary-purple);
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.95rem;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+
+        .projects-link:hover {
+            color: var(--secondary-purple);
+            text-decoration: underline;
+        }
+
+        .create-project-btn {
+            padding: 0.875rem 2.5rem;
+            background: linear-gradient(135deg, var(--primary-purple), var(--secondary-purple));
+            border: none;
+            border-radius: 12px;
+            color: white;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(139, 92, 246, 0.3);
+            white-space: nowrap;
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
+        .create-project-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(139, 92, 246, 0.4);
+        }
+
+        .continue-btn {
+            flex: 1;
+            padding: 0.875rem;
+            background: linear-gradient(135deg, var(--primary-purple), var(--secondary-purple));
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
+        .continue-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(139, 92, 246, 0.3);
+        }
+
         @media (max-width: 768px) {
             .nav-links {
                 display: none;
@@ -699,9 +1292,58 @@
                 font-size: 1.1rem;
             }
 
-            .hero-buttons {
-                flex-direction: column;
-                align-items: center;
+            .requirements-container {
+                margin-top: 2rem;
+            }
+
+            .input-group {
+                padding: 1rem;
+            }
+
+            .requirements-input {
+                font-size: 1rem;
+            }
+
+            .get-started-btn {
+                padding: 0.75rem 1.5rem;
+                font-size: 1rem;
+            }
+
+            .suggestions {
+                justify-content: flex-start;
+            }
+
+            .suggestion-chip {
+                font-size: 0.8rem;
+                padding: 0.4rem 0.8rem;
+            }
+
+            .modal-content {
+                margin: 1rem;
+                max-height: calc(100vh - 2rem);
+            }
+
+            .modal-header {
+                padding: 2rem 1.5rem 1rem;
+            }
+
+            .modal-body {
+                padding: 1.5rem;
+            }
+
+            .provider-header {
+                grid-template-columns: 40px 1fr;
+                gap: 0.75rem;
+            }
+
+            .get-key-link {
+                grid-column: span 2;
+                margin-top: 0.5rem;
+            }
+
+            .provider-logo {
+                width: 40px;
+                height: 40px;
             }
 
             .features-grid,
@@ -1010,20 +1652,176 @@
                 <i class="fas fa-rocket"></i>
                 Open Source AI Platform
             </div>
-            <h1>Creation starts with Planning</h1>
-            <p>LFG helps you brainstorm ideas, then converts them into clear PRDs, technical specs, and Linear tickets in minutes. Start with our planning suite today while we finish building the full product suite.</p>
-            <div class="hero-buttons">
-                <a href="{% url 'auth' %}" class="btn-primary">
-                    <i class="fas fa-file-alt"></i>
-                    Create Your First PRD
-                </a>
-                <a href="#features" class="btn-secondary">
-                    <i class="fas fa-info-circle"></i>
-                    Learn More
-                </a>
+            <h1>Turn Ideas into Products</h1>
+            <p>Describe what you want to build and let AI help you create PRDs, technical specs, and development tickets in minutes.</p>
+            
+            <div class="requirements-container">
+                <form id="requirements-form" class="requirements-form">
+                    <div class="input-group">
+                        <textarea 
+                            id="requirements-input" 
+                            class="requirements-input" 
+                            placeholder="Describe your product idea... e.g., 'I want to build a task management app with real-time collaboration'"
+                            rows="3"
+                            required
+                        ></textarea>
+                        <button type="submit" class="get-started-btn">
+                            <span class="btn-text">Get Started</span>
+                            <i class="fas fa-arrow-right"></i>
+                        </button>
+                    </div>
+                </form>
+                <div class="suggestions">
+                    <span class="suggestion-label">Try:</span>
+                    <button type="button" class="suggestion-chip" data-suggestion="A mobile app for tracking daily habits with gamification">Habit Tracker App</button>
+                    <button type="button" class="suggestion-chip" data-suggestion="An AI-powered resume builder that optimizes for ATS systems">Resume Builder</button>
+                    <button type="button" class="suggestion-chip" data-suggestion="A marketplace for connecting local service providers with customers">Service Marketplace</button>
+                </div>
             </div>
         </div>
     </section>
+
+    <!-- Login Modal -->
+    <div id="login-modal" class="modal">
+        <div class="modal-content login-modal-content">
+            <div class="modal-header">
+                <h2>Welcome to LFG 🚀</h2>
+                <p>Sign in or create an account to continue</p>
+            </div>
+            <div class="modal-body">
+                <div class="auth-tabs">
+                    <div class="auth-tab login-tab active" onclick="switchAuthTab('login')">Login</div>
+                    <div class="auth-tab register-tab" onclick="switchAuthTab('register')">Register</div>
+                </div>
+                
+                <div class="auth-forms">
+                    <div class="auth-form login-form active">
+                        <button class="google-auth-btn" onclick="handleGoogleLogin()">
+                            <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'><path fill='%23EA4335' d='M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z'/><path fill='%234285F4' d='M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z'/><path fill='%23FBBC05' d='M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z'/><path fill='%2334A853' d='M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z'/></svg>" alt="Google" class="google-icon">
+                            Sign in with Google
+                        </button>
+                        
+                        <div class="divider-with-text">
+                            <span>or continue with email</span>
+                        </div>
+                        
+                        <form id="quick-login-form" class="quick-auth-form">
+                            <div class="form-group">
+                                <input type="email" id="login-email" class="form-input" placeholder="Email address" required>
+                            </div>
+                            <div class="form-group">
+                                <input type="password" id="login-password" class="form-input" placeholder="Password" required>
+                            </div>
+                            <div class="form-options">
+                                <label class="remember-me">
+                                    <input type="checkbox" name="remember_me">
+                                    <span>Remember me</span>
+                                </label>
+                                <div class="forgot-password">
+                                    <a href="/accounts/password-reset/" target="_blank">Forgot password?</a>
+                                </div>
+                            </div>
+                            <button type="submit" class="submit-btn">Sign In</button>
+                        </form>
+                    </div>
+                    
+                    <div class="auth-form register-form">
+                        <button class="google-auth-btn" onclick="handleGoogleLogin()">
+                            <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'><path fill='%23EA4335' d='M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z'/><path fill='%234285F4' d='M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z'/><path fill='%23FBBC05' d='M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z'/><path fill='%2334A853' d='M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z'/></svg>" alt="Google" class="google-icon">
+                            Sign up with Google
+                        </button>
+                        
+                        <div class="divider-with-text">
+                            <span>or continue with email</span>
+                        </div>
+                        
+                        <form id="quick-register-form" class="quick-auth-form">
+                            <div class="form-group">
+                                <input type="email" id="register-email" class="form-input" placeholder="Email address" required>
+                            </div>
+                            <div class="form-group">
+                                <input type="password" id="register-password1" class="form-input" placeholder="Create a password" required>
+                            </div>
+                            <div class="form-group">
+                                <input type="password" id="register-password2" class="form-input" placeholder="Confirm password" required>
+                            </div>
+                            <button type="submit" class="submit-btn">Create Account</button>
+                        </form>
+                    </div>
+                </div>
+                
+                <div class="terms">
+                    By continuing, you agree to LFG's <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- API Keys Modal -->
+    <div id="api-keys-modal" class="modal">
+        <div class="modal-content api-keys-modal-content">
+            <div class="modal-header">
+                <h2>Connect Your AI</h2>
+                <p>Add at least one API key to start building with AI</p>
+            </div>
+            <div class="modal-body">
+                <form id="api-keys-form" class="api-keys-form">
+                    <div class="api-key-section">
+                        <div class="api-provider">
+                            <div class="provider-header">
+                                <img src="https://upload.wikimedia.org/wikipedia/commons/0/04/ChatGPT_logo.svg" alt="OpenAI" class="provider-logo">
+                                <div class="provider-info">
+                                    <h3>OpenAI</h3>
+                                    <p>GPT-4 models for advanced reasoning</p>
+                                </div>
+                                <a href="https://platform.openai.com/api-keys" target="_blank" class="get-key-link">Get API Key →</a>
+                            </div>
+                            <input type="password" id="openai-key" class="api-key-input" placeholder="sk-...">
+                        </div>
+                        
+                        <div class="api-provider">
+                            <div class="provider-header">
+                                <img src="https://www.anthropic.com/favicon.ico" alt="Anthropic" class="provider-logo">
+                                <div class="provider-info">
+                                    <h3>Anthropic</h3>
+                                    <p>Claude models for nuanced understanding</p>
+                                </div>
+                                <a href="https://console.anthropic.com/settings/keys" target="_blank" class="get-key-link">Get API Key →</a>
+                            </div>
+                            <input type="password" id="anthropic-key" class="api-key-input" placeholder="sk-ant-...">
+                        </div>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="button" class="skip-btn" onclick="skipApiKeys()">Skip for now</button>
+                        <button type="submit" class="continue-btn">Continue</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Project Creation Modal -->
+    <div id="project-modal" class="modal">
+        <div class="modal-content project-modal-content">
+            <div class="modal-header">
+                <h2>Name Your Project</h2>
+                <p>Give your project a memorable name to get started</p>
+            </div>
+            <div class="modal-body">
+                <form id="project-form" class="project-form">
+                    <div class="form-group">
+                        <input type="text" id="project-name" class="form-input" placeholder="Enter project name..." required autofocus>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <a href="/projects/" class="projects-link">Go to Projects Page →</a>
+                        <button type="submit" class="create-project-btn">Create Project</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
 
     <!-- Features Section -->
     <section class="features" id="features">
@@ -1304,6 +2102,25 @@
     </footer>
 
     <script>
+        // Store user's requirements
+        let userRequirements = '';
+        let isAuthenticated = false;
+
+        // Check authentication status on load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check if user is authenticated via session or cookie
+            fetch('/accounts/api/auth/status/', {
+                credentials: 'include'
+            })
+            .then(response => response.json())
+            .then(data => {
+                isAuthenticated = data.authenticated || false;
+            })
+            .catch(() => {
+                isAuthenticated = false;
+            });
+        });
+
         // Navbar scroll effect
         window.addEventListener('scroll', function() {
             const navbar = document.getElementById('navbar');
@@ -1317,6 +2134,7 @@
         // Smooth scrolling for anchor links
         document.querySelectorAll('a[href^="#"]').forEach(anchor => {
             anchor.addEventListener('click', function (e) {
+                if (this.getAttribute('href') === '#') return;
                 e.preventDefault();
                 const target = document.querySelector(this.getAttribute('href'));
                 if (target) {
@@ -1327,6 +2145,278 @@
                 }
             });
         });
+
+        // Suggestion chips
+        document.querySelectorAll('.suggestion-chip').forEach(chip => {
+            chip.addEventListener('click', function() {
+                const suggestion = this.getAttribute('data-suggestion');
+                document.getElementById('requirements-input').value = suggestion;
+                document.getElementById('requirements-input').focus();
+            });
+        });
+
+        // Requirements form submission
+        document.getElementById('requirements-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            userRequirements = document.getElementById('requirements-input').value.trim();
+            
+            if (!userRequirements) return;
+
+            // Check if user is authenticated
+            if (!isAuthenticated) {
+                showModal('login-modal');
+            } else {
+                // Check if user has API keys
+                checkApiKeys();
+            }
+        });
+
+        // Modal functions
+        function showModal(modalId) {
+            const modal = document.getElementById(modalId);
+            modal.style.display = 'flex';
+            setTimeout(() => {
+                modal.classList.add('show');
+            }, 10);
+
+            // Close modal on background click
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    closeModal(modalId);
+                }
+            });
+        }
+
+        function closeModal(modalId) {
+            const modal = document.getElementById(modalId);
+            modal.classList.remove('show');
+            setTimeout(() => {
+                modal.style.display = 'none';
+            }, 300);
+        }
+
+        // Login form submission
+        document.getElementById('quick-login-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+            
+            try {
+                const response = await fetch('/accounts/auth/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: `form_type=login&username=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`,
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    isAuthenticated = true;
+                    closeModal('login-modal');
+                    checkApiKeys();
+                } else {
+                    alert('Login failed. Please check your credentials.');
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                alert('An error occurred. Please try again.');
+            }
+        });
+
+        // Register form submission
+        document.getElementById('quick-register-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const email = document.getElementById('register-email').value;
+            const password1 = document.getElementById('register-password1').value;
+            const password2 = document.getElementById('register-password2').value;
+            
+            // Validate passwords match
+            if (password1 !== password2) {
+                alert('Passwords do not match.');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/accounts/auth/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: `form_type=register&email=${encodeURIComponent(email)}&password1=${encodeURIComponent(password1)}&password2=${encodeURIComponent(password2)}`,
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    isAuthenticated = true;
+                    closeModal('login-modal');
+                    checkApiKeys();
+                } else {
+                    alert('Registration failed. The email may already be in use or password requirements not met.');
+                }
+            } catch (error) {
+                console.error('Registration error:', error);
+                alert('An error occurred. Please try again.');
+            }
+        });
+
+        // Google login
+        function handleGoogleLogin() {
+            window.location.href = '/accounts/google-login/?next=/chat/';
+        }
+
+        // Switch auth tabs
+        function switchAuthTab(tab) {
+            const loginTab = document.querySelector('.login-tab');
+            const registerTab = document.querySelector('.register-tab');
+            const loginForm = document.querySelector('.login-form');
+            const registerForm = document.querySelector('.register-form');
+            
+            if (tab === 'login') {
+                loginTab.classList.add('active');
+                registerTab.classList.remove('active');
+                loginForm.classList.add('active');
+                registerForm.classList.remove('active');
+            } else {
+                registerTab.classList.add('active');
+                loginTab.classList.remove('active');
+                registerForm.classList.add('active');
+                loginForm.classList.remove('active');
+            }
+        }
+
+        // Check API keys
+        async function checkApiKeys() {
+            try {
+                const response = await fetch('/accounts/api/user/api-keys/', {
+                    credentials: 'include'
+                });
+                const data = await response.json();
+                
+                if (!data.has_openai_key && !data.has_anthropic_key) {
+                    showModal('api-keys-modal');
+                } else {
+                    showProjectModal();
+                }
+            } catch (error) {
+                console.error('Error checking API keys:', error);
+                showProjectModal(); // Proceed anyway
+            }
+        }
+
+        // API keys form submission
+        document.getElementById('api-keys-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const openaiKey = document.getElementById('openai-key').value.trim();
+            const anthropicKey = document.getElementById('anthropic-key').value.trim();
+            
+            if (!openaiKey && !anthropicKey) {
+                alert('Please provide at least one API key.');
+                return;
+            }
+
+            try {
+                const response = await fetch('/accounts/profile/api-keys/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: JSON.stringify({
+                        openai_api_key: openaiKey,
+                        anthropic_api_key: anthropicKey
+                    }),
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    closeModal('api-keys-modal');
+                    showProjectModal();
+                } else {
+                    alert('Failed to save API keys. Please try again.');
+                }
+            } catch (error) {
+                console.error('Error saving API keys:', error);
+                alert('An error occurred. Please try again.');
+            }
+        });
+
+        // Skip API keys
+        function skipApiKeys() {
+            closeModal('api-keys-modal');
+            showProjectModal();
+        }
+
+        // Show project modal
+        function showProjectModal() {
+            showModal('project-modal');
+        }
+
+        // Redirect to chat with requirements and project
+        function redirectToChat(projectId) {
+            const encodedRequirements = encodeURIComponent(userRequirements);
+            window.location.href = `/chat/project/${projectId}/?requirements=${encodedRequirements}`;
+        }
+
+        // Project form submission
+        document.getElementById('project-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const projectName = document.getElementById('project-name').value.trim();
+            
+            if (!projectName) {
+                alert('Please enter a project name.');
+                return;
+            }
+
+            try {
+                const response = await fetch('/projects/api/create/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: JSON.stringify({
+                        name: projectName,
+                        description: 'Project created from landing page',
+                        requirements: userRequirements
+                    }),
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    closeModal('project-modal');
+                    redirectToChat(data.project_id);
+                } else {
+                    alert('Failed to create project. Please try again.');
+                }
+            } catch (error) {
+                console.error('Error creating project:', error);
+                alert('An error occurred. Please try again.');
+            }
+        });
+
+        // Get CSRF token
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
 
         // Add animation on scroll
         const observerOptions = {
@@ -1354,15 +2444,12 @@
         // Copy to clipboard function
         function copyToClipboard(text) {
             navigator.clipboard.writeText(text).then(function() {
-                // Find the button that was clicked
                 const button = event.target.closest('.copy-btn');
                 const originalHTML = button.innerHTML;
                 
-                // Change to checkmark temporarily
                 button.innerHTML = '<i class="fas fa-check"></i>';
                 button.style.color = 'var(--success)';
                 
-                // Reset after 2 seconds
                 setTimeout(() => {
                     button.innerHTML = originalHTML;
                     button.style.color = '';

@@ -90,6 +90,38 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
+    // Store requirements for later use
+    let pendingRequirements = null;
+    const requirements = urlParams.get('requirements');
+    console.log('URL requirements parameter:', requirements);
+    if (requirements) {
+        pendingRequirements = decodeURIComponent(requirements);
+        console.log('Decoded requirements:', pendingRequirements);
+        // Set the requirements in the chat input immediately so user can see it
+        if (chatInput) {
+            chatInput.value = pendingRequirements;
+            console.log('Set chat input value to:', chatInput.value);
+        } else {
+            console.error('Chat input element not found!');
+            // Try again after a short delay
+            setTimeout(() => {
+                const delayedChatInput = document.getElementById('chat-input');
+                if (delayedChatInput) {
+                    delayedChatInput.value = pendingRequirements;
+                    console.log('Set chat input value after delay to:', delayedChatInput.value);
+                }
+            }, 100);
+        }
+        
+        // Remove requirements from URL to avoid resubmitting on refresh
+        const url = new URL(window.location);
+        url.searchParams.delete('requirements');
+        window.history.replaceState({}, '', url);
+    }
+    
+    // Also set up a global variable that can be accessed from console for debugging
+    window.debugPendingRequirements = pendingRequirements;
+    
     // Initialize WebSocket connection
     connectWebSocket();
     
@@ -571,6 +603,25 @@ document.addEventListener('DOMContentLoaded', () => {
             // Start heartbeat monitoring
             startHeartbeat();
             startConnectionMonitor();
+            
+            // Check if we have pending requirements to send
+            console.log('Checking pending requirements:', pendingRequirements);
+            console.log('Current chat input value:', chatInput ? chatInput.value : 'chatInput not found');
+            if (pendingRequirements) {
+                setTimeout(() => {
+                    console.log('About to send pending requirements:', pendingRequirements);
+                    if (typeof sendMessage === 'function') {
+                        sendMessage(pendingRequirements);
+                        if (chatInput) {
+                            chatInput.value = '';
+                            chatInput.style.height = 'auto';
+                        }
+                        pendingRequirements = null; // Clear to avoid re-sending
+                    } else {
+                        console.error('sendMessage function not available!');
+                    }
+                }, 500);
+            }
             
             // Send any queued messages
             while (messageQueue.length > 0) {

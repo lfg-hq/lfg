@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 from django.views.decorators.csrf import csrf_exempt
 from django.utils import timezone
+import json
 
 # Import ServerConfig from coding app
 from coding.models import ServerConfig
@@ -31,7 +32,7 @@ def project_list(request):
 @login_required
 def project_detail(request, project_id):
     """View to display a specific project"""
-    project = get_object_or_404(Project, id=project_id, owner=request.user)
+    project = get_object_or_404(Project, project_id=project_id, owner=request.user)
     
     # If it's an API request, return JSON
     if request.headers.get('Accept') == 'application/json' or request.GET.get('format') == 'json':
@@ -71,14 +72,62 @@ def create_project(request):
         # messages.success(request, f"Project '{name}' created successfully!")
         
         # Redirect to create a conversation for this project
-        return redirect('create_conversation', project_id=project.id)
+        return redirect('create_conversation', project_id=project.project_id)
     
     return render(request, 'projects/create_project.html')
 
 @login_required
+@require_POST
+def create_project_api(request):
+    """API endpoint to create a new project"""
+    try:
+        data = json.loads(request.body)
+        name = data.get('name', '').strip()
+        description = data.get('description', '').strip()
+        requirements = data.get('requirements', '')
+        
+        if not name:
+            return JsonResponse({
+                'success': False,
+                'error': 'Project name is required'
+            }, status=400)
+        
+        # Create the project
+        project = Project.objects.create(
+            name=name,
+            description=description,
+            owner=request.user,
+            icon='🚀'  # Default rocket icon for projects from landing
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'project_id': str(project.project_id),
+            'project': {
+                'id': project.id,
+                'project_id': str(project.project_id),
+                'name': project.name,
+                'description': project.description,
+                'icon': project.icon,
+                'created_at': project.created_at.isoformat()
+            }
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': 'Invalid JSON data'
+        }, status=400)
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+@login_required
 def update_project(request, project_id):
     """View to update a project"""
-    project = get_object_or_404(Project, id=project_id, owner=request.user)
+    project = get_object_or_404(Project, project_id=project_id, owner=request.user)
     
     if request.method == 'POST':
         project.name = request.POST.get('name', project.name)
@@ -110,7 +159,7 @@ def update_project(request, project_id):
 @require_POST
 def delete_project(request, project_id):
     """View to delete a project"""
-    project = get_object_or_404(Project, id=project_id, owner=request.user)
+    project = get_object_or_404(Project, project_id=project_id, owner=request.user)
     project_name = project.name
     project.delete()
     
@@ -120,7 +169,7 @@ def delete_project(request, project_id):
 @login_required
 def project_features_api(request, project_id):
     """API view to get features for a project"""
-    project = get_object_or_404(Project, id=project_id, owner=request.user)
+    project = get_object_or_404(Project, project_id=project_id, owner=request.user)
     features = ProjectFeature.objects.filter(project=project).order_by('-created_at')
     
     features_list = []
@@ -138,7 +187,7 @@ def project_features_api(request, project_id):
 @login_required
 def project_personas_api(request, project_id):
     """API view to get personas for a project"""
-    project = get_object_or_404(Project, id=project_id, owner=request.user)
+    project = get_object_or_404(Project, project_id=project_id, owner=request.user)
     personas = ProjectPersona.objects.filter(project=project).order_by('-created_at')
     
     personas_list = []
@@ -155,7 +204,7 @@ def project_personas_api(request, project_id):
 @login_required
 def project_prd_api(request, project_id):
     """API view to get or update PRD for a project"""
-    project = get_object_or_404(Project, id=project_id, owner=request.user)
+    project = get_object_or_404(Project, project_id=project_id, owner=request.user)
     
     # Get the PRD or create it if it doesn't exist
     prd, created = ProjectPRD.objects.get_or_create(
@@ -194,7 +243,7 @@ def project_prd_api(request, project_id):
 @login_required
 def project_design_schema_api(request, project_id):
     """API view to get design schema for a project"""
-    project = get_object_or_404(Project, id=project_id, owner=request.user)
+    project = get_object_or_404(Project, project_id=project_id, owner=request.user)
     
     # Get the design schema or create it if it doesn't exist
     design_schema, created = ProjectDesignSchema.objects.get_or_create(
@@ -217,7 +266,7 @@ def project_design_schema_api(request, project_id):
 @login_required
 def project_checklist_api(request, project_id):
     """API view to get checklist items for a project"""
-    project = get_object_or_404(Project, id=project_id, owner=request.user)
+    project = get_object_or_404(Project, project_id=project_id, owner=request.user)
     
     # Get all checklist items for this project
     checklist_items = ProjectChecklist.objects.filter(project=project)
@@ -255,7 +304,7 @@ def project_checklist_api(request, project_id):
 @login_required
 def project_server_configs_api(request, project_id):
     """API view to get server configurations for a project"""
-    project = get_object_or_404(Project, id=project_id, owner=request.user)
+    project = get_object_or_404(Project, project_id=project_id, owner=request.user)
     
     # Get all server configs for this project
     server_configs = ServerConfig.objects.filter(project=project).order_by('port')
@@ -280,7 +329,7 @@ def project_terminal(request, project_id):
     View for the terminal page of a project.
     This can either be a local terminal or a connection to a Kubernetes pod.
     """
-    project = get_object_or_404(Project, id=project_id)
+    project = get_object_or_404(Project, project_id=project_id)
     
     # Check if the user has permission to access this project
     if project.owner != request.user:
@@ -300,7 +349,7 @@ def project_terminal(request, project_id):
 @login_required
 def project_implementation_api(request, project_id):
     """API view to get or update implementation for a project"""
-    project = get_object_or_404(Project, id=project_id, owner=request.user)
+    project = get_object_or_404(Project, project_id=project_id, owner=request.user)
     
     # Get the implementation or create it if it doesn't exist
     implementation, created = ProjectImplementation.objects.get_or_create(
@@ -339,7 +388,7 @@ def project_implementation_api(request, project_id):
 @login_required
 def check_server_status_api(request, project_id):
     """API view to check server status and restart if needed"""
-    project = get_object_or_404(Project, id=project_id, owner=request.user)
+    project = get_object_or_404(Project, project_id=project_id, owner=request.user)
     
     try:
         # Get server configurations for this project
@@ -459,7 +508,7 @@ def update_checklist_item_api(request, project_id):
     except Exception as e:
         return JsonResponse({'success': False, 'error': 'Invalid request data', 'details': str(e)}, status=400)
 
-    project = get_object_or_404(Project, id=project_id, owner=request.user)
+    project = get_object_or_404(Project, project_id=project_id, owner=request.user)
     try:
         item = ProjectChecklist.objects.get(id=item_id, project=project)
     except ProjectChecklist.DoesNotExist:
@@ -482,7 +531,7 @@ def update_checklist_item_api(request, project_id):
 @login_required
 def project_tool_call_history_api(request, project_id):
     """API view to get tool call history for a project"""
-    project = get_object_or_404(Project, id=project_id, owner=request.user)
+    project = get_object_or_404(Project, project_id=project_id, owner=request.user)
     
     # Get query parameters for filtering
     tool_name = request.GET.get('tool_name')
@@ -530,7 +579,7 @@ def linear_sync_tickets_api(request, project_id):
     """API view to sync project tickets with Linear"""
     from .linear_sync import LinearSyncService
     
-    project = get_object_or_404(Project, id=project_id, owner=request.user)
+    project = get_object_or_404(Project, project_id=project_id, owner=request.user)
     
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'Method not allowed'}, status=405)
@@ -581,7 +630,7 @@ def linear_teams_api(request, project_id):
     """API view to get Linear teams for the current user"""
     from .linear_sync import LinearSyncService
     
-    project = get_object_or_404(Project, id=project_id, owner=request.user)
+    project = get_object_or_404(Project, project_id=project_id, owner=request.user)
     
     # Check if user has Linear API key
     if not request.user.profile.linear_api_key:
@@ -607,7 +656,7 @@ def linear_projects_api(request, project_id):
     """API view to get Linear projects for a specific team"""
     from .linear_sync import LinearSyncService
     
-    project = get_object_or_404(Project, id=project_id, owner=request.user)
+    project = get_object_or_404(Project, project_id=project_id, owner=request.user)
     team_id = request.GET.get('team_id')
     
     if not team_id:
@@ -641,7 +690,7 @@ def delete_checklist_item_api(request, project_id, item_id):
     if request.method != 'DELETE':
         return JsonResponse({'success': False, 'error': 'Method not allowed'}, status=405)
     
-    project = get_object_or_404(Project, id=project_id, owner=request.user)
+    project = get_object_or_404(Project, project_id=project_id, owner=request.user)
     
     try:
         checklist_item = ProjectChecklist.objects.get(id=item_id, project=project)
@@ -669,7 +718,7 @@ def linear_create_project_api(request, project_id):
     from .linear_sync import LinearSyncService
     import json
     
-    project = get_object_or_404(Project, id=project_id, owner=request.user)
+    project = get_object_or_404(Project, project_id=project_id, owner=request.user)
     
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'Method not allowed'}, status=405)

@@ -2245,10 +2245,14 @@ async def get_project_name(project_id):
                 "message_to_agent": f"Project name is: {project.provided_name}"
             }
         else:
+            current_project_name = project.name.replace(' ', '-').lower()
+            # Remove all special characters except alphanumeric and dashes
+            import re
+            current_project_name = re.sub(r'[^a-z0-9-]', '', current_project_name)
             return {
                 "is_notification": True,
                 "notification_type": "project_name_not_confirmed",
-                "message_to_agent": f"User has not provided name. You can ask user if they want to save this name: '{project.name}'? Do not proceed until user responds."
+                "message_to_agent": f"Ask the user if they wish to use the name. You can ask user if they want to save this name: '{current_project_name}'? Do not proceed until user responds."
             }
     except Exception as e:
         return {

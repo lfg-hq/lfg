@@ -18,6 +18,20 @@ from django.views import View
 def index(request):
     """Render the main chat interface."""
     context = {}
+    
+    # Ensure user has a default project
+    if not request.user.projects.exists():
+        default_project = Project.get_or_create_default_project(request.user)
+        context['project'] = default_project
+        context['project_id'] = str(default_project.project_id)  # Use project_id instead of id
+    else:
+        # Get the most recent project or the default one
+        default_project = request.user.projects.filter(name="Untitled Project").first()
+        if not default_project:
+            default_project = request.user.projects.order_by('-updated_at').first()
+        context['project'] = default_project
+        context['project_id'] = str(default_project.project_id)  # Use project_id instead of id
+    
     if hasattr(request.user, 'profile'):
         context['sidebar_collapsed'] = request.user.profile.sidebar_collapsed
     return render(request, 'chat/main.html', context)
@@ -25,12 +39,12 @@ def index(request):
 @login_required
 def project_chat(request, project_id):
     """Create a new conversation linked to a project and redirect to the chat interface."""
-    project = get_object_or_404(Project, id=project_id, owner=request.user)
+    project = get_object_or_404(Project, project_id=project_id, owner=request.user)
     
     # Redirect to the chat interface with this conversation open
     context = {
         'project': project,
-        'project_id': project.id
+        'project_id': project.project_id
     }
     
     if hasattr(request.user, 'profile'):
@@ -56,7 +70,7 @@ def show_conversation(request, conversation_id):
     
     if project:
         context['project'] = project
-        context['project_id'] = project.id
+        context['project_id'] = str(project.project_id)
     
     if hasattr(request.user, 'profile'):
         context['sidebar_collapsed'] = request.user.profile.sidebar_collapsed
@@ -73,7 +87,7 @@ def conversation_list(request, project_id):
     
     # Filter by project using the correct field name
     if project_id:
-        conversations = conversations.filter(project_id=project_id)
+        conversations = conversations.filter(project__project_id=project_id)
     
     # Order by most recent first
     conversations = conversations.order_by('-updated_at')
@@ -84,7 +98,7 @@ def conversation_list(request, project_id):
         project_info = None
         if conv.project:
             project_info = {
-                'id': conv.project.id,
+                'id': str(conv.project.project_id),
                 'name': conv.project.name,
                 'icon': conv.project.icon
             }
@@ -120,7 +134,7 @@ def conversation_detail(request, conversation_id):
         if projects.exists():
             project = projects.first()
             project_info = {
-                'id': project.id,
+                'id': str(project.project_id),
                 'name': project.name,
                 'icon': project.icon
             }
