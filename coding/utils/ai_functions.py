@@ -2437,6 +2437,8 @@ async def save_prd_from_stream(prd_content, project_id):
     # Remove any trailing tag fragments
     if '</lfg-prd' in prd_content:
         prd_content = prd_content[:prd_content.rfind('</lfg-prd')].strip()
+    if '<lfg-prd>' in prd_content:
+        prd_content = prd_content[prd_content.rfind('<lfg-prd>'):].strip()
     
     try:
         # Save PRD to database

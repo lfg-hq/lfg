@@ -26,6 +26,7 @@ from coding.utils import (
     get_system_prompt_design, 
     get_system_prompt_product
 )
+from coding.utils.prompts.turbo_prompt import get_system_turbo_mode
 from coding.utils.ai_tools import tools_code, tools_product, tools_design
 
 # Set up logger
@@ -250,6 +251,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 project_id = text_data_json.get('project_id')
                 file_data = text_data_json.get('file')  # Get file data if present
                 user_role = text_data_json.get('user_role')  # Get user role if present
+                turbo_mode = text_data_json.get('turbo_mode', False)  # Get turbo mode state
                 # file_id = text_data_json.get('file_id')  # Get file_id if present
 
                 
@@ -305,7 +307,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 # Generate AI response in background task
                 # Store the task so we can cancel it if needed
                 self.active_generation_task = asyncio.create_task(
-                    self.generate_ai_response(user_message, provider_name, project_id, user_role)
+                    self.generate_ai_response(user_message, provider_name, project_id, user_role, turbo_mode)
                 )
             
             elif message_type == 'stop_generation':
@@ -412,7 +414,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 logger.error(f"Heartbeat error: {e}")
                 break
     
-    async def generate_ai_response(self, user_message, provider_name, project_id=None, user_role=None):
+    async def generate_ai_response(self, user_message, provider_name, project_id=None, user_role=None, turbo_mode=False):
         """
         Generate response from AI
         """
@@ -445,11 +447,21 @@ class ChatConsumer(AsyncWebsocketConsumer):
             user=self.user,
             defaults={'name': 'product_analyst'}
         )
+        
+        # Update turbo mode state in the agent role
+        if agent_role.turbo_mode != turbo_mode:
+            agent_role.turbo_mode = turbo_mode
+            await database_sync_to_async(agent_role.save)()
 
-        logger.debug(f"Agent Role: {agent_role.name}")
+        logger.debug(f"Agent Role: {agent_role.name}, Turbo Mode: {agent_role.turbo_mode}")
         user_role = agent_role.name
 
-        if user_role == "designer":
+        # Check if turbo mode is enabled first
+        if agent_role.turbo_mode:
+            logger.info(f"TURBO MODE ENABLED for user {self.user.username}")
+            system_prompt = await get_system_turbo_mode()
+            tools = tools_product  # Use product tools for turbo mode (includes create_tickets)
+        elif user_role == "designer":
             system_prompt = await get_system_prompt_design()
             tools = tools_design
         elif user_role == "product_analyst":
@@ -479,6 +491,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         if selected_model == "claude_4_sonnet":
             provider_name = "anthropic"
+        elif selected_model == "claude_4_opus":
+            provider_name = "anthropic"
+        elif selected_model == "claude_3.5_sonnet":
+            provider_name = "anthropic"
+        elif selected_model == "grok_4":
+            provider_name = "grok"
         else:
             provider_name = "openai"
         
@@ -555,15 +573,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             notification_message['is_complete'] = notification_data.get('is_complete', False)
                             
                             # CONSOLE OUTPUT FOR PRD STREAMING
-                            print("\n" + "="*80)
-                            print(f"🟣 PRD STREAM IN WEBSOCKET CONSUMER")
-                            print(f"📅 Time: {datetime.now().isoformat()}")
-                            print(f"📏 Content Length: {len(notification_data.get('content_chunk', ''))} chars")
-                            print(f"✅ Complete: {notification_data.get('is_complete', False)}")
                             if notification_data.get('content_chunk'):
                                 content_preview = notification_data['content_chunk'][:200]
                                 print(f"📝 Content: {content_preview}{'...' if len(notification_data['content_chunk']) > 200 else ''}")
-                            print("="*80 + "\n")
                         
                         # Add additional fields for implementation_stream notifications
                         if notification_data.get('notification_type') == 'implementation_stream':
@@ -571,15 +583,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             notification_message['is_complete'] = notification_data.get('is_complete', False)
                             
                             # CONSOLE OUTPUT FOR IMPLEMENTATION STREAMING
-                            print("\n" + "="*80)
-                            print(f"🔵 IMPLEMENTATION STREAM IN WEBSOCKET CONSUMER")
-                            print(f"📅 Time: {datetime.now().isoformat()}")
-                            print(f"📏 Content Length: {len(notification_data.get('content_chunk', ''))} chars")
-                            print(f"✅ Complete: {notification_data.get('is_complete', False)}")
                             if notification_data.get('content_chunk'):
                                 content_preview = notification_data['content_chunk'][:200]
                                 print(f"📝 Content: {content_preview}{'...' if len(notification_data['content_chunk']) > 200 else ''}")
-                            print("="*80 + "\n")
                         
                         logger.info(f"SENDING NOTIFICATION MESSAGE: {notification_message}")
                         
@@ -775,21 +781,19 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     try:
                         # Extract the JSON between the markers
                         notification_json = content[len("__NOTIFICATION__"):-len("__NOTIFICATION__")]
-                        logger.debug("DETECTED SPECIALLY FORMATTED NOTIFICATION")
-                        logger.debug(f"Notification JSON: {notification_json}")
+                        # logger.debug("DETECTED SPECIALLY FORMATTED NOTIFICATION")
+                        # logger.debug(f"Notification JSON: {notification_json}")
                         
                         notification_data = json.loads(notification_json)
-                        logger.debug(f"Parsed notification: {notification_data}")
+                        # logger.debug(f"Parsed notification: {notification_data}")
                         
                         # Verify this is a notification
                         if notification_data.get('is_notification') and notification_data.get('notification_marker') == "__NOTIFICATION__":
-                            logger.debug("Valid notification confirmed!")
-                            
                             # Check if this is an early notification
                             is_early = notification_data.get('early_notification', False)
                             function_name = notification_data.get('function_name', '')
-                            logger.debug(f"Is early notification: {is_early}")
-                            logger.debug(f"Function name: {function_name}")
+                            # logger.debug(f"Is early notification: {is_early}")
+                            # logger.debug(f"Function name: {function_name}")
                             
                             # Create notification message to send to client
                             notification_message = {
@@ -882,6 +886,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 error_message = "No Anthropic API key configured. Please add API key here http://localhost:8000/accounts/integrations/."
             elif "'OpenAIProvider' object has no attribute 'openai_api_key'" in error_message:
                 error_message = "No OpenAI API key configured. Please add API key here http://localhost:8000/accounts/integrations/."
+            elif "'GrokProvider' object has no attribute 'grok_api_key'" in error_message:
+                error_message = "No Grok API key configured. Please add API key here http://localhost:8000/accounts/integrations/."
             
             yield f"Error generating response: {error_message}"
         finally:
@@ -1136,10 +1142,20 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         if selected_model == "claude_4_sonnet":
             provider_name = "anthropic"
+        elif selected_model == "claude_4_opus":
+            provider_name = "anthropic"
+        elif selected_model == "claude_3.5_sonnet":
+            provider_name = "anthropic"
+        elif selected_model == "grok_2":
+            provider_name = "grok"
+        elif selected_model == "grok_beta":
+            provider_name = "grok"
+        elif selected_model == "grok_4":
+            provider_name = "grok"
         else:
             provider_name = "openai"
         
-        provider = AIProvider.get_provider(provider_name, selected_model)
+        provider = AIProvider.get_provider(provider_name, selected_model, user=self.user)
         
         # Create a special prompt for title generation
         title_prompt = [

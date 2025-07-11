@@ -140,6 +140,10 @@ save_features = {
     "function": {
         "name": "save_features",
         "description": "Call this function to save the features from the PRD into a different list",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
     }
 }
 
@@ -148,6 +152,10 @@ save_personas = {
     "function": {
         "name": "save_personas",
         "description": "Call this function to save the personas from the PRD into a different list",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
     }
 }
 
@@ -184,6 +192,10 @@ get_features = {
             {
                 "name": "get_features",
                 "description": "Call this function to check if Features already exist. If they do, it will return the list of features",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
             }
     }
 
@@ -193,6 +205,10 @@ get_personas = {
             {
                 "name": "get_personas",
                 "description": "Call this function to check if Personas already exist. If they do, it will return the list of personas",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
             }
     }
 

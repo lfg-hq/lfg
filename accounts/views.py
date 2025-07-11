@@ -7,6 +7,7 @@ from django.conf import settings
 from .forms import UserRegisterForm, UserUpdateForm, ProfileUpdateForm, EmailAuthenticationForm, PasswordResetForm
 from django.contrib.auth.models import User
 from .models import GitHubToken, EmailVerificationToken
+from chat.models import AgentRole
 import requests
 import uuid
 import json
@@ -802,4 +803,25 @@ def google_callback(request):
         return redirect('auth')
     except Exception as e:
         messages.error(request, f'An unexpected error occurred: {str(e)}')
-        return redirect('auth') 
+        return redirect('auth')
+
+
+@login_required
+def get_agent_settings(request):
+    """Get the user's agent role settings including turbo mode state"""
+    try:
+        agent_role, created = AgentRole.objects.get_or_create(
+            user=request.user,
+            defaults={'name': 'product_analyst', 'turbo_mode': False}
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'agent_role': agent_role.name,
+            'turbo_mode': agent_role.turbo_mode
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500) 

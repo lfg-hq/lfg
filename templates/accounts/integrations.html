@@ -93,6 +93,48 @@
       </a>
     </div>
 
+    <!-- Grok Integration -->
+    <div class="integration-card">
+      <div class="integration-header">
+        <div class="integration-title">
+          <svg class="integration-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M2 17L12 22L22 17" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M2 12L12 17L22 12" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <h3 class="integration-name">Grok</h3>
+        </div>
+        <span class="connection-status {% if groq_connected %}connected{% endif %}">
+          {% if groq_connected %}Connected{% else %}Not Connected{% endif %}
+        </span>
+      </div>
+      
+      <p class="integration-description">Connect to Grok AI models for advanced language processing capabilities.</p>
+      
+      {% if groq_connected %}
+        <form method="post" action="{% url 'disconnect_api_key' 'groq' %}">
+          {% csrf_token %}
+          <button type="submit" class="disconnect-button">Disconnect Grok</button>
+        </form>
+      {% else %}
+        <button class="connect-button" id="groq-toggle">Connect Grok</button>
+        <div class="api-form" id="groq-form">
+          <form method="post" action="{% url 'save_api_key' 'groq' %}">
+            {% csrf_token %}
+            <input type="password" name="api_key" class="api-input" placeholder="Enter your Grok API key" required>
+            <button type="submit" class="api-button">Save API Key</button>
+          </form>
+        </div>
+      {% endif %}
+      
+      <a href="https://x.ai/api" target="_blank" class="external-link">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M10 6H6C4.89543 6 4 6.89543 4 8V18C4 19.1046 4.89543 20 6 20H16C17.1046 20 18 19.1046 18 18V14M14 4H20M20 4V10M20 4L10 14" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Get Grok API Key
+      </a>
+    </div>
+
   </div>
 
   <!-- Project Management Section -->
