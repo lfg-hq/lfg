@@ -27,7 +27,7 @@ from coding.utils import (
     get_system_prompt_product
 )
 from coding.utils.prompts.turbo_prompt import get_system_turbo_mode
-from coding.utils.ai_tools import tools_code, tools_product, tools_design
+from coding.utils.ai_tools import tools_code, tools_product, tools_design, tools_turbo
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -460,7 +460,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if agent_role.turbo_mode:
             logger.info(f"TURBO MODE ENABLED for user {self.user.username}")
             system_prompt = await get_system_turbo_mode()
-            tools = tools_product  # Use product tools for turbo mode (includes create_tickets)
+            tools = tools_turbo  # Use product tools for turbo mode (includes create_tickets)
         elif user_role == "designer":
             system_prompt = await get_system_prompt_design()
             tools = tools_design

@@ -575,6 +575,8 @@ tools_code = [get_prd, start_server, \
 
 tools_product = [get_prd, get_implementation, create_tickets, get_pending_tickets]
 
+tools_turbo = [get_prd, create_tickets, get_pending_tickets, update_ticket, execute_command]
+
 tools_ticket = [execute_command, get_prd, get_implementation, copy_boilerplate_code, start_server]
 
 tools_design = [get_prd, execute_command, start_server, get_github_access_token]

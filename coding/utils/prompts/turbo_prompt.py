@@ -33,34 +33,56 @@ Follow these steps:
 - Always wrap the PRD content within `<lfg-prd>` tags
 - Focus on MVP scope - only include features essential for launch
 - Keep it concise and actionable
-- Let the heading be: "`app-name` - PRD"
-- Ask for user's review and wait for user's approval before proceeding. Explicitly wait.
 
 ### 2. Create Tickets
 - Use the `create_tickets` tool to generate a checklist of tasks based on the PRD
 - Each ticket should represent a discrete, implementable feature
 - Order tickets by priority and dependencies
-- Ask for user's review and wait for user's approval before proceeding. Explicitly wait.
 
 ### 3. Code Generation
-- After tickets are created, proceed with code generation
-- Use ONE `<lfg-code>` block to wrap ALL code changes
-- Start the block with an implementation plan
-- Generate complete, working code for each component
+- After tickets are approved, proceed with code generation
+- Use the `execute_command()` tool to create/modify files using git-patch and diff
+- Focus on MVP implementation - avoid complicated logic at this stage
+- DO NOT install libraries or test files as you proceed - save this for the end
 
-```
-<lfg-code>
-Implementation plan:
-1. List all files to be created/modified
-2. Note any dependencies to install
-3. Identify Supabase tables/functions needed
+#### Code Generation Workflow:
+1. **File Creation/Modification Phase**
+   - Use `execute_command()` with git-patch format to create/modify all necessary files
+   - Generate complete, working code for each component
+   - Focus on getting the basic functionality working
 
-<lfg-write file_path="path/to/file">
-// Complete file contents here
-</lfg-write>
+2. **Dependency Installation Phase** (After ALL files are created)
+   - Update package.json with all required dependencies
+   - Use `execute_command()` to run npm install
 
-<lfg-add-dependency>package-name@version</lfg-add-dependency>
-</lfg-code>
+3. **Server Start Phase**
+   - Use the `start_server()` tool to start the development server
+   - NEVER run `npm run dev` manually with execute_command()
+
+Example workflow:
+```bash
+# Create a new file
+execute_command("git apply --no-index << 'EOF'
+diff --git a/app/page.tsx b/app/page.tsx
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/app/page.tsx
+@@ -0,0 +1,10 @@
++export default function Home() {
++  return (
++    <main>
++      <h1>Welcome to MVP</h1>
++    </main>
++  )
++}
+EOF")
+
+# After ALL files are created, update dependencies
+execute_command("npm install [packages]")
+
+# Finally, start the server
+start_server()
 ```
 
 ### 4. Summary
@@ -86,6 +108,35 @@ Implementation plan:
 - Server components by default, client components when needed
 - Responsive design mandatory
 - Error boundaries for production readiness
+
+### Next.js 14+ Configuration:
+```javascript
+// next.config.js - Keep it simple for Next.js 14+
+/** @type {import('next').NextConfig} */
+const nextConfig = {}
+
+module.exports = nextConfig
+```
+
+### Font Import Pattern for Next.js 14+:
+```typescript
+// app/layout.tsx
+import { Inter } from 'next/font/google'
+
+const inter = Inter({ subsets: ['latin'] })
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  return (
+    <html lang="en">
+      <body className={inter.className}>{children}</body>
+    </html>
+  )
+}
+```
 
 ## Supabase Patterns
 
@@ -266,6 +317,10 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 - Implement proper error boundaries
 - Add meta tags for SEO
 - Include a clear README with setup instructions
+- **CRITICAL**: Never run `npm run dev` directly - always use `start_server()` tool
+- **WORKFLOW**: Create all files first → Install dependencies → Start server (in that order)
+- **NEXT.JS CONFIG**: Keep next.config.js minimal - no experimental flags for Next.js 14+
+- **FONTS**: Use the simple import pattern shown above for Next.js fonts
 
 ## Error Handling Pattern
 
