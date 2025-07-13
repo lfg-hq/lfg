@@ -274,10 +274,15 @@ async def save_features(project_id):
         }
 
     try:
-        # Check if project has PRD
+        # Check if project has PRD - get the most recent one
         try:
-            prd_content = await sync_to_async(lambda: project.prd.prd)()
-        except ProjectPRD.DoesNotExist:
+            latest_prd = await sync_to_async(
+                lambda: ProjectPRD.objects.filter(project=project).order_by('-updated_at').first()
+            )()
+            if not latest_prd:
+                raise ProjectPRD.DoesNotExist
+            prd_content = latest_prd.prd
+        except (ProjectPRD.DoesNotExist, AttributeError):
             return {
                 "is_notification": False,
                 "message_to_agent": "Error: Project does not have a PRD. Please create a PRD first."
@@ -355,10 +360,15 @@ async def save_personas(project_id):
         }
 
     try:
-        # Check if project has PRD
+        # Check if project has PRD - get the most recent one
         try:
-            prd_content = await sync_to_async(lambda: project.prd.prd)()
-        except ProjectPRD.DoesNotExist:
+            latest_prd = await sync_to_async(
+                lambda: ProjectPRD.objects.filter(project=project).order_by('-updated_at').first()
+            )()
+            if not latest_prd:
+                raise ProjectPRD.DoesNotExist
+            prd_content = latest_prd.prd
+        except (ProjectPRD.DoesNotExist, AttributeError):
             return {
                 "is_notification": False,
                 "message_to_agent": "Error: Project does not have a PRD. Please create a PRD first."
@@ -772,6 +782,7 @@ async def create_prd(function_args, project_id):
         }
     
     prd_content = function_args.get('prd', '')
+    prd_name = function_args.get('prd_name', 'Main PRD')
 
     if not prd_content:
         return {
@@ -779,20 +790,25 @@ async def create_prd(function_args, project_id):
             "message_to_agent": "Error: PRD content cannot be empty"
         }
 
+    logger.debug(f"\nPRD Name: {prd_name}")
     logger.debug(f"\nPRD Content: {prd_content}")
 
     try:
-        # Save PRD to database
+        # Save PRD to database with name
         created = await sync_to_async(lambda: (
             lambda: (
                 lambda prd, created: created
-            )(*ProjectPRD.objects.get_or_create(project=project, defaults={'prd': prd_content}))
+            )(*ProjectPRD.objects.get_or_create(
+                project=project, 
+                name=prd_name,
+                defaults={'prd': prd_content}
+            ))
         )())()
         
         # Update existing PRD if it wasn't created
         if not created:
             await sync_to_async(lambda: (
-                ProjectPRD.objects.filter(project=project).update(prd=prd_content)
+                ProjectPRD.objects.filter(project=project, name=prd_name).update(prd=prd_content)
             ))()
         
         action = "created" if created else "updated"
@@ -804,7 +820,8 @@ async def create_prd(function_args, project_id):
         return {
             "is_notification": True,
             "notification_type": "prd",
-            "message_to_agent": f"PRD {action} successfully in the database"
+            "message_to_agent": f"PRD '{prd_name}' {action} successfully in the database",
+            "prd_name": prd_name
         }
         
     except Exception as e:
@@ -813,11 +830,11 @@ async def create_prd(function_args, project_id):
             "message_to_agent": f"Error saving PRD: {str(e)}"
         }
 
-async def get_prd(project_id):
+async def get_prd(project_id, prd_name=None):
     """
-    Retrieve the PRD for a project
+    Retrieve a specific PRD or all PRDs for a project
     """
-    logger.info("Get PRD function called ")
+    logger.info(f"Get PRD function called for project {project_id}, PRD name: {prd_name}")
     
     error_response = validate_project_id(project_id)
     if error_response:
@@ -834,17 +851,47 @@ async def get_prd(project_id):
         }
     
     try:
-        # Check if project has PRD and get content
-        prd_content = await sync_to_async(lambda: project.prd.prd)()
-        return {
-            "is_notification": True,
-            "notification_type": "prd",
-            "message_to_agent": f"Here is the existing version of the PRD: {prd_content}. Please proceed with users request."
-        }
+        if prd_name:
+            # Get specific PRD by name
+            prd = await sync_to_async(
+                lambda: ProjectPRD.objects.get(project=project, name=prd_name)
+            )()
+            return {
+                "is_notification": True,
+                "notification_type": "prd",
+                "message_to_agent": f"Here is the PRD '{prd_name}': {prd.prd}. Please proceed with users request.",
+                "prd_name": prd_name
+            }
+        else:
+            # Get all PRDs for the project
+            prds = await sync_to_async(
+                lambda: list(ProjectPRD.objects.filter(project=project).values('name', 'created_at', 'updated_at'))
+            )()
+            
+            if not prds:
+                return {
+                    "is_notification": False,
+                    "message_to_agent": "No PRDs found for this project. Please create a PRD first."
+                }
+            
+            # Get the most recent PRD content as well
+            latest_prd = await sync_to_async(
+                lambda: ProjectPRD.objects.filter(project=project).order_by('-updated_at').first()
+            )()
+            
+            prd_list = "\n".join([f"- {prd['name']} (Created: {prd['created_at']}, Updated: {prd['updated_at']})" for prd in prds])
+            
+            return {
+                "is_notification": True,
+                "notification_type": "prd_list",
+                "message_to_agent": f"Found {len(prds)} PRD(s) for this project:\n{prd_list}\n\nLatest PRD '{latest_prd.name}' content: {latest_prd.prd}",
+                "prds": prds,
+                "latest_prd_name": latest_prd.name
+            }
     except ProjectPRD.DoesNotExist:
         return {
             "is_notification": False,
-            "message_to_agent": "No PRD found for this project. Please create a PRD first."
+            "message_to_agent": f"No PRD with name '{prd_name}' found for this project." if prd_name else "No PRDs found for this project."
         }
     except Exception as e:
         return {
@@ -880,6 +927,7 @@ async def stream_prd_content(function_args, project_id):
     
     content_chunk = function_args.get('content_chunk', '')
     is_complete = function_args.get('is_complete', False)
+    prd_name = function_args.get('prd_name', 'Main PRD')
     
     logger.info(f"Streaming PRD chunk - Length: {len(content_chunk)}, Is Complete: {is_complete}")
     logger.info(f"First 100 chars of chunk: {content_chunk[:100]}...")
@@ -894,8 +942,8 @@ async def stream_prd_content(function_args, project_id):
         print(f"📝 Content Preview: {content_chunk[:200]}..." if len(content_chunk) > 200 else f"📝 Content: {content_chunk}")
     print("="*80 + "\n")
     
-    # Create cache key for this project
-    cache_key = f"streaming_prd_content_{project_id}"
+    # Create cache key for this project and PRD name
+    cache_key = f"streaming_prd_content_{project_id}_{prd_name.replace(' ', '_')}"
     
     # Get existing content from cache or initialize
     existing_content = cache.get(cache_key, "")
@@ -923,20 +971,24 @@ async def stream_prd_content(function_args, project_id):
         
         if full_prd_content:
             try:
-                # Save PRD to database
+                # Save PRD to database with name
                 created = await sync_to_async(lambda: (
                     lambda: (
                         lambda prd, created: created
-                    )(*ProjectPRD.objects.get_or_create(project=project, defaults={'prd': full_prd_content}))
+                    )(*ProjectPRD.objects.get_or_create(
+                        project=project, 
+                        name=prd_name,
+                        defaults={'prd': full_prd_content}
+                    ))
                 )())()
                 
                 # Update existing PRD if it wasn't created
                 if not created:
                     await sync_to_async(lambda: (
-                        ProjectPRD.objects.filter(project=project).update(prd=full_prd_content)
+                        ProjectPRD.objects.filter(project=project, name=prd_name).update(prd=full_prd_content)
                     ))()
                 
-                logger.info(f"PRD {'created' if created else 'updated'} successfully in database")
+                logger.info(f"PRD '{prd_name}' {'created' if created else 'updated'} successfully in database")
                 
                 # Clear the cache
                 cache.delete(cache_key)
@@ -961,7 +1013,8 @@ async def stream_prd_content(function_args, project_id):
         "notification_type": "prd_stream",
         "content_chunk": content_chunk,
         "is_complete": is_complete,
-        "message_to_agent": "PRD content chunk streamed" if not is_complete else "PRD streaming complete and saved"
+        "prd_name": prd_name,
+        "message_to_agent": f"PRD '{prd_name}' content chunk streamed" if not is_complete else f"PRD '{prd_name}' streaming complete and saved"
     }
     
     logger.info(f"Returning stream result: {result}")
@@ -1294,10 +1347,15 @@ async def save_design_schema(function_args, project_id):
     user_input = function_args.get('user_input', '')
 
     try:
-        # Check if project has PRD
+        # Check if project has PRD - get the most recent one
         try:
-            prd_content = await sync_to_async(lambda: project.prd.prd)()
-        except ProjectPRD.DoesNotExist:
+            latest_prd = await sync_to_async(
+                lambda: ProjectPRD.objects.filter(project=project).order_by('-updated_at').first()
+            )()
+            if not latest_prd:
+                raise ProjectPRD.DoesNotExist
+            prd_content = latest_prd.prd
+        except (ProjectPRD.DoesNotExist, AttributeError):
             return {
                 "is_notification": False,
                 "message_to_agent": "Error: Project does not have a PRD. Please create a PRD first."
@@ -2382,7 +2440,7 @@ async def save_implementation_from_stream(implementation_content, project_id):
             "message_to_agent": f"Error saving implementation: {str(e)}"
         }
 
-async def save_prd_from_stream(prd_content, project_id):
+async def save_prd_from_stream(prd_content, project_id, prd_name=None):
     """
     Save PRD content that was captured from the streaming response.
     This function is called from ai_providers.py when PRD generation is complete.
@@ -2390,12 +2448,14 @@ async def save_prd_from_stream(prd_content, project_id):
     Args:
         prd_content: The complete PRD content captured from streaming
         project_id: The project ID to save the PRD for
+        prd_name: Optional name for the PRD (defaults to "Main PRD")
         
     Returns:
         Dict with notification data
     """
     logger.info(f"Saving PRD from stream for project {project_id}")
     logger.info(f"PRD content length: {len(prd_content)} characters")
+    logger.info(f"PRD name: {prd_name}")
     
     # Validate project ID
     if not project_id:
@@ -2438,11 +2498,19 @@ async def save_prd_from_stream(prd_content, project_id):
     if '</lfg-prd' in prd_content:
         prd_content = prd_content[:prd_content.rfind('</lfg-prd')].strip()
     
+    # Set default name if not provided
+    if not prd_name:
+        prd_name = "Main PRD"
+    
     try:
-        # Save PRD to database
+        # Save PRD to database with name
         prd_obj, created = await sync_to_async(
             ProjectPRD.objects.get_or_create
-        )(project=project, defaults={'prd': prd_content})
+        )(
+            project=project, 
+            name=prd_name,
+            defaults={'prd': prd_content}
+        )
         
         # Update existing PRD if it wasn't created
         if not created:
@@ -2450,13 +2518,13 @@ async def save_prd_from_stream(prd_content, project_id):
             await sync_to_async(prd_obj.save)()
         
         action = "created" if created else "updated"
-        logger.info(f"PRD {action} successfully for project {project_id}")
-        
+        logger.info(f"PRD '{prd_name}' {action} successfully for project {project_id}")
         
         return {
             "is_notification": True,
             "notification_type": "prd",
-            "message_to_agent": f"PRD {action} successfully in the database"
+            "message_to_agent": f"PRD '{prd_name}' {action} successfully in the database",
+            "prd_name": prd_name
         }
         
     except Exception as e:

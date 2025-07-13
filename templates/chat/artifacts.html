@@ -143,6 +143,15 @@
                     <div class="prd-header">
                         <h2>Product Requirement Document</h2>
                         <div class="prd-meta" style="display: flex; justify-content: space-between; align-items: center;">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <!-- PRD Selector -->
+                                <select id="prd-selector" style="padding: 6px 12px; background: #2a2a2a; border: 1px solid #333; border-radius: 4px; color: #e2e8f0; display: none;">
+                                    <option value="Main PRD">Main PRD</option>
+                                </select>
+                                <button id="create-new-prd-btn" style="padding: 6px 12px; background: #8b5cf6; color: white; border: none; border-radius: 4px; cursor: pointer; display: none;">
+                                    <i class="fas fa-plus"></i> New PRD
+                                </button>
+                            </div>
                             <span class="streaming-status" id="prd-streaming-status" style="color: #8b5cf6;">
                                 <i class="fas fa-circle-notch fa-spin"></i> Generating PRD...
                             </span>

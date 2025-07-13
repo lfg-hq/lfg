@@ -1349,7 +1349,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                 window.ArtifactsLoader.streamPRDContent(
                                     data.content_chunk, 
                                     data.is_complete || false, 
-                                    projectIdForStreaming
+                                    projectIdForStreaming,
+                                    data.prd_name || 'Main PRD'
                                 );
                             } else {
                                 console.error('PRD stream: No project ID available for streaming!');

@@ -65,13 +65,19 @@ class ProjectPersona(models.Model):
 
 
 class ProjectPRD(models.Model):
-    project = models.OneToOneField(Project, on_delete=models.CASCADE, related_name="prd")
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="prds")
+    name = models.CharField(max_length=255, default="Main PRD")
     prd = models.TextField()
+    is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
+    class Meta:
+        unique_together = ('project', 'name')
+        ordering = ['-created_at']
+    
     def __str__(self):
-        return f"{self.project.name} - PRD"
+        return f"{self.project.name} - {self.name}"
 
     def get_prd(self):
         return self.prd

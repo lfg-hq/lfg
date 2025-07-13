@@ -548,9 +548,10 @@ document.addEventListener('DOMContentLoaded', function() {
         /**
          * Load PRD from the API for the current project
          * @param {number} projectId - The ID of the current project
+         * @param {string} prdName - Optional PRD name to load (defaults to currently selected)
          */
-        loadPRD: function(projectId) {
-            console.log(`[ArtifactsLoader] loadPRD called with project ID: ${projectId}`);
+        loadPRD: function(projectId, prdName = null) {
+            console.log(`[ArtifactsLoader] loadPRD called with project ID: ${projectId}, PRD name: ${prdName}`);
             
             if (!projectId) {
                 console.warn('[ArtifactsLoader] No project ID provided for loading PRD');
@@ -575,6 +576,8 @@ document.addEventListener('DOMContentLoaded', function() {
             const emptyState = document.getElementById('prd-empty-state');
             const streamingContent = document.getElementById('prd-streaming-content');
             const streamingStatus = document.getElementById('prd-streaming-status');
+            const prdSelector = document.getElementById('prd-selector');
+            const createNewPrdBtn = document.getElementById('create-new-prd-btn');
             
             // Clear any existing content first
             if (streamingContent) {
@@ -589,15 +592,45 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log('[ArtifactsLoader] Showing loading state for PRD');
             if (prdContainer && streamingStatus) {
                 prdContainer.style.display = 'block';
-                streamingStatus.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Loading PRD...';
+                streamingStatus.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Loading PRDs...';
                 streamingStatus.style.color = '#8b5cf6';
             }
             
-            // Fetch PRD from API
-            const url = `/projects/${projectId}/api/prd/`;
-            console.log(`[ArtifactsLoader] Fetching PRD from API: ${url}`);
+            // First fetch the list of PRDs
+            const listUrl = `/projects/${projectId}/api/prd/?list=1`;
+            console.log(`[ArtifactsLoader] Fetching PRD list from API: ${listUrl}`);
             
-            fetch(url)
+            fetch(listUrl)
+                .then(response => response.json())
+                .then(listData => {
+                    console.log('[ArtifactsLoader] PRD list received:', listData);
+                    const prds = listData.prds || [];
+                    
+                    // Update PRD selector
+                    if (prdSelector && prds.length > 0) {
+                        prdSelector.innerHTML = prds.map(prd => 
+                            `<option value="${prd.name}">${prd.name}</option>`
+                        ).join('');
+                        prdSelector.style.display = 'inline-block';
+                        
+                        // Set the current PRD name
+                        if (!prdName && prds.length > 0) {
+                            prdName = prds[0].name;
+                        }
+                        prdSelector.value = prdName;
+                    }
+                    
+                    // Show create new PRD button
+                    if (createNewPrdBtn) {
+                        createNewPrdBtn.style.display = 'inline-block';
+                    }
+                    
+                    // Now fetch the specific PRD content
+                    const url = `/projects/${projectId}/api/prd/?prd_name=${encodeURIComponent(prdName || 'Main PRD')}`;
+                    console.log(`[ArtifactsLoader] Fetching PRD from API: ${url}`);
+                    
+                    return fetch(url);
+                })
                 .then(response => {
                     console.log(`[ArtifactsLoader] PRD API response received, status: ${response.status}`);
                     if (!response.ok) {
@@ -720,11 +753,12 @@ document.addEventListener('DOMContentLoaded', function() {
          * @param {string} contentChunk - The chunk of PRD content to append
          * @param {boolean} isComplete - Whether this is the final chunk
          * @param {number} projectId - The ID of the current project
+         * @param {string} prdName - The name of the PRD being streamed
          */
-        streamPRDContent: function(contentChunk, isComplete, projectId) {
+        streamPRDContent: function(contentChunk, isComplete, projectId, prdName = 'Main PRD') {
             console.log(`[ArtifactsLoader] streamPRDContent called with chunk length: ${contentChunk ? contentChunk.length : 0}, isComplete: ${isComplete}`);
             console.log(`[ArtifactsLoader] Content chunk preview: ${contentChunk ? contentChunk.substring(0, 100) : 'null/undefined'}...`);
-            console.log(`[ArtifactsLoader] Project ID: ${projectId}`);
+            console.log(`[ArtifactsLoader] Project ID: ${projectId}, PRD Name: ${prdName}`);
             
             // CONSOLE STREAMING OUTPUT IN ARTIFACTS LOADER
             console.log('\n' + '='.repeat(80));
@@ -742,7 +776,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 window.prdStreamingState = {
                     fullContent: '',
                     isStreaming: false,
-                    projectId: projectId
+                    projectId: projectId,
+                    prdName: prdName
                 };
             }
             
@@ -896,6 +931,29 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Update status text to show generation is complete
                 if (streamingStatus) {
                     streamingStatus.innerHTML = '<i class="fas fa-check-circle" style="color: #10b981;"></i> PRD generation complete';
+                }
+                
+                // Refresh PRD list to include the new PRD
+                const prdSelector = document.getElementById('prd-selector');
+                const createNewPrdBtn = document.getElementById('create-new-prd-btn');
+                if (projectId) {
+                    fetch(`/projects/${projectId}/api/prd/?list=1`)
+                        .then(response => response.json())
+                        .then(listData => {
+                            const prds = listData.prds || [];
+                            if (prdSelector && prds.length > 0) {
+                                prdSelector.innerHTML = prds.map(prd => 
+                                    `<option value="${prd.name}" ${prd.name === prdName ? 'selected' : ''}>${prd.name}</option>`
+                                ).join('');
+                                prdSelector.style.display = 'inline-block';
+                            }
+                            if (createNewPrdBtn) {
+                                createNewPrdBtn.style.display = 'inline-block';
+                            }
+                        })
+                        .catch(error => {
+                            console.error('[ArtifactsLoader] Error refreshing PRD list:', error);
+                        });
                 }
                 
                 // Add action buttons after completion
@@ -4707,5 +4765,44 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // ArtifactsLoader is now ready to use
     console.log('[ArtifactsLoader] Loaded and ready');
+    
+    // Add event handlers for PRD selector and create new PRD button
+    setTimeout(() => {
+        const prdSelector = document.getElementById('prd-selector');
+        const createNewPrdBtn = document.getElementById('create-new-prd-btn');
+        
+        if (prdSelector) {
+            prdSelector.addEventListener('change', function() {
+                const selectedPrd = this.value;
+                const projectId = window.currentProjectId || document.getElementById('project-selector')?.value;
+                if (projectId && selectedPrd) {
+                    console.log(`[ArtifactsLoader] PRD selection changed to: ${selectedPrd}`);
+                    window.ArtifactsLoader.loadPRD(projectId, selectedPrd);
+                }
+            });
+        }
+        
+        if (createNewPrdBtn) {
+            createNewPrdBtn.addEventListener('click', function() {
+                const projectId = window.currentProjectId || document.getElementById('project-selector')?.value;
+                if (!projectId) {
+                    alert('Please select a project first');
+                    return;
+                }
+                
+                const prdName = prompt('Enter a name for the new PRD:');
+                if (prdName && prdName.trim()) {
+                    // Send a message to create a new PRD
+                    const messageInput = document.getElementById('message-input');
+                    if (messageInput) {
+                        messageInput.value = `Create a new PRD named "${prdName.trim()}" for this project.`;
+                        // Trigger send button click
+                        const sendBtn = document.getElementById('send-button');
+                        if (sendBtn) sendBtn.click();
+                    }
+                }
+            });
+        }
+    }, 500); // Small delay to ensure elements are loaded
     
 }); // End of DOMContentLoaded

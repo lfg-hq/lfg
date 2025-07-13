@@ -449,8 +449,12 @@ If user has already provided a request, respond directly without introduction.
 
 When generating PRD, use this exact format:
 
-<lfg-prd>
-# [Project Name] - Product Requirements Document
+Also provide the name for the PRD name. The first PRD could always be called `main`
+You can get the list of PRD by using the tool get_prd().
+If a PRD exists, then the name of PRD is that of the feature request. 
+
+<lfg-prd name="prd_name">
+# [Project Name] - PRD
 
 ## 1. Executive Summary
 [Content]
