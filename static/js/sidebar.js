@@ -1,80 +1,102 @@
 document.addEventListener('DOMContentLoaded', () => {
     const sidebar = document.getElementById('sidebar');
     const appContainer = document.querySelector('.app-container');
-    const sidebarOverlay = document.getElementById('sidebar-overlay');
+    const minimizeBtn = document.getElementById('minimize-btn');
+    const userInfo = document.getElementById('user-info');
+    const userInfoButton = document.getElementById('user-info-button');
+    const userDropdown = document.getElementById('user-dropdown');
     
-    // Function to determine if mouse is in the left zone for appearance
-    function isInAppearZone(e) {
-        const screenWidth = window.innerWidth;
-        const appearZoneWidth = screenWidth * 0.05; // 10% of screen width
-        return e.clientX <= appearZoneWidth;
+    // Load saved state from localStorage
+    const savedState = localStorage.getItem('sidebarMinimized');
+    const isInitiallyMinimized = savedState === 'true';
+    
+    // Initialize sidebar state
+    if (isInitiallyMinimized) {
+        sidebar.classList.add('minimized');
+        appContainer.classList.add('sidebar-minimized');
     }
     
-    // Function to determine if mouse is far enough to hide sidebar
-    function isInHideZone(e) {
-        const screenWidth = window.innerWidth;
-        const hideZoneWidth = screenWidth * 0.2; // 20% of screen width
-        return e.clientX > hideZoneWidth;
+    // Toggle sidebar minimized state
+    function toggleMinimized() {
+        const isMinimized = sidebar.classList.contains('minimized');
+        
+        if (isMinimized) {
+            sidebar.classList.remove('minimized');
+            appContainer.classList.remove('sidebar-minimized');
+            localStorage.setItem('sidebarMinimized', 'false');
+        } else {
+            sidebar.classList.add('minimized');
+            appContainer.classList.add('sidebar-minimized');
+            localStorage.setItem('sidebarMinimized', 'true');
+            // Close dropdown when minimizing
+            userInfo.classList.remove('open');
+        }
     }
     
-    // Track sidebar state for better control
-    let isSidebarExpanded = false;
+    // Minimize button click handler
+    if (minimizeBtn) {
+        minimizeBtn.addEventListener('click', toggleMinimized);
+    }
     
-    // Only add mousemove listener for desktop (not mobile)
-    if (window.innerWidth > 768) {
-        // Expand sidebar when mouse enters the left zone, hide only when moving past 20%
-        document.addEventListener('mousemove', (e) => {
-            if (isInAppearZone(e) && !isSidebarExpanded) {
-                sidebar.classList.add('expanded');
-                appContainer.classList.add('sidebar-expanded');
-                isSidebarExpanded = true;
-            } else if (isInHideZone(e) && isSidebarExpanded) {
-                sidebar.classList.remove('expanded');
-                appContainer.classList.remove('sidebar-expanded');
-                isSidebarExpanded = false;
+    // Logo click handler in minimized state
+    const logoSection = document.querySelector('.logo-section');
+    if (logoSection) {
+        logoSection.addEventListener('click', () => {
+            if (sidebar.classList.contains('minimized')) {
+                toggleMinimized();
             }
         });
     }
     
-    // Handle touch devices - toggle on sidebar touch
-    sidebar.addEventListener('touchstart', (e) => {
-        if (!isSidebarExpanded) {
+    // User dropdown toggle
+    if (userInfoButton) {
+        userInfoButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            userInfo.classList.toggle('open');
+        });
+    }
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!userInfo.contains(e.target)) {
+            userInfo.classList.remove('open');
+        }
+    });
+    
+    // Prevent dropdown from closing when clicking inside it
+    if (userDropdown) {
+        userDropdown.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+    }
+    
+    // Handle window resize
+    let resizeTimer;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => {
+            if (window.innerWidth <= 768) {
+                sidebar.classList.add('minimized');
+                appContainer.classList.add('sidebar-minimized');
+            }
+        }, 250);
+    });
+    
+    // Keyboard shortcut (Ctrl/Cmd + B to toggle minimized)
+    document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
             e.preventDefault();
-            sidebar.classList.add('expanded');
-            appContainer.classList.add('sidebar-expanded');
-            isSidebarExpanded = true;
+            toggleMinimized();
         }
     });
     
-    // Close on touch outside sidebar
-    document.addEventListener('touchstart', (e) => {
-        if (isSidebarExpanded && !sidebar.contains(e.target)) {
-            sidebar.classList.remove('expanded');
-            appContainer.classList.remove('sidebar-expanded');
-            isSidebarExpanded = false;
-        }
-    });
-    
-    // Close sidebar when clicking on overlay
-    sidebarOverlay.addEventListener('click', () => {
-        sidebar.classList.remove('expanded');
-        appContainer.classList.remove('sidebar-expanded');
-        isSidebarExpanded = false;
-    });
-    
-    // Handle mobile menu button if it exists
-    const mobileToggle = document.querySelector('.mobile-sidebar-toggle');
-    if (mobileToggle) {
-        mobileToggle.addEventListener('click', () => {
-            if (isSidebarExpanded) {
-                sidebar.classList.remove('expanded');
-                appContainer.classList.remove('sidebar-expanded');
-                isSidebarExpanded = false;
-            } else {
-                sidebar.classList.add('expanded');
-                appContainer.classList.add('sidebar-expanded');
-                isSidebarExpanded = true;
-            }
+    // Handle integrations button
+    const integrationsBtn = document.getElementById('integrations-btn');
+    if (integrationsBtn) {
+        integrationsBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            // You can add integration modal or redirect here
+            alert('Integrations page coming soon!');
         });
     }
-}); 
+});

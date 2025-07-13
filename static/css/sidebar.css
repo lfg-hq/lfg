@@ -406,7 +406,8 @@
 .sidebar.minimized .conversations-section,
 .sidebar.minimized .user-details,
 .sidebar.minimized .dropdown-icon,
-.sidebar.minimized #minimize-btn {
+.sidebar.minimized #minimize-btn,
+.sidebar.minimized .dropdown-item span {
     display: none !important;
 }
 
@@ -493,6 +494,16 @@
 .app-container.sidebar-minimized .chat-container {
     margin-left: 60px !important;
     width: calc(100% - 60px) !important;
+}
+
+/* Dropdown items in minimized state */
+.sidebar.minimized .dropdown-item {
+    justify-content: center !important;
+    padding: 10px !important;
+}
+
+.sidebar.minimized .dropdown-item i {
+    margin: 0 !important;
 }
 
 /* Hide unnecessary elements */
