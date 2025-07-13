@@ -48,4 +48,6 @@ urlpatterns = [
     path('api/auth/status/', views.auth_status, name='api_auth_status'),
     path('api/user/api-keys/', views.api_keys_status, name='api_keys_status'),
     path('profile/api-keys/', views.save_api_keys, name='api_save_keys'),
+    path('verify-email-code/', views.verify_email_code, name='verify_email_code'),
+    path('resend-verification-code/', views.resend_verification_code, name='resend_verification_code'),
 ] 
