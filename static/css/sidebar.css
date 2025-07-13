@@ -1,0 +1,559 @@
+/* LFG Sidebar Styles - Consolidated */
+
+/* Reset Font Awesome icon backgrounds in sidebar */
+.sidebar .fas,
+.sidebar .far,
+.sidebar .fa {
+    border: none !important;
+    box-shadow: none !important;
+}
+
+/* Base sidebar */
+.sidebar {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: 260px !important;
+    background: #171717 !important;
+    border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+    z-index: 1000 !important;
+    display: flex !important;
+    flex-direction: column;
+    transform: translateX(0) !important;
+    transition: width 0.2s ease;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Header */
+.sidebar-header {
+    padding: 20px 20px 16px !important;
+    border-bottom: none !important;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: transparent !important;
+    box-shadow: none !important;
+    height: auto !important;
+}
+
+.logo-section {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    position: relative;
+}
+
+.logo-icon {
+    font-size: 1.5rem;
+    transition: opacity 0.2s ease;
+}
+
+.logo-text {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #fff;
+    letter-spacing: -0.02em;
+}
+
+#minimize-btn {
+    width: 24px !important;
+    height: 24px !important;
+    border-radius: 4px !important;
+    border: none !important;
+    background: transparent !important;
+    color: rgba(255, 255, 255, 0.4) !important;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    padding: 0 !important;
+}
+
+#minimize-btn:hover {
+    background: rgba(255, 255, 255, 0.1) !important;
+    color: rgba(255, 255, 255, 0.7) !important;
+}
+
+/* New Chat Link - Purple theme, sleek design */
+.new-chat-section {
+    padding: 16px 0 12px 0 !important;
+}
+
+.new-chat-link {
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    padding: 0 16px !important;
+    background: transparent !important;
+    border: none !important;
+    color: #bb86fc !important;
+    text-decoration: none !important;
+    font-size: 15px !important;
+    font-weight: 500 !important;
+    transition: opacity 0.15s ease !important;
+    width: 100% !important;
+    line-height: 20px !important;
+}
+
+.new-chat-link:hover {
+    opacity: 0.8 !important;
+}
+
+.new-chat-link i {
+    font-size: 14px !important;
+    width: 24px !important;
+    height: 24px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background: #bb86fc !important;
+    color: white !important;
+    border-radius: 50% !important;
+    border: none !important;
+    flex-shrink: 0 !important;
+    line-height: 1 !important;
+}
+
+/* Navigation */
+.sidebar-nav {
+    padding: 0 0 15px 0 !important;
+    border-bottom: none !important;
+}
+
+.nav-link {
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    padding: 10px 16px !important;
+    color: rgba(255, 255, 255, 0.6) !important;
+    text-decoration: none !important;
+    border-radius: 8px !important;
+    font-size: 14px !important;
+    font-weight: 400 !important;
+    margin-bottom: 4px !important;
+    transition: all 0.15s ease !important;
+    line-height: 20px !important;
+}
+
+.nav-link:hover {
+    background: rgba(255, 255, 255, 0.08) !important;
+    color: rgba(255, 255, 255, 0.9) !important;
+}
+
+.nav-link i {
+    font-size: 18px !important;
+    width: 24px !important;
+    height: 24px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    color: rgba(255, 255, 255, 0.5) !important;
+    flex-shrink: 0 !important;
+}
+
+/* Conversations section */
+.conversations-section {
+    flex: 1 !important;
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+    padding: 0 !important;
+}
+
+.sidebar-section-title {
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    color: rgba(255, 255, 255, 0.4) !important;
+    padding: 8px 16px !important;
+    margin: 0 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+}
+
+.conversation-list {
+    flex: 1 !important;
+    overflow-y: auto !important;
+    padding: 0 6px !important;
+}
+
+/* Conversation items */
+.conversation-item {
+    padding: 8px 12px !important;
+    margin-bottom: 2px !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    border-radius: 8px !important;
+    cursor: pointer !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    color: rgba(255, 255, 255, 0.7) !important;
+    font-size: 15px !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    transition: all 0.1s ease !important;
+    position: relative !important;
+}
+
+.conversation-item:hover {
+    background: rgba(255, 255, 255, 0.05) !important;
+    color: rgba(255, 255, 255, 0.9) !important;
+}
+
+.conversation-item.active {
+    background: rgba(255, 255, 255, 0.08) !important;
+    color: #fff !important;
+}
+
+/* Remove any weird margins or borders */
+.conversation-item::before,
+.conversation-item::after {
+    display: none !important;
+}
+
+.conversation-title {
+    flex: 1 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+}
+
+.conversation-time {
+    font-size: 13px !important;
+    color: rgba(255, 255, 255, 0.4) !important;
+    margin-left: auto !important;
+}
+
+.delete-conversation {
+    opacity: 0 !important;
+    padding: 4px 6px !important;
+    background: transparent !important;
+    border: none !important;
+    color: rgba(255, 255, 255, 0.4) !important;
+    cursor: pointer !important;
+    font-size: 12px !important;
+    transition: opacity 0.1s ease !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    line-height: 1 !important;
+    vertical-align: middle !important;
+}
+
+.delete-conversation i {
+    font-size: 12px !important;
+    line-height: 1 !important;
+    vertical-align: middle !important;
+    color: rgba(255, 255, 255, 0.4) !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+.delete-conversation:hover i {
+    color: rgba(255, 255, 255, 0.7) !important;
+    background: transparent !important;
+}
+
+.conversation-item:hover .delete-conversation {
+    opacity: 1 !important;
+}
+
+/* User info section */
+.sidebar-bottom-content {
+    background: transparent !important;
+    border-top: none !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+}
+
+.user-info {
+    position: relative !important;
+}
+
+.user-info-button {
+    width: 100% !important;
+    background: transparent !important;
+    border: none !important;
+    padding: 16px 20px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    cursor: pointer !important;
+    color: #fff !important;
+    text-align: left !important;
+    transition: background 0.15s ease !important;
+}
+
+.user-info-button:hover {
+    background: rgba(255, 255, 255, 0.05) !important;
+}
+
+.user-avatar {
+    width: 32px !important;
+    height: 32px !important;
+    border-radius: 8px !important;
+    background: rgba(255, 255, 255, 0.1) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    overflow: hidden !important;
+    flex-shrink: 0 !important;
+    font-size: 16px !important;
+    font-weight: 600 !important;
+}
+
+.avatar-text {
+    color: rgba(255, 255, 255, 0.9) !important;
+    font-weight: 600 !important;
+    font-size: 14px !important;
+}
+
+.user-details {
+    flex: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 2px !important;
+    min-width: 0 !important;
+}
+
+.username {
+    font-size: 14px !important;
+    font-weight: 500 !important;
+    color: rgba(255, 255, 255, 0.8) !important;
+}
+
+.user-email {
+    display: none !important;
+}
+
+.dropdown-icon {
+    font-size: 10px !important;
+    color: rgba(255, 255, 255, 0.4) !important;
+    margin-left: auto !important;
+}
+
+/* User dropdown */
+.user-dropdown {
+    position: absolute !important;
+    bottom: 100% !important;
+    left: 12px !important;
+    right: 12px !important;
+    background: #1f1f1f !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 8px !important;
+    padding: 4px !important;
+    margin-bottom: 8px !important;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.3) !important;
+    display: none !important;
+}
+
+.user-info.open .user-dropdown {
+    display: block !important;
+}
+
+.dropdown-item {
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    padding: 10px 12px !important;
+    color: rgba(255, 255, 255, 0.8) !important;
+    text-decoration: none !important;
+    border-radius: 6px !important;
+    font-size: 14px !important;
+    transition: all 0.15s ease !important;
+}
+
+.dropdown-item:hover {
+    background: rgba(255, 255, 255, 0.08) !important;
+    color: #fff !important;
+}
+
+.dropdown-item i {
+    font-size: 16px !important;
+    width: 20px !important;
+    text-align: center !important;
+    color: rgba(255, 255, 255, 0.5) !important;
+}
+
+.dropdown-divider {
+    height: 1px !important;
+    background: rgba(255, 255, 255, 0.08) !important;
+    margin: 4px 0 !important;
+}
+
+/* Chat container */
+.chat-container {
+    margin-left: 260px !important;
+    width: calc(100% - 260px) !important;
+    transition: margin-left 0.2s ease !important;
+}
+
+/* Minimized state */
+.sidebar.minimized {
+    width: 60px !important;
+}
+
+/* Hide elements in minimized state */
+.sidebar.minimized .logo-text,
+.sidebar.minimized .button-text,
+.sidebar.minimized .nav-text,
+.sidebar.minimized .section-title,
+.sidebar.minimized .conversations-section,
+.sidebar.minimized .user-details,
+.sidebar.minimized .dropdown-icon,
+.sidebar.minimized #minimize-btn {
+    display: none !important;
+}
+
+/* Logo section in minimized state */
+.sidebar.minimized .sidebar-header {
+    justify-content: center !important;
+    padding: 20px 10px 16px !important;
+}
+
+.sidebar.minimized .logo-section {
+    position: relative;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: background 0.2s ease;
+}
+
+.sidebar.minimized .logo-section:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+/* Hide logo and show expand icon on hover */
+.sidebar.minimized .logo-section:hover .logo-icon {
+    opacity: 0 !important;
+}
+
+/* Expand icon on hover - minimized state */
+.sidebar.minimized .logo-section::after {
+    content: '\f054'; /* Font Awesome chevron-right */
+    font-family: 'Font Awesome 5 Free';
+    font-weight: 900;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.7);
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.sidebar.minimized .logo-section:hover::after {
+    opacity: 1 !important;
+}
+
+/* New chat link in minimized state */
+.sidebar.minimized .new-chat-section {
+    padding: 0 12px 16px !important;
+}
+
+.sidebar.minimized .new-chat-link {
+    padding: 4px !important;
+    justify-content: center !important;
+}
+
+.sidebar.minimized .new-chat-link i {
+    margin: 0 !important;
+    width: 22px !important;
+    height: 22px !important;
+    font-size: 14px !important;
+}
+
+.sidebar.minimized .button-text {
+    display: none !important;
+}
+
+/* Nav links in minimized state */
+.sidebar.minimized .nav-link {
+    justify-content: center !important;
+    padding: 10px !important;
+}
+
+/* User info in minimized state */
+.sidebar.minimized .user-info-button {
+    padding: 16px 10px !important;
+    justify-content: center !important;
+}
+
+/* Adjust chat container for minimized sidebar */
+.app-container.sidebar-minimized .chat-container {
+    margin-left: 60px !important;
+    width: calc(100% - 60px) !important;
+}
+
+/* Hide unnecessary elements */
+.sidebar-overlay,
+.expand-btn {
+    display: none !important;
+}
+
+/* Scrollbar */
+.conversation-list::-webkit-scrollbar {
+    width: 6px !important;
+}
+
+.conversation-list::-webkit-scrollbar-track {
+    background: transparent !important;
+}
+
+.conversation-list::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1) !important;
+    border-radius: 3px !important;
+}
+
+.conversation-list::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.15) !important;
+}
+
+/* Ensure sidebar is visible */
+.sidebar,
+.sidebar * {
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+.sidebar-top-content {
+    flex: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+}
+
+/* Profile link removal (since we have dropdown now) */
+.profile-link {
+    display: none !important;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+    .sidebar {
+        transform: translateX(-100%) !important;
+    }
+    
+    .sidebar.expanded {
+        transform: translateX(0) !important;
+    }
+    
+    .chat-container {
+        margin-left: 0 !important;
+        width: 100% !important;
+    }
+    
+    .mobile-sidebar-toggle {
+        display: block !important;
+    }
+}

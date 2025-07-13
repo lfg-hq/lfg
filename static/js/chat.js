@@ -2936,7 +2936,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 
                 // Add delete handler
-                const deleteBtn = conversationItem.querySelector('.delete-conversation-btn');
+                const deleteBtn = conversationItem.querySelector('.delete-conversation');
                 deleteBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
                     deleteConversation(conversation.id);
@@ -3152,6 +3152,25 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // Helper function to format timestamps
+    function formatTimestamp(date) {
+        const now = new Date();
+        const diff = now - date;
+        const hours = Math.floor(diff / (1000 * 60 * 60));
+        const days = Math.floor(hours / 24);
+        
+        if (hours < 1) return 'Just now';
+        if (hours < 24) return `${hours}h ago`;
+        if (days < 7) return `${days}d ago`;
+        
+        // Format as date for older conversations
+        const options = { month: 'short', day: 'numeric' };
+        if (date.getFullYear() !== now.getFullYear()) {
+            options.year = 'numeric';
+        }
+        return date.toLocaleDateString('en-US', options);
+    }
+    
     // Modify the function that creates conversation items to be even more compact
     function createCompactConversationItem(conversation) {
         const conversationItem = document.createElement('div');
@@ -3160,15 +3179,20 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Truncate title to be compact
         let title = conversation.title || `Chat ${conversation.id}`;
-        if (title.length > 20) { // Allow slightly longer titles since we don't show project badges
-            title = title.substring(0, 20) + '...';
+        if (title.length > 25) { // Allow slightly longer titles
+            title = title.substring(0, 25) + '...';
         }
         
-        // Create minimal HTML structure without project badges
+        // Format timestamp
+        const timestamp = conversation.created_at ? new Date(conversation.created_at) : new Date();
+        const timeStr = formatTimestamp(timestamp);
+        
+        // Create sleek HTML structure
         conversationItem.innerHTML = `
             <div class="conversation-title" title="${conversation.title}">${title}</div>
-            <button class="delete-conversation-btn" title="Delete">
-                <i class="fas fa-times"></i>
+            <span class="conversation-time">${timeStr}</span>
+            <button class="delete-conversation" title="Delete">
+                <i class="fas fa-trash"></i>
             </button>
         `;
         
