@@ -196,7 +196,7 @@ def user_agent_role(request):
         # Get user's agent role or create default one
         agent_role, created = AgentRole.objects.get_or_create(
             user=request.user,
-            defaults={'name': 'developer'}
+            defaults={'name': 'product_analyst'}
         )
         
         return JsonResponse({
