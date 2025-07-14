@@ -232,7 +232,9 @@ async def execute_tool_call(tool_call_name, tool_call_args_str, project_id, conv
             if raw_notification_type == "prd_stream":
                 notification_data["content_chunk"] = tool_result.get("content_chunk", "")
                 notification_data["is_complete"] = tool_result.get("is_complete", False)
-                logger.info(f"PRD_STREAM in notification handler: chunk_length={len(notification_data['content_chunk'])}, is_complete={notification_data['is_complete']}")
+                if "prd_name" in tool_result:
+                    notification_data["prd_name"] = tool_result.get("prd_name")
+                logger.info(f"PRD_STREAM in notification handler: chunk_length={len(notification_data['content_chunk'])}, is_complete={notification_data['is_complete']}, prd_name={notification_data.get('prd_name', 'Not specified')}")
             elif raw_notification_type == "implementation_stream":
                 notification_data["content_chunk"] = tool_result.get("content_chunk", "")
                 notification_data["is_complete"] = tool_result.get("is_complete", False)
@@ -569,22 +571,26 @@ class OpenAIProvider(AIProvider):
                         buffer += text
                         
                         # Check for complete tags in buffer
-                        if "<lfg-prd>" in buffer and current_mode != "prd":
-                            current_mode = "prd"
-                            print("\n\n[PRD MODE ACTIVATED - OpenAI]")
-                            # Clear buffer up to and including the tag
-                            tag_pos = buffer.find("<lfg-prd>")
-                            remaining_buffer = buffer[tag_pos + len("<lfg-prd>"):]
-                            # Clean any leading '>' and whitespace from remaining buffer
-                            remaining_buffer = remaining_buffer.lstrip()
-                            if remaining_buffer.startswith('>'):
-                                remaining_buffer = remaining_buffer[1:].lstrip()
-                            # Reset prd data and capture any remaining content
-                            prd_data = remaining_buffer
-                            buffer = ""  # Clear the buffer since we've processed it
-                            
-                            # Show loading indicator in chat
-                            yield "\n\n*Generating PRD... (check the PRD tab for live updates)*\n\n"
+                        if "<lfg-prd" in buffer and current_mode != "prd":
+                            # Look for complete PRD tag (with or without attributes)
+                            tag_match = re.search(r'<lfg-prd(?:\s+name="([^"]+)")?\s*>', buffer)
+                            if tag_match:
+                                current_mode = "prd"
+                                prd_name = tag_match.group(1) if tag_match.group(1) else "Main PRD"
+                                print(f"\n\n[PRD MODE ACTIVATED - OpenAI] - PRD Name: {prd_name}")
+                                # Clear buffer up to and including the tag
+                                tag_pos = buffer.find(tag_match.group(0))
+                                remaining_buffer = buffer[tag_pos + len(tag_match.group(0)):]
+                                # Clean any leading '>' and whitespace from remaining buffer
+                                remaining_buffer = remaining_buffer.lstrip()
+                                if remaining_buffer.startswith('>'):
+                                    remaining_buffer = remaining_buffer[1:].lstrip()
+                                # Reset prd data and capture any remaining content
+                                prd_data = remaining_buffer
+                                buffer = ""  # Clear the buffer since we've processed it
+                                
+                                # Show loading indicator in chat
+                                yield f"\n\n*Generating PRD '{prd_name}'... (check the PRD tab for live updates)*\n\n"
                         
                         if "</lfg-prd>" in buffer and current_mode == "prd":
                             current_mode = ""
@@ -608,6 +614,7 @@ class OpenAIProvider(AIProvider):
                                 "notification_type": "prd_stream",
                                 "content_chunk": "",
                                 "is_complete": True,
+                                "prd_name": prd_name if 'prd_name' in locals() else "Main PRD",
                                 "notification_marker": "__NOTIFICATION__"
                             }
                             notification_json = json.dumps(prd_complete_notification)
@@ -684,6 +691,7 @@ class OpenAIProvider(AIProvider):
                                 "notification_type": "prd_stream",
                                 "content_chunk": text,
                                 "is_complete": False,
+                                "prd_name": prd_name if 'prd_name' in locals() else "Main PRD",
                                 "notification_marker": "__NOTIFICATION__"
                             }
                             notification_json = json.dumps(prd_stream_notification)
@@ -881,7 +889,7 @@ class OpenAIProvider(AIProvider):
                                 
                                 # Save the PRD to database
                                 try:
-                                    save_result = await save_prd_from_stream(prd_data, project_id)
+                                    save_result = await save_prd_from_stream(prd_data, project_id, prd_name if 'prd_name' in locals() else "Main PRD")
                                     logger.info(f"OpenAI PRD save result: {save_result}")
                                     
                                     # Yield notification if save was successful
@@ -1136,17 +1144,22 @@ class GrokProvider(AIProvider):
                         buffer += text
                         
                         # Check for complete tags in buffer (similar to OpenAI provider)
-                        if "<lfg-prd>" in buffer and current_mode != "prd":
-                            current_mode = "prd"
-                            print("\\n\\n[PRD MODE ACTIVATED - Grok]")
-                            tag_pos = buffer.find("<lfg-prd>")
-                            remaining_buffer = buffer[tag_pos + len("<lfg-prd>"):]
-                            remaining_buffer = remaining_buffer.lstrip()
-                            if remaining_buffer.startswith('>'):
-                                remaining_buffer = remaining_buffer[1:].lstrip()
-                            prd_data = remaining_buffer
-                            buffer = ""
-                            yield "\\n\\n*Generating PRD... (check the PRD tab for live updates)*\\n\\n"
+                        if "<lfg-prd" in buffer and current_mode != "prd":
+                            # Look for complete PRD tag (with or without attributes)
+                            tag_match = re.search(r'<lfg-prd(?:\s+name="([^"]+)")?\s*>', buffer)
+                            if tag_match:
+                                current_mode = "prd"
+                                prd_name = tag_match.group(1) if tag_match.group(1) else "Main PRD"
+                                print(f"\\n\\n[PRD MODE ACTIVATED - Grok] - PRD Name: {prd_name}")
+                                # Clear buffer up to and including the tag
+                                tag_pos = buffer.find(tag_match.group(0))
+                                remaining_buffer = buffer[tag_pos + len(tag_match.group(0)):]
+                                remaining_buffer = remaining_buffer.lstrip()
+                                if remaining_buffer.startswith('>'):
+                                    remaining_buffer = remaining_buffer[1:].lstrip()
+                                prd_data = remaining_buffer
+                                buffer = ""
+                                yield f"\\n\\n*Generating PRD '{prd_name}'... (check the PRD tab for live updates)*\\n\\n"
                         
                         if "</lfg-prd>" in buffer and current_mode == "prd":
                             current_mode = ""
@@ -1167,6 +1180,7 @@ class GrokProvider(AIProvider):
                                 "notification_type": "prd_stream",
                                 "content_chunk": "",
                                 "is_complete": True,
+                                "prd_name": prd_name if 'prd_name' in locals() else "Main PRD",
                                 "notification_marker": "__NOTIFICATION__"
                             }
                             notification_json = json.dumps(prd_complete_notification)
@@ -1230,6 +1244,7 @@ class GrokProvider(AIProvider):
                                 "notification_type": "prd_stream",
                                 "content_chunk": text,
                                 "is_complete": False,
+                                "prd_name": prd_name if 'prd_name' in locals() else "Main PRD",
                                 "notification_marker": "__NOTIFICATION__"
                             }
                             notification_json = json.dumps(prd_stream_notification)
@@ -1390,7 +1405,7 @@ class GrokProvider(AIProvider):
                                 from coding.utils.ai_functions import save_prd_from_stream
                                 
                                 try:
-                                    save_result = await save_prd_from_stream(prd_data, project_id)
+                                    save_result = await save_prd_from_stream(prd_data, project_id, prd_name if 'prd_name' in locals() else "Main PRD")
                                     logger.info(f"Grok PRD save result: {save_result}")
                                     
                                     if save_result.get("is_notification"):
@@ -1640,6 +1655,7 @@ class AnthropicProvider(AIProvider):
         implementation_data = ""
         current_mode = ""
         buffer = ""  # Buffer to handle split tags
+        prd_name = "Main PRD"  # Default PRD name
         
         # Helper function to clean XML fragments from text
         def clean_xml_fragments(text):
@@ -1770,14 +1786,18 @@ class AnthropicProvider(AIProvider):
                                 buffer += text
                                 
                                 # Check for complete tags in buffer
-                                if "<lfg-prd>" in buffer and current_mode != "prd":
-                                    current_mode = "prd"
-                                    print("\n\n[PRD MODE ACTIVATED]")
-                                    tag_pos = buffer.find("<lfg-prd>")
-                                    buffer = ""
-                                    prd_data = ""
-                                    print(f"[PRD MODE] Cleared buffer, ready to capture PRD content")
-                                    yield "\n\n*Generating PRD... (check the PRD tab for live updates)*\n\n"
+                                if "<lfg-prd" in buffer and current_mode != "prd":
+                                    # Look for complete PRD tag (with or without attributes)
+                                    tag_match = re.search(r'<lfg-prd(?:\s+name="([^"]+)")?\s*>', buffer)
+                                    if tag_match:
+                                        current_mode = "prd"
+                                        prd_name = tag_match.group(1) if tag_match.group(1) else "Main PRD"
+                                        print(f"\n\n[PRD MODE ACTIVATED] - PRD Name: {prd_name}")
+                                        tag_pos = buffer.find(tag_match.group(0))
+                                        buffer = ""
+                                        prd_data = ""
+                                        print(f"[PRD MODE] Cleared buffer, ready to capture PRD content for '{prd_name}'")
+                                        yield f"\n\n*Generating PRD '{prd_name}'... (check the PRD tab for live updates)*\n\n"
                                 
                                 if "</lfg-prd>" in buffer and current_mode == "prd":
                                     current_mode = ""
@@ -1798,6 +1818,7 @@ class AnthropicProvider(AIProvider):
                                         "notification_type": "prd_stream",
                                         "content_chunk": "",
                                         "is_complete": True,
+                                        "prd_name": prd_name if 'prd_name' in locals() else "Main PRD",
                                         "notification_marker": "__NOTIFICATION__"
                                     }
                                     notification_json = json.dumps(prd_complete_notification)
@@ -1872,6 +1893,7 @@ class AnthropicProvider(AIProvider):
                                         "notification_type": "prd_stream",
                                         "content_chunk": text,
                                         "is_complete": False,
+                                        "prd_name": prd_name if 'prd_name' in locals() else "Main PRD",
                                         "notification_marker": "__NOTIFICATION__"
                                     }
                                     notification_json = json.dumps(prd_stream_notification)
@@ -2068,7 +2090,7 @@ class AnthropicProvider(AIProvider):
                                     
                                     # Save the PRD to database
                                     try:
-                                        save_result = await save_prd_from_stream(prd_data, project_id)
+                                        save_result = await save_prd_from_stream(prd_data, project_id, prd_name if 'prd_name' in locals() else "Main PRD")
                                         logger.info(f"PRD save result: {save_result}")
                                         
                                         # Yield notification if save was successful
