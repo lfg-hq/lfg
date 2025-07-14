@@ -14,6 +14,9 @@ SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
+# For production, set this to False via environment variable
+# DEBUG = os.environ.get('DEBUG', 'True').lower() == 'true'
+
 CSRF_TRUSTED_ORIGINS = [
     'https://lfg.run',
     'https://www.lfg.run', 
@@ -28,6 +31,18 @@ ALLOWED_HOSTS = [
 ]
 
 CSRF_COOKIE_SECURE = True
+
+# HTTPS/SSL Settings for production
+# Apply these settings when running on production domains
+if 'lfg.run' in ALLOWED_HOSTS:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    USE_X_FORWARDED_HOST = True
+    USE_X_FORWARDED_PORT = True
+    
+    # Only enable these if not in DEBUG mode
+    if not DEBUG:
+        SECURE_SSL_REDIRECT = True
+        SESSION_COOKIE_SECURE = True
 
 # Application definition
 INSTALLED_APPS = [

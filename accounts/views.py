@@ -19,6 +19,14 @@ from django.contrib.auth.tokens import default_token_generator
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 
+def build_secure_absolute_uri(request, path):
+    """Build absolute URI with HTTPS in production"""
+    url = request.build_absolute_uri(path)
+    # Force HTTPS in production environments
+    if ENVIRONMENT != 'local' and url.startswith('http://'):
+        url = url.replace('http://', 'https://', 1)
+    return url
+
 # Define GitHub OAuth constants
 GITHUB_CLIENT_ID = settings.GITHUB_CLIENT_ID if hasattr(settings, 'GITHUB_CLIENT_ID') else None
 GITHUB_CLIENT_SECRET = settings.GITHUB_CLIENT_SECRET if hasattr(settings, 'GITHUB_CLIENT_SECRET') else None
@@ -157,7 +165,7 @@ def settings_page(request, show_github=False):
     github_auth_url = None
     if (not github_connected and not github_missing_config) or show_github:
         GITHUB_CLIENT_ID = settings.GITHUB_CLIENT_ID
-        GITHUB_REDIRECT_URI = request.build_absolute_uri(reverse('github_callback'))
+        GITHUB_REDIRECT_URI = build_secure_absolute_uri(request, reverse('github_callback'))
         state = str(uuid.uuid4())
         request.session['github_oauth_state'] = state
         params = {
@@ -290,7 +298,7 @@ def user_settings(request):
     
     # Create GitHub redirect URI
     global GITHUB_REDIRECT_URI
-    GITHUB_REDIRECT_URI = request.build_absolute_uri(reverse('github_callback'))
+    GITHUB_REDIRECT_URI = build_secure_absolute_uri(request, reverse('github_callback'))
     
     # GitHub OAuth setup
     github_auth_url = None
@@ -439,7 +447,7 @@ def integrations(request):
     github_auth_url = None
     if not github_connected and not github_missing_config:
         global GITHUB_REDIRECT_URI
-        GITHUB_REDIRECT_URI = request.build_absolute_uri(reverse('github_callback'))
+        GITHUB_REDIRECT_URI = build_secure_absolute_uri(request, reverse('github_callback'))
         state = str(uuid.uuid4())
         request.session['github_oauth_state'] = state
         params = {
@@ -691,7 +699,7 @@ def google_login(request):
     
     # Build redirect URI
     global GOOGLE_REDIRECT_URI
-    GOOGLE_REDIRECT_URI = request.build_absolute_uri(reverse('google_callback'))
+    GOOGLE_REDIRECT_URI = build_secure_absolute_uri(request, reverse('google_callback'))
     
     # Generate state for CSRF protection
     state = str(uuid.uuid4())
