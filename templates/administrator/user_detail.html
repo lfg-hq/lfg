@@ -1,0 +1,409 @@
+{% extends 'administrator/base.html' %}
+
+{% block title %}User: {{ user.username }}{% endblock %}
+
+{% block content %}
+<a href="{% url 'administrator:dashboard' %}" class="back-link">← Back to Dashboard</a>
+
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+    <h1 style="margin: 0;">User Details: {{ user.username }}</h1>
+    {% if not user.is_superuser and user.id != request.user.id %}
+        <button onclick="deleteUser(event, {{ user.id }}, '{{ user.username }}', '{{ user.email }}')" class="btn" style="background-color: #dc3545;">Delete User</button>
+    {% endif %}
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <h3>Email</h3>
+        <div style="font-size: 1rem;">{{ user.email }}</div>
+    </div>
+    
+    <div class="stat-card">
+        <h3>Date Joined</h3>
+        <div style="font-size: 1rem;">{{ user.date_joined|date:"F d, Y" }}</div>
+    </div>
+    
+    <div class="stat-card">
+        <h3>Last Login</h3>
+        <div style="font-size: 1rem;">
+            {% if user.last_login %}
+                {{ user.last_login|date:"F d, Y H:i" }}
+            {% else %}
+                Never
+            {% endif %}
+        </div>
+    </div>
+    
+    <div class="stat-card">
+        <h3>Status</h3>
+        <div style="font-size: 1rem;">
+            {% if user.is_active %}
+                <span class="badge active">Active</span>
+            {% else %}
+                <span class="badge inactive">Inactive</span>
+            {% endif %}
+            {% if user.is_superuser %}
+                <span class="badge" style="background-color: #dc3545; color: white;">Superadmin</span>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="section">
+    <h2>Projects ({{ projects|length }})</h2>
+    <div class="project-list">
+        {% for project in projects %}
+        <div class="project-card" onclick="openProjectDrawer({{ project.id }})">
+            <h3>{{ project.icon }} {{ project.name }}</h3>
+            {% if project.description %}
+                <p>{{ project.description|truncatewords:30 }}</p>
+            {% endif %}
+            <div class="project-meta">
+                <span>Status: <strong>{{ project.get_status_display }}</strong></span>
+                <span>Created: {{ project.created_at|date:"Y-m-d" }}</span>
+                <span>Tickets: {{ project.checklist.count }}</span>
+                {% if project.prd %}
+                    <span class="badge active">Has PRD</span>
+                {% endif %}
+                {% if project.implementation %}
+                    <span class="badge active">Has Tech Plan</span>
+                {% endif %}
+            </div>
+        </div>
+        {% empty %}
+        <p>No projects created yet.</p>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="section">
+    <h2>Recent Conversations (Last 10)</h2>
+    <div class="data-table">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Title</th>
+                    <th>Messages</th>
+                    <th>Created</th>
+                    <th>Last Updated</th>
+                    <th>Project</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for conversation in conversations %}
+                <tr>
+                    <td>{{ conversation.id }}</td>
+                    <td>{{ conversation.title|default:"Untitled Conversation" }}</td>
+                    <td>{{ conversation.message_count }}</td>
+                    <td>{{ conversation.created_at|date:"Y-m-d H:i" }}</td>
+                    <td>{{ conversation.updated_at|date:"Y-m-d H:i" }}</td>
+                    <td>
+                        {% if conversation.project %}
+                            {{ conversation.project.name }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6" style="text-align: center; padding: 2rem;">No conversations found</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="section">
+    <h2>Token Usage Summary</h2>
+    <div class="stats-grid">
+        <div class="stat-card">
+            <h3>Total Tokens Used</h3>
+            <div class="value">{{ total_tokens|floatformat:0 }}</div>
+        </div>
+        
+        <div class="stat-card">
+            <h3>Estimated Cost</h3>
+            <div class="value">${{ total_cost|floatformat:2 }}</div>
+        </div>
+    </div>
+    
+    {% if token_usage %}
+    <div class="data-table" style="margin-top: 1rem;">
+        <table>
+            <thead>
+                <tr>
+                    <th>Provider</th>
+                    <th>Model</th>
+                    <th>Total Tokens</th>
+                    <th>Total Cost</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for usage in token_usage %}
+                <tr>
+                    <td>{{ usage.provider|title }}</td>
+                    <td>{{ usage.model }}</td>
+                    <td>{{ usage.total_tokens }}</td>
+                    <td>${{ usage.total_cost|floatformat:2 }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Project Detail Drawer -->
+<div class="drawer-overlay" id="drawerOverlay" onclick="closeProjectDrawer()"></div>
+<div class="drawer" id="projectDrawer">
+    <div class="drawer-header">
+        <h2 id="drawerTitle">Project Details</h2>
+        <button class="close-drawer" onclick="closeProjectDrawer()">×</button>
+    </div>
+    <div class="drawer-content" id="drawerContent">
+        <div class="loading">Loading project details...</div>
+    </div>
+</div>
+
+<script>
+// Fetch detailed stats via API
+fetch(`/administrator-rocks/api/user/{{ user.id }}/stats/`)
+    .then(response => response.json())
+    .then(data => {
+        console.log('User stats:', data);
+    });
+
+// Drawer functionality
+function openProjectDrawer(projectId) {
+    const drawer = document.getElementById('projectDrawer');
+    const overlay = document.getElementById('drawerOverlay');
+    const content = document.getElementById('drawerContent');
+    
+    // Show loading state
+    content.innerHTML = '<div class="loading">Loading project details...</div>';
+    
+    // Open drawer
+    drawer.classList.add('open');
+    overlay.classList.add('open');
+    
+    // Fetch project details
+    fetch(`/administrator-rocks/api/project/${projectId}/`)
+        .then(response => response.json())
+        .then(data => {
+            // Store data globally
+            currentProjectData = data;
+            
+            document.getElementById('drawerTitle').innerHTML = `${data.icon || '📋'} ${data.name}`;
+            
+            let html = '';
+            
+            // Project info
+            html += `
+                <div class="doc-section">
+                    <h4>Project Information</h4>
+                    <p><strong>ID:</strong> ${data.project_id}</p>
+                    <p><strong>Status:</strong> ${data.status}</p>
+                    <p><strong>Created:</strong> ${new Date(data.created_at).toLocaleDateString()}</p>
+                    <p><strong>Updated:</strong> ${new Date(data.updated_at).toLocaleDateString()}</p>
+                    ${data.description ? `<p><strong>Description:</strong> ${data.description}</p>` : ''}
+                </div>
+            `;
+            
+            // Stats
+            html += `
+                <div class="doc-section">
+                    <h4>Statistics</h4>
+                    <p><strong>Features:</strong> ${data.features_count}</p>
+                    <p><strong>Personas:</strong> ${data.personas_count}</p>
+                    <p><strong>Conversations:</strong> ${data.conversations_count}</p>
+                    <p><strong>Total Tickets:</strong> ${data.checklist_items.total}</p>
+                </div>
+            `;
+            
+            // PRD
+            if (data.has_prd) {
+                html += `
+                    <div class="doc-section">
+                        <h4>Product Requirements Document (PRD)</h4>
+                        <button class="btn btn-sm" onclick="fetchProjectDocument(${projectId}, 'prd')">View PRD</button>
+                        <div id="prd-content" style="margin-top: 1rem;"></div>
+                    </div>
+                `;
+            }
+            
+            // Tech Plan
+            if (data.has_implementation) {
+                html += `
+                    <div class="doc-section">
+                        <h4>Technical Implementation Plan</h4>
+                        <button class="btn btn-sm" onclick="fetchProjectDocument(${projectId}, 'implementation')">View Tech Plan</button>
+                        <div id="implementation-content" style="margin-top: 1rem;"></div>
+                    </div>
+                `;
+            }
+            
+            // Tickets
+            html += `
+                <div class="doc-section">
+                    <h4>Tickets (${data.checklist_items.total})</h4>
+                    <div class="tickets-list" id="tickets-list">
+                        <button class="btn btn-sm" onclick="fetchProjectTickets(${projectId})">Load Tickets</button>
+                    </div>
+                </div>
+            `;
+            
+            content.innerHTML = html;
+        })
+        .catch(error => {
+            content.innerHTML = '<div class="error">Error loading project details</div>';
+            console.error('Error:', error);
+        });
+}
+
+function closeProjectDrawer() {
+    const drawer = document.getElementById('projectDrawer');
+    const overlay = document.getElementById('drawerOverlay');
+    
+    drawer.classList.remove('open');
+    overlay.classList.remove('open');
+}
+
+// Store project data globally to avoid multiple fetches
+let currentProjectData = null;
+
+function fetchProjectDocument(projectId, docType) {
+    const contentDiv = document.getElementById(`${docType}-content`);
+    
+    if (currentProjectData && currentProjectData[`${docType}_content`]) {
+        contentDiv.innerHTML = `<div class="doc-content">${escapeHtml(currentProjectData[`${docType}_content`])}</div>`;
+    } else {
+        contentDiv.innerHTML = '<div class="doc-content">No content available</div>';
+    }
+}
+
+function fetchProjectTickets(projectId) {
+    const ticketsList = document.getElementById('tickets-list');
+    
+    if (currentProjectData && currentProjectData.tickets) {
+        let ticketsHtml = '';
+        
+        // Show individual tickets
+        currentProjectData.tickets.forEach(ticket => {
+            ticketsHtml += `
+                <div class="ticket-item">
+                    <div>
+                        <strong>${escapeHtml(ticket.name)}</strong>
+                        <br><small>${escapeHtml(ticket.description || 'No description')}</small>
+                    </div>
+                    <span class="ticket-status ${ticket.status}">${ticket.status.replace('_', ' ')}</span>
+                </div>
+            `;
+        });
+        
+        ticketsList.innerHTML = ticketsHtml || '<p>No tickets found</p>';
+    } else {
+        ticketsList.innerHTML = '<p>No tickets found</p>';
+    }
+}
+
+// Helper function to escape HTML
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Get CSRF token
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+function deleteUser(event, userId, username, email) {
+    // First confirmation
+    if (!confirm(`Are you sure you want to delete user "${username}" (${email})?\n\nThis will permanently delete:\n- The user account\n- All projects\n- All conversations\n- All associated data\n\nThis action cannot be undone!`)) {
+        return;
+    }
+    
+    // Second confirmation - type email
+    const emailInput1 = prompt(`This is a destructive action that CANNOT be undone.\n\nTo confirm deletion of user "${username}", please type their email address:\n\n${email}`);
+    
+    if (!emailInput1) {
+        alert('Deletion cancelled.');
+        return;
+    }
+    
+    if (emailInput1.trim() !== email) {
+        alert('Email address does not match. Deletion cancelled.');
+        return;
+    }
+    
+    // Third confirmation - type email again
+    const emailInput2 = prompt(`Please type the email address again to confirm:\n\n${email}`);
+    
+    if (!emailInput2) {
+        alert('Deletion cancelled.');
+        return;
+    }
+    
+    if (emailInput2.trim() !== email) {
+        alert('Email address does not match. Deletion cancelled.');
+        return;
+    }
+    
+    // Final confirmation
+    if (!confirm(`FINAL CONFIRMATION\n\nYou are about to permanently delete:\nUser: ${username}\nEmail: ${email}\n\nAre you absolutely sure?`)) {
+        return;
+    }
+    
+    const csrftoken = getCookie('csrftoken');
+    
+    // Show loading state
+    const button = event.target;
+    const originalText = button.textContent;
+    button.textContent = 'Deleting...';
+    button.disabled = true;
+    
+    fetch(`/administrator-rocks/api/user/${userId}/delete/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': csrftoken,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            confirm_email: emailInput2.trim()
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            // Redirect to dashboard after successful deletion
+            window.location.href = '/administrator-rocks/';
+        } else {
+            alert('Error: ' + (data.error || 'Failed to delete user'));
+            button.textContent = originalText;
+            button.disabled = false;
+        }
+    })
+    .catch(error => {
+        alert('Error: Failed to delete user. ' + error);
+        button.textContent = originalText;
+        button.disabled = false;
+    });
+}
+</script>
+{% endblock %}

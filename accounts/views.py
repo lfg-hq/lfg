@@ -20,6 +20,14 @@ from django.contrib.auth.tokens import default_token_generator
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 
+def build_secure_absolute_uri(request, path):
+    """Build absolute URI with HTTPS in production"""
+    url = request.build_absolute_uri(path)
+    # Force HTTPS in production environments
+    if ENVIRONMENT != 'local' and url.startswith('http://'):
+        url = url.replace('http://', 'https://', 1)
+    return url
+
 # Define GitHub OAuth constants
 GITHUB_CLIENT_ID = settings.GITHUB_CLIENT_ID if hasattr(settings, 'GITHUB_CLIENT_ID') else None
 GITHUB_CLIENT_SECRET = settings.GITHUB_CLIENT_SECRET if hasattr(settings, 'GITHUB_CLIENT_SECRET') else None
@@ -91,7 +99,7 @@ def auth(request):
                 next_url = request.GET.get('next')
                 if next_url:
                     return redirect(next_url)
-                return redirect('projects:project_list')  # Changed from projects:project_list to project_list
+                return redirect('index')  # Redirect to chat page
         
         elif form_type == 'register':
             register_form = UserRegisterForm(request.POST)
@@ -158,7 +166,7 @@ def settings_page(request, show_github=False):
     github_auth_url = None
     if (not github_connected and not github_missing_config) or show_github:
         GITHUB_CLIENT_ID = settings.GITHUB_CLIENT_ID
-        GITHUB_REDIRECT_URI = request.build_absolute_uri(reverse('github_callback'))
+        GITHUB_REDIRECT_URI = build_secure_absolute_uri(request, reverse('github_callback'))
         state = str(uuid.uuid4())
         request.session['github_oauth_state'] = state
         params = {
@@ -291,7 +299,7 @@ def user_settings(request):
     
     # Create GitHub redirect URI
     global GITHUB_REDIRECT_URI
-    GITHUB_REDIRECT_URI = request.build_absolute_uri(reverse('github_callback'))
+    GITHUB_REDIRECT_URI = build_secure_absolute_uri(request, reverse('github_callback'))
     
     # GitHub OAuth setup
     github_auth_url = None
@@ -440,7 +448,7 @@ def integrations(request):
     github_auth_url = None
     if not github_connected and not github_missing_config:
         global GITHUB_REDIRECT_URI
-        GITHUB_REDIRECT_URI = request.build_absolute_uri(reverse('github_callback'))
+        GITHUB_REDIRECT_URI = build_secure_absolute_uri(request, reverse('github_callback'))
         state = str(uuid.uuid4())
         request.session['github_oauth_state'] = state
         params = {
@@ -692,11 +700,16 @@ def google_login(request):
     
     # Build redirect URI
     global GOOGLE_REDIRECT_URI
-    GOOGLE_REDIRECT_URI = request.build_absolute_uri(reverse('google_callback'))
+    GOOGLE_REDIRECT_URI = build_secure_absolute_uri(request, reverse('google_callback'))
     
     # Generate state for CSRF protection
     state = str(uuid.uuid4())
     request.session['google_oauth_state'] = state
+    
+    # Check if this is from the landing page onboarding flow
+    from_landing = request.GET.get('from_landing', False)
+    if from_landing:
+        request.session['from_landing_onboarding'] = True
     
     # Build Google OAuth URL
     params = {
@@ -769,6 +782,7 @@ def google_callback(request):
             return redirect('auth')
         
         # Check if user exists
+        is_new_user = False
         try:
             user = User.objects.get(email=email)
             # If user exists, log them in
@@ -776,6 +790,7 @@ def google_callback(request):
             messages.success(request, 'Successfully logged in with Google!')
         except User.DoesNotExist:
             # Create new user
+            is_new_user = True
             username = email.split('@')[0]
             # Ensure unique username
             base_username = username
@@ -800,17 +815,24 @@ def google_callback(request):
             login(request, user, backend='django.contrib.auth.backends.ModelBackend')
             messages.success(request, 'Successfully registered and logged in with Google!')
         
+        # Check if this was from the landing page onboarding flow
+        from_landing_onboarding = request.session.pop('from_landing_onboarding', False)
+        
+        if from_landing_onboarding:
+            # Redirect back to landing page with a flag to continue onboarding at step 3
+            return redirect('landing_page' + '?onboarding=true&step=3')
+        
         # Check if user has required API keys set up
         openai_key_missing = not bool(user.profile.openai_api_key)
         anthropic_key_missing = not bool(user.profile.anthropic_api_key)
         
-        # If both keys are missing, redirect to integrations
-        if openai_key_missing and anthropic_key_missing:
+        # If both keys are missing and it's a new user, redirect to integrations
+        if openai_key_missing and anthropic_key_missing and is_new_user:
             messages.info(request, 'Please set up OpenAI or Anthropic API keys to get started.')
             return redirect('integrations')
         
-        # Redirect to projects list
-        return redirect('projects:project_list')
+        # Redirect to chat page (consistent with LOGIN_REDIRECT_URL setting)
+        return redirect('index')
         
     except requests.exceptions.RequestException as e:
         messages.error(request, f'Error communicating with Google: {str(e)}')
