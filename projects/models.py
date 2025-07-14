@@ -1,9 +1,13 @@
 from django.db import models
 from django.contrib.auth.models import User
 from django.urls import reverse
+import uuid
 
 # Create your models here.
 class Project(models.Model):
+    # Keep default integer ID for foreign key compatibility
+    # Use project_id for URLs and external references
+    project_id = models.CharField(max_length=36, unique=True, default=uuid.uuid4, db_index=True)
     name = models.CharField(max_length=255)
     provided_name = models.CharField(max_length=255, blank=True, null=True)  # User-provided name for project references
     description = models.TextField(blank=True, null=True)
@@ -26,14 +30,31 @@ class Project(models.Model):
         return self.name
     
     def get_absolute_url(self):
-        return reverse('project_detail', kwargs={'project_id': self.id})
+        return reverse('project_detail', kwargs={'project_id': str(self.project_id)})
         
     def get_chat_url(self):
         """Get URL for the latest conversation or create a new one"""
         latest_conversation = self.direct_conversations.order_by('-updated_at').first()
         if latest_conversation:
             return reverse('conversation_detail', kwargs={'conversation_id': latest_conversation.id})
-        return reverse('create_conversation', kwargs={'project_id': self.id})
+        return reverse('create_conversation', kwargs={'project_id': str(self.project_id)})
+    
+    @classmethod
+    def get_or_create_default_project(cls, user):
+        """Get or create a default project for the user"""
+        # Check if user has any projects
+        existing_project = user.projects.filter(name="Untitled Project").first()
+        if existing_project:
+            return existing_project
+        
+        # Create a default project
+        project = cls.objects.create(
+            name="Untitled Project",
+            description="Default project for quick start",
+            owner=user,
+            icon="🚀"
+        )
+        return project
 
 class ProjectFeature(models.Model):
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="features")

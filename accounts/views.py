@@ -19,6 +19,14 @@ from django.contrib.auth.tokens import default_token_generator
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 
+def build_secure_absolute_uri(request, path):
+    """Build absolute URI with HTTPS in production"""
+    url = request.build_absolute_uri(path)
+    # Force HTTPS in production environments
+    if ENVIRONMENT != 'local' and url.startswith('http://'):
+        url = url.replace('http://', 'https://', 1)
+    return url
+
 # Define GitHub OAuth constants
 GITHUB_CLIENT_ID = settings.GITHUB_CLIENT_ID if hasattr(settings, 'GITHUB_CLIENT_ID') else None
 GITHUB_CLIENT_SECRET = settings.GITHUB_CLIENT_SECRET if hasattr(settings, 'GITHUB_CLIENT_SECRET') else None
@@ -90,7 +98,7 @@ def auth(request):
                 next_url = request.GET.get('next')
                 if next_url:
                     return redirect(next_url)
-                return redirect('projects:project_list')  # Changed from projects:project_list to project_list
+                return redirect('index')  # Redirect to chat page
         
         elif form_type == 'register':
             register_form = UserRegisterForm(request.POST)
@@ -157,7 +165,7 @@ def settings_page(request, show_github=False):
     github_auth_url = None
     if (not github_connected and not github_missing_config) or show_github:
         GITHUB_CLIENT_ID = settings.GITHUB_CLIENT_ID
-        GITHUB_REDIRECT_URI = request.build_absolute_uri(reverse('github_callback'))
+        GITHUB_REDIRECT_URI = build_secure_absolute_uri(request, reverse('github_callback'))
         state = str(uuid.uuid4())
         request.session['github_oauth_state'] = state
         params = {
@@ -290,7 +298,7 @@ def user_settings(request):
     
     # Create GitHub redirect URI
     global GITHUB_REDIRECT_URI
-    GITHUB_REDIRECT_URI = request.build_absolute_uri(reverse('github_callback'))
+    GITHUB_REDIRECT_URI = build_secure_absolute_uri(request, reverse('github_callback'))
     
     # GitHub OAuth setup
     github_auth_url = None
@@ -439,7 +447,7 @@ def integrations(request):
     github_auth_url = None
     if not github_connected and not github_missing_config:
         global GITHUB_REDIRECT_URI
-        GITHUB_REDIRECT_URI = request.build_absolute_uri(reverse('github_callback'))
+        GITHUB_REDIRECT_URI = build_secure_absolute_uri(request, reverse('github_callback'))
         state = str(uuid.uuid4())
         request.session['github_oauth_state'] = state
         params = {
@@ -482,27 +490,39 @@ def integrations(request):
 
 
 def send_verification_email(request, user):
-    """Send email verification link to user"""
+    """Send email verification code to user"""
     try:
-        # Create verification token
-        token = EmailVerificationToken.create_token(user)
+        from .models import EmailVerificationCode
         
-        # Build verification URL
-        verification_url = request.build_absolute_uri(
-            reverse('verify_email', kwargs={'token': token.token})
-        )
+        # Create verification code
+        verification = EmailVerificationCode.create_code(user)
         
         # Email content
-        subject = 'Verify your email for LFG'
-        html_message = render_to_string('accounts/email_verification.html', {
-            'user': user,
-            'verification_url': verification_url,
-            'expiration_hours': 24,
-        })
-        plain_message = strip_tags(html_message)
+        subject = 'Your LFG Verification Code'
+        
+        # Check if template exists, if not use plain text
+        try:
+            html_message = render_to_string('accounts/email_verification_code.html', {
+                'user': user,
+                'code': verification.code,
+                'expiration_minutes': 30,
+            })
+        except:
+            html_message = None
+            
+        plain_message = f"""
+Hi {user.username},
+
+Your verification code is: {verification.code}
+
+This code will expire in 30 minutes.
+
+Best regards,
+The LFG Team
+"""
         
         # Send email
-        send_mail(
+        result = send_mail(
             subject=subject,
             message=plain_message,
             from_email=settings.DEFAULT_FROM_EMAIL,
@@ -510,7 +530,9 @@ def send_verification_email(request, user):
             html_message=html_message,
             fail_silently=False,
         )
-        return True
+        
+        return result > 0
+        
     except Exception as e:
         print(f"Error sending verification email: {e}")
         return False
@@ -677,11 +699,16 @@ def google_login(request):
     
     # Build redirect URI
     global GOOGLE_REDIRECT_URI
-    GOOGLE_REDIRECT_URI = request.build_absolute_uri(reverse('google_callback'))
+    GOOGLE_REDIRECT_URI = build_secure_absolute_uri(request, reverse('google_callback'))
     
     # Generate state for CSRF protection
     state = str(uuid.uuid4())
     request.session['google_oauth_state'] = state
+    
+    # Check if this is from the landing page onboarding flow
+    from_landing = request.GET.get('from_landing', False)
+    if from_landing:
+        request.session['from_landing_onboarding'] = True
     
     # Build Google OAuth URL
     params = {
@@ -754,6 +781,7 @@ def google_callback(request):
             return redirect('auth')
         
         # Check if user exists
+        is_new_user = False
         try:
             user = User.objects.get(email=email)
             # If user exists, log them in
@@ -761,6 +789,7 @@ def google_callback(request):
             messages.success(request, 'Successfully logged in with Google!')
         except User.DoesNotExist:
             # Create new user
+            is_new_user = True
             username = email.split('@')[0]
             # Ensure unique username
             base_username = username
@@ -785,21 +814,182 @@ def google_callback(request):
             login(request, user, backend='django.contrib.auth.backends.ModelBackend')
             messages.success(request, 'Successfully registered and logged in with Google!')
         
+        # Check if this was from the landing page onboarding flow
+        from_landing_onboarding = request.session.pop('from_landing_onboarding', False)
+        
+        if from_landing_onboarding:
+            # Redirect back to landing page with a flag to continue onboarding at step 3
+            return redirect('landing_page' + '?onboarding=true&step=3')
+        
         # Check if user has required API keys set up
         openai_key_missing = not bool(user.profile.openai_api_key)
         anthropic_key_missing = not bool(user.profile.anthropic_api_key)
         
-        # If both keys are missing, redirect to integrations
-        if openai_key_missing and anthropic_key_missing:
+        # If both keys are missing and it's a new user, redirect to integrations
+        if openai_key_missing and anthropic_key_missing and is_new_user:
             messages.info(request, 'Please set up OpenAI or Anthropic API keys to get started.')
             return redirect('integrations')
         
-        # Redirect to projects list
-        return redirect('projects:project_list')
+        # Redirect to chat page (consistent with LOGIN_REDIRECT_URL setting)
+        return redirect('index')
         
     except requests.exceptions.RequestException as e:
         messages.error(request, f'Error communicating with Google: {str(e)}')
         return redirect('auth')
     except Exception as e:
         messages.error(request, f'An unexpected error occurred: {str(e)}')
-        return redirect('auth') 
+        return redirect('auth')
+
+
+# API Endpoints
+def auth_status(request):
+    """Check if user is authenticated"""
+    return JsonResponse({
+        'authenticated': request.user.is_authenticated,
+        'username': request.user.username if request.user.is_authenticated else None
+    })
+
+
+def api_keys_status(request):
+    """Check if user has API keys configured"""
+    if not request.user.is_authenticated:
+        return JsonResponse({
+            'error': 'Not authenticated',
+            'has_openai_key': False,
+            'has_anthropic_key': False,
+            'has_groq_key': False
+        }, status=401)
+    
+    profile = request.user.profile
+    return JsonResponse({
+        'has_openai_key': bool(profile.openai_api_key),
+        'has_anthropic_key': bool(profile.anthropic_api_key),
+        'has_groq_key': bool(profile.groq_api_key)
+    })
+
+
+@login_required
+def save_api_keys(request):
+    """Save API keys via AJAX"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    try:
+        import json
+        data = json.loads(request.body)
+        profile = request.user.profile
+        
+        # Update API keys if provided
+        if 'openai_api_key' in data and data['openai_api_key']:
+            profile.openai_api_key = data['openai_api_key']
+        
+        if 'anthropic_api_key' in data and data['anthropic_api_key']:
+            profile.anthropic_api_key = data['anthropic_api_key']
+        
+        if 'grok_api_key' in data and data['grok_api_key']:
+            profile.groq_api_key = data['grok_api_key']
+        
+        profile.save()
+        
+        return JsonResponse({
+            'success': True,
+            'has_openai_key': bool(profile.openai_api_key),
+            'has_anthropic_key': bool(profile.anthropic_api_key),
+            'has_groq_key': bool(profile.groq_api_key)
+        })
+    
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
+
+@login_required
+def verify_email_code(request):
+    """Verify email using 6-digit code"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    try:
+        import json
+        from .models import EmailVerificationCode
+        
+        data = json.loads(request.body)
+        code = data.get('code', '').strip()
+        
+        if not code or len(code) != 6:
+            return JsonResponse({'error': 'Invalid code format'}, status=400)
+        
+        # Find valid code for the user
+        verification = EmailVerificationCode.objects.filter(
+            user=request.user,
+            code=code,
+            used=False
+        ).first()
+        
+        if not verification:
+            return JsonResponse({'error': 'Invalid code'}, status=400)
+        
+        if not verification.is_valid():
+            return JsonResponse({'error': 'Code has expired'}, status=400)
+        
+        # Mark code as used and verify email
+        verification.used = True
+        verification.save()
+        
+        profile = request.user.profile
+        profile.email_verified = True
+        profile.save()
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Email verified successfully'
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
+
+@login_required
+def resend_verification_code(request):
+    """Resend email verification code"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    try:
+        from .models import EmailVerificationCode
+        from django.core.mail import send_mail
+        from django.conf import settings
+        
+        # Create new code
+        verification = EmailVerificationCode.create_code(request.user)
+        
+        # Send email with code
+        subject = 'Your LFG Verification Code'
+        message = f"""
+Hi {request.user.username},
+
+Your verification code is: {verification.code}
+
+This code will expire in 30 minutes.
+
+Best regards,
+The LFG Team
+"""
+        
+        send_mail(
+            subject,
+            message,
+            settings.DEFAULT_FROM_EMAIL,
+            [request.user.email],
+            fail_silently=False,
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Verification code sent'
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
+
+ 

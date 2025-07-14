@@ -1,0 +1,178 @@
+{% extends 'administrator/base.html' %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<h1 style="margin-bottom: 2rem;">Administrator Dashboard</h1>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <h3>Total Users</h3>
+        <div class="value">{{ total_users }}</div>
+    </div>
+    
+    <div class="stat-card">
+        <h3>Active Users (24h)</h3>
+        <div class="value">{{ active_users_24h }}</div>
+    </div>
+    
+    <div class="stat-card">
+        <h3>Total Projects</h3>
+        <div class="value">{{ total_projects }}</div>
+    </div>
+    
+    <div class="stat-card">
+        <h3>Total Conversations</h3>
+        <div class="value">{{ total_conversations }}</div>
+    </div>
+</div>
+
+<div class="data-table">
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Username</th>
+                <th>Email</th>
+                <th>Date Joined</th>
+                <th>Last Login</th>
+                <th>Projects</th>
+                <th>Conversations</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for user in users %}
+            <tr>
+                <td>{{ user.id }}</td>
+                <td>{{ user.username }}</td>
+                <td>{{ user.email }}</td>
+                <td>{{ user.date_joined|date:"Y-m-d H:i" }}</td>
+                <td>
+                    {% if user.last_login %}
+                        {{ user.last_login|date:"Y-m-d H:i" }}
+                    {% else %}
+                        Never
+                    {% endif %}
+                </td>
+                <td>{{ user.project_count }}</td>
+                <td>{{ user.conversation_count }}</td>
+                <td>
+                    {% if user.is_active %}
+                        <span class="badge active">Active</span>
+                    {% else %}
+                        <span class="badge inactive">Inactive</span>
+                    {% endif %}
+                    {% if user.is_superuser %}
+                        <span class="badge" style="background-color: #dc3545; color: white;">Superadmin</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="{% url 'administrator:user_detail' user.id %}" class="btn btn-sm">View Details</a>
+                    {% if not user.is_superuser and user.id != request.user.id %}
+                        <button onclick="deleteUser(event, {{ user.id }}, '{{ user.username }}', '{{ user.email }}')" class="btn btn-sm" style="background-color: #dc3545; color: white; margin-left: 0.5rem;">Delete</button>
+                    {% endif %}
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="9" style="text-align: center; padding: 2rem;">No users found</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<script>
+// Get CSRF token
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+function deleteUser(event, userId, username, email) {
+    // First confirmation
+    if (!confirm(`Are you sure you want to delete user "${username}" (${email})?\n\nThis will permanently delete:\n- The user account\n- All projects\n- All conversations\n- All associated data\n\nThis action cannot be undone!`)) {
+        return;
+    }
+    
+    // Second confirmation - type email
+    const emailInput1 = prompt(`This is a destructive action that CANNOT be undone.\n\nTo confirm deletion of user "${username}", please type their email address:\n\n${email}`);
+    
+    if (!emailInput1) {
+        alert('Deletion cancelled.');
+        return;
+    }
+    
+    if (emailInput1.trim() !== email) {
+        alert('Email address does not match. Deletion cancelled.');
+        return;
+    }
+    
+    // Third confirmation - type email again
+    const emailInput2 = prompt(`Please type the email address again to confirm:\n\n${email}`);
+    
+    if (!emailInput2) {
+        alert('Deletion cancelled.');
+        return;
+    }
+    
+    if (emailInput2.trim() !== email) {
+        alert('Email address does not match. Deletion cancelled.');
+        return;
+    }
+    
+    // Final confirmation
+    if (!confirm(`FINAL CONFIRMATION\n\nYou are about to permanently delete:\nUser: ${username}\nEmail: ${email}\n\nAre you absolutely sure?`)) {
+        return;
+    }
+    
+    const csrftoken = getCookie('csrftoken');
+    
+    // Show loading state
+    const button = event.target;
+    const originalText = button.textContent;
+    button.textContent = 'Deleting...';
+    button.disabled = true;
+    
+    fetch(`/administrator-rocks/api/user/${userId}/delete/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': csrftoken,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            confirm_email: emailInput2.trim()
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            // Reload the page to refresh the user list
+            window.location.reload();
+        } else {
+            alert('Error: ' + (data.error || 'Failed to delete user'));
+            button.textContent = originalText;
+            button.disabled = false;
+        }
+    })
+    .catch(error => {
+        alert('Error: Failed to delete user. ' + error);
+        button.textContent = originalText;
+        button.disabled = false;
+    });
+}
+</script>
+{% endblock %}

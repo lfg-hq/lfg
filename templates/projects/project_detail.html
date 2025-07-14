@@ -15,16 +15,16 @@
             </div>
         </div>
         <div class="project-header-actions">
-            <a href="{% url 'create_conversation' project.id %}" class="btn btn-primary">
+            <a href="{% url 'create_conversation' project.project_id %}" class="btn btn-primary">
                 <i class="fas fa-comment"></i> New Chat
             </a>
-            <a href="{% url 'projects:project_terminal' project.id %}" class="btn btn-outline-secondary">
+            <a href="{% url 'projects:project_terminal' project.project_id %}" class="btn btn-outline-secondary">
                 <i class="fas fa-terminal"></i> Terminal
             </a>
-            <a href="{% url 'projects:update_project' project.id %}" class="btn btn-outline" title="Edit">
+            <a href="{% url 'projects:update_project' project.project_id %}" class="btn btn-outline" title="Edit">
                 <i class="fas fa-edit"></i>
             </a>
-            <form action="{% url 'projects:delete_project' project.id %}" method="post" class="d-inline">
+            <form action="{% url 'projects:delete_project' project.project_id %}" method="post" class="d-inline">
                 {% csrf_token %}
                 <button type="submit" class="btn btn-danger delete-project-btn" data-project-name="{{ project.name }}">
                     <i class="fas fa-trash-alt"></i> Delete
@@ -90,7 +90,7 @@
                     {% endfor %}
                     
                     <div class="conversation-list-footer">
-                        <a href="{% url 'create_conversation' project.id %}" class="btn btn-outline">
+                        <a href="{% url 'create_conversation' project.project_id %}" class="btn btn-outline">
                             <i class="fas fa-plus"></i> New Conversation
                         </a>
                         
@@ -110,7 +110,7 @@
                     <div class="empty-state-text">
                         Start a conversation to interact with AI about this project.
                     </div>
-                    <a href="{% url 'create_conversation' project.id %}" class="btn btn-primary">
+                    <a href="{% url 'create_conversation' project.project_id %}" class="btn btn-primary">
                         <i class="fas fa-comment"></i> Start First Conversation
                     </a>
                 </div>
