@@ -98,7 +98,7 @@ def auth(request):
                 next_url = request.GET.get('next')
                 if next_url:
                     return redirect(next_url)
-                return redirect('projects:project_list')  # Changed from projects:project_list to project_list
+                return redirect('index')  # Redirect to chat page
         
         elif form_type == 'register':
             register_form = UserRegisterForm(request.POST)
@@ -705,6 +705,11 @@ def google_login(request):
     state = str(uuid.uuid4())
     request.session['google_oauth_state'] = state
     
+    # Check if this is from the landing page onboarding flow
+    from_landing = request.GET.get('from_landing', False)
+    if from_landing:
+        request.session['from_landing_onboarding'] = True
+    
     # Build Google OAuth URL
     params = {
         'client_id': GOOGLE_CLIENT_ID,
@@ -776,6 +781,7 @@ def google_callback(request):
             return redirect('auth')
         
         # Check if user exists
+        is_new_user = False
         try:
             user = User.objects.get(email=email)
             # If user exists, log them in
@@ -783,6 +789,7 @@ def google_callback(request):
             messages.success(request, 'Successfully logged in with Google!')
         except User.DoesNotExist:
             # Create new user
+            is_new_user = True
             username = email.split('@')[0]
             # Ensure unique username
             base_username = username
@@ -807,17 +814,24 @@ def google_callback(request):
             login(request, user, backend='django.contrib.auth.backends.ModelBackend')
             messages.success(request, 'Successfully registered and logged in with Google!')
         
+        # Check if this was from the landing page onboarding flow
+        from_landing_onboarding = request.session.pop('from_landing_onboarding', False)
+        
+        if from_landing_onboarding:
+            # Redirect back to landing page with a flag to continue onboarding at step 3
+            return redirect('landing_page' + '?onboarding=true&step=3')
+        
         # Check if user has required API keys set up
         openai_key_missing = not bool(user.profile.openai_api_key)
         anthropic_key_missing = not bool(user.profile.anthropic_api_key)
         
-        # If both keys are missing, redirect to integrations
-        if openai_key_missing and anthropic_key_missing:
+        # If both keys are missing and it's a new user, redirect to integrations
+        if openai_key_missing and anthropic_key_missing and is_new_user:
             messages.info(request, 'Please set up OpenAI or Anthropic API keys to get started.')
             return redirect('integrations')
         
-        # Redirect to projects list
-        return redirect('projects:project_list')
+        # Redirect to chat page (consistent with LOGIN_REDIRECT_URL setting)
+        return redirect('index')
         
     except requests.exceptions.RequestException as e:
         messages.error(request, f'Error communicating with Google: {str(e)}')

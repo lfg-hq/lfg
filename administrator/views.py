@@ -3,6 +3,8 @@ from django.contrib.auth.models import User
 from django.db.models import Count, Q, Prefetch
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
+from django.views.decorators.csrf import csrf_exempt
+from django.contrib.auth.decorators import login_required
 from django.utils import timezone
 from datetime import timedelta
 
@@ -162,3 +164,55 @@ def api_project_details(request, project_id):
     data['tickets'] = list(tickets)
     
     return JsonResponse(data)
+
+@superadmin_required
+@require_http_methods(["POST"])
+def delete_user(request, user_id):
+    """Delete a user and all their associated data"""
+    import json
+    
+    user = get_object_or_404(User, pk=user_id)
+    
+    # Prevent deleting superusers
+    if user.is_superuser:
+        return JsonResponse({'error': 'Cannot delete superuser accounts'}, status=403)
+    
+    # Prevent self-deletion
+    if user.id == request.user.id:
+        return JsonResponse({'error': 'Cannot delete your own account'}, status=403)
+    
+    # Parse request body
+    try:
+        body = json.loads(request.body)
+        confirm_email = body.get('confirm_email', '').strip()
+    except:
+        return JsonResponse({'error': 'Invalid request data'}, status=400)
+    
+    # Verify email confirmation
+    if confirm_email != user.email:
+        return JsonResponse({'error': 'Email confirmation does not match user email'}, status=400)
+    
+    # Store username and email for response
+    username = user.username
+    email = user.email
+    
+    # Log the deletion action
+    import logging
+    logger = logging.getLogger('administrator')
+    logger.warning(f'Admin {request.user.username} (ID: {request.user.id}) is deleting user {username} (ID: {user_id}, Email: {email})')
+    
+    try:
+        # Delete the user (this will cascade delete all related objects)
+        user.delete()
+        
+        logger.info(f'Successfully deleted user {username} (ID: {user_id}, Email: {email})')
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'User {username} ({email}) and all associated data have been deleted successfully'
+        })
+    except Exception as e:
+        logger.error(f'Failed to delete user {username} (ID: {user_id}): {str(e)}')
+        return JsonResponse({
+            'error': f'Failed to delete user: {str(e)}'
+        }, status=500)
