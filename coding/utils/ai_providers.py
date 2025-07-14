@@ -1864,9 +1864,6 @@ class AnthropicProvider(AIProvider):
                                             text = clean_text
                                         else:
                                             print(f"[PRD MODE] Skipping initial content: {repr(text)}")
-                                        print("\n\n\n\n\n\n STRIPPEDDDDD")
-                                        print("\n\n\ PRD Text:: ", prd_data)
-                                        print("\n\n\ Clean Text:: ", clean_text)
                                     else:
                                         prd_data += text
                                     
