@@ -993,4 +993,19 @@ The LFG Team
         return JsonResponse({'error': str(e)}, status=400)
 
 
- 
+@login_required
+def get_agent_settings(request):
+    """Get the user's agent role settings including turbo mode state"""
+    try:
+        agent_role, created = AgentRole.objects.get_or_create(
+            user=request.user,
+            defaults={'name': 'product_analyst', 'turbo_mode': False}
+        )
+
+        return JsonResponse({
+            'agent_role': agent_role.name,
+            'turbo_mode': agent_role.turbo_mode
+        })
+
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400)
