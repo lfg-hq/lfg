@@ -826,13 +826,13 @@ def google_callback(request):
         openai_key_missing = not bool(user.profile.openai_api_key)
         anthropic_key_missing = not bool(user.profile.anthropic_api_key)
         
-        # If both keys are missing and it's a new user, redirect to integrations
-        if openai_key_missing and anthropic_key_missing and is_new_user:
+        # If both keys are missing, redirect to integrations (for both new and existing users)
+        if openai_key_missing and anthropic_key_missing:
             messages.info(request, 'Please set up OpenAI or Anthropic API keys to get started.')
             return redirect('integrations')
         
-        # Redirect to chat page (consistent with LOGIN_REDIRECT_URL setting)
-        return redirect('index')
+        # Otherwise redirect to projects page (matching the regular registration flow)
+        return redirect('projects:project_list')
         
     except requests.exceptions.RequestException as e:
         messages.error(request, f'Error communicating with Google: {str(e)}')
