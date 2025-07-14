@@ -819,7 +819,7 @@ def google_callback(request):
         
         if from_landing_onboarding:
             # Redirect back to landing page with a flag to continue onboarding at step 3
-            return redirect('landing_page' + '?onboarding=true&step=3')
+            return redirect('/?onboarding=true&step=3')
         
         # Check if user has required API keys set up
         openai_key_missing = not bool(user.profile.openai_api_key)
