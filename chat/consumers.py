@@ -935,7 +935,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # Set project reference if provided
         try:
             from projects.models import Project
-            project = Project.objects.get(id=project_id, owner=self.user)
+            project = Project.objects.get(project_id=project_id, owner=self.user)
             conversation.project = project
             conversation.save()
             logger.debug(f"Set project reference for conversation {conversation.id} to project {project_id}")

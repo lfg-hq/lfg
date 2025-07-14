@@ -54,6 +54,41 @@ class EmailVerificationToken(models.Model):
         """Check if token is still valid"""
         return not self.used and timezone.now() < self.expires_at
 
+
+class EmailVerificationCode(models.Model):
+    """Model to store 6-digit email verification codes"""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='email_verification_codes')
+    code = models.CharField(max_length=6)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used = models.BooleanField(default=False)
+    
+    def __str__(self):
+        return f"Code for {self.user.email}"
+    
+    @classmethod
+    def create_code(cls, user):
+        """Create a new 6-digit verification code for the user"""
+        import random
+        
+        # Invalidate any existing unused codes
+        cls.objects.filter(user=user, used=False).update(used=True)
+        
+        # Create new 6-digit code
+        code = str(random.randint(100000, 999999))
+        expires_at = timezone.now() + timedelta(minutes=30)  # 30 minutes expiry
+        
+        return cls.objects.create(
+            user=user,
+            code=code,
+            expires_at=expires_at
+        )
+    
+    def is_valid(self):
+        """Check if code is still valid"""
+        return not self.used and timezone.now() < self.expires_at
+
+
 class GitHubToken(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     access_token = models.CharField(max_length=255)
@@ -130,8 +165,7 @@ class TokenUsage(models.Model):
             },
             'grok': {
                 # Grok pricing (estimated based on typical AI model pricing)
-                'grok-2': {'input': 0.005, 'output': 0.01},
-                'grok-beta': {'input': 0.003, 'output': 0.008},
+                'grok-4': {'input': 0.003, 'output': 0.008},
             }
         }
         

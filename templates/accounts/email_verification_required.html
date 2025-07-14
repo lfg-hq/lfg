@@ -178,6 +178,46 @@
                 transform: translateY(0);
             }
         }
+
+        /* Code input styles */
+        .code-inputs {
+            display: flex;
+            gap: 0.5rem;
+            justify-content: center;
+            margin: 1.5rem 0;
+        }
+        
+        .code-input {
+            width: 3rem;
+            height: 3.5rem;
+            text-align: center;
+            font-size: 1.5rem;
+            font-weight: 600;
+            background: var(--dark-bg);
+            border: 2px solid var(--border-color);
+            border-radius: 0.5rem;
+            color: var(--light-text);
+            transition: all 0.3s ease;
+        }
+        
+        .code-input:focus {
+            outline: none;
+            border-color: var(--primary-light);
+            background: rgba(109, 40, 217, 0.1);
+        }
+        
+        .code-input::-webkit-inner-spin-button,
+        .code-input::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        
+        .verification-error {
+            text-align: center;
+            color: #ef4444;
+            margin-bottom: 1rem;
+            font-size: 0.875rem;
+        }
     </style>
 </head>
 <body>
@@ -205,16 +245,28 @@
             
             <h1>Verify Your Email</h1>
             
-            <p class="message">We've sent a verification email to:</p>
+            <p class="message">We've sent a 6-digit code to:</p>
             
             <div class="email-display">{{ email }}</div>
             
-            <p class="message">Please check your inbox and click the verification link to continue.</p>
-            
-            <form method="post" action="{% url 'resend_verification_email' %}">
+            <form id="verification-form" class="verification-form">
                 {% csrf_token %}
-                <button type="submit" class="button">
-                    Resend Verification Email
+                <div class="code-inputs">
+                    <input type="text" class="code-input" maxlength="1" data-index="0" autocomplete="off">
+                    <input type="text" class="code-input" maxlength="1" data-index="1" autocomplete="off">
+                    <input type="text" class="code-input" maxlength="1" data-index="2" autocomplete="off">
+                    <input type="text" class="code-input" maxlength="1" data-index="3" autocomplete="off">
+                    <input type="text" class="code-input" maxlength="1" data-index="4" autocomplete="off">
+                    <input type="text" class="code-input" maxlength="1" data-index="5" autocomplete="off">
+                </div>
+                <div class="verification-error" style="display: none;"></div>
+                <button type="submit" class="button">Verify Email</button>
+            </form>
+            
+            <form method="post" action="{% url 'resend_verification_email' %}" style="margin-top: 1rem;">
+                {% csrf_token %}
+                <button type="submit" class="button" style="background: transparent; border: 1px solid var(--primary-light);">
+                    Resend Code
                 </button>
             </form>
             
@@ -222,8 +274,128 @@
         </div>
         
         <p class="help-text">
-            Didn't receive the email? Check your spam folder or try resending.
+            Didn't receive the code? Check your spam folder or try resending.
         </p>
     </div>
+
+    <script>
+        // Auto-advance code inputs
+        const codeInputs = document.querySelectorAll('.code-input');
+        codeInputs.forEach((input, index) => {
+            input.addEventListener('input', (e) => {
+                if (e.target.value && index < codeInputs.length - 1) {
+                    codeInputs[index + 1].focus();
+                }
+            });
+            
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Backspace' && !e.target.value && index > 0) {
+                    codeInputs[index - 1].focus();
+                }
+            });
+            
+            // Handle paste
+            input.addEventListener('paste', function(e) {
+                e.preventDefault();
+                const pastedData = (e.clipboardData || window.clipboardData).getData('text');
+                const digits = pastedData.replace(/\D/g, '').slice(0, 6);
+                
+                digits.split('').forEach((digit, i) => {
+                    if (codeInputs[i]) {
+                        codeInputs[i].value = digit;
+                    }
+                });
+                
+                if (digits.length > 0) {
+                    codeInputs[Math.min(digits.length, codeInputs.length - 1)].focus();
+                }
+            });
+        });
+
+        // Handle form submission
+        document.getElementById('verification-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            // Collect code
+            let code = '';
+            codeInputs.forEach(input => {
+                code += input.value;
+            });
+            
+            if (code.length !== 6) {
+                showError('Please enter all 6 digits');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/accounts/verify-email-code/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: JSON.stringify({ code: code }),
+                    credentials: 'include'
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    // Check if user has API keys
+                    const apiKeysResponse = await fetch('/accounts/api/user/api-keys/', {
+                        credentials: 'include'
+                    });
+                    
+                    if (apiKeysResponse.ok) {
+                        const apiData = await apiKeysResponse.json();
+                        if (!apiData.has_openai_key && !apiData.has_anthropic_key) {
+                            window.location.href = '/accounts/integrations/';
+                        } else {
+                            window.location.href = '/projects/';
+                        }
+                    } else {
+                        window.location.href = '/projects/';
+                    }
+                } else {
+                    showError(data.error || 'Invalid code. Please try again.');
+                    // Clear inputs
+                    codeInputs.forEach(input => input.value = '');
+                    codeInputs[0].focus();
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showError('An error occurred. Please try again.');
+            }
+        });
+        
+        function showError(message) {
+            const errorDiv = document.querySelector('.verification-error');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            setTimeout(() => {
+                errorDiv.style.display = 'none';
+            }, 5000);
+        }
+        
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+        
+        // Focus first input on load
+        window.addEventListener('load', () => {
+            codeInputs[0].focus();
+        });
+    </script>
 </body>
 </html>

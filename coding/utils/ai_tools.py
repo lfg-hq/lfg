@@ -335,6 +335,10 @@ get_next_ticket = {
     "function": {
         "name": "get_next_ticket",
         "description": "Call this function to get the next available ticket for the project",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
     }
 }
 
@@ -343,6 +347,10 @@ get_pending_tickets = {
     "function": {
         "name": "get_pending_tickets",
         "description": "Call this function to get the pending tickets for the project",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
     }
 }
 
@@ -521,6 +529,10 @@ get_github_access_token = {
     "function": {
         "name": "get_github_access_token",
         "description": "Call this function to get the Github access token",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
     }
 }
 
