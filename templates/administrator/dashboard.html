@@ -1,0 +1,83 @@
+{% extends 'administrator/base.html' %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<h1 style="margin-bottom: 2rem;">Administrator Dashboard</h1>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <h3>Total Users</h3>
+        <div class="value">{{ total_users }}</div>
+    </div>
+    
+    <div class="stat-card">
+        <h3>Active Users (24h)</h3>
+        <div class="value">{{ active_users_24h }}</div>
+    </div>
+    
+    <div class="stat-card">
+        <h3>Total Projects</h3>
+        <div class="value">{{ total_projects }}</div>
+    </div>
+    
+    <div class="stat-card">
+        <h3>Total Conversations</h3>
+        <div class="value">{{ total_conversations }}</div>
+    </div>
+</div>
+
+<div class="data-table">
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Username</th>
+                <th>Email</th>
+                <th>Date Joined</th>
+                <th>Last Login</th>
+                <th>Projects</th>
+                <th>Conversations</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for user in users %}
+            <tr>
+                <td>{{ user.id }}</td>
+                <td>{{ user.username }}</td>
+                <td>{{ user.email }}</td>
+                <td>{{ user.date_joined|date:"Y-m-d H:i" }}</td>
+                <td>
+                    {% if user.last_login %}
+                        {{ user.last_login|date:"Y-m-d H:i" }}
+                    {% else %}
+                        Never
+                    {% endif %}
+                </td>
+                <td>{{ user.project_count }}</td>
+                <td>{{ user.conversation_count }}</td>
+                <td>
+                    {% if user.is_active %}
+                        <span class="badge active">Active</span>
+                    {% else %}
+                        <span class="badge inactive">Inactive</span>
+                    {% endif %}
+                    {% if user.is_superuser %}
+                        <span class="badge" style="background-color: #dc3545; color: white;">Superadmin</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="{% url 'administrator:user_detail' user.id %}" class="btn btn-sm">View Details</a>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="9" style="text-align: center; padding: 2rem;">No users found</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
