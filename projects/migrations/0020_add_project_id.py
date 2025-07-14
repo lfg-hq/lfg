@@ -1,37 +1,17 @@
 # Generated manually
 from django.db import migrations, models
 import uuid
-from django.db.utils import ProgrammingError
 
-def add_project_id_if_not_exists(apps, schema_editor):
+def populate_project_id(apps, schema_editor):
     """
-    Add project_id field only if it doesn't already exist
+    Populate project_id for existing projects
     """
-    from django.db import connection
+    Project = apps.get_model('projects', 'Project')
+    db_alias = schema_editor.connection.alias
     
-    # Check if the column already exists
-    with connection.cursor() as cursor:
-        cursor.execute("""
-            SELECT column_name 
-            FROM information_schema.columns 
-            WHERE table_name = 'projects_project' 
-            AND column_name = 'project_id'
-        """)
-        
-        exists = cursor.fetchone() is not None
-        
-        if not exists:
-            # Column doesn't exist, add it
-            cursor.execute("""
-                ALTER TABLE projects_project 
-                ADD COLUMN project_id varchar(36) DEFAULT gen_random_uuid()::text
-            """)
-            
-            # Create index
-            cursor.execute("""
-                CREATE INDEX projects_project_project_id_idx 
-                ON projects_project(project_id)
-            """)
+    for project in Project.objects.using(db_alias).filter(project_id__isnull=True):
+        project.project_id = str(uuid.uuid4())
+        project.save(update_fields=['project_id'])
 
 def reverse_func(apps, schema_editor):
     pass
@@ -43,5 +23,18 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(add_project_id_if_not_exists, reverse_func),
+        # First add the field as nullable
+        migrations.AddField(
+            model_name='project',
+            name='project_id',
+            field=models.CharField(max_length=36, null=True, blank=True, db_index=True),
+        ),
+        # Populate the field for existing records
+        migrations.RunPython(populate_project_id, reverse_func),
+        # Now make it non-nullable and unique
+        migrations.AlterField(
+            model_name='project',
+            name='project_id',
+            field=models.CharField(max_length=36, unique=True, default=uuid.uuid4, db_index=True),
+        ),
     ]
