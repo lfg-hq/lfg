@@ -7,6 +7,7 @@ from django.conf import settings
 from .forms import UserRegisterForm, UserUpdateForm, ProfileUpdateForm, EmailAuthenticationForm, PasswordResetForm
 from django.contrib.auth.models import User
 from .models import GitHubToken, EmailVerificationToken
+from chat.models import AgentRole
 import requests
 import uuid
 import json

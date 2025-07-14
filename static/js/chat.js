@@ -125,6 +125,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize WebSocket connection
     connectWebSocket();
     
+    // Load agent settings and initialize turbo mode
+    loadAgentSettings();
+    
     // Test backend notification sending
     window.testBackendNotification = function() {
         if (socket && socket.readyState === WebSocket.OPEN) {
@@ -1890,6 +1893,10 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('Selected role for API request:', userRole);
         }
         
+        // Get turbo mode toggle state
+        const turboModeToggle = document.getElementById('turbo-mode-toggle');
+        const turboMode = turboModeToggle ? turboModeToggle.checked : false;
+        
         // Prepare message data
         const messageData = {
             type: 'message',
@@ -1897,7 +1904,8 @@ document.addEventListener('DOMContentLoaded', () => {
             conversation_id: currentConversationId,
             provider: currentProvider,
             project_id: currentProjectId,
-            user_role: userRole
+            user_role: userRole,
+            turbo_mode: turboMode
         };
         
         // Add project_id if available
@@ -3426,4 +3434,61 @@ document.addEventListener('DOMContentLoaded', () => {
             alert(`Test upload failed: ${error.message}`);
         }
     };
+    
+    // Function to load agent settings including turbo mode
+    async function loadAgentSettings() {
+        try {
+            const response = await fetch('/accounts/agent-settings/', {
+                method: 'GET',
+                headers: {
+                    'X-CSRFToken': getCsrfToken(),
+                }
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success) {
+                    // Set turbo mode toggle state
+                    const turboModeToggle = document.getElementById('turbo-mode-toggle');
+                    if (turboModeToggle) {
+                        turboModeToggle.checked = data.turbo_mode;
+                        console.log('Turbo mode loaded:', data.turbo_mode);
+                        
+                        // Update role dropdown visibility based on turbo mode
+                        updateRoleDropdownVisibility(data.turbo_mode);
+                    }
+                    
+                    // Set role dropdown value if not in turbo mode
+                    if (!data.turbo_mode) {
+                        const roleDropdown = document.getElementById('role-dropdown');
+                        if (roleDropdown && data.agent_role) {
+                            roleDropdown.value = data.agent_role;
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error loading agent settings:', error);
+        }
+    }
+    
+    // Function to update role dropdown visibility based on turbo mode
+    function updateRoleDropdownVisibility(turboModeEnabled) {
+        const roleDropdown = document.getElementById('role-dropdown');
+        if (roleDropdown) {
+            roleDropdown.style.display = turboModeEnabled ? 'none' : 'block';
+        }
+    }
+    
+    // Add event listener for turbo mode toggle
+    const turboModeToggle = document.getElementById('turbo-mode-toggle');
+    if (turboModeToggle) {
+        turboModeToggle.addEventListener('change', function() {
+            const isEnabled = this.checked;
+            console.log('Turbo mode toggled:', isEnabled);
+            
+            // Update role dropdown visibility
+            updateRoleDropdownVisibility(isEnabled);
+        });
+    }
 });

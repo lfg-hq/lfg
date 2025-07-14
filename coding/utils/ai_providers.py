@@ -574,7 +574,8 @@ class OpenAIProvider(AIProvider):
                             print("\n\n[PRD MODE ACTIVATED - OpenAI]")
                             # Clear buffer up to and including the tag
                             tag_pos = buffer.find("<lfg-prd>")
-                            remaining_buffer = buffer[tag_pos + len("<lfg-prd>"):]
+                            # remaining_buffer = buffer[tag_pos + len("<lfg-prd>"):]
+                            remaining_buffer = buffer[buffer.rfind('<lfg-prd>'):]
                             # Clean any leading '>' and whitespace from remaining buffer
                             remaining_buffer = remaining_buffer.lstrip()
                             if remaining_buffer.startswith('>'):
@@ -1852,6 +1853,7 @@ class AnthropicProvider(AIProvider):
                                     if prd_data == "":
                                         # First chunk after entering PRD mode
                                         clean_text = text.lstrip()
+                                        print("\n\n\n Original text", clean_text)
                                         if clean_text.startswith('>'):
                                             clean_text = clean_text[1:].lstrip()
                                         if '<lfg-prd>' in clean_text:
@@ -1859,6 +1861,7 @@ class AnthropicProvider(AIProvider):
                                         if clean_text and not clean_text.startswith('<'):
                                             prd_data = clean_text
                                             print(f"[PRD MODE] Started capturing PRD content")
+                                            text = clean_text
                                         else:
                                             print(f"[PRD MODE] Skipping initial content: {repr(text)}")
                                     else:
