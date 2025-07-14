@@ -482,27 +482,39 @@ def integrations(request):
 
 
 def send_verification_email(request, user):
-    """Send email verification link to user"""
+    """Send email verification code to user"""
     try:
-        # Create verification token
-        token = EmailVerificationToken.create_token(user)
+        from .models import EmailVerificationCode
         
-        # Build verification URL
-        verification_url = request.build_absolute_uri(
-            reverse('verify_email', kwargs={'token': token.token})
-        )
+        # Create verification code
+        verification = EmailVerificationCode.create_code(user)
         
         # Email content
-        subject = 'Verify your email for LFG'
-        html_message = render_to_string('accounts/email_verification.html', {
-            'user': user,
-            'verification_url': verification_url,
-            'expiration_hours': 24,
-        })
-        plain_message = strip_tags(html_message)
+        subject = 'Your LFG Verification Code'
+        
+        # Check if template exists, if not use plain text
+        try:
+            html_message = render_to_string('accounts/email_verification_code.html', {
+                'user': user,
+                'code': verification.code,
+                'expiration_minutes': 30,
+            })
+        except:
+            html_message = None
+            
+        plain_message = f"""
+Hi {user.username},
+
+Your verification code is: {verification.code}
+
+This code will expire in 30 minutes.
+
+Best regards,
+The LFG Team
+"""
         
         # Send email
-        send_mail(
+        result = send_mail(
             subject=subject,
             message=plain_message,
             from_email=settings.DEFAULT_FROM_EMAIL,
@@ -510,7 +522,9 @@ def send_verification_email(request, user):
             html_message=html_message,
             fail_silently=False,
         )
-        return True
+        
+        return result > 0
+        
     except Exception as e:
         print(f"Error sending verification email: {e}")
         return False
@@ -802,4 +816,158 @@ def google_callback(request):
         return redirect('auth')
     except Exception as e:
         messages.error(request, f'An unexpected error occurred: {str(e)}')
-        return redirect('auth') 
+        return redirect('auth')
+
+
+# API Endpoints
+def auth_status(request):
+    """Check if user is authenticated"""
+    return JsonResponse({
+        'authenticated': request.user.is_authenticated,
+        'username': request.user.username if request.user.is_authenticated else None
+    })
+
+
+def api_keys_status(request):
+    """Check if user has API keys configured"""
+    if not request.user.is_authenticated:
+        return JsonResponse({
+            'error': 'Not authenticated',
+            'has_openai_key': False,
+            'has_anthropic_key': False,
+            'has_groq_key': False
+        }, status=401)
+    
+    profile = request.user.profile
+    return JsonResponse({
+        'has_openai_key': bool(profile.openai_api_key),
+        'has_anthropic_key': bool(profile.anthropic_api_key),
+        'has_groq_key': bool(profile.groq_api_key)
+    })
+
+
+@login_required
+def save_api_keys(request):
+    """Save API keys via AJAX"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    try:
+        import json
+        data = json.loads(request.body)
+        profile = request.user.profile
+        
+        # Update API keys if provided
+        if 'openai_api_key' in data and data['openai_api_key']:
+            profile.openai_api_key = data['openai_api_key']
+        
+        if 'anthropic_api_key' in data and data['anthropic_api_key']:
+            profile.anthropic_api_key = data['anthropic_api_key']
+        
+        if 'grok_api_key' in data and data['grok_api_key']:
+            profile.groq_api_key = data['grok_api_key']
+        
+        profile.save()
+        
+        return JsonResponse({
+            'success': True,
+            'has_openai_key': bool(profile.openai_api_key),
+            'has_anthropic_key': bool(profile.anthropic_api_key),
+            'has_groq_key': bool(profile.groq_api_key)
+        })
+    
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
+
+@login_required
+def verify_email_code(request):
+    """Verify email using 6-digit code"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    try:
+        import json
+        from .models import EmailVerificationCode
+        
+        data = json.loads(request.body)
+        code = data.get('code', '').strip()
+        
+        if not code or len(code) != 6:
+            return JsonResponse({'error': 'Invalid code format'}, status=400)
+        
+        # Find valid code for the user
+        verification = EmailVerificationCode.objects.filter(
+            user=request.user,
+            code=code,
+            used=False
+        ).first()
+        
+        if not verification:
+            return JsonResponse({'error': 'Invalid code'}, status=400)
+        
+        if not verification.is_valid():
+            return JsonResponse({'error': 'Code has expired'}, status=400)
+        
+        # Mark code as used and verify email
+        verification.used = True
+        verification.save()
+        
+        profile = request.user.profile
+        profile.email_verified = True
+        profile.save()
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Email verified successfully'
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
+
+@login_required
+def resend_verification_code(request):
+    """Resend email verification code"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    try:
+        from .models import EmailVerificationCode
+        from django.core.mail import send_mail
+        from django.conf import settings
+        
+        # Create new code
+        verification = EmailVerificationCode.create_code(request.user)
+        
+        # Send email with code
+        subject = 'Your LFG Verification Code'
+        message = f"""
+Hi {request.user.username},
+
+Your verification code is: {verification.code}
+
+This code will expire in 30 minutes.
+
+Best regards,
+The LFG Team
+"""
+        
+        send_mail(
+            subject,
+            message,
+            settings.DEFAULT_FROM_EMAIL,
+            [request.user.email],
+            fail_silently=False,
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Verification code sent'
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
+
+ 

@@ -181,28 +181,23 @@ body, html {
 
 /* Update hover effect for the new chat button */
 #new-chat-btn {
-    background: rgba(30, 30, 30, 0.8); /* Semi-transparent background */
     color: var(--text-color); /* Brighter color */
-    border: 1px solid rgba(187, 134, 252, 0.3); /* Subtle primary color border */
     padding: 8px;
-    width: 40px; /* Slightly larger */
-    height: 40px; /* Slightly larger */
+    width: auto;
+    height: auto;
     border-radius: 12px; /* More rounded corners */
     cursor: pointer;
     font-size: 1.2rem;
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     transition: all 0.2s ease;
     backdrop-filter: blur(4px); /* Add blur effect */
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2); /* Subtle shadow */
 }
 
 #new-chat-btn:hover {
-    background-color: rgba(187, 134, 252, 0.2); /* Primary color background on hover */
     color: var(--primary-color); /* Primary color for icon on hover */
-    transform: translateY(-2px); /* Subtle lift effect */
-    box-shadow: 0 4px 12px rgba(187, 134, 252, 0.2); /* Glow effect */
 }
 
 /* Style for the Back button */
@@ -807,16 +802,6 @@ body, html {
 
 .provider-options input[type="radio"] {
     margin-right: 8px;
-}
-
-/* Add to your existing CSS file */
-.user-info {
-    display: flex;
-    align-items: center;
-    padding: 6px 8px; /* Further reduced padding */
-    width: 100%;
-    transition: all 0.3s ease;
-    min-height: 42px; /* Set minimum height */
 }
 
 .user-avatar {

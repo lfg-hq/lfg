@@ -5,9 +5,9 @@ from .views.main import user_agent_role, user_model_selection, available_models
 
 urlpatterns = [
     path('chat/', views.index, name='index'),
-    path('chat/project/<int:project_id>/', views.project_chat, name='create_conversation'),
+    path('chat/project/<str:project_id>/', views.project_chat, name='create_conversation'),
     path('chat/conversation/<int:conversation_id>/', views.show_conversation, name='conversation_detail'),
-    path('api/projects/<int:project_id>/conversations/', views.conversation_list, name='conversation_list'),
+    path('api/projects/<str:project_id>/conversations/', views.conversation_list, name='conversation_list'),
     path('api/conversations/<int:conversation_id>/', views.conversation_detail, name='conversation_detail_api'),
     # path('api/provider/', views.ai_provider, name='ai_provider'),
     path('api/toggle-sidebar/', views.toggle_sidebar, name='toggle_sidebar'),
