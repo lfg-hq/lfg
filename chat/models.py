@@ -15,6 +15,7 @@ class AgentRole(models.Model):
     
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='agent_role')
     name = models.CharField(max_length=50, choices=ROLE_CHOICES, default='product_analyst')
+    turbo_mode = models.BooleanField(default=False, help_text='Enable turbo mode for quick MVP generation')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -84,9 +85,14 @@ class ModelSelection(models.Model):
         ('claude_4_sonnet', 'Claude 4 Sonnet'),
         ('claude_4_opus', 'Claude 4 Opus'),
         ('claude_3.5_sonnet', 'Claude 3.5 Sonnet'),
+        ('claude_4_opus', 'Claude 4 Opus'),
+        ('claude_3.5_sonnet', 'Claude 3.5 Sonnet'),
         ('gpt_4_1', 'OpenAI GPT-4.1'),
         ('gpt_4o', 'OpenAI GPT-4o'),
         ('o3', 'OpenAI O3'),
+        ('grok_4', 'Grok 4'),
+        ('grok_2', 'Grok 2'),
+        ('grok_beta', 'Grok Beta'),
         ('grok_4', 'Grok 4'),
     ]
     
