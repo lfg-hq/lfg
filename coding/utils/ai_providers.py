@@ -1873,6 +1873,7 @@ class AnthropicProvider(AIProvider):
                                     if prd_data == "":
                                         # First chunk after entering PRD mode
                                         clean_text = text.lstrip()
+                                        print("\n\n\n Original text", clean_text)
                                         if clean_text.startswith('>'):
                                             clean_text = clean_text[1:].lstrip()
                                         if '<lfg-prd>' in clean_text:
@@ -1880,6 +1881,7 @@ class AnthropicProvider(AIProvider):
                                         if clean_text and not clean_text.startswith('<'):
                                             prd_data = clean_text
                                             print(f"[PRD MODE] Started capturing PRD content")
+                                            text = clean_text
                                         else:
                                             print(f"[PRD MODE] Skipping initial content: {repr(text)}")
                                     else:

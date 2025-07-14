@@ -1958,7 +1958,7 @@ async def run_command_locally(command: str, project_id: int | str = None, conver
     """
     project = await get_project(project_id)
     # Create workspace directory if it doesn't exist
-    workspace_path = Path.home() / "LFG" / "workspace" / project.provided_name
+    workspace_path = Path.home() / "LFG" / "workspace" / project.name
     workspace_path.mkdir(parents=True, exist_ok=True)
     
     command_to_run = f"cd {workspace_path} && {command}"
@@ -2501,6 +2501,8 @@ async def save_prd_from_stream(prd_content, project_id, prd_name=None):
     # Remove any trailing tag fragments
     if '</lfg-prd' in prd_content:
         prd_content = prd_content[:prd_content.rfind('</lfg-prd')].strip()
+    if '<lfg-prd>' in prd_content:
+        prd_content = prd_content[prd_content.rfind('<lfg-prd>'):].strip()
     
     # Set default name if not provided
     if not prd_name:

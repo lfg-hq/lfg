@@ -209,12 +209,18 @@ STATICFILES_DIRS = [
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 # Media files (User uploaded content)
-# MEDIA_URL = '/media/'
-# MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
-# # File storage for chat attachments
-# FILE_STORAGE_PATH = os.path.join(MEDIA_ROOT, 'file_storage')
-# os.makedirs(FILE_STORAGE_PATH, exist_ok=True)
+# File storage configuration
+FILE_STORAGE_TYPE = os.environ.get('FILE_STORAGE_TYPE', 'local')  # 'local' or 's3'
+
+# S3 Configuration (only needed if FILE_STORAGE_TYPE is 's3')
+AWS_STORAGE_BUCKET_NAME = os.environ.get('AWS_STORAGE_BUCKET_NAME', '')
+AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID', '')
+AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY', '')
+AWS_S3_REGION_NAME = os.environ.get('AWS_S3_REGION_NAME', 'us-east-1')
+AWS_S3_PROJECT_PREFIX = os.environ.get('AWS_S3_PROJECT_PREFIX', 'projects')
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

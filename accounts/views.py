@@ -7,6 +7,7 @@ from django.conf import settings
 from .forms import UserRegisterForm, UserUpdateForm, ProfileUpdateForm, EmailAuthenticationForm, PasswordResetForm
 from django.contrib.auth.models import User
 from .models import GitHubToken, EmailVerificationToken
+from chat.models import AgentRole
 import requests
 import uuid
 import json
@@ -819,7 +820,7 @@ def google_callback(request):
         
         if from_landing_onboarding:
             # Redirect back to landing page with a flag to continue onboarding at step 3
-            return redirect('landing_page' + '?onboarding=true&step=3')
+            return redirect('/?onboarding=true&step=3')
         
         # Check if user has required API keys set up
         openai_key_missing = not bool(user.profile.openai_api_key)
