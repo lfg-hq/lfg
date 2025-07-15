@@ -5,13 +5,106 @@
 
 {% block extra_css %}
 <style>
+    /* Subtle notification styling */
+    .messages {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 1000;
+        max-width: 400px;
+    }
+    
+    .alert {
+        background: rgba(167, 139, 250, 0.1);
+        border: 1px solid rgba(167, 139, 250, 0.3);
+        color: #a78bfa;
+        padding: 12px 16px;
+        border-radius: 8px;
+        font-size: 0.875rem;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 10px;
+        animation: slideIn 0.3s ease-out;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+    
+    .alert::before {
+        content: '\f05a';
+        font-family: 'Font Awesome 6 Free';
+        font-weight: 900;
+        font-size: 1rem;
+    }
+    
+    .alert-success {
+        background: rgba(34, 197, 94, 0.1);
+        border-color: rgba(34, 197, 94, 0.3);
+        color: #22c55e;
+    }
+    
+    .alert-success::before {
+        content: '\f058';
+    }
+    
+    .alert-danger {
+        background: rgba(239, 68, 68, 0.1);
+        border-color: rgba(239, 68, 68, 0.3);
+        color: #ef4444;
+    }
+    
+    .alert-danger::before {
+        content: '\f06a';
+    }
+    
+    @keyframes slideIn {
+        from {
+            transform: translateX(100%);
+            opacity: 0;
+        }
+        to {
+            transform: translateX(0);
+            opacity: 1;
+        }
+    }
+    
+    /* Auto-hide after 5 seconds */
+    .alert {
+        animation: slideIn 0.3s ease-out, fadeOut 0.5s ease-out 5s forwards;
+    }
+    
+    @keyframes fadeOut {
+        to {
+            opacity: 0;
+            transform: translateX(100%);
+        }
+    }
+    /* Ensure full height for parent containers */
+    html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+    }
+    
+    .app-container {
+        height: 100vh;
+        display: flex;
+    }
+    
+    .main-content-with-sidebar {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+    }
+    
     /* Override container styles for full-height layout */
     .main-content-with-sidebar .container {
         max-width: 100%;
         padding: 0;
-        height: 100vh;
+        height: 100%;
         display: flex;
         flex-direction: column;
+        flex: 1;
     }
     
     /* Page header matching Projects style */
@@ -21,6 +114,7 @@
         justify-content: space-between;
         align-items: center;
         margin-bottom: 2rem;
+        flex-shrink: 0;
     }
     
     .page-title {
@@ -36,10 +130,11 @@
         width: 80%;
         max-width: 1200px;
         margin: 0 auto;
-        padding: 2rem 0;
+        padding: 2rem 0 0;
         display: flex;
         flex-direction: column;
-        height: calc(100vh - 150px);
+        height: 100%;
+        flex: 1;
     }
 
     .settings-container .page-header {
@@ -56,6 +151,7 @@
         flex: 1;
         overflow: hidden;
         gap: 2rem;
+        height: 100%;
     }
     
     /* Settings sidebar */
@@ -65,6 +161,7 @@
         overflow-y: auto;
         flex-shrink: 0;
         padding-left: 0;
+        height: 100%;
         /* Hide scrollbar */
         scrollbar-width: none; /* Firefox */
         -ms-overflow-style: none; /* IE and Edge */
@@ -127,26 +224,31 @@
     /* Settings content */
     .settings-content {
         flex: 1;
-        overflow-y: auto;
+        overflow: hidden;
         background: #1a1a1a;
         border-radius: 8px;
-        /* Hide scrollbar */
-        scrollbar-width: none; /* Firefox */
-        -ms-overflow-style: none; /* IE and Edge */
-    }
-    
-    /* Hide scrollbar for Chrome, Safari and Opera */
-    .settings-content::-webkit-scrollbar {
-        display: none;
+        position: relative;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
     }
     
     .settings-section {
         display: none;
         padding: 3rem;
         width: 100%;
-        display: flex;
+        height: 100%;
         flex-direction: column;
         align-items: center;
+        overflow-y: auto;
+        /* Hide scrollbar but allow scrolling */
+        scrollbar-width: none; /* Firefox */
+        -ms-overflow-style: none; /* IE and Edge */
+    }
+    
+    /* Hide scrollbar for Chrome, Safari and Opera */
+    .settings-section::-webkit-scrollbar {
+        display: none;
     }
     
     .settings-section.active {
@@ -241,7 +343,7 @@
     .api-key-section {
         display: flex;
         gap: 0.75rem;
-        align-items: flex-start;
+        align-items: center;
     }
     
     .api-key-input-wrapper {
@@ -252,7 +354,7 @@
     
     .api-input {
         width: 100%;
-        padding: 0.5rem 1rem;
+        padding: 0.375rem 1rem;
         padding-right: 3rem;
         background: var(--bg-color);
         border: 1px solid var(--border-color);
@@ -260,6 +362,8 @@
         color: var(--text-color);
         font-size: 0.875rem;
         font-family: monospace;
+        height: 36px;
+        box-sizing: border-box;
     }
     
     .api-input:focus {
@@ -270,6 +374,8 @@
     .api-input.connected {
         background: rgba(34, 197, 94, 0.05);
         border-color: rgba(34, 197, 94, 0.3);
+        height: 36px;
+        box-sizing: border-box;
     }
     
     .input-status {
@@ -282,7 +388,7 @@
     
     .save-button,
     .disconnect-button {
-        padding: 0.5rem 1rem;
+        padding: 0.375rem 1rem;
         border: none;
         border-radius: 0.375rem;
         font-size: 0.875rem;
@@ -290,6 +396,9 @@
         cursor: pointer;
         transition: all 0.2s ease;
         white-space: nowrap;
+        height: 36px;
+        display: inline-flex;
+        align-items: center;
     }
     
     .save-button {
@@ -752,6 +861,16 @@
         }
         
         // No expandable functionality needed anymore since we're showing input fields directly
+        
+        // Handle notification dismissal
+        const alerts = document.querySelectorAll('.alert');
+        alerts.forEach(alert => {
+            alert.style.cursor = 'pointer';
+            alert.addEventListener('click', function() {
+                this.style.animation = 'fadeOut 0.3s ease-out forwards';
+                setTimeout(() => this.remove(), 300);
+            });
+        });
     });
 </script>
 {% endblock %}

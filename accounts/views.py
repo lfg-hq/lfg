@@ -787,7 +787,6 @@ def google_callback(request):
             user = User.objects.get(email=email)
             # If user exists, log them in
             login(request, user, backend='django.contrib.auth.backends.ModelBackend')
-            messages.success(request, 'Successfully logged in with Google!')
         except User.DoesNotExist:
             # Create new user
             is_new_user = True
