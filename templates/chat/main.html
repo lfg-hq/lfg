@@ -16,75 +16,17 @@
 </head>
 <body data-user-authenticated="{% if user.is_authenticated %}true{% else %}false{% endif %}" 
       >
+    <script>
+        // Apply sidebar state immediately to prevent flicker
+        (function() {
+            const savedState = localStorage.getItem('sidebarMinimized');
+            if (savedState === 'true') {
+                document.documentElement.classList.add('sidebar-minimized-init');
+            }
+        })();
+    </script>
     <div class="app-container">
-        <div class="sidebar-overlay" id="sidebar-overlay"></div>
-        <div class="sidebar" id="sidebar">
-            <div class="sidebar-top-content">
-                <div class="sidebar-header">
-                    <div class="logo-section">
-                        <span class="logo-icon">🚀</span>
-                        <span class="logo-text">LFG</span>
-                    </div>
-                    <button id="minimize-btn" class="icon-btn" title="Collapse Sidebar">
-                        <i class="fas fa-chevron-left"></i>
-                    </button>
-                </div>
-                <div class="new-chat-section">
-                    <a href="#" id="new-chat-btn" class="new-chat-link" title="New Chat">
-                        <i class="fas fa-plus"></i>
-                        <span class="button-text">New chat</span>
-                    </a>
-                </div>
-                <div class="sidebar-nav">
-                    <a href="/projects/" class="nav-link" title="Projects">
-                        <i class="fas fa-folder"></i>
-                        <span class="nav-text">Projects</span>
-                    </a>
-                </div>
-                <div class="conversations-section">
-                    <h3 class="sidebar-section-title">Recents</h3>
-                    <div class="conversation-list" id="conversation-list">
-                        <!-- Conversations will be loaded here -->
-                    </div>
-                </div>
-            </div>
-            <div class="sidebar-bottom-content">
-                <div class="user-info" id="user-info">
-                    {% if user.is_authenticated %}
-                        <button class="user-info-button" id="user-info-button">
-                            <div class="user-avatar">
-                                {% if user.profile.avatar %}
-                                    <img src="{{ user.profile.avatar.url }}" alt="{{ user.username }}'s avatar">
-                                {% else %}
-                                    <div class="avatar-text">{{ user.username|first|upper }}</div>
-                                {% endif %}
-                            </div>
-                            <div class="user-details">
-                                <span class="username">{{ user.username }}</span>
-                            </div>
-                            <i class="fas fa-chevron-down dropdown-icon"></i>
-                        </button>
-                        <div class="user-dropdown" id="user-dropdown">
-                            <a href="{% url 'profile' %}" class="dropdown-item">
-                                <i class="fas fa-user"></i>
-                                <span>Profile</span>
-                            </a>
-                            <a href="#" class="dropdown-item" id="integrations-btn">
-                                <i class="fas fa-plug"></i>
-                                <span>Integrations</span>
-                            </a>
-                            <div class="dropdown-divider"></div>
-                            <a href="{% url 'logout' %}" class="dropdown-item">
-                                <i class="fas fa-sign-out-alt"></i>
-                                <span>Logout</span>
-                            </a>
-                        </div>
-                    {% else %}
-                        <a href="{% url 'login' %}" class="login-button">Log In</a>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
+        {% include 'includes/sidebar.html' with show_conversations=True %}
         
         <div class="chat-container">
             <div class="chat-messages" id="chat-messages">

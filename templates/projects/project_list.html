@@ -1,4 +1,4 @@
-{% extends 'projects/base_projects.html' %}
+{% extends 'projects/base_with_sidebar.html' %}
 
 {% block title %}My Projects - LFG 🚀🚀{% endblock %}
 
@@ -9,33 +9,41 @@
             <i class="fas fa-project-diagram"></i>
             My Projects
         </h1>
-        <a href="{% url 'projects:create_project' %}" class="btn btn-primary">
+        <button class="btn btn-primary" id="open-create-modal">
             <i class="fas fa-plus"></i> New Project
-        </a>
+        </button>
     </div>
 
     {% if projects %}
-        <div class="grid grid-3">
-            {% for project in projects %}
-                <div class="card project-card">
-                    <a href="{% url 'create_conversation' project.project_id %}" class="project-card-link">
-                        <div class="project-card-header">
-                            <div class="project-icon">{{ project.icon }}</div>
-                            <h2 class="project-name">{{ project.name }}</h2>
-                        </div>
-                        <div class="project-description">
-                            {% if project.description %}
-                                {{ project.description }}
-                            {% else %}
-                                <span class="text-muted">No description provided</span>
-                            {% endif %}
-                        </div>
-                        <div class="project-meta">
-                            <span class="project-date">Created {{ project.created_at|date:"M d, Y" }}</span>
-                            <span class="project-status project-status-{{ project.status }}">{{ project.status }}</span>
+        <div class="project-list">
+            {% for item in projects %}
+                <div class="project-list-item">
+                    <a href="{% url 'create_conversation' item.project.project_id %}" class="project-list-link">
+                        <div class="project-list-main">
+                            <div class="project-list-header">
+                                <span class="project-icon">{{ item.project.icon }}</span>
+                                <h3 class="project-name">{{ item.project.name }}</h3>
+                            </div>
+                            <div class="project-stats">
+                                <div class="stat-item">
+                                    <i class="fas fa-comments"></i>
+                                    <span class="stat-value">{{ item.conversations_count }}</span>
+                                    <span class="stat-label">Conversations</span>
+                                </div>
+                                <div class="stat-item">
+                                    <i class="fas fa-file-alt"></i>
+                                    <span class="stat-value">{{ item.documents_count }}</span>
+                                    <span class="stat-label">Documents</span>
+                                </div>
+                                <div class="stat-item">
+                                    <i class="fas fa-tasks"></i>
+                                    <span class="stat-value">{{ item.tickets_count }}</span>
+                                    <span class="stat-label">Tickets</span>
+                                </div>
+                            </div>
                         </div>
                     </a>
-                    <div class="project-card-actions">
+                    <div class="project-list-actions">
                         <div class="dropdown">
                             <button class="dropdown-button">
                                 <i class="fas fa-ellipsis-v"></i>
@@ -46,7 +54,7 @@
                                 </a>
                                 <form action="{% url 'projects:delete_project' project.project_id %}" method="post" style="margin: 0; padding: 0;">
                                     {% csrf_token %}
-                                    <button type="submit" class="dropdown-item dropdown-item-danger delete-project-btn" data-project-name="{{ project.name }}">
+                                    <button type="submit" class="dropdown-item dropdown-item-danger delete-project-btn" data-project-name="{{ item.project.name }}">
                                         <i class="fas fa-trash-alt"></i> Delete
                                     </button>
                                 </form>
@@ -55,18 +63,6 @@
                     </div>
                 </div>
             {% endfor %}
-            
-            <!-- Create new project card -->
-            <a href="{% url 'projects:create_project' %}" class="card project-card create-project-btn">
-                <div class="card-content">
-                    <div class="create-project-btn-icon">
-                        <i class="fas fa-plus-circle"></i>
-                    </div>
-                    <div class="create-project-btn-text">
-                        Create New Project
-                    </div>
-                </div>
-            </a>
         </div>
     {% else %}
         <div class="empty-state">
@@ -77,10 +73,91 @@
             <div class="empty-state-text">
                 Create your first project to start organizing your work with LFG.
             </div>
-            <a href="{% url 'projects:create_project' %}" class="btn btn-primary">
+            <button class="btn btn-primary" id="open-create-modal-empty">
                 <i class="fas fa-plus"></i> Create Your First Project
-            </a>
+            </button>
         </div>
     {% endif %}
 </div>
+
+<!-- Create Project Modal -->
+<div class="modal-overlay" id="create-project-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <h2 class="modal-title">Create New Project</h2>
+            <button class="modal-close" id="close-modal">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <form method="post" action="{% url 'projects:create_project' %}" id="create-project-form">
+                {% csrf_token %}
+                <div class="form-group">
+                    <label for="project-name" class="form-label">Project Name*</label>
+                    <input type="text" id="project-name" name="name" class="form-control" required autofocus>
+                </div>
+                <input type="hidden" name="description" value="">
+                <input type="hidden" name="icon" value="🚀">
+                
+                <div class="form-actions">
+                    <button type="button" class="btn btn-outline" id="cancel-modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create Project</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const modal = document.getElementById('create-project-modal');
+    const openBtn = document.getElementById('open-create-modal');
+    const openBtnEmpty = document.getElementById('open-create-modal-empty');
+    const closeBtn = document.getElementById('close-modal');
+    const cancelBtn = document.getElementById('cancel-modal');
+    const projectNameInput = document.getElementById('project-name');
+    
+    function openModal() {
+        modal.classList.add('active');
+        // Focus on the input field when modal opens
+        setTimeout(() => {
+            projectNameInput.focus();
+        }, 100);
+    }
+    
+    function closeModal() {
+        modal.classList.remove('active');
+        projectNameInput.value = '';
+    }
+    
+    // Open modal
+    if (openBtn) {
+        openBtn.addEventListener('click', openModal);
+    }
+    
+    if (openBtnEmpty) {
+        openBtnEmpty.addEventListener('click', openModal);
+    }
+    
+    // Close modal
+    closeBtn.addEventListener('click', closeModal);
+    cancelBtn.addEventListener('click', closeModal);
+    
+    // Close modal when clicking outside
+    modal.addEventListener('click', function(e) {
+        if (e.target === modal) {
+            closeModal();
+        }
+    });
+    
+    // Close modal on Escape key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && modal.classList.contains('active')) {
+            closeModal();
+        }
+    });
+});
+</script>
 {% endblock %} 

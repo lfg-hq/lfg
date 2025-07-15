@@ -332,8 +332,25 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     'type': 'stop_confirmed'
                 }))
                 
-                # Log stop request
-                logger.debug(f"Stop generation requested for conversation {conversation_id}")
+            elif message_type == 'sync_state':
+                # Handle state synchronization request
+                conversation_id = text_data_json.get('conversation_id')
+                
+                # Check if we have an active generation task
+                is_streaming = (
+                    hasattr(self, 'active_generation_task') and 
+                    self.active_generation_task and 
+                    not self.active_generation_task.done()
+                )
+                
+                # Send current state back to client
+                await self.send(text_data=json.dumps({
+                    'type': 'sync_state_response',
+                    'is_streaming': is_streaming,
+                    'conversation_id': conversation_id
+                }))
+                
+                logger.debug(f"Sent sync state response: is_streaming={is_streaming}")
             
         except Exception as e:
             logger.error(f"Error processing received message: {str(e)}")
@@ -406,10 +423,23 @@ class ChatConsumer(AsyncWebsocketConsumer):
         while True:
             try:
                 await asyncio.sleep(20)  # Send heartbeat every 20 seconds (reduced from 30)
+                
+                # Check if we're currently streaming
+                is_streaming = (
+                    hasattr(self, 'active_generation_task') and 
+                    self.active_generation_task and 
+                    not self.active_generation_task.done()
+                )
+                
                 await self.send(text_data=json.dumps({
                     'type': 'heartbeat',
-                    'timestamp': datetime.now().isoformat()
+                    'timestamp': datetime.now().isoformat(),
+                    'during_operation': is_streaming
                 }))
+                
+                # If streaming, send more frequent heartbeats
+                if is_streaming:
+                    await asyncio.sleep(5)  # More frequent during streaming
             except Exception as e:
                 logger.error(f"Heartbeat error: {e}")
                 break
@@ -733,20 +763,44 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.save_message('assistant', error_message)
             
             try:
+                # First send the error message as a chunk
                 if hasattr(self, 'using_groups') and self.using_groups:
                     await self.channel_layer.group_send(
                         self.room_group_name,
                         {
-                            'type': 'chat_message',
-                            'message': error_message,
-                            'sender': 'assistant'
+                            'type': 'ai_response_chunk',
+                            'chunk': error_message,
+                            'is_final': False
                         }
                     )
                 else:
                     await self.send(text_data=json.dumps({
-                        'type': 'message',
-                        'message': error_message,
-                        'sender': 'assistant'
+                        'type': 'ai_chunk',
+                        'chunk': error_message,
+                        'is_final': False
+                    }))
+                
+                # Then send the final signal to reset UI state
+                if hasattr(self, 'using_groups') and self.using_groups:
+                    await self.channel_layer.group_send(
+                        self.room_group_name,
+                        {
+                            'type': 'ai_response_chunk',
+                            'chunk': '',
+                            'is_final': True,
+                            'conversation_id': self.conversation.id if self.conversation else None,
+                            'provider': provider_name,
+                            'project_id': project_id
+                        }
+                    )
+                else:
+                    await self.send(text_data=json.dumps({
+                        'type': 'ai_chunk',
+                        'chunk': '',
+                        'is_final': True,
+                        'conversation_id': self.conversation.id if self.conversation else None,
+                        'provider': provider_name,
+                        'project_id': project_id
                     }))
             except Exception as inner_e:
                 logger.error(f"Error sending error message: {str(inner_e)}")
@@ -900,9 +954,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
         Send error message to WebSocket
         """
         try:
+            # First send error as a message chunk
             await self.send(text_data=json.dumps({
-                'type': 'error',
-                'message': error_message
+                'type': 'ai_chunk',
+                'chunk': error_message,
+                'is_final': False
+            }))
+            
+            # Then send final signal to reset UI
+            await self.send(text_data=json.dumps({
+                'type': 'ai_chunk',
+                'chunk': '',
+                'is_final': True
             }))
         except Exception as e:
             logger.error(f"Error sending error message to client: {str(e)}")

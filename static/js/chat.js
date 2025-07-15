@@ -59,6 +59,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const sendBtn = document.getElementById('send-btn') || createSendButton();
     let stopBtn = null; // Will be created when needed
     
+    // Button state machine to prevent race conditions
+    const ButtonState = {
+        SEND: 'send',
+        STOP: 'stop',
+        TRANSITIONING: 'transitioning'
+    };
+    let currentButtonState = ButtonState.SEND;
+    let buttonTransitionTimeout = null;
+    
     // Extract project ID from path if in format /chat/project/{id}/
     function extractProjectIdFromPath() {
         const pathParts = window.location.pathname.split('/').filter(part => part);
@@ -329,6 +338,19 @@ document.addEventListener('DOMContentLoaded', () => {
         backBtn.addEventListener('click', () => {
             window.location.href = '/projects/';
         });
+    }
+    
+    // Function to synchronize streaming state with server
+    function syncStreamingState() {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            // Request current streaming state from server
+            const syncMessage = {
+                type: 'sync_state',
+                conversation_id: currentConversationId
+            };
+            socket.send(JSON.stringify(syncMessage));
+            console.log('Sent sync state request');
+        }
     }
     
     // Window event listeners for WebSocket
@@ -607,6 +629,9 @@ document.addEventListener('DOMContentLoaded', () => {
             startHeartbeat();
             startConnectionMonitor();
             
+            // Synchronize state with server
+            syncStreamingState();
+            
             // Check if we have pending requirements to send
             console.log('Checking pending requirements:', pendingRequirements);
             console.log('Current chat input value:', chatInput ? chatInput.value : 'chatInput not found');
@@ -785,6 +810,27 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     break;
                     
+                case 'sync_state_response':
+                    // Handle state synchronization response
+                    console.log('Received sync state response:', data);
+                    
+                    if (data.is_streaming) {
+                        // Server says it's streaming but client isn't aware
+                        if (!isStreaming) {
+                            console.log('Server is streaming but client was unaware - updating UI');
+                            isStreaming = true;
+                            chatInput.disabled = true;
+                            showStopButton();
+                        }
+                    } else {
+                        // Server says it's not streaming
+                        if (isStreaming) {
+                            console.log('Client thought it was streaming but server says no - resetting UI');
+                            resetStreamingState();
+                        }
+                    }
+                    break;
+                    
                 case 'error':
                     console.error('WebSocket error:', data.message);
                     // Display error message to user
@@ -808,6 +854,12 @@ document.addEventListener('DOMContentLoaded', () => {
             stopHeartbeat();
             stopConnectionMonitor();
             isSocketConnected = false;
+            
+            // If we were streaming when connection was lost, reset the UI state
+            if (isStreaming) {
+                console.log('Connection lost while streaming, resetting UI state');
+                resetStreamingState();
+            }
             
             if (event.wasClean) {
                 console.log(`WebSocket connection closed cleanly, code=${event.code}, reason=${event.reason}`);
@@ -1672,6 +1724,26 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Function to create and show stop button
     function showStopButton() {
+        // Check if we're already in the process of transitioning
+        if (currentButtonState === ButtonState.TRANSITIONING) {
+            console.log('Button transition in progress, skipping showStopButton');
+            return;
+        }
+        
+        // If already showing stop button, nothing to do
+        if (currentButtonState === ButtonState.STOP) {
+            console.log('Stop button already visible');
+            return;
+        }
+        
+        // Clear any pending transition
+        if (buttonTransitionTimeout) {
+            clearTimeout(buttonTransitionTimeout);
+            buttonTransitionTimeout = null;
+        }
+        
+        currentButtonState = ButtonState.TRANSITIONING;
+        
         // Create stop button if it doesn't exist
         if (!stopBtn) {
             stopBtn = document.createElement('button');
@@ -1699,10 +1771,39 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         isStreaming = true;
+        currentButtonState = ButtonState.STOP;
+        
+        // Set a timeout to prevent stuck states
+        buttonTransitionTimeout = setTimeout(() => {
+            if (currentButtonState === ButtonState.STOP && !isStreaming) {
+                console.log('Stuck in stop state, forcing reset');
+                resetStreamingState();
+            }
+        }, 30000); // 30 seconds timeout
     }
     
     // Function to hide stop button and show send button
     function hideStopButton() {
+        // Check if we're already in the process of transitioning
+        if (currentButtonState === ButtonState.TRANSITIONING) {
+            console.log('Button transition in progress, skipping hideStopButton');
+            return;
+        }
+        
+        // If already showing send button, nothing to do
+        if (currentButtonState === ButtonState.SEND) {
+            console.log('Send button already visible');
+            return;
+        }
+        
+        // Clear any pending transition
+        if (buttonTransitionTimeout) {
+            clearTimeout(buttonTransitionTimeout);
+            buttonTransitionTimeout = null;
+        }
+        
+        currentButtonState = ButtonState.TRANSITIONING;
+        
         const inputActions = document.querySelector('.input-actions');
         
         if (stopBtn) {
@@ -1716,6 +1817,61 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         isStreaming = false;
+        currentButtonState = ButtonState.SEND;
+    }
+    
+    // Function to reset streaming state completely
+    function resetStreamingState() {
+        console.log('Resetting streaming state');
+        
+        // Reset flags
+        isStreaming = false;
+        stopRequested = false;
+        
+        // Clear button transition timeout
+        if (buttonTransitionTimeout) {
+            clearTimeout(buttonTransitionTimeout);
+            buttonTransitionTimeout = null;
+        }
+        
+        // Force button state to SEND
+        currentButtonState = ButtonState.SEND;
+        
+        // Remove typing indicator if exists
+        const typingIndicator = document.querySelector('.typing-indicator');
+        if (typingIndicator) {
+            typingIndicator.remove();
+        }
+        
+        // Force send button to be shown
+        const inputActions = document.querySelector('.input-actions');
+        if (stopBtn && inputActions && stopBtn.parentElement === inputActions) {
+            // If stop button is in input actions, replace it with send button
+            try {
+                inputActions.replaceChild(sendBtn, stopBtn);
+            } catch (e) {
+                console.warn('Error replacing stop button:', e);
+                // Fallback: ensure send button is visible
+                if (!inputActions.contains(sendBtn)) {
+                    inputActions.appendChild(sendBtn);
+                }
+            }
+        } else if (stopBtn) {
+            stopBtn.style.display = 'none';
+            sendBtn.style.display = 'block';
+        }
+        
+        // Re-enable chat input
+        const chatInput = document.getElementById('chat-input');
+        if (chatInput) {
+            chatInput.disabled = false;
+        }
+        
+        // Clear any active generation task reference
+        if (window.activeStreamingTimeout) {
+            clearTimeout(window.activeStreamingTimeout);
+            window.activeStreamingTimeout = null;
+        }
     }
     
     // Function to stop the generation
@@ -2674,8 +2830,11 @@ document.addEventListener('DOMContentLoaded', () => {
         connectionMonitorInterval = setInterval(() => {
             const timeSinceLastHeartbeat = Date.now() - lastHeartbeatResponse;
             
-            if (timeSinceLastHeartbeat > 60000) {  // 60 seconds
-                console.warn('No heartbeat received for 60 seconds, connection may be dead');
+            // Be more lenient during streaming operations
+            const heartbeatTimeout = isStreaming ? 120000 : 60000;  // 2 minutes during streaming, 1 minute otherwise
+            
+            if (timeSinceLastHeartbeat > heartbeatTimeout) {
+                console.warn(`No heartbeat received for ${heartbeatTimeout/1000} seconds, connection may be dead`);
                 showConnectionStatus('unstable');
                 
                 // Force reconnect

@@ -93,7 +93,7 @@ def auth(request):
                 # If both OpenAI and Anthropic keys are missing, redirect to integrations
                 if openai_key_missing and anthropic_key_missing:
                     messages.success(request, 'Please set up OpenAI or Anthropic API keys to get started.')
-                    return redirect('integrations')
+                    return redirect('settings')
                 
                 # Redirect to the chat page or next parameter if provided
                 next_url = request.GET.get('next')
@@ -222,12 +222,12 @@ def save_api_key(request, provider):
     """Handle saving API keys for various providers"""
     if request.method != 'POST':
         messages.error(request, 'Invalid request')
-        return redirect('integrations')
+        return redirect('settings')
     
     api_key = request.POST.get('api_key', '').strip()
     if not api_key:
         messages.error(request, 'API key cannot be empty')
-        return redirect('integrations')
+        return redirect('settings')
     
     # Get user profile
     profile = request.user.profile
@@ -243,20 +243,20 @@ def save_api_key(request, provider):
         profile.linear_api_key = api_key
     else:
         messages.error(request, 'Invalid provider')
-        return redirect('integrations')
+        return redirect('settings')
     
     # Save the profile
     profile.save()
     
     messages.success(request, f'{provider.capitalize()} API key saved successfully.')
-    return redirect('integrations')
+    return redirect('settings')
 
 @login_required
 def disconnect_api_key(request, provider):
     """Handle disconnecting API keys for various providers"""
     if request.method != 'POST':
         messages.error(request, 'Invalid request')
-        return redirect('integrations')
+        return redirect('settings')
     
     # Get user profile
     profile = request.user.profile
@@ -272,13 +272,13 @@ def disconnect_api_key(request, provider):
         profile.linear_api_key = ''
     else:
         messages.error(request, 'Invalid provider')
-        return redirect('integrations')
+        return redirect('settings')
     
     # Save the profile
     profile.save()
     
     messages.success(request, f'{provider.capitalize()} connection removed successfully.')
-    return redirect('integrations')
+    return redirect('settings')
 
 @login_required
 def user_settings(request):
@@ -343,11 +343,11 @@ def github_callback(request):
     # Validate state to prevent CSRF
     if not state or state != stored_state:
         messages.error(request, 'Invalid OAuth state. Please try connecting to GitHub again.')
-        return redirect('integrations')
+        return redirect('settings')
     
     if not code:
         messages.error(request, 'No authorization code received from GitHub.')
-        return redirect('integrations')
+        return redirect('settings')
     
     # Exchange code for access token
     response = requests.post(
@@ -364,20 +364,20 @@ def github_callback(request):
     # Check if token exchange was successful
     if response.status_code != 200:
         messages.error(request, 'Failed to authenticate with GitHub. Please try again.')
-        return redirect('integrations')
+        return redirect('settings')
     
     # Parse token response
     token_data = response.json()
     if 'error' in token_data:
         messages.error(request, f"GitHub authentication error: {token_data.get('error_description', 'Unknown error')}")
-        return redirect('integrations')
+        return redirect('settings')
     
     access_token = token_data.get('access_token')
     scope = token_data.get('scope', '')
     
     if not access_token:
         messages.error(request, 'Failed to get access token from GitHub.')
-        return redirect('integrations')
+        return redirect('settings')
     
     # Get GitHub user info
     user_response = requests.get(
@@ -390,7 +390,7 @@ def github_callback(request):
     
     if user_response.status_code != 200:
         messages.error(request, 'Failed to get user info from GitHub.')
-        return redirect('integrations')
+        return redirect('settings')
     
     github_user_data = user_response.json()
     
@@ -414,7 +414,7 @@ def github_callback(request):
         )
     
     messages.success(request, 'Successfully connected to GitHub!')
-    return redirect('integrations')
+    return redirect('settings')
 
 @login_required
 def integrations(request):
@@ -465,7 +465,7 @@ def integrations(request):
             try:
                 GitHubToken.objects.filter(user=request.user).delete()
                 messages.success(request, 'GitHub connection removed successfully.')
-                return redirect('integrations')
+                return redirect('settings')
             except Exception as e:
                 messages.error(request, f'Error disconnecting GitHub: {str(e)}')
     
@@ -487,7 +487,7 @@ def integrations(request):
         'linear_connected': linear_connected,
     }
     
-    return render(request, 'accounts/integrations.html', context)
+    return render(request, 'accounts/settings_new.html', context)
 
 
 def send_verification_email(request, user):
@@ -554,7 +554,7 @@ def email_verification_required(request):
         # If both OpenAI and Anthropic keys are missing, redirect to integrations
         if openai_key_missing and anthropic_key_missing:
             messages.success(request, 'Please set up OpenAI or Anthropic API keys to get started.')
-            return redirect('integrations')
+            return redirect('settings')
         
         return redirect('projects:project_list')
     
@@ -618,7 +618,7 @@ def verify_email(request, token):
             # If both keys are missing, redirect to integrations
             if openai_key_missing and anthropic_key_missing:
                 messages.success(request, 'Please set up OpenAI or Anthropic API keys to get started.')
-                return redirect('integrations')
+                return redirect('settings')
             
             return redirect('projects:project_list')
         else:
@@ -829,7 +829,7 @@ def google_callback(request):
         # If both keys are missing, redirect to integrations (for both new and existing users)
         if openai_key_missing and anthropic_key_missing:
             messages.info(request, 'Please set up OpenAI or Anthropic API keys to get started.')
-            return redirect('integrations')
+            return redirect('settings')
         
         # Otherwise redirect to projects page (matching the regular registration flow)
         return redirect('projects:project_list')

@@ -25,8 +25,30 @@ from coding.utils.ai_functions import execute_local_command, restart_server_from
 def project_list(request):
     """View to display all projects for the current user"""
     projects = Project.objects.filter(owner=request.user).order_by('-created_at')
+    
+    # Annotate each project with counts
+    projects_with_stats = []
+    for project in projects:
+        # Count conversations
+        conversations_count = project.direct_conversations.count()
+        
+        # Count documents (tool call histories that generated content)
+        documents_count = project.tool_call_histories.filter(
+            tool_name__in=['create_prd', 'create_implementation_plan', 'create_design_schema']
+        ).count()
+        
+        # Count tickets (checklist items)
+        tickets_count = project.checklist.count()
+        
+        projects_with_stats.append({
+            'project': project,
+            'conversations_count': conversations_count,
+            'documents_count': documents_count,
+            'tickets_count': tickets_count
+        })
+    
     return render(request, 'projects/project_list.html', {
-        'projects': projects
+        'projects': projects_with_stats
     })
 
 @login_required

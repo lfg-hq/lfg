@@ -8,6 +8,21 @@
     box-shadow: none !important;
 }
 
+/* Initial state to prevent flicker */
+.sidebar-minimized-init .sidebar {
+    width: 60px !important;
+}
+
+.sidebar-minimized-init .chat-container,
+.sidebar-minimized-init .main-content-with-sidebar {
+    margin-left: 60px !important;
+    width: calc(100% - 60px) !important;
+}
+
+.sidebar-minimized-init .app-container {
+    transition: none !important;
+}
+
 /* Base sidebar */
 .sidebar {
     position: fixed !important;
@@ -101,6 +116,17 @@
     opacity: 0.8 !important;
 }
 
+.new-chat-link.disabled {
+    color: rgba(255, 255, 255, 0.3) !important;
+    pointer-events: none !important;
+    opacity: 0.5 !important;
+}
+
+.new-chat-link.disabled i {
+    background: rgba(255, 255, 255, 0.2) !important;
+    color: rgba(255, 255, 255, 0.5) !important;
+}
+
 .new-chat-link i {
     font-size: 14px !important;
     width: 24px !important;
@@ -132,12 +158,22 @@
     border-radius: 8px !important;
     font-size: 14px !important;
     font-weight: 400 !important;
-    margin-bottom: 4px !important;
+    margin-bottom: 2px !important;
     transition: all 0.15s ease !important;
     line-height: 20px !important;
 }
 
+/* Prevent transition flicker on click */
+.nav-link:active {
+    transition: none !important;
+}
+
 .nav-link:hover {
+    background: rgba(255, 255, 255, 0.08) !important;
+    color: rgba(255, 255, 255, 0.9) !important;
+}
+
+.nav-link.active {
     background: rgba(255, 255, 255, 0.08) !important;
     color: rgba(255, 255, 255, 0.9) !important;
 }
@@ -268,6 +304,13 @@
     border-top: none !important;
     padding: 0 !important;
     box-shadow: none !important;
+}
+
+/* Bottom navigation */
+.bottom-nav {
+    padding: 0 0 8px 0 !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+    margin-bottom: 0 !important;
 }
 
 .user-info {
@@ -481,6 +524,11 @@
 .sidebar.minimized .nav-link {
     justify-content: center !important;
     padding: 10px !important;
+}
+
+/* Prevent hover flicker in minimized state */
+.sidebar.minimized .nav-link:hover {
+    transition-duration: 0s !important;
 }
 
 /* User info in minimized state */
