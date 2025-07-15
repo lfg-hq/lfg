@@ -625,7 +625,10 @@ document.addEventListener('DOMContentLoaded', function() {
                             if (selectorDropdown) {
                                 selectorDropdown.innerHTML = prds.map(prd => 
                                     `<div class="prd-dropdown-option ${prd.name === prdName ? 'selected' : ''}" data-value="${prd.name}">
-                                        ${prd.name}
+                                        <span class="prd-name">${prd.name}</span>
+                                        ${prd.name !== 'Main PRD' ? `<button class="prd-delete-btn" data-prd-name="${prd.name}" title="Delete PRD">
+                                            <i class="fas fa-trash"></i>
+                                        </button>` : ''}
                                     </div>`
                                 ).join('');
                             }
@@ -694,18 +697,26 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Add action buttons to the prd-actions-container
                     const prdActionsContainer = document.querySelector('.prd-actions-container');
                     if (prdActionsContainer) {
+                        // Get current PRD name
+                        const currentPrdName = data.name || 'Main PRD';
+                        
                         // Clear any existing content and add the action buttons
                         prdActionsContainer.innerHTML = `
                             <div class="prd-actions" style="display: flex; gap: 4px;">
                                 <button class="artifact-edit-btn" id="prd-edit-btn" data-project-id="${projectId}" title="Edit" style="padding: 4px 6px; background: transparent; border: none; color: #fff; cursor: pointer; transition: all 0.2s; opacity: 0.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
                                     <i class="fas fa-edit"></i>
                                 </button>
-                                <button class="artifact-download-btn" id="prd-download-btn" data-project-id="${projectId}" title="Download PDF" style="padding: 4px 6px; background: transparent; border: none; color: #fff; cursor: pointer; transition: all 0.2s; opacity: 0.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
-                                    <i class="fas fa-download"></i>
-                                </button>
                                 <button class="artifact-copy-btn" id="prd-copy-btn" data-project-id="${projectId}" title="Copy" style="padding: 4px 6px; background: transparent; border: none; color: #fff; cursor: pointer; transition: all 0.2s; opacity: 0.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
                                     <i class="fas fa-copy"></i>
                                 </button>
+                                <button class="artifact-download-btn" id="prd-download-btn" data-project-id="${projectId}" title="Download PDF" style="padding: 4px 6px; background: transparent; border: none; color: #fff; cursor: pointer; transition: all 0.2s; opacity: 0.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+                                    <i class="fas fa-download"></i>
+                                </button>
+                                ${currentPrdName !== 'Main PRD' ? `
+                                <button class="artifact-delete-btn" id="prd-delete-action-btn" data-project-id="${projectId}" data-prd-name="${currentPrdName}" title="Delete PRD" style="padding: 4px 6px; background: transparent; border: none; color: #fff; cursor: pointer; transition: all 0.2s; opacity: 0.7;" onmouseover="this.style.opacity='1'; this.style.color='#ef4444'" onmouseout="this.style.opacity='0.7'; this.style.color='#fff'">
+                                    <i class="fas fa-trash"></i>
+                                </button>` : ''}
+                                
                             </div>
                         `;
                     }
@@ -742,6 +753,37 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (copyBtn) {
                         copyBtn.addEventListener('click', function() {
                             ArtifactsLoader.copyToClipboard(prdContent, 'PRD content');
+                        });
+                    }
+                    
+                    // Add click event listener for the delete button
+                    const deleteActionBtn = document.getElementById('prd-delete-action-btn');
+                    if (deleteActionBtn) {
+                        deleteActionBtn.addEventListener('click', function() {
+                            const prdNameToDelete = this.getAttribute('data-prd-name');
+                            if (confirm(`Are you sure you want to delete the PRD "${prdNameToDelete}"?`)) {
+                                // Delete the PRD
+                                fetch(`/projects/${projectId}/api/prd/?prd_name=${encodeURIComponent(prdNameToDelete)}`, {
+                                    method: 'DELETE',
+                                    headers: {
+                                        'X-CSRFToken': getCsrfToken()
+                                    }
+                                })
+                                .then(response => response.json())
+                                .then(deleteData => {
+                                    if (deleteData.success) {
+                                        window.showToast(`PRD "${prdNameToDelete}" deleted successfully`, 'success');
+                                        // Load Main PRD after deletion
+                                        window.ArtifactsLoader.loadPRD(projectId, 'Main PRD');
+                                    } else {
+                                        window.showToast(`Error deleting PRD: ${deleteData.error || 'Unknown error'}`, 'error');
+                                    }
+                                })
+                                .catch(error => {
+                                    console.error('[ArtifactsLoader] Error deleting PRD:', error);
+                                    window.showToast('Error deleting PRD', 'error');
+                                });
+                            }
                         });
                     }
                 })
@@ -976,7 +1018,10 @@ document.addEventListener('DOMContentLoaded', function() {
                                     if (selectorDropdown) {
                                         selectorDropdown.innerHTML = prds.map(prd => 
                                             `<div class="prd-dropdown-option ${prd.name === prdName ? 'selected' : ''}" data-value="${prd.name}">
-                                                ${prd.name}
+                                                <span class="prd-name">${prd.name}</span>
+                                                ${prd.name !== 'Main PRD' ? `<button class="prd-delete-btn" data-prd-name="${prd.name}" title="Delete PRD">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>` : ''}
                                             </div>`
                                         ).join('');
                                     }
@@ -1005,6 +1050,10 @@ document.addEventListener('DOMContentLoaded', function() {
                             <button class="artifact-edit-btn" id="prd-edit-btn" data-project-id="${projectId}" title="Edit" style="padding: 4px 6px; background: transparent; border: none; color: #fff; cursor: pointer; transition: all 0.2s; opacity: 0.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
                                 <i class="fas fa-edit"></i>
                             </button>
+                            ${prdName !== 'Main PRD' ? `
+                            <button class="artifact-delete-btn" id="prd-delete-action-btn" data-project-id="${projectId}" data-prd-name="${prdName}" title="Delete PRD" style="padding: 4px 6px; background: transparent; border: none; color: #fff; cursor: pointer; transition: all 0.2s; opacity: 0.7;" onmouseover="this.style.opacity='1'; this.style.color='#ef4444'" onmouseout="this.style.opacity='0.7'; this.style.color='#fff'">
+                                <i class="fas fa-trash"></i>
+                            </button>` : ''}
                             <button class="artifact-download-btn" id="prd-download-btn" data-project-id="${projectId}" title="Download PDF" style="padding: 4px 6px; background: transparent; border: none; color: #fff; cursor: pointer; transition: all 0.2s; opacity: 0.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
                                 <i class="fas fa-download"></i>
                             </button>
@@ -4824,10 +4873,64 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
         
-        // Handle option selection
+        // Handle option selection and deletion
         document.addEventListener('click', function(e) {
-            if (e.target.classList.contains('prd-dropdown-option')) {
-                const selectedValue = e.target.getAttribute('data-value');
+            // Handle PRD deletion
+            if (e.target.classList.contains('prd-delete-btn') || e.target.closest('.prd-delete-btn')) {
+                e.stopPropagation();
+                const deleteBtn = e.target.classList.contains('prd-delete-btn') ? e.target : e.target.closest('.prd-delete-btn');
+                const prdName = deleteBtn.getAttribute('data-prd-name');
+                
+                if (confirm(`Are you sure you want to delete the PRD "${prdName}"?`)) {
+                    // Get project ID
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const urlProjectId = urlParams.get('project_id');
+                    let projectId = urlProjectId;
+                    
+                    if (!projectId) {
+                        const pathMatch = window.location.pathname.match(/\/chat\/project\/([a-f0-9-]+)\//);
+                        if (pathMatch && pathMatch[1]) {
+                            projectId = pathMatch[1];
+                        }
+                    }
+                    
+                    if (projectId && prdName) {
+                        // Delete the PRD
+                        fetch(`/projects/${projectId}/api/prd/?prd_name=${encodeURIComponent(prdName)}`, {
+                            method: 'DELETE',
+                            headers: {
+                                'X-CSRFToken': getCsrfToken()
+                            }
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                window.showToast(`PRD "${prdName}" deleted successfully`, 'success');
+                                
+                                // If we deleted the currently selected PRD, switch to Main PRD
+                                if (prdSelector && prdSelector.value === prdName) {
+                                    window.ArtifactsLoader.loadPRD(projectId, 'Main PRD');
+                                } else {
+                                    // Just refresh the current PRD to update the selector
+                                    window.ArtifactsLoader.loadPRD(projectId, prdSelector.value);
+                                }
+                            } else {
+                                window.showToast(`Error deleting PRD: ${data.error || 'Unknown error'}`, 'error');
+                            }
+                        })
+                        .catch(error => {
+                            console.error('[ArtifactsLoader] Error deleting PRD:', error);
+                            window.showToast('Error deleting PRD', 'error');
+                        });
+                    }
+                }
+                return;
+            }
+            
+            // Handle PRD selection
+            if (e.target.classList.contains('prd-dropdown-option') || e.target.closest('.prd-dropdown-option')) {
+                const optionEl = e.target.classList.contains('prd-dropdown-option') ? e.target : e.target.closest('.prd-dropdown-option');
+                const selectedValue = optionEl.getAttribute('data-value');
                 
                 // Update UI
                 if (selectorText) selectorText.textContent = selectedValue;
@@ -4837,7 +4940,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 document.querySelectorAll('.prd-dropdown-option').forEach(opt => {
                     opt.classList.remove('selected');
                 });
-                e.target.classList.add('selected');
+                optionEl.classList.add('selected');
                 
                 // Close dropdown
                 if (selectorDropdown) selectorDropdown.style.display = 'none';

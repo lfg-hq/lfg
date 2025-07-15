@@ -250,6 +250,20 @@ def project_prd_api(request, project_id):
         except Exception as e:
             return JsonResponse({'success': False, 'error': str(e)}, status=400)
     
+    elif request.method == 'DELETE':
+        # Delete PRD (but don't allow deleting the Main PRD)
+        if prd_name == 'Main PRD':
+            return JsonResponse({'success': False, 'error': 'Cannot delete the Main PRD'}, status=400)
+        
+        try:
+            prd.delete()
+            return JsonResponse({
+                'success': True,
+                'message': f'PRD "{prd_name}" deleted successfully'
+            })
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=400)
+    
     # Convert to JSON-serializable format
     prd_data = {
         'id': prd.id,

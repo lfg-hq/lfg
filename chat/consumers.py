@@ -23,10 +23,10 @@ from projects.models import ProjectChecklist
 from coding.utils import (
     AIProvider,
     get_system_prompt_developer,
-    get_system_prompt_design, 
-    get_system_prompt_product
+    get_system_prompt_design
 )
-from coding.utils.prompts.turbo_prompt import get_system_turbo_mode
+from coding.utils.prompts import get_system_turbo_mode, \
+                                    get_system_prompt_product
 from coding.utils.ai_tools import tools_code, tools_product, tools_design, tools_turbo
 
 # Set up logger

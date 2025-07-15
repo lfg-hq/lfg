@@ -187,10 +187,36 @@
             font-weight: 500;
         }
         
-        .prd-dropdown-option.selected::after {
+        .prd-dropdown-option.selected .prd-name::after {
             content: '✓';
             color: #8b5cf6;
             font-weight: bold;
+            margin-left: 8px;
+        }
+        
+        .prd-delete-btn {
+            background: none;
+            border: none;
+            color: #666;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+            opacity: 0;
+            margin-left: auto;
+        }
+        
+        .prd-dropdown-option:hover .prd-delete-btn {
+            opacity: 1;
+        }
+        
+        .prd-delete-btn:hover {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+        }
+        
+        .prd-delete-btn:active {
+            transform: scale(0.95);
         }
         
         /* Scrollbar styling for dropdown */
