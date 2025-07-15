@@ -92,4 +92,32 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Handle integrations button - remove click handler since it's now a regular link
     // The integrations button now properly navigates to the integrations page
+    
+    // Handle chat link click
+    const chatLink = document.querySelector('.chat-link');
+    if (chatLink) {
+        chatLink.addEventListener('click', async (e) => {
+            e.preventDefault();
+            
+            try {
+                // Fetch the latest conversation info
+                const response = await fetch('/api/latest-conversation/');
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Construct the URL
+                    let url = `/chat/project/${data.project_id}/`;
+                    if (data.conversation_id) {
+                        url += `?conversation_id=${data.conversation_id}`;
+                    }
+                    // Navigate to the URL
+                    window.location.href = url;
+                }
+            } catch (error) {
+                console.error('Error fetching latest conversation:', error);
+                // Fallback to chat index
+                window.location.href = '/chat/';
+            }
+        });
+    }
 });

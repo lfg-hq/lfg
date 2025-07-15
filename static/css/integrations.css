@@ -22,6 +22,15 @@ main {
   margin-left: 260px;
   width: calc(100% - 260px);
   transition: margin-left 0.2s ease, width 0.2s ease;
+  padding: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.main-content-with-sidebar .container {
+  max-width: 100%;
+  padding: 0;
+  height: 100%;
 }
 
 /* Adjust for minimized sidebar */
