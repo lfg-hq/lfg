@@ -90,13 +90,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     
-    // Handle integrations button
-    const integrationsBtn = document.getElementById('integrations-btn');
-    if (integrationsBtn) {
-        integrationsBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            // You can add integration modal or redirect here
-            alert('Integrations page coming soon!');
-        });
-    }
+    // Handle integrations button - remove click handler since it's now a regular link
+    // The integrations button now properly navigates to the integrations page
 });

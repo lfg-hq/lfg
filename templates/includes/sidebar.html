@@ -1,0 +1,78 @@
+<div class="sidebar-overlay" id="sidebar-overlay"></div>
+<div class="sidebar" id="sidebar">
+    <div class="sidebar-top-content">
+        <div class="sidebar-header">
+            <div class="logo-section">
+                <span class="logo-icon">🚀</span>
+                <span class="logo-text">LFG</span>
+            </div>
+            <button id="minimize-btn" class="icon-btn" title="Collapse Sidebar">
+                <i class="fas fa-chevron-left"></i>
+            </button>
+        </div>
+        <div class="new-chat-section">
+            <a href="{% if show_conversations %}#{% else %}{% url 'index' %}{% endif %}" id="new-chat-btn" class="new-chat-link{% if not show_conversations %} disabled{% endif %}" title="New Chat">
+                <i class="fas fa-plus"></i>
+                <span class="button-text">New chat</span>
+            </a>
+        </div>
+        <div class="sidebar-nav">
+            <a href="{% url 'projects:project_list' %}" class="nav-link{% if request.resolver_match.url_name == 'project_list' %} active{% endif %}" title="Projects">
+                <i class="fas fa-folder"></i>
+                <span class="nav-text">Projects</span>
+            </a>
+            {% if show_conversations %}
+            <a href="{% url 'index' %}" class="nav-link{% if request.resolver_match.url_name == 'index' or request.resolver_match.url_name == 'conversation_detail' or request.resolver_match.url_name == 'create_conversation' %} active{% endif %}" title="Chat">
+                <i class="fas fa-comments"></i>
+                <span class="nav-text">Chat</span>
+            </a>
+            {% endif %}
+        </div>
+        {% if show_conversations %}
+        <div class="conversations-section">
+            <h3 class="sidebar-section-title">Recents</h3>
+            <div class="conversation-list" id="conversation-list">
+                <!-- Conversations will be loaded here -->
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    <div class="sidebar-bottom-content">
+        <div class="sidebar-nav bottom-nav">
+            <a href="{% url 'integrations' %}" class="nav-link{% if request.resolver_match.url_name == 'integrations' %} active{% endif %}" title="Settings">
+                <i class="fas fa-cog"></i>
+                <span class="nav-text">Settings</span>
+            </a>
+        </div>
+        <div class="user-info" id="user-info">
+            {% if user.is_authenticated %}
+                <button class="user-info-button" id="user-info-button">
+                    <div class="user-avatar">
+                        {% if user.profile.avatar %}
+                            <img src="{{ user.profile.avatar.url }}" alt="{{ user.username }}'s avatar">
+                        {% else %}
+                            <div class="avatar-text">{{ user.username|first|upper }}</div>
+                        {% endif %}
+                    </div>
+                    <div class="user-details">
+                        <span class="username">{{ user.username }}</span>
+                    </div>
+                    <i class="fas fa-chevron-down dropdown-icon"></i>
+                </button>
+                <div class="user-dropdown" id="user-dropdown">
+                    <a href="{% url 'profile' %}" class="dropdown-item">
+                        <i class="fas fa-user"></i>
+                        <span>Profile</span>
+                    </a>
+                    <div class="dropdown-divider"></div>
+                    <a href="{% url 'logout' %}" class="dropdown-item">
+                        <i class="fas fa-sign-out-alt"></i>
+                        <span>Logout</span>
+                    </a>
+                </div>
+            {% else %}
+                <a href="{% url 'login' %}" class="login-button">Log In</a>
+            {% endif %}
+        </div>
+    </div>
+</div>
