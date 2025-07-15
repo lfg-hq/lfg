@@ -1,4 +1,12 @@
 document.addEventListener('DOMContentLoaded', function() {
+    // Handle notification dismissal
+    const alerts = document.querySelectorAll('.alert');
+    alerts.forEach(alert => {
+        alert.addEventListener('click', function() {
+            this.style.animation = 'fadeOut 0.3s ease-out forwards';
+            setTimeout(() => this.remove(), 300);
+        });
+    });
     // Project dropdown functionality
     const dropdownButtons = document.querySelectorAll('.dropdown-button');
     
