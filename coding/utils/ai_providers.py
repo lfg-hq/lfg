@@ -232,7 +232,9 @@ async def execute_tool_call(tool_call_name, tool_call_args_str, project_id, conv
             if raw_notification_type == "prd_stream":
                 notification_data["content_chunk"] = tool_result.get("content_chunk", "")
                 notification_data["is_complete"] = tool_result.get("is_complete", False)
-                logger.info(f"PRD_STREAM in notification handler: chunk_length={len(notification_data['content_chunk'])}, is_complete={notification_data['is_complete']}")
+                if "prd_name" in tool_result:
+                    notification_data["prd_name"] = tool_result.get("prd_name")
+                logger.info(f"PRD_STREAM in notification handler: chunk_length={len(notification_data['content_chunk'])}, is_complete={notification_data['is_complete']}, prd_name={notification_data.get('prd_name', 'Not specified')}")
             elif raw_notification_type == "implementation_stream":
                 notification_data["content_chunk"] = tool_result.get("content_chunk", "")
                 notification_data["is_complete"] = tool_result.get("is_complete", False)
@@ -569,23 +571,26 @@ class OpenAIProvider(AIProvider):
                         buffer += text
                         
                         # Check for complete tags in buffer
-                        if "<lfg-prd>" in buffer and current_mode != "prd":
-                            current_mode = "prd"
-                            print("\n\n[PRD MODE ACTIVATED - OpenAI]")
-                            # Clear buffer up to and including the tag
-                            tag_pos = buffer.find("<lfg-prd>")
-                            # remaining_buffer = buffer[tag_pos + len("<lfg-prd>"):]
-                            remaining_buffer = buffer[buffer.rfind('<lfg-prd>'):]
-                            # Clean any leading '>' and whitespace from remaining buffer
-                            remaining_buffer = remaining_buffer.lstrip()
-                            if remaining_buffer.startswith('>'):
-                                remaining_buffer = remaining_buffer[1:].lstrip()
-                            # Reset prd data and capture any remaining content
-                            prd_data = remaining_buffer
-                            buffer = ""  # Clear the buffer since we've processed it
-                            
-                            # Show loading indicator in chat
-                            yield "\n\n*Generating PRD... (check the PRD tab for live updates)*\n\n"
+                        if "<lfg-prd" in buffer and current_mode != "prd":
+                            # Look for complete PRD tag (with or without attributes)
+                            tag_match = re.search(r'<lfg-prd(?:\s+name="([^"]+)")?\s*>', buffer)
+                            if tag_match:
+                                current_mode = "prd"
+                                prd_name = tag_match.group(1) if tag_match.group(1) else "Main PRD"
+                                print(f"\n\n[PRD MODE ACTIVATED - OpenAI] - PRD Name: {prd_name}")
+                                # Clear buffer up to and including the tag
+                                tag_pos = buffer.find(tag_match.group(0))
+                                remaining_buffer = buffer[tag_pos + len(tag_match.group(0)):]
+                                # Clean any leading '>' and whitespace from remaining buffer
+                                remaining_buffer = remaining_buffer.lstrip()
+                                if remaining_buffer.startswith('>'):
+                                    remaining_buffer = remaining_buffer[1:].lstrip()
+                                # Reset prd data and capture any remaining content
+                                prd_data = remaining_buffer
+                                buffer = ""  # Clear the buffer since we've processed it
+                                
+                                # Show loading indicator in chat
+                                yield f"\n\n*Generating PRD '{prd_name}'... (check the PRD tab for live updates)*\n\n"
                         
                         if "</lfg-prd>" in buffer and current_mode == "prd":
                             current_mode = ""
@@ -609,6 +614,7 @@ class OpenAIProvider(AIProvider):
                                 "notification_type": "prd_stream",
                                 "content_chunk": "",
                                 "is_complete": True,
+                                "prd_name": prd_name if 'prd_name' in locals() else "Main PRD",
                                 "notification_marker": "__NOTIFICATION__"
                             }
                             notification_json = json.dumps(prd_complete_notification)
@@ -673,34 +679,77 @@ class OpenAIProvider(AIProvider):
                             buffer = buffer[-50:]  # Keep last 50 chars
                         
                         if current_mode == "prd":
-                            # Skip the closing '>' of the tag if it's the first character and prd_data is empty
-                            if prd_data == "" and text.startswith('>'):
-                                text = text[1:]
-                            prd_data += text
-                            print(f"\n\n\n[CAPTURING PRD DATA - OpenAI]: {text}")
+                            # Clean the text for PRD content
+                            clean_text = text
+                            
+                            # Skip empty or whitespace-only chunks
+                            if not clean_text.strip():
+                                continue
+                            
+                            # For the first chunk, clean any residual tag artifacts
+                            if prd_data == "":
+                                # Remove any leading whitespace
+                                clean_text = clean_text.lstrip()
+                                
+                                # Remove leading ">" that might be left from the tag
+                                while clean_text.startswith('>'):
+                                    clean_text = clean_text[1:].lstrip()
+                                
+                                # Skip if we only have tag remnants
+                                if not clean_text or clean_text.startswith('<'):
+                                    print(f"[PRD MODE - OpenAI] Skipping tag remnants: {repr(text)}")
+                                    continue
+                                
+                                print(f"[PRD MODE - OpenAI] First chunk cleaned: {repr(clean_text[:50])}...")
+                            
+                            # Add the cleaned text to PRD data
+                            prd_data += clean_text
+                            print(f"[CAPTURING PRD DATA - OpenAI]: Added {len(clean_text)} chars")
                             
                             # Stream PRD content to the panel
                             prd_stream_notification = {
                                 "is_notification": True,
                                 "notification_type": "prd_stream",
-                                "content_chunk": text,
+                                "content_chunk": clean_text,
                                 "is_complete": False,
+                                "prd_name": prd_name if 'prd_name' in locals() else "Main PRD",
                                 "notification_marker": "__NOTIFICATION__"
                             }
                             notification_json = json.dumps(prd_stream_notification)
                             yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
                         elif current_mode == "implementation":
-                            # Skip the closing '>' of the tag if it's the first character and implementation_data is empty
-                            if implementation_data == "" and text.startswith('>'):
-                                text = text[1:]
-                            implementation_data += text
-                            # print(f"\n\n\n[CAPTURING IMPLEMENTATION DATA - OpenAI]: {text}")
+                            # Clean the text for implementation content
+                            clean_text = text
+                            
+                            # Skip empty or whitespace-only chunks
+                            if not clean_text.strip():
+                                continue
+                            
+                            # For the first chunk, clean any residual tag artifacts
+                            if implementation_data == "":
+                                # Remove any leading whitespace
+                                clean_text = clean_text.lstrip()
+                                
+                                # Remove leading ">" that might be left from the tag
+                                while clean_text.startswith('>'):
+                                    clean_text = clean_text[1:].lstrip()
+                                
+                                # Skip if we only have tag remnants
+                                if not clean_text or clean_text.startswith('<'):
+                                    print(f"[IMPLEMENTATION MODE - OpenAI] Skipping tag remnants: {repr(text)}")
+                                    continue
+                                
+                                print(f"[IMPLEMENTATION MODE - OpenAI] First chunk cleaned: {repr(clean_text[:50])}...")
+                            
+                            # Add the cleaned text to implementation data
+                            implementation_data += clean_text
+                            print(f"[CAPTURING IMPLEMENTATION DATA - OpenAI]: Added {len(clean_text)} chars")
                             
                             # Stream implementation content to the panel
                             implementation_stream_notification = {
                                 "is_notification": True,
                                 "notification_type": "implementation_stream",
-                                "content_chunk": text,
+                                "content_chunk": clean_text,
                                 "is_complete": False,
                                 "notification_marker": "__NOTIFICATION__"
                             }
@@ -882,7 +931,7 @@ class OpenAIProvider(AIProvider):
                                 
                                 # Save the PRD to database
                                 try:
-                                    save_result = await save_prd_from_stream(prd_data, project_id)
+                                    save_result = await save_prd_from_stream(prd_data, project_id, prd_name if 'prd_name' in locals() else "Main PRD")
                                     logger.info(f"OpenAI PRD save result: {save_result}")
                                     
                                     # Yield notification if save was successful
@@ -1137,17 +1186,22 @@ class GrokProvider(AIProvider):
                         buffer += text
                         
                         # Check for complete tags in buffer (similar to OpenAI provider)
-                        if "<lfg-prd>" in buffer and current_mode != "prd":
-                            current_mode = "prd"
-                            print("\\n\\n[PRD MODE ACTIVATED - Grok]")
-                            tag_pos = buffer.find("<lfg-prd>")
-                            remaining_buffer = buffer[tag_pos + len("<lfg-prd>"):]
-                            remaining_buffer = remaining_buffer.lstrip()
-                            if remaining_buffer.startswith('>'):
-                                remaining_buffer = remaining_buffer[1:].lstrip()
-                            prd_data = remaining_buffer
-                            buffer = ""
-                            yield "\\n\\n*Generating PRD... (check the PRD tab for live updates)*\\n\\n"
+                        if "<lfg-prd" in buffer and current_mode != "prd":
+                            # Look for complete PRD tag (with or without attributes)
+                            tag_match = re.search(r'<lfg-prd(?:\s+name="([^"]+)")?\s*>', buffer)
+                            if tag_match:
+                                current_mode = "prd"
+                                prd_name = tag_match.group(1) if tag_match.group(1) else "Main PRD"
+                                print(f"\\n\\n[PRD MODE ACTIVATED - Grok] - PRD Name: {prd_name}")
+                                # Clear buffer up to and including the tag
+                                tag_pos = buffer.find(tag_match.group(0))
+                                remaining_buffer = buffer[tag_pos + len(tag_match.group(0)):]
+                                remaining_buffer = remaining_buffer.lstrip()
+                                if remaining_buffer.startswith('>'):
+                                    remaining_buffer = remaining_buffer[1:].lstrip()
+                                prd_data = remaining_buffer
+                                buffer = ""
+                                yield f"\\n\\n*Generating PRD '{prd_name}'... (check the PRD tab for live updates)*\\n\\n"
                         
                         if "</lfg-prd>" in buffer and current_mode == "prd":
                             current_mode = ""
@@ -1168,6 +1222,7 @@ class GrokProvider(AIProvider):
                                 "notification_type": "prd_stream",
                                 "content_chunk": "",
                                 "is_complete": True,
+                                "prd_name": prd_name if 'prd_name' in locals() else "Main PRD",
                                 "notification_marker": "__NOTIFICATION__"
                             }
                             notification_json = json.dumps(prd_complete_notification)
@@ -1220,31 +1275,84 @@ class GrokProvider(AIProvider):
                             buffer = buffer[-50:]
                         
                         if current_mode == "prd":
-                            if prd_data == "" and text.startswith('>'):
-                                text = text[1:]
-                            prd_data += text
-                            print(f"\\n\\n\\n[CAPTURING PRD DATA - Grok]: {text}")
+                            # Clean the text for PRD content
+                            clean_text = text
+                            
+                            # Skip empty or whitespace-only chunks
+                            if not clean_text.strip():
+                                continue
+                            
+                            # For the first chunk, clean any residual tag artifacts
+                            if prd_data == "":
+                                # Remove any leading whitespace
+                                clean_text = clean_text.lstrip()
+                                
+                                # Remove leading ">" that might be left from the tag
+                                while clean_text.startswith('>'):
+                                    clean_text = clean_text[1:].lstrip()
+                                
+                                # Skip if we only have tag remnants
+                                if not clean_text or clean_text.startswith('<'):
+                                    print(f"[PRD MODE - Grok] Skipping tag remnants: {repr(text)}")
+                                    continue
+                                
+                                print(f"[PRD MODE - Grok] First chunk cleaned: {repr(clean_text[:50])}...")
+                            
+                            # Add the cleaned text to PRD data
+                            prd_data += clean_text
+                            print(f"[CAPTURING PRD DATA - Grok]: Added {len(clean_text)} chars")
                             
                             # Stream PRD content to the panel
                             prd_stream_notification = {
                                 "is_notification": True,
                                 "notification_type": "prd_stream",
-                                "content_chunk": text,
+                                "content_chunk": clean_text,
                                 "is_complete": False,
+                                "prd_name": prd_name if 'prd_name' in locals() else "Main PRD",
                                 "notification_marker": "__NOTIFICATION__"
                             }
                             notification_json = json.dumps(prd_stream_notification)
                             yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
                         elif current_mode == "implementation":
-                            if implementation_data == "" and text.startswith('>'):
-                                text = text[1:]
-                            implementation_data += text
+                            # Clean the text for implementation content
+                            clean_text = text
+                            
+                            # Skip empty or whitespace-only chunks
+                            if not clean_text.strip():
+                                continue
+                            
+                            # For the first chunk, clean any residual tag artifacts
+                            if implementation_data == "":
+                                # Remove any leading whitespace
+                                clean_text = clean_text.lstrip()
+                                
+                                # Remove leading ">" that might be left from the tag
+                                while clean_text.startswith('>'):
+                                    clean_text = clean_text[1:].lstrip()
+                                
+                                # Remove any remnants of the lfg-plan tag
+                                if '<lfg-plan' in clean_text:
+                                    # Find the end of the tag
+                                    tag_end = clean_text.find('>')
+                                    if tag_end != -1:
+                                        clean_text = clean_text[tag_end + 1:].lstrip()
+                                    else:
+                                        # Incomplete tag, remove what we have
+                                        clean_text = clean_text.split('<lfg-plan', 1)[-1].lstrip()
+                                
+                                # Skip if we only have tag remnants
+                                if not clean_text or clean_text.startswith('<'):
+                                    print(f"[IMPLEMENTATION MODE] Skipping tag remnants: {repr(text)}")
+                                    continue
+                            
+                            # Add the cleaned text
+                            implementation_data += clean_text
                             
                             # Stream implementation content to the panel
                             implementation_stream_notification = {
                                 "is_notification": True,
                                 "notification_type": "implementation_stream",
-                                "content_chunk": text,
+                                "content_chunk": clean_text,
                                 "is_complete": False,
                                 "notification_marker": "__NOTIFICATION__"
                             }
@@ -1391,7 +1499,7 @@ class GrokProvider(AIProvider):
                                 from coding.utils.ai_functions import save_prd_from_stream
                                 
                                 try:
-                                    save_result = await save_prd_from_stream(prd_data, project_id)
+                                    save_result = await save_prd_from_stream(prd_data, project_id, prd_name if 'prd_name' in locals() else "Main PRD")
                                     logger.info(f"Grok PRD save result: {save_result}")
                                     
                                     if save_result.get("is_notification"):
@@ -1641,6 +1749,7 @@ class AnthropicProvider(AIProvider):
         implementation_data = ""
         current_mode = ""
         buffer = ""  # Buffer to handle split tags
+        prd_name = "Main PRD"  # Default PRD name
         
         # Helper function to clean XML fragments from text
         def clean_xml_fragments(text):
@@ -1771,14 +1880,18 @@ class AnthropicProvider(AIProvider):
                                 buffer += text
                                 
                                 # Check for complete tags in buffer
-                                if "<lfg-prd>" in buffer and current_mode != "prd":
-                                    current_mode = "prd"
-                                    print("\n\n[PRD MODE ACTIVATED]")
-                                    tag_pos = buffer.find("<lfg-prd>")
-                                    buffer = ""
-                                    prd_data = ""
-                                    print(f"[PRD MODE] Cleared buffer, ready to capture PRD content")
-                                    yield "\n\n*Generating PRD... (check the PRD tab for live updates)*\n\n"
+                                if "<lfg-prd" in buffer and current_mode != "prd":
+                                    # Look for complete PRD tag (with or without attributes)
+                                    tag_match = re.search(r'<lfg-prd(?:\s+name="([^"]+)")?\s*>', buffer)
+                                    if tag_match:
+                                        current_mode = "prd"
+                                        prd_name = tag_match.group(1) if tag_match.group(1) else "Main PRD"
+                                        print(f"\n\n[PRD MODE ACTIVATED] - PRD Name: {prd_name}")
+                                        tag_pos = buffer.find(tag_match.group(0))
+                                        buffer = ""
+                                        prd_data = ""
+                                        print(f"[PRD MODE] Cleared buffer, ready to capture PRD content for '{prd_name}'")
+                                        yield f"\n\n*Generating PRD '{prd_name}'... (check the PRD tab for live updates)*\n\n"
                                 
                                 if "</lfg-prd>" in buffer and current_mode == "prd":
                                     current_mode = ""
@@ -1799,6 +1912,7 @@ class AnthropicProvider(AIProvider):
                                         "notification_type": "prd_stream",
                                         "content_chunk": "",
                                         "is_complete": True,
+                                        "prd_name": prd_name if 'prd_name' in locals() else "Main PRD",
                                         "notification_marker": "__NOTIFICATION__"
                                     }
                                     notification_json = json.dumps(prd_complete_notification)
@@ -1850,59 +1964,112 @@ class AnthropicProvider(AIProvider):
                                 
                                 # Process content based on current mode
                                 if current_mode == "prd":
-                                    if prd_data == "":
-                                        # First chunk after entering PRD mode
-                                        clean_text = text.lstrip()
-                                        print("\n\n\n Original text", clean_text)
-                                        if clean_text.startswith('>'):
-                                            clean_text = clean_text[1:].lstrip()
-                                        if '<lfg-prd>' in clean_text:
-                                            clean_text = clean_text.replace('<lfg-prd>', '')
-                                        if clean_text and not clean_text.startswith('<'):
-                                            prd_data = clean_text
-                                            print(f"[PRD MODE] Started capturing PRD content")
-                                            text = clean_text
-                                        else:
-                                            print(f"[PRD MODE] Skipping initial content: {repr(text)}")
-                                    else:
-                                        prd_data += text
+                                    # Clean the text for PRD content
+                                    clean_text = text
                                     
-                                    print(f"\n\n\n[CAPTURING PRD DATA]: {text}")
+                                    # Skip empty or whitespace-only chunks
+                                    if not clean_text.strip():
+                                        continue
+                                    
+                                    # For the first chunk, clean any residual tag artifacts
+                                    if prd_data == "":
+                                        # Remove any leading whitespace
+                                        clean_text = clean_text.lstrip()
+                                        
+                                        # Remove leading ">" that might be left from the tag
+                                        while clean_text.startswith('>'):
+                                            clean_text = clean_text[1:].lstrip()
+                                        
+                                        # Remove any remnants of the lfg-prd tag
+                                        if '<lfg-prd' in clean_text:
+                                            # Find the end of the tag
+                                            tag_end = clean_text.find('>')
+                                            if tag_end != -1:
+                                                clean_text = clean_text[tag_end + 1:].lstrip()
+                                            else:
+                                                # Incomplete tag, remove what we have
+                                                clean_text = clean_text.split('<lfg-prd', 1)[-1].lstrip()
+                                        
+                                        # Remove any partial tag ending like "> or name="value">
+                                        # This catches cases where the tag end comes in the first chunk
+                                        tag_end_match = re.match(r'^[^<]*>', clean_text)
+                                        if tag_end_match:
+                                            clean_text = clean_text[tag_end_match.end():].lstrip()
+                                            print(f"[PRD MODE] Removed tag ending: {repr(tag_end_match.group(0))}")
+                                        
+                                        # Skip if we only have tag remnants
+                                        if not clean_text or clean_text.startswith('<'):
+                                            print(f"[PRD MODE] Skipping tag remnants: {repr(text)}")
+                                            continue
+                                        
+                                        print(f"[PRD MODE] First chunk cleaned: {repr(clean_text[:50])}...")
+                                    
+                                    # Add the cleaned text to PRD data
+                                    prd_data += clean_text
+                                    print(f"[CAPTURING PRD DATA]: Added {len(clean_text)} chars")
                                     
                                     # Stream PRD content
                                     prd_stream_notification = {
                                         "is_notification": True,
                                         "notification_type": "prd_stream",
-                                        "content_chunk": text,
+                                        "content_chunk": clean_text,
                                         "is_complete": False,
+                                        "prd_name": prd_name if 'prd_name' in locals() else "Main PRD",
                                         "notification_marker": "__NOTIFICATION__"
                                     }
                                     notification_json = json.dumps(prd_stream_notification)
                                     yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
                                     
                                 elif current_mode == "implementation":
-                                    if implementation_data == "":
-                                        # First chunk after entering implementation mode
-                                        clean_text = text.lstrip()
-                                        if clean_text.startswith('>'):
-                                            clean_text = clean_text[1:].lstrip()
-                                        if '<lfg-plan>' in clean_text:
-                                            clean_text = clean_text.replace('<lfg-plan>', '')
-                                        if clean_text and not clean_text.startswith('<'):
-                                            implementation_data = clean_text
-                                            print(f"[IMPLEMENTATION MODE] Started capturing implementation content")
-                                        else:
-                                            print(f"[IMPLEMENTATION MODE] Skipping initial content: {repr(text)}")
-                                    else:
-                                        implementation_data += text
+                                    # Clean the text for implementation content
+                                    clean_text = text
                                     
-                                    print(f"\n\n\n[CAPTURING IMPLEMENTATION DATA]: {text}")
+                                    # Skip empty or whitespace-only chunks
+                                    if not clean_text.strip():
+                                        continue
+                                    
+                                    # For the first chunk, clean any residual tag artifacts
+                                    if implementation_data == "":
+                                        # Remove any leading whitespace
+                                        clean_text = clean_text.lstrip()
+                                        
+                                        # Remove leading ">" that might be left from the tag
+                                        while clean_text.startswith('>'):
+                                            clean_text = clean_text[1:].lstrip()
+                                        
+                                        # Remove any remnants of the lfg-plan tag
+                                        if '<lfg-plan' in clean_text:
+                                            # Find the end of the tag
+                                            tag_end = clean_text.find('>')
+                                            if tag_end != -1:
+                                                clean_text = clean_text[tag_end + 1:].lstrip()
+                                            else:
+                                                # Incomplete tag, remove what we have
+                                                clean_text = clean_text.split('<lfg-plan', 1)[-1].lstrip()
+                                        
+                                        # Remove any partial tag ending like ">
+                                        # This catches cases where the tag end comes in the first chunk
+                                        tag_end_match = re.match(r'^[^<]*>', clean_text)
+                                        if tag_end_match:
+                                            clean_text = clean_text[tag_end_match.end():].lstrip()
+                                            print(f"[IMPLEMENTATION MODE] Removed tag ending: {repr(tag_end_match.group(0))}")
+                                        
+                                        # Skip if we only have tag remnants
+                                        if not clean_text or clean_text.startswith('<'):
+                                            print(f"[IMPLEMENTATION MODE] Skipping tag remnants: {repr(text)}")
+                                            continue
+                                        
+                                        print(f"[IMPLEMENTATION MODE] First chunk cleaned: {repr(clean_text[:50])}...")
+                                    
+                                    # Add the cleaned text to implementation data
+                                    implementation_data += clean_text
+                                    print(f"[CAPTURING IMPLEMENTATION DATA]: Added {len(clean_text)} chars")
                                     
                                     # Stream implementation content
                                     implementation_stream_notification = {
                                         "is_notification": True,
                                         "notification_type": "implementation_stream",
-                                        "content_chunk": text,
+                                        "content_chunk": clean_text,
                                         "is_complete": False,
                                         "notification_marker": "__NOTIFICATION__"
                                     }
@@ -2071,7 +2238,7 @@ class AnthropicProvider(AIProvider):
                                     
                                     # Save the PRD to database
                                     try:
-                                        save_result = await save_prd_from_stream(prd_data, project_id)
+                                        save_result = await save_prd_from_stream(prd_data, project_id, prd_name if 'prd_name' in locals() else "Main PRD")
                                         logger.info(f"PRD save result: {save_result}")
                                         
                                         # Yield notification if save was successful

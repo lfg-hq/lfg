@@ -714,8 +714,8 @@ document.addEventListener('DOMContentLoaded', function() {
             return urlProjectId;
         }
         
-        // Then try from path (format: /chat/project/{id}/)
-        const pathMatch = window.location.pathname.match(/\/chat\/project\/(\d+)\//);
+        // Then try from path (format: /chat/project/{uuid}/)
+        const pathMatch = window.location.pathname.match(/\/chat\/project\/([a-f0-9-]+)\//);
         if (pathMatch && pathMatch[1]) {
             return pathMatch[1];
         }
