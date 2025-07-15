@@ -64,7 +64,7 @@
                 }
                 
                 // Fetch sandbox information from the API
-                const url = '/coding/get_sandbox_info/';
+                const url = '/development/get_sandbox_info/';
                 console.log(`[AppLoader] Fetching sandbox info from API: ${url}`, requestData);
                 
                 fetch(url, {

@@ -61,7 +61,7 @@ INSTALLED_APPS = [
     'marketing',
     'projects',
     'subscriptions',
-    'coding',
+    'development',
     'tasks',
     'administrator',
 ]

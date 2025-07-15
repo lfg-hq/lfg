@@ -61,9 +61,9 @@ from django.db import transaction
 from asgiref.sync import sync_to_async, async_to_sync
 
 from projects.models import ProjectChecklist, Project
-from coding.utils.ai_providers import get_ai_response
-from coding.utils.task_prompt import get_task_implementaion_developer
-from coding.utils.ai_tools import tools_code
+from development.utils.ai_providers import get_ai_response
+from development.utils.task_prompt import get_task_implementaion_developer
+from development.utils.ai_tools import tools_code
 import time
 
 logger = logging.getLogger(__name__)

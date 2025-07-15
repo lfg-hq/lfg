@@ -25,7 +25,7 @@ from channels.security.websocket import AllowedHostsOriginValidator
 
 # Import websocket URL patterns (safe now that Django is initialized)
 import chat.routing
-import coding.routing  # Import the coding WebSocket routes
+import development.routing  # Import the development WebSocket routes
 
 # Create ASGI application
 application = ProtocolTypeRouter({
@@ -37,7 +37,7 @@ application = ProtocolTypeRouter({
         AuthMiddlewareStack(
             URLRouter(
                 chat.routing.websocket_urlpatterns +  # Chat WebSockets
-                coding.routing.websocket_urlpatterns  # Terminal WebSockets
+                development.routing.websocket_urlpatterns  # Terminal WebSockets
             )
         )
     ),

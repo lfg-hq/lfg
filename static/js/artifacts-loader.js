@@ -2029,7 +2029,7 @@ document.addEventListener('DOMContentLoaded', function() {
         },
         
         /**
-         * Load codebase explorer from the coding module for the current project
+         * Load codebase explorer from the development module for the current project
          * @param {number} projectId - The ID of the current project
          */
         loadCodebase: function(projectId) {
@@ -2078,7 +2078,7 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log(`[ArtifactsLoader] Conversation ID: ${conversationId}`);
             
             // Build the editor URL with appropriate parameters
-            let editorUrl = `/coding/editor/?project_id=${projectId}`;
+            let editorUrl = `/development/editor/?project_id=${projectId}`;
             
             // Add conversation ID if available
             if (conversationId) {

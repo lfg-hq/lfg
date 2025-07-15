@@ -12,7 +12,7 @@ urlpatterns = [
     path('settings/', accounts_views.integrations, name='settings'),  # Settings page
     path('projects/', include('projects.urls')),  # Projects URLs
     path('subscriptions/', include('subscriptions.urls')),  # Subscription URLs
-    path('coding/', include('coding.urls')),  # Coding URLs
+    path('development/', include('development.urls')),  # Development URLs
     path('api/tasks/', include('tasks.urls')),  # Task management APIs
     path('administrator-rocks/', include('administrator.urls')),  # Administrator URLs
 ]
