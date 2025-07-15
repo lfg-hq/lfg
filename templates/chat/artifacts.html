@@ -101,6 +101,36 @@
             color: #e2e8f0;
             font-style: italic;
         }
+        
+        /* Enhanced PRD Selector Styles */
+        #prd-selector:hover {
+            background: #222 !important;
+            border-color: #555 !important;
+        }
+        
+        #prd-selector:focus {
+            outline: none;
+            border-color: #8b5cf6 !important;
+            box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2) !important;
+        }
+        
+        #prd-selector option {
+            background: #1a1a1a;
+            color: #e2e8f0;
+            padding: 8px;
+        }
+        
+        #prd-selector option:hover {
+            background: #2a2a2a;
+        }
+        
+        .prd-selector-wrapper:hover .select-arrow {
+            color: #a78bfa !important;
+        }
+        
+        #prd-selector:focus + .select-arrow {
+            color: #c4b5fd !important;
+        }
     </style>
     
     <!-- Tabs Navigation - moved to top -->
@@ -141,20 +171,26 @@
                 <!-- PRD Container (hidden by default, shown during streaming) -->
                 <div class="prd-container" id="prd-container" style="display: none;">
                     <div class="prd-header">
-                        <h2>Product Requirement Document</h2>
-                        <div class="prd-meta" style="display: flex; justify-content: space-between; align-items: center;">
-                            <div style="display: flex; align-items: center; gap: 10px;">
-                                <!-- PRD Selector -->
-                                <select id="prd-selector" style="padding: 6px 12px; background: #2a2a2a; border: 1px solid #333; border-radius: 4px; color: #e2e8f0; display: none;">
-                                    <option value="Main PRD">Main PRD</option>
-                                </select>
-                                <button id="create-new-prd-btn" style="padding: 6px 12px; background: #8b5cf6; color: white; border: none; border-radius: 4px; cursor: pointer; display: none;">
-                                    <i class="fas fa-plus"></i> New PRD
-                                </button>
+                        <div class="prd-meta" style="display: flex; justify-content: space-between; align-items: flex-start;">
+                            <div style="display: flex; flex-direction: column; gap: 8px;">
+                                <!-- PRD Selector with enhanced styling -->
+                                <div class="prd-selector-wrapper" style="position: relative;">
+                                    <select id="prd-selector" style="padding: 8px 10px; padding-right: 40px; background: #1a1a1a; border: 1px solid #444; border-radius: 8px; color: #e2e8f0; display: none; font-size: 14px; font-weight: 500; min-width: 200px; cursor: pointer; transition: all 0.2s ease; appearance: none; -webkit-appearance: none; -moz-appearance: none;">
+                                        <option value="Main PRD">Main PRD</option>
+                                    </select>
+                                    <!-- Custom dropdown arrow -->
+                                    <div class="select-arrow" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; color: #8b5cf6;">
+                                        <i class="fas fa-chevron-down" style="font-size: 12px;"></i>
+                                    </div>
+                                </div>
+                                <!-- Date/Status below the selector -->
+                                <span class="streaming-status" id="prd-streaming-status" style="color: #9ca3af; font-size: 12px; margin-left: 5px;>
+                                    <i class="fas fa-circle-notch fa-spin"></i> Generating PRD...
+                                </span>
                             </div>
-                            <span class="streaming-status" id="prd-streaming-status" style="color: #8b5cf6;">
-                                <i class="fas fa-circle-notch fa-spin"></i> Generating PRD...
-                            </span>
+                            <div class="prd-actions-container">
+                                <!-- Actions will be added here dynamically -->
+                            </div>
                         </div>
                     </div>
                     <div class="prd-streaming-container prd-content markdown-content" id="prd-streaming-content" style="color: #e2e8f0; padding: 20px;">

@@ -577,7 +577,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const streamingContent = document.getElementById('prd-streaming-content');
             const streamingStatus = document.getElementById('prd-streaming-status');
             const prdSelector = document.getElementById('prd-selector');
-            const createNewPrdBtn = document.getElementById('create-new-prd-btn');
             
             // Clear any existing content first
             if (streamingContent) {
@@ -607,23 +606,34 @@ document.addEventListener('DOMContentLoaded', function() {
                     const prds = listData.prds || [];
                     
                     // Update PRD selector
-                    if (prdSelector && prds.length > 0) {
-                        prdSelector.innerHTML = prds.map(prd => 
-                            `<option value="${prd.name}">${prd.name}</option>`
-                        ).join('');
-                        prdSelector.style.display = 'inline-block';
+                    if (prdSelector) {
+                        const selectorWrapper = prdSelector.parentElement;
+                        const selectArrow = selectorWrapper ? selectorWrapper.querySelector('.select-arrow') : null;
+                        
+                        if (prds.length > 1) {
+                            // Only show selector if there are multiple PRDs
+                            prdSelector.innerHTML = prds.map(prd => 
+                                `<option value="${prd.name}">${prd.name}</option>`
+                            ).join('');
+                            prdSelector.style.display = 'block';
+                            if (selectArrow) selectArrow.style.display = 'block';
+                            console.log(`[ArtifactsLoader] Showing PRD selector with ${prds.length} PRDs`);
+                        } else {
+                            // Hide selector if only one PRD
+                            prdSelector.style.display = 'none';
+                            if (selectArrow) selectArrow.style.display = 'none';
+                            console.log('[ArtifactsLoader] Hiding PRD selector - only one PRD exists');
+                        }
                         
                         // Set the current PRD name
                         if (!prdName && prds.length > 0) {
                             prdName = prds[0].name;
                         }
-                        prdSelector.value = prdName;
+                        if (prds.length > 0) {
+                            prdSelector.value = prdName;
+                        }
                     }
                     
-                    // Show create new PRD button
-                    if (createNewPrdBtn) {
-                        createNewPrdBtn.style.display = 'inline-block';
-                    }
                     
                     // Now fetch the specific PRD content
                     const url = `/projects/${projectId}/api/prd/?prd_name=${encodeURIComponent(prdName || 'Main PRD')}`;
@@ -935,20 +945,28 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Refresh PRD list to include the new PRD
                 const prdSelector = document.getElementById('prd-selector');
-                const createNewPrdBtn = document.getElementById('create-new-prd-btn');
-                if (projectId) {
+                    if (projectId) {
                     fetch(`/projects/${projectId}/api/prd/?list=1`)
                         .then(response => response.json())
                         .then(listData => {
                             const prds = listData.prds || [];
-                            if (prdSelector && prds.length > 0) {
-                                prdSelector.innerHTML = prds.map(prd => 
-                                    `<option value="${prd.name}" ${prd.name === prdName ? 'selected' : ''}>${prd.name}</option>`
-                                ).join('');
-                                prdSelector.style.display = 'inline-block';
-                            }
-                            if (createNewPrdBtn) {
-                                createNewPrdBtn.style.display = 'inline-block';
+                            if (prdSelector) {
+                                const selectorWrapper = prdSelector.parentElement;
+                                const selectArrow = selectorWrapper ? selectorWrapper.querySelector('.select-arrow') : null;
+                                
+                                if (prds.length > 1) {
+                                    // Only show selector if there are multiple PRDs
+                                    prdSelector.innerHTML = prds.map(prd => 
+                                        `<option value="${prd.name}" ${prd.name === prdName ? 'selected' : ''}>${prd.name}</option>`
+                                    ).join('');
+                                    prdSelector.style.display = 'block';
+                                    if (selectArrow) selectArrow.style.display = 'block';
+                                    console.log(`[ArtifactsLoader] Updated PRD selector with ${prds.length} PRDs after completion`);
+                                } else {
+                                    // Hide selector if only one PRD
+                                    prdSelector.style.display = 'none';
+                                    if (selectArrow) selectArrow.style.display = 'none';
+                                }
                             }
                         })
                         .catch(error => {
@@ -4766,40 +4784,31 @@ document.addEventListener('DOMContentLoaded', function() {
     // ArtifactsLoader is now ready to use
     console.log('[ArtifactsLoader] Loaded and ready');
     
-    // Add event handlers for PRD selector and create new PRD button
+    // Add event handler for PRD selector
     setTimeout(() => {
         const prdSelector = document.getElementById('prd-selector');
-        const createNewPrdBtn = document.getElementById('create-new-prd-btn');
         
         if (prdSelector) {
             prdSelector.addEventListener('change', function() {
                 const selectedPrd = this.value;
-                const projectId = window.currentProjectId || document.getElementById('project-selector')?.value;
-                if (projectId && selectedPrd) {
-                    console.log(`[ArtifactsLoader] PRD selection changed to: ${selectedPrd}`);
-                    window.ArtifactsLoader.loadPRD(projectId, selectedPrd);
-                }
-            });
-        }
-        
-        if (createNewPrdBtn) {
-            createNewPrdBtn.addEventListener('click', function() {
-                const projectId = window.currentProjectId || document.getElementById('project-selector')?.value;
+                // Get project ID from URL
+                const urlParams = new URLSearchParams(window.location.search);
+                const urlProjectId = urlParams.get('project_id');
+                let projectId = urlProjectId;
+                
                 if (!projectId) {
-                    alert('Please select a project first');
-                    return;
+                    // Try from path (format: /chat/project/{uuid}/)
+                    const pathMatch = window.location.pathname.match(/\/chat\/project\/([a-f0-9-]+)\//);
+                    if (pathMatch && pathMatch[1]) {
+                        projectId = pathMatch[1];
+                    }
                 }
                 
-                const prdName = prompt('Enter a name for the new PRD:');
-                if (prdName && prdName.trim()) {
-                    // Send a message to create a new PRD
-                    const messageInput = document.getElementById('message-input');
-                    if (messageInput) {
-                        messageInput.value = `Create a new PRD named "${prdName.trim()}" for this project.`;
-                        // Trigger send button click
-                        const sendBtn = document.getElementById('send-button');
-                        if (sendBtn) sendBtn.click();
-                    }
+                if (projectId && selectedPrd) {
+                    console.log(`[ArtifactsLoader] PRD selection changed to: ${selectedPrd} for project: ${projectId}`);
+                    window.ArtifactsLoader.loadPRD(projectId, selectedPrd);
+                } else {
+                    console.error('[ArtifactsLoader] Could not get project ID or selected PRD', { projectId, selectedPrd });
                 }
             });
         }

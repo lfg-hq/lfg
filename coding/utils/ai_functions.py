@@ -41,7 +41,7 @@ def validate_project_id(project_id):
 async def get_project(project_id):
     """Get project by ID with proper error handling"""
     try:
-        return await sync_to_async(Project.objects.get)(id=project_id)
+        return await sync_to_async(Project.objects.get)(project_id=project_id)
     except Project.DoesNotExist:
         return None
 
@@ -49,7 +49,7 @@ async def get_project_with_relations(project_id, *relations):
     """Get project with select_related for avoiding additional queries"""
     try:
         return await sync_to_async(
-            lambda: Project.objects.select_related(*relations).get(id=project_id)
+            lambda: Project.objects.select_related(*relations).get(project_id=project_id)
         )()
     except Project.DoesNotExist:
         return None

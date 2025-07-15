@@ -148,7 +148,7 @@ def update_project(request, project_id):
         project.save()
         
         messages.success(request, "Project updated successfully!")
-        return redirect('projects:project_detail', project_id=project.id)
+        return redirect('projects:project_detail', project_id=project.project_id)
     
     # For GET requests, render the update form
     return render(request, 'projects/update_project.html', {

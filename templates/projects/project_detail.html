@@ -95,7 +95,7 @@
                         </a>
                         
                         {% if project.direct_conversations.all.count > 4 %}
-                        <a href="{% url 'projects:project_detail' project.id %}" class="btn btn-link">
+                        <a href="{% url 'projects:project_detail' project.project_id %}" class="btn btn-link">
                             View All ({{ project.direct_conversations.all.count }})
                         </a>
                         {% endif %}
