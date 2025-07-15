@@ -10,6 +10,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const savedState = localStorage.getItem('sidebarMinimized');
     const isInitiallyMinimized = savedState === 'true';
     
+    // Remove the initial state class
+    document.documentElement.classList.remove('sidebar-minimized-init');
+    
     // Initialize sidebar state
     if (isInitiallyMinimized) {
         sidebar.classList.add('minimized');
@@ -90,13 +93,34 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     
-    // Handle integrations button
-    const integrationsBtn = document.getElementById('integrations-btn');
-    if (integrationsBtn) {
-        integrationsBtn.addEventListener('click', (e) => {
+    // Handle integrations button - remove click handler since it's now a regular link
+    // The integrations button now properly navigates to the integrations page
+    
+    // Handle chat link click
+    const chatLink = document.querySelector('.chat-link');
+    if (chatLink) {
+        chatLink.addEventListener('click', async (e) => {
             e.preventDefault();
-            // You can add integration modal or redirect here
-            alert('Integrations page coming soon!');
+            
+            try {
+                // Fetch the latest conversation info
+                const response = await fetch('/api/latest-conversation/');
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Construct the URL
+                    let url = `/chat/project/${data.project_id}/`;
+                    if (data.conversation_id) {
+                        url += `?conversation_id=${data.conversation_id}`;
+                    }
+                    // Navigate to the URL
+                    window.location.href = url;
+                }
+            } catch (error) {
+                console.error('Error fetching latest conversation:', error);
+                // Fallback to chat index
+                window.location.href = '/chat/';
+            }
         });
     }
 });

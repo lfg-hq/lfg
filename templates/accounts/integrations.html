@@ -1,14 +1,11 @@
-{% extends "base.html" %}
+{% extends "accounts/base_with_sidebar.html" %}
 {% load static %}
 
-{% block title %}LFG Technologies - Integrations{% endblock %}
-
-{% block extra_css %}
-{% endblock %}
+{% block title %}Settings - LFG 🚀🚀{% endblock %}
 
 {% block content %}
-<main>
-  <h1>Integrations</h1>
+<div class="settings-container">
+  <h1>Settings</h1>
   
   <!-- Language Models Section -->
   <h2 class="section-heading">Language Models</h2>
@@ -236,7 +233,7 @@
     </div>
   </div>
   
-</main>
+</div>
 
 <script>
   // Toggle API key input forms

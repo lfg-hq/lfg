@@ -20,33 +20,11 @@
             
             <div class="form-group">
                 <label for="project-name" class="form-label">Project Name*</label>
-                <input type="text" id="project-name" name="name" class="form-control" required>
+                <input type="text" id="project-name" name="name" class="form-control" required autofocus>
             </div>
             
-            <div class="form-group">
-                <label for="project-description" class="form-label">Description (optional)</label>
-                <textarea id="project-description" name="description" class="form-control"></textarea>
-            </div>
-            
-            <div class="form-group">
-                <label class="form-label">Project Icon</label>
-                <input type="hidden" id="project-icon" name="icon" value="📋">
-                
-                <div class="emoji-picker">
-                    <div class="emoji-option selected">📋</div>
-                    <div class="emoji-option">📊</div>
-                    <div class="emoji-option">🚀</div>
-                    <div class="emoji-option">💡</div>
-                    <div class="emoji-option">📱</div>
-                    <div class="emoji-option">🌐</div>
-                    <div class="emoji-option">📈</div>
-                    <div class="emoji-option">🎯</div>
-                    <div class="emoji-option">🔍</div>
-                    <div class="emoji-option">⚙️</div>
-                    <div class="emoji-option">🎨</div>
-                    <div class="emoji-option">📝</div>
-                </div>
-            </div>
+            <input type="hidden" name="description" value="">
+            <input type="hidden" id="project-icon" name="icon" value="🚀">
             
             <div class="form-actions">
                 <button type="submit" class="btn btn-primary">Create Project</button>

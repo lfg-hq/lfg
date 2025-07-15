@@ -1,7 +1,7 @@
 import json
 import openai
 import os
-from django.shortcuts import render, get_object_or_404, redirect
+from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse, StreamingHttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
@@ -361,4 +361,32 @@ def available_models(request):
     return JsonResponse({
         'success': True,
         'models': models
-    }) 
+    })
+
+
+@login_required
+def latest_conversation(request):
+    """Get the latest conversation info as JSON."""
+    # Get the user's latest conversation
+    latest_conv = Conversation.objects.filter(
+        user=request.user
+    ).order_by('-updated_at').first()
+    
+    if latest_conv and latest_conv.project:
+        return JsonResponse({
+            'success': True,
+            'project_id': str(latest_conv.project.project_id),
+            'conversation_id': latest_conv.id
+        })
+    else:
+        # No conversations exist, return info to create one
+        # Get the user's latest project or default
+        project = request.user.projects.order_by('-updated_at').first()
+        if not project:
+            project = Project.get_or_create_default_project(request.user)
+        
+        return JsonResponse({
+            'success': True,
+            'project_id': str(project.project_id),
+            'conversation_id': None
+        }) 
