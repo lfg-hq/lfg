@@ -626,9 +626,6 @@ document.addEventListener('DOMContentLoaded', function() {
                                 selectorDropdown.innerHTML = prds.map(prd => 
                                     `<div class="prd-dropdown-option ${prd.name === prdName ? 'selected' : ''}" data-value="${prd.name}">
                                         <span class="prd-name">${prd.name}</span>
-                                        ${prd.name !== 'Main PRD' ? `<button class="prd-delete-btn" data-prd-name="${prd.name}" title="Delete PRD">
-                                            <i class="fas fa-trash"></i>
-                                        </button>` : ''}
                                     </div>`
                                 ).join('');
                             }
@@ -1019,9 +1016,6 @@ document.addEventListener('DOMContentLoaded', function() {
                                         selectorDropdown.innerHTML = prds.map(prd => 
                                             `<div class="prd-dropdown-option ${prd.name === prdName ? 'selected' : ''}" data-value="${prd.name}">
                                                 <span class="prd-name">${prd.name}</span>
-                                                ${prd.name !== 'Main PRD' ? `<button class="prd-delete-btn" data-prd-name="${prd.name}" title="Delete PRD">
-                                                    <i class="fas fa-trash"></i>
-                                                </button>` : ''}
                                             </div>`
                                         ).join('');
                                     }
@@ -4873,60 +4867,8 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
         
-        // Handle option selection and deletion
+        // Handle option selection
         document.addEventListener('click', function(e) {
-            // Handle PRD deletion
-            if (e.target.classList.contains('prd-delete-btn') || e.target.closest('.prd-delete-btn')) {
-                e.stopPropagation();
-                const deleteBtn = e.target.classList.contains('prd-delete-btn') ? e.target : e.target.closest('.prd-delete-btn');
-                const prdName = deleteBtn.getAttribute('data-prd-name');
-                
-                if (confirm(`Are you sure you want to delete the PRD "${prdName}"?`)) {
-                    // Get project ID
-                    const urlParams = new URLSearchParams(window.location.search);
-                    const urlProjectId = urlParams.get('project_id');
-                    let projectId = urlProjectId;
-                    
-                    if (!projectId) {
-                        const pathMatch = window.location.pathname.match(/\/chat\/project\/([a-f0-9-]+)\//);
-                        if (pathMatch && pathMatch[1]) {
-                            projectId = pathMatch[1];
-                        }
-                    }
-                    
-                    if (projectId && prdName) {
-                        // Delete the PRD
-                        fetch(`/projects/${projectId}/api/prd/?prd_name=${encodeURIComponent(prdName)}`, {
-                            method: 'DELETE',
-                            headers: {
-                                'X-CSRFToken': getCsrfToken()
-                            }
-                        })
-                        .then(response => response.json())
-                        .then(data => {
-                            if (data.success) {
-                                window.showToast(`PRD "${prdName}" deleted successfully`, 'success');
-                                
-                                // If we deleted the currently selected PRD, switch to Main PRD
-                                if (prdSelector && prdSelector.value === prdName) {
-                                    window.ArtifactsLoader.loadPRD(projectId, 'Main PRD');
-                                } else {
-                                    // Just refresh the current PRD to update the selector
-                                    window.ArtifactsLoader.loadPRD(projectId, prdSelector.value);
-                                }
-                            } else {
-                                window.showToast(`Error deleting PRD: ${data.error || 'Unknown error'}`, 'error');
-                            }
-                        })
-                        .catch(error => {
-                            console.error('[ArtifactsLoader] Error deleting PRD:', error);
-                            window.showToast('Error deleting PRD', 'error');
-                        });
-                    }
-                }
-                return;
-            }
-            
             // Handle PRD selection
             if (e.target.classList.contains('prd-dropdown-option') || e.target.closest('.prd-dropdown-option')) {
                 const optionEl = e.target.classList.contains('prd-dropdown-option') ? e.target : e.target.closest('.prd-dropdown-option');
