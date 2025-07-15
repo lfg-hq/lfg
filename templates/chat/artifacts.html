@@ -131,6 +131,86 @@
         #prd-selector:focus + .select-arrow {
             color: #c4b5fd !important;
         }
+        
+        /* Custom PRD Dropdown Styles */
+        .prd-selector-button:hover {
+            background: #222 !important;
+            border-color: #555 !important;
+        }
+        
+        .prd-selector-button.active {
+            border-color: #8b5cf6 !important;
+            box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2) !important;
+        }
+        
+        .prd-selector-button.active i {
+            transform: rotate(180deg);
+            color: #c4b5fd !important;
+        }
+        
+        .prd-selector-dropdown {
+            animation: dropdownSlide 0.2s ease-out;
+        }
+        
+        @keyframes dropdownSlide {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .prd-dropdown-option {
+            padding: 10px 16px;
+            color: #e2e8f0;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            border-radius: 4px;
+            margin: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .prd-dropdown-option:hover {
+            background: #2a2a2a;
+            color: #fff;
+            padding-left: 20px;
+        }
+        
+        .prd-dropdown-option.selected {
+            background: rgba(139, 92, 246, 0.2);
+            color: #c4b5fd;
+            font-weight: 500;
+        }
+        
+        .prd-dropdown-option.selected::after {
+            content: '✓';
+            color: #8b5cf6;
+            font-weight: bold;
+        }
+        
+        /* Scrollbar styling for dropdown */
+        .prd-selector-dropdown::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .prd-selector-dropdown::-webkit-scrollbar-track {
+            background: #1a1a1a;
+            border-radius: 3px;
+        }
+        
+        .prd-selector-dropdown::-webkit-scrollbar-thumb {
+            background: #444;
+            border-radius: 3px;
+        }
+        
+        .prd-selector-dropdown::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
     </style>
     
     <!-- Tabs Navigation - moved to top -->
@@ -173,18 +253,23 @@
                     <div class="prd-header">
                         <div class="prd-meta" style="display: flex; justify-content: space-between; align-items: flex-start;">
                             <div style="display: flex; flex-direction: column; gap: 8px;">
-                                <!-- PRD Selector with enhanced styling -->
-                                <div class="prd-selector-wrapper" style="position: relative;">
-                                    <select id="prd-selector" style="padding: 8px 10px; padding-right: 40px; background: #1a1a1a; border: 1px solid #444; border-radius: 8px; color: #e2e8f0; display: none; font-size: 14px; font-weight: 500; min-width: 200px; cursor: pointer; transition: all 0.2s ease; appearance: none; -webkit-appearance: none; -moz-appearance: none;">
+                                <!-- Custom PRD Selector -->
+                                <div class="prd-selector-wrapper" style="position: relative; display: none;">
+                                    <div id="prd-selector-button" class="prd-selector-button" style="padding: 8px 10px; padding-right: 40px; background: #1a1a1a; border: 1px solid #444; border-radius: 8px; color: #e2e8f0; font-size: 14px; font-weight: 500; min-width: 200px; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: space-between;">
+                                        <span id="prd-selector-text">Main PRD</span>
+                                        <i class="fas fa-chevron-down" style="font-size: 12px; color: #8b5cf6; position: absolute; right: 12px; transition: transform 0.2s ease, color 0.2s ease;"></i>
+                                    </div>
+                                    <!-- Custom dropdown menu -->
+                                    <div id="prd-selector-dropdown" class="prd-selector-dropdown" style="position: absolute; top: 100%; left: 0; right: 0; background: #1a1a1a; border: 1px solid #444; border-radius: 8px; margin-top: 4px; display: none; z-index: 1000; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3); max-height: 300px; overflow-y: auto;">
+                                        <!-- Options will be dynamically added here -->
+                                    </div>
+                                    <!-- Hidden select for form compatibility -->
+                                    <select id="prd-selector" style="display: none;">
                                         <option value="Main PRD">Main PRD</option>
                                     </select>
-                                    <!-- Custom dropdown arrow -->
-                                    <div class="select-arrow" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; color: #8b5cf6;">
-                                        <i class="fas fa-chevron-down" style="font-size: 12px;"></i>
-                                    </div>
                                 </div>
                                 <!-- Date/Status below the selector -->
-                                <span class="streaming-status" id="prd-streaming-status" style="color: #9ca3af; font-size: 12px; margin-left: 5px;>
+                                <span class="streaming-status" id="prd-streaming-status" style="color: #9ca3af; font-size: 12px; margin-left: 5px;">
                                     <i class="fas fa-circle-notch fa-spin"></i> Generating PRD...
                                 </span>
                             </div>

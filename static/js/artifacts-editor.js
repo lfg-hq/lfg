@@ -121,29 +121,57 @@
             this.editingStates.prd = true;
             this.originalContent.prd = currentContent;
             
-            const prdTab = document.getElementById('prd');
-            if (!prdTab) return;
+            const prdContainer = document.getElementById('prd-container');
+            if (!prdContainer) return;
             
-            prdTab.innerHTML = `
-                <div class="prd-container">
-                    <div class="prd-header">
-                        <h2>Product Requirement Document</h2>
-                        <div class="artifact-edit-controls">
-                            <div class="saving-indicator" id="prd-saving-indicator">
-                                <div class="spinner"></div>
-                                <span>Saving...</span>
-                            </div>
-                            <button class="artifact-edit-btn cancel" onclick="ArtifactsEditor.cancelPRDEdit()">
-                                <i class="fas fa-times"></i> Cancel
-                            </button>
-                            <button class="artifact-edit-btn save" onclick="ArtifactsEditor.savePRD(${projectId})">
-                                <i class="fas fa-save"></i> Save
-                            </button>
+            // Get existing PRD selector HTML if it exists
+            const prdMeta = prdContainer.querySelector('.prd-meta');
+            const existingSelectorHTML = prdMeta ? prdMeta.innerHTML : '';
+            
+            // Replace the PRD content area with editor
+            const streamingContainer = document.getElementById('prd-streaming-content');
+            if (streamingContainer) {
+                streamingContainer.innerHTML = `<textarea id="prd-editor" class="artifact-editor">${currentContent}</textarea>`;
+            }
+            
+            // Clear the actions container
+            const prdActionsContainer = prdContainer.querySelector('.prd-actions-container');
+            if (prdActionsContainer) {
+                prdActionsContainer.innerHTML = `
+                    <div class="artifact-edit-controls">
+                        <div class="saving-indicator" id="prd-saving-indicator">
+                            <div class="spinner"></div>
+                            <span>Saving...</span>
                         </div>
+                        <button class="artifact-edit-btn cancel" id="prd-cancel-btn">
+                            <i class="fas fa-times"></i> Cancel
+                        </button>
+                        <button class="artifact-edit-btn save" id="prd-save-btn">
+                            <i class="fas fa-save"></i> Save
+                        </button>
                     </div>
-                    <textarea id="prd-editor" class="artifact-editor">${currentContent}</textarea>
-                </div>
-            `;
+                `;
+                
+                // Add event listeners
+                const saveBtn = document.getElementById('prd-save-btn');
+                const cancelBtn = document.getElementById('prd-cancel-btn');
+                
+                if (saveBtn) {
+                    console.log('[ArtifactsEditor] Adding save button listener, projectId:', projectId);
+                    saveBtn.addEventListener('click', () => {
+                        console.log('[ArtifactsEditor] Save button clicked, projectId:', projectId);
+                        window.ArtifactsEditor.savePRD(projectId);
+                    });
+                } else {
+                    console.error('[ArtifactsEditor] Save button not found!');
+                }
+                
+                if (cancelBtn) {
+                    cancelBtn.addEventListener('click', () => {
+                        window.ArtifactsEditor.cancelPRDEdit();
+                    });
+                }
+            }
             
             // Focus on the editor
             setTimeout(() => {
@@ -197,17 +225,34 @@
         
         // Save PRD content
         savePRD: async function(projectId) {
-            console.log('[ArtifactsEditor] Saving PRD');
+            console.log('[ArtifactsEditor] Saving PRD, projectId:', projectId);
             const editor = document.getElementById('prd-editor');
             const savingIndicator = document.getElementById('prd-saving-indicator');
             
-            if (!editor || !projectId) return;
+            if (!editor) {
+                console.error('[ArtifactsEditor] PRD editor not found!');
+                return;
+            }
+            
+            if (!projectId) {
+                console.error('[ArtifactsEditor] Project ID is missing!');
+                return;
+            }
             
             const content = editor.value;
-            savingIndicator.classList.add('active');
+            if (savingIndicator) {
+                savingIndicator.classList.add('active');
+            }
+            
+            // Get the current PRD name from the selector if it exists
+            const prdSelector = document.getElementById('prd-selector');
+            const prdName = prdSelector ? prdSelector.value : 'Main PRD';
+            
+            console.log('[ArtifactsEditor] PRD content length:', content.length);
+            console.log('[ArtifactsEditor] PRD name:', prdName);
             
             try {
-                const response = await fetch(`/projects/${projectId}/api/prd/`, {
+                const response = await fetch(`/projects/${projectId}/api/prd/?prd_name=${encodeURIComponent(prdName)}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -224,45 +269,14 @@
                     
                     // Check if PRD is currently streaming
                     if (window.prdStreamingState && window.prdStreamingState.isStreaming) {
-                        console.log('[ArtifactsEditor] PRD is currently streaming, skipping HTML restoration');
+                        console.log('[ArtifactsEditor] PRD is currently streaming, skipping reload');
                         return;
                     }
                     
-                    // First restore the original HTML structure
-                    const prdTab = document.getElementById('prd');
-                    if (prdTab) {
-                        prdTab.innerHTML = `
-                            <!-- Empty state (shown by default) -->
-                            <div class="empty-state" id="prd-empty-state">
-                                <div class="empty-state-icon">
-                                    <i class="fas fa-file-alt"></i>
-                                </div>
-                                <div class="empty-state-text">
-                                    No PRD content available yet.
-                                </div>
-                            </div>
-                            
-                            <!-- PRD Container (hidden by default, shown during streaming) -->
-                            <div class="prd-container" id="prd-container" style="display: none;">
-                                <div class="prd-header">
-                                    <h2>Product Requirement Document</h2>
-                                    <div class="prd-meta" style="display: flex; justify-content: space-between; align-items: center;">
-                                        <span class="streaming-status" id="prd-streaming-status" style="color: #8b5cf6;">
-                                            <i class="fas fa-circle-notch fa-spin"></i> Generating PRD...
-                                        </span>
-                                    </div>
-                                </div>
-                                <div class="prd-streaming-container prd-content markdown-content" id="prd-streaming-content" style="color: #e2e8f0; padding: 20px;">
-                                    <!-- Content will be streamed here -->
-                                </div>
-                            </div>
-                        `;
-                    }
-                    
-                    // Reload the PRD content
+                    // Reload the PRD content with the correct PRD name
                     if (window.ArtifactsLoader && window.ArtifactsLoader.loadPRD) {
                         console.log('[ArtifactsEditor] Reloading PRD after save');
-                        window.ArtifactsLoader.loadPRD(projectId);
+                        window.ArtifactsLoader.loadPRD(projectId, prdName);
                     }
                 } else {
                     console.error('[ArtifactsEditor] Error saving PRD:', data.error);
@@ -272,7 +286,9 @@
                 console.error('[ArtifactsEditor] Error saving PRD:', error);
                 alert('Error saving PRD: ' + error.message);
             } finally {
-                savingIndicator.classList.remove('active');
+                if (savingIndicator) {
+                    savingIndicator.classList.remove('active');
+                }
             }
         },
         
@@ -325,47 +341,20 @@
             
             // Check if PRD is currently streaming
             if (window.prdStreamingState && window.prdStreamingState.isStreaming) {
-                console.log('[ArtifactsEditor] PRD is currently streaming, skipping HTML restoration');
+                console.log('[ArtifactsEditor] PRD is currently streaming, skipping reload');
                 return;
             }
             
-            // First restore the original HTML structure
-            const prdTab = document.getElementById('prd');
-            if (prdTab) {
-                prdTab.innerHTML = `
-                    <!-- Empty state (shown by default) -->
-                    <div class="empty-state" id="prd-empty-state">
-                        <div class="empty-state-icon">
-                            <i class="fas fa-file-alt"></i>
-                        </div>
-                        <div class="empty-state-text">
-                            No PRD content available yet.
-                        </div>
-                    </div>
-                    
-                    <!-- PRD Container (hidden by default, shown during streaming) -->
-                    <div class="prd-container" id="prd-container" style="display: none;">
-                        <div class="prd-header">
-                            <h2>Product Requirement Document</h2>
-                            <div class="prd-meta" style="display: flex; justify-content: space-between; align-items: center;">
-                                <span class="streaming-status" id="prd-streaming-status" style="color: #8b5cf6;">
-                                    <i class="fas fa-circle-notch fa-spin"></i> Generating PRD...
-                                </span>
-                            </div>
-                        </div>
-                        <div class="prd-streaming-container prd-content markdown-content" id="prd-streaming-content" style="color: #e2e8f0; padding: 20px;">
-                            <!-- Content will be streamed here -->
-                        </div>
-                    </div>
-                `;
-            }
+            // Get the current PRD name from the selector if it exists
+            const prdSelector = document.getElementById('prd-selector');
+            const prdName = prdSelector ? prdSelector.value : 'Main PRD';
             
             // Now reload the PRD content
             const projectId = window.ArtifactsLoader.getCurrentProjectId();
             console.log('[ArtifactsEditor] Project ID for cancel:', projectId);
             if (projectId && window.ArtifactsLoader && window.ArtifactsLoader.loadPRD) {
                 console.log('[ArtifactsEditor] Calling loadPRD to restore content');
-                window.ArtifactsLoader.loadPRD(projectId);
+                window.ArtifactsLoader.loadPRD(projectId, prdName);
             }
         },
         
