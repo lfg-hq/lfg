@@ -1257,33 +1257,42 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // For PRD and Implementation streaming, we should open the artifacts panel
             if (data.notification_type === 'prd_stream' || data.notification_type === 'implementation_stream') {
-                console.log(`${data.notification_type} detected - ensuring artifacts panel is open`);
+                console.log(`${data.notification_type} detected - checking if artifacts panel is open`);
                 
-                // Try multiple methods to ensure panel opens
-                if (window.ArtifactsPanel && typeof window.ArtifactsPanel.toggle === 'function') {
-                    console.log('Opening artifacts panel using ArtifactsPanel.toggle');
-                    try {
-                        window.ArtifactsPanel.toggle(true); // Force open
-                        panelOpenSuccess = true;
-                    } catch (err) {
-                        console.error('Error opening artifacts panel for PRD stream:', err);
+                // Check if panel is already open
+                const panel = document.getElementById('artifacts-panel');
+                const isPanelOpen = panel && panel.classList.contains('expanded');
+                
+                if (!isPanelOpen) {
+                    console.log('Panel is not open, opening it now');
+                    // Try multiple methods to ensure panel opens
+                    if (window.ArtifactsPanel && typeof window.ArtifactsPanel.toggle === 'function') {
+                        console.log('Opening artifacts panel using ArtifactsPanel.toggle');
+                        try {
+                            window.ArtifactsPanel.toggle(true); // Force open
+                            panelOpenSuccess = true;
+                        } catch (err) {
+                            console.error('Error opening artifacts panel for stream:', err);
+                        }
                     }
-                }
-                
-                // Also try direct DOM manipulation as backup
-                if (!panelOpenSuccess) {
-                    console.log('Trying direct DOM manipulation to open panel');
-                    const panel = document.getElementById('artifacts-panel');
-                    const appContainer = document.querySelector('.app-container');
-                    const button = document.getElementById('artifacts-button');
                     
-                    if (panel) {
-                        panel.classList.add('expanded');
-                        if (appContainer) appContainer.classList.add('artifacts-expanded');
-                        if (button) button.classList.add('active');
-                        panelOpenSuccess = true;
-                        console.log('Panel opened via direct DOM manipulation');
+                    // Also try direct DOM manipulation as backup
+                    if (!panelOpenSuccess) {
+                        console.log('Trying direct DOM manipulation to open panel');
+                        const appContainer = document.querySelector('.app-container');
+                        const button = document.getElementById('artifacts-button');
+                        
+                        if (panel) {
+                            panel.classList.add('expanded');
+                            if (appContainer) appContainer.classList.add('artifacts-expanded');
+                            if (button) button.classList.add('active');
+                            panelOpenSuccess = true;
+                            console.log('Panel opened via direct DOM manipulation');
+                        }
                     }
+                } else {
+                    console.log('Panel is already open, skipping toggle to prevent reload');
+                    panelOpenSuccess = true;
                 }
             }
 
@@ -1373,37 +1382,46 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Use mapped tab if original doesn't exist
                 const targetTab = tabMapping[data.notification_type] || data.notification_type;
                 
-                // Try the standard tab switching first
-                try {
-                    window.switchTab(targetTab);
-                    console.log(`Tab switched successfully to ${targetTab} using window.switchTab`);
-                } catch (err) {
-                    console.error(`Error switching tab to ${targetTab} with window.switchTab:`, err);
-                    
-                    // Try direct DOM manipulation as fallback
+                // Check if we're already on the target tab to avoid redundant switching during streaming
+                const currentActiveTab = document.querySelector('.tab-button.active')?.getAttribute('data-tab');
+                const isStreamingNotification = data.notification_type === 'prd_stream' || data.notification_type === 'implementation_stream';
+                
+                // Only switch tabs if we're not already on the target tab, or if it's not a streaming notification
+                if (currentActiveTab !== targetTab || !isStreamingNotification) {
+                    // Try the standard tab switching first
                     try {
-                        const tabButtons = document.querySelectorAll('.tab-button');
-                        const tabPanes = document.querySelectorAll('.tab-pane');
+                        window.switchTab(targetTab);
+                        console.log(`Tab switched successfully to ${targetTab} using window.switchTab`);
+                    } catch (err) {
+                        console.error(`Error switching tab to ${targetTab} with window.switchTab:`, err);
                         
-                        // Find the right tab using the mapped target
-                        const targetButton = document.querySelector(`.tab-button[data-tab="${targetTab}"]`);
-                        const targetPane = document.getElementById(targetTab);
-                        
-                        if (targetButton && targetPane) {
-                            // Remove active class from all tabs
-                            tabButtons.forEach(btn => btn.classList.remove('active'));
-                            tabPanes.forEach(pane => pane.classList.remove('active'));
+                        // Try direct DOM manipulation as fallback
+                        try {
+                            const tabButtons = document.querySelectorAll('.tab-button');
+                            const tabPanes = document.querySelectorAll('.tab-pane');
                             
-                            // Set active class on the target tab
-                            targetButton.classList.add('active');
-                            targetPane.classList.add('active');
-                            console.log(`Tab switched successfully to ${targetTab} using direct DOM manipulation`);
-                        } else {
-                            console.error(`Could not find tab elements for ${targetTab} (original: ${data.notification_type})`);
+                            // Find the right tab using the mapped target
+                            const targetButton = document.querySelector(`.tab-button[data-tab="${targetTab}"]`);
+                            const targetPane = document.getElementById(targetTab);
+                            
+                            if (targetButton && targetPane) {
+                                // Remove active class from all tabs
+                                tabButtons.forEach(btn => btn.classList.remove('active'));
+                                tabPanes.forEach(pane => pane.classList.remove('active'));
+                                
+                                // Set active class on the target tab
+                                targetButton.classList.add('active');
+                                targetPane.classList.add('active');
+                                console.log(`Tab switched successfully to ${targetTab} using direct DOM manipulation`);
+                            } else {
+                                console.error(`Could not find tab elements for ${targetTab} (original: ${data.notification_type})`);
+                            }
+                        } catch (domErr) {
+                            console.error('Error switching tab with direct DOM manipulation:', domErr);
                         }
-                    } catch (domErr) {
-                        console.error('Error switching tab with direct DOM manipulation:', domErr);
                     }
+                } else {
+                    console.log(`Already on ${targetTab} tab during streaming, skipping tab switch`);
                 }
                 
                 // Load the content for that tab if we have a project ID
@@ -1455,7 +1473,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                 window.ArtifactsLoader.streamPRDContent(
                                     data.content_chunk, 
                                     data.is_complete || false, 
-                                    projectIdForStreaming
+                                    projectIdForStreaming,
+                                    data.prd_name || 'Main PRD'
                                 );
                             } else {
                                 console.error('PRD stream: No project ID available for streaming!');

@@ -83,7 +83,7 @@
             <h2 class="mb-3">
                 Terminal{% if project %} - {{ project.name }}{% endif %}
                 <small class="ml-2">
-                    <a href="{% url 'projects:project_detail' project.id %}" class="btn btn-sm btn-outline-primary">
+                    <a href="{% url 'projects:project_detail' project.project_id %}" class="btn btn-sm btn-outline-primary">
                         <i class="fas fa-arrow-left"></i> Back to Project
                     </a>
                 </small>

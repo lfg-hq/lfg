@@ -49,10 +49,10 @@
                                 <i class="fas fa-ellipsis-v"></i>
                             </button>
                             <div class="dropdown-menu">
-                                <a href="{% url 'projects:update_project' item.project.id %}" class="dropdown-item">
+                                <a href="{% url 'projects:update_project' project.project_id %}" class="dropdown-item">
                                     <i class="fas fa-edit"></i> Edit
                                 </a>
-                                <form action="{% url 'projects:delete_project' item.project.id %}" method="post" style="margin: 0; padding: 0;">
+                                <form action="{% url 'projects:delete_project' project.project_id %}" method="post" style="margin: 0; padding: 0;">
                                     {% csrf_token %}
                                     <button type="submit" class="dropdown-item dropdown-item-danger delete-project-btn" data-project-name="{{ item.project.name }}">
                                         <i class="fas fa-trash-alt"></i> Delete

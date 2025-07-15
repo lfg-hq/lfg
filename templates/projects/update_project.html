@@ -9,7 +9,7 @@
             <i class="fas fa-edit"></i>
             Edit Project
         </h1>
-        <a href="{% url 'projects:project_detail' project.id %}" class="btn btn-outline">
+        <a href="{% url 'projects:project_detail' project.project_id %}" class="btn btn-outline">
             <i class="fas fa-arrow-left"></i> Back to Project
         </a>
     </div>
@@ -106,7 +106,7 @@
             
             <div class="form-actions">
                 <button type="submit" class="btn btn-primary">Update Project</button>
-                <a href="{% url 'projects:project_detail' project.id %}" class="btn btn-outline">Cancel</a>
+                <a href="{% url 'projects:project_detail' project.project_id %}" class="btn btn-outline">Cancel</a>
             </div>
         </form>
     </div>

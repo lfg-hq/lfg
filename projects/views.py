@@ -170,7 +170,7 @@ def update_project(request, project_id):
         project.save()
         
         messages.success(request, "Project updated successfully!")
-        return redirect('projects:project_detail', project_id=project.id)
+        return redirect('projects:project_detail', project_id=project.project_id)
     
     # For GET requests, render the update form
     return render(request, 'projects/update_project.html', {
@@ -228,15 +228,34 @@ def project_prd_api(request, project_id):
     """API view to get or update PRD for a project"""
     project = get_object_or_404(Project, project_id=project_id, owner=request.user)
     
-    # Get the PRD or create it if it doesn't exist
+    import json
+    
+    # Get PRD name from query params or default
+    prd_name = request.GET.get('prd_name', 'Main PRD')
+    
+    if request.method == 'GET' and 'list' in request.GET:
+        # List all PRDs for the project
+        prds = ProjectPRD.objects.filter(project=project).order_by('-updated_at')
+        prds_list = []
+        for prd in prds:
+            prds_list.append({
+                'id': prd.id,
+                'name': prd.name,
+                'is_active': prd.is_active,
+                'created_at': prd.created_at.strftime('%Y-%m-%d %H:%M'),
+                'updated_at': prd.updated_at.strftime('%Y-%m-%d %H:%M')
+            })
+        return JsonResponse({'prds': prds_list})
+    
+    # Get the PRD by name or create it if it doesn't exist
     prd, created = ProjectPRD.objects.get_or_create(
         project=project,
+        name=prd_name,
         defaults={'prd': ''}  # Default empty content if we're creating a new PRD
     )
     
     if request.method == 'POST':
         # Update PRD content
-        import json
         try:
             data = json.loads(request.body)
             prd.prd = data.get('content', '')
@@ -245,9 +264,24 @@ def project_prd_api(request, project_id):
             return JsonResponse({
                 'success': True,
                 'id': prd.id,
+                'name': prd.name,
                 'content': prd.prd,
-                'title': 'Product Requirement Document',
+                'title': f'PRD: {prd.name}',
                 'updated_at': prd.updated_at.strftime('%Y-%m-%d %H:%M') if prd.updated_at else None
+            })
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=400)
+    
+    elif request.method == 'DELETE':
+        # Delete PRD (but don't allow deleting the Main PRD)
+        if prd_name == 'Main PRD':
+            return JsonResponse({'success': False, 'error': 'Cannot delete the Main PRD'}, status=400)
+        
+        try:
+            prd.delete()
+            return JsonResponse({
+                'success': True,
+                'message': f'PRD "{prd_name}" deleted successfully'
             })
         except Exception as e:
             return JsonResponse({'success': False, 'error': str(e)}, status=400)
@@ -255,8 +289,9 @@ def project_prd_api(request, project_id):
     # Convert to JSON-serializable format
     prd_data = {
         'id': prd.id,
+        'name': prd.name,
         'content': prd.prd,
-        'title': 'Product Requirement Document',
+        'title': f'PRD: {prd.name}',
         'updated_at': prd.updated_at.strftime('%Y-%m-%d %H:%M') if prd.updated_at else None
     }
     
