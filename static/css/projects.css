@@ -254,26 +254,132 @@
 /* Empty state */
 .empty-state {
     text-align: center;
-    padding: 3rem 1rem;
+    padding: 4rem 1rem;
+    max-width: 600px;
+    margin: 0 auto;
 }
 
-.empty-state-icon {
-    font-size: 4rem;
-    color: var(--text-light);
-    opacity: 0.5;
-    margin-bottom: 1.5rem;
+/* Illustration */
+.empty-state-illustration {
+    position: relative;
+    margin-bottom: 3rem;
+    height: 180px;
+}
+
+.illustration-rocket {
+    font-size: 6rem;
+    background: linear-gradient(135deg, #a78bfa 0%, #c084fc 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: float 3s ease-in-out infinite;
+    position: relative;
+    z-index: 2;
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-10px); }
+}
+
+.illustration-particles {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 200px;
+    height: 200px;
+}
+
+.particle {
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    background: #a78bfa;
+    border-radius: 50%;
+    opacity: 0;
+    animation: particle-animation 3s infinite;
+}
+
+.particle:nth-child(1) {
+    top: 20%;
+    left: 20%;
+    animation-delay: 0s;
+}
+
+.particle:nth-child(2) {
+    top: 80%;
+    left: 80%;
+    animation-delay: 1s;
+}
+
+.particle:nth-child(3) {
+    top: 80%;
+    left: 20%;
+    animation-delay: 2s;
+}
+
+@keyframes particle-animation {
+    0% {
+        transform: translate(0, 0) scale(0);
+        opacity: 1;
+    }
+    100% {
+        transform: translate(100px, -100px) scale(1.5);
+        opacity: 0;
+    }
 }
 
 .empty-state-title {
-    font-size: 1.5rem;
-    font-weight: 600;
-    margin-bottom: 0.75rem;
+    font-size: 1.75rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+    color: var(--text-color);
 }
 
 .empty-state-text {
     color: var(--text-light);
-    max-width: 400px;
-    margin: 0 auto 2rem;
+    max-width: 500px;
+    margin: 0 auto 2.5rem;
+    font-size: 1.125rem;
+    line-height: 1.6;
+}
+
+/* Feature items */
+.empty-state-features {
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    margin-bottom: 3rem;
+    flex-wrap: wrap;
+}
+
+.feature-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text-light);
+    font-size: 0.875rem;
+}
+
+.feature-item i {
+    color: #a78bfa;
+    font-size: 1rem;
+}
+
+/* Large button */
+.btn-large {
+    padding: 0.875rem 2rem;
+    font-size: 1rem;
+    font-weight: 600;
+    gap: 0.75rem;
+    box-shadow: 0 4px 14px rgba(167, 139, 250, 0.3);
+    transition: all 0.3s ease;
+}
+
+.btn-large:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(167, 139, 250, 0.4);
 }
 
 /* Project detail page */

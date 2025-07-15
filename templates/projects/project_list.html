@@ -66,15 +66,37 @@
         </div>
     {% else %}
         <div class="empty-state">
-            <div class="empty-state-icon">
-                <i class="fas fa-folder-open"></i>
+            <div class="empty-state-illustration">
+                <div class="illustration-rocket">
+                    <i class="fas fa-rocket"></i>
+                </div>
+                <div class="illustration-particles">
+                    <span class="particle"></span>
+                    <span class="particle"></span>
+                    <span class="particle"></span>
+                </div>
             </div>
-            <h2 class="empty-state-title">No projects yet</h2>
+            <h2 class="empty-state-title">Ready to Launch Your First Project?</h2>
             <div class="empty-state-text">
-                Create your first project to start organizing your work with LFG.
+                Transform your ideas into reality with LFG's AI-powered development platform. 
+                Start building something amazing today.
             </div>
-            <button class="btn btn-primary" id="open-create-modal-empty">
-                <i class="fas fa-plus"></i> Create Your First Project
+            <div class="empty-state-features">
+                <div class="feature-item">
+                    <i class="fas fa-magic"></i>
+                    <span>AI-Powered Development</span>
+                </div>
+                <div class="feature-item">
+                    <i class="fas fa-bolt"></i>
+                    <span>10x Faster Delivery</span>
+                </div>
+                <div class="feature-item">
+                    <i class="fas fa-code-branch"></i>
+                    <span>Smart Code Generation</span>
+                </div>
+            </div>
+            <button class="btn btn-primary btn-large" id="open-create-modal-empty">
+                <i class="fas fa-rocket"></i> Create Your First Project
             </button>
         </div>
     {% endif %}
