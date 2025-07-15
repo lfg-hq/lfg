@@ -16,6 +16,15 @@
 </head>
 <body data-user-authenticated="{% if user.is_authenticated %}true{% else %}false{% endif %}" 
       >
+    <script>
+        // Apply sidebar state immediately to prevent flicker
+        (function() {
+            const savedState = localStorage.getItem('sidebarMinimized');
+            if (savedState === 'true') {
+                document.documentElement.classList.add('sidebar-minimized-init');
+            }
+        })();
+    </script>
     <div class="app-container">
         {% include 'includes/sidebar.html' with show_conversations=True %}
         

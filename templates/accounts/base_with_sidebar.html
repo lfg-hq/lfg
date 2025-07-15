@@ -15,6 +15,15 @@
     {% block extra_css %}{% endblock %}
 </head>
 <body>
+    <script>
+        // Apply sidebar state immediately to prevent flicker
+        (function() {
+            const savedState = localStorage.getItem('sidebarMinimized');
+            if (savedState === 'true') {
+                document.documentElement.classList.add('sidebar-minimized-init');
+            }
+        })();
+    </script>
     <div class="app-container">
         {% include 'includes/sidebar.html' with show_conversations=False %}
         

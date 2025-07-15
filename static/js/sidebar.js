@@ -10,6 +10,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const savedState = localStorage.getItem('sidebarMinimized');
     const isInitiallyMinimized = savedState === 'true';
     
+    // Remove the initial state class
+    document.documentElement.classList.remove('sidebar-minimized-init');
+    
     // Initialize sidebar state
     if (isInitiallyMinimized) {
         sidebar.classList.add('minimized');

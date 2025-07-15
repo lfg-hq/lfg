@@ -8,6 +8,21 @@
     box-shadow: none !important;
 }
 
+/* Initial state to prevent flicker */
+.sidebar-minimized-init .sidebar {
+    width: 60px !important;
+}
+
+.sidebar-minimized-init .chat-container,
+.sidebar-minimized-init .main-content-with-sidebar {
+    margin-left: 60px !important;
+    width: calc(100% - 60px) !important;
+}
+
+.sidebar-minimized-init .app-container {
+    transition: none !important;
+}
+
 /* Base sidebar */
 .sidebar {
     position: fixed !important;
@@ -146,6 +161,11 @@
     margin-bottom: 2px !important;
     transition: all 0.15s ease !important;
     line-height: 20px !important;
+}
+
+/* Prevent transition flicker on click */
+.nav-link:active {
+    transition: none !important;
 }
 
 .nav-link:hover {
@@ -504,6 +524,11 @@
 .sidebar.minimized .nav-link {
     justify-content: center !important;
     padding: 10px !important;
+}
+
+/* Prevent hover flicker in minimized state */
+.sidebar.minimized .nav-link:hover {
+    transition-duration: 0s !important;
 }
 
 /* User info in minimized state */
