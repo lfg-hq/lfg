@@ -366,6 +366,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'sender': event['sender']
         }))
     
+    async def token_update_notification(self, event):
+        """
+        Send token usage update notification to WebSocket
+        """
+        await self.send(text_data=json.dumps({
+            'type': 'token_usage_updated'
+        }))
+    
     async def ai_response_chunk(self, event):
         """
         Send AI response chunk to WebSocket
@@ -729,6 +737,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             'provider': provider_name,
                             'project_id': project_id
                         }))
+                        
+                    # Send token usage update notification
+                    await self.send(text_data=json.dumps({
+                        'type': 'token_usage_updated'
+                    }))
                 else:
                     # For stopped generation, just send conversation metadata without creating a new message
                     if hasattr(self, 'using_groups') and self.using_groups:
@@ -791,6 +804,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             'conversation_id': self.conversation.id if self.conversation else None,
                             'provider': provider_name,
                             'project_id': project_id
+                        }
+                    )
+                    
+                    # Send token usage update notification for group sends
+                    await self.channel_layer.group_send(
+                        self.room_group_name,
+                        {
+                            'type': 'token_update_notification'
                         }
                     )
                 else:
