@@ -845,6 +845,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     hideStopButton();
                     break;
                     
+                case 'token_usage_updated':
+                    // Update the daily token usage display
+                    if (window.updateDailyTokens) {
+                        window.updateDailyTokens();
+                    }
+                    break;
+                    
                 default:
                     console.log('Unknown message type:', data.type);
             }

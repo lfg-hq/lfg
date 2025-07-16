@@ -12,6 +12,11 @@ from django.contrib.auth.decorators import login_required
 from projects.models import Project
 from django.utils.decorators import method_decorator
 from django.views import View
+from django.utils import timezone
+from datetime import datetime, time
+from django.db.models import Sum
+from accounts.models import TokenUsage
+from accounts.utils import get_daily_token_usage
 
 
 @login_required
@@ -389,4 +394,26 @@ def latest_conversation(request):
             'success': True,
             'project_id': str(project.project_id),
             'conversation_id': None
-        }) 
+        })
+
+
+@login_required
+def daily_token_usage(request):
+    """Get daily token usage for the current user."""
+    # Get today's date
+    today = timezone.now().date()
+    today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_end = today_start + timezone.timedelta(days=1)
+    
+    # Get today's token usage directly
+    daily_tokens = TokenUsage.objects.filter(
+        user=request.user,
+        timestamp__gte=today_start,
+        timestamp__lt=today_end
+    ).aggregate(total=Sum('total_tokens'))['total'] or 0
+    
+    return JsonResponse({
+        'success': True,
+        'tokens': daily_tokens,
+        'date': today.isoformat()
+    }) 

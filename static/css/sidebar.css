@@ -193,6 +193,79 @@
     flex-shrink: 0 !important;
 }
 
+/* Token display specific styling */
+.nav-link.token-display {
+    cursor: default !important;
+    background: transparent !important;
+    border: none !important;
+    pointer-events: none !important;
+    margin: 5px !important;
+}
+
+.nav-link.token-display:hover {
+    background: transparent !important;
+}
+
+.nav-link.token-display i {
+    color: rgba(255, 255, 255, 0.4) !important;
+    font-size: 16px !important;
+}
+
+.nav-link.token-display .nav-text {
+    display: flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+}
+
+#daily-tokens {
+    font-weight: 400 !important;
+    color: rgba(255, 255, 255, 0.5) !important;
+    font-size: 10px !important;
+}
+
+.token-label {
+    font-size: 9px !important;
+    opacity: 0.6 !important;
+    color: rgba(255, 255, 255, 0.4) !important;
+}
+
+/* Token display in minimized sidebar */
+.sidebar.minimized .nav-link.token-display {
+    background: transparent !important;
+    border: none !important;
+    justify-content: center !important;
+    padding: 10px !important;
+}
+
+.sidebar.minimized .token-label {
+    display: none !important;
+}
+
+.sidebar.minimized #daily-tokens {
+    font-size: 10px !important;
+}
+
+/* Hide minimized tokens by default */
+.minimized-tokens {
+    display: none !important;
+}
+
+/* Show minimized tokens when sidebar is minimized */
+.sidebar.minimized .minimized-tokens {
+    display: block !important;
+    font-size: 9px !important;
+    color: rgba(255, 255, 255, 0.4) !important;
+    font-weight: 400 !important;
+    text-align: center !important;
+    margin-top: 1px !important;
+}
+
+/* Adjust token display layout when minimized */
+.sidebar.minimized .nav-link.token-display {
+    flex-direction: column !important;
+    gap: 2px !important;
+}
+
 /* Conversations section */
 .conversations-section {
     flex: 1 !important;
@@ -312,7 +385,7 @@
 
 /* Bottom navigation */
 .bottom-nav {
-    padding: 0 0 8px 0 !important;
+    padding: 15px 12px 8px 12px !important;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
     margin-bottom: 0 !important;
 }

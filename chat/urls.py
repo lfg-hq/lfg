@@ -1,6 +1,6 @@
 from django.urls import path
 from . import views
-from .views.main import user_agent_role, user_model_selection, available_models, latest_conversation
+from .views.main import user_agent_role, user_model_selection, available_models, latest_conversation, daily_token_usage
 
 
 urlpatterns = [
@@ -24,4 +24,7 @@ urlpatterns = [
     
     # Latest conversation API
     path('api/latest-conversation/', latest_conversation, name='latest_conversation'),
+    
+    # Daily token usage API
+    path('api/daily-token-usage/', daily_token_usage, name='daily_token_usage'),
 ] 
