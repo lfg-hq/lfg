@@ -845,6 +845,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     hideStopButton();
                     break;
                     
+                case 'token_usage_updated':
+                    // Update the daily token usage display
+                    if (window.updateDailyTokens) {
+                        window.updateDailyTokens();
+                    }
+                    break;
+                    
                 default:
                     console.log('Unknown message type:', data.type);
             }
@@ -3381,7 +3388,6 @@ document.addEventListener('DOMContentLoaded', () => {
         // Create sleek HTML structure
         conversationItem.innerHTML = `
             <div class="conversation-title" title="${conversation.title}">${title}</div>
-            <span class="conversation-time">${timeStr}</span>
             <button class="delete-conversation" title="Delete">
                 <i class="fas fa-trash"></i>
             </button>

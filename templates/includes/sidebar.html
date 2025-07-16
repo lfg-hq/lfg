@@ -37,10 +37,14 @@
     </div>
     <div class="sidebar-bottom-content">
         <div class="sidebar-nav bottom-nav">
-            <a href="{% url 'settings' %}" class="nav-link{% if request.resolver_match.url_name == 'settings' or request.resolver_match.url_name == 'integrations' %} active{% endif %}" title="Settings">
-                <i class="fas fa-cog"></i>
-                <span class="nav-text">Settings</span>
-            </a>
+            <div class="nav-link token-display" title="Tokens Used Today">
+                <i class="fas fa-chart-line"></i>
+                <span class="nav-text">
+                    <span id="daily-tokens">0</span>
+                    <span class="token-label">tokens today</span>
+                </span>
+                <span class="minimized-tokens" id="minimized-tokens">0</span>
+            </div>
         </div>
         <div class="user-info" id="user-info">
             {% if user.is_authenticated %}
@@ -61,6 +65,10 @@
                     <a href="{% url 'profile' %}" class="dropdown-item">
                         <i class="fas fa-user"></i>
                         <span>Profile</span>
+                    </a>
+                    <a href="{% url 'settings' %}" class="dropdown-item">
+                        <i class="fas fa-cog"></i>
+                        <span>Settings</span>
                     </a>
                     <div class="dropdown-divider"></div>
                     <a href="{% url 'logout' %}" class="dropdown-item">

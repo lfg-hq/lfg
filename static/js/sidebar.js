@@ -123,4 +123,46 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+    
+    // Format number to K, M notation
+    function formatTokenCount(num) {
+        if (num >= 1000000) {
+            return (num / 1000000).toFixed(num >= 10000000 ? 0 : 1) + 'M';
+        } else if (num >= 1000) {
+            return (num / 1000).toFixed(num >= 10000 ? 0 : 1) + 'K';
+        }
+        return num.toString();
+    }
+
+    // Fetch and update daily token usage
+    async function updateDailyTokens() {
+        try {
+            const response = await fetch('/api/daily-token-usage/');
+            const data = await response.json();
+            
+            if (data.success) {
+                const tokenElement = document.getElementById('daily-tokens');
+                const minimizedTokenElement = document.getElementById('minimized-tokens');
+                
+                if (tokenElement || minimizedTokenElement) {
+                    const formattedTokens = formatTokenCount(data.tokens);
+                    
+                    if (tokenElement) {
+                        tokenElement.textContent = formattedTokens;
+                    }
+                    if (minimizedTokenElement) {
+                        minimizedTokenElement.textContent = formattedTokens;
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching daily token usage:', error);
+        }
+    }
+    
+    // Update tokens on page load
+    updateDailyTokens();
+    
+    // Export the function so it can be called from other scripts
+    window.updateDailyTokens = updateDailyTokens;
 });

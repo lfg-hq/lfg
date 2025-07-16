@@ -193,6 +193,79 @@
     flex-shrink: 0 !important;
 }
 
+/* Token display specific styling */
+.nav-link.token-display {
+    cursor: default !important;
+    background: transparent !important;
+    border: none !important;
+    pointer-events: none !important;
+    margin: 5px !important;
+}
+
+.nav-link.token-display:hover {
+    background: transparent !important;
+}
+
+.nav-link.token-display i {
+    color: rgba(255, 255, 255, 0.4) !important;
+    font-size: 16px !important;
+}
+
+.nav-link.token-display .nav-text {
+    display: flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+}
+
+#daily-tokens {
+    font-weight: 400 !important;
+    color: rgba(255, 255, 255, 0.5) !important;
+    font-size: 10px !important;
+}
+
+.token-label {
+    font-size: 9px !important;
+    opacity: 0.6 !important;
+    color: rgba(255, 255, 255, 0.4) !important;
+}
+
+/* Token display in minimized sidebar */
+.sidebar.minimized .nav-link.token-display {
+    background: transparent !important;
+    border: none !important;
+    justify-content: center !important;
+    /* padding: 10px !important; */
+}
+
+.sidebar.minimized .token-label {
+    display: none !important;
+}
+
+.sidebar.minimized #daily-tokens {
+    font-size: 10px !important;
+}
+
+/* Hide minimized tokens by default */
+.minimized-tokens {
+    display: none !important;
+}
+
+/* Show minimized tokens when sidebar is minimized */
+.sidebar.minimized .minimized-tokens {
+    display: block !important;
+    font-size: 9px !important;
+    color: rgba(255, 255, 255, 0.4) !important;
+    font-weight: 400 !important;
+    text-align: center !important;
+    margin-top: 1px !important;
+}
+
+/* Adjust token display layout when minimized */
+.sidebar.minimized .nav-link.token-display {
+    flex-direction: column !important;
+    gap: 2px !important;
+}
+
 /* Conversations section */
 .conversations-section {
     flex: 1 !important;
@@ -220,17 +293,19 @@
 
 /* Conversation items */
 .conversation-item {
-    padding: 8px 12px !important;
-    margin-bottom: 2px !important;
+    padding: 5px 12px !important;
+    padding-right: 8px !important;
+    margin-bottom: 1px !important;
     margin-left: 0 !important;
     margin-right: 0 !important;
     border-radius: 8px !important;
     cursor: pointer !important;
     display: flex !important;
     align-items: center !important;
+    justify-content: space-between !important;
     gap: 8px !important;
     color: rgba(255, 255, 255, 0.7) !important;
-    font-size: 15px !important;
+    font-size: 13px !important;
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
@@ -261,26 +336,24 @@
     white-space: nowrap !important;
 }
 
-.conversation-time {
-    font-size: 13px !important;
-    color: rgba(255, 255, 255, 0.4) !important;
-    margin-left: auto !important;
-}
 
-.delete-conversation {
+.conversation-item .delete-conversation {
     opacity: 0 !important;
-    padding: 4px 6px !important;
+    visibility: hidden !important;
+    padding: 4px 8px !important;
     background: transparent !important;
     border: none !important;
     color: rgba(255, 255, 255, 0.4) !important;
     cursor: pointer !important;
     font-size: 12px !important;
-    transition: opacity 0.1s ease !important;
+    transition: opacity 0.2s ease, visibility 0.2s ease !important;
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
     line-height: 1 !important;
     vertical-align: middle !important;
+    margin-left: auto !important;
+    flex-shrink: 0 !important;
 }
 
 .delete-conversation i {
@@ -300,6 +373,7 @@
 
 .conversation-item:hover .delete-conversation {
     opacity: 1 !important;
+    visibility: visible !important;
 }
 
 /* User info section */
@@ -312,7 +386,7 @@
 
 /* Bottom navigation */
 .bottom-nav {
-    padding: 0 0 8px 0 !important;
+    padding: 15px 12px 0px 12px !important;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
     margin-bottom: 0 !important;
 }
