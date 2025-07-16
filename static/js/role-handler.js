@@ -184,7 +184,7 @@ class RoleHandler {
                 const data = await response.json();
                 if (data.success) {
                     console.log('Role updated successfully:', data.message);
-                    this.showSuccessMessage(data.message);
+                    // this.showSuccessMessage(data.message);
                 } else {
                     console.error('Failed to update role:', data.error);
                     this.showErrorMessage(data.error);

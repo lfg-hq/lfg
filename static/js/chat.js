@@ -2894,17 +2894,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 statusElement.className = 'connection-status warning';
                 break;
                 
-            case 'connected':
-                statusElement.innerHTML = `
-                    <i class="fas fa-check-circle"></i>
-                    <span>Connected</span>
-                `;
-                statusElement.className = 'connection-status success';
-                setTimeout(() => {
-                    statusElement.classList.add('fade-out');
-                    setTimeout(() => statusElement.remove(), 500);
-                }, 3000);
-                break;
+            // case 'connected':
+            //     statusElement.innerHTML = `
+            //         <i class="fas fa-check-circle"></i>
+            //         <span>Connected</span>
+            //     `;
+            //     statusElement.className = 'connection-status success';
+            //     setTimeout(() => {
+            //         statusElement.classList.add('fade-out');
+            //         setTimeout(() => statusElement.remove(), 500);
+            //     }, 3000);
+            //     break;
         }
     }
     
