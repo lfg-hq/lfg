@@ -66,7 +66,7 @@ class ModelHandler {
                 const data = await response.json();
                 if (data.success) {
                     console.log('Model updated successfully:', data.message);
-                    this.showSuccessMessage(data.message);
+                    // this.showSuccessMessage(data.message);
                 } else {
                     console.error('Failed to update model:', data.error);
                     this.showErrorMessage(data.error);
