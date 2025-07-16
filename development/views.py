@@ -7,7 +7,7 @@ import subprocess
 import shutil
 from development.models import DockerSandbox, KubernetesPod
 from django.db.models import Q
-from .docker.docker_utils import get_sandbox_by_project_id
+# from .docker.docker_utils import get_sandbox_by_project_id
 from development.k8s_manager.manage_pods import manage_kubernetes_pod, execute_command_in_pod, delete_kubernetes_pod, get_pod_service_details, get_k8s_api_client
 import time
 import logging
@@ -548,75 +548,75 @@ def rename_item(request):
     
     return JsonResponse({'error': 'POST request expected'}, status=400)
 
-@csrf_exempt
-def get_sandbox_info(request):
-    """
-    API endpoint to get information about a sandbox, including its port
-    """
-    if request.method == 'POST':
-        data = json.loads(request.body)
-        project_id = data.get('project_id')
-        conversation_id = data.get('conversation_id')
+# @csrf_exempt
+# def get_sandbox_info(request):
+#     """
+#     API endpoint to get information about a sandbox, including its port
+#     """
+#     if request.method == 'POST':
+#         data = json.loads(request.body)
+#         project_id = data.get('project_id')
+#         conversation_id = data.get('conversation_id')
         
-        # Build query to find matching sandbox
-        query = Q(status='running')
-        if project_id:
-            query &= Q(project_id=project_id)
-        elif conversation_id:
-            query &= Q(conversation_id=conversation_id)
-        else:
-            return JsonResponse({'error': 'Either project_id or conversation_id must be provided'}, status=400)
+#         # Build query to find matching sandbox
+#         query = Q(status='running')
+#         if project_id:
+#             query &= Q(project_id=project_id)
+#         elif conversation_id:
+#             query &= Q(conversation_id=conversation_id)
+#         else:
+#             return JsonResponse({'error': 'Either project_id or conversation_id must be provided'}, status=400)
         
-        # Get the sandbox record
-        sandbox = DockerSandbox.objects.filter(query).first()
-        if not sandbox:
-            return JsonResponse({'error': 'No active sandbox found for the given project or conversation'}, status=404)
+#         # Get the sandbox record
+#         sandbox = DockerSandbox.objects.filter(query).first()
+#         if not sandbox:
+#             return JsonResponse({'error': 'No active sandbox found for the given project or conversation'}, status=404)
         
-        # Get port mappings for this sandbox
-        port_mappings = []
+#         # Get port mappings for this sandbox
+#         port_mappings = []
         
-        # Add the main port from the sandbox model if it exists
-        if sandbox.port is not None:
-            port_mappings.append({
-                'container_port': 8000,  # Default web server port
-                'host_port': sandbox.port,
-                'is_primary': True
-            })
+#         # Add the main port from the sandbox model if it exists
+#         if sandbox.port is not None:
+#             port_mappings.append({
+#                 'container_port': 8000,  # Default web server port
+#                 'host_port': sandbox.port,
+#                 'is_primary': True
+#             })
             
-        # Add all port mappings from the related DockerPortMapping model
-        for mapping in sandbox.port_mappings.all():
-            # Check if this mapping is already included
-            if not any(pm.get('host_port') == mapping.host_port for pm in port_mappings):
-                port_mappings.append({
-                    'container_port': mapping.container_port,
-                    'host_port': mapping.host_port,
-                    'is_primary': False
-                })
+#         # Add all port mappings from the related DockerPortMapping model
+#         for mapping in sandbox.port_mappings.all():
+#             # Check if this mapping is already included
+#             if not any(pm.get('host_port') == mapping.host_port for pm in port_mappings):
+#                 port_mappings.append({
+#                     'container_port': mapping.container_port,
+#                     'host_port': mapping.host_port,
+#                     'is_primary': False
+#                 })
         
-        # If we have no port mappings but sandbox is running, add a default one
-        # This is a fallback for older sandboxes that might not have explicit mappings
-        if not port_mappings and sandbox.status == 'running':
-            # Try to get port from Docker directly using the docker_utils module
-            try:
-                sandbox_info = get_sandbox_by_project_id(project_id or "")
-                if sandbox_info and sandbox_info.get('port'):
-                    port_mappings.append({
-                        'container_port': 8000,
-                        'host_port': sandbox_info['port'],
-                        'is_primary': True
-                    })
-            except Exception as e:
-                print(f"Error getting sandbox info from Docker: {e}")
+#         # If we have no port mappings but sandbox is running, add a default one
+#         # This is a fallback for older sandboxes that might not have explicit mappings
+#         if not port_mappings and sandbox.status == 'running':
+#             # Try to get port from Docker directly using the docker_utils module
+#             try:
+#                 sandbox_info = get_sandbox_by_project_id(project_id or "")
+#                 if sandbox_info and sandbox_info.get('port'):
+#                     port_mappings.append({
+#                         'container_port': 8000,
+#                         'host_port': sandbox_info['port'],
+#                         'is_primary': True
+#                     })
+#             except Exception as e:
+#                 print(f"Error getting sandbox info from Docker: {e}")
         
-        # Return sandbox information including port
-        return JsonResponse({
-            'sandbox_id': sandbox.id,
-            'status': sandbox.status,
-            'port': sandbox.port,  # Include the main port directly for backward compatibility
-            'port_mappings': port_mappings
-        })
+#         # Return sandbox information including port
+#         return JsonResponse({
+#             'sandbox_id': sandbox.id,
+#             'status': sandbox.status,
+#             'port': sandbox.port,  # Include the main port directly for backward compatibility
+#             'port_mappings': port_mappings
+#         })
     
-    return JsonResponse({'error': 'POST request expected'}, status=400)
+#     return JsonResponse({'error': 'POST request expected'}, status=400)
 
 @csrf_exempt
 def get_k8s_file_tree(request):

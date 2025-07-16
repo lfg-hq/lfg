@@ -2495,14 +2495,25 @@ async def save_prd_from_stream(prd_content, project_id, prd_name=None):
     
     # Clean up any residual artifacts
     prd_content = prd_content.strip()
-    # Remove leading '>' if present
+    
+    # Remove leading '>' if present (but preserve line breaks)
     if prd_content.startswith('>'):
-        prd_content = prd_content[1:].strip()
-    # Remove any trailing tag fragments
+        prd_content = prd_content[1:].lstrip(' \t')  # Only strip spaces and tabs, not newlines
+    
+    # Remove any trailing tag fragments more carefully
     if '</lfg-prd' in prd_content:
-        prd_content = prd_content[:prd_content.rfind('</lfg-prd')].strip()
-    if '<lfg-prd>' in prd_content:
-        prd_content = prd_content[prd_content.rfind('<lfg-prd>'):].strip()
+        # Find the last occurrence and remove everything from there
+        last_tag_pos = prd_content.rfind('</lfg-prd')
+        prd_content = prd_content[:last_tag_pos].rstrip()
+    
+    # Remove opening tag if it somehow got included
+    if '<lfg-prd' in prd_content:
+        # Find the tag and remove it
+        import re
+        prd_content = re.sub(r'<lfg-prd[^>]*>', '', prd_content, count=1).lstrip()
+    
+    # Ensure the content is not empty after cleaning
+    prd_content = prd_content.strip()
     
     # Set default name if not provided
     if not prd_name:

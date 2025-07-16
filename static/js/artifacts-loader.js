@@ -720,7 +720,44 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     // Render the PRD content
                     if (streamingContent) {
-                        streamingContent.innerHTML = typeof marked !== 'undefined' ? marked.parse(prdContent) : prdContent;
+                        let parsedContent = prdContent;
+                        
+                        // Ensure marked is loaded and configured
+                        if (typeof marked !== 'undefined') {
+                            try {
+                                // Configure marked if not already done
+                                if (!window.markedConfigured) {
+                                    marked.setOptions({
+                                        gfm: true,          // Enable GitHub Flavored Markdown
+                                        breaks: true,       // Add <br> on line breaks
+                                        headerIds: true,    // Add IDs to headers
+                                        mangle: false,      // Don't mangle header IDs
+                                        tables: true,       // Enable table support
+                                        smartLists: true,   // Improve behavior of lists
+                                        xhtml: false        // Don't use XHTML compatible tags
+                                    });
+                                    window.markedConfigured = true;
+                                    console.log('[ArtifactsLoader] Marked.js configured for PRD rendering');
+                                }
+                                
+                                parsedContent = marked.parse(prdContent);
+                                console.log('[ArtifactsLoader] PRD markdown parsed successfully');
+                            } catch (e) {
+                                console.error('[ArtifactsLoader] Error parsing PRD markdown:', e);
+                                // Fallback to basic line break conversion
+                                parsedContent = prdContent
+                                    .replace(/##/g, '\n##')
+                                    .replace(/\n/g, '<br>');
+                            }
+                        } else {
+                            console.warn('[ArtifactsLoader] Marked.js not available for PRD, using fallback rendering');
+                            // Basic fallback rendering
+                            parsedContent = prdContent
+                                .replace(/##/g, '\n##')
+                                .replace(/\n/g, '<br>');
+                        }
+                        
+                        streamingContent.innerHTML = parsedContent;
                     }
                     
                     // Clear streaming state since we're loading saved content
@@ -816,6 +853,13 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log(`[ArtifactsLoader] streamPRDContent called with chunk length: ${contentChunk ? contentChunk.length : 0}, isComplete: ${isComplete}`);
             console.log(`[ArtifactsLoader] Content chunk preview: ${contentChunk ? contentChunk.substring(0, 100) : 'null/undefined'}...`);
             console.log(`[ArtifactsLoader] Project ID: ${projectId}, PRD Name: ${prdName}`);
+            
+            // Debug: Show if content has line breaks
+            if (contentChunk) {
+                const lineBreakCount = (contentChunk.match(/\n/g) || []).length;
+                console.log(`[ArtifactsLoader] Line breaks in chunk: ${lineBreakCount}`);
+                console.log(`[ArtifactsLoader] Raw chunk (first 200 chars):`, JSON.stringify(contentChunk.substring(0, 200)));
+            }
             
             // CONSOLE STREAMING OUTPUT IN ARTIFACTS LOADER
             console.log('\n' + '='.repeat(80));
@@ -959,9 +1003,42 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // For better streaming experience, we'll render the full content each time
                 // This ensures markdown formatting is properly applied across chunks
-                const fullParsedContent = typeof marked !== 'undefined' ? 
-                    marked.parse(window.prdStreamingState.fullContent) : 
-                    window.prdStreamingState.fullContent;
+                let fullParsedContent = window.prdStreamingState.fullContent;
+                
+                // Ensure marked is loaded and configured
+                if (typeof marked !== 'undefined') {
+                    try {
+                        // Configure marked if not already done
+                        if (!window.markedConfigured) {
+                            marked.setOptions({
+                                gfm: true,          // Enable GitHub Flavored Markdown
+                                breaks: true,       // Add <br> on line breaks
+                                headerIds: true,    // Add IDs to headers
+                                mangle: false,      // Don't mangle header IDs
+                                tables: true,       // Enable table support
+                                smartLists: true,   // Improve behavior of lists
+                                xhtml: false        // Don't use XHTML compatible tags
+                            });
+                            window.markedConfigured = true;
+                            console.log('[ArtifactsLoader] Marked.js configured for PRD rendering');
+                        }
+                        
+                        fullParsedContent = marked.parse(window.prdStreamingState.fullContent);
+                        console.log('[ArtifactsLoader] Markdown parsed successfully');
+                    } catch (e) {
+                        console.error('[ArtifactsLoader] Error parsing markdown:', e);
+                        // Fallback to basic line break conversion
+                        fullParsedContent = window.prdStreamingState.fullContent
+                            .replace(/##/g, '\n##')
+                            .replace(/\n/g, '<br>');
+                    }
+                } else {
+                    console.warn('[ArtifactsLoader] Marked.js not available, using fallback rendering');
+                    // Basic fallback rendering
+                    fullParsedContent = window.prdStreamingState.fullContent
+                        .replace(/##/g, '\n##')
+                        .replace(/\n/g, '<br>');
+                }
                 
                 console.log('[DEBUG] About to set innerHTML, parsed content length:', fullParsedContent.length);
                 streamingContent.innerHTML = fullParsedContent;
