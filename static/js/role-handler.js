@@ -21,18 +21,25 @@
         
         // Set the dropdown value based on the last user role
         if (lastUserRole) {
-            const roleDropdown = document.getElementById('role-dropdown');
-            if (roleDropdown) {
-                // Check if this option exists in the dropdown
-                const optionExists = Array.from(roleDropdown.options).some(option => 
-                    option.value === lastUserRole
-                );
-                
-                if (optionExists) {
-                    roleDropdown.value = lastUserRole;
-                    console.log('Set role dropdown to last used role from DB:', lastUserRole);
-                } else {
-                    console.log('Role not available in dropdown:', lastUserRole);
+            // Use custom dropdown helper function
+            if (typeof setCustomDropdownValue === 'function') {
+                setCustomDropdownValue('role-dropdown', lastUserRole);
+                console.log('Set role dropdown to last used role from DB:', lastUserRole);
+            } else {
+                // Fallback for old dropdown
+                const roleDropdown = document.getElementById('role-dropdown');
+                if (roleDropdown && roleDropdown.tagName === 'SELECT') {
+                    // Check if this option exists in the dropdown
+                    const optionExists = Array.from(roleDropdown.options).some(option => 
+                        option.value === lastUserRole
+                    );
+                    
+                    if (optionExists) {
+                        roleDropdown.value = lastUserRole;
+                        console.log('Set role dropdown to last used role from DB:', lastUserRole);
+                    } else {
+                        console.log('Role not available in dropdown:', lastUserRole);
+                    }
                 }
             }
         }
@@ -72,22 +79,37 @@
         // Also use localStorage for backup persistence between refreshes
         const roleDropdown = document.getElementById('role-dropdown');
         if (roleDropdown) {
-            // Save role to localStorage when changed
-            roleDropdown.addEventListener('change', function() {
-                localStorage.setItem('user_role', this.value);
-                console.log('Saved role to localStorage:', this.value);
-            });
-            
-            // Load from localStorage as a fallback (database values will override this)
-            const savedRole = localStorage.getItem('user_role');
-            if (savedRole) {
-                const optionExists = Array.from(roleDropdown.options).some(option => 
-                    option.value === savedRole
-                );
+            // For custom dropdown
+            if (roleDropdown.classList.contains('custom-dropdown-button')) {
+                // Listen for custom dropdown change event
+                roleDropdown.addEventListener('dropdownChange', function(e) {
+                    localStorage.setItem('user_role', e.detail.value);
+                    console.log('Saved role to localStorage:', e.detail.value);
+                });
                 
-                if (optionExists) {
-                    roleDropdown.value = savedRole;
+                // Load from localStorage as a fallback
+                const savedRole = localStorage.getItem('user_role');
+                if (savedRole && typeof setCustomDropdownValue === 'function') {
+                    setCustomDropdownValue('role-dropdown', savedRole);
                     console.log('Loaded saved role from localStorage:', savedRole);
+                }
+            } else if (roleDropdown.tagName === 'SELECT') {
+                // Fallback for old select dropdown
+                roleDropdown.addEventListener('change', function() {
+                    localStorage.setItem('user_role', this.value);
+                    console.log('Saved role to localStorage:', this.value);
+                });
+                
+                const savedRole = localStorage.getItem('user_role');
+                if (savedRole) {
+                    const optionExists = Array.from(roleDropdown.options).some(option => 
+                        option.value === savedRole
+                    );
+                    
+                    if (optionExists) {
+                        roleDropdown.value = savedRole;
+                        console.log('Loaded saved role from localStorage:', savedRole);
+                    }
                 }
             }
         }
@@ -107,9 +129,17 @@ class RoleHandler {
 
     setupEventListeners() {
         if (this.roleDropdown) {
-            this.roleDropdown.addEventListener('change', (e) => {
-                this.updateRole(e.target.value);
-            });
+            // For custom dropdown
+            if (this.roleDropdown.classList.contains('custom-dropdown-button')) {
+                this.roleDropdown.addEventListener('dropdownChange', (e) => {
+                    this.updateRole(e.detail.value);
+                });
+            } else if (this.roleDropdown.tagName === 'SELECT') {
+                // Fallback for old select dropdown
+                this.roleDropdown.addEventListener('change', (e) => {
+                    this.updateRole(e.target.value);
+                });
+            }
         }
     }
 
@@ -171,16 +201,21 @@ class RoleHandler {
     }
 
     setDropdownValue(roleName) {
-        if (this.roleDropdown) {
-            // Map backend role names to dropdown values
-            const roleMapping = {
-                'developer': 'developer',
-                'product_analyst': 'product_analyst',
-                'designer': 'designer',
-                'default': 'product_analyst' // Changed default to product_analyst
-            };
+        // Map backend role names to dropdown values
+        const roleMapping = {
+            'developer': 'developer',
+            'product_analyst': 'product_analyst',
+            'designer': 'designer',
+            'default': 'product_analyst' // Changed default to product_analyst
+        };
 
-            const dropdownValue = roleMapping[roleName] || 'product_analyst';
+        const dropdownValue = roleMapping[roleName] || 'product_analyst';
+        
+        // For custom dropdown
+        if (typeof setCustomDropdownValue === 'function') {
+            setCustomDropdownValue('role-dropdown', dropdownValue);
+        } else if (this.roleDropdown && this.roleDropdown.tagName === 'SELECT') {
+            // Fallback for old select dropdown
             this.roleDropdown.value = dropdownValue;
         }
     }
