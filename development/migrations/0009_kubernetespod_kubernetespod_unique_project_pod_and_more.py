@@ -2,6 +2,91 @@
 
 from django.db import migrations, models
 
+def add_constraints_if_not_exists(apps, schema_editor):
+    """
+    Add constraints only if they don't already exist in the database.
+    Handles both PostgreSQL and SQLite databases.
+    """
+    if schema_editor.connection.vendor == 'postgresql':
+        with schema_editor.connection.cursor() as cursor:
+            # Check which constraints already exist
+            cursor.execute("""
+                SELECT constraint_name 
+                FROM information_schema.table_constraints 
+                WHERE table_name = 'development_kubernetespod' 
+                AND constraint_type = 'UNIQUE'
+                AND constraint_name IN ('unique_project_pod', 'unique_conversation_pod', 'unique_project_conversation_pod')
+            """)
+            existing_constraints = [row[0] for row in cursor.fetchall()]
+            
+            # Add constraints that don't exist
+            if 'unique_project_pod' not in existing_constraints:
+                cursor.execute("""
+                    ALTER TABLE development_kubernetespod 
+                    ADD CONSTRAINT unique_project_pod 
+                    UNIQUE (project_id) 
+                    WHERE conversation_id IS NULL
+                """)
+            
+            if 'unique_conversation_pod' not in existing_constraints:
+                cursor.execute("""
+                    ALTER TABLE development_kubernetespod 
+                    ADD CONSTRAINT unique_conversation_pod 
+                    UNIQUE (conversation_id) 
+                    WHERE project_id IS NULL
+                """)
+            
+            if 'unique_project_conversation_pod' not in existing_constraints:
+                cursor.execute("""
+                    ALTER TABLE development_kubernetespod 
+                    ADD CONSTRAINT unique_project_conversation_pod 
+                    UNIQUE (project_id, conversation_id) 
+                    WHERE project_id IS NOT NULL AND conversation_id IS NOT NULL
+                """)
+    elif schema_editor.connection.vendor == 'sqlite':
+        # SQLite doesn't support conditional unique constraints the same way
+        # Check if indexes already exist before creating them
+        with schema_editor.connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT name FROM sqlite_master 
+                WHERE type = 'index' 
+                AND name IN ('unique_project_pod', 'unique_conversation_pod', 'unique_project_conversation_pod')
+            """)
+            existing_indexes = [row[0] for row in cursor.fetchall()]
+            
+            if 'unique_project_pod' not in existing_indexes:
+                cursor.execute("""
+                    CREATE UNIQUE INDEX unique_project_pod 
+                    ON development_kubernetespod(project_id) 
+                    WHERE conversation_id IS NULL
+                """)
+            
+            if 'unique_conversation_pod' not in existing_indexes:
+                cursor.execute("""
+                    CREATE UNIQUE INDEX unique_conversation_pod 
+                    ON development_kubernetespod(conversation_id) 
+                    WHERE project_id IS NULL
+                """)
+            
+            if 'unique_project_conversation_pod' not in existing_indexes:
+                cursor.execute("""
+                    CREATE UNIQUE INDEX unique_project_conversation_pod 
+                    ON development_kubernetespod(project_id, conversation_id) 
+                    WHERE project_id IS NOT NULL AND conversation_id IS NOT NULL
+                """)
+
+def remove_constraints(apps, schema_editor):
+    """Reverse operation to remove the constraints."""
+    if schema_editor.connection.vendor == 'postgresql':
+        with schema_editor.connection.cursor() as cursor:
+            cursor.execute("ALTER TABLE development_kubernetespod DROP CONSTRAINT IF EXISTS unique_project_pod")
+            cursor.execute("ALTER TABLE development_kubernetespod DROP CONSTRAINT IF EXISTS unique_conversation_pod")
+            cursor.execute("ALTER TABLE development_kubernetespod DROP CONSTRAINT IF EXISTS unique_project_conversation_pod")
+    elif schema_editor.connection.vendor == 'sqlite':
+        with schema_editor.connection.cursor() as cursor:
+            cursor.execute("DROP INDEX IF EXISTS unique_project_pod")
+            cursor.execute("DROP INDEX IF EXISTS unique_conversation_pod")
+            cursor.execute("DROP INDEX IF EXISTS unique_project_conversation_pod")
 
 class Migration(migrations.Migration):
 
@@ -34,16 +119,5 @@ class Migration(migrations.Migration):
                 'indexes': [models.Index(fields=['project_id'], name='development_kube_project_f5e7cd_idx'), models.Index(fields=['conversation_id'], name='development_kube_convers_8587f7_idx'), models.Index(fields=['pod_name'], name='development_kube_pod_nam_214c1f_idx'), models.Index(fields=['namespace'], name='development_kube_namespa_283f9f_idx'), models.Index(fields=['status'], name='development_kube_status_0e403e_idx')],
             },
         ),
-        migrations.AddConstraint(
-            model_name='kubernetespod',
-            constraint=models.UniqueConstraint(condition=models.Q(('conversation_id__isnull', True)), fields=('project_id',), name='unique_project_pod'),
-        ),
-        migrations.AddConstraint(
-            model_name='kubernetespod',
-            constraint=models.UniqueConstraint(condition=models.Q(('project_id__isnull', True)), fields=('conversation_id',), name='unique_conversation_pod'),
-        ),
-        migrations.AddConstraint(
-            model_name='kubernetespod',
-            constraint=models.UniqueConstraint(condition=models.Q(('conversation_id__isnull', False), ('project_id__isnull', False)), fields=('project_id', 'conversation_id'), name='unique_project_conversation_pod'),
-        ),
+        migrations.RunPython(add_constraints_if_not_exists, remove_constraints),
     ]

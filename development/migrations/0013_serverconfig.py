@@ -3,6 +3,68 @@
 from django.db import migrations, models
 import django.db.models.deletion
 
+def create_serverconfig_table(apps, schema_editor):
+    """
+    Create ServerConfig table only if it doesn't already exist.
+    Handles both PostgreSQL and SQLite databases.
+    """
+    if schema_editor.connection.vendor == 'postgresql':
+        with schema_editor.connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'server_configs'
+                )
+            """)
+            table_exists = cursor.fetchone()[0]
+            
+            if not table_exists:
+                cursor.execute("""
+                    CREATE TABLE server_configs (
+                        id BIGSERIAL PRIMARY KEY,
+                        command TEXT NOT NULL,
+                        port INTEGER NOT NULL,
+                        type VARCHAR(50) DEFAULT 'application' NOT NULL,
+                        created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+                        updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
+                        project_id BIGINT NOT NULL UNIQUE REFERENCES projects_project(id) ON DELETE CASCADE,
+                        UNIQUE(project_id, port)
+                    )
+                """)
+                cursor.execute("CREATE INDEX server_configs_project_id_idx ON server_configs(project_id)")
+                
+    elif schema_editor.connection.vendor == 'sqlite':
+        with schema_editor.connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT name FROM sqlite_master 
+                WHERE type='table' AND name='server_configs'
+            """)
+            table_exists = cursor.fetchone() is not None
+            
+            if not table_exists:
+                cursor.execute("""
+                    CREATE TABLE server_configs (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        command TEXT NOT NULL,
+                        port INTEGER NOT NULL,
+                        type VARCHAR(50) DEFAULT 'application' NOT NULL,
+                        created_at DATETIME NOT NULL,
+                        updated_at DATETIME NOT NULL,
+                        project_id INTEGER NOT NULL UNIQUE REFERENCES projects_project(id) ON DELETE CASCADE,
+                        UNIQUE(project_id, port)
+                    )
+                """)
+                cursor.execute("CREATE INDEX server_configs_project_id_idx ON server_configs(project_id)")
+
+def drop_serverconfig_table(apps, schema_editor):
+    """Drop ServerConfig table if it exists."""
+    if schema_editor.connection.vendor == 'postgresql':
+        with schema_editor.connection.cursor() as cursor:
+            cursor.execute("DROP TABLE IF EXISTS server_configs CASCADE")
+    elif schema_editor.connection.vendor == 'sqlite':
+        with schema_editor.connection.cursor() as cursor:
+            cursor.execute("DROP TABLE IF EXISTS server_configs")
 
 class Migration(migrations.Migration):
 
@@ -12,20 +74,30 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.CreateModel(
-            name='ServerConfig',
-            fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('command', models.TextField()),
-                ('port', models.IntegerField()),
-                ('type', models.CharField(default='application', max_length=50)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('project', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='server_config', to='projects.project')),
+        migrations.SeparateDatabaseAndState(
+            state_operations=[
+                migrations.CreateModel(
+                    name='ServerConfig',
+                    fields=[
+                        ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                        ('command', models.TextField()),
+                        ('port', models.IntegerField()),
+                        ('type', models.CharField(default='application', max_length=50)),
+                        ('created_at', models.DateTimeField(auto_now_add=True)),
+                        ('updated_at', models.DateTimeField(auto_now=True)),
+                        ('project', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='server_config', to='projects.project')),
+                    ],
+                    options={
+                        'db_table': 'server_configs',
+                        'unique_together': {('project_id', 'port')},
+                    },
+                ),
             ],
-            options={
-                'db_table': 'server_configs',
-                'unique_together': {('project_id', 'port')},
-            },
+            database_operations=[
+                migrations.RunPython(
+                    create_serverconfig_table,
+                    drop_serverconfig_table,
+                ),
+            ]
         ),
     ]
