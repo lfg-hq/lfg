@@ -9,38 +9,34 @@ def add_constraints_if_not_exists(apps, schema_editor):
     """
     if schema_editor.connection.vendor == 'postgresql':
         with schema_editor.connection.cursor() as cursor:
-            # Check which constraints already exist
+            # Check which indexes already exist
             cursor.execute("""
-                SELECT constraint_name 
-                FROM information_schema.table_constraints 
-                WHERE table_name = 'development_kubernetespod' 
-                AND constraint_type = 'UNIQUE'
-                AND constraint_name IN ('unique_project_pod', 'unique_conversation_pod', 'unique_project_conversation_pod')
+                SELECT indexname 
+                FROM pg_indexes 
+                WHERE tablename = 'development_kubernetespod' 
+                AND indexname IN ('unique_project_pod', 'unique_conversation_pod', 'unique_project_conversation_pod')
             """)
             existing_constraints = [row[0] for row in cursor.fetchall()]
             
             # Add constraints that don't exist
             if 'unique_project_pod' not in existing_constraints:
                 cursor.execute("""
-                    ALTER TABLE development_kubernetespod 
-                    ADD CONSTRAINT unique_project_pod 
-                    UNIQUE (project_id) 
+                    CREATE UNIQUE INDEX unique_project_pod 
+                    ON development_kubernetespod(project_id) 
                     WHERE conversation_id IS NULL
                 """)
             
             if 'unique_conversation_pod' not in existing_constraints:
                 cursor.execute("""
-                    ALTER TABLE development_kubernetespod 
-                    ADD CONSTRAINT unique_conversation_pod 
-                    UNIQUE (conversation_id) 
+                    CREATE UNIQUE INDEX unique_conversation_pod 
+                    ON development_kubernetespod(conversation_id) 
                     WHERE project_id IS NULL
                 """)
             
             if 'unique_project_conversation_pod' not in existing_constraints:
                 cursor.execute("""
-                    ALTER TABLE development_kubernetespod 
-                    ADD CONSTRAINT unique_project_conversation_pod 
-                    UNIQUE (project_id, conversation_id) 
+                    CREATE UNIQUE INDEX unique_project_conversation_pod 
+                    ON development_kubernetespod(project_id, conversation_id) 
                     WHERE project_id IS NOT NULL AND conversation_id IS NOT NULL
                 """)
     elif schema_editor.connection.vendor == 'sqlite':
@@ -79,9 +75,9 @@ def remove_constraints(apps, schema_editor):
     """Reverse operation to remove the constraints."""
     if schema_editor.connection.vendor == 'postgresql':
         with schema_editor.connection.cursor() as cursor:
-            cursor.execute("ALTER TABLE development_kubernetespod DROP CONSTRAINT IF EXISTS unique_project_pod")
-            cursor.execute("ALTER TABLE development_kubernetespod DROP CONSTRAINT IF EXISTS unique_conversation_pod")
-            cursor.execute("ALTER TABLE development_kubernetespod DROP CONSTRAINT IF EXISTS unique_project_conversation_pod")
+            cursor.execute("DROP INDEX IF EXISTS unique_project_pod")
+            cursor.execute("DROP INDEX IF EXISTS unique_conversation_pod")
+            cursor.execute("DROP INDEX IF EXISTS unique_project_conversation_pod")
     elif schema_editor.connection.vendor == 'sqlite':
         with schema_editor.connection.cursor() as cursor:
             cursor.execute("DROP INDEX IF EXISTS unique_project_pod")

@@ -9,38 +9,34 @@ def add_constraints_if_not_exists(apps, schema_editor):
     """
     if schema_editor.connection.vendor == 'postgresql':
         with schema_editor.connection.cursor() as cursor:
-            # Check which constraints already exist
+            # Check which indexes already exist
             cursor.execute("""
-                SELECT constraint_name 
-                FROM information_schema.table_constraints 
-                WHERE table_name = 'development_dockersandbox' 
-                AND constraint_type = 'UNIQUE'
-                AND constraint_name IN ('unique_project_sandbox', 'unique_conversation_sandbox', 'unique_project_conversation_sandbox')
+                SELECT indexname 
+                FROM pg_indexes 
+                WHERE tablename = 'development_dockersandbox' 
+                AND indexname IN ('unique_project_sandbox', 'unique_conversation_sandbox', 'unique_project_conversation_sandbox')
             """)
             existing_constraints = [row[0] for row in cursor.fetchall()]
             
             # Add constraints that don't exist
             if 'unique_project_sandbox' not in existing_constraints:
                 cursor.execute("""
-                    ALTER TABLE development_dockersandbox 
-                    ADD CONSTRAINT unique_project_sandbox 
-                    UNIQUE (project_id) 
+                    CREATE UNIQUE INDEX unique_project_sandbox 
+                    ON development_dockersandbox(project_id) 
                     WHERE conversation_id IS NULL
                 """)
             
             if 'unique_conversation_sandbox' not in existing_constraints:
                 cursor.execute("""
-                    ALTER TABLE development_dockersandbox 
-                    ADD CONSTRAINT unique_conversation_sandbox 
-                    UNIQUE (conversation_id) 
+                    CREATE UNIQUE INDEX unique_conversation_sandbox 
+                    ON development_dockersandbox(conversation_id) 
                     WHERE project_id IS NULL
                 """)
             
             if 'unique_project_conversation_sandbox' not in existing_constraints:
                 cursor.execute("""
-                    ALTER TABLE development_dockersandbox 
-                    ADD CONSTRAINT unique_project_conversation_sandbox 
-                    UNIQUE (project_id, conversation_id) 
+                    CREATE UNIQUE INDEX unique_project_conversation_sandbox 
+                    ON development_dockersandbox(project_id, conversation_id) 
                     WHERE project_id IS NOT NULL AND conversation_id IS NOT NULL
                 """)
     elif schema_editor.connection.vendor == 'sqlite':
@@ -79,9 +75,9 @@ def remove_constraints(apps, schema_editor):
     """Reverse operation to remove the constraints."""
     if schema_editor.connection.vendor == 'postgresql':
         with schema_editor.connection.cursor() as cursor:
-            cursor.execute("ALTER TABLE development_dockersandbox DROP CONSTRAINT IF EXISTS unique_project_sandbox")
-            cursor.execute("ALTER TABLE development_dockersandbox DROP CONSTRAINT IF EXISTS unique_conversation_sandbox")
-            cursor.execute("ALTER TABLE development_dockersandbox DROP CONSTRAINT IF EXISTS unique_project_conversation_sandbox")
+            cursor.execute("DROP INDEX IF EXISTS unique_project_sandbox")
+            cursor.execute("DROP INDEX IF EXISTS unique_conversation_sandbox")
+            cursor.execute("DROP INDEX IF EXISTS unique_project_conversation_sandbox")
     elif schema_editor.connection.vendor == 'sqlite':
         with schema_editor.connection.cursor() as cursor:
             cursor.execute("DROP INDEX IF EXISTS unique_project_sandbox")
