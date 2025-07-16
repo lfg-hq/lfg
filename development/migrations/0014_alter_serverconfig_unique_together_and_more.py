@@ -3,6 +3,43 @@
 from django.db import migrations, models
 import django.db.models.deletion
 
+def add_start_server_command_if_not_exists(apps, schema_editor):
+    """Add start_server_command column if it doesn't exist."""
+    if schema_editor.connection.vendor == 'postgresql':
+        with schema_editor.connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'server_configs' 
+                AND column_name = 'start_server_command'
+            """)
+            column_exists = cursor.fetchone() is not None
+            
+            if not column_exists:
+                cursor.execute("""
+                    ALTER TABLE server_configs 
+                    ADD COLUMN start_server_command TEXT
+                """)
+    elif schema_editor.connection.vendor == 'sqlite':
+        with schema_editor.connection.cursor() as cursor:
+            cursor.execute("PRAGMA table_info(server_configs)")
+            columns = cursor.fetchall()
+            column_names = [col[1] for col in columns]
+            
+            if 'start_server_command' not in column_names:
+                cursor.execute("""
+                    ALTER TABLE server_configs 
+                    ADD COLUMN start_server_command TEXT
+                """)
+
+def remove_start_server_command(apps, schema_editor):
+    """Remove start_server_command column if it exists."""
+    if schema_editor.connection.vendor == 'postgresql':
+        with schema_editor.connection.cursor() as cursor:
+            cursor.execute("ALTER TABLE server_configs DROP COLUMN IF EXISTS start_server_command")
+    elif schema_editor.connection.vendor == 'sqlite':
+        # SQLite doesn't support DROP COLUMN easily, would need to recreate table
+        pass
 
 class Migration(migrations.Migration):
 
@@ -16,10 +53,20 @@ class Migration(migrations.Migration):
             name='serverconfig',
             unique_together=set(),
         ),
-        migrations.AddField(
-            model_name='serverconfig',
-            name='start_server_command',
-            field=models.TextField(blank=True, help_text='Command to start the server', null=True),
+        migrations.SeparateDatabaseAndState(
+            state_operations=[
+                migrations.AddField(
+                    model_name='serverconfig',
+                    name='start_server_command',
+                    field=models.TextField(blank=True, help_text='Command to start the server', null=True),
+                ),
+            ],
+            database_operations=[
+                migrations.RunPython(
+                    add_start_server_command_if_not_exists,
+                    remove_start_server_command,
+                ),
+            ]
         ),
         migrations.AlterField(
             model_name='serverconfig',

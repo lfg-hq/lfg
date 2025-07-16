@@ -2,6 +2,87 @@
 
 from django.db import migrations, models
 
+def add_constraints_if_not_exists(apps, schema_editor):
+    """
+    Add constraints only if they don't already exist in the database.
+    Handles both PostgreSQL and SQLite databases.
+    """
+    if schema_editor.connection.vendor == 'postgresql':
+        with schema_editor.connection.cursor() as cursor:
+            # Check which indexes already exist
+            cursor.execute("""
+                SELECT indexname 
+                FROM pg_indexes 
+                WHERE tablename = 'development_dockersandbox' 
+                AND indexname IN ('unique_project_sandbox', 'unique_conversation_sandbox', 'unique_project_conversation_sandbox')
+            """)
+            existing_constraints = [row[0] for row in cursor.fetchall()]
+            
+            # Add constraints that don't exist
+            if 'unique_project_sandbox' not in existing_constraints:
+                cursor.execute("""
+                    CREATE UNIQUE INDEX unique_project_sandbox 
+                    ON development_dockersandbox(project_id) 
+                    WHERE conversation_id IS NULL
+                """)
+            
+            if 'unique_conversation_sandbox' not in existing_constraints:
+                cursor.execute("""
+                    CREATE UNIQUE INDEX unique_conversation_sandbox 
+                    ON development_dockersandbox(conversation_id) 
+                    WHERE project_id IS NULL
+                """)
+            
+            if 'unique_project_conversation_sandbox' not in existing_constraints:
+                cursor.execute("""
+                    CREATE UNIQUE INDEX unique_project_conversation_sandbox 
+                    ON development_dockersandbox(project_id, conversation_id) 
+                    WHERE project_id IS NOT NULL AND conversation_id IS NOT NULL
+                """)
+    elif schema_editor.connection.vendor == 'sqlite':
+        # SQLite doesn't support conditional unique constraints the same way
+        # Check if indexes already exist before creating them
+        with schema_editor.connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT name FROM sqlite_master 
+                WHERE type = 'index' 
+                AND name IN ('unique_project_sandbox', 'unique_conversation_sandbox', 'unique_project_conversation_sandbox')
+            """)
+            existing_indexes = [row[0] for row in cursor.fetchall()]
+            
+            if 'unique_project_sandbox' not in existing_indexes:
+                cursor.execute("""
+                    CREATE UNIQUE INDEX unique_project_sandbox 
+                    ON development_dockersandbox(project_id) 
+                    WHERE conversation_id IS NULL
+                """)
+            
+            if 'unique_conversation_sandbox' not in existing_indexes:
+                cursor.execute("""
+                    CREATE UNIQUE INDEX unique_conversation_sandbox 
+                    ON development_dockersandbox(conversation_id) 
+                    WHERE project_id IS NULL
+                """)
+            
+            if 'unique_project_conversation_sandbox' not in existing_indexes:
+                cursor.execute("""
+                    CREATE UNIQUE INDEX unique_project_conversation_sandbox 
+                    ON development_dockersandbox(project_id, conversation_id) 
+                    WHERE project_id IS NOT NULL AND conversation_id IS NOT NULL
+                """)
+
+def remove_constraints(apps, schema_editor):
+    """Reverse operation to remove the constraints."""
+    if schema_editor.connection.vendor == 'postgresql':
+        with schema_editor.connection.cursor() as cursor:
+            cursor.execute("DROP INDEX IF EXISTS unique_project_sandbox")
+            cursor.execute("DROP INDEX IF EXISTS unique_conversation_sandbox")
+            cursor.execute("DROP INDEX IF EXISTS unique_project_conversation_sandbox")
+    elif schema_editor.connection.vendor == 'sqlite':
+        with schema_editor.connection.cursor() as cursor:
+            cursor.execute("DROP INDEX IF EXISTS unique_project_sandbox")
+            cursor.execute("DROP INDEX IF EXISTS unique_conversation_sandbox")
+            cursor.execute("DROP INDEX IF EXISTS unique_project_conversation_sandbox")
 
 class Migration(migrations.Migration):
 
@@ -10,16 +91,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AddConstraint(
-            model_name='dockersandbox',
-            constraint=models.UniqueConstraint(condition=models.Q(('conversation_id__isnull', True)), fields=('project_id',), name='unique_project_sandbox'),
-        ),
-        migrations.AddConstraint(
-            model_name='dockersandbox',
-            constraint=models.UniqueConstraint(condition=models.Q(('project_id__isnull', True)), fields=('conversation_id',), name='unique_conversation_sandbox'),
-        ),
-        migrations.AddConstraint(
-            model_name='dockersandbox',
-            constraint=models.UniqueConstraint(condition=models.Q(('conversation_id__isnull', False), ('project_id__isnull', False)), fields=('project_id', 'conversation_id'), name='unique_project_conversation_sandbox'),
-        ),
+        migrations.RunPython(add_constraints_if_not_exists, remove_constraints),
     ]
