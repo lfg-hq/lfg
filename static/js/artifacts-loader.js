@@ -5,33 +5,33 @@
 
 // Global helper functions
 window.showToast = function(message, type = 'info') {
-    // Create toast element if it doesn't exist
+    // Get or create toast container
     let toastContainer = document.getElementById('toast-container');
     if (!toastContainer) {
         toastContainer = document.createElement('div');
         toastContainer.id = 'toast-container';
-        toastContainer.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 9999;';
+        toastContainer.className = 'messages';
         document.body.appendChild(toastContainer);
     }
     
     const toast = document.createElement('div');
-    toast.className = `toast toast-${type}`;
-    toast.style.cssText = 'background: #333; color: white; padding: 12px 24px; border-radius: 4px; margin-bottom: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); animation: slideIn 0.3s ease;';
-    
-    if (type === 'success') {
-        toast.style.background = '#4CAF50';
-    } else if (type === 'error') {
-        toast.style.background = '#f44336';
-    }
-    
+    toast.className = `alert alert-${type}`;
     toast.textContent = message;
+    
+    // Make toast clickable to dismiss
+    toast.addEventListener('click', function() {
+        this.style.animation = 'fadeOut 0.3s ease-out forwards';
+        setTimeout(() => this.remove(), 300);
+    });
+    
     toastContainer.appendChild(toast);
     
-    // Remove toast after 5 seconds
+    // Auto-remove toast after 5 seconds (CSS animation handles the fade out)
     setTimeout(() => {
-        toast.style.animation = 'slideOut 0.3s ease';
-        setTimeout(() => toast.remove(), 300);
-    }, 5000);
+        if (toast.parentNode) {
+            toast.remove();
+        }
+    }, 5500); // 5s display + 0.5s fade out
 };
 
 window.getCookie = function(name) {

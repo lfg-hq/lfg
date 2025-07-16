@@ -47,21 +47,32 @@ def get_notification_type_for_tool(tool_name):
 
     print(f"\n\\n\n\n\n\nGetting notification type for tool: {tool_name}")
     
+    # Read operations that should NOT trigger any notifications
+    read_operations = {
+        "get_features",
+        "get_personas", 
+        "get_prd",
+        "get_implementation",
+        "get_next_ticket",
+        "get_pending_tickets",
+        "get_project_name"
+    }
+    
+    # Return None for read operations to prevent any notification
+    if tool_name in read_operations:
+        return None
+    
     notification_mappings = {
         "extract_features": "checklist",  # Features tab is commented out, use checklist
         "extract_personas": "checklist",  # Personas tab is commented out, use checklist
         "save_features": "checklist",
         "save_personas": "checklist",
-        "get_features": "checklist",
-        "get_personas": "checklist",
         "create_prd": "prd",
-        "get_prd": "prd",
         "stream_implementation_content": "implementation_stream",  # Stream implementation content to implementation tab
         "stream_prd_content": "prd_stream",  # Stream PRD content to PRD tab
         "start_server": "apps",  # Server starts should show in apps/preview tab
         "execute_command": "toolhistory",  # Show command execution in tool history
         "save_implementation": "implementation",
-        "get_implementation": "implementation",
         "update_implementation": "implementation",
         "create_implementation": "implementation",
         "design_schema": "implementation",  # Design tab is commented out, use implementation
@@ -69,15 +80,12 @@ def get_notification_type_for_tool(tool_name):
         "checklist_tickets": "checklist",
         "create_tickets": "checklist",  # Add this mapping
         "update_ticket": "checklist",
-        "get_next_ticket": "checklist",
-        "get_pending_tickets": "checklist",  # Add this mapping
         "implement_ticket": "implementation",  # Implementation tasks go to implementation tab
         "save_project_name": "toolhistory",  # Project name saving goes to tool history
-        "get_project_name": "toolhistory"  # Project name retrieval goes to tool history
     }
     
-    # Default to toolhistory if no specific mapping exists
-    return notification_mappings.get(tool_name, "toolhistory")
+    # Default to None (no notification) instead of toolhistory
+    return notification_mappings.get(tool_name, None)
 
 def map_notification_type_to_tab(notification_type):
     """
@@ -192,11 +200,11 @@ async def execute_tool_call(tool_call_name, tool_call_args_str, project_id, conv
             logger.info(f"{tool_call_name} already has notification data, not forcing")
         elif notification_type and tool_call_name in [
             "extract_features", "extract_personas", "save_features", "save_personas",
-            "get_features", "get_personas", "create_prd", "get_prd",
-            "save_implementation", "get_implementation", "update_implementation", "create_implementation",
+            "create_prd",
+            "save_implementation", "update_implementation", "create_implementation",
             "execute_command", "start_server", "design_schema", "generate_tickets",
-            "checklist_tickets", "update_ticket", "get_next_ticket", "implement_ticket",
-            "save_project_name", "get_project_name"  # Add project name functions
+            "checklist_tickets", "update_ticket", "implement_ticket",
+            "save_project_name"
         ]:
             logger.debug(f"FORCING NOTIFICATION FOR {tool_call_name}")
             # Ensure notification type is mapped to a valid tab

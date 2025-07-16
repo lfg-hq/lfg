@@ -1052,11 +1052,14 @@ document.addEventListener('DOMContentLoaded', () => {
                                    (data.early_notification === true || 
                                     data.early_notification === "true");
         
-        // Add additional debugging to see the entire data structure
-        console.log("Received AI chunk data:", data);
-        console.log("Is Notification (after fix):", isNotification);
-        console.log("Is Early Notification:", isEarlyNotification);
-        console.log("Function name (if early):", data.function_name || "none");
+        // Skip debug logging for non-notification messages to reduce noise
+        if (isNotification || data.is_notification !== undefined || data.notification_type !== undefined) {
+            // Add additional debugging to see the entire data structure
+            console.log("Received AI chunk data:", data);
+            console.log("Is Notification (after fix):", isNotification);
+            console.log("Is Early Notification:", isEarlyNotification);
+            console.log("Function name (if early):", data.function_name || "none");
+        }
         
         if (isFinal) {
             // Final chunk with metadata
@@ -1119,34 +1122,19 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('Function name early notification:', data.function_name);
             console.log('Notification type:', data.notification_type);
             
-            // Add pending tool call to Tool History immediately
-            if (window.ArtifactsLoader && typeof window.ArtifactsLoader.addPendingToolCall === 'function') {
-                // Open artifacts panel if not already open
-                if (window.ArtifactsPanel && !window.ArtifactsPanel.isOpen()) {
-                    window.ArtifactsPanel.open();
-                    console.log('Opened artifacts panel for tool history');
-                }
-                
-                // // Switch to Tool History tab - COMMENTED OUT to prevent tab switching
-                // if (window.switchTab) {
-                //     try {
-                //         window.switchTab('toolhistory');
-                //         console.log('Switched to Tool History tab for early notification');
-                //     } catch (err) {
-                //         console.error('Error switching to Tool History tab:', err);
-                //     }
-                // }
-                
-                // Add the pending tool call
-                const pendingId = window.ArtifactsLoader.addPendingToolCall(data.function_name, {});
-                console.log(`Added pending tool call with ID: ${pendingId}`);
-                
-                // Store the pending ID for later update
-                if (!window.pendingToolCalls) {
-                    window.pendingToolCalls = {};
-                }
-                window.pendingToolCalls[data.function_name] = pendingId;
-            }
+            // List of read operations that should NOT open the panel
+            const readOperations = [
+                'get_features',
+                'get_personas',
+                'get_prd',
+                'get_implementation',
+                'get_next_ticket',
+                'get_pending_tickets',
+                'get_project_name'
+            ];
+            
+            // Only process if it's not a read operation
+            
             console.log('Is early notification:', data.early_notification);
             console.log('==========================================\n\n');
             
@@ -1372,14 +1360,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // Map non-existent tabs to existing ones
                 const tabMapping = {
-                    'features': 'checklist',
-                    'personas': 'checklist',
+                    // 'features': 'checklist',
+                    // 'personas': 'checklist',
                     'design': 'implementation',
                     'tickets': 'checklist',
-                    'execute_command': 'toolhistory',
-                    'command_output': 'toolhistory',
+                    // 'execute_command': 'toolhistory',
+                    // 'command_output': 'toolhistory',
                     'start_server': 'apps',
-                    'get_pending_tickets': 'checklist',
+                    // 'get_pending_tickets': 'checklist',
                     'create_checklist_tickets': 'checklist',
                     'implement_ticket': 'implementation',
                     'prd_stream': 'prd',  // Map prd_stream to prd tab

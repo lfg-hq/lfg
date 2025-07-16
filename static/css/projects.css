@@ -42,13 +42,15 @@
     content: '\f058';
 }
 
-.alert-danger {
+.alert-danger,
+.alert-error {
     background: rgba(239, 68, 68, 0.1);
     border-color: rgba(239, 68, 68, 0.3);
     color: #ef4444;
 }
 
-.alert-danger::before {
+.alert-danger::before,
+.alert-error::before {
     content: '\f06a';
 }
 
