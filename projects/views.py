@@ -13,11 +13,11 @@ from django.views.decorators.csrf import csrf_exempt
 from django.utils import timezone
 import json
 
-# Import ServerConfig from coding app
-from coding.models import ServerConfig
+# Import ServerConfig from development app
+from development.models import ServerConfig
 
 # Import the functions from ai_functions
-from coding.utils.ai_functions import execute_local_command, restart_server_from_config
+from development.utils.ai_functions import execute_local_command, restart_server_from_config
 
 # Create your views here.
 

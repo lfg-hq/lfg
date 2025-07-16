@@ -60,18 +60,32 @@
                                 <i class="fas fa-paperclip"></i>
                             </button> -->
                             <input hidden="true" type="file" id="file-upload-input" style="display: none">
-                            <select id="role-dropdown" class="role-dropdown" title="Select a role">
-                                <!-- <option value="developer">Developer</option>
-                                <option value="designer">Designer</option> -->
-                                <option value="product_analyst">Analyst</option>
-                            </select>
-                            <select id="model-dropdown" class="model-dropdown" title="Select a model">
-                                <option value="claude_4_sonnet">Claude 4 Sonnet</option>
-                                <option value="o3">OpenAI O3</option>
-                                <option value="gpt_4_1">OpenAI GPT-4.1</option>
-                                <option value="gpt_4o">OpenAI GPT-4o</option>
-                                <option value="grok_4">Grok 4</option>
-                            </select>
+                            <div class="custom-dropdown" id="role-dropdown-wrapper">
+                                <button type="button" class="custom-dropdown-button" id="role-dropdown" title="Select a role">
+                                    <span id="role-dropdown-text">Analyst</span>
+                                </button>
+                                <div class="custom-dropdown-menu">
+                                    <div class="custom-dropdown-item selected" data-value="product_analyst">Analyst</div>
+                                </div>
+                            </div>
+                            <div class="custom-dropdown" id="model-dropdown-wrapper">
+                                <button type="button" class="custom-dropdown-button" id="model-dropdown" title="Select a model">
+                                    <span id="model-dropdown-text">Sonnet 4</span>
+                                </button>
+                                <div class="custom-dropdown-menu">
+                                    <div class="dropdown-group-label">Claude</div>
+                                    <div class="custom-dropdown-item selected" data-value="claude_4_sonnet">Sonnet 4</div>
+                                    
+                                    <div class="dropdown-group-label">OpenAI</div>
+                                    <div class="custom-dropdown-item" data-value="gpt_4o">GPT-4o</div>
+                                    <div class="custom-dropdown-item" data-value="gpt_4_1">GPT-4.1</div>
+                                    <div class="custom-dropdown-item" data-value="o3">o3</div>
+                                    <div class="custom-dropdown-item" data-value="o4-mini">o4 mini</div>
+                                    
+                                    <div class="dropdown-group-label">xAI</div>
+                                    <div class="custom-dropdown-item" data-value="grok_4">Grok 4</div>
+                                </div>
+                            </div>
                             <button type="submit" id="send-btn" class="action-btn" title="Send message">
                                 <i class="fas fa-paper-plane"></i>
                             </button>
@@ -90,6 +104,7 @@
     <script src="/static/js/markdown-config.js"></script>
 
     <script src="/static/js/app-loader.js"></script>
+    <script src="/static/js/custom-dropdown.js"></script>
     <script src="/static/js/chat.js"></script>
     <script src="/static/js/sidebar.js"></script>
     <script src="/static/js/artifacts.js"></script>

@@ -1936,11 +1936,16 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Get selected role from dropdown if it exists
         let userRole = 'default';
-        const roleDropdown = document.getElementById('role-dropdown');
-        if (roleDropdown) {
-            userRole = roleDropdown.value;
-            console.log('Selected role:', userRole);
+        if (typeof getCustomDropdownValue === 'function') {
+            userRole = getCustomDropdownValue('role-dropdown') || 'default';
+        } else {
+            // Fallback for old select dropdown
+            const roleDropdown = document.getElementById('role-dropdown');
+            if (roleDropdown && roleDropdown.tagName === 'SELECT') {
+                userRole = roleDropdown.value;
+            }
         }
+        console.log('Selected role:', userRole);
         
         // Get file data from the attached file (which may already have a file_id if it was uploaded)
         let fileData = null;
@@ -3643,10 +3648,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     
                     // Set role dropdown value if not in turbo mode
-                    if (!data.turbo_mode) {
-                        const roleDropdown = document.getElementById('role-dropdown');
-                        if (roleDropdown && data.agent_role) {
-                            roleDropdown.value = data.agent_role;
+                    if (!data.turbo_mode && data.agent_role) {
+                        if (typeof setCustomDropdownValue === 'function') {
+                            setCustomDropdownValue('role-dropdown', data.agent_role);
+                        } else {
+                            // Fallback for old select dropdown
+                            const roleDropdown = document.getElementById('role-dropdown');
+                            if (roleDropdown && roleDropdown.tagName === 'SELECT') {
+                                roleDropdown.value = data.agent_role;
+                            }
                         }
                     }
                 }
@@ -3658,9 +3668,16 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Function to update role dropdown visibility based on turbo mode
     function updateRoleDropdownVisibility(turboModeEnabled) {
-        const roleDropdown = document.getElementById('role-dropdown');
-        if (roleDropdown) {
-            roleDropdown.style.display = turboModeEnabled ? 'none' : 'block';
+        // For custom dropdown wrapper
+        const roleDropdownWrapper = document.getElementById('role-dropdown-wrapper');
+        if (roleDropdownWrapper) {
+            roleDropdownWrapper.style.display = turboModeEnabled ? 'none' : 'block';
+        } else {
+            // Fallback for old select dropdown
+            const roleDropdown = document.getElementById('role-dropdown');
+            if (roleDropdown) {
+                roleDropdown.style.display = turboModeEnabled ? 'none' : 'block';
+            }
         }
     }
     

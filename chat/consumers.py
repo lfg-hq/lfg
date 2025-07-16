@@ -20,14 +20,12 @@ from chat.models import (
     AgentRole
 )
 from projects.models import ProjectChecklist
-from coding.utils import (
-    AIProvider,
-    get_system_prompt_developer,
-    get_system_prompt_design
-)
-from coding.utils.prompts import get_system_turbo_mode, \
-                                    get_system_prompt_product
-from coding.utils.ai_tools import tools_code, tools_product, tools_design, tools_turbo
+from development.utils import AIProvider
+from development.utils.prompts import get_system_turbo_mode, \
+                                    get_system_prompt_product, \
+                                    get_system_prompt_design, \
+                                    get_system_prompt_developer
+from development.utils.ai_tools import tools_code, tools_product, tools_design, tools_turbo
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -378,7 +376,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """
         Send AI response chunk to WebSocket
         """
-        logger.info(f"ai_response_chunk received event: {event}")
+        # logger.info(f"ai_response_chunk received event: {event}")
         
         # Create response data with all available properties
         response_data = {
@@ -649,7 +647,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             if notification_data.get('notification_type') == 'implementation_stream':
                                 group_message['content_chunk'] = notification_data.get('content_chunk', '')
                                 group_message['is_complete'] = notification_data.get('is_complete', False)
-                            logger.info(f"Group message being sent: {group_message}")
+                            # logger.info(f"Group message being sent: {group_message}")
                             await self.channel_layer.group_send(self.room_group_name, group_message)
                         else:
                             logger.info("Sending directly via WebSocket")
@@ -1224,17 +1222,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
             selected_model = model_selection.selected_model
 
-        if selected_model == "claude_4_sonnet":
+        if selected_model in ["claude_4_sonnet", "claude_4_opus", "claude_3.5_sonnet"]:
             provider_name = "anthropic"
-        elif selected_model == "claude_4_opus":
-            provider_name = "anthropic"
-        elif selected_model == "claude_3.5_sonnet":
-            provider_name = "anthropic"
-        elif selected_model == "grok_2":
-            provider_name = "grok"
-        elif selected_model == "grok_beta":
-            provider_name = "grok"
-        elif selected_model == "grok_4":
+        elif selected_model in ["grok_2", "grok_beta", "grok_4"]:
             provider_name = "grok"
         else:
             provider_name = "openai"

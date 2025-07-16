@@ -673,8 +673,8 @@ document.addEventListener('DOMContentLoaded', function() {
         codebaseEmpty.style.display = 'none';
         codebaseFrameContainer.style.display = 'none';
         
-        // Set the iframe source to the coding editor page
-        const editorUrl = `/coding/editor/?project_id=${projectId}`;
+        // Set the iframe source to the development editor page
+        const editorUrl = `/development/editor/?project_id=${projectId}`;
         console.log(`[ArtifactsPanel] Loading codebase from URL: ${editorUrl}`);
         
         codebaseIframe.onload = function() {

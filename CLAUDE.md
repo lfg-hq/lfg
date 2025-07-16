@@ -20,7 +20,7 @@ python manage.py createsuperuser        # Create admin user
 
 # Testing
 python manage.py test                   # Run all tests
-python manage.py test <app_name>        # Run tests for specific app (e.g., coding, projects)
+python manage.py test <app_name>        # Run tests for specific app (e.g., development, projects)
 
 # Static Files
 python manage.py collectstatic          # Collect static files
@@ -56,7 +56,7 @@ python manage.py create_default_plans  # Initialize subscription plans
    - File upload support and message persistence
    - Auto-save functionality for long conversations
 
-3. **coding/** - Code generation and execution
+3. **development/** - Code generation and execution
    - **docker/** - Container management for sandboxed execution
    - **k8s_manager/** - Kubernetes pod orchestration for production
    - **utils/ai_providers.py** - Multi-provider AI integration (Anthropic, OpenAI, Grok)
@@ -145,7 +145,7 @@ New tools must:
 
 Run tests for specific apps:
 ```bash
-python manage.py test coding.tests
+python manage.py test development.tests
 python manage.py test projects.tests
 python manage.py test subscriptions.tests
 ```

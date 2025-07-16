@@ -11,9 +11,17 @@ class ModelHandler {
 
     setupEventListeners() {
         if (this.modelDropdown) {
-            this.modelDropdown.addEventListener('change', (e) => {
-                this.updateModel(e.target.value);
-            });
+            // For custom dropdown
+            if (this.modelDropdown.classList.contains('custom-dropdown-button')) {
+                this.modelDropdown.addEventListener('dropdownChange', (e) => {
+                    this.updateModel(e.detail.value);
+                });
+            } else if (this.modelDropdown.tagName === 'SELECT') {
+                // Fallback for old select dropdown
+                this.modelDropdown.addEventListener('change', (e) => {
+                    this.updateModel(e.target.value);
+                });
+            }
         }
     }
 
@@ -75,7 +83,11 @@ class ModelHandler {
     }
 
     setDropdownValue(selectedModel) {
-        if (this.modelDropdown) {
+        // For custom dropdown
+        if (typeof setCustomDropdownValue === 'function') {
+            setCustomDropdownValue('model-dropdown', selectedModel);
+        } else if (this.modelDropdown && this.modelDropdown.tagName === 'SELECT') {
+            // Fallback for old select dropdown
             // Check if the model exists in the dropdown options
             const optionExists = Array.from(this.modelDropdown.options).some(option => 
                 option.value === selectedModel
