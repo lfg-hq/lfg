@@ -3383,7 +3383,6 @@ document.addEventListener('DOMContentLoaded', () => {
         // Create sleek HTML structure
         conversationItem.innerHTML = `
             <div class="conversation-title" title="${conversation.title}">${title}</div>
-            <span class="conversation-time">${timeStr}</span>
             <button class="delete-conversation" title="Delete">
                 <i class="fas fa-trash"></i>
             </button>
