@@ -578,6 +578,24 @@ capture_name = {
 }
 
 
+web_search = {
+    "type": "function",
+    "function": {
+        "name": "search_web",
+        "description": "Searches the web for fresh information",
+        "parameters": {
+        "type": "object",
+        "properties": {
+            "query": {
+                    "type": "string",
+                    "description": "Search query"
+                }
+            },
+            "required": ["query"]
+        }
+    }
+}
+
 tools_code = [get_prd, start_server, \
               get_github_access_token, \
               create_tickets, update_ticket, \
@@ -585,7 +603,7 @@ tools_code = [get_prd, start_server, \
               create_implementation, get_implementation, update_implementation, stream_implementation_content, \
               copy_boilerplate_code, capture_name]
 
-tools_product = [get_prd, get_implementation, create_tickets, get_pending_tickets]
+tools_product = [get_prd, get_implementation, create_tickets, get_pending_tickets, web_search]
 
 tools_turbo = [get_prd, create_tickets, get_pending_tickets, update_ticket, execute_command]
 

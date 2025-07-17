@@ -641,6 +641,21 @@ class OpenAIProvider(AIProvider):
 
         logger.debug(f"Starting OpenAI stream generation loop")
 
+        search_tool = {
+            "type": "function",
+            "function": {
+                "name": "web_search",
+                "description": "Search the web",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"}
+                    },
+                    "required": ["query"]
+                }
+            }
+        }
+
         while True: # Loop to handle potential multi-turn tool calls (though typically one round)
             try:
                 params = {

@@ -1708,59 +1708,84 @@
         }
 
         .compact-code-block {
-            position: relative;
             background: var(--bg-darker);
             border: 1px solid var(--border-color);
             border-radius: 12px;
             overflow: hidden;
-        }
-
-        .compact-code-block pre {
-            margin: 0;
             padding: 2rem;
-            overflow-x: auto;
-            /* Hide scrollbar */
-            scrollbar-width: thin;
-            scrollbar-color: var(--primary-purple) transparent;
         }
 
-        .compact-code-block pre::-webkit-scrollbar {
-            height: 6px;
+        .code-step {
+            position: relative;
+            margin-bottom: 1.5rem;
+            padding-right: 4rem;
         }
 
-        .compact-code-block pre::-webkit-scrollbar-thumb {
-            background: var(--primary-purple);
-            border-radius: 3px;
+        .code-step:last-child {
+            margin-bottom: 0;
         }
 
-        .compact-code-block code {
-            color: #E2E8F0;  /* Light gray for better contrast */
+        .code-step .comment {
+            color: #64748B;
+            display: block;
+            margin-bottom: 0.25rem;
+            font-family: 'Monaco', 'Consolas', 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+
+        .code-step .command {
+            color: #E2E8F0;
             font-family: 'Monaco', 'Consolas', 'Courier New', monospace;
             font-size: 0.9rem;
             line-height: 1.6;
             display: block;
         }
 
-        .compact-code-block code .comment {
-            color: #64748B;  /* Muted gray for comments */
-        }
-
-        .copy-all-btn {
+        .copy-step-btn {
             position: absolute;
-            top: 1rem;
-            right: 1rem;
+            top: 50%;
+            right: 0;
+            transform: translateY(-50%);
             background: rgba(139, 92, 246, 0.1);
             border: 1px solid var(--primary-purple);
             color: var(--primary-purple);
-            padding: 0.5rem 1rem;
+            padding: 0.4rem 0.8rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.75rem;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .copy-step-btn:hover {
+            background: var(--primary-purple);
+            color: white;
+            transform: translateY(-50%) scale(1.05);
+        }
+
+        .copy-step-btn.copied {
+            background: #10B981;
+            border-color: #10B981;
+            color: white;
+        }
+
+        .copy-all-btn {
+            background: rgba(139, 92, 246, 0.1);
+            border: 1px solid var(--primary-purple);
+            color: var(--primary-purple);
+            padding: 0.75rem 1.5rem;
             border-radius: 8px;
             cursor: pointer;
             transition: all 0.3s ease;
             font-size: 0.875rem;
             font-weight: 500;
-            display: flex;
+            display: inline-flex;
             align-items: center;
             gap: 0.5rem;
+            margin-top: 1.5rem;
         }
 
         .copy-all-btn:hover {
@@ -2000,9 +2025,19 @@
                 padding: 1.5rem;
             }
 
-            .compact-code-block pre {
+            .compact-code-block {
                 padding: 1rem;
+            }
+            .code-step {
+                padding-right: 3rem;
+            }
+            .code-step .comment,
+            .code-step .command {
                 font-size: 0.8rem;
+            }
+            .copy-step-btn {
+                padding: 0.3rem 0.6rem;
+                font-size: 0.7rem;
             }
 
             .setup-step {
@@ -2399,27 +2434,51 @@
                     <h3>Quick Setup Commands</h3>
                     <p>Copy and run these commands to get LFG running on your machine:</p>
                     <div class="compact-code-block">
-                        <pre><code><span class="comment"># 1. Clone the repository</span>
-git clone https://github.com/lfg-hq/lfg.git
-
-<span class="comment"># 2. Create virtual environment</span>
-cd lfg && python -m venv venv && source venv/bin/activate
-<span class="comment"># On Windows: cd lfg && python -m venv venv && venv\Scripts\activate</span>
-
-<span class="comment"># 3. Install dependencies</span>
-pip install -r requirements.txt
-
-<span class="comment"># 4. Set up environment</span>
-cp .env.example .env
-<span class="comment"># Edit .env file to add your API keys</span>
-
-<span class="comment"># 5. Run database migrations</span>
-python manage.py migrate
-
-<span class="comment"># 6. Start the development server</span>
-uvicorn LFG.asgi:application --host 0.0.0.0 --port 8000 --workers 2
-
-<span class="comment"># Access at http://localhost:8000</span></code></pre>
+                        <div class="code-step">
+                            <span class="comment"># 1. Clone the repository</span>
+                            <span class="command">git clone https://github.com/lfg-hq/lfg.git</span>
+                            <button class="copy-step-btn" onclick="copyStep('git clone https://github.com/lfg-hq/lfg.git', this)">
+                                <i class="fas fa-copy"></i> Copy
+                            </button>
+                        </div>
+                        <div class="code-step">
+                            <span class="comment"># 2. Create virtual environment</span>
+                            <span class="command">cd lfg && python -m venv venv && source venv/bin/activate</span>
+                            <span class="comment"># On Windows: cd lfg && python -m venv venv && venv\Scripts\activate</span>
+                            <button class="copy-step-btn" onclick="copyStep('cd lfg && python -m venv venv && source venv/bin/activate', this)">
+                                <i class="fas fa-copy"></i> Copy
+                            </button>
+                        </div>
+                        <div class="code-step">
+                            <span class="comment"># 3. Install dependencies</span>
+                            <span class="command">pip install -r requirements.txt</span>
+                            <button class="copy-step-btn" onclick="copyStep('pip install -r requirements.txt', this)">
+                                <i class="fas fa-copy"></i> Copy
+                            </button>
+                        </div>
+                        <div class="code-step">
+                            <span class="comment"># 4. Set up environment</span>
+                            <span class="command">cp .env.example .env</span>
+                            <span class="comment"># Edit .env file to add your API keys</span>
+                            <button class="copy-step-btn" onclick="copyStep('cp .env.example .env', this)">
+                                <i class="fas fa-copy"></i> Copy
+                            </button>
+                        </div>
+                        <div class="code-step">
+                            <span class="comment"># 5. Run database migrations</span>
+                            <span class="command">python manage.py migrate</span>
+                            <button class="copy-step-btn" onclick="copyStep('python manage.py migrate', this)">
+                                <i class="fas fa-copy"></i> Copy
+                            </button>
+                        </div>
+                        <div class="code-step">
+                            <span class="comment"># 6. Start the development server</span>
+                            <span class="command">uvicorn LFG.asgi:application --host 0.0.0.0 --port 8000 --workers 2</span>
+                            <span class="comment"># Access at http://localhost:8000</span>
+                            <button class="copy-step-btn" onclick="copyStep('uvicorn LFG.asgi:application --host 0.0.0.0 --port 8000 --workers 2', this)">
+                                <i class="fas fa-copy"></i> Copy
+                            </button>
+                        </div>
                         <button class="copy-all-btn" onclick="copyAllCommands()">
                             <i class="fas fa-copy"></i> Copy All
                         </button>
@@ -2993,6 +3052,19 @@ uvicorn LFG.asgi:application --host 0.0.0.0 --port 8000 --workers 2
             });
         }
 
+        function copyStep(command, button) {
+            navigator.clipboard.writeText(command).then(() => {
+                const originalHTML = button.innerHTML;
+                button.innerHTML = '<i class="fas fa-check"></i> Copied!';
+                button.classList.add('copied');
+                
+                setTimeout(() => {
+                    button.innerHTML = originalHTML;
+                    button.classList.remove('copied');
+                }, 2000);
+            });
+        }
+        
         function copyAllCommands() {
             const commands = `# 1. Clone the repository
 git clone https://github.com/lfg-hq/lfg.git
