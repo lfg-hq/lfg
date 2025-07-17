@@ -1163,10 +1163,8 @@ class OpenAIProvider(AIProvider):
         for chunk in response_stream:
             yield chunk
             # Yield control back to the event loop periodically
-            await asyncio.sleep(0)
-    
+            await asyncio.sleep(0)    
  
-
 
 class XAIProvider(AIProvider):
     """XAI (Grok) provider implementation"""
