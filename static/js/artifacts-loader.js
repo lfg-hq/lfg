@@ -709,10 +709,9 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <button class="artifact-download-btn" id="prd-download-btn" data-project-id="${projectId}" title="Download PDF" style="padding: 4px 6px; background: transparent; border: none; color: #fff; cursor: pointer; transition: all 0.2s; opacity: 0.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
                                     <i class="fas fa-download"></i>
                                 </button>
-                                ${currentPrdName !== 'Main PRD' ? `
                                 <button class="artifact-delete-btn" id="prd-delete-action-btn" data-project-id="${projectId}" data-prd-name="${currentPrdName}" title="Delete PRD" style="padding: 4px 6px; background: transparent; border: none; color: #fff; cursor: pointer; transition: all 0.2s; opacity: 0.7;" onmouseover="this.style.opacity='1'; this.style.color='#ef4444'" onmouseout="this.style.opacity='0.7'; this.style.color='#fff'">
                                     <i class="fas fa-trash"></i>
-                                </button>` : ''}
+                                </button>
                                 
                             </div>
                         `;
@@ -1121,10 +1120,9 @@ document.addEventListener('DOMContentLoaded', function() {
                             <button class="artifact-edit-btn" id="prd-edit-btn" data-project-id="${projectId}" title="Edit" style="padding: 4px 6px; background: transparent; border: none; color: #fff; cursor: pointer; transition: all 0.2s; opacity: 0.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
                                 <i class="fas fa-edit"></i>
                             </button>
-                            ${prdName !== 'Main PRD' ? `
                             <button class="artifact-delete-btn" id="prd-delete-action-btn" data-project-id="${projectId}" data-prd-name="${prdName}" title="Delete PRD" style="padding: 4px 6px; background: transparent; border: none; color: #fff; cursor: pointer; transition: all 0.2s; opacity: 0.7;" onmouseover="this.style.opacity='1'; this.style.color='#ef4444'" onmouseout="this.style.opacity='0.7'; this.style.color='#fff'">
                                 <i class="fas fa-trash"></i>
-                            </button>` : ''}
+                            </button>
                             <button class="artifact-download-btn" id="prd-download-btn" data-project-id="${projectId}" title="Download PDF" style="padding: 4px 6px; background: transparent; border: none; color: #fff; cursor: pointer; transition: all 0.2s; opacity: 0.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
                                 <i class="fas fa-download"></i>
                             </button>
@@ -1377,6 +1375,9 @@ document.addEventListener('DOMContentLoaded', function() {
                             <button class="artifact-copy-btn" id="implementation-copy-btn" data-project-id="${projectId}" title="Copy" style="padding: 4px 6px; background: transparent; border: none; color: #fff; cursor: pointer; transition: all 0.2s; opacity: 0.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
                                 <i class="fas fa-copy"></i>
                             </button>
+                            <button class="artifact-delete-btn" id="implementation-delete-btn" data-project-id="${projectId}" title="Delete Implementation" style="padding: 4px 6px; background: transparent; border: none; color: #fff; cursor: pointer; transition: all 0.2s; opacity: 0.7;" onmouseover="this.style.opacity='1'; this.style.color='#ef4444'" onmouseout="this.style.opacity='0.7'; this.style.color='#fff'">
+                                <i class="fas fa-trash"></i>
+                            </button>
                         `;
                         implementationMeta.appendChild(implementationActions);
                     }
@@ -1402,6 +1403,43 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (copyBtn) {
                         copyBtn.addEventListener('click', () => {
                             this.copyToClipboard(window.implementationStreamingState.fullContent, 'Implementation content');
+                        });
+                    }
+                    
+                    const deleteBtn = document.getElementById('implementation-delete-btn');
+                    if (deleteBtn) {
+                        deleteBtn.addEventListener('click', function() {
+                            if (confirm('Are you sure you want to delete the implementation plan?')) {
+                                // Delete the implementation
+                                fetch(`/projects/${projectId}/api/implementation/`, {
+                                    method: 'DELETE',
+                                    headers: {
+                                        'X-CSRFToken': getCsrfToken()
+                                    }
+                                })
+                                .then(response => response.json())
+                                .then(deleteData => {
+                                    if (deleteData.success) {
+                                        window.showToast('Implementation plan deleted successfully', 'success');
+                                        // Clear the implementation content
+                                        const implementationContainer = document.getElementById('implementation-container');
+                                        const emptyState = document.getElementById('implementation-empty-state');
+                                        if (implementationContainer) implementationContainer.style.display = 'none';
+                                        if (emptyState) emptyState.style.display = 'block';
+                                        // Clear the streaming state
+                                        window.implementationStreamingState = {
+                                            fullContent: '',
+                                            isStreaming: false
+                                        };
+                                    } else {
+                                        window.showToast(`Error deleting implementation: ${deleteData.error || 'Unknown error'}`, 'error');
+                                    }
+                                })
+                                .catch(error => {
+                                    console.error('[ArtifactsLoader] Error deleting implementation:', error);
+                                    window.showToast('Error deleting implementation plan', 'error');
+                                });
+                            }
                         });
                     }
                 }
@@ -1478,6 +1516,9 @@ document.addEventListener('DOMContentLoaded', function() {
                                         <button class="artifact-copy-btn" id="implementation-copy-btn" data-project-id="${projectId}" title="Copy" style="padding: 4px 6px; background: transparent; border: none; color: #fff; cursor: pointer; transition: all 0.2s; opacity: 0.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
                                             <i class="fas fa-copy"></i>
                                         </button>
+                                        <button class="artifact-delete-btn" id="implementation-delete-btn" data-project-id="${projectId}" title="Delete Implementation" style="padding: 4px 6px; background: transparent; border: none; color: #fff; cursor: pointer; transition: all 0.2s; opacity: 0.7;" onmouseover="this.style.opacity='1'; this.style.color='#ef4444'" onmouseout="this.style.opacity='0.7'; this.style.color='#fff'">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -1500,6 +1541,45 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (copyBtn) {
                         copyBtn.addEventListener('click', function() {
                             ArtifactsLoader.copyToClipboard(implementationContent, 'Implementation plan');
+                        });
+                    }
+                    
+                    // Add click event listener for the delete button
+                    const deleteBtn = document.getElementById('implementation-delete-btn');
+                    if (deleteBtn) {
+                        deleteBtn.addEventListener('click', function() {
+                            if (confirm('Are you sure you want to delete the implementation plan?')) {
+                                // Delete the implementation
+                                fetch(`/projects/${projectId}/api/implementation/`, {
+                                    method: 'DELETE',
+                                    headers: {
+                                        'X-CSRFToken': getCsrfToken()
+                                    }
+                                })
+                                .then(response => response.json())
+                                .then(deleteData => {
+                                    if (deleteData.success) {
+                                        window.showToast('Implementation plan deleted successfully', 'success');
+                                        // Show empty state
+                                        implementationTab.innerHTML = `
+                                            <div class="empty-state" id="implementation-empty-state">
+                                                <div class="empty-state-icon">
+                                                    <i class="fas fa-code"></i>
+                                                </div>
+                                                <div class="empty-state-text">
+                                                    No implementation plan available yet.
+                                                </div>
+                                            </div>
+                                        `;
+                                    } else {
+                                        window.showToast(`Error deleting implementation: ${deleteData.error || 'Unknown error'}`, 'error');
+                                    }
+                                })
+                                .catch(error => {
+                                    console.error('[ArtifactsLoader] Error deleting implementation:', error);
+                                    window.showToast('Error deleting implementation plan', 'error');
+                                });
+                            }
                         });
                     }
                 })
