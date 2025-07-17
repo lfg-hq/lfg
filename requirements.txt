@@ -1,7 +1,7 @@
 django==4.2.7
 djangorestframework==3.14.0
 django-cors-headers==4.3.0
-openai==1.65.1
+openai==1.97.0
 markdown==3.5.1
 python-dotenv==1.0.0
 requests==2.31.0

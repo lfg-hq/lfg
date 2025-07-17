@@ -20,6 +20,7 @@ from development.k8s_manager.manage_pods import execute_command_in_pod
 from development.models import KubernetesPod
 from development.models import CommandExecution
 from accounts.models import GitHubToken
+from chat.models import Conversation
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -148,7 +149,7 @@ async def app_functions(function_name, function_args, project_id, conversation_i
     logger.debug(f"Function args: {function_args}")
 
     # Validate project_id for most functions
-    if function_name not in ["get_github_access_token"] and project_id:
+    if function_name not in ["get_github_access_token", "web_search"] and project_id:
         error_response = validate_project_id(project_id)
         if error_response:
             return error_response
@@ -237,6 +238,11 @@ async def app_functions(function_name, function_args, project_id, conversation_i
             action = function_args.get('action')
             project_name = function_args.get('project_name')
             return await capture_name(action, project_name, project_id)
+        
+        case "web_search":
+            query = function_args.get('query')
+            print(f"Search Query: {query}")
+            return await web_search(query, conversation_id)
 
         # case "implement_ticket_async":
         #     ticket_id = function_args.get('ticket_id')
@@ -2611,5 +2617,74 @@ async def save_ticket_from_stream(ticket_data, project_id):
         return {
             "is_notification": False,
             "message_to_agent": f"Error saving ticket: {str(e)}"
+        }
+
+
+# Only to be used with OpenAIProvider
+# As OpenAI doesn't support web search tool yet
+# Claude does.
+async def web_search(query, conversation_id=None):
+    """
+    Perform a web search using OpenAI's web search capabilities.
+    This function is only available for OpenAI provider.
+    
+    Args:
+        query: The search query string
+        conversation_id: The conversation ID (optional)
+        
+    Returns:
+        Dict with search results or error message
+    """
+    logger.info(f"Web search function called with query: {query}")
+    
+    if not query:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: query is required for web search"
+        }
+    
+    try:
+        # Get user and conversation details
+        model = "gpt-4.1"  # Default model
+        
+        # Get OpenAI API key
+        openai_api_key = os.environ.get('OPENAI_API_KEY')
+        
+        # Initialize OpenAI client
+        import openai
+        client = openai.OpenAI(api_key=openai_api_key)
+        
+        logger.info(f"Using model {model} for web search")
+        
+        # Make the search request using OpenAI's responses.create API
+        response = client.responses.create(
+            model=model,
+            tools=[{"type": "web_search_preview"}],
+            input=query
+        )
+        
+        # Extract the search results from the response
+        if response:
+            # Convert response to string format
+            search_results = str(response)
+            
+            logger.info(f"Web search completed successfully for query: {query}")
+            
+            return {
+                "is_notification": True,
+                "notification_type": "toolhistory",
+                "message_to_agent": f"Web search results for '{query}':\n\n{search_results}"
+            }
+        else:
+            return {
+                "is_notification": False,
+                "message_to_agent": "No search results found"
+            }
+            
+    except Exception as e:
+        logger.error(f"Error performing web search: {str(e)}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error performing web search: {str(e)}"
         }
         
