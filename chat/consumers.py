@@ -61,9 +61,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 # Already a proper User instance
                 self.user = lazy_user
             
-            # Each user joins their own room based on their username
+            # Get project_id from query string if available
+            query_string = self.scope.get('query_string', b'').decode()
+            query_params = dict(param.split('=') for param in query_string.split('&') if '=' in param)
+            project_id = query_params.get('project_id')
+            
+            # Each user joins their own room based on their email and project_id
             if self.user.is_authenticated:
-                self.room_name = f"chat_{self.user.username}"
+                email_safe = self.user.email.replace('@', '_at_').replace('.', '_')
+                if project_id:
+                    self.room_name = f"chat_{email_safe}_{project_id}"
+                else:
+                    self.room_name = f"chat_{email_safe}"
             else:
                 self.room_name = "chat_anonymous"
                 logger.warning("User is not authenticated, using anonymous chat room")
@@ -100,8 +109,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 self.using_groups = False
             
             # Load chat history if conversation_id is provided in query string
-            query_string = self.scope.get('query_string', b'').decode()
-            query_params = dict(param.split('=') for param in query_string.split('&') if '=' in param)
             conversation_id = query_params.get('conversation_id')
             
             if conversation_id:
@@ -956,11 +963,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
             
             # Check for missing API key attributes
             if "'AnthropicProvider' object has no attribute 'anthropic_api_key'" in error_message:
-                error_message = "No Anthropic API key configured. Please add API key here http://localhost:8000/accounts/integrations/."
+                error_message = "No Anthropic API key configured. Please add API key [here](/settings/)."
             elif "'OpenAIProvider' object has no attribute 'openai_api_key'" in error_message:
-                error_message = "No OpenAI API key configured. Please add API key here http://localhost:8000/accounts/integrations/."
+                error_message = "No OpenAI API key configured. Please add API key [here](/settings/)."
             elif "'XAIProvider' object has no attribute 'xai_api_key'" in error_message:
-                error_message = "No XAI API key configured. Please add API key here http://localhost:8000/accounts/integrations/."
+                error_message = "No XAI API key configured. Please add API key [here](/settings/)."
             
             yield f"Error generating response: {error_message}"
         finally:

@@ -1943,7 +1943,7 @@ async def server_command_in_k8s(command: str, project_id: int | str = None, conv
         
         # Add URL information to the message
         message += f"{port_type.capitalize()} is running on port {application_port} inside the container."
-        message += f"\nYou can access it at: http://{node_ip}:{node_port}"
+        message += f"\nYou can access it at: [http://{node_ip}:{node_port}](http://{node_ip}:{node_port})"
     
     return {
         "is_notification": True,
@@ -2103,7 +2103,7 @@ async def run_server_locally(command: str, project_id: int | str = None,
             "notification_type": "server_started",
             "message_to_agent": f"✅ Server started successfully!"
                                f"📍 Running on port {application_port}\n"
-                               f"🔗 URL: http://localhost:{application_port}\n"
+                               f"🔗 URL: [http://localhost:{application_port}](http://localhost:{application_port})\n"
                                f"📄 Logs: {log_file}"
                                f"The server is running in the background. Proceed with next steps.\n"
                                f"To view logs: tail -f {log_file}"
