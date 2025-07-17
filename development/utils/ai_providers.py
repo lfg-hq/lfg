@@ -26,12 +26,58 @@ from development.utils.ai_tools import tools_ticket
 
 import xml.etree.ElementTree as ET
 
+# Try to import tiktoken for token estimation
+try:
+    import tiktoken
+except ImportError:
+    tiktoken = None
+
 
 # Set up logger
 logger = logging.getLogger(__name__)
 
 # Maximum tool output size (50KB)
 MAX_TOOL_OUTPUT_SIZE = 50 * 1024
+
+
+async def track_token_usage(user, project, conversation, usage_data, provider, model):
+    """Track token usage in the database - common function for all providers"""
+    try:
+        # Handle different attribute names for token counts
+        if provider == 'anthropic':
+            input_tokens = getattr(usage_data, 'input_tokens', 0)
+            output_tokens = getattr(usage_data, 'output_tokens', 0)
+            total_tokens = input_tokens + output_tokens
+        else:
+            # OpenAI and Grok use the same attribute names
+            input_tokens = getattr(usage_data, 'prompt_tokens', 0)
+            output_tokens = getattr(usage_data, 'completion_tokens', 0)
+            total_tokens = getattr(usage_data, 'total_tokens', 0)
+        
+        logger.info(f"Tracking token usage - Provider: {provider}, Model: {model}, Input: {input_tokens}, Output: {output_tokens}, Total: {total_tokens}")
+        
+        # Create token usage record
+        token_usage = TokenUsage(
+            user=user,
+            project=project,
+            conversation=conversation,
+            provider=provider,
+            model=model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=total_tokens
+        )
+        
+        # Calculate cost
+        token_usage.calculate_cost()
+        
+        # Save asynchronously
+        await asyncio.to_thread(token_usage.save)
+        
+        logger.debug(f"Token usage tracked: {token_usage}")
+        
+    except Exception as e:
+        logger.error(f"Error tracking token usage: {e}")
 
 
 def get_notification_type_for_tool(tool_name):
@@ -431,7 +477,7 @@ class OpenAIProvider(AIProvider):
         # Store user and model info for async profile fetching
         self.user = user
         self.selected_model = selected_model
-        # self.openai_api_key = os.getenv('OPENAI_API_KEY', '')
+        self.openai_api_key = ''  # Initialize to empty string
 
         if selected_model == "gpt_4o":
             self.model = "gpt-4o"
@@ -444,7 +490,7 @@ class OpenAIProvider(AIProvider):
             self.model = "gpt-4o"
             logger.warning(f"Unknown model {selected_model}, defaulting to gpt-4o")
 
-        print(f"\n\n\nSelected model: {self.model}")
+        logger.info(f"OpenAI Provider initialized with model: {self.model}")
         
         # Client will be initialized in async method
         self.client = None
@@ -476,8 +522,77 @@ class OpenAIProvider(AIProvider):
         else:
             logger.warning("No OpenAI API key found")
 
+    def estimate_tokens(self, messages, model=None, output_text=None):
+        """Estimate token count for messages and output using tiktoken"""
+        if not tiktoken:
+            logger.warning("tiktoken not available, cannot estimate tokens")
+            return None, None
+            
+        try:
+            # Use the model-specific encoding or fall back to cl100k_base
+            try:
+                if model == "gpt-4o" or model == "gpt-4.1" or model == "o3":
+                    # Try to get encoding for gpt-4 (closest available)
+                    encoding = tiktoken.encoding_for_model("gpt-4")
+                else:
+                    encoding = tiktoken.get_encoding("cl100k_base")
+            except Exception:
+                # Fallback to cl100k_base if model-specific encoding not found
+                encoding = tiktoken.get_encoding("cl100k_base")
+            
+            input_tokens = 0
+            
+            # Count input tokens from messages
+            logger.debug(f"Counting tokens for {len(messages)} messages")
+            for i, message in enumerate(messages):
+                msg_tokens = 0
+                # Count role tokens (usually 3-4 tokens)
+                msg_tokens += 4
+                
+                # Count content tokens
+                if message.get("content"):
+                    content_tokens = len(encoding.encode(message["content"]))
+                    msg_tokens += content_tokens
+                    logger.debug(f"Message {i} ({message.get('role')}): {content_tokens} content tokens")
+                
+                # Count tool calls if present
+                if message.get("tool_calls"):
+                    tool_tokens = 0
+                    for tool_call in message["tool_calls"]:
+                        # Estimate tokens for tool call structure
+                        tool_tokens += 10  # Base overhead for tool call
+                        if tool_call.get("function", {}).get("name"):
+                            tool_tokens += len(encoding.encode(tool_call["function"]["name"]))
+                        if tool_call.get("function", {}).get("arguments"):
+                            tool_tokens += len(encoding.encode(tool_call["function"]["arguments"]))
+                    msg_tokens += tool_tokens
+                    logger.debug(f"Message {i}: {tool_tokens} tool call tokens")
+                
+                # Count tool results
+                if message.get("role") == "tool":
+                    msg_tokens += 5  # Tool message overhead
+                    
+                input_tokens += msg_tokens
+            
+            # Add some overhead for formatting
+            input_tokens += 10
+            
+            # Count output tokens if provided
+            output_tokens = 0
+            if output_text:
+                output_tokens = len(encoding.encode(output_text))
+                logger.debug(f"Output text length: {len(output_text)} chars, {output_tokens} tokens")
+            
+            logger.info(f"Token estimation complete - Input: {input_tokens}, Output: {output_tokens}, Total: {input_tokens + output_tokens}")
+            return input_tokens, output_tokens
+            
+        except Exception as e:
+            logger.error(f"Failed to estimate tokens: {e}", exc_info=True)
+            return None, None
 
     async def generate_stream(self, messages, project_id, conversation_id, tools):
+        logger.info(f"OpenAI generate_stream called - Model: {self.model}, Messages: {len(messages)}, Tools: {len(tools) if tools else 0}")
+        
         # Ensure client is initialized with API keys
         await self._ensure_client()
         
@@ -515,6 +630,11 @@ class OpenAIProvider(AIProvider):
         current_mode = ""
         buffer = ""  # Buffer to handle split tags
         prd_name = "Main PRD"  # Default PRD name
+        
+        # Buffer to capture ALL assistant output for accurate token counting
+        total_assistant_output = ""
+
+        logger.debug(f"Starting OpenAI stream generation loop")
 
         while True: # Loop to handle potential multi-turn tool calls (though typically one round)
             try:
@@ -548,19 +668,24 @@ class OpenAIProvider(AIProvider):
                 
                 # --- Process the stream from the API --- 
                 async for chunk in self._process_stream_async(response_stream):
+                    # logger.debug(f"Chunk received: {chunk}")  # Too verbose, commented out
                     delta = chunk.choices[0].delta if chunk.choices else None
                     finish_reason = chunk.choices[0].finish_reason if chunk.choices else None
                     
                     # Check for usage information in the chunk
                     if hasattr(chunk, 'usage') and chunk.usage:
                         usage_data = chunk.usage
-                        logger.debug(f"Token usage received: {usage_data}")
+                        logger.info(f"Token usage received from OpenAI API: input={getattr(usage_data, 'prompt_tokens', 'N/A')}, output={getattr(usage_data, 'completion_tokens', 'N/A')}, total={getattr(usage_data, 'total_tokens', 'N/A')}")
 
                     if not delta and not usage_data: continue # Skip empty chunks
 
                     # --- Accumulate Text Content --- 
                     if delta.content:
                         text = delta.content
+                        
+                        # Capture ALL assistant output for token counting
+                        total_assistant_output += text
+                        logger.debug(f"Captured {len(text)} chars of assistant output, total: {len(total_assistant_output)}")
                         
                         # Add to buffer for tag detection
                         buffer += text
@@ -856,6 +981,37 @@ class OpenAIProvider(AIProvider):
                                     yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
                                 
                             current_messages.extend(tool_results_messages)
+                            
+                            # Track token usage for tool calls
+                            if user:
+                                if usage_data:
+                                    logger.info(f"Using API-provided token usage for tool calls - Input: {getattr(usage_data, 'prompt_tokens', 'N/A')}, Output: {getattr(usage_data, 'completion_tokens', 'N/A')}, Total: {getattr(usage_data, 'total_tokens', 'N/A')}")
+                                    await track_token_usage(
+                                        user, project, conversation, usage_data, 'openai', self.model
+                                    )
+                                else:
+                                    # Fallback: estimate tokens if usage data not available
+                                    logger.warning("No usage data from OpenAI API for tool calls, using tiktoken estimation")
+                                    logger.info(f"Total assistant output captured: {len(total_assistant_output)} characters")
+                                    estimated_input_tokens, estimated_output_tokens = self.estimate_tokens(
+                                        current_messages, self.model, total_assistant_output
+                                    )
+                                    if estimated_input_tokens is not None:
+                                        # Create a mock usage object for tracking
+                                        class MockUsage:
+                                            def __init__(self, input_tokens, output_tokens):
+                                                self.prompt_tokens = input_tokens
+                                                self.completion_tokens = output_tokens
+                                                self.total_tokens = input_tokens + output_tokens
+                                        
+                                        mock_usage = MockUsage(estimated_input_tokens, estimated_output_tokens)
+                                        logger.info(f"Tracking estimated tokens for tool calls - Input: {estimated_input_tokens}, Output: {estimated_output_tokens}, Total: {estimated_input_tokens + estimated_output_tokens}")
+                                        await track_token_usage(
+                                            user, project, conversation, mock_usage, 'openai', self.model
+                                        )
+                                    else:
+                                        logger.error("Failed to estimate tokens for tool calls")
+                            
                             break # Break inner chunk loop
                         
                         elif finish_reason == "stop":
@@ -894,18 +1050,65 @@ class OpenAIProvider(AIProvider):
                                     logger.error(f"Error saving implementation from OpenAI stream: {str(e)}")
                             
                             # Track token usage before exiting
-                            if usage_data and user:
-                                await self._track_token_usage(
-                                    user, project, conversation, usage_data
-                                )
+                            if user:
+                                if usage_data:
+                                    logger.info(f"Using API-provided token usage on stop - Input: {getattr(usage_data, 'prompt_tokens', 'N/A')}, Output: {getattr(usage_data, 'completion_tokens', 'N/A')}, Total: {getattr(usage_data, 'total_tokens', 'N/A')}")
+                                    await track_token_usage(
+                                        user, project, conversation, usage_data, 'openai', self.model
+                                    )
+                                else:
+                                    # Fallback: estimate tokens if usage data not available
+                                    logger.warning("No usage data from OpenAI API on stop, using tiktoken estimation")
+                                    logger.info(f"Total assistant output captured: {len(total_assistant_output)} characters")
+                                    estimated_input_tokens, estimated_output_tokens = self.estimate_tokens(
+                                        current_messages, self.model, total_assistant_output
+                                    )
+                                    if estimated_input_tokens is not None:
+                                        # Create a mock usage object for tracking
+                                        class MockUsage:
+                                            def __init__(self, input_tokens, output_tokens):
+                                                self.prompt_tokens = input_tokens
+                                                self.completion_tokens = output_tokens
+                                                self.total_tokens = input_tokens + output_tokens
+                                        
+                                        mock_usage = MockUsage(estimated_input_tokens, estimated_output_tokens)
+                                        logger.info(f"Tracking estimated tokens on stop - Input: {estimated_input_tokens}, Output: {estimated_output_tokens}, Total: {estimated_input_tokens + estimated_output_tokens}")
+                                        await track_token_usage(
+                                            user, project, conversation, mock_usage, 'openai', self.model
+                                        )
+                                    else:
+                                        logger.error("Failed to estimate tokens on stop")
                             return
                         else:
                             # Handle other finish reasons
                             logger.warning(f"Unhandled finish reason: {finish_reason}")
-                            if usage_data and user:
-                                await self._track_token_usage(
-                                    user, project, conversation, usage_data
-                                )
+                            if user:
+                                if usage_data:
+                                    await track_token_usage(
+                                        user, project, conversation, usage_data, 'openai', self.model
+                                    )
+                                else:
+                                    # Fallback: estimate tokens if usage data not available
+                                    logger.warning(f"No usage data from OpenAI API for finish reason '{finish_reason}', using tiktoken estimation")
+                                    logger.info(f"Total assistant output captured: {len(total_assistant_output)} characters")
+                                    estimated_input_tokens, estimated_output_tokens = self.estimate_tokens(
+                                        current_messages, self.model, total_assistant_output
+                                    )
+                                    if estimated_input_tokens is not None:
+                                        # Create a mock usage object for tracking
+                                        class MockUsage:
+                                            def __init__(self, input_tokens, output_tokens):
+                                                self.prompt_tokens = input_tokens
+                                                self.completion_tokens = output_tokens
+                                                self.total_tokens = input_tokens + output_tokens
+                                        
+                                        mock_usage = MockUsage(estimated_input_tokens, estimated_output_tokens)
+                                        logger.info(f"Tracking estimated tokens for {finish_reason} - Input: {estimated_input_tokens}, Output: {estimated_output_tokens}, Total: {estimated_input_tokens + estimated_output_tokens}")
+                                        await track_token_usage(
+                                            user, project, conversation, mock_usage, 'openai', self.model
+                                        )
+                                    else:
+                                        logger.error(f"Failed to estimate tokens for finish reason '{finish_reason}'")
                             return
                 
                 # If the inner loop finished because of tool_calls, continue
@@ -913,6 +1116,34 @@ class OpenAIProvider(AIProvider):
                     continue
                 else:
                     logger.warning("Stream ended unexpectedly.")
+                    # Try to track whatever usage we have
+                    if user:
+                        if usage_data:
+                            await track_token_usage(
+                                user, project, conversation, usage_data, 'openai', self.model
+                            )
+                        else:
+                            # Fallback: estimate tokens for unexpected ending
+                            logger.warning("No usage data from OpenAI API for unexpected stream end, using tiktoken estimation")
+                            logger.info(f"Total assistant output captured: {len(total_assistant_output)} characters")
+                            estimated_input_tokens, estimated_output_tokens = self.estimate_tokens(
+                                current_messages, self.model, total_assistant_output
+                            )
+                            if estimated_input_tokens is not None:
+                                # Create a mock usage object for tracking
+                                class MockUsage:
+                                    def __init__(self, input_tokens, output_tokens):
+                                        self.prompt_tokens = input_tokens
+                                        self.completion_tokens = output_tokens
+                                        self.total_tokens = input_tokens + output_tokens
+                                
+                                mock_usage = MockUsage(estimated_input_tokens, estimated_output_tokens)
+                                logger.info(f"Tracking estimated tokens for unexpected end - Input: {estimated_input_tokens}, Output: {estimated_output_tokens}, Total: {estimated_input_tokens + estimated_output_tokens}")
+                                await track_token_usage(
+                                    user, project, conversation, mock_usage, 'openai', self.model
+                                )
+                            else:
+                                logger.error("Failed to estimate tokens for unexpected stream end")
                     return
 
             except Exception as e:
@@ -929,36 +1160,6 @@ class OpenAIProvider(AIProvider):
             # Yield control back to the event loop periodically
             await asyncio.sleep(0)
     
-    async def _track_token_usage(self, user, project, conversation, usage_data):
-        """Track token usage in the database"""
-        try:
-            # Determine provider based on the client base URL
-            provider = 'openai'
-            if hasattr(self.client, 'base_url') and 'anthropic' in str(self.client.base_url):
-                provider = 'anthropic'
-            
-            # Create token usage record
-            token_usage = TokenUsage(
-                user=user,
-                project=project,
-                conversation=conversation,
-                provider=provider,
-                model=self.model,
-                input_tokens=getattr(usage_data, 'prompt_tokens', 0),
-                output_tokens=getattr(usage_data, 'completion_tokens', 0),
-                total_tokens=getattr(usage_data, 'total_tokens', 0)
-            )
-            
-            # Calculate cost
-            token_usage.calculate_cost()
-            
-            # Save asynchronously
-            await asyncio.to_thread(token_usage.save)
-            
-            logger.debug(f"Token usage tracked: {token_usage}")
-            
-        except Exception as e:
-            logger.error(f"Error tracking token usage: {e}")
  
 
 
@@ -1064,6 +1265,9 @@ class GrokProvider(AIProvider):
         implementation_data = ""
         current_mode = ""
         buffer = ""  # Buffer to handle split tags
+        
+        # Buffer to capture ALL assistant output for accurate token counting
+        total_assistant_output = ""
 
         while True: # Loop to handle potential multi-turn tool calls
             try:
@@ -1110,6 +1314,10 @@ class GrokProvider(AIProvider):
                     # --- Accumulate Text Content --- 
                     if delta.content:
                         text = delta.content
+                        
+                        # Capture ALL assistant output for token counting
+                        total_assistant_output += text
+                        logger.debug(f"Captured {len(text)} chars of assistant output, total: {len(total_assistant_output)}")
                         
                         # Add to buffer for tag detection
                         buffer += text
@@ -1460,15 +1668,15 @@ class GrokProvider(AIProvider):
                             
                             # Track token usage before exiting
                             if usage_data and user:
-                                await self._track_token_usage(
-                                    user, project, conversation, usage_data
+                                await track_token_usage(
+                                    user, project, conversation, usage_data, 'openai', self.model
                                 )
                             return
                         else:
                             logger.warning(f"Unhandled finish reason: {finish_reason}")
                             if usage_data and user:
-                                await self._track_token_usage(
-                                    user, project, conversation, usage_data
+                                await track_token_usage(
+                                    user, project, conversation, usage_data, 'openai', self.model
                                 )
                             return
                 
@@ -1490,31 +1698,6 @@ class GrokProvider(AIProvider):
             yield chunk
             await asyncio.sleep(0)
     
-    async def _track_token_usage(self, user, project, conversation, usage_data):
-        """Track token usage in the database"""
-        try:
-            # Create token usage record
-            token_usage = TokenUsage(
-                user=user,
-                project=project,
-                conversation=conversation,
-                provider='grok',
-                model=self.model,
-                input_tokens=getattr(usage_data, 'prompt_tokens', 0),
-                output_tokens=getattr(usage_data, 'completion_tokens', 0),
-                total_tokens=getattr(usage_data, 'total_tokens', 0)
-            )
-            
-            # Calculate cost
-            token_usage.calculate_cost()
-            
-            # Save asynchronously
-            await asyncio.to_thread(token_usage.save)
-            
-            logger.debug(f"Token usage tracked: {token_usage}")
-            
-        except Exception as e:
-            logger.error(f"Error tracking token usage: {e}")
 
 
 class AnthropicProvider(AIProvider):
@@ -2081,8 +2264,8 @@ class AnthropicProvider(AIProvider):
                             
                             # Track token usage if available
                             if hasattr(event.message, 'usage') and event.message.usage and user:
-                                await self._track_token_usage(
-                                    user, project, conversation, event.message.usage
+                                await track_token_usage(
+                                    user, project, conversation, event.message.usage, 'anthropic', self.model
                                 )
                             
                             if stop_reason == "tool_use" and tool_calls_requested:
@@ -2238,28 +2421,3 @@ class AnthropicProvider(AIProvider):
         
         return result_content, notification_data, yielded_content
     
-    async def _track_token_usage(self, user, project, conversation, usage_data):
-        """Track token usage in the database"""
-        try:
-            # Create token usage record for Anthropic
-            token_usage = TokenUsage(
-                user=user,
-                project=project,
-                conversation=conversation,
-                provider='anthropic',
-                model=self.model,
-                input_tokens=getattr(usage_data, 'input_tokens', 0),
-                output_tokens=getattr(usage_data, 'output_tokens', 0),
-                total_tokens=getattr(usage_data, 'input_tokens', 0) + getattr(usage_data, 'output_tokens', 0)
-            )
-            
-            # Calculate cost
-            token_usage.calculate_cost()
-            
-            # Save asynchronously
-            await asyncio.to_thread(token_usage.save)
-            
-            logger.debug(f"Anthropic token usage tracked: {token_usage}")
-            
-        except Exception as e:
-            logger.error(f"Error tracking Anthropic token usage: {e}")

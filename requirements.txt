@@ -30,3 +30,4 @@ django-redis>=5.2.0,<6.0.0
 psutil>=5.9.0
 sendgrid==6.11.0
 django-sendgrid-v5==1.2.3
+tiktoken==0.7.0
