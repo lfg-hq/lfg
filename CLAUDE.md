@@ -59,7 +59,7 @@ python manage.py create_default_plans  # Initialize subscription plans
 3. **development/** - Code generation and execution
    - **docker/** - Container management for sandboxed execution
    - **k8s_manager/** - Kubernetes pod orchestration for production
-   - **utils/ai_providers.py** - Multi-provider AI integration (Anthropic, OpenAI, Grok)
+   - **utils/ai_providers.py** - Multi-provider AI integration (Anthropic, OpenAI, XAI)
    - **utils/ai_tools.py** - Tool/function definitions for AI agents
 
 4. **projects/** - Project and feature management
@@ -77,7 +77,7 @@ python manage.py create_default_plans  # Initialize subscription plans
 
 The system uses a factory pattern for AI providers:
 - Base `AIProvider` class with streaming and tool support
-- Implementations: `AnthropicProvider`, `OpenAIProvider`, `GrokProvider`
+- Implementations: `AnthropicProvider`, `OpenAIProvider`, `xAIGrokProvider`
 - User-specific API keys stored in Profile model
 - Token usage tracking and cost calculation
 

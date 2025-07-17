@@ -18,7 +18,7 @@ from asgiref.sync import sync_to_async
 from development.utils.ai_functions import app_functions
 from chat.models import AgentRole, ModelSelection, Conversation
 from projects.models import Project, ToolCallHistory
-from accounts.models import TokenUsage, Profile
+from accounts.models import TokenUsage, Profile, LLMApiKeys
 from django.contrib.auth.models import User
 import traceback # Import traceback for better error logging
 from channels.db import database_sync_to_async
@@ -43,7 +43,7 @@ async def track_token_usage(user, project, conversation, usage_data, provider, m
             output_tokens = getattr(usage_data, 'output_tokens', 0)
             total_tokens = input_tokens + output_tokens
         else:
-            # OpenAI and Grok use the same attribute names
+            # OpenAI and XAI use the same attribute names
             input_tokens = getattr(usage_data, 'prompt_tokens', 0)
             output_tokens = getattr(usage_data, 'completion_tokens', 0)
             total_tokens = getattr(usage_data, 'total_tokens', 0)
@@ -449,7 +449,7 @@ class AIProvider:
         providers = {
             'openai': lambda: OpenAIProvider(selected_model, user, conversation, project),
             'anthropic': lambda: AnthropicProvider(selected_model, user, conversation, project),
-            'grok': lambda: GrokProvider(selected_model, user, conversation, project),
+            'xai': lambda: XAIProvider(selected_model, user, conversation, project),
         }
         provider_factory = providers.get(provider_name)
         if provider_factory:
@@ -500,9 +500,12 @@ class OpenAIProvider(AIProvider):
     @database_sync_to_async
     def _get_openai_key(self, user):
         """Get user profile synchronously"""
-        profile = Profile.objects.get(user=user)
-        if profile.openai_api_key:
-            return profile.openai_api_key
+        try:
+            llm_keys = LLMApiKeys.objects.get(user=user)
+            if llm_keys.openai_api_key:
+                return llm_keys.openai_api_key
+        except LLMApiKeys.DoesNotExist:
+            pass
         return ""
 
     async def _ensure_client(self):
@@ -1165,8 +1168,8 @@ class OpenAIProvider(AIProvider):
  
 
 
-class GrokProvider(AIProvider):
-    """Grok AI provider implementation"""
+class XAIProvider(AIProvider):
+    """XAI (Grok) provider implementation"""
     
     def __init__(self, selected_model, user=None, conversation=None, project=None):
         logger.debug(f"Selected model: {selected_model}")
@@ -1182,30 +1185,31 @@ class GrokProvider(AIProvider):
         self.user = user
         self.selected_model = selected_model
         
-        # Map Grok model names
+        # Map XAI model names
         if selected_model == "grok_4":
             self.model = "grok-4"
         else:
-            # Default to grok-2
+            # Default to grok-4
             self.model = "grok-4"
             logger.warning(f"Unknown model {selected_model}, defaulting to grok-4")
         
-        print(f"\\n\\n\\nSelected Grok model: {self.model}")
+        print(f"\\n\\n\\nSelected XAI model: {self.model}")
         
         # Client will be initialized in async method
         self.client = None
         self.base_url = "https://api.x.ai/v1"
     
     @database_sync_to_async
-    def _get_grok_key(self, user):
+    def _get_xai_key(self, user):
         """Get user profile synchronously"""
-        profile = Profile.objects.get(user=user)
-        # Note: Using groq_api_key field as it might be for Grok
-        # If this is incorrect, the field name should be updated in the Profile model
-        if hasattr(profile, 'grok_api_key') and profile.grok_api_key:
-            return profile.grok_api_key
-        elif hasattr(profile, 'groq_api_key') and profile.groq_api_key:
-            return profile.groq_api_key
+        try:
+            llm_keys = LLMApiKeys.objects.get(user=user)
+            # Note: Using xai_api_key field
+            # If this is incorrect, the field name should be updated in the LLMApiKeys model
+            if hasattr(llm_keys, 'xai_api_key') and llm_keys.xai_api_key:
+                return llm_keys.xai_api_key
+        except LLMApiKeys.DoesNotExist:
+            pass
         return ""
     
     async def _ensure_client(self):
@@ -1214,21 +1218,21 @@ class GrokProvider(AIProvider):
         # Try to fetch API key from user profile if available
         if self.user:
             try:
-                self.grok_api_key = await self._get_grok_key(self.user)
-                logger.info(f"Fetched Grok API key from user {self.user.id} profile")
+                self.xai_api_key = await self._get_xai_key(self.user)
+                logger.info(f"Fetched XAI API key from user {self.user.id} profile")
             except Profile.DoesNotExist:
                 logger.warning(f"Profile does not exist for user {self.user.id}")
             except Exception as e:
-                logger.warning(f"Could not fetch Grok API key from user profile for user {self.user.id}: {e}")
+                logger.warning(f"Could not fetch XAI API key from user profile for user {self.user.id}: {e}")
         
         # Initialize client using OpenAI-compatible interface
-        if self.grok_api_key:
+        if self.xai_api_key:
             self.client = openai.OpenAI(
-                api_key=self.grok_api_key,
+                api_key=self.xai_api_key,
                 base_url=self.base_url
             )
         else:
-            logger.warning("No Grok API key found")
+            logger.warning("No XAI API key found")
     
     async def generate_stream(self, messages, project_id, conversation_id, tools):
         # Ensure client is initialized with API keys
@@ -1236,7 +1240,7 @@ class GrokProvider(AIProvider):
         
         # Check if client is initialized
         if not self.client:
-            yield "Error: No Grok API key configured. Please add API key here http://localhost:8000/accounts/integrations/."
+            yield "Error: No XAI API key configured. Please add API key here http://localhost:8000/accounts/integrations/."
             return
             
         current_messages = list(messages) # Work on a copy
@@ -1282,7 +1286,7 @@ class GrokProvider(AIProvider):
                     "stream_options": {"include_usage": True}  # Request usage info in stream
                 }
                 
-                logger.debug(f"Making Grok API call with {len(current_messages)} messages.")
+                logger.debug(f"Making XAI API call with {len(current_messages)} messages.")
                 
                 # Run the blocking API call in a thread
                 response_stream = await asyncio.to_thread(
@@ -1348,7 +1352,7 @@ class GrokProvider(AIProvider):
                         
                         if "</lfg-prd>" in buffer and current_mode == "prd":
                             current_mode = ""
-                            print("\\n\\n[PRD MODE DEACTIVATED - Grok]")
+                            print("\\n\\n[PRD MODE DEACTIVATED - XAI]")
                             tag_pos = buffer.find("</lfg-prd>")
                             buffer = buffer[tag_pos + len("</lfg-prd>"):]
                             
@@ -1373,7 +1377,7 @@ class GrokProvider(AIProvider):
                         
                         if "<lfg-plan>" in buffer and current_mode != "implementation":
                             current_mode = "implementation"
-                            print("\\n\\n[IMPLEMENTATION MODE ACTIVATED - Grok]")
+                            print("\\n\\n[IMPLEMENTATION MODE ACTIVATED - XAI]")
                             tag_pos = buffer.find("<lfg-plan>")
                             remaining_buffer = buffer[tag_pos + len("<lfg-plan>"):]
                             remaining_buffer = remaining_buffer.lstrip()
@@ -1385,7 +1389,7 @@ class GrokProvider(AIProvider):
                         
                         if "</lfg-plan>" in buffer and current_mode == "implementation":
                             current_mode = ""
-                            print("\\n\\n[IMPLEMENTATION MODE DEACTIVATED - Grok]")
+                            print("\\n\\n[IMPLEMENTATION MODE DEACTIVATED - XAI]")
                             tag_pos = buffer.find("</lfg-plan>")
                             buffer = buffer[tag_pos + len("</lfg-plan>"):]
                             
@@ -1436,14 +1440,14 @@ class GrokProvider(AIProvider):
                                 
                                 # Skip if we only have tag remnants
                                 if not clean_text or clean_text.startswith('<'):
-                                    print(f"[PRD MODE - Grok] Skipping tag remnants: {repr(text)}")
+                                    print(f"[PRD MODE - XAI] Skipping tag remnants: {repr(text)}")
                                     continue
                                 
-                                print(f"[PRD MODE - Grok] First chunk cleaned: {repr(clean_text[:50])}...")
+                                print(f"[PRD MODE - XAI] First chunk cleaned: {repr(clean_text[:50])}...")
                             
                             # Add the cleaned text to PRD data
                             prd_data += clean_text
-                            print(f"[CAPTURING PRD DATA - Grok]: Added {len(clean_text)} chars")
+                            print(f"[CAPTURING PRD DATA - XAI]: Added {len(clean_text)} chars")
                             
                             # Stream PRD content to the panel
                             prd_stream_notification = {
@@ -1590,7 +1594,7 @@ class GrokProvider(AIProvider):
                                 tool_call_name = tool_call_to_execute["function"]["name"]
                                 tool_call_args_str = tool_call_to_execute["function"]["arguments"]
                                 
-                                logger.debug(f"Grok Provider - Tool Call ID: {tool_call_id}")
+                                logger.debug(f"XAI Provider - Tool Call ID: {tool_call_id}")
                                 
                                 # Use the shared execute_tool_call function
                                 result_content, notification_data, yielded_content = await execute_tool_call(
@@ -1636,49 +1640,49 @@ class GrokProvider(AIProvider):
                             
                             # Save captured PRD data if available
                             if prd_data and project_id:
-                                print(f"\\n\\n[FINAL PRD DATA CAPTURED - Grok]:\\n{prd_data}\\n")
-                                print(f"[PRD DATA LENGTH - Grok]: {len(prd_data)} characters")
+                                print(f"\\n\\n[FINAL PRD DATA CAPTURED - XAI]:\\n{prd_data}\\n")
+                                print(f"[PRD DATA LENGTH - XAI]: {len(prd_data)} characters")
                                 
                                 from development.utils.ai_functions import save_prd_from_stream
                                 
                                 try:
                                     save_result = await save_prd_from_stream(prd_data, project_id, prd_name if 'prd_name' in locals() else "Main PRD")
-                                    logger.info(f"Grok PRD save result: {save_result}")
+                                    logger.info(f"XAI PRD save result: {save_result}")
                                     
                                     if save_result.get("is_notification"):
                                         notification_json = json.dumps(save_result)
                                         yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
                                 except Exception as e:
-                                    logger.error(f"Error saving PRD from Grok stream: {str(e)}")
+                                    logger.error(f"Error saving PRD from XAI stream: {str(e)}")
                             
                             # Save captured implementation data if available
                             if implementation_data and project_id:
-                                print(f"\\n\\n[FINAL IMPLEMENTATION DATA CAPTURED - Grok]:\\n{implementation_data}\\n")
-                                print(f"[IMPLEMENTATION DATA LENGTH - Grok]: {len(implementation_data)} characters")
+                                print(f"\\n\\n[FINAL IMPLEMENTATION DATA CAPTURED - XAI]:\\n{implementation_data}\\n")
+                                print(f"[IMPLEMENTATION DATA LENGTH - XAI]: {len(implementation_data)} characters")
                                 
                                 from development.utils.ai_functions import save_implementation_from_stream
                                 
                                 try:
                                     save_result = await save_implementation_from_stream(implementation_data, project_id)
-                                    logger.info(f"Grok Implementation save result: {save_result}")
+                                    logger.info(f"XAI Implementation save result: {save_result}")
                                     
                                     if save_result.get("is_notification"):
                                         notification_json = json.dumps(save_result)
                                         yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
                                 except Exception as e:
-                                    logger.error(f"Error saving implementation from Grok stream: {str(e)}")
+                                    logger.error(f"Error saving implementation from XAI stream: {str(e)}")
                             
                             # Track token usage before exiting
                             if usage_data and user:
                                 await track_token_usage(
-                                    user, project, conversation, usage_data, 'openai', self.model
+                                    user, project, conversation, usage_data, 'xai', self.model
                                 )
                             return
                         else:
                             logger.warning(f"Unhandled finish reason: {finish_reason}")
                             if usage_data and user:
                                 await track_token_usage(
-                                    user, project, conversation, usage_data, 'openai', self.model
+                                    user, project, conversation, usage_data, 'xai', self.model
                                 )
                             return
                 
@@ -1691,7 +1695,7 @@ class GrokProvider(AIProvider):
 
             except Exception as e:
                 logger.error(f"Critical Error: {str(e)}\\n{traceback.format_exc()}")
-                yield f"Error with Grok stream: {str(e)}"
+                yield f"Error with XAI stream: {str(e)}"
                 return
 
     async def _process_stream_async(self, response_stream):
@@ -1740,9 +1744,12 @@ class AnthropicProvider(AIProvider):
     @database_sync_to_async
     def _get_anthropic_key(self, user):
         """Get user profile synchronously"""
-        profile = Profile.objects.get(user=user)
-        if profile.anthropic_api_key:
-            return profile.anthropic_api_key
+        try:
+            llm_keys = LLMApiKeys.objects.get(user=user)
+            if llm_keys.anthropic_api_key:
+                return llm_keys.anthropic_api_key
+        except LLMApiKeys.DoesNotExist:
+            pass
         return ""
 
     async def _ensure_client(self):

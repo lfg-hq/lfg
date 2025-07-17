@@ -532,7 +532,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         elif selected_model == "claude_3.5_sonnet":
             provider_name = "anthropic"
         elif selected_model == "grok_4":
-            provider_name = "grok"
+            provider_name = "xai"
         else:
             provider_name = "openai"
         
@@ -959,8 +959,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 error_message = "No Anthropic API key configured. Please add API key here http://localhost:8000/accounts/integrations/."
             elif "'OpenAIProvider' object has no attribute 'openai_api_key'" in error_message:
                 error_message = "No OpenAI API key configured. Please add API key here http://localhost:8000/accounts/integrations/."
-            elif "'GrokProvider' object has no attribute 'grok_api_key'" in error_message:
-                error_message = "No Grok API key configured. Please add API key here http://localhost:8000/accounts/integrations/."
+            elif "'XAIProvider' object has no attribute 'xai_api_key'" in error_message:
+                error_message = "No XAI API key configured. Please add API key here http://localhost:8000/accounts/integrations/."
             
             yield f"Error generating response: {error_message}"
         finally:
@@ -1225,7 +1225,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if selected_model in ["claude_4_sonnet", "claude_4_opus", "claude_3.5_sonnet"]:
             provider_name = "anthropic"
         elif selected_model in ["grok_2", "grok_beta", "grok_4"]:
-            provider_name = "grok"
+            provider_name = "xai"
         else:
             provider_name = "openai"
         
