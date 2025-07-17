@@ -1320,7 +1320,7 @@ class GrokProvider(AIProvider):
                         # Capture ALL assistant output for token counting
                         total_assistant_output += text
                         logger.debug(f"Captured {len(text)} chars of assistant output, total: {len(total_assistant_output)}")
-Token estimation complete                        
+
                         # Add to buffer for tag detection
                         buffer += text
                         
