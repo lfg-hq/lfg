@@ -15,6 +15,7 @@ import json
 
 # Import ServerConfig from development app
 from development.models import ServerConfig
+from accounts.models import LLMApiKeys, ExternalServicesAPIKeys
 
 # Import the functions from ai_functions
 from development.utils.ai_functions import execute_local_command, restart_server_from_config
@@ -173,8 +174,16 @@ def update_project(request, project_id):
         return redirect('projects:project_detail', project_id=project.project_id)
     
     # For GET requests, render the update form
+    # Check if user has Linear API key
+    try:
+        external_keys = ExternalServicesAPIKeys.objects.get(user=request.user)
+        has_linear_key = bool(external_keys.linear_api_key)
+    except ExternalServicesAPIKeys.DoesNotExist:
+        has_linear_key = False
+    
     return render(request, 'projects/update_project.html', {
-        'project': project
+        'project': project,
+        'has_linear_key': has_linear_key
     })
 
 @login_required
@@ -642,7 +651,13 @@ def linear_sync_tickets_api(request, project_id):
         return JsonResponse({'success': False, 'error': 'Method not allowed'}, status=405)
     
     # Check if user has Linear API key
-    if not request.user.profile.linear_api_key:
+    try:
+        external_keys = ExternalServicesAPIKeys.objects.get(user=request.user)
+        linear_api_key = external_keys.linear_api_key
+    except ExternalServicesAPIKeys.DoesNotExist:
+        linear_api_key = None
+    
+    if not linear_api_key:
         return JsonResponse({
             'success': False, 
             'error': 'Linear API key not configured. Please set it up in your integrations.'
@@ -656,7 +671,7 @@ def linear_sync_tickets_api(request, project_id):
         })
     
     # Initialize Linear sync service
-    linear_service = LinearSyncService(request.user.profile.linear_api_key)
+    linear_service = LinearSyncService(linear_api_key)
     
     # Test connection first
     connected, result = linear_service.test_connection()
@@ -690,14 +705,20 @@ def linear_teams_api(request, project_id):
     project = get_object_or_404(Project, project_id=project_id, owner=request.user)
     
     # Check if user has Linear API key
-    if not request.user.profile.linear_api_key:
+    try:
+        external_keys = ExternalServicesAPIKeys.objects.get(user=request.user)
+        linear_api_key = external_keys.linear_api_key
+    except ExternalServicesAPIKeys.DoesNotExist:
+        linear_api_key = None
+    
+    if not linear_api_key:
         return JsonResponse({
             'success': False,
             'error': 'Linear API key not configured'
         })
     
     # Initialize Linear sync service
-    linear_service = LinearSyncService(request.user.profile.linear_api_key)
+    linear_service = LinearSyncService(linear_api_key)
     
     # Get teams
     teams = linear_service.get_teams()
@@ -723,14 +744,20 @@ def linear_projects_api(request, project_id):
         })
     
     # Check if user has Linear API key
-    if not request.user.profile.linear_api_key:
+    try:
+        external_keys = ExternalServicesAPIKeys.objects.get(user=request.user)
+        linear_api_key = external_keys.linear_api_key
+    except ExternalServicesAPIKeys.DoesNotExist:
+        linear_api_key = None
+    
+    if not linear_api_key:
         return JsonResponse({
             'success': False,
             'error': 'Linear API key not configured'
         })
     
     # Initialize Linear sync service
-    linear_service = LinearSyncService(request.user.profile.linear_api_key)
+    linear_service = LinearSyncService(linear_api_key)
     
     # Get projects
     projects = linear_service.get_projects(team_id)
@@ -793,14 +820,20 @@ def linear_create_project_api(request, project_id):
             })
         
         # Check if user has Linear API key
-        if not request.user.profile.linear_api_key:
+        try:
+            llm_keys = LLMApiKeys.objects.get(user=request.user)
+            linear_api_key = llm_keys.linear_api_key
+        except LLMApiKeys.DoesNotExist:
+            linear_api_key = None
+        
+        if not linear_api_key:
             return JsonResponse({
                 'success': False,
                 'error': 'Linear API key not configured'
             })
         
         # Initialize Linear sync service
-        linear_service = LinearSyncService(request.user.profile.linear_api_key)
+        linear_service = LinearSyncService(linear_api_key)
         
         # Create the project
         success, result = linear_service.create_project(team_id, project_name, project_description)

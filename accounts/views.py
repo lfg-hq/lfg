@@ -6,7 +6,7 @@ from django.contrib.auth import authenticate, login
 from django.conf import settings
 from .forms import UserRegisterForm, UserUpdateForm, ProfileUpdateForm, EmailAuthenticationForm, PasswordResetForm
 from django.contrib.auth.models import User
-from .models import GitHubToken, EmailVerificationToken
+from .models import GitHubToken, EmailVerificationToken, LLMApiKeys, ExternalServicesAPIKeys
 from chat.models import AgentRole
 import requests
 import uuid
@@ -87,8 +87,13 @@ def auth(request):
                 login(request, user)
                 
                 # Check if user has required API keys set up
-                openai_key_missing = not bool(profile.openai_api_key)
-                anthropic_key_missing = not bool(profile.anthropic_api_key)
+                try:
+                    llm_keys = LLMApiKeys.objects.get(user=user)
+                    openai_key_missing = not bool(llm_keys.openai_api_key)
+                    anthropic_key_missing = not bool(llm_keys.anthropic_api_key)
+                except LLMApiKeys.DoesNotExist:
+                    openai_key_missing = True
+                    anthropic_key_missing = True
                 
                 # If both OpenAI and Anthropic keys are missing, redirect to integrations
                 if openai_key_missing and anthropic_key_missing:
@@ -145,77 +150,83 @@ def profile(request):
     }
     return render(request, 'accounts/profile.html', context)
 
-@login_required
-def settings_page(request, show_github=False):
-    # Get GitHub connection status
-    github_connected = False
-    github_username = None
-    github_avatar = None
-    github_missing_config = not hasattr(settings, 'GITHUB_CLIENT_ID') or not settings.GITHUB_CLIENT_ID
+# @login_required
+# def settings_page(request, show_github=False):
+#     # Get GitHub connection status
+#     github_connected = False
+#     github_username = None
+#     github_avatar = None
+#     github_missing_config = not hasattr(settings, 'GITHUB_CLIENT_ID') or not settings.GITHUB_CLIENT_ID
     
-    try:
-        github_social = request.user.social_auth.get(provider='github')
-        github_connected = True
-        extra_data = github_social.extra_data
-        github_username = extra_data.get('login')
-        github_avatar = extra_data.get('avatar_url')
-    except:
-        pass
+#     try:
+#         github_social = request.user.social_auth.get(provider='github')
+#         github_connected = True
+#         extra_data = github_social.extra_data
+#         github_username = extra_data.get('login')
+#         github_avatar = extra_data.get('avatar_url')
+#     except:
+#         pass
     
-    # Create GitHub redirect URI if not connected
-    github_auth_url = None
-    if (not github_connected and not github_missing_config) or show_github:
-        GITHUB_CLIENT_ID = settings.GITHUB_CLIENT_ID
-        GITHUB_REDIRECT_URI = build_secure_absolute_uri(request, reverse('github_callback'))
-        state = str(uuid.uuid4())
-        request.session['github_oauth_state'] = state
-        params = {
-            'client_id': GITHUB_CLIENT_ID,
-            'redirect_uri': GITHUB_REDIRECT_URI,
-            'scope': 'repo user',
-            'state': state,
-        }
-        github_auth_url = f"https://github.com/login/oauth/authorize?{urlencode(params)}"
+#     # Create GitHub redirect URI if not connected
+#     github_auth_url = None
+#     if (not github_connected and not github_missing_config) or show_github:
+#         GITHUB_CLIENT_ID = settings.GITHUB_CLIENT_ID
+#         GITHUB_REDIRECT_URI = build_secure_absolute_uri(request, reverse('github_callback'))
+#         state = str(uuid.uuid4())
+#         request.session['github_oauth_state'] = state
+#         params = {
+#             'client_id': GITHUB_CLIENT_ID,
+#             'redirect_uri': GITHUB_REDIRECT_URI,
+#             'scope': 'repo user',
+#             'state': state,
+#         }
+#         github_auth_url = f"https://github.com/login/oauth/authorize?{urlencode(params)}"
         
-        # If show_github is True, redirect directly to GitHub OAuth
-        if show_github:
-            return redirect(github_auth_url)
+#         # If show_github is True, redirect directly to GitHub OAuth
+#         if show_github:
+#             return redirect(github_auth_url)
     
-    # Handle GitHub disconnect
-    if request.method == 'POST' and request.POST.get('action') == 'github_disconnect':
-        if github_connected:
-            try:
-                github_social.delete()
-                messages.success(request, 'GitHub connection removed successfully.')
-                return redirect('settings_page')
-            except Exception as e:
-                messages.error(request, f'Error disconnecting GitHub: {str(e)}')
+#     # Handle GitHub disconnect
+#     if request.method == 'POST' and request.POST.get('action') == 'github_disconnect':
+#         if github_connected:
+#             try:
+#                 github_social.delete()
+#                 messages.success(request, 'GitHub connection removed successfully.')
+#                 return redirect('settings_page')
+#             except Exception as e:
+#                 messages.error(request, f'Error disconnecting GitHub: {str(e)}')
     
-    # Get API keys status
-    openai_connected = bool(request.user.profile.openai_api_key)
-    anthropic_connected = bool(request.user.profile.anthropic_api_key)
-    groq_connected = bool(request.user.profile.groq_api_key)
+#     # Get API keys status
+#     try:
+#         llm_keys = LLMApiKeys.objects.get(user=request.user)
+#         openai_connected = bool(llm_keys.openai_api_key)
+#         anthropic_connected = bool(llm_keys.anthropic_api_key)
+#         xai_connected = bool(llm_keys.xai_api_key)
+#     except LLMApiKeys.DoesNotExist:
+#         openai_connected = False
+#         anthropic_connected = False
+#         xai_connected = False
     
-    # Check for URL parameters that might indicate which form to show
-    openai_api_form_visible = request.GET.get('show') == 'openai'
-    anthropic_api_form_visible = request.GET.get('show') == 'anthropic'
-    groq_api_form_visible = request.GET.get('show') == 'groq'
+#     # Check for URL parameters that might indicate which form to show
+#     openai_api_form_visible = request.GET.get('show') == 'openai'
+#     anthropic_api_form_visible = request.GET.get('show') == 'anthropic'
+#     xai_api_form_visible = request.GET.get('show') == 'xai'
     
-    context = {
-        'github_connected': github_connected,
-        'github_username': github_username,
-        'github_avatar': github_avatar,
-        'github_auth_url': github_auth_url,
-        'github_missing_config': github_missing_config,
-        'openai_connected': openai_connected,
-        'anthropic_connected': anthropic_connected,
-        'groq_connected': groq_connected,
-        'openai_api_form_visible': openai_api_form_visible,
-        'anthropic_api_form_visible': anthropic_api_form_visible,
-        'groq_api_form_visible': groq_api_form_visible,
-    }
+#     context = {
+#         'github_connected': github_connected,
+#         'github_username': github_username,
+#         'github_avatar': github_avatar,
+#         'github_auth_url': github_auth_url,
+#         'github_missing_config': github_missing_config,
+#         'openai_connected': openai_connected,
+#         'anthropic_connected': anthropic_connected,
+#         'xai_connected': xai_connected,
+#         'openai_api_form_visible': openai_api_form_visible,
+#         'anthropic_api_form_visible': anthropic_api_form_visible,
+#         'xai_api_form_visible': xai_api_form_visible,
+#     }
     
-    return render(request, 'accounts/settings.html', context)
+#     return render(request, 'accounts/settings.html', context)
 
 @login_required
 def save_api_key(request, provider):
@@ -229,24 +240,28 @@ def save_api_key(request, provider):
         messages.error(request, 'API key cannot be empty')
         return redirect('settings')
     
-    # Get user profile
-    profile = request.user.profile
-    
-    # Update the appropriate API key based on provider
-    if provider == 'openai':
-        profile.openai_api_key = api_key
-    elif provider == 'anthropic':
-        profile.anthropic_api_key = api_key
-    elif provider == 'groq':
-        profile.groq_api_key = api_key
-    elif provider == 'linear':
-        profile.linear_api_key = api_key
+    # Handle Linear separately as it's in ExternalServicesAPIKeys
+    if provider == 'linear':
+        external_keys, created = ExternalServicesAPIKeys.objects.get_or_create(user=request.user)
+        external_keys.linear_api_key = api_key
+        external_keys.save()
     else:
-        messages.error(request, 'Invalid provider')
-        return redirect('settings')
-    
-    # Save the profile
-    profile.save()
+        # Get or create LLMApiKeys for user
+        llm_keys, created = LLMApiKeys.objects.get_or_create(user=request.user)
+        
+        # Update the appropriate API key based on provider
+        if provider == 'openai':
+            llm_keys.openai_api_key = api_key
+        elif provider == 'anthropic':
+            llm_keys.anthropic_api_key = api_key
+        elif provider == 'xai':
+            llm_keys.xai_api_key = api_key
+        else:
+            messages.error(request, 'Invalid provider')
+            return redirect('settings')
+        
+        # Save the LLM keys
+        llm_keys.save()
     
     messages.success(request, f'{provider.capitalize()} API key saved successfully.')
     return redirect('settings')
@@ -258,78 +273,90 @@ def disconnect_api_key(request, provider):
         messages.error(request, 'Invalid request')
         return redirect('settings')
     
-    # Get user profile
-    profile = request.user.profile
-    
-    # Update the appropriate API key based on provider
-    if provider == 'openai':
-        profile.openai_api_key = ''
-    elif provider == 'anthropic':
-        profile.anthropic_api_key = ''
-    elif provider == 'groq':
-        profile.groq_api_key = ''
-    elif provider == 'linear':
-        profile.linear_api_key = ''
+    # Handle Linear separately as it's in ExternalServicesAPIKeys
+    if provider == 'linear':
+        try:
+            external_keys = ExternalServicesAPIKeys.objects.get(user=request.user)
+            external_keys.linear_api_key = ''
+            external_keys.save()
+        except ExternalServicesAPIKeys.DoesNotExist:
+            messages.error(request, 'No Linear API key found')
+            return redirect('settings')
     else:
-        messages.error(request, 'Invalid provider')
-        return redirect('settings')
-    
-    # Save the profile
-    profile.save()
+        # Get LLMApiKeys for user
+        try:
+            llm_keys = LLMApiKeys.objects.get(user=request.user)
+        except LLMApiKeys.DoesNotExist:
+            messages.error(request, 'No API keys found')
+            return redirect('settings')
+        
+        # Update the appropriate API key based on provider
+        if provider == 'openai':
+            llm_keys.openai_api_key = ''
+        elif provider == 'anthropic':
+            llm_keys.anthropic_api_key = ''
+        elif provider == 'xai':
+            llm_keys.xai_api_key = ''
+        else:
+            messages.error(request, 'Invalid provider')
+            return redirect('settings')
+        
+        # Save the LLM keys
+        llm_keys.save()
     
     messages.success(request, f'{provider.capitalize()} connection removed successfully.')
     return redirect('settings')
 
-@login_required
-def user_settings(request):
-    """
-    User settings page with integrations like GitHub
-    """
-    # Check if the user already has a GitHub token
-    try:
-        github_token = GitHubToken.objects.get(user=request.user)
-        has_github_token = True
-        github_user = github_token.github_username if github_token.github_username else "GitHub User"
-        github_avatar = github_token.github_avatar_url
-    except GitHubToken.DoesNotExist:
-        github_token = None
-        has_github_token = False
-        github_user = None
-        github_avatar = None
+# @login_required
+# def user_settings(request):
+#     """
+#     User settings page with integrations like GitHub
+#     """
+#     # Check if the user already has a GitHub token
+#     try:
+#         github_token = GitHubToken.objects.get(user=request.user)
+#         has_github_token = True
+#         github_user = github_token.github_username if github_token.github_username else "GitHub User"
+#         github_avatar = github_token.github_avatar_url
+#     except GitHubToken.DoesNotExist:
+#         github_token = None
+#         has_github_token = False
+#         github_user = None
+#         github_avatar = None
     
-    # Create GitHub redirect URI
-    global GITHUB_REDIRECT_URI
-    GITHUB_REDIRECT_URI = build_secure_absolute_uri(request, reverse('github_callback'))
+#     # Create GitHub redirect URI
+#     global GITHUB_REDIRECT_URI
+#     GITHUB_REDIRECT_URI = build_secure_absolute_uri(request, reverse('github_callback'))
     
-    # GitHub OAuth setup
-    github_auth_url = None
-    if GITHUB_CLIENT_ID:
-        state = str(uuid.uuid4())
-        request.session['github_oauth_state'] = state
-        params = {
-            'client_id': GITHUB_CLIENT_ID,
-            'redirect_uri': GITHUB_REDIRECT_URI,
-            'scope': 'repo user',
-            'state': state,
-        }
-        github_auth_url = f"https://github.com/login/oauth/authorize?{urlencode(params)}"
+#     # GitHub OAuth setup
+#     github_auth_url = None
+#     if GITHUB_CLIENT_ID:
+#         state = str(uuid.uuid4())
+#         request.session['github_oauth_state'] = state
+#         params = {
+#             'client_id': GITHUB_CLIENT_ID,
+#             'redirect_uri': GITHUB_REDIRECT_URI,
+#             'scope': 'repo user',
+#             'state': state,
+#         }
+#         github_auth_url = f"https://github.com/login/oauth/authorize?{urlencode(params)}"
     
-    # Handle GitHub disconnect
-    if request.method == 'POST' and request.POST.get('action') == 'github_disconnect':
-        if has_github_token:
-            github_token.delete()
-            messages.success(request, 'GitHub connection removed successfully.')
-            return redirect('settings')
+#     # Handle GitHub disconnect
+#     if request.method == 'POST' and request.POST.get('action') == 'github_disconnect':
+#         if has_github_token:
+#             github_token.delete()
+#             messages.success(request, 'GitHub connection removed successfully.')
+#             return redirect('settings')
     
-    context = {
-        'has_github_token': has_github_token,
-        'github_auth_url': github_auth_url,
-        'github_user': github_user,
-        'github_avatar': github_avatar,
-        'github_missing_config': not GITHUB_CLIENT_ID,
-    }
+#     context = {
+#         'has_github_token': has_github_token,
+#         'github_auth_url': github_auth_url,
+#         'github_user': github_user,
+#         'github_avatar': github_avatar,
+#         'github_missing_config': not GITHUB_CLIENT_ID,
+#     }
     
-    return render(request, 'accounts/settings.html', context)
+#     return render(request, 'accounts/settings.html', context)
 
 @login_required
 def github_callback(request):
@@ -419,7 +446,7 @@ def github_callback(request):
 @login_required
 def integrations(request):
     """
-    Integrations page for connecting GitHub, OpenAI, Anthropic, and Groq
+    Integrations page for connecting GitHub, OpenAI, Anthropic, and XAI
     """
     # Get GitHub connection status
     github_connected = False
@@ -470,10 +497,22 @@ def integrations(request):
                 messages.error(request, f'Error disconnecting GitHub: {str(e)}')
     
     # Get API keys status
-    openai_connected = bool(request.user.profile.openai_api_key)
-    anthropic_connected = bool(request.user.profile.anthropic_api_key)
-    groq_connected = bool(request.user.profile.groq_api_key)
-    linear_connected = bool(request.user.profile.linear_api_key)
+    try:
+        llm_keys = LLMApiKeys.objects.get(user=request.user)
+        openai_connected = bool(llm_keys.openai_api_key)
+        anthropic_connected = bool(llm_keys.anthropic_api_key)
+        xai_connected = bool(llm_keys.xai_api_key)
+    except LLMApiKeys.DoesNotExist:
+        openai_connected = False
+        anthropic_connected = False
+        xai_connected = False
+    
+    # Check Linear API key
+    try:
+        external_keys = ExternalServicesAPIKeys.objects.get(user=request.user)
+        linear_connected = bool(external_keys.linear_api_key)
+    except ExternalServicesAPIKeys.DoesNotExist:
+        linear_connected = False
     
     context = {
         'github_connected': github_connected,
@@ -483,7 +522,7 @@ def integrations(request):
         'github_missing_config': github_missing_config,
         'openai_connected': openai_connected,
         'anthropic_connected': anthropic_connected,
-        'groq_connected': groq_connected,
+        'xai_connected': xai_connected,
         'linear_connected': linear_connected,
     }
     
@@ -548,8 +587,13 @@ def email_verification_required(request):
     # Check if already verified
     if profile.email_verified:
         # Check if user has required API keys set up
-        openai_key_missing = not bool(profile.openai_api_key)
-        anthropic_key_missing = not bool(profile.anthropic_api_key)
+        try:
+            llm_keys = LLMApiKeys.objects.get(user=request.user)
+            openai_key_missing = not bool(llm_keys.openai_api_key)
+            anthropic_key_missing = not bool(llm_keys.anthropic_api_key)
+        except LLMApiKeys.DoesNotExist:
+            openai_key_missing = True
+            anthropic_key_missing = True
         
         # If both OpenAI and Anthropic keys are missing, redirect to integrations
         if openai_key_missing and anthropic_key_missing:
@@ -612,8 +656,13 @@ def verify_email(request, token):
         # If user is logged in, redirect to appropriate page
         if request.user.is_authenticated:
             # Check if user has required API keys set up
-            openai_key_missing = not bool(profile.openai_api_key)
-            anthropic_key_missing = not bool(profile.anthropic_api_key)
+            try:
+                llm_keys = LLMApiKeys.objects.get(user=request.user)
+                openai_key_missing = not bool(llm_keys.openai_api_key)
+                anthropic_key_missing = not bool(llm_keys.anthropic_api_key)
+            except LLMApiKeys.DoesNotExist:
+                openai_key_missing = True
+                anthropic_key_missing = True
             
             # If both keys are missing, redirect to integrations
             if openai_key_missing and anthropic_key_missing:
@@ -822,8 +871,13 @@ def google_callback(request):
             return redirect('/?onboarding=true&step=3')
         
         # Check if user has required API keys set up
-        openai_key_missing = not bool(user.profile.openai_api_key)
-        anthropic_key_missing = not bool(user.profile.anthropic_api_key)
+        try:
+            llm_keys = LLMApiKeys.objects.get(user=user)
+            openai_key_missing = not bool(llm_keys.openai_api_key)
+            anthropic_key_missing = not bool(llm_keys.anthropic_api_key)
+        except LLMApiKeys.DoesNotExist:
+            openai_key_missing = True
+            anthropic_key_missing = True
         
         # If both keys are missing, redirect to integrations (for both new and existing users)
         if openai_key_missing and anthropic_key_missing:
@@ -857,15 +911,22 @@ def api_keys_status(request):
             'error': 'Not authenticated',
             'has_openai_key': False,
             'has_anthropic_key': False,
-            'has_groq_key': False
+            'has_xai_key': False
         }, status=401)
     
-    profile = request.user.profile
-    return JsonResponse({
-        'has_openai_key': bool(profile.openai_api_key),
-        'has_anthropic_key': bool(profile.anthropic_api_key),
-        'has_groq_key': bool(profile.groq_api_key)
-    })
+    try:
+        llm_keys = LLMApiKeys.objects.get(user=request.user)
+        return JsonResponse({
+            'has_openai_key': bool(llm_keys.openai_api_key),
+            'has_anthropic_key': bool(llm_keys.anthropic_api_key),
+            'has_xai_key': bool(llm_keys.xai_api_key)
+        })
+    except LLMApiKeys.DoesNotExist:
+        return JsonResponse({
+            'has_openai_key': False,
+            'has_anthropic_key': False,
+            'has_xai_key': False
+        })
 
 
 @login_required
@@ -877,25 +938,27 @@ def save_api_keys(request):
     try:
         import json
         data = json.loads(request.body)
-        profile = request.user.profile
+        
+        # Get or create LLMApiKeys for user
+        llm_keys, created = LLMApiKeys.objects.get_or_create(user=request.user)
         
         # Update API keys if provided
         if 'openai_api_key' in data and data['openai_api_key']:
-            profile.openai_api_key = data['openai_api_key']
+            llm_keys.openai_api_key = data['openai_api_key']
         
         if 'anthropic_api_key' in data and data['anthropic_api_key']:
-            profile.anthropic_api_key = data['anthropic_api_key']
+            llm_keys.anthropic_api_key = data['anthropic_api_key']
         
-        if 'grok_api_key' in data and data['grok_api_key']:
-            profile.groq_api_key = data['grok_api_key']
+        if 'xai_api_key' in data and data['xai_api_key']:
+            llm_keys.xai_api_key = data['xai_api_key']
         
-        profile.save()
+        llm_keys.save()
         
         return JsonResponse({
             'success': True,
-            'has_openai_key': bool(profile.openai_api_key),
-            'has_anthropic_key': bool(profile.anthropic_api_key),
-            'has_groq_key': bool(profile.groq_api_key)
+            'has_openai_key': bool(llm_keys.openai_api_key),
+            'has_anthropic_key': bool(llm_keys.anthropic_api_key),
+            'has_xai_key': bool(llm_keys.xai_api_key)
         })
     
     except Exception as e:

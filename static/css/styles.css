@@ -346,6 +346,7 @@ body, html {
     padding: 20px;
     color: #6b7280;
     font-style: italic;
+    font-size: 12px
 }
 
 /* Dark mode support for conversation items */

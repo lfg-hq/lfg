@@ -6,18 +6,41 @@ from django.utils import timezone
 import secrets
 from datetime import timedelta
 
+class LLMApiKeys(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='llm_api_keys')
+    openai_api_key = models.CharField(max_length=255, blank=True, null=True)
+    anthropic_api_key = models.CharField(max_length=255, blank=True, null=True)
+    xai_api_key = models.CharField(max_length=255, blank=True, null=True)
+
+    free_trial = models.BooleanField(default=True)
+    
+    def __str__(self):
+        return f"{self.user.username}'s API keys"
+    
+    def save(self, *args, **kwargs):
+        # If any LLM key is provided, set free_trial to False
+        if any([self.openai_api_key, self.anthropic_api_key, self.xai_api_key]):
+            self.free_trial = False
+        super().save(*args, **kwargs)
+
+
+class ExternalServicesAPIKeys(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='external_api_keys')
+    linear_api_key = models.CharField(max_length=255, blank=True, null=True)
+    jira_api_key = models.CharField(max_length=255, blank=True, null=True)
+    notion_api_key = models.CharField(max_length=255, blank=True, null=True)
+    google_docs_api_key = models.CharField(max_length=255, blank=True, null=True)
+
+    def __str__(self):
+        return f"{self.user.username}'s External Services"
+
+
 class Profile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     bio = models.TextField(max_length=500, blank=True)
     avatar = models.ImageField(upload_to='avatars/', null=True, blank=True)
     sidebar_collapsed = models.BooleanField(default=False)
     email_verified = models.BooleanField(default=False)
-    
-    # API Keys for different services
-    openai_api_key = models.CharField(max_length=255, blank=True, null=True)
-    anthropic_api_key = models.CharField(max_length=255, blank=True, null=True)
-    groq_api_key = models.CharField(max_length=255, blank=True, null=True)
-    linear_api_key = models.CharField(max_length=255, blank=True, null=True)
     
     def __str__(self):
         return f"{self.user.username}'s profile"
@@ -108,7 +131,7 @@ class TokenUsage(models.Model):
     PROVIDER_CHOICES = [
         ('openai', 'OpenAI'),
         ('anthropic', 'Anthropic'),
-        ('grok', 'Grok'),
+        ('xai', 'XAI'),
     ]
     
     MODEL_CHOICES = [
@@ -119,7 +142,7 @@ class TokenUsage(models.Model):
         ('claude-sonnet-4-20250514', 'Claude Sonnet 4'),
         ('claude-opus-4-20250514', 'Claude Opus 4'),
         ('claude-3-5-sonnet-20241022', 'Claude 3.5 Sonnet'),
-        # Grok models
+        # XAI models
         ('grok-4', 'Grok 4'),
     ]
     
@@ -163,9 +186,9 @@ class TokenUsage(models.Model):
                 'claude-opus-4-20250514': {'input': 0.015, 'output': 0.075},
                 'claude-3-5-sonnet-20241022': {'input': 0.003, 'output': 0.015},
             },
-            'grok': {
-                # Grok pricing (estimated based on typical AI model pricing)
-                'grok-4': {'input': 0.003, 'output': 0.008},
+            'xai': {
+                # XAI pricing (estimated based on typical AI model pricing)
+                'xai-4': {'input': 0.003, 'output': 0.008},
             }
         }
         
@@ -183,6 +206,8 @@ def create_user_profile(sender, instance, created, **kwargs):
     try:
         if created:
             Profile.objects.create(user=instance)
+            # Also create LLMApiKeys for the new user
+            LLMApiKeys.objects.create(user=instance)
     except:
         # Handle the case when the table doesn't exist yet
         pass

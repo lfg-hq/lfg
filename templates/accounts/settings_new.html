@@ -644,7 +644,7 @@
                     </a>
                 </div>
 
-                <!-- Grok Integration -->
+                <!-- XAI Integration -->
                 <div class="integration-item">
                     <div class="integration-header">
                         <div class="integration-icon">
@@ -655,7 +655,7 @@
                         <div class="integration-info">
                             <h3 class="integration-name">
                                 xAI
-                                {% if groq_connected %}
+                                {% if xai_connected %}
                                     <span class="connected-check">
                                         <i class="fas fa-check"></i>
                                     </span>
@@ -665,8 +665,8 @@
                         </div>
                     </div>
                     
-                    {% if groq_connected %}
-                        <form method="post" action="{% url 'disconnect_api_key' 'groq' %}">
+                    {% if xai_connected %}
+                        <form method="post" action="{% url 'disconnect_api_key' 'xai' %}">
                             {% csrf_token %}
                             <div class="api-key-section">
                                 <div class="api-key-input-wrapper">
@@ -679,7 +679,7 @@
                             </div>
                         </form>
                     {% else %}
-                        <form method="post" action="{% url 'save_api_key' 'groq' %}">
+                        <form method="post" action="{% url 'save_api_key' 'xai' %}">
                             {% csrf_token %}
                             <div class="api-key-section">
                                 <div class="api-key-input-wrapper">
