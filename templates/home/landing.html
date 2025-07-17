@@ -1677,9 +1677,79 @@
 
         .setup-content {
             display: grid;
-            grid-template-columns: 2fr 1fr;
+            grid-template-columns: 1.5fr 1fr;
             gap: 3rem;
             margin-top: 3rem;
+        }
+
+        .setup-command-section {
+            background: var(--bg-card);
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            padding: 2rem;
+        }
+
+        .setup-command-section h3 {
+            font-size: 1.3rem;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+        }
+
+        .setup-commands {
+            background: var(--bg-darker);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1.5rem;
+            font-family: 'Monaco', 'Courier New', monospace;
+            position: relative;
+            overflow-x: auto;
+        }
+
+        .setup-commands pre {
+            margin: 0;
+            color: var(--accent-purple);
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+
+        .setup-commands .comment {
+            color: var(--text-secondary);
+            opacity: 0.7;
+        }
+
+        .copy-all-btn {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: var(--primary-purple);
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.2s ease;
+        }
+
+        .copy-all-btn:hover {
+            background: var(--primary-purple-hover);
+            transform: translateY(-2px);
+        }
+
+        .setup-note {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: rgba(139, 92, 246, 0.1);
+            border-radius: 8px;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .setup-note strong {
+            color: var(--primary-purple);
         }
 
         .setup-steps {
@@ -1890,6 +1960,23 @@
         @media (max-width: 768px) {
             .setup-content {
                 grid-template-columns: 1fr;
+            }
+
+            .setup-command-section {
+                padding: 1.5rem;
+            }
+
+            .setup-commands {
+                padding: 1rem;
+            }
+
+            .setup-commands pre {
+                font-size: 0.8rem;
+            }
+
+            .copy-all-btn {
+                font-size: 0.8rem;
+                padding: 0.4rem 0.8rem;
             }
 
             .setup-step {
@@ -2351,89 +2438,36 @@
                 <p>Set up LFG on your machine in just a few minutes</p>
             </div>
             <div class="setup-content">
-                <div class="setup-steps">
-                    <div class="setup-step">
-                        <div class="step-number">1</div>
-                        <div class="step-content">
-                            <h3>Clone the Repository</h3>
-                            <div class="code-block">
-                                <code>git clone https://github.com/lfg-hq/lfg.git</code>
-                                <button class="copy-btn" onclick="copyToClipboard('git clone https://github.com/lfg-hq/lfg.git')">
-                                    <i class="fas fa-copy"></i>
-                                </button>
-                            </div>
-                            <p>Get the latest version of LFG from our GitHub repository</p>
-                        </div>
+                <div class="setup-command-section">
+                    <h3>Quick Setup Commands</h3>
+                    <div class="setup-commands">
+                        <button class="copy-all-btn" onclick="copyAllCommands()">
+                            <i class="fas fa-copy"></i>
+                            Copy All
+                        </button>
+                        <pre id="setup-commands-text"><span class="comment"># Clone the repository</span>
+git clone https://github.com/lfg-hq/lfg.git
+
+<span class="comment"># Set up Python environment</span>
+cd lfg && python -m venv venv && source venv/bin/activate
+<span class="comment"># On Windows: cd lfg && python -m venv venv && venv\Scripts\activate</span>
+
+<span class="comment"># Install dependencies</span>
+pip install -r requirements.txt
+
+<span class="comment"># Configure environment (add your API keys to .env)</span>
+cp .env.example .env
+
+<span class="comment"># Set up database</span>
+python manage.py migrate
+
+<span class="comment"># Start the development server</span>
+uvicorn LFG.asgi:application --host 0.0.0.0 --port 8000 --workers 2
+
+<span class="comment"># Access LFG at http://localhost:8000</span></pre>
                     </div>
-                    
-                    <div class="setup-step">
-                        <div class="step-number">2</div>
-                        <div class="step-content">
-                            <h3>Create Virtual Environment</h3>
-                            <div class="code-block">
-                                <code>cd lfg && python -m venv venv && source venv/bin/activate</code>
-                                <button class="copy-btn" onclick="copyToClipboard('cd lfg && python -m venv venv && source venv/bin/activate')">
-                                    <i class="fas fa-copy"></i>
-                                </button>
-                            </div>
-                            <p>Set up an isolated Python environment for the project</p>
-                        </div>
-                    </div>
-                    
-                    <div class="setup-step">
-                        <div class="step-number">3</div>
-                        <div class="step-content">
-                            <h3>Install Dependencies</h3>
-                            <div class="code-block">
-                                <code>pip install -r requirements.txt</code>
-                                <button class="copy-btn" onclick="copyToClipboard('pip install -r requirements.txt')">
-                                    <i class="fas fa-copy"></i>
-                                </button>
-                            </div>
-                            <p>Install all required Python packages and dependencies</p>
-                        </div>
-                    </div>
-                    
-                    <div class="setup-step">
-                        <div class="step-number">4</div>
-                        <div class="step-content">
-                            <h3>Set Up Environment</h3>
-                            <div class="code-block">
-                                <code>cp .env.example .env</code>
-                                <button class="copy-btn" onclick="copyToClipboard('cp .env.example .env')">
-                                    <i class="fas fa-copy"></i>
-                                </button>
-                            </div>
-                            <p>Configure your environment variables and add your API keys</p>
-                        </div>
-                    </div>
-                    
-                    <div class="setup-step">
-                        <div class="step-number">5</div>
-                        <div class="step-content">
-                            <h3>Run Database Migrations</h3>
-                            <div class="code-block">
-                                <code>python manage.py migrate</code>
-                                <button class="copy-btn" onclick="copyToClipboard('python manage.py migrate')">
-                                    <i class="fas fa-copy"></i>
-                                </button>
-                            </div>
-                            <p>Set up the database schema and initial data</p>
-                        </div>
-                    </div>
-                    
-                    <div class="setup-step">
-                        <div class="step-number">6</div>
-                        <div class="step-content">
-                            <h3>Start the Development Server</h3>
-                            <div class="code-block">
-                                <code>uvicorn LFG.asgi:application --host 0.0.0.0 --port 8000 --workers 2</code>
-                                <button class="copy-btn" onclick="copyToClipboard('uvicorn LFG.asgi:application --host 0.0.0.0 --port 8000 --workers 2')">
-                                    <i class="fas fa-copy"></i>
-                                </button>
-                            </div>
-                            <p>Launch LFG locally and access it at <a href="http://localhost:8000" target="_blank">http://localhost:8000</a></p>
-                        </div>
+                    <div class="setup-note">
+                        <strong>Note:</strong> After copying, remember to edit the .env file and add your AI provider API keys (OpenAI or Anthropic) before starting the server.
                     </div>
                 </div>
                 
@@ -3114,6 +3148,31 @@
                 }, 2000);
             }).catch(function(err) {
                 console.error('Failed to copy text: ', err);
+            });
+        }
+
+        function copyAllCommands() {
+            const commandsElement = document.getElementById('setup-commands-text');
+            const textContent = commandsElement.textContent || commandsElement.innerText;
+            
+            // Remove the comment markers and clean up the text
+            const cleanedText = textContent
+                .split('\n')
+                .filter(line => !line.trim().startsWith('# Access LFG at'))
+                .join('\n')
+                .trim();
+            
+            navigator.clipboard.writeText(cleanedText).then(function() {
+                const button = event.target.closest('.copy-all-btn');
+                const originalHTML = button.innerHTML;
+                
+                button.innerHTML = '<i class="fas fa-check"></i> Copied!';
+                
+                setTimeout(() => {
+                    button.innerHTML = originalHTML;
+                }, 2000);
+            }).catch(function(err) {
+                console.error('Failed to copy: ', err);
             });
         }
 

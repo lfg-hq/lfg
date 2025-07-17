@@ -1,6 +1,6 @@
 # LFG 🚀 | AI-Powered Product Development Platform
 
-> **Ship 10x Faster with AI** - The open-source platform that brings together the best of human creativity and artificial intelligence. Build products with specialized AI agents working as your virtual team.
+> **AI-Powered Product Development Platform** - The open-source platform that accelerates software development by combining human creativity with AI assistance. Transform ideas into comprehensive PRDs, technical specifications, and actionable development tickets.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
@@ -9,53 +9,51 @@
 
 ## 🌟 Overview
 
-LFG is an Agentic framework for AI dev team. .
-
-The AI-powered platform that combines Product Managers, Developers, and Designers in one intelligent workspace. Create PRDs, build apps, fix bugs, and ship faster than ever.
+LFG is an AI-powered product development platform designed to streamline the software development lifecycle. It helps teams transform ideas into well-structured Product Requirements Documents (PRDs), break down features into actionable tickets, and provide technical implementation guidance.
 
 ### ✨ Why LFG?
 
-- **🚀 Ship 10x Faster**: Accelerate development with AI agents handling repetitive tasks
-- **🤖 AI Dream Team**: Product managers, developers, and designers working 24/7
-- **💡 Human + AI Collaboration**: Enhance creativity, don't replace it
-- **🔓 100% Open Source**: No vendor lock-in, complete transparency
-- **🎯 Production-Ready**: Built for real products, not just demos
-- **🛠️ Fully Customizable**: Choose your AI models, tech stack, and deployment
+- **📝 Smart PRD Generation**: Transform ideas into comprehensive product requirements with AI assistance
+- **🎯 Intelligent Ticket Creation**: Automatically break down features into actionable, prioritized development tickets
+- **💡 Technical Analysis**: Get implementation guidance and architectural recommendations
+- **🔓 100% Open Source**: Complete transparency and control over your development workflow
+- **🛠️ Flexible Integration**: Works with your existing tools and AI providers (OpenAI, Anthropic)
+- **🚀 Accelerated Development**: Reduce planning overhead and focus on building
 
 ## 🚀 Features
 
-### 🤖 Meet Your AI Team
+### 📋 Core Capabilities
 
-**Product Manager Agent**
-- Transforms ideas into comprehensive PRDs
-- Creates user stories and acceptance criteria
-- Prioritizes features based on impact
-- Manages product roadmap and timelines
+**PRD Generation**
+- Transform high-level ideas into detailed Product Requirements Documents
+- Include user stories, acceptance criteria, and success metrics
+- Structure features with clear scope and dependencies
+- Generate technical constraints and considerations
 
-**Developer Agent**
-- Writes production-ready code
-- Implements features from tickets
-- Debugs and optimizes performance
-- Follows best practices and patterns
+**Ticket Management**
+- Automatically break down PRDs into development tickets
+- Prioritize tasks based on dependencies and impact
+- Create clear implementation steps for each ticket
+- Integration with project management tools (Linear)
 
 
-### 💻 Core Capabilities
+### 💻 Technical Features
 
-- **📝 Smart PRD Generation**: Transform your ideas into comprehensive Product Requirements Documents with AI-powered insights
-- **🎯 Intelligent Ticket System**: Automatically break down complex features into actionable, prioritized tickets
-- **💡 Real-time Code Generation**: Watch your ideas come to life with AI writing production-ready code
-- **🔧 Built-in Development Environment**: Professional IDE with AI assistance and real-time collaboration
-- **🌐 Full-Stack Development**: Build complete applications from frontend to backend with AI guidance
-- **🚀 Automated Testing**: Generate comprehensive test suites to ensure code quality
-- **📊 Progress Tracking**: Real-time visibility into development progress and AI agent activities
+- **🤖 Multi-Provider AI Support**: Choose between OpenAI GPT-4 and Anthropic Claude models
+- **💬 Real-time Chat Interface**: Interactive AI assistance with context awareness
+- **📁 File Management**: Upload and analyze existing codebases and documentation
+- **🔧 Customizable Workflows**: Adapt the platform to your team's processes
+- **📊 Token Usage Tracking**: Monitor AI usage and manage costs effectively
+- **🔐 Secure API Key Management**: Store provider API keys securely per user
+- **🌐 Web-based Interface**: Access from anywhere with a modern browser
 
-### 🎨 Customization & Flexibility
+### 🎨 Integration & Extensibility
 
-- **Choose Your AI**: Support for OpenAI GPT-4 and Anthropic Claude models
-- **Tech Stack Freedom**: Use any programming language or framework
-- **Deployment Options**: Deploy anywhere - cloud, on-premise, or hybrid
-- **Custom Workflows**: Adapt the platform to your team's processes
-- **API Integration**: Connect with your existing tools and services 
+- **Linear Integration**: Sync tickets directly to your Linear workspace
+- **GitHub Authentication**: Secure login with GitHub OAuth
+- **Webhook Support**: Real-time updates for subscription and payment events
+- **API Ready**: RESTful APIs for custom integrations
+- **Containerized Execution**: Safe code execution in isolated environments 
 
 ## 🛠️ Get Started Locally
 
@@ -123,25 +121,25 @@ docker-compose up --build
 
 ### Perfect For:
 
-**🚀 Startups & Indie Hackers**
-- Rapid prototyping and MVP development
-- Iterate quickly based on user feedback
-- Build without a full development team
+**📱 Product Managers**
+- Quickly draft comprehensive PRDs from initial ideas
+- Structure feature requirements with technical considerations
+- Generate user stories and acceptance criteria
 
 **👥 Development Teams**
-- Accelerate feature development
-- Automate repetitive coding tasks
-- Maintain consistent code quality
+- Convert PRDs into actionable development tickets
+- Get technical implementation guidance
+- Maintain consistent documentation standards
+
+**🚀 Startups**
+- Accelerate product planning and specification
+- Structure ideas into actionable development plans
+- Reduce time from concept to implementation
 
 **🏢 Enterprises**
-- Standardize development workflows
-- Reduce time-to-market
-- Scale development capacity
-
-**🎓 Learning & Education**
-- Learn best practices from AI
-- Understand code architecture
-- Build real projects faster
+- Standardize requirement documentation processes
+- Ensure comprehensive technical analysis
+- Improve cross-team communication
 
 ## 📁 Project Structure
 
@@ -166,9 +164,10 @@ lfg/
 
 ### 🔧 Key Components
 
-- **AI Prompts & Tools**: Located in `coding/utils/` - contains all the AI prompts, agent definitions, and utility functions that power the intelligent features
-- **Agent System**: Specialized AI agents (Product Manager, Developer, Designer) with their respective prompts and behaviors
-- **Code Execution**: Sandboxed environments using Docker and Kubernetes for secure code execution
+- **AI Integration**: Located in `development/utils/` - handles AI provider connections and response streaming
+- **Chat System**: WebSocket-based real-time communication for interactive AI assistance
+- **Project Management**: PRD generation, ticket creation, and Linear integration
+- **Container Management**: Docker and Kubernetes integration for secure code execution environments
 
 ## 🔧 Configuration
 
@@ -222,7 +221,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 <div align="center">
   
-**🚀 Ready to ship 10x faster?**
+**🚀 Ready to accelerate your product development?**
 
 [Get Started](https://github.com/lfg-hq/lfg) • [Documentation](docs/) • [Report Issue](https://github.com/lfg-hq/lfg/issues)
 
