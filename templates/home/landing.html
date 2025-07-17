@@ -1677,9 +1677,6 @@
         }
 
         .setup-content {
-            display: grid;
-            grid-template-columns: 2fr 1fr;
-            gap: 3rem;
             margin-top: 3rem;
         }
 
@@ -1687,6 +1684,138 @@
             display: flex;
             flex-direction: column;
             gap: 2rem;
+        }
+
+        /* Compact setup styles */
+        .setup-compact {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 2.5rem;
+            border: 1px solid var(--border-color);
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .setup-compact h3 {
+            font-size: 1.5rem;
+            margin-bottom: 0.75rem;
+            color: var(--text-primary);
+        }
+
+        .setup-compact > p {
+            color: var(--text-secondary);
+            margin-bottom: 1.5rem;
+            font-size: 1.1rem;
+        }
+
+        .compact-code-block {
+            background: var(--bg-darker);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            overflow: hidden;
+            padding: 2rem;
+        }
+
+        .code-step {
+            position: relative;
+            margin-bottom: 1.5rem;
+            padding-right: 4rem;
+        }
+
+        .code-step:last-child {
+            margin-bottom: 0;
+        }
+
+        .code-step .comment {
+            color: #64748B;
+            display: block;
+            margin-bottom: 0.25rem;
+            font-family: 'Monaco', 'Consolas', 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+
+        .code-step .command {
+            color: #E2E8F0;
+            font-family: 'Monaco', 'Consolas', 'Courier New', monospace;
+            font-size: 0.9rem;
+            line-height: 1.6;
+            display: block;
+        }
+
+        .copy-step-btn {
+            position: absolute;
+            top: 50%;
+            right: 0;
+            transform: translateY(-50%);
+            background: rgba(139, 92, 246, 0.1);
+            border: 1px solid var(--primary-purple);
+            color: var(--primary-purple);
+            padding: 0.4rem 0.8rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.75rem;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .copy-step-btn:hover {
+            background: var(--primary-purple);
+            color: white;
+            transform: translateY(-50%) scale(1.05);
+        }
+
+        .copy-step-btn.copied {
+            background: #10B981;
+            border-color: #10B981;
+            color: white;
+        }
+
+        .copy-all-btn {
+            background: rgba(139, 92, 246, 0.1);
+            border: 1px solid var(--primary-purple);
+            color: var(--primary-purple);
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.875rem;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-top: 1.5rem;
+        }
+
+        .copy-all-btn:hover {
+            background: var(--primary-purple);
+            color: white;
+            transform: translateY(-2px);
+        }
+
+        .setup-note {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-top: 1.5rem;
+            padding: 1rem 1.5rem;
+            background: rgba(139, 92, 246, 0.1);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            border-radius: 8px;
+            color: var(--primary-purple);
+        }
+
+        .setup-note i {
+            font-size: 1.2rem;
+        }
+
+        .setup-note code {
+            background: rgba(139, 92, 246, 0.2);
+            padding: 0.125rem 0.375rem;
+            border-radius: 4px;
+            font-family: monospace;
         }
 
         .setup-step {
@@ -1818,7 +1947,7 @@
 
         .api-keys-grid {
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
+            grid-template-columns: repeat(3, 1fr);
             gap: 1rem;
         }
 
@@ -1891,6 +2020,25 @@
         @media (max-width: 768px) {
             .setup-content {
                 grid-template-columns: 1fr;
+            }
+
+            .setup-compact {
+                padding: 1.5rem;
+            }
+
+            .compact-code-block {
+                padding: 1rem;
+            }
+            .code-step {
+                padding-right: 3rem;
+            }
+            .code-step .comment,
+            .code-step .command {
+                font-size: 0.8rem;
+            }
+            .copy-step-btn {
+                padding: 0.3rem 0.6rem;
+                font-size: 0.7rem;
             }
 
             .setup-step {
@@ -2045,11 +2193,6 @@
                     <div class="step-circle">3</div>
                     <div class="step-label">Project</div>
                 </div>
-                <div class="progress-line"></div>
-                <div class="progress-step" data-step="4">
-                    <div class="step-circle">4</div>
-                    <div class="step-label">API Keys</div>
-                </div>
             </div>
 
             <!-- Carousel content -->
@@ -2166,70 +2309,6 @@
                     </div>
                 </div>
 
-                <!-- Step 4: API Keys -->
-                <div class="carousel-step" data-step="4">
-                    <div class="modal-header">
-                        <h2>Connect Your AI</h2>
-                        <p>Add at least one API key to start building with AI</p>
-                    </div>
-                    <div class="modal-body">
-                        <form id="api-keys-form" class="api-keys-form" style="flex: 1; display: flex; flex-direction: column;">
-                            <div class="api-key-section" style="flex: 1;">
-                                <div class="api-provider" data-provider="openai">
-                                    <div class="provider-compact">
-                                        <div class="provider-header-compact">
-                                            <img src="https://upload.wikimedia.org/wikipedia/commons/0/04/ChatGPT_logo.svg" alt="OpenAI" class="provider-logo">
-                                            <div class="provider-info-compact">
-                                                <h3>OpenAI</h3>
-                                            </div>
-                                        </div>
-                                        <input type="password" id="openai-key" class="api-key-input" placeholder="sk-..." onchange="checkKeyFilled(this)">
-                                    </div>
-                                    <a href="https://platform.openai.com/api-keys" target="_blank" class="get-key-link" title="Get API Key">
-                                        <i class="fas fa-external-link-alt"></i>
-                                    </a>
-                                </div>
-                                
-                                <div class="api-provider" data-provider="anthropic">
-                                    <div class="provider-compact">
-                                        <div class="provider-header-compact">
-                                            <img src="https://www.anthropic.com/favicon.ico" alt="Anthropic" class="provider-logo">
-                                            <div class="provider-info-compact">
-                                                <h3>Anthropic</h3>
-                                            </div>
-                                        </div>
-                                        <input type="password" id="anthropic-key" class="api-key-input" placeholder="sk-ant-..." onchange="checkKeyFilled(this)">
-                                    </div>
-                                    <a href="https://console.anthropic.com/settings/keys" target="_blank" class="get-key-link" title="Get API Key">
-                                        <i class="fas fa-external-link-alt"></i>
-                                    </a>
-                                </div>
-                                
-                                <div class="api-provider" data-provider="xai">
-                                    <div class="provider-compact">
-                                        <div class="provider-header-compact">
-                                            <img src="https://x.ai/favicon.ico" alt="xAI" class="provider-logo">
-                                            <div class="provider-info-compact">
-                                                <h3>xAI Grok</h3>
-                                            </div>
-                                        </div>
-                                        <input type="password" id="grok-key" class="api-key-input" placeholder="xai-..." onchange="checkKeyFilled(this)">
-                                    </div>
-                                    <a href="https://console.x.ai/" target="_blank" class="get-key-link" title="Get API Key">
-                                        <i class="fas fa-external-link-alt"></i>
-                                    </a>
-                                </div>
-
-                                <!-- Add more providers here in the future -->
-                            </div>
-                            
-                            <div class="form-actions">
-                                <button type="button" class="skip-btn" onclick="skipApiKeys()">Skip for now</button>
-                                <button type="submit" class="continue-btn">Get Started</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
             </div>
         </div>
     </div>
@@ -2352,132 +2431,65 @@
                 <p>Set up LFG on your machine in just a few minutes</p>
             </div>
             <div class="setup-content">
-                <div class="setup-steps">
-                    <div class="setup-step">
-                        <div class="step-number">1</div>
-                        <div class="step-content">
-                            <h3>Clone the Repository</h3>
-                            <div class="code-block">
-                                <code>git clone https://github.com/lfg-hq/lfg.git</code>
-                                <button class="copy-btn" onclick="copyToClipboard('git clone https://github.com/lfg-hq/lfg.git')">
-                                    <i class="fas fa-copy"></i>
-                                </button>
-                            </div>
-                            <p>Get the latest version of LFG from our GitHub repository</p>
+                <div class="setup-compact">
+                    <h3>Quick Setup Commands</h3>
+                    <p>Copy and run these commands to get LFG running on your machine:</p>
+                    <div class="compact-code-block">
+                        <div class="code-step">
+                            <span class="comment"># 1. Clone the repository</span>
+                            <span class="command">git clone https://github.com/lfg-hq/lfg.git</span>
+                            <button class="copy-step-btn" onclick="copyStep('git clone https://github.com/lfg-hq/lfg.git', this)">
+                                <i class="fas fa-copy"></i> Copy
+                            </button>
                         </div>
+                        <div class="code-step">
+                            <span class="comment"># 2. Create virtual environment</span>
+                            <span class="command">cd lfg && python -m venv venv && source venv/bin/activate</span>
+                            <span class="comment"># On Windows: cd lfg && python -m venv venv && venv\Scripts\activate</span>
+                            <button class="copy-step-btn" onclick="copyStep('cd lfg && python -m venv venv && source venv/bin/activate', this)">
+                                <i class="fas fa-copy"></i> Copy
+                            </button>
+                        </div>
+                        <div class="code-step">
+                            <span class="comment"># 3. Install dependencies</span>
+                            <span class="command">pip install -r requirements.txt</span>
+                            <button class="copy-step-btn" onclick="copyStep('pip install -r requirements.txt', this)">
+                                <i class="fas fa-copy"></i> Copy
+                            </button>
+                        </div>
+                        <div class="code-step">
+                            <span class="comment"># 4. Set up environment</span>
+                            <span class="command">cp .env.example .env</span>
+                            <span class="comment"># Edit .env file to add your API keys</span>
+                            <button class="copy-step-btn" onclick="copyStep('cp .env.example .env', this)">
+                                <i class="fas fa-copy"></i> Copy
+                            </button>
+                        </div>
+                        <div class="code-step">
+                            <span class="comment"># 5. Run database migrations</span>
+                            <span class="command">python manage.py migrate</span>
+                            <button class="copy-step-btn" onclick="copyStep('python manage.py migrate', this)">
+                                <i class="fas fa-copy"></i> Copy
+                            </button>
+                        </div>
+                        <div class="code-step">
+                            <span class="comment"># 6. Start the development server</span>
+                            <span class="command">uvicorn LFG.asgi:application --host 0.0.0.0 --port 8000 --workers 2</span>
+                            <span class="comment"># Access at http://localhost:8000</span>
+                            <button class="copy-step-btn" onclick="copyStep('uvicorn LFG.asgi:application --host 0.0.0.0 --port 8000 --workers 2', this)">
+                                <i class="fas fa-copy"></i> Copy
+                            </button>
+                        </div>
+                        <button class="copy-all-btn" onclick="copyAllCommands()">
+                            <i class="fas fa-copy"></i> Copy All
+                        </button>
                     </div>
-                    
-                    <div class="setup-step">
-                        <div class="step-number">2</div>
-                        <div class="step-content">
-                            <h3>Create Virtual Environment</h3>
-                            <div class="code-block">
-                                <code>cd lfg && python -m venv venv && source venv/bin/activate</code>
-                                <button class="copy-btn" onclick="copyToClipboard('cd lfg && python -m venv venv && source venv/bin/activate')">
-                                    <i class="fas fa-copy"></i>
-                                </button>
-                            </div>
-                            <p>Set up an isolated Python environment for the project</p>
-                        </div>
-                    </div>
-                    
-                    <div class="setup-step">
-                        <div class="step-number">3</div>
-                        <div class="step-content">
-                            <h3>Install Dependencies</h3>
-                            <div class="code-block">
-                                <code>pip install -r requirements.txt</code>
-                                <button class="copy-btn" onclick="copyToClipboard('pip install -r requirements.txt')">
-                                    <i class="fas fa-copy"></i>
-                                </button>
-                            </div>
-                            <p>Install all required Python packages and dependencies</p>
-                        </div>
-                    </div>
-                    
-                    <div class="setup-step">
-                        <div class="step-number">4</div>
-                        <div class="step-content">
-                            <h3>Set Up Environment</h3>
-                            <div class="code-block">
-                                <code>cp .env.example .env</code>
-                                <button class="copy-btn" onclick="copyToClipboard('cp .env.example .env')">
-                                    <i class="fas fa-copy"></i>
-                                </button>
-                            </div>
-                            <p>Configure your environment variables and add your API keys</p>
-                        </div>
-                    </div>
-                    
-                    <div class="setup-step">
-                        <div class="step-number">5</div>
-                        <div class="step-content">
-                            <h3>Run Database Migrations</h3>
-                            <div class="code-block">
-                                <code>python manage.py migrate</code>
-                                <button class="copy-btn" onclick="copyToClipboard('python manage.py migrate')">
-                                    <i class="fas fa-copy"></i>
-                                </button>
-                            </div>
-                            <p>Set up the database schema and initial data</p>
-                        </div>
-                    </div>
-                    
-                    <div class="setup-step">
-                        <div class="step-number">6</div>
-                        <div class="step-content">
-                            <h3>Start the Development Server</h3>
-                            <div class="code-block">
-                                <code>uvicorn LFG.asgi:application --host 0.0.0.0 --port 8000 --workers 2</code>
-                                <button class="copy-btn" onclick="copyToClipboard('uvicorn LFG.asgi:application --host 0.0.0.0 --port 8000 --workers 2')">
-                                    <i class="fas fa-copy"></i>
-                                </button>
-                            </div>
-                            <p>Launch LFG locally and access it at <a href="http://localhost:8000" target="_blank">http://localhost:8000</a></p>
-                        </div>
+                    <div class="setup-note">
+                        <i class="fas fa-info-circle"></i>
+                        <span>Remember to add your AI provider API keys to the <code>.env</code> file before starting!</span>
                     </div>
                 </div>
                 
-                <div class="setup-requirements">
-                    <h3>System Requirements</h3>
-                    <div class="requirements-list">
-                        <div class="requirement-item">
-                            <i class="fas fa-check-circle"></i>
-                            <span>Python 3.8 or higher</span>
-                        </div>
-                        <div class="requirement-item">
-                            <i class="fas fa-check-circle"></i>
-                            <span>PostgreSQL or SQLite</span>
-                        </div>
-                        <div class="requirement-item">
-                            <i class="fas fa-check-circle"></i>
-                            <span>Node.js 16+ (for frontend assets)</span>
-                        </div>
-                        <div class="requirement-item">
-                            <i class="fas fa-check-circle"></i>
-                            <span>Git</span>
-                        </div>
-                    </div>
-                    
-                    <div class="api-keys-section">
-                        <h3>Required API Keys</h3>
-                        <p>You'll need at least one of these AI provider API keys:</p>
-                        <div class="api-keys-grid">
-                            <div class="api-key-card">
-                                <i class="fas fa-robot"></i>
-                                <h4>OpenAI</h4>
-                                <p>GPT-4 models</p>
-                                <a href="https://platform.openai.com/api-keys" target="_blank">Get API Key →</a>
-                            </div>
-                            <div class="api-key-card">
-                                <i class="fas fa-brain"></i>
-                                <h4>Anthropic</h4>
-                                <p>Claude models</p>
-                                <a href="https://www.anthropic.com/api" target="_blank">Get API Key →</a>
-                            </div>
-                        </div>
-                    </div>
-                </div>
             </div>
             
             <div class="setup-footer">
@@ -2905,88 +2917,11 @@
                 return;
             }
 
-            // Move to API keys step
-            goToStep(4);
-        });
-
-        // API keys form submission
-        document.getElementById('api-keys-form').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            const openaiKey = document.getElementById('openai-key').value.trim();
-            const anthropicKey = document.getElementById('anthropic-key').value.trim();
-            const grokKey = document.getElementById('grok-key').value.trim();
-            
-            if (!openaiKey && !anthropicKey && !grokKey) {
-                alert('Please provide at least one API key.');
-                return;
-            }
-
-            try {
-                // Save API keys
-                const apiResponse = await fetch('/accounts/profile/api-keys/', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': getCookie('csrftoken')
-                    },
-                    body: JSON.stringify({
-                        openai_api_key: openaiKey,
-                        anthropic_api_key: anthropicKey,
-                        xai_api_key: xaiKey
-                    }),
-                    credentials: 'include'
-                });
-
-                if (!apiResponse.ok) {
-                    alert('Failed to save API keys. Please try again.');
-                    return;
-                }
-
-                // Create project
-                const projectResponse = await fetch('/projects/api/create/', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': getCookie('csrftoken')
-                    },
-                    body: JSON.stringify({
-                        name: projectName,
-                        description: 'Project created from landing page',
-                        requirements: userRequirements
-                    }),
-                    credentials: 'include'
-                });
-
-                if (projectResponse.ok) {
-                    const data = await projectResponse.json();
-                    // Hide modal and show loading
-                    const modal = document.getElementById('onboarding-modal');
-                    modal.style.display = 'none';
-                    modal.classList.remove('show');
-                    
-                    // Show loading overlay
-                    const loadingOverlay = document.getElementById('loadingOverlay');
-                    loadingOverlay.classList.add('show');
-                    
-                    // Small delay to ensure loading overlay is visible
-                    setTimeout(() => {
-                        redirectToChat(data.project_id);
-                    }, 100);
-                } else {
-                    alert('Failed to create project. Please try again.');
-                }
-            } catch (error) {
-                console.error('Error in final step:', error);
-                alert('An error occurred. Please try again.');
-            }
-        });
-
-        // Skip API keys
-        function skipApiKeys() {
-            // Create project without API keys
+            // Create project directly after name submission
             createProjectAndRedirect();
-        }
+        });
+
+
 
         async function createProjectAndRedirect() {
             try {
@@ -3118,17 +3053,57 @@
             });
         }
 
-        // Check if API key is filled and update visual state
-        function checkKeyFilled(input) {
-            const provider = input.closest('.api-provider');
-            if (input.value.trim()) {
-                input.classList.add('filled');
-                provider.classList.add('filled');
-            } else {
-                input.classList.remove('filled');
-                provider.classList.remove('filled');
-            }
+        function copyStep(command, button) {
+            navigator.clipboard.writeText(command).then(() => {
+                const originalHTML = button.innerHTML;
+                button.innerHTML = '<i class="fas fa-check"></i> Copied!';
+                button.classList.add('copied');
+                
+                setTimeout(() => {
+                    button.innerHTML = originalHTML;
+                    button.classList.remove('copied');
+                }, 2000);
+            });
         }
+        
+        function copyAllCommands() {
+            const commands = `# 1. Clone the repository
+git clone https://github.com/lfg-hq/lfg.git
+
+# 2. Create virtual environment
+cd lfg && python -m venv venv && source venv/bin/activate
+# On Windows: cd lfg && python -m venv venv && venv\\Scripts\\activate
+
+# 3. Install dependencies
+pip install -r requirements.txt
+
+# 4. Set up environment
+cp .env.example .env
+# Edit .env file to add your API keys
+
+# 5. Run database migrations
+python manage.py migrate
+
+# 6. Start the development server
+uvicorn LFG.asgi:application --host 0.0.0.0 --port 8000 --workers 2
+
+# Access at http://localhost:8000`;
+
+            navigator.clipboard.writeText(commands).then(function() {
+                const button = event.target.closest('.copy-all-btn');
+                const originalHTML = button.innerHTML;
+                
+                button.innerHTML = '<i class="fas fa-check"></i> Copied!';
+                
+                setTimeout(() => {
+                    button.innerHTML = originalHTML;
+                }, 2000);
+            }).catch(function(err) {
+                console.error('Failed to copy commands: ', err);
+            });
+        }
+
+        // Check if API key is filled and update visual state
     </script>
 
     <!-- Loading Overlay -->

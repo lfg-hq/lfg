@@ -1,6 +1,6 @@
 # LFG 🚀 | AI-Powered Product Development Platform
 
-> **Ship 10x Faster with AI** - The open-source platform that brings together the best of human creativity and artificial intelligence. Build products with specialized AI agents working as your virtual team.
+> **Streamline your SDLC process with AI** - The open-source platform that helps bring method to the madness. Structure your requirements gathering, development, QA, and deployments with AI. 
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
@@ -9,18 +9,22 @@
 
 ## 🌟 Overview
 
-LFG is an Agentic framework for AI dev team. .
+LFG is an agentic framework for AI development teams, helping you automate the SDLC.
 
-The AI-powered platform that combines Product Managers, Developers, and Designers in one intelligent workspace. Create PRDs, build apps, fix bugs, and ship faster than ever.
+The AI-powered platform that combines different roles like Product Managers, Developers, and Designers in one intelligent workspace. Create PRDs, build apps, fix bugs, and ship faster than ever. LFG helps you research and analyze ideas. Assess them before you build. 
 
-### ✨ Why LFG?
+### ✨ What is LFG's mission?
 
-- **🚀 Ship 10x Faster**: Accelerate development with AI agents handling repetitive tasks
-- **🤖 AI Dream Team**: Product managers, developers, and designers working 24/7
-- **💡 Human + AI Collaboration**: Enhance creativity, don't replace it
+- **🚀 Ship 10x Faster**: Automate away the mundane and focus on what matters - the problems you care about, your customers, and your creativity.
+- **🤖 AI Dream Team**: Different roles like product managers, developers, QA engineers, and designers working 24/7, helping you ship your dream product
+- **💡 Human + AI Collaboration**: Enhancing creativity, not replacing it
 - **🔓 100% Open Source**: No vendor lock-in, complete transparency
 - **🎯 Production-Ready**: Built for real products, not just demos
 - **🛠️ Fully Customizable**: Choose your AI models, tech stack, and deployment
+
+We are starting with baby steps. 
+
+As of now, we are solving the requirements gathering process. LFG helps you research and analyze ideas, write PRDs, create technical docs, and generate tickets (and sync them with Linear). 
 
 ## 🚀 Features
 
@@ -32,7 +36,7 @@ The AI-powered platform that combines Product Managers, Developers, and Designer
 - Prioritizes features based on impact
 - Manages product roadmap and timelines
 
-**Developer Agent**
+**Developer Agent (coming soon)**
 - Writes production-ready code
 - Implements features from tickets
 - Debugs and optimizes performance
@@ -43,11 +47,6 @@ The AI-powered platform that combines Product Managers, Developers, and Designer
 
 - **📝 Smart PRD Generation**: Transform your ideas into comprehensive Product Requirements Documents with AI-powered insights
 - **🎯 Intelligent Ticket System**: Automatically break down complex features into actionable, prioritized tickets
-- **💡 Real-time Code Generation**: Watch your ideas come to life with AI writing production-ready code
-- **🔧 Built-in Development Environment**: Professional IDE with AI assistance and real-time collaboration
-- **🌐 Full-Stack Development**: Build complete applications from frontend to backend with AI guidance
-- **🚀 Automated Testing**: Generate comprehensive test suites to ensure code quality
-- **📊 Progress Tracking**: Real-time visibility into development progress and AI agent activities
 
 ### 🎨 Customization & Flexibility
 
@@ -62,7 +61,7 @@ The AI-powered platform that combines Product Managers, Developers, and Designer
 Set up LFG on your machine in just a few minutes!
 
 ### System Requirements
-- ✅ Python 3.8 or higher
+- ✅ Python 3.9 or higher
 - ✅ PostgreSQL or SQLite
 - ✅ Node.js 16+ (for frontend assets)
 - ✅ Git
@@ -105,10 +104,11 @@ Set up LFG on your machine in just a few minutes!
 
 ### 🔑 Required API Keys
 
-You'll need at least one of these AI provider API keys:
+You'll need at least one AI provider API key to use LFG:
 
-- **OpenAI**: GPT-4 models - [Get API Key →](https://platform.openai.com/api-keys)
-- **Anthropic**: Claude models - [Get API Key →](https://www.anthropic.com/api)
+- **OpenAI**: Get your API key from [OpenAI Platform](https://platform.openai.com/api-keys)
+- **Anthropic**: Get your API key from [Anthropic Console](https://console.anthropic.com/settings/keys)
+- **xAI (Grok)**: Get your API key from [xAI Console](https://console.x.ai/)
 
 ### Docker Setup (Alternative)
 
@@ -149,14 +149,12 @@ docker-compose up --build
 lfg/
 ├── accounts/           # User authentication and profiles
 ├── chat/              # AI chat and collaboration system
-├── coding/            # Code generation and execution
-│   ├── docker/        # Docker sandbox management
-│   ├── k8s_manager/   # Kubernetes pod management
+├── development/       # Code generation and execution
 │   └── utils/         # AI prompts, tools, and utilities
 ├── projects/          # Project management and organization
 ├── subscriptions/     # Subscription and credit management
 ├── templates/         # HTML templates
-│   └── marketing/     # Landing pages and marketing
+│   └── home/          # Landing pages and marketing
 ├── static/           # Static files (CSS, JS, images)
 ├── media/            # User-uploaded files
 ├── config/           # Configuration files
@@ -164,17 +162,81 @@ lfg/
 └── requirements.txt  # Python dependencies
 ```
 
+### 🔧 Core Modules Explained
+
+#### **accounts/**
+Manages user authentication, profiles, and API key storage. This module handles:
+- User registration and login (including OAuth with Google/GitHub)
+- Profile management where users store their AI provider API keys
+- User preferences and settings
+- Session management and authentication middleware
+
+#### **development/**
+The heart of the AI-powered development features. This module contains:
+- **AI Provider Integration**: Factory pattern implementation for multiple AI providers (OpenAI, Anthropic, xAI)
+- **Tool System**: Defines AI agent tools for code execution, file manipulation, PRD generation, and project management
+- **Streaming Responses**: Real-time AI response streaming with token usage tracking
+
+#### **projects/**
+Handles all project-related functionality including:
+- Project creation and management
+- PRD and Technical documentation management (saving and editing)
+- Ticket management with AI-powered breakdown
+- Linear integration for syncing tickets with external project management tools
+
 ### 🔧 Key Components
 
-- **AI Prompts & Tools**: Located in `coding/utils/` - contains all the AI prompts, agent definitions, and utility functions that power the intelligent features
+- **AI Prompts & Tools**: Located in `development/utils/` - contains all the AI prompts, agent definitions, and utility functions that power the intelligent features
 - **Agent System**: Specialized AI agents (Product Manager, Developer, Designer) with their respective prompts and behaviors
-- **Code Execution**: Sandboxed environments using Docker and Kubernetes for secure code execution
+- **Code Execution**: Sandboxed environments using Docker for secure code execution
 
 ## 🔧 Configuration
 
 ### Environment Variables
 
 Create a `.env` file or configure `env.sh` with the following variables:
+
+```bash
+# Django Settings
+DJANGO_SECRET_KEY=your-secret-key-here
+DEBUG=True  # Set to False in production
+ALLOWED_HOSTS=localhost,127.0.0.1
+
+# Database (PostgreSQL)
+DATABASE_URL=postgres://user:password@localhost:5432/lfg_db
+# Or use SQLite for local development
+# DATABASE_URL=sqlite:///db.sqlite3
+
+# AI Provider API Keys (at least one required)
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+XAI_API_KEY=xai-...
+
+# Redis Configuration (for WebSocket support)
+REDIS_URL=redis://localhost:6379/0
+
+# Email Configuration (optional)
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_HOST_USER=your-email@gmail.com
+EMAIL_HOST_PASSWORD=your-app-password
+
+# Stripe Configuration (optional, for payments)
+STRIPE_PUBLIC_KEY=pk_test_...
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+
+# Linear Integration (optional)
+LINEAR_API_KEY=lin_api_...
+
+# GitHub OAuth (optional)
+GITHUB_CLIENT_ID=your-github-client-id
+GITHUB_CLIENT_SECRET=your-github-client-secret
+
+# Google OAuth (optional)
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+```
 
 ## 🤝 Contributing
 
@@ -226,8 +288,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 [Get Started](https://github.com/lfg-hq/lfg) • [Documentation](docs/) • [Report Issue](https://github.com/lfg-hq/lfg/issues)
 
-**LFG - Let's F***ing Go! 🚀**
-
-*Forever open source. Built with ❤️ by the community.*
+**LFG - Let's F* Go! 🚀**
 
 </div> 
