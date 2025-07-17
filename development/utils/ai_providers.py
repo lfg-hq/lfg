@@ -24,13 +24,7 @@ import traceback # Import traceback for better error logging
 from channels.db import database_sync_to_async
 from development.utils.ai_tools import tools_ticket
 
-import xml.etree.ElementTree as ET
-
-# Try to import tiktoken for token estimation
-try:
-    import tiktoken
-except ImportError:
-    tiktoken = None
+import tiktoken
 
 
 # Set up logger
@@ -1318,7 +1312,7 @@ class GrokProvider(AIProvider):
                         # Capture ALL assistant output for token counting
                         total_assistant_output += text
                         logger.debug(f"Captured {len(text)} chars of assistant output, total: {len(total_assistant_output)}")
-                        
+Token estimation complete                        
                         # Add to buffer for tag detection
                         buffer += text
                         
