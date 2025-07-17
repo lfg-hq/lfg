@@ -54,10 +54,7 @@
                                         data-project-name="{{ item.project.name }}"
                                         data-project-description="{{ item.project.description }}"
                                         data-project-icon="{{ item.project.icon }}"
-                                        data-project-status="{{ item.project.status }}"
-                                        data-linear-sync-enabled="{{ item.project.linear_sync_enabled|yesno:'true,false' }}"
-                                        data-linear-team-id="{{ item.project.linear_team_id|default:'' }}"
-                                        data-linear-project-id="{{ item.project.linear_project_id|default:'' }}">
+                                        data-project-status="{{ item.project.status }}">
                                     <i class="fas fa-edit"></i> Edit
                                 </button>
                                 <form action="{% url 'projects:delete_project' item.project.project_id %}" method="post" style="margin: 0; padding: 0;">
@@ -287,10 +284,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 name: this.getAttribute('data-project-name'),
                 description: this.getAttribute('data-project-description'),
                 icon: this.getAttribute('data-project-icon'),
-                status: this.getAttribute('data-project-status'),
-                linearSyncEnabled: this.getAttribute('data-linear-sync-enabled') === 'true',
-                linearTeamId: this.getAttribute('data-linear-team-id'),
-                linearProjectId: this.getAttribute('data-linear-project-id')
+                status: this.getAttribute('data-project-status')
             };
             openEditModal(projectData);
         });
