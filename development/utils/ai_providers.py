@@ -656,6 +656,8 @@ class OpenAIProvider(AIProvider):
             }
         }
 
+        tools.append(search_tool)
+
         while True: # Loop to handle potential multi-turn tool calls (though typically one round)
             try:
                 params = {

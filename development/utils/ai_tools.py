@@ -578,24 +578,6 @@ capture_name = {
 }
 
 
-web_search = {
-    "type": "function",
-    "function": {
-        "name": "search_web",
-        "description": "Searches the web for fresh information",
-        "parameters": {
-        "type": "object",
-        "properties": {
-            "query": {
-                    "type": "string",
-                    "description": "Search query"
-                }
-            },
-            "required": ["query"]
-        }
-    }
-}
-
 tools_code = [get_prd, start_server, \
               get_github_access_token, \
               create_tickets, update_ticket, \
