@@ -49,9 +49,17 @@
                                 <i class="fas fa-ellipsis-v"></i>
                             </button>
                             <div class="dropdown-menu">
-                                <a href="{% url 'projects:update_project' item.project.project_id %}" class="dropdown-item">
+                                <button type="button" class="dropdown-item edit-project-btn" 
+                                        data-project-id="{{ item.project.project_id }}"
+                                        data-project-name="{{ item.project.name }}"
+                                        data-project-description="{{ item.project.description }}"
+                                        data-project-icon="{{ item.project.icon }}"
+                                        data-project-status="{{ item.project.status }}"
+                                        data-linear-sync-enabled="{{ item.project.linear_sync_enabled|yesno:'true,false' }}"
+                                        data-linear-team-id="{{ item.project.linear_team_id|default:'' }}"
+                                        data-linear-project-id="{{ item.project.linear_project_id|default:'' }}">
                                     <i class="fas fa-edit"></i> Edit
-                                </a>
+                                </button>
                                 <form action="{% url 'projects:delete_project' item.project.project_id %}" method="post" style="margin: 0; padding: 0;">
                                     {% csrf_token %}
                                     <button type="submit" class="dropdown-item dropdown-item-danger delete-project-btn" data-project-name="{{ item.project.name }}">
@@ -114,11 +122,72 @@
         </div>
     </div>
 </div>
+
+<!-- Edit Project Modal -->
+<div class="modal-overlay" id="edit-project-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <h2 class="modal-title">Edit Project</h2>
+            <button class="modal-close" id="close-edit-modal">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <form method="post" action="" id="edit-project-form">
+                {% csrf_token %}
+                <div class="form-group">
+                    <label for="edit-project-name" class="form-label">Project Name*</label>
+                    <input type="text" id="edit-project-name" name="name" class="form-control" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="edit-project-description" class="form-label">Description (optional)</label>
+                    <textarea id="edit-project-description" name="description" class="form-control" rows="3"></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Project Icon</label>
+                    <input type="hidden" id="edit-project-icon" name="icon" value="">
+                    
+                    <div class="emoji-picker">
+                        <div class="emoji-option" data-emoji="📋">📋</div>
+                        <div class="emoji-option" data-emoji="📊">📊</div>
+                        <div class="emoji-option" data-emoji="🚀">🚀</div>
+                        <div class="emoji-option" data-emoji="💡">💡</div>
+                        <div class="emoji-option" data-emoji="📱">📱</div>
+                        <div class="emoji-option" data-emoji="🌐">🌐</div>
+                        <div class="emoji-option" data-emoji="📈">📈</div>
+                        <div class="emoji-option" data-emoji="🎯">🎯</div>
+                        <div class="emoji-option" data-emoji="🔍">🔍</div>
+                        <div class="emoji-option" data-emoji="⚙️">⚙️</div>
+                        <div class="emoji-option" data-emoji="🎨">🎨</div>
+                        <div class="emoji-option" data-emoji="📝">📝</div>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="edit-project-status" class="form-label">Status</label>
+                    <select id="edit-project-status" name="status" class="form-control">
+                        <option value="active">Active</option>
+                        <option value="archived">Archived</option>
+                        <option value="completed">Completed</option>
+                    </select>
+                </div>
+                
+                <div class="form-actions">
+                    <button type="button" class="btn btn-outline" id="cancel-edit-modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Update Project</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // Create Project Modal
     const modal = document.getElementById('create-project-modal');
     const openBtn = document.getElementById('open-create-modal');
     const openBtnEmpty = document.getElementById('open-create-modal-empty');
@@ -164,6 +233,97 @@ document.addEventListener('DOMContentLoaded', function() {
         if (e.key === 'Escape' && modal.classList.contains('active')) {
             closeModal();
         }
+    });
+    
+    // Edit Project Modal
+    const editModal = document.getElementById('edit-project-modal');
+    const closeEditBtn = document.getElementById('close-edit-modal');
+    const cancelEditBtn = document.getElementById('cancel-edit-modal');
+    const editForm = document.getElementById('edit-project-form');
+    const editProjectName = document.getElementById('edit-project-name');
+    const editProjectDescription = document.getElementById('edit-project-description');
+    const editProjectIcon = document.getElementById('edit-project-icon');
+    const editProjectStatus = document.getElementById('edit-project-status');
+    
+    function openEditModal(projectData) {
+        editModal.classList.add('active');
+        
+        // Set form action
+        editForm.action = `/projects/${projectData.projectId}/update/`;
+        
+        // Populate form fields
+        editProjectName.value = projectData.name;
+        editProjectDescription.value = projectData.description || '';
+        editProjectIcon.value = projectData.icon;
+        editProjectStatus.value = projectData.status;
+        
+        // Update emoji picker
+        const emojiOptions = editModal.querySelectorAll('.emoji-option');
+        emojiOptions.forEach(option => {
+            if (option.getAttribute('data-emoji') === projectData.icon) {
+                option.classList.add('selected');
+            } else {
+                option.classList.remove('selected');
+            }
+        });
+        
+        // Focus on the input field when modal opens
+        setTimeout(() => {
+            editProjectName.focus();
+        }, 100);
+    }
+    
+    function closeEditModal() {
+        editModal.classList.remove('active');
+        editForm.reset();
+    }
+    
+    // Handle edit button clicks
+    document.querySelectorAll('.edit-project-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const projectData = {
+                projectId: this.getAttribute('data-project-id'),
+                name: this.getAttribute('data-project-name'),
+                description: this.getAttribute('data-project-description'),
+                icon: this.getAttribute('data-project-icon'),
+                status: this.getAttribute('data-project-status'),
+                linearSyncEnabled: this.getAttribute('data-linear-sync-enabled') === 'true',
+                linearTeamId: this.getAttribute('data-linear-team-id'),
+                linearProjectId: this.getAttribute('data-linear-project-id')
+            };
+            openEditModal(projectData);
+        });
+    });
+    
+    // Close edit modal
+    closeEditBtn.addEventListener('click', closeEditModal);
+    cancelEditBtn.addEventListener('click', closeEditModal);
+    
+    // Close edit modal when clicking outside
+    editModal.addEventListener('click', function(e) {
+        if (e.target === editModal) {
+            closeEditModal();
+        }
+    });
+    
+    // Close edit modal on Escape key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && editModal.classList.contains('active')) {
+            closeEditModal();
+        }
+    });
+    
+    // Handle emoji picker for edit modal
+    editModal.querySelectorAll('.emoji-option').forEach(option => {
+        option.addEventListener('click', function() {
+            // Remove selected class from all options
+            editModal.querySelectorAll('.emoji-option').forEach(opt => opt.classList.remove('selected'));
+            // Add selected class to clicked option
+            this.classList.add('selected');
+            // Update hidden input
+            editProjectIcon.value = this.getAttribute('data-emoji');
+        });
     });
 });
 </script>

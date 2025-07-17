@@ -603,7 +603,7 @@ class OpenAIProvider(AIProvider):
         
         # Check if client is initialized
         if not self.client:
-            yield "Error: No OpenAI API key configured. Please add API key here http://localhost:8000/accounts/integrations/."
+            yield "Error: No OpenAI API key configured. Please add API key [here](/settings/)."
             return
             
         current_messages = list(messages) # Work on a copy
@@ -1240,7 +1240,7 @@ class XAIProvider(AIProvider):
         
         # Check if client is initialized
         if not self.client:
-            yield "Error: No XAI API key configured. Please add API key here http://localhost:8000/accounts/integrations/."
+            yield "Error: No XAI API key configured. Please add API key [here](/settings/)."
             return
             
         current_messages = list(messages) # Work on a copy
@@ -1843,7 +1843,7 @@ class AnthropicProvider(AIProvider):
         
         # Check if client is initialized
         if not self.client:
-            yield "Error: No Anthropic API key configured. Please add API key here http://localhost:8000/accounts/integrations/."
+            yield "Error: No Anthropic API key configured. Please add API key [here](/settings/)."
             return
             
         current_messages = list(messages) # Work on a copy
