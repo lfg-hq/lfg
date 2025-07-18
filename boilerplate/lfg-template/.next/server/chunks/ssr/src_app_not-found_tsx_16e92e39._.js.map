@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 7, "column": 0}, "map": {"version":3,"sources":["file:///Users/jitinpillai/Projects/LFG/boilerplate/lfg-template/src/app/not-found.tsx"],"sourcesContent":["export default function NotFound() {\n  return (\n    <div className=\"flex min-h-screen flex-col items-center justify-center\">\n      <h2 className=\"text-2xl font-semibold\">404 - Page Not Found</h2>\n      <p className=\"mt-2 text-gray-600\">Could not find the requested resource</p>\n    </div>\n  );\n}"],"names":[],"mappings":";;;;;AAAe,SAAS;IACtB,qBACE,8OAAC;QAAI,WAAU;;0BACb,8OAAC;gBAAG,WAAU;0BAAyB;;;;;;0BACvC,8OAAC;gBAAE,WAAU;0BAAqB;;;;;;;;;;;;AAGxC","debugId":null}}]
+}

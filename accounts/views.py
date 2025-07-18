@@ -19,7 +19,9 @@ from django.utils.html import strip_tags
 from django.contrib.auth.tokens import default_token_generator
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
-from utils.easylogs import log_error
+import logging
+
+logger = logging.getLogger(__name__)
 
 def build_secure_absolute_uri(request, path):
     """Build absolute URI with HTTPS in production"""
@@ -575,7 +577,7 @@ The LFG Team
         return result > 0
         
     except Exception as e:
-        log_error(f"Error sending verification email: {e}", user_email=user.email, error_type=type(e).__name__)
+        logger.error(f"Error sending verification email: {e}", extra={'easylogs_metadata': {'user_email': user.email, 'error_type': type(e).__name__}})
         return False
 
 
@@ -714,7 +716,7 @@ def send_password_reset_email(request, user):
         )
         return True
     except Exception as e:
-        log_error(f"Error sending password reset email: {e}", user_email=user.email, error_type=type(e).__name__)
+        logger.error(f"Error sending password reset email: {e}", extra={'easylogs_metadata': {'user_email': user.email, 'error_type': type(e).__name__}})
         return False
 
 

@@ -13,7 +13,9 @@ from .models import PaymentPlan, Transaction, UserCredit
 import stripe
 import json
 import os
-from utils.easylogs import log_error, log_info
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Initialize Stripe with API key from settings or environment
 stripe.api_key = os.environ.get('STRIPE_SECRET_KEY', '')
@@ -78,7 +80,7 @@ def checkout(request, plan_id):
             subscription = stripe.Subscription.retrieve(user_credit.stripe_subscription_id)
             existing_customer = stripe.Customer.retrieve(subscription.customer)
         except Exception as e:
-            log_error(f"Error retrieving subscription: {e}", user_id=request.user.id, error_type=type(e).__name__)
+            logger.error(f"Error retrieving subscription: {e}", extra={'easylogs_metadata': {'user_id': request.user.id, 'error_type': type(e).__name__}})
     
     # If no customer found via subscription, search by email
     if not existing_customer:
@@ -87,7 +89,7 @@ def checkout(request, plan_id):
             if customer_query and customer_query.data:
                 existing_customer = customer_query.data[0]
         except Exception as e:
-            log_error(f"Error searching for customer by email: {e}", user_email=request.user.email, error_type=type(e).__name__)
+            logger.error(f"Error searching for customer by email: {e}", extra={'easylogs_metadata': {'user_email': request.user.email, 'error_type': type(e).__name__}})
     
     # Create a new checkout session
     try:
@@ -103,7 +105,7 @@ def checkout(request, plan_id):
             customer_id = stripe_customer.id
         else:
             customer_id = existing_customer.id
-            log_info(f"Found existing customer: {customer_id}", user_id=request.user.id, customer_id=customer_id)
+            logger.info(f"Found existing customer: {customer_id}", extra={'easylogs_metadata': {'user_id': request.user.id, 'customer_id': customer_id}})
         
         # Check if this is a subscription plan (Monthly Subscription - plan_id 1)
         if plan_id == 1:  # Monthly Subscription
@@ -174,9 +176,9 @@ def checkout(request, plan_id):
                         customer=customer_id,
                         type='card'
                     )
-                    log_info(f"Found {len(payment_methods.data)} payment methods for customer {customer_id}", customer_id=customer_id)
+                    logger.info(f"Found {len(payment_methods.data)} payment methods for customer {customer_id}", extra={'easylogs_metadata': {'customer_id': customer_id}})
                 except Exception as e:
-                    log_error(f"Error retrieving payment methods: {e}", customer_id=customer_id, error_type=type(e).__name__)
+                    logger.error(f"Error retrieving payment methods: {e}", extra={'easylogs_metadata': {'customer_id': customer_id, 'error_type': type(e).__name__}})
                 
                 # If customer has existing payment methods, use direct payment
                 if payment_methods and payment_methods.data:
@@ -196,7 +198,7 @@ def checkout(request, plan_id):
                             }
                         )
                         
-                        log_info(f"Created payment intent: {payment_intent.id}, status: {payment_intent.status}", payment_intent_id=payment_intent.id, status=payment_intent.status)
+                        logger.info(f"Created payment intent: {payment_intent.id}, status: {payment_intent.status}", extra={'easylogs_metadata': {'payment_intent_id': payment_intent.id, 'status': payment_intent.status}})
                         
                         # Create a transaction record
                         transaction = Transaction.objects.create(
@@ -216,7 +218,7 @@ def checkout(request, plan_id):
                         
                         return redirect('subscriptions:dashboard')
                     except Exception as e:
-                        log_error(f"Error creating payment intent: {e}", user_id=request.user.id, error_type=type(e).__name__)
+                        logger.error(f"Error creating payment intent: {e}", extra={'easylogs_metadata': {'user_id': request.user.id, 'error_type': type(e).__name__}})
                         # If direct payment fails for any reason, fall back to checkout
                         messages.warning(request, "Could not process payment with saved card. Please try again.")
             
@@ -437,7 +439,7 @@ def handle_subscription_created(subscription):
             from .utils import add_credits
             add_credits(user, 1000000, "Monthly subscription credits")
     except Exception as e:
-        log_error(f"Error handling subscription creation: {str(e)}", error_type=type(e).__name__)
+        logger.error(f"Error handling subscription creation: {str(e)}", extra={'easylogs_metadata': {'error_type': type(e).__name__}})
 
 def handle_subscription_updated(subscription):
     """Process an updated subscription"""
@@ -459,7 +461,7 @@ def handle_subscription_updated(subscription):
         # Subscription not found in our system, ignore
         pass
     except Exception as e:
-        log_error(f"Error handling subscription update: {str(e)}", error_type=type(e).__name__)
+        logger.error(f"Error handling subscription update: {str(e)}", extra={'easylogs_metadata': {'error_type': type(e).__name__}})
 
 def handle_subscription_canceled(subscription):
     """Process a canceled subscription"""
@@ -471,7 +473,7 @@ def handle_subscription_canceled(subscription):
         # Subscription not found in our system, ignore
         pass
     except Exception as e:
-        log_error(f"Error handling subscription cancellation: {str(e)}", error_type=type(e).__name__)
+        logger.error(f"Error handling subscription cancellation: {str(e)}", extra={'easylogs_metadata': {'error_type': type(e).__name__}})
 
 def handle_subscription_payment(invoice):
     """Process a successful subscription payment"""
@@ -504,4 +506,4 @@ def handle_subscription_payment(invoice):
         # Subscription not found in our system
         pass
     except Exception as e:
-        log_error(f"Error handling subscription payment: {str(e)}", error_type=type(e).__name__)
+        logger.error(f"Error handling subscription payment: {str(e)}", extra={'easylogs_metadata': {'error_type': type(e).__name__}})

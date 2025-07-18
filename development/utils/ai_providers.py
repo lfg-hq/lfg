@@ -25,7 +25,6 @@ from channels.db import database_sync_to_async
 from development.utils.ai_tools import tools_ticket
 
 import tiktoken
-from utils.easylogs import log_info, log_debug
 
 
 # Set up logger
@@ -86,7 +85,7 @@ def get_notification_type_for_tool(tool_name):
         str or None: The notification type if the tool should trigger a notification, None otherwise
     """
 
-    log_debug(f"Getting notification type for tool: {tool_name}")
+    logger.debug(f"Getting notification type for tool: {tool_name}")
     
     # Read operations that should NOT trigger any notifications
     read_operations = {
@@ -233,7 +232,7 @@ async def execute_tool_call(tool_call_name, tool_call_args_str, project_id, conv
         
         # Send special notification for extraction functions regardless of result
         notification_type = get_notification_type_for_tool(tool_call_name)
-        log_debug(f"Notification type: {notification_type}")
+        logger.debug(f"Notification type: {notification_type}")
         
         # For stream_prd_content and stream_implementation_content, skip forcing notification if it already has notification data
         if tool_call_name in ["stream_prd_content", "stream_implementation_content"] and isinstance(tool_result, dict) and tool_result.get("is_notification"):
@@ -446,7 +445,7 @@ class AIProvider:
     @staticmethod
     def get_provider(provider_name, selected_model, user=None, conversation=None, project=None):
         """Factory method to get the appropriate provider"""
-        log_info(f"Creating provider with provider_name: {provider_name}, selected_model: {selected_model}, user: {user}", extra={"user_id": user.id if user else None})
+        logger.info(f"Creating provider with provider_name: {provider_name}, selected_model: {selected_model}, user: {user}", extra={'easylogs_metadata': {'user_id': user.id if user else None}})
         providers = {
             'openai': lambda: OpenAIProvider(selected_model, user, conversation, project),
             'anthropic': lambda: AnthropicProvider(selected_model, user, conversation, project),
@@ -720,7 +719,7 @@ class OpenAIProvider(AIProvider):
                             if tag_match:
                                 current_mode = "prd"
                                 prd_name = tag_match.group(1) if tag_match.group(1) else "Main PRD"
-                                log_info(f"[PRD MODE ACTIVATED - OpenAI] - PRD Name: {prd_name}", extra={"prd_name": prd_name})
+                                logger.info(f"[PRD MODE ACTIVATED - OpenAI] - PRD Name: {prd_name}", extra={'easylogs_metadata': {'prd_name': prd_name}})
                                 
                                 # Find where the tag ends
                                 tag_end = buffer.find(tag_match.group(0)) + len(tag_match.group(0))
@@ -731,7 +730,7 @@ class OpenAIProvider(AIProvider):
                                 # Clear the buffer
                                 buffer = ""
                                 
-                                log_debug(f"[PRD MODE] Starting with content: {repr(prd_data[:50])}...")
+                                logger.debug(f"[PRD MODE] Starting with content: {repr(prd_data[:50])}...")
                                 
                                 # Show loading indicator in chat
                                 yield f"\n\n*Generating PRD '{prd_name}'... (check the PRD tab for live updates)*\n\n"
@@ -751,7 +750,7 @@ class OpenAIProvider(AIProvider):
                         
                         elif "</lfg-prd>" in buffer and current_mode == "prd":
                             current_mode = ""
-                            log_info("[PRD MODE DEACTIVATED - OpenAI]")
+                            logger.info("[PRD MODE DEACTIVATED - OpenAI]")
                             
                             # Find where the closing tag starts
                             tag_pos = buffer.find("</lfg-prd>")
@@ -782,7 +781,7 @@ class OpenAIProvider(AIProvider):
                             tag_match = re.search(r'<lfg-plan\s*>', buffer)
                             if tag_match:
                                 current_mode = "implementation"
-                                log_info("[IMPLEMENTATION MODE ACTIVATED - OpenAI]")
+                                logger.info("[IMPLEMENTATION MODE ACTIVATED - OpenAI]")
                                 
                                 # Find where the tag ends
                                 tag_end = buffer.find(tag_match.group(0)) + len(tag_match.group(0))
@@ -810,7 +809,7 @@ class OpenAIProvider(AIProvider):
                         
                         elif "</lfg-plan>" in buffer and current_mode == "implementation":
                             current_mode = ""
-                            log_info("[IMPLEMENTATION MODE DEACTIVATED - OpenAI]")
+                            logger.info("[IMPLEMENTATION MODE DEACTIVATED - OpenAI]")
                             
                             # Find where the closing tag starts
                             tag_pos = buffer.find("</lfg-plan>")
@@ -850,7 +849,7 @@ class OpenAIProvider(AIProvider):
                         elif current_mode == "prd":
                             # We're in PRD mode, just capture everything
                             prd_data += text
-                            log_debug(f"[CAPTURING PRD DATA - OpenAI]: Added {len(text)} chars")
+                            logger.debug(f"[CAPTURING PRD DATA - OpenAI]: Added {len(text)} chars")
                             
                             # Stream PRD content to the panel
                             prd_stream_notification = {
@@ -870,7 +869,7 @@ class OpenAIProvider(AIProvider):
                         elif current_mode == "implementation":
                             # We're in implementation mode, just capture everything
                             implementation_data += text
-                            log_debug(f"[CAPTURING IMPLEMENTATION DATA - OpenAI]: Added {len(text)} chars")
+                            logger.debug(f"[CAPTURING IMPLEMENTATION DATA - OpenAI]: Added {len(text)} chars")
                             
                             # Stream implementation content to the panel
                             implementation_stream_notification = {
@@ -1040,8 +1039,8 @@ class OpenAIProvider(AIProvider):
                         elif finish_reason == "stop":
                             # Save captured PRD data if available
                             if prd_data and project_id:
-                                log_info(f"[FINAL PRD DATA CAPTURED - OpenAI]: {len(prd_data)} characters", extra={"prd_length": len(prd_data)})
-                                log_debug(f"[PRD DATA LENGTH - OpenAI]: {len(prd_data)} characters")
+                                logger.info(f"[FINAL PRD DATA CAPTURED - OpenAI]: {len(prd_data)} characters", extra={'easylogs_metadata': {'prd_length': len(prd_data)}})
+                                logger.debug(f"[PRD DATA LENGTH - OpenAI]: {len(prd_data)} characters")
                                 
                                 from development.utils.ai_functions import save_prd_from_stream
                                 
@@ -1057,8 +1056,8 @@ class OpenAIProvider(AIProvider):
                             
                             # Save captured implementation data if available
                             if implementation_data and project_id:
-                                log_info(f"[FINAL IMPLEMENTATION DATA CAPTURED - OpenAI]: {len(implementation_data)} characters", extra={"implementation_length": len(implementation_data)})
-                                log_debug(f"[IMPLEMENTATION DATA LENGTH - OpenAI]: {len(implementation_data)} characters")
+                                logger.info(f"[FINAL IMPLEMENTATION DATA CAPTURED - OpenAI]: {len(implementation_data)} characters", extra={'easylogs_metadata': {'implementation_length': len(implementation_data)}})
+                                logger.debug(f"[IMPLEMENTATION DATA LENGTH - OpenAI]: {len(implementation_data)} characters")
                                 
                                 from development.utils.ai_functions import save_implementation_from_stream
                                 
@@ -1209,7 +1208,7 @@ class XAIProvider(AIProvider):
             self.model = "grok-4"
             logger.warning(f"Unknown model {selected_model}, defaulting to grok-4")
         
-        log_info(f"Selected XAI model: {self.model}")
+        logger.info(f"Selected XAI model: {self.model}")
         
         # Client will be initialized in async method
         self.client = None
@@ -1351,7 +1350,7 @@ class XAIProvider(AIProvider):
                             if tag_match:
                                 current_mode = "prd"
                                 prd_name = tag_match.group(1) if tag_match.group(1) else "Main PRD"
-                                log_info(f"[PRD MODE ACTIVATED - OpenAI] - PRD Name: {prd_name}", extra={"prd_name": prd_name})
+                                logger.info(f"[PRD MODE ACTIVATED - OpenAI] - PRD Name: {prd_name}", extra={'easylogs_metadata': {'prd_name': prd_name}})
                                 # Clear buffer up to and including the tag
                                 tag_pos = buffer.find(tag_match.group(0))
                                 remaining_buffer = buffer[tag_pos + len(tag_match.group(0)):]
@@ -1368,7 +1367,7 @@ class XAIProvider(AIProvider):
                         
                         if "</lfg-prd>" in buffer and current_mode == "prd":
                             current_mode = ""
-                            log_info("[PRD MODE DEACTIVATED - XAI]")
+                            logger.info("[PRD MODE DEACTIVATED - XAI]")
                             tag_pos = buffer.find("</lfg-prd>")
                             buffer = buffer[tag_pos + len("</lfg-prd>"):]
                             
@@ -1393,7 +1392,7 @@ class XAIProvider(AIProvider):
                         
                         if "<lfg-plan>" in buffer and current_mode != "implementation":
                             current_mode = "implementation"
-                            log_info("[IMPLEMENTATION MODE ACTIVATED - XAI]")
+                            logger.info("[IMPLEMENTATION MODE ACTIVATED - XAI]")
                             tag_pos = buffer.find("<lfg-plan>")
                             remaining_buffer = buffer[tag_pos + len("<lfg-plan>"):]
                             remaining_buffer = remaining_buffer.lstrip()
@@ -1405,7 +1404,7 @@ class XAIProvider(AIProvider):
                         
                         if "</lfg-plan>" in buffer and current_mode == "implementation":
                             current_mode = ""
-                            log_info("[IMPLEMENTATION MODE DEACTIVATED - XAI]")
+                            logger.info("[IMPLEMENTATION MODE DEACTIVATED - XAI]")
                             tag_pos = buffer.find("</lfg-plan>")
                             buffer = buffer[tag_pos + len("</lfg-plan>"):]
                             
@@ -1456,14 +1455,14 @@ class XAIProvider(AIProvider):
                                 
                                 # Skip if we only have tag remnants
                                 if not clean_text or clean_text.startswith('<'):
-                                    log_debug(f"[PRD MODE - XAI] Skipping tag remnants: {repr(text)}")
+                                    logger.debug(f"[PRD MODE - XAI] Skipping tag remnants: {repr(text)}")
                                     continue
                                 
-                                log_debug(f"[PRD MODE - XAI] First chunk cleaned: {repr(clean_text[:50])}...")
+                                logger.debug(f"[PRD MODE - XAI] First chunk cleaned: {repr(clean_text[:50])}...")
                             
                             # Add the cleaned text to PRD data
                             prd_data += clean_text
-                            log_debug(f"[CAPTURING PRD DATA - XAI]: Added {len(clean_text)} chars")
+                            logger.debug(f"[CAPTURING PRD DATA - XAI]: Added {len(clean_text)} chars")
                             
                             # Stream PRD content to the panel
                             prd_stream_notification = {
@@ -1505,7 +1504,7 @@ class XAIProvider(AIProvider):
                                 
                                 # Skip if we only have tag remnants
                                 if not clean_text or clean_text.startswith('<'):
-                                    log_debug(f"[IMPLEMENTATION MODE] Skipping tag remnants: {repr(text)}")
+                                    logger.debug(f"[IMPLEMENTATION MODE] Skipping tag remnants: {repr(text)}")
                                     continue
                             
                             # Add the cleaned text
@@ -1656,8 +1655,8 @@ class XAIProvider(AIProvider):
                             
                             # Save captured PRD data if available
                             if prd_data and project_id:
-                                log_info(f"[FINAL PRD DATA CAPTURED - XAI]: {len(prd_data)} characters", extra={"prd_length": len(prd_data)})
-                                log_debug(f"[PRD DATA LENGTH - XAI]: {len(prd_data)} characters")
+                                logger.info(f"[FINAL PRD DATA CAPTURED - XAI]: {len(prd_data)} characters", extra={'easylogs_metadata': {'prd_length': len(prd_data)}})
+                                logger.debug(f"[PRD DATA LENGTH - XAI]: {len(prd_data)} characters")
                                 
                                 from development.utils.ai_functions import save_prd_from_stream
                                 
@@ -1673,8 +1672,8 @@ class XAIProvider(AIProvider):
                             
                             # Save captured implementation data if available
                             if implementation_data and project_id:
-                                log_info(f"[FINAL IMPLEMENTATION DATA CAPTURED - XAI]: {len(implementation_data)} characters", extra={"implementation_length": len(implementation_data)})
-                                log_debug(f"[IMPLEMENTATION DATA LENGTH - XAI]: {len(implementation_data)} characters")
+                                logger.info(f"[FINAL IMPLEMENTATION DATA CAPTURED - XAI]: {len(implementation_data)} characters", extra={'easylogs_metadata': {'implementation_length': len(implementation_data)}})
+                                logger.debug(f"[IMPLEMENTATION DATA LENGTH - XAI]: {len(implementation_data)} characters")
                                 
                                 from development.utils.ai_functions import save_implementation_from_stream
                                 
@@ -1738,7 +1737,7 @@ class AnthropicProvider(AIProvider):
         # Store user for async profile fetching
         self.user = user
 
-        log_info(f"Anthropic provider initialized for user: {user}", extra={"user_id": user.id if user else None})
+        logger.info(f"Anthropic provider initialized for user: {user}", extra={'easylogs_metadata': {'user_id': user.id if user else None}})
         
         self.anthropic_api_key = ''
         
@@ -1770,12 +1769,12 @@ class AnthropicProvider(AIProvider):
 
     async def _ensure_client(self):
         """Ensure the client is initialized with API key"""
-        log_debug(f"Ensuring client is initialized with API key for user: {self.user}")
+        logger.debug(f"Ensuring client is initialized with API key for user: {self.user}")
         
         # Try to fetch API key from user profile if available and not already set
         if self.user:
             try:
-                log_debug(f"User exists: {self.user} (ID: {self.user.id})")
+                logger.debug(f"User exists: {self.user} (ID: {self.user.id})")
                 self.anthropic_api_key = await self._get_anthropic_key(self.user)
                 logger.info(f"Fetched Anthropic API key from user {self.user.id} profile")
 
@@ -1854,7 +1853,7 @@ class AnthropicProvider(AIProvider):
 
     async def generate_stream(self, messages, project_id, conversation_id, tools):
         # Ensure client is initialized with API key
-        log_info("Generating stream for Anthropic provider")
+        logger.info("Generating stream for Anthropic provider")
         await self._ensure_client()
         
         # Check if client is initialized
@@ -2027,16 +2026,16 @@ class AnthropicProvider(AIProvider):
                                     if tag_match:
                                         current_mode = "prd"
                                         prd_name = tag_match.group(1) if tag_match.group(1) else "Main PRD"
-                                        log_info(f"[PRD MODE ACTIVATED] - PRD Name: {prd_name}", extra={"prd_name": prd_name})
+                                        logger.info(f"[PRD MODE ACTIVATED] - PRD Name: {prd_name}", extra={'easylogs_metadata': {'prd_name': prd_name}})
                                         tag_pos = buffer.find(tag_match.group(0))
                                         buffer = ""
                                         prd_data = ""
-                                        log_debug(f"[PRD MODE] Cleared buffer, ready to capture PRD content for '{prd_name}'")
+                                        logger.debug(f"[PRD MODE] Cleared buffer, ready to capture PRD content for '{prd_name}'")
                                         yield f"\n\n*Generating PRD '{prd_name}'... (check the PRD tab for live updates)*\n\n"
                                 
                                 if "</lfg-prd>" in buffer and current_mode == "prd":
                                     current_mode = ""
-                                    log_info("[PRD MODE DEACTIVATED]")
+                                    logger.info("[PRD MODE DEACTIVATED]")
                                     tag_pos = buffer.find("</lfg-prd>")
                                     buffer = buffer[tag_pos + len("</lfg-prd>"):]
                                     
@@ -2061,16 +2060,16 @@ class AnthropicProvider(AIProvider):
                                 
                                 if "<lfg-plan>" in buffer and current_mode != "implementation":
                                     current_mode = "implementation"
-                                    log_info("[IMPLEMENTATION MODE ACTIVATED]")
+                                    logger.info("[IMPLEMENTATION MODE ACTIVATED]")
                                     tag_pos = buffer.find("<lfg-plan>")
                                     buffer = ""
                                     implementation_data = ""
-                                    log_debug("[IMPLEMENTATION MODE] Cleared buffer, ready to capture implementation content")
+                                    logger.debug("[IMPLEMENTATION MODE] Cleared buffer, ready to capture implementation content")
                                     yield "\n\n*Generating implementation plan... (check the Implementation tab for live updates)*\n\n"
                                 
                                 if "</lfg-plan>" in buffer and current_mode == "implementation":
                                     current_mode = ""
-                                    log_info("[IMPLEMENTATION MODE DEACTIVATED]")
+                                    logger.info("[IMPLEMENTATION MODE DEACTIVATED]")
                                     tag_pos = buffer.find("</lfg-plan>")
                                     buffer = buffer[tag_pos + len("</lfg-plan>"):]
                                     
@@ -2136,18 +2135,18 @@ class AnthropicProvider(AIProvider):
                                         tag_end_match = re.match(r'^[^<]*>', clean_text)
                                         if tag_end_match:
                                             clean_text = clean_text[tag_end_match.end():].lstrip()
-                                            log_debug(f"[PRD MODE] Removed tag ending: {repr(tag_end_match.group(0))}")
+                                            logger.debug(f"[PRD MODE] Removed tag ending: {repr(tag_end_match.group(0))}")
                                         
                                         # Skip if we only have tag remnants
                                         if not clean_text or clean_text.startswith('<'):
-                                            log_debug(f"[PRD MODE] Skipping tag remnants: {repr(text)}")
+                                            logger.debug(f"[PRD MODE] Skipping tag remnants: {repr(text)}")
                                             continue
                                         
-                                        log_debug(f"[PRD MODE] First chunk cleaned: {repr(clean_text[:50])}...")
+                                        logger.debug(f"[PRD MODE] First chunk cleaned: {repr(clean_text[:50])}...")
                                     
                                     # Add the cleaned text to PRD data
                                     prd_data += clean_text
-                                    log_debug(f"[CAPTURING PRD DATA]: Added {len(clean_text)} chars")
+                                    logger.debug(f"[CAPTURING PRD DATA]: Added {len(clean_text)} chars")
                                     
                                     # Stream PRD content
                                     prd_stream_notification = {
@@ -2193,18 +2192,18 @@ class AnthropicProvider(AIProvider):
                                         tag_end_match = re.match(r'^[^<]*>', clean_text)
                                         if tag_end_match:
                                             clean_text = clean_text[tag_end_match.end():].lstrip()
-                                            log_debug(f"[IMPLEMENTATION MODE] Removed tag ending: {repr(tag_end_match.group(0))}")
+                                            logger.debug(f"[IMPLEMENTATION MODE] Removed tag ending: {repr(tag_end_match.group(0))}")
                                         
                                         # Skip if we only have tag remnants
                                         if not clean_text or clean_text.startswith('<'):
-                                            log_debug(f"[IMPLEMENTATION MODE] Skipping tag remnants: {repr(text)}")
+                                            logger.debug(f"[IMPLEMENTATION MODE] Skipping tag remnants: {repr(text)}")
                                             continue
                                         
-                                        log_debug(f"[IMPLEMENTATION MODE] First chunk cleaned: {repr(clean_text[:50])}...")
+                                        logger.debug(f"[IMPLEMENTATION MODE] First chunk cleaned: {repr(clean_text[:50])}...")
                                     
                                     # Add the cleaned text to implementation data
                                     implementation_data += clean_text
-                                    log_debug(f"[CAPTURING IMPLEMENTATION DATA]: Added {len(clean_text)} chars")
+                                    logger.debug(f"[CAPTURING IMPLEMENTATION DATA]: Added {len(clean_text)} chars")
                                     
                                     # Stream implementation content
                                     implementation_stream_notification = {
@@ -2371,8 +2370,8 @@ class AnthropicProvider(AIProvider):
                                 
                                 # Save captured PRD data if available
                                 if prd_data and project_id:
-                                    log_info(f"[FINAL PRD DATA CAPTURED]: {len(prd_data)} characters", extra={"prd_length": len(prd_data)})
-                                    log_debug(f"[PRD DATA LENGTH]: {len(prd_data)} characters")
+                                    logger.info(f"[FINAL PRD DATA CAPTURED]: {len(prd_data)} characters", extra={'easylogs_metadata': {'prd_length': len(prd_data)}})
+                                    logger.debug(f"[PRD DATA LENGTH]: {len(prd_data)} characters")
                                     
                                     # Import the save function
                                     from development.utils.ai_functions import save_prd_from_stream
@@ -2391,8 +2390,8 @@ class AnthropicProvider(AIProvider):
                                 
                                 # Save captured implementation data if available
                                 if implementation_data and project_id:
-                                    log_info(f"[FINAL IMPLEMENTATION DATA CAPTURED]: {len(implementation_data)} characters", extra={"implementation_length": len(implementation_data)})
-                                    log_debug(f"[IMPLEMENTATION DATA LENGTH]: {len(implementation_data)} characters")
+                                    logger.info(f"[FINAL IMPLEMENTATION DATA CAPTURED]: {len(implementation_data)} characters", extra={'easylogs_metadata': {'implementation_length': len(implementation_data)}})
+                                    logger.debug(f"[IMPLEMENTATION DATA LENGTH]: {len(implementation_data)} characters")
                                     
                                     # Import the save function
                                     from development.utils.ai_functions import save_implementation_from_stream

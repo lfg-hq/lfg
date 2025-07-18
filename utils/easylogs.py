@@ -6,6 +6,11 @@ from typing import Dict, Any, Optional
 import threading
 from queue import Queue
 import time
+import urllib3
+
+# Disable SSL warnings for EasyLogs
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+import logging
 
 
 class EasyLogsHandler:
@@ -67,7 +72,7 @@ class EasyLogsHandler:
             # Send each log entry individually for now
             # Could be optimized to send in batches if EasyLogs supports it
             for log_entry in batch:
-                requests.post(
+                response = requests.post(
                     self.api_url,
                     headers=headers,
                     json=log_entry,
@@ -140,26 +145,87 @@ class EasyLogsHandler:
             self._flush_batch(remaining)
 
 
-# Global logger instance
+class DjangoEasyLogsHandler(logging.Handler):
+    """
+    Django logging handler that sends logs to EasyLogs.
+    This integrates with Django's standard logging system.
+    """
+    
+    def __init__(self):
+        super().__init__()
+        self.easylogs_handler = EasyLogsHandler()
+    
+    def emit(self, record):
+        """
+        Emit a log record to EasyLogs.
+        
+        Args:
+            record: LogRecord instance
+        """
+        try:
+            # Map logging levels
+            level_map = {
+                logging.DEBUG: 'debug',
+                logging.INFO: 'info',
+                logging.WARNING: 'warning',
+                logging.ERROR: 'error',
+                logging.CRITICAL: 'error'
+            }
+            
+            level = level_map.get(record.levelno, 'info')
+            
+            # Extract metadata from the log record
+            metadata = {}
+            
+            # Add standard logging attributes
+            metadata['logger_name'] = record.name
+            metadata['module'] = record.module
+            metadata['funcName'] = record.funcName
+            metadata['lineno'] = record.lineno
+            metadata['pathname'] = record.pathname
+            
+            # Add any extra attributes passed via the 'extra' parameter
+            if hasattr(record, 'easylogs_metadata'):
+                metadata.update(record.easylogs_metadata)
+            
+            # Add exception info if present
+            if record.exc_info:
+                import traceback
+                metadata['exception'] = traceback.format_exception(*record.exc_info)
+            
+            # Send to EasyLogs
+            self.easylogs_handler.log(level, self.format(record), metadata)
+            
+        except Exception:
+            # Silently fail to avoid disrupting the application
+            pass
+    
+    def close(self):
+        """Close the handler and shutdown the EasyLogs handler."""
+        self.easylogs_handler.shutdown()
+        super().close()
+
+
+# Global logger instance for backward compatibility
 logger = EasyLogsHandler()
 
 
-# Convenience functions for direct import
+# Convenience functions for direct import (deprecated)
 def log_info(message: str, **metadata):
-    """Log an info message."""
+    """Log an info message. DEPRECATED: Use standard logging instead."""
     logger.info(message, **metadata)
 
 
 def log_warning(message: str, **metadata):
-    """Log a warning message."""
+    """Log a warning message. DEPRECATED: Use standard logging instead."""
     logger.warning(message, **metadata)
 
 
 def log_error(message: str, **metadata):
-    """Log an error message."""
+    """Log an error message. DEPRECATED: Use standard logging instead."""
     logger.error(message, **metadata)
 
 
 def log_debug(message: str, **metadata):
-    """Log a debug message."""
+    """Log a debug message. DEPRECATED: Use standard logging instead."""
     logger.debug(message, **metadata)

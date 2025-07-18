@@ -26,7 +26,6 @@ from development.utils.prompts import get_system_turbo_mode, \
                                     get_system_prompt_design, \
                                     get_system_prompt_developer
 from development.utils.ai_tools import tools_code, tools_product, tools_design, tools_turbo
-from utils.easylogs import log_info, log_debug
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -545,7 +544,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             provider_name = "openai"
         
         # Get the appropriate AI provider
-        log_debug(f"Creating provider with user: {self.user} (type: {type(self.user)})", user_id=self.user.id if self.user else None)
+        logger.debug(f"Creating provider with user: {self.user} (type: {type(self.user)})", extra={'easylogs_metadata': {'user_id': self.user.id if self.user else None}})
         provider = AIProvider.get_provider(provider_name, selected_model, user=self.user)
         
         # Debug log to verify settings
@@ -619,7 +618,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             # CONSOLE OUTPUT FOR PRD STREAMING
                             if notification_data.get('content_chunk'):
                                 content_preview = notification_data['content_chunk'][:200]
-                                log_info(f"Stream Content: {content_preview}{'...' if len(notification_data['content_chunk']) > 200 else ''}")
+                                logger.info(f"Stream Content: {content_preview}{'...' if len(notification_data['content_chunk']) > 200 else ''}")
                         
                         # Add additional fields for implementation_stream notifications
                         if notification_data.get('notification_type') == 'implementation_stream':
@@ -629,7 +628,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             # CONSOLE OUTPUT FOR IMPLEMENTATION STREAMING
                             if notification_data.get('content_chunk'):
                                 content_preview = notification_data['content_chunk'][:200]
-                                log_info(f"Stream Content: {content_preview}{'...' if len(notification_data['content_chunk']) > 200 else ''}")
+                                logger.info(f"Stream Content: {content_preview}{'...' if len(notification_data['content_chunk']) > 200 else ''}")
                         
                         logger.info(f"SENDING NOTIFICATION MESSAGE: {notification_message}")
                         
@@ -1217,11 +1216,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
         
         # Get model selection for the user
         try:
-            log_debug(f"Before model selection: {self.user}", user_id=self.user.id if self.user else None)
+            logger.debug(f"Before model selection: {self.user}", extra={'easylogs_metadata': {'user_id': self.user.id if self.user else None}})
             model_selection = await database_sync_to_async(ModelSelection.objects.get)(user=self.user)
-            log_debug(f"Model selection: {model_selection}", user_id=self.user.id if self.user else None)
+            logger.debug(f"Model selection: {model_selection}", extra={'easylogs_metadata': {'user_id': self.user.id if self.user else None}})
             selected_model = model_selection.selected_model
-            log_debug(f"Selected model... #3: {selected_model}", user_id=self.user.id if self.user else None)
+            logger.debug(f"Selected model... #3: {selected_model}", extra={'easylogs_metadata': {'user_id': self.user.id if self.user else None}})
         except ModelSelection.DoesNotExist:
             # Create a default model selection if none exists
             model_selection = await database_sync_to_async(ModelSelection.objects.create)(
