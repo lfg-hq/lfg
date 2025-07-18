@@ -21,6 +21,7 @@ from development.models import KubernetesPod
 from development.models import CommandExecution
 from accounts.models import GitHubToken
 from chat.models import Conversation
+from utils.easylogs import log_info, log_debug
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -241,7 +242,7 @@ async def app_functions(function_name, function_args, project_id, conversation_i
         
         case "web_search":
             query = function_args.get('query')
-            print(f"Search Query: {query}")
+            log_debug(f"Search Query: {query}")
             return await web_search(query, conversation_id)
 
         # case "implement_ticket_async":
@@ -939,14 +940,13 @@ async def stream_prd_content(function_args, project_id):
     logger.info(f"First 100 chars of chunk: {content_chunk[:100]}...")
     
     # CONSOLE OUTPUT FOR DEBUGGING
-    print("\n" + "="*80)
-    print(f"🔵 PRD STREAM CHUNK - Project {project_id}")
-    print(f"📅 Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"📏 Length: {len(content_chunk)} chars")
-    print(f"✅ Complete: {is_complete}")
+    log_info(f"PRD STREAM CHUNK - Project {project_id}", 
+             time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+             length=len(content_chunk),
+             complete=is_complete,
+             project_id=project_id)
     if content_chunk:
-        print(f"📝 Content Preview: {content_chunk[:200]}..." if len(content_chunk) > 200 else f"📝 Content: {content_chunk}")
-    print("="*80 + "\n")
+        log_debug(f"Content Preview: {content_chunk[:200]}..." if len(content_chunk) > 200 else f"Content: {content_chunk}")
     
     # Create cache key for this project and PRD name
     cache_key = f"streaming_prd_content_{project_id}_{prd_name.replace(' ', '_')}"
@@ -969,11 +969,10 @@ async def stream_prd_content(function_args, project_id):
         logger.info(f"Streaming complete. Saving PRD with total length: {len(full_prd_content)}")
         
         # CONSOLE OUTPUT FOR COMPLETION
-        print("\n" + "="*80)
-        print(f"🟢 PRD STREAM COMPLETE - Project {project_id}")
-        print(f"📄 Total Length: {len(full_prd_content)} chars")
-        print(f"💾 Saving to database...")
-        print("="*80 + "\n")
+        log_info(f"PRD STREAM COMPLETE - Project {project_id}",
+                 total_length=len(full_prd_content),
+                 status="saving_to_database",
+                 project_id=project_id)
         
         if full_prd_content:
             try:
@@ -1251,14 +1250,13 @@ async def stream_implementation_content(function_args, project_id):
     logger.info(f"First 100 chars of chunk: {content_chunk[:100]}...")
     
     # CONSOLE OUTPUT FOR DEBUGGING
-    print("\n" + "="*80)
-    print(f"🟣 IMPLEMENTATION STREAM CHUNK - Project {project_id}")
-    print(f"📅 Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"📏 Length: {len(content_chunk)} chars")
-    print(f"✅ Complete: {is_complete}")
+    log_info(f"IMPLEMENTATION STREAM CHUNK - Project {project_id}",
+             time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+             length=len(content_chunk),
+             complete=is_complete,
+             project_id=project_id)
     if content_chunk:
-        print(f"📝 Content Preview: {content_chunk[:200]}..." if len(content_chunk) > 200 else f"📝 Content: {content_chunk}")
-    print("="*80 + "\n")
+        log_debug(f"Content Preview: {content_chunk[:200]}..." if len(content_chunk) > 200 else f"Content: {content_chunk}")
     
     # Create cache key for this project
     cache_key = f"streaming_implementation_content_{project_id}"
@@ -1281,11 +1279,10 @@ async def stream_implementation_content(function_args, project_id):
         logger.info(f"Streaming complete. Saving Implementation with total length: {len(full_implementation_content)}")
         
         # CONSOLE OUTPUT FOR COMPLETION
-        print("\n" + "="*80)
-        print(f"🟢 IMPLEMENTATION STREAM COMPLETE - Project {project_id}")
-        print(f"📄 Total Length: {len(full_implementation_content)} chars")
-        print(f"💾 Saving to database...")
-        print("="*80 + "\n")
+        log_info(f"IMPLEMENTATION STREAM COMPLETE - Project {project_id}",
+                 total_length=len(full_implementation_content),
+                 status="saving_to_database",
+                 project_id=project_id)
         
         if full_implementation_content:
             try:

@@ -2,12 +2,13 @@ import openai
 import os
 import json
 from .ai_tools import feature_difference, persona_difference, generate_design_schema, generate_ticket_tools
+from utils.easylogs import log_info, log_debug
 
 def analyze_features(feature_list, prd):
     """
     Analyze the features and provide insights or suggestions for improvement.
     """
-    print("Analyzing features function called \n\n")
+    log_info("Analyzing features function called")
     
     # Create a function call to OpenAI
     client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
@@ -62,7 +63,7 @@ RULES
     prompt += "\n----------------------------------\n"
     prompt += f"\nHere is the PRD for this project: \n<prd>\n {prd}\n</prd>\n----------------------------------\n"
     
-    print("\n\n Features Prompt: ", prompt)
+    log_debug(f"Features Prompt: {prompt}")
 
     # Make the API call
     response = client.chat.completions.create(
@@ -84,7 +85,7 @@ RULES
         function_name = function_call.function.name
         
         if function_name == "feature_difference":
-            print("Extract features function called \n\n", function_call.function.arguments)
+            log_debug(f"Extract features function called: {function_call.function.arguments}")
             # Extract the tool response which should contain the missing features
             return function_call.function.arguments
     
@@ -96,7 +97,7 @@ def analyze_personas(persona_list, prd):
     """
     Analyze the personas and provide insights or suggestions for improvement.
     """
-    print("Analyzing personas function called \n\n")
+    log_info("Analyzing personas function called")
     
     # Create a function call to OpenAI
     client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
@@ -151,7 +152,7 @@ RULES
     prompt += "\n----------------------------------\n"
     prompt += f"\nHere is the PRD for this project: \n<prd>\n {prd}\n</prd>\n----------------------------------\n"
     
-    print("\n\n Personas Prompt: ", prompt)
+    log_debug(f"Personas Prompt: {prompt}")
     
 
     # Make the API call
@@ -185,7 +186,7 @@ def design_schema(prd, current_style_guide, user_input):
     """
     Generate a design schema for a project based on the PRD and user input.
     """
-    print("Design schema function called \n\n")
+    log_info("Design schema function called")
     
     # Create a function call to OpenAI
     client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
@@ -280,7 +281,7 @@ Skeleton (must be followed exactly)
 
     """
 
-    print(f"\n\n\system Prompt: {system_prompt}")
+    log_debug(f"System Prompt: {system_prompt}")
 
     user_prompt = f"""
     Here is the PRD for this project:
@@ -327,7 +328,7 @@ def generate_tickets_per_feature(feature, personas, prd):
     """
     Generate tickets for a project based on the PRD and user input.
     """
-    print("Generate tickets function called \n\n")
+    log_info("Generate tickets function called")
     
     client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
@@ -394,7 +395,7 @@ def generate_project_code(user_input):
     """
     Generate a code prompt for a project based on the user input.
     """
-    print("Generate code prompt function called \n\n")
+    log_info("Generate code prompt function called")
     
     client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
