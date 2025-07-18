@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import User
 import os
 import uuid
+from .storage import ChatFileStorage
 
 
 class AgentRole(models.Model):
@@ -70,7 +71,7 @@ def get_file_upload_path(instance, filename):
 class ChatFile(models.Model):
     conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name='files')
     message = models.ForeignKey(Message, on_delete=models.CASCADE, related_name='files', null=True, blank=True)
-    file = models.FileField(upload_to=get_file_upload_path)
+    file = models.FileField(upload_to=get_file_upload_path, storage=ChatFileStorage())
     original_filename = models.CharField(max_length=255)
     file_type = models.CharField(max_length=100, blank=True)
     file_size = models.IntegerField(default=0)

@@ -163,6 +163,35 @@ def conversation_detail(request, conversation_id):
     
     return JsonResponse(data)
 
+@require_http_methods(["POST"])
+@login_required
+def create_conversation(request):
+    """Create a new conversation."""
+    try:
+        data = json.loads(request.body)
+        project_id = data.get('project_id')
+        
+        # Create the conversation
+        conversation = Conversation.objects.create(user=request.user)
+        
+        # Link to project if provided
+        if project_id:
+            try:
+                project = Project.objects.get(project_id=project_id, owner=request.user)
+                conversation.project = project
+                conversation.save()
+            except Project.DoesNotExist:
+                pass  # Ignore if project doesn't exist
+        
+        return JsonResponse({
+            'id': conversation.id,
+            'title': conversation.title or f"Conversation {conversation.id}",
+            'created_at': conversation.created_at.isoformat(),
+            'updated_at': conversation.updated_at.isoformat()
+        })
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
 # @csrf_exempt
 # @require_http_methods(["GET", "POST"])
 # def ai_provider(request):
