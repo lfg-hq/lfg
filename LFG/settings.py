@@ -11,11 +11,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'local')
 
-# For production, set this to False via environment variable
-# DEBUG = os.environ.get('DEBUG', 'True').lower() == 'true'
+# Debug the environment variable
+DEBUG = False if ENVIRONMENT == 'production' else True
 
 CSRF_TRUSTED_ORIGINS = [
     'https://lfg.run',
@@ -307,8 +306,6 @@ K8S_VERIFY_SSL = False  # Disabled by default since CA cert verification is prob
 K8S_DEFAULT_NAMESPACE = "lfg"
 SSH_USERNAME=os.getenv('SSH_USERNAME', 'root')
 SSH_KEY_STRING=os.getenv('SSH_KEY_STRING', None)
-
-ENVIRONMENT = os.getenv('ENVIRONMENT', 'local')
 
 Q_CLUSTER = {
         'name': 'LFG_Tasks',
