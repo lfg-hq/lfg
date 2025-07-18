@@ -105,6 +105,24 @@ def create_project_api(request):
     """API endpoint to create a new project"""
     try:
         data = json.loads(request.body)
+        
+        # Check if this is just a request to check existing projects
+        if data.get('check_existing'):
+            projects = Project.objects.filter(owner=request.user)
+            project_list = []
+            for p in projects[:10]:  # Limit to 10 most recent projects
+                project_list.append({
+                    'id': str(p.project_id),
+                    'name': p.name,
+                    'created_at': p.created_at.strftime('%Y-%m-%d')
+                })
+            return JsonResponse({
+                'success': True,
+                'has_existing_projects': projects.exists(),
+                'project_count': projects.count(),
+                'projects': project_list
+            })
+        
         name = data.get('name', '').strip()
         description = data.get('description', '').strip()
         requirements = data.get('requirements', '')
