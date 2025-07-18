@@ -824,6 +824,144 @@
             transform: translateY(0);
         }
 
+        /* API Keys Collection Styles */
+        .api-keys-container {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .api-provider-card {
+            background: rgba(30, 30, 35, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 1.25rem;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .api-provider-card:hover {
+            border-color: rgba(139, 92, 246, 0.3);
+            background: rgba(139, 92, 246, 0.05);
+            transform: translateY(-2px);
+        }
+
+        .api-provider-card.filled {
+            border-color: rgba(16, 185, 129, 0.5);
+            background: rgba(16, 185, 129, 0.05);
+        }
+
+        .api-provider-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .api-provider-logo {
+            width: 48px;
+            height: 48px;
+            background: white;
+            border-radius: 12px;
+            padding: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .api-provider-logo svg {
+            width: 100%;
+            height: 100%;
+            color: #8B5CF6;
+        }
+
+        .api-provider-info h3 {
+            font-size: 1.125rem;
+            font-weight: 600;
+            margin: 0;
+            color: var(--text-primary);
+        }
+
+        .api-provider-info p {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin: 0.25rem 0 0 0;
+        }
+
+        .api-key-input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: rgba(10, 10, 15, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            color: var(--text-primary);
+            font-family: monospace;
+            font-size: 0.875rem;
+            transition: all 0.2s ease;
+            outline: none;
+        }
+
+        .api-key-input:focus {
+            border-color: var(--primary-purple);
+            box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+        }
+
+        .api-key-input.valid {
+            border-color: rgba(16, 185, 129, 0.5);
+        }
+
+        .api-keys-actions {
+            display: flex;
+            gap: 1rem;
+            justify-content: space-between;
+            margin-top: 1.5rem;
+        }
+
+        .skip-api-btn {
+            padding: 0.875rem 1.5rem;
+            background: transparent;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            color: var(--text-secondary);
+            font-weight: 500;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
+        .skip-api-btn:hover {
+            border-color: var(--primary-purple);
+            color: var(--primary-purple);
+        }
+
+        .save-api-btn {
+            flex: 1;
+            padding: 0.875rem 1.5rem;
+            background: linear-gradient(135deg, var(--primary-purple), var(--secondary-purple));
+            border: none;
+            border-radius: 10px;
+            color: white;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: 'Space Grotesk', sans-serif;
+            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);
+        }
+
+        .save-api-btn:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(139, 92, 246, 0.35);
+        }
+
+        .save-api-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
         .modal-header {
             text-align: center;
             padding: 2rem 2rem 1rem;
@@ -894,7 +1032,7 @@
             content: '';
             position: absolute;
             top: 50%;
-            width: calc(50% - 40px);
+            width: calc(37% - 40px);
             height: 1px;
             background: var(--border-color);
         }
@@ -2191,7 +2329,7 @@
                 <div class="progress-line"></div>
                 <div class="progress-step" data-step="3">
                     <div class="step-circle">3</div>
-                    <div class="step-label">Project</div>
+                    <div class="step-label">API Keys</div>
                 </div>
             </div>
 
@@ -2293,19 +2431,67 @@
                     </div>
                 </div>
 
-                <!-- Step 3: Project Name -->
+                <!-- Step 3: API Keys Collection -->
                 <div class="carousel-step" data-step="3">
                     <div class="modal-header">
-                        <h2>Name Your Project</h2>
-                        <p>Give your project a memorable name to get started</p>
+                        <h2>Connect Your AI</h2>
+                        <p>Add at least one API key to start building with AI</p>
                     </div>
                     <div class="modal-body">
-                        <form id="project-form" class="project-form">
-                            <div class="form-group">
-                                <input type="text" id="project-name" class="form-input" placeholder="Enter project name..." required>
+                        <div class="api-keys-container">
+                            <!-- OpenAI -->
+                            <div class="api-provider-card">
+                                <div class="api-provider-header">
+                                    <div class="api-provider-logo">
+                                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.051 6.051 0 0 0 6.0865-6.0958 5.9894 5.9894 0 0 0 3.9575-2.9001 6.0557 6.0557 0 0 0-.7475-7.0966zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.5093-2.6067-1.4997z" fill="currentColor"/>
+                                        </svg>
+                                    </div>
+                                    <div class="api-provider-info">
+                                        <h3>OpenAI</h3>
+                                        <p>GPT-4o, GPT-4.1, GPT-o3, GPT-o4-mini</p>
+                                    </div>
+                                </div>
+                                <input type="password" class="api-key-input" id="openai-key" placeholder="sk-..." data-provider="openai">
                             </div>
-                            <button type="submit" class="continue-btn">Continue</button>
-                        </form>
+
+                            <!-- Anthropic -->
+                            <div class="api-provider-card">
+                                <div class="api-provider-header">
+                                    <div class="api-provider-logo">
+                                        <svg viewBox="0 0 92.2 65" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M66.5,0H52.4l25.7,65h14.1L66.5,0z M25.7,0L0,65h14.4l5.3-13.6h26.9L51.8,65h14.4L40.5,0C40.5,0,25.7,0,25.7,0z M24.3,39.3l8.8-22.8l8.8,22.8H24.3z" fill="currentColor"/>
+                                        </svg>
+                                    </div>
+                                    <div class="api-provider-info">
+                                        <h3>Anthropic</h3>
+                                        <p>Claude 4 Sonnet</p>
+                                    </div>
+                                </div>
+                                <input type="password" class="api-key-input" id="anthropic-key" placeholder="sk-ant-..." data-provider="anthropic">
+                            </div>
+
+                            <!-- xAI -->
+                            <div class="api-provider-card">
+                                <div class="api-provider-header">
+                                    <div class="api-provider-logo">
+                                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" fill="currentColor"/>
+                                        </svg>
+                                    </div>
+                                    <div class="api-provider-info">
+                                        <h3>xAI</h3>
+                                        <p>Grok 4</p>
+                                    </div>
+                                </div>
+                                <input type="password" class="api-key-input" id="xai-key" placeholder="xai-..." data-provider="xai">
+                            </div>
+                        </div>
+                        
+                        <div class="api-keys-actions">
+                            <button type="button" class="skip-api-btn" onclick="skipApiKeys()">Skip for now</button>
+                            <button type="button" class="save-api-btn" onclick="saveApiKeys()" disabled>Save & Continue</button>
+                        </div>
                     </div>
                 </div>
 
@@ -2535,7 +2721,14 @@
         let environment = '{{ ENVIRONMENT|default:"local" }}';  // Get environment from Django
 
         // Check authentication status on load
-        document.addEventListener('DOMContentLoaded', function() {
+        window.addEventListener('load', function() {
+            // Restore requirements from sessionStorage if available
+            const storedRequirements = sessionStorage.getItem('pendingRequirements');
+            if (storedRequirements) {
+                userRequirements = storedRequirements;
+                // Don't clear it yet, we might need it after authentication
+            }
+            
             // Check URL parameters for onboarding continuation
             const urlParams = new URLSearchParams(window.location.search);
             const continueOnboarding = urlParams.get('onboarding') === 'true';
@@ -2568,8 +2761,6 @@
                 isAuthenticated = false;
             });
 
-            // Setup verification code inputs
-            setupVerificationInputs();
         });
 
         // Navbar scroll effect
@@ -2612,13 +2803,16 @@
             userRequirements = document.getElementById('requirements-input').value.trim();
             
             if (!userRequirements) return;
+            
+            // Store in sessionStorage to persist across page reloads
+            sessionStorage.setItem('pendingRequirements', userRequirements);
 
             // Check if user is authenticated
             if (!isAuthenticated) {
                 currentStep = 1;
                 showCarouselModal();
             } else {
-                // Skip to project name step
+                // If already authenticated, show API keys step
                 currentStep = 3;
                 showCarouselModal();
                 goToStep(3);
@@ -2631,6 +2825,8 @@
             modal.style.display = 'flex';
             setTimeout(() => {
                 modal.classList.add('show');
+                // Setup API key listeners when modal is shown
+                setupApiKeyListeners();
             }, 10);
 
             // Close modal on background click
@@ -2724,7 +2920,7 @@
                     isAuthenticated = true;
                     isRegistering = false;
                     userEmail = email;
-                    // Skip to project name step
+                    // Move to API keys step
                     goToStep(3);
                 } else {
                     alert('Login failed. Please check your credentials.');
@@ -2767,7 +2963,7 @@
                     
                     // Check if environment is local (skip verification)
                     if (environment === 'local') {
-                        // Skip to project name step in local environment
+                        // Skip to API keys step in local environment
                         goToStep(3);
                     } else {
                         // Show email in verification step
@@ -2855,7 +3051,7 @@
                 });
 
                 if (response.ok) {
-                    // Move to project name step
+                    // Move to API keys step
                     goToStep(3);
                 } else {
                     showVerificationError('Invalid code. Please try again.');
@@ -2906,20 +3102,137 @@
             }
         }
 
-        // Project form submission
-        document.getElementById('project-form').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            projectName = document.getElementById('project-name').value.trim();
-            
-            if (!projectName) {
-                alert('Please enter a project name.');
-                return;
-            }
+        // Create first project automatically
+        async function createFirstProjectAndRedirect() {
+            projectName = 'First Project';
+            await createProjectAndRedirect();
+        }
 
-            // Create project directly after name submission
-            createProjectAndRedirect();
-        });
+        // API Key Management
+        const apiKeyInputs = document.querySelectorAll('.api-key-input');
+        let validApiKeys = {};
+
+        // Listen to API key inputs
+        // Setup API key input listeners when modal is shown
+        function setupApiKeyListeners() {
+            const apiInputs = document.querySelectorAll('.api-key-input');
+            apiInputs.forEach(input => {
+                // Remove any existing listeners first
+                input.removeEventListener('input', handleApiKeyInput);
+                // Add the listener
+                input.addEventListener('input', handleApiKeyInput);
+            });
+        }
+        
+        function handleApiKeyInput(e) {
+            const provider = e.target.dataset.provider;
+            const value = e.target.value.trim();
+            const card = e.target.closest('.api-provider-card');
+            
+            if (value && validateApiKey(provider, value)) {
+                e.target.classList.add('valid');
+                card.classList.add('filled');
+                validApiKeys[provider] = value;
+            } else {
+                e.target.classList.remove('valid');
+                card.classList.remove('filled');
+                delete validApiKeys[provider];
+            }
+            
+            // Enable/disable save button
+            updateSaveButton();
+        }
+
+        function validateApiKey(provider, key) {
+            if (!key) return false;
+            
+            switch(provider) {
+                case 'openai':
+                    // OpenAI keys can start with sk-proj- or sk-
+                    return (key.startsWith('sk-proj-') || key.startsWith('sk-')) && key.length > 20;
+                case 'anthropic':
+                    return key.startsWith('sk-ant-') && key.length > 20;
+                case 'xai':
+                    return key.startsWith('xai-') && key.length > 20;
+                default:
+                    return false;
+            }
+        }
+
+        function updateSaveButton() {
+            const saveBtn = document.querySelector('.save-api-btn');
+            const hasValidKeys = Object.keys(validApiKeys).length > 0;
+            if (saveBtn) {
+                saveBtn.disabled = !hasValidKeys;
+            }
+        }
+
+        // Save API keys and continue
+        async function saveApiKeys() {
+            const saveBtn = document.querySelector('.save-api-btn');
+            if (!saveBtn || saveBtn.disabled) return;
+            
+            console.log('Valid API keys:', validApiKeys);
+            
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Saving...';
+            
+            try {
+                // Save each API key
+                const savePromises = [];
+                
+                for (const [provider, key] of Object.entries(validApiKeys)) {
+                    const formData = new FormData();
+                    formData.append('api_key', key);
+                    
+                    savePromises.push(
+                        fetch(`/accounts/save-api-key/${provider}/`, {
+                            method: 'POST',
+                            headers: {
+                                'X-CSRFToken': getCookie('csrftoken')
+                            },
+                            body: formData,
+                            credentials: 'include'
+                        }).then(response => {
+                            if (!response.ok) {
+                                console.error(`Failed to save ${provider} key:`, response.status);
+                            }
+                            return response;
+                        })
+                    );
+                }
+                
+                const results = await Promise.all(savePromises);
+                
+                // Check if all saves were successful
+                const allSuccessful = results.every(response => response.ok);
+                
+                if (allSuccessful) {
+                    console.log('All API keys saved successfully');
+                    // Create project and redirect
+                    await createFirstProjectAndRedirect();
+                } else {
+                    // Find which keys failed
+                    const failedProviders = [];
+                    Object.keys(validApiKeys).forEach((provider, index) => {
+                        if (!results[index].ok) {
+                            failedProviders.push(provider);
+                        }
+                    });
+                    throw new Error(`Failed to save API keys for: ${failedProviders.join(', ')}`);
+                }
+            } catch (error) {
+                console.error('Error saving API keys:', error);
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Save & Continue';
+                alert(`Failed to save API keys: ${error.message}\n\nPlease check the console for more details.`);
+            }
+        }
+
+        // Skip API keys and continue
+        async function skipApiKeys() {
+            await createFirstProjectAndRedirect();
+        }
 
 
 
@@ -2932,40 +3245,44 @@
                         'X-CSRFToken': getCookie('csrftoken')
                     },
                     body: JSON.stringify({
-                        name: projectName,
-                        description: 'Project created from landing page',
-                        requirements: userRequirements
+                        name: projectName || 'First Project',
+                        description: 'Your first project on LFG',
+                        requirements: userRequirements || sessionStorage.getItem('pendingRequirements') || ''
                     }),
                     credentials: 'include'
                 });
 
                 if (response.ok) {
                     const data = await response.json();
-                    // Hide modal and show loading
+                    // Hide modal if it's open
                     const modal = document.getElementById('onboarding-modal');
-                    modal.style.display = 'none';
-                    modal.classList.remove('show');
+                    if (modal) {
+                        modal.style.display = 'none';
+                        modal.classList.remove('show');
+                    }
                     
-                    // Show loading overlay
-                    const loadingOverlay = document.getElementById('loadingOverlay');
-                    loadingOverlay.classList.add('show');
-                    
-                    // Small delay to ensure loading overlay is visible
-                    setTimeout(() => {
-                        redirectToChat(data.project_id);
-                    }, 100);
+                    // Redirect to chat with the new project
+                    redirectToChat(data.project_id);
                 } else {
-                    alert('Failed to create project. Please try again.');
+                    // If project creation fails, redirect to settings to set up API keys
+                    window.location.href = '/accounts/settings/#llm-settings';
                 }
             } catch (error) {
                 console.error('Error creating project:', error);
-                alert('An error occurred. Please try again.');
+                // Redirect to settings on error
+                window.location.href = '/accounts/settings/#llm-settings';
             }
         }
 
         // Redirect to chat with requirements and project
         function redirectToChat(projectId) {
-            const encodedRequirements = encodeURIComponent(userRequirements);
+            // Get requirements from sessionStorage if not in variable
+            const requirements = userRequirements || sessionStorage.getItem('pendingRequirements') || '';
+            const encodedRequirements = encodeURIComponent(requirements);
+            
+            // Clear sessionStorage after using it
+            sessionStorage.removeItem('pendingRequirements');
+            
             window.location.href = `/chat/project/${projectId}/?requirements=${encodedRequirements}`;
         }
 
@@ -2975,6 +3292,11 @@
             sessionStorage.setItem('pendingRequirements', userRequirements);
             window.location.href = '/accounts/google-login/?next=/chat/';
         }
+
+        // Initialize API key listeners after DOM loads
+        document.addEventListener('DOMContentLoaded', function() {
+            setupVerificationInputs();
+        });
 
         // Switch auth tabs
         function switchAuthTab(tab) {
