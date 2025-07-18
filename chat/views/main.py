@@ -286,7 +286,7 @@ def user_model_selection(request):
         # Get user's model selection or create default one
         model_selection, created = ModelSelection.objects.get_or_create(
             user=request.user,
-            defaults={'selected_model': 'claude_4_sonnet'}
+            defaults={'selected_model': 'o4-mini'}
         )
         
         return JsonResponse({
