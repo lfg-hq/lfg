@@ -172,7 +172,7 @@
 
         .github-btn:hover {
             background: var(--primary-purple);
-            color: white;
+            color: white !important;
             transform: translateY(-2px);
         }
 
@@ -181,7 +181,7 @@
             background: linear-gradient(135deg, var(--primary-purple), var(--secondary-purple));
             border: none;
             border-radius: 8px;
-            color: white;
+            color: white !important;
             font-weight: 600;
             text-decoration: none;
             transition: all 0.3s ease;
@@ -190,6 +190,7 @@
 
         .cta-btn:hover {
             transform: translateY(-2px);
+            color: white !important;
             box-shadow: 0 8px 25px rgba(139, 92, 246, 0.4);
         }
 
@@ -824,6 +825,434 @@
             transform: translateY(0);
         }
 
+        /* Project Selection Styles */
+        .project-selection-container {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .project-option {
+            background: rgba(30, 30, 35, 0.5);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 1.5rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .project-option:hover {
+            border-color: rgba(139, 92, 246, 0.5);
+            background: rgba(139, 92, 246, 0.08);
+            transform: translateY(-2px);
+        }
+
+        .project-option.selected {
+            border-color: var(--primary-purple);
+            background: rgba(139, 92, 246, 0.15);
+        }
+
+        .project-option-icon {
+            width: 48px;
+            height: 48px;
+            background: rgba(139, 92, 246, 0.2);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            color: var(--primary-purple);
+            flex-shrink: 0;
+        }
+
+        .project-option-content {
+            flex: 1;
+        }
+
+        .project-option-content h3 {
+            font-size: 1.125rem;
+            font-weight: 600;
+            margin: 0 0 0.25rem 0;
+            color: var(--text-primary);
+        }
+
+        .project-option-content p {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin: 0;
+        }
+
+        .project-name-input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: rgba(10, 10, 15, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            color: var(--text-primary);
+            font-size: 0.875rem;
+            margin-top: 1rem;
+            transition: all 0.2s ease;
+            outline: none;
+        }
+
+        .project-name-input:focus {
+            border-color: var(--primary-purple);
+            box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+        }
+
+        .existing-projects-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            max-height: 300px;
+            overflow-y: auto;
+            padding-right: 0.5rem;
+        }
+
+        .existing-projects-list::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .existing-projects-list::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 3px;
+        }
+
+        .existing-projects-list::-webkit-scrollbar-thumb {
+            background: rgba(139, 92, 246, 0.3);
+            border-radius: 3px;
+        }
+
+        .project-date {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 0.25rem;
+        }
+
+        .project-actions {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 2rem;
+        }
+
+        .continue-project-btn {
+            padding: 0.875rem 2rem;
+            background: linear-gradient(135deg, var(--primary-purple), var(--secondary-purple));
+            border: none;
+            border-radius: 10px;
+            color: white;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: 'Space Grotesk', sans-serif;
+            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);
+        }
+
+        .continue-project-btn:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(139, 92, 246, 0.35);
+        }
+
+        .continue-project-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        /* New Project Selection Styles */
+        .create-project-btn {
+            background: rgba(139, 92, 246, 0.08);
+            border: 1.5px dashed rgba(139, 92, 246, 0.4);
+            border-radius: 12px;
+            padding: 0.75rem 1.25rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--primary-purple);
+            margin-bottom: 1.5rem;
+        }
+        
+        .create-project-btn:hover {
+            border-color: var(--primary-purple);
+            background: rgba(139, 92, 246, 0.15);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.2);
+        }
+        
+        .create-project-btn i {
+            font-size: 0.875rem;
+        }
+        
+        .projects-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1rem;
+            max-height: 380px;
+            overflow-y: auto;
+            padding-right: 0.5rem;
+        }
+        
+        .projects-grid::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .projects-grid::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 3px;
+        }
+        
+        .projects-grid::-webkit-scrollbar-thumb {
+            background: rgba(139, 92, 246, 0.3);
+            border-radius: 3px;
+        }
+        
+        .project-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            padding: 1.25rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .project-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--primary-purple), var(--secondary-purple));
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .project-card:hover {
+            border-color: rgba(139, 92, 246, 0.3);
+            background: rgba(139, 92, 246, 0.08);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(139, 92, 246, 0.15);
+        }
+        
+        .project-card:hover::before {
+            opacity: 1;
+        }
+        
+        .project-card-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .project-emoji {
+            width: 36px;
+            height: 36px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+        }
+        
+        .project-card:hover .project-emoji {
+            background: rgba(139, 92, 246, 0.15);
+        }
+        
+        .project-name {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin: 0;
+            line-height: 1.3;
+            flex: 1;
+        }
+        
+        .project-date {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin: 0;
+        }
+        
+        .project-stats {
+            display: flex;
+            gap: 1rem;
+            margin-top: 0.75rem;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+        
+        .project-stat {
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+        }
+        
+        .project-stat i {
+            font-size: 0.7rem;
+            opacity: 0.7;
+        }
+
+        /* API Keys Collection Styles */
+        .api-keys-container {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .api-provider-card {
+            background: rgba(30, 30, 35, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 1.25rem;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .api-provider-card:hover {
+            border-color: rgba(139, 92, 246, 0.3);
+            background: rgba(139, 92, 246, 0.05);
+            transform: translateY(-2px);
+        }
+
+        .api-provider-card.filled {
+            border-color: rgba(16, 185, 129, 0.5);
+            background: rgba(16, 185, 129, 0.05);
+        }
+
+        .api-provider-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .api-provider-logo {
+            width: 48px;
+            height: 48px;
+            background: white;
+            border-radius: 12px;
+            padding: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .api-provider-logo svg {
+            width: 100%;
+            height: 100%;
+            color: #8B5CF6;
+        }
+
+        .api-provider-info h3 {
+            font-size: 1.125rem;
+            font-weight: 600;
+            margin: 0;
+            color: var(--text-primary);
+        }
+
+        .api-provider-info p {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin: 0.25rem 0 0 0;
+        }
+
+        .api-key-input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: rgba(10, 10, 15, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            color: var(--text-primary);
+            font-family: monospace;
+            font-size: 0.875rem;
+            transition: all 0.2s ease;
+            outline: none;
+        }
+
+        .api-key-input:focus {
+            border-color: var(--primary-purple);
+            box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+        }
+
+        .api-key-input.valid {
+            border-color: rgba(16, 185, 129, 0.5);
+        }
+        
+        .api-key-input.existing {
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+        
+        .api-provider-card.existing {
+            border-color: rgba(16, 185, 129, 0.3);
+            background: rgba(16, 185, 129, 0.03);
+        }
+
+        .api-keys-actions {
+            display: flex;
+            gap: 1rem;
+            justify-content: space-between;
+            margin-top: 1.5rem;
+        }
+
+        .skip-api-btn {
+            padding: 0.875rem 1.5rem;
+            background: transparent;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            color: var(--text-secondary);
+            font-weight: 500;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
+        .skip-api-btn:hover {
+            border-color: var(--primary-purple);
+            color: var(--primary-purple);
+        }
+
+        .save-api-btn {
+            flex: 1;
+            padding: 0.875rem 1.5rem;
+            background: linear-gradient(135deg, var(--primary-purple), var(--secondary-purple));
+            border: none;
+            border-radius: 10px;
+            color: white;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: 'Space Grotesk', sans-serif;
+            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);
+        }
+
+        .save-api-btn:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(139, 92, 246, 0.35);
+        }
+
+        .save-api-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
         .modal-header {
             text-align: center;
             padding: 2rem 2rem 1rem;
@@ -894,7 +1323,7 @@
             content: '';
             position: absolute;
             top: 50%;
-            width: calc(50% - 40px);
+            width: calc(37% - 40px);
             height: 1px;
             background: var(--border-color);
         }
@@ -2127,8 +2556,7 @@
             <a href="#" class="logo">LFG 🚀</a>
             <div class="nav-links">
                 <a href="#features">Features</a>
-                <a href="#agents">AI Agents</a>
-                <a href="#customization">Customize</a>
+                <!-- <a href="#agents">AI Agents</a> -->
                 <a href="https://github.com/lfg-hq/lfg" class="github-btn" target="_blank">
                     <i class="fab fa-github"></i>
                     Open Source
@@ -2191,6 +2619,11 @@
                 <div class="progress-line"></div>
                 <div class="progress-step" data-step="3">
                     <div class="step-circle">3</div>
+                    <div class="step-label">API Keys</div>
+                </div>
+                <div class="progress-line"></div>
+                <div class="progress-step" data-step="4">
+                    <div class="step-circle">4</div>
                     <div class="step-label">Project</div>
                 </div>
             </div>
@@ -2293,19 +2726,89 @@
                     </div>
                 </div>
 
-                <!-- Step 3: Project Name -->
+                <!-- Step 3: API Keys Collection -->
                 <div class="carousel-step" data-step="3">
                     <div class="modal-header">
-                        <h2>Name Your Project</h2>
-                        <p>Give your project a memorable name to get started</p>
+                        <h2>Connect Your AI</h2>
+                        <p>Add at least one API key to start building with AI</p>
                     </div>
                     <div class="modal-body">
-                        <form id="project-form" class="project-form">
-                            <div class="form-group">
-                                <input type="text" id="project-name" class="form-input" placeholder="Enter project name..." required>
+                        <div class="api-keys-container">
+                            <!-- OpenAI -->
+                            <div class="api-provider-card">
+                                <div class="api-provider-header">
+                                    <div class="api-provider-logo">
+                                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.051 6.051 0 0 0 6.0865-6.0958 5.9894 5.9894 0 0 0 3.9575-2.9001 6.0557 6.0557 0 0 0-.7475-7.0966zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.5093-2.6067-1.4997z" fill="currentColor"/>
+                                        </svg>
+                                    </div>
+                                    <div class="api-provider-info">
+                                        <h3>OpenAI</h3>
+                                        <p>GPT-4o, GPT-4.1, GPT-o3, GPT-o4-mini</p>
+                                    </div>
+                                </div>
+                                <input type="password" class="api-key-input" id="openai-key" placeholder="sk-..." data-provider="openai">
                             </div>
-                            <button type="submit" class="continue-btn">Continue</button>
-                        </form>
+
+                            <!-- Anthropic -->
+                            <div class="api-provider-card">
+                                <div class="api-provider-header">
+                                    <div class="api-provider-logo">
+                                        <svg viewBox="0 0 92.2 65" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M66.5,0H52.4l25.7,65h14.1L66.5,0z M25.7,0L0,65h14.4l5.3-13.6h26.9L51.8,65h14.4L40.5,0C40.5,0,25.7,0,25.7,0z M24.3,39.3l8.8-22.8l8.8,22.8H24.3z" fill="currentColor"/>
+                                        </svg>
+                                    </div>
+                                    <div class="api-provider-info">
+                                        <h3>Anthropic</h3>
+                                        <p>Claude 4 Sonnet</p>
+                                    </div>
+                                </div>
+                                <input type="password" class="api-key-input" id="anthropic-key" placeholder="sk-ant-..." data-provider="anthropic">
+                            </div>
+
+                            <!-- xAI -->
+                            <div class="api-provider-card">
+                                <div class="api-provider-header">
+                                    <div class="api-provider-logo">
+                                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" fill="currentColor"/>
+                                        </svg>
+                                    </div>
+                                    <div class="api-provider-info">
+                                        <h3>xAI</h3>
+                                        <p>Grok 4</p>
+                                    </div>
+                                </div>
+                                <input type="password" class="api-key-input" id="xai-key" placeholder="xai-..." data-provider="xai">
+                            </div>
+                        </div>
+                        
+                        <div class="api-keys-actions">
+                            <button type="button" class="skip-api-btn" onclick="skipApiKeys()">Skip for now</button>
+                            <button type="button" class="save-api-btn" onclick="saveApiKeys()" disabled>Save & Continue</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 4: Project Selection -->
+                <div class="carousel-step" data-step="4">
+                    <div class="modal-header">
+                        <h2>Select Your Project</h2>
+                        <p>Click to continue with an existing project or create new</p>
+                    </div>
+                    <div class="modal-body">
+                        <div class="project-selection-container">
+                            <!-- Create new project option -->
+                            <div class="create-project-btn" onclick="createFirstProjectAndRedirect()">
+                                <i class="fas fa-plus"></i>
+                                <span>Create New Project</span>
+                            </div>
+                            
+                            <!-- Existing projects section -->
+                            <div class="projects-grid">
+                                <!-- Projects will be dynamically added here -->
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -2533,9 +3036,18 @@
         let projectName = '';
         let isRegistering = false;
         let environment = '{{ ENVIRONMENT|default:"local" }}';  // Get environment from Django
+        let selectedProject = null;
+        let userProjects = [];
 
         // Check authentication status on load
-        document.addEventListener('DOMContentLoaded', function() {
+        window.addEventListener('load', function() {
+            // Restore requirements from sessionStorage if available
+            const storedRequirements = sessionStorage.getItem('pendingRequirements');
+            if (storedRequirements) {
+                userRequirements = storedRequirements;
+                // Don't clear it yet, we might need it after authentication
+            }
+            
             // Check URL parameters for onboarding continuation
             const urlParams = new URLSearchParams(window.location.search);
             const continueOnboarding = urlParams.get('onboarding') === 'true';
@@ -2568,8 +3080,6 @@
                 isAuthenticated = false;
             });
 
-            // Setup verification code inputs
-            setupVerificationInputs();
         });
 
         // Navbar scroll effect
@@ -2612,25 +3122,47 @@
             userRequirements = document.getElementById('requirements-input').value.trim();
             
             if (!userRequirements) return;
+            
+            // Store in sessionStorage to persist across page reloads
+            sessionStorage.setItem('pendingRequirements', userRequirements);
 
             // Check if user is authenticated
             if (!isAuthenticated) {
                 currentStep = 1;
                 showCarouselModal();
             } else {
-                // Skip to project name step
-                currentStep = 3;
-                showCarouselModal();
-                goToStep(3);
+                // If already authenticated, check for existing projects
+                checkExistingProjects().then(hasProjects => {
+                    if (hasProjects) {
+                        // Show project selection step
+                        currentStep = 4;
+                        showCarouselModal();
+                        goToStep(4);
+                        loadExistingProjects();
+                    } else {
+                        // Show API keys step
+                        currentStep = 3;
+                        showCarouselModal();
+                        goToStep(3);
+                    }
+                });
             }
         });
 
         // Show carousel modal
-        function showCarouselModal() {
+        async function showCarouselModal() {
             const modal = document.getElementById('onboarding-modal');
             modal.style.display = 'flex';
+            
+            // Check for existing API keys if authenticated
+            if (isAuthenticated) {
+                await checkExistingApiKeys();
+            }
+            
             setTimeout(() => {
                 modal.classList.add('show');
+                // Setup API key listeners when modal is shown
+                setupApiKeyListeners();
             }, 10);
 
             // Close modal on background click
@@ -2700,6 +3232,11 @@
             });
             
             currentStep = step;
+            
+            // If we're on the API keys step and authenticated, check existing keys
+            if (step === 3 && isAuthenticated) {
+                checkExistingApiKeys();
+            }
         }
 
         // Login form submission
@@ -2724,8 +3261,14 @@
                     isAuthenticated = true;
                     isRegistering = false;
                     userEmail = email;
-                    // Skip to project name step
-                    goToStep(3);
+                    // Check if user has projects
+                    checkExistingProjects().then(hasProjects => {
+                        if (hasProjects) {
+                            goToStep(4); // Go to project selection
+                        } else {
+                            goToStep(3); // Go to API keys
+                        }
+                    });
                 } else {
                     alert('Login failed. Please check your credentials.');
                 }
@@ -2767,7 +3310,7 @@
                     
                     // Check if environment is local (skip verification)
                     if (environment === 'local') {
-                        // Skip to project name step in local environment
+                        // Skip to API keys step in local environment
                         goToStep(3);
                     } else {
                         // Show email in verification step
@@ -2855,8 +3398,14 @@
                 });
 
                 if (response.ok) {
-                    // Move to project name step
-                    goToStep(3);
+                    // Check if user has projects after verification
+                    checkExistingProjects().then(hasProjects => {
+                        if (hasProjects) {
+                            goToStep(4); // Go to project selection
+                        } else {
+                            goToStep(3); // Go to API keys
+                        }
+                    });
                 } else {
                     showVerificationError('Invalid code. Please try again.');
                 }
@@ -2906,20 +3455,388 @@
             }
         }
 
-        // Project form submission
-        document.getElementById('project-form').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            projectName = document.getElementById('project-name').value.trim();
-            
-            if (!projectName) {
-                alert('Please enter a project name.');
-                return;
-            }
+        // Create first project automatically
+        async function createFirstProjectAndRedirect() {
+            projectName = 'First Project';
+            await createProjectAndRedirect();
+        }
 
-            // Create project directly after name submission
-            createProjectAndRedirect();
-        });
+        // API Key Management
+        const apiKeyInputs = document.querySelectorAll('.api-key-input');
+        let validApiKeys = {};
+
+        // Listen to API key inputs
+        // Setup API key input listeners when modal is shown
+        function setupApiKeyListeners() {
+            const apiInputs = document.querySelectorAll('.api-key-input');
+            apiInputs.forEach(input => {
+                // Remove any existing listeners first
+                input.removeEventListener('input', handleApiKeyInput);
+                // Add the listener
+                input.addEventListener('input', handleApiKeyInput);
+            });
+        }
+        
+        function handleApiKeyInput(e) {
+            const provider = e.target.dataset.provider;
+            const value = e.target.value.trim();
+            const card = e.target.closest('.api-provider-card');
+            const isExisting = e.target.getAttribute('data-existing') === 'true';
+            
+            // If user starts typing over an existing key, remove the existing flag
+            if (isExisting && !value.includes('*')) {
+                e.target.removeAttribute('data-existing');
+                e.target.classList.remove('existing');
+                card.classList.remove('existing');
+            }
+            
+            if (value && (validateApiKey(provider, value) || isExisting)) {
+                e.target.classList.add('valid');
+                card.classList.add('filled');
+                
+                // Only add to validApiKeys if it's a new key (not masked)
+                if (!value.includes('*')) {
+                    validApiKeys[provider] = value;
+                } else {
+                    delete validApiKeys[provider];
+                }
+            } else {
+                e.target.classList.remove('valid');
+                card.classList.remove('filled');
+                delete validApiKeys[provider];
+            }
+            
+            // Enable/disable save button
+            updateSaveButton();
+        }
+
+        function validateApiKey(provider, key) {
+            if (!key) return false;
+            
+            switch(provider) {
+                case 'openai':
+                    // OpenAI keys can start with sk-proj- or sk-
+                    return (key.startsWith('sk-proj-') || key.startsWith('sk-')) && key.length > 20;
+                case 'anthropic':
+                    return key.startsWith('sk-ant-') && key.length > 20;
+                case 'xai':
+                    return key.startsWith('xai-') && key.length > 20;
+                default:
+                    return false;
+            }
+        }
+
+        function updateSaveButton() {
+            const saveBtn = document.querySelector('.save-api-btn');
+            const hasValidKeys = Object.keys(validApiKeys).length > 0;
+            const hasExistingKeys = document.querySelectorAll('.api-key-input[data-existing="true"]').length > 0;
+            
+            if (saveBtn) {
+                // Enable button if there are new valid keys or if all keys exist
+                if (hasValidKeys) {
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = 'Save & Continue';
+                } else if (hasExistingKeys) {
+                    // Check if all providers have existing keys
+                    const allExisting = document.querySelectorAll('.api-key-input[data-existing="true"]').length >= 1;
+                    if (allExisting) {
+                        saveBtn.disabled = false;
+                        saveBtn.textContent = 'Continue';
+                    } else {
+                        saveBtn.disabled = true;
+                    }
+                } else {
+                    saveBtn.disabled = true;
+                }
+            }
+        }
+
+        // Save API keys and continue
+        async function saveApiKeys() {
+            const saveBtn = document.querySelector('.save-api-btn');
+            if (!saveBtn || saveBtn.disabled) return;
+            
+            console.log('Valid API keys:', validApiKeys);
+            
+            // If no new keys to save (only existing ones), just continue
+            if (Object.keys(validApiKeys).length === 0) {
+                const hasExisting = document.querySelectorAll('.api-key-input[data-existing="true"]').length > 0;
+                if (hasExisting) {
+                    // Check if user has existing projects
+                    const hasProjects = await checkExistingProjects();
+                    if (hasProjects) {
+                        // Show project selection step
+                        goToStep(4);
+                        loadExistingProjects();
+                    } else {
+                        // Create project and redirect
+                        await createFirstProjectAndRedirect();
+                    }
+                    return;
+                }
+            }
+            
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Saving...';
+            
+            try {
+                // Save each API key
+                const savePromises = [];
+                
+                for (const [provider, key] of Object.entries(validApiKeys)) {
+                    const formData = new FormData();
+                    formData.append('api_key', key);
+                    
+                    savePromises.push(
+                        fetch(`/accounts/save-api-key/${provider}/`, {
+                            method: 'POST',
+                            headers: {
+                                'X-CSRFToken': getCookie('csrftoken')
+                            },
+                            body: formData,
+                            credentials: 'include'
+                        }).then(response => {
+                            if (!response.ok) {
+                                console.error(`Failed to save ${provider} key:`, response.status);
+                            }
+                            return response;
+                        })
+                    );
+                }
+                
+                const results = await Promise.all(savePromises);
+                
+                // Check if all saves were successful
+                const allSuccessful = results.every(response => response.ok);
+                
+                if (allSuccessful) {
+                    console.log('All API keys saved successfully');
+                    // Check if user has existing projects
+                    const hasProjects = await checkExistingProjects();
+                    if (hasProjects) {
+                        // Show project selection step
+                        goToStep(4);
+                        loadExistingProjects();
+                    } else {
+                        // Create project and redirect
+                        await createFirstProjectAndRedirect();
+                    }
+                } else {
+                    // Find which keys failed
+                    const failedProviders = [];
+                    Object.keys(validApiKeys).forEach((provider, index) => {
+                        if (!results[index].ok) {
+                            failedProviders.push(provider);
+                        }
+                    });
+                    throw new Error(`Failed to save API keys for: ${failedProviders.join(', ')}`);
+                }
+            } catch (error) {
+                console.error('Error saving API keys:', error);
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Save & Continue';
+                alert(`Failed to save API keys: ${error.message}\n\nPlease check the console for more details.`);
+            }
+        }
+
+        // Skip API keys and continue
+        async function skipApiKeys() {
+            console.log('Skip API keys clicked');
+            // Check if user has existing projects
+            const hasProjects = await checkExistingProjects();
+            console.log('Has existing projects:', hasProjects);
+            console.log('User projects:', userProjects);
+            
+            if (hasProjects) {
+                // Show project selection step
+                console.log('Showing project selection step');
+                goToStep(4);
+                loadExistingProjects();
+            } else {
+                // Create project and redirect
+                console.log('No existing projects, creating new one');
+                await createFirstProjectAndRedirect();
+            }
+        }
+        
+        // Check for existing API keys
+        async function checkExistingApiKeys() {
+            try {
+                const response = await fetch('/accounts/api/user/api-keys/', {
+                    credentials: 'include',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    // Pre-fill inputs for existing keys
+                    if (data.has_openai_key) {
+                        const input = document.getElementById('openai-key');
+                        if (input) {
+                            input.value = 'sk-...**********************';
+                            input.classList.add('valid', 'existing');
+                            input.closest('.api-provider-card').classList.add('filled', 'existing');
+                            // Don't add to validApiKeys as we don't have the actual key
+                            input.setAttribute('data-existing', 'true');
+                        }
+                    }
+                    
+                    if (data.has_anthropic_key) {
+                        const input = document.getElementById('anthropic-key');
+                        if (input) {
+                            input.value = 'sk-ant-...******************';
+                            input.classList.add('valid', 'existing');
+                            input.closest('.api-provider-card').classList.add('filled', 'existing');
+                            input.setAttribute('data-existing', 'true');
+                        }
+                    }
+                    
+                    if (data.has_xai_key) {
+                        const input = document.getElementById('xai-key');
+                        if (input) {
+                            input.value = 'xai-...*********************';
+                            input.classList.add('valid', 'existing');
+                            input.closest('.api-provider-card').classList.add('filled', 'existing');
+                            input.setAttribute('data-existing', 'true');
+                        }
+                    }
+                    
+                    // Update save button text if all keys exist
+                    if (data.has_openai_key && data.has_anthropic_key && data.has_xai_key) {
+                        const saveBtn = document.querySelector('.save-api-btn');
+                        if (saveBtn) {
+                            saveBtn.textContent = 'Continue';
+                            saveBtn.disabled = false;
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error checking existing API keys:', error);
+            }
+        }
+
+        // Check if user has existing projects
+        async function checkExistingProjects() {
+            try {
+                console.log('Checking for existing projects...');
+                
+                // Make a request to create project API with a special flag to just get count
+                const response = await fetch('/projects/api/create/', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: JSON.stringify({
+                        check_existing: true  // Special flag to just check existing projects
+                    })
+                });
+                
+                console.log('Projects check response status:', response.status);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Response data:', data);
+                    
+                    // If the API returns existing projects info
+                    if (data.has_existing_projects !== undefined) {
+                        if (data.projects) {
+                            userProjects = data.projects;
+                        }
+                        return data.has_existing_projects;
+                    }
+                    
+                    // Otherwise assume no projects
+                    return false;
+                }
+                return false;
+            } catch (error) {
+                console.error('Error checking existing projects:', error);
+                return false;
+            }
+        }
+
+        // Load existing projects into the UI
+        function loadExistingProjects() {
+            const container = document.querySelector('.projects-grid');
+            if (!container) return;
+            
+            container.innerHTML = '';
+            
+            userProjects.forEach(project => {
+                const projectCard = document.createElement('div');
+                projectCard.className = 'project-card';
+                projectCard.onclick = () => redirectToChat(project.id);
+                
+                // Random emoji if none exists
+                const emojis = ['📁', '🚀', '💡', '🎯', '⚡', '🌟', '💻', '🔧'];
+                const emoji = project.icon || emojis[Math.floor(Math.random() * emojis.length)];
+                
+                projectCard.innerHTML = `
+                    <div class="project-card-header">
+                        <div class="project-emoji">${emoji}</div>
+                        <h3 class="project-name">${project.name}</h3>
+                    </div>
+                    <p class="project-date">${project.created_at ? new Date(project.created_at).toLocaleDateString() : 'Recent'}</p>
+                `;
+                container.appendChild(projectCard);
+            });
+        }
+
+        // Select new project option
+        function selectNewProject() {
+            selectedProject = null;
+            // Remove selected from all cards
+            document.querySelector('.new-project-card')?.classList.add('selected');
+            document.querySelectorAll('.existing-project-card').forEach(card => {
+                card.classList.remove('selected');
+            });
+            // Enable continue button
+            const continueBtn = document.querySelector('.project-continue-btn');
+            if (continueBtn) continueBtn.disabled = false;
+        }
+
+        // Select existing project
+        function selectExistingProject(projectId) {
+            selectedProject = projectId;
+            // Remove selected from new project card
+            document.querySelector('.new-project-card')?.classList.remove('selected');
+            
+            // Highlight selected project
+            document.querySelectorAll('.existing-project-card').forEach((card, index) => {
+                if (userProjects[index] && userProjects[index].id === projectId) {
+                    card.classList.add('selected');
+                } else {
+                    card.classList.remove('selected');
+                }
+            });
+            
+            // Enable continue button
+            const continueBtn = document.querySelector('.project-continue-btn');
+            if (continueBtn) continueBtn.disabled = false;
+        }
+
+        // Continue with selected project
+        async function continueWithProject() {
+            const continueBtn = document.querySelector('.project-continue-btn');
+            if (continueBtn) {
+                continueBtn.disabled = true;
+                continueBtn.textContent = 'Setting up...';
+            }
+            
+            if (selectedProject) {
+                // Use existing project
+                redirectToChat(selectedProject);
+            } else {
+                // Create new project
+                await createFirstProjectAndRedirect();
+            }
+        }
 
 
 
@@ -2932,40 +3849,44 @@
                         'X-CSRFToken': getCookie('csrftoken')
                     },
                     body: JSON.stringify({
-                        name: projectName,
-                        description: 'Project created from landing page',
-                        requirements: userRequirements
+                        name: projectName || 'First Project',
+                        description: 'Your first project on LFG',
+                        requirements: userRequirements || sessionStorage.getItem('pendingRequirements') || ''
                     }),
                     credentials: 'include'
                 });
 
                 if (response.ok) {
                     const data = await response.json();
-                    // Hide modal and show loading
+                    // Hide modal if it's open
                     const modal = document.getElementById('onboarding-modal');
-                    modal.style.display = 'none';
-                    modal.classList.remove('show');
+                    if (modal) {
+                        modal.style.display = 'none';
+                        modal.classList.remove('show');
+                    }
                     
-                    // Show loading overlay
-                    const loadingOverlay = document.getElementById('loadingOverlay');
-                    loadingOverlay.classList.add('show');
-                    
-                    // Small delay to ensure loading overlay is visible
-                    setTimeout(() => {
-                        redirectToChat(data.project_id);
-                    }, 100);
+                    // Redirect to chat with the new project
+                    redirectToChat(data.project_id);
                 } else {
-                    alert('Failed to create project. Please try again.');
+                    // If project creation fails, redirect to settings to set up API keys
+                    window.location.href = '/accounts/settings/#llm-settings';
                 }
             } catch (error) {
                 console.error('Error creating project:', error);
-                alert('An error occurred. Please try again.');
+                // Redirect to settings on error
+                window.location.href = '/accounts/settings/#llm-settings';
             }
         }
 
         // Redirect to chat with requirements and project
         function redirectToChat(projectId) {
-            const encodedRequirements = encodeURIComponent(userRequirements);
+            // Get requirements from sessionStorage if not in variable
+            const requirements = userRequirements || sessionStorage.getItem('pendingRequirements') || '';
+            const encodedRequirements = encodeURIComponent(requirements);
+            
+            // Clear sessionStorage after using it
+            sessionStorage.removeItem('pendingRequirements');
+            
             window.location.href = `/chat/project/${projectId}/?requirements=${encodedRequirements}`;
         }
 
@@ -2975,6 +3896,11 @@
             sessionStorage.setItem('pendingRequirements', userRequirements);
             window.location.href = '/accounts/google-login/?next=/chat/';
         }
+
+        // Initialize API key listeners after DOM loads
+        document.addEventListener('DOMContentLoaded', function() {
+            setupVerificationInputs();
+        });
 
         // Switch auth tabs
         function switchAuthTab(tab) {
