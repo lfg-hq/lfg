@@ -383,7 +383,7 @@ body, html {
     transition: all 0.3s ease;
     width: 100%;
     margin-left: 20px; /* Small margin to accommodate collapsed sidebar */
-    overflow: hidden;
+    overflow: visible;
 }
 
 /* Add this new class for message container */

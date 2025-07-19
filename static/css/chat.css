@@ -253,30 +253,80 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 4px 8px;
-    /* background-color: rgba(30, 30, 30, 0.2); */
-    background-color: var(--card-bg);
-    border-radius: 16px;
+    padding: 4px 0;
+    background: transparent;
+    z-index: 10;
 }
 
 .action-btn {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 24px;
-    height: 24px;
+    width: 28px;
+    height: 28px;
     border-radius: 50%;
     border: none;
-    background-color: rgba(187, 134, 252, 0.1);
-    color: var(--primary-color, #bb86fc);
+    background-color: transparent;
+    color: #64748b;
     cursor: pointer;
     transition: all 0.2s ease;
-    font-size: 11px;
+    font-size: 13px;
 }
 
 .action-btn:hover {
-    background-color: rgba(187, 134, 252, 0.2);
-    transform: translateY(-2px);
+    background-color: rgba(100, 116, 139, 0.1);
+    color: #94a3b8;
+}
+
+/* Settings button with border */
+.settings-btn-styled {
+    width: 32px;
+    height: 32px;
+    border: none;
+    background-color: transparent;
+    font-size: 14px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+}
+
+.settings-btn-styled:hover {
+    background-color: rgba(100, 116, 139, 0.1);
+}
+
+/* Status indicators next to settings icon */
+.status-indicators {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.status-item {
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: background 0.2s ease;
+}
+
+.status-item:hover {
+    background: rgba(100, 116, 139, 0.15);
+}
+
+.role-status span {
+    color: #a78bfa;
+}
+
+.model-status span {
+    color: #60a5fa;
+}
+
+.status-divider {
+    color: #64748b;
+    font-size: 10px;
 }
 
 /* Role dropdown styling */
@@ -768,7 +818,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    margin: 0 2px;
+    margin: 0 8px 0 0;
 }
 
 .turbo-switch {
@@ -968,3 +1018,202 @@ input:checked + .turbo-slider + .turbo-label,
 .custom-dropdown-item + .dropdown-group-label {
     margin-top: 8px;
 }
+
+/* Left actions container */
+.left-actions {
+    position: absolute;
+    left: 8px;
+    bottom: 8px;
+    z-index: 1001;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Settings button and dropdown styles */
+.settings-status {
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    height: 24px;
+    font-size: 11px;
+    color: #64748b;
+    white-space: nowrap;
+    margin-right: 4px;
+}
+
+.settings-status .status-text {
+    font-weight: 500;
+}
+
+.settings-status #current-role {
+    color: #a78bfa;
+    font-weight: 600;
+}
+
+.settings-status #current-model {
+    color: #60a5fa;
+    font-weight: 600;
+}
+
+.settings-dropdown {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    margin-bottom: 8px;
+    background: #2a2a2a;
+    border: 1px solid #3a3a3a;
+    border-radius: 12px;
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.5);
+    opacity: 0;
+    transform: translateY(8px);
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    z-index: 1000;
+    overflow: visible;
+}
+
+.settings-dropdown.open {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+
+.settings-menu {
+    padding: 8px;
+    min-width: 200px;
+}
+
+/* Menu item styles */
+.menu-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    color: #e2e8f0;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.menu-item:hover {
+    background: rgba(100, 116, 139, 0.15);
+}
+
+.menu-item i:first-child {
+    width: 20px;
+    text-align: center;
+    color: #94a3b8;
+}
+
+.menu-item .submenu-arrow {
+    margin-left: auto;
+    font-size: 10px;
+    color: #64748b;
+}
+
+/* Submenu styles */
+.submenu {
+    position: absolute;
+    left: 100%;
+    bottom: 0;
+    margin-left: 8px;
+    background: #2a2a2a;
+    border: 1px solid #3a3a3a;
+    border-radius: 12px;
+    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.4);
+    padding: 8px;
+    min-width: 200px;
+    max-height: 300px;
+    overflow-y: auto;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateX(-10px);
+    transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s ease;
+}
+
+.menu-item:hover .submenu {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(0);
+}
+
+.submenu-group {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #64748b;
+    font-weight: 600;
+    padding: 8px 12px;
+    margin: 8px -12px 4px;
+    border-top: 1px solid #3a3a3a;
+}
+
+.submenu-group:first-child {
+    margin-top: 0;
+    border-top: none;
+}
+
+.submenu-option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 10px 12px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    color: #e2e8f0;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s ease;
+    text-align: left;
+    margin-bottom: 4px;
+}
+
+.submenu-option:hover {
+    background: rgba(100, 116, 139, 0.1);
+}
+
+.submenu-option i {
+    color: #60a5fa;
+    font-size: 12px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.submenu-option.selected i {
+    opacity: 1;
+}
+
+/* Adjust custom dropdown styles within settings */
+.settings-dropdown .custom-dropdown-button {
+    width: 100%;
+    justify-content: space-between;
+    min-width: unset;
+    background: #2a2a2a;
+    border: 1px solid #3a3a3a;
+    padding: 6px 10px;
+    padding-right: 30px;
+    height: 32px;
+}
+
+.settings-dropdown .custom-dropdown-button:hover {
+    background: #333;
+    border-color: #444;
+}
+
+.settings-dropdown .custom-dropdown-menu {
+    bottom: auto;
+    top: 100%;
+    margin-bottom: 0;
+    margin-top: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    background: #2a2a2a;
+    border: 1px solid #3a3a3a;
+}
+
