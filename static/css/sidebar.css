@@ -10,7 +10,7 @@
 
 /* Initial state to prevent flicker */
 .sidebar-minimized-init .sidebar {
-    width: 60px !important;
+    width: 100px !important;
 }
 
 .sidebar-minimized-init .chat-container,
