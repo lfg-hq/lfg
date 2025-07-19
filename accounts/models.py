@@ -138,6 +138,7 @@ class TokenUsage(models.Model):
         # OpenAI models
         ('gpt-4o', 'GPT-4o'),
         ('gpt-4.1', 'GPT-4.1'),
+        ('whisper-1', 'Whisper (Audio Transcription)'),
         # Anthropic models
         ('claude-sonnet-4-20250514', 'Claude Sonnet 4'),
         ('claude-opus-4-20250514', 'Claude Opus 4'),

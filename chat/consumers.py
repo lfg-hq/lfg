@@ -1156,8 +1156,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # Get provider name from the provider instance
         provider_name = provider.__class__.__name__.replace('Provider', '').lower()
         
-        # Get file handler for the provider
-        file_handler = FileHandler.get_handler(provider_name)
+        # Get file handler for the provider with user context
+        file_handler = FileHandler.get_handler(provider_name, self.user)
         
         # Get storage instance
         storage = ChatFileStorage()
