@@ -1813,7 +1813,13 @@ class AnthropicProvider(AIProvider):
                         })
                 claude_messages.append(claude_msg)
             elif role == "user":
-                claude_msg = {"role": "user", "content": [{"type": "text", "text": msg["content"]}]}
+                # Handle both string content and array content (for files)
+                if isinstance(msg.get("content"), list):
+                    # Content is already in array format (with files)
+                    claude_msg = {"role": "user", "content": msg["content"]}
+                else:
+                    # Legacy string format
+                    claude_msg = {"role": "user", "content": [{"type": "text", "text": msg["content"]}]}
                 claude_messages.append(claude_msg)
             elif role == "tool":
                 # Find the corresponding tool use in the previous assistant message
@@ -1833,20 +1839,30 @@ class AnthropicProvider(AIProvider):
     def _convert_tools_to_claude_format(self, tools):
         """Convert OpenAI format tools to Claude format"""
         claude_tools = []
+        seen_tool_names = set()
         
         for tool in tools:
             if tool.get("type") == "function":
                 func = tool["function"]
+                tool_name = func["name"]
+                
+                # Skip duplicate tools
+                if tool_name in seen_tool_names:
+                    logger.warning(f"Skipping duplicate tool: {tool_name}")
+                    continue
+                
+                seen_tool_names.add(tool_name)
+                
                 claude_tool = {
-                    "name": func["name"],
+                    "name": tool_name,
                     "description": func.get("description", ""),
                     "input_schema": func.get("parameters", {"type": "object", "properties": {}, "required": []})
                 }
                 claude_tools.append(claude_tool)
                 
                 # Log implementation-related tools
-                if func["name"] in ["save_implementation", "get_implementation"]:
-                    logger.debug(f"[AnthropicProvider] Added {func['name']} to Claude tools with description: {func.get('description', '')[:100]}...")
+                if tool_name in ["save_implementation", "get_implementation"]:
+                    logger.debug(f"[AnthropicProvider] Added {tool_name} to Claude tools with description: {func.get('description', '')[:100]}...")
         
         return claude_tools
 
@@ -1918,14 +1934,18 @@ class AnthropicProvider(AIProvider):
                 claude_messages = self._convert_messages_to_claude_format(current_messages)
                 claude_tools = self._convert_tools_to_claude_format(tools)
 
-                # Add web search tool using the correct format
-                web_search_tool = {
-                    "type": "web_search_20250305",
-                    "name": "web_search",
-                    "max_uses": 5  # Optional: limit number of searches per request
-                }
-                claude_tools.append(web_search_tool)
-                logger.info("Added web_search_20250305 tool to Claude tools")
+                # Add web search tool using the correct format (only if not already present)
+                tool_names = [tool.get('name') for tool in claude_tools]
+                if 'web_search' not in tool_names:
+                    web_search_tool = {
+                        "type": "web_search_20250305",
+                        "name": "web_search",
+                        "max_uses": 5  # Optional: limit number of searches per request
+                    }
+                    claude_tools.append(web_search_tool)
+                    logger.info("Added web_search_20250305 tool to Claude tools")
+                else:
+                    logger.debug("web_search tool already present, skipping addition")
                 
                 # Log available tools
                 logger.debug(f"Available tools for Claude: {[tool['name'] for tool in claude_tools]}")
@@ -2444,4 +2464,177 @@ class AnthropicProvider(AIProvider):
         )
         
         return result_content, notification_data, yielded_content
+
+
+class FileHandler:
+    """Factory class for handling file uploads and parsing across different AI providers"""
+    
+    def __init__(self, provider_name):
+        self.provider_name = provider_name.lower()
+        self.supported_formats = self._get_supported_formats()
+    
+    def _get_supported_formats(self):
+        """Get supported file formats for each provider"""
+        formats = {
+            'anthropic': {
+                'images': ['.jpg', '.jpeg', '.png', '.gif', '.webp'],
+                'documents': ['.pdf', '.csv', '.txt', '.md', '.docx', '.xlsx'],
+                'max_size_mb': 100,  # Reasonable limit
+                'methods': ['base64', 'file_id']
+            },
+            'openai': {
+                'images': ['.jpg', '.jpeg', '.png', '.gif', '.webp'],
+                'documents': ['.pdf'],  # PDFs supported by GPT-4o models
+                'max_size_mb': 32,  # PDF limit
+                'max_images': 10,
+                'methods': ['base64', 'url']
+            },
+            'xai': {
+                'images': ['.jpg', '.jpeg', '.png', '.gif', '.webp'],
+                'documents': [],  # Limited document support currently
+                'max_size_mb': 20,  # Conservative estimate
+                'methods': ['base64', 'url']
+            }
+        }
+        return formats.get(self.provider_name, formats['openai'])
+    
+    def is_supported_file(self, filename):
+        """Check if a file type is supported by the provider"""
+        ext = os.path.splitext(filename)[1].lower()
+        supported = self.supported_formats
+        return ext in supported['images'] + supported['documents']
+    
+    def get_file_category(self, filename):
+        """Determine if file is an image or document"""
+        ext = os.path.splitext(filename)[1].lower()
+        if ext in self.supported_formats['images']:
+            return 'image'
+        elif ext in self.supported_formats['documents']:
+            return 'document'
+        return None
+    
+    async def prepare_file_for_provider(self, chat_file, storage):
+        """Prepare a file for sending to the AI provider"""
+        try:
+            filename = chat_file.original_filename
+            file_category = self.get_file_category(filename)
+            
+            if not file_category:
+                raise ValueError(f"Unsupported file type for {self.provider_name}: {filename}")
+            
+            # Get file content
+            file_content = await self._get_file_content(chat_file, storage)
+            
+            # Prepare based on provider
+            if self.provider_name == 'anthropic':
+                return await self._prepare_anthropic_file(chat_file, file_content, file_category)
+            elif self.provider_name == 'openai':
+                return await self._prepare_openai_file(chat_file, file_content, file_category)
+            elif self.provider_name == 'xai':
+                return await self._prepare_xai_file(chat_file, file_content, file_category)
+            else:
+                raise ValueError(f"Unknown provider: {self.provider_name}")
+                
+        except Exception as e:
+            logger.error(f"Error preparing file for {self.provider_name}: {str(e)}")
+            raise
+    
+    async def _get_file_content(self, chat_file, storage):
+        """Get file content from storage"""
+        try:
+            # Open file from storage using sync_to_async
+            from asgiref.sync import sync_to_async
+            
+            @sync_to_async
+            def read_file():
+                file_obj = storage._open(chat_file.file.name, 'rb')
+                content = file_obj.read()
+                if hasattr(file_obj, 'close'):
+                    file_obj.close()
+                return content
+            
+            return await read_file()
+        except Exception as e:
+            logger.error(f"Error reading file content: {str(e)}")
+            raise
+    
+    async def _prepare_anthropic_file(self, chat_file, content, category):
+        """Prepare file for Anthropic Claude API"""
+        import base64
+        
+        if category == 'image':
+            # Use base64 for images
+            base64_content = base64.b64encode(content).decode('utf-8')
+            media_type = chat_file.file_type or 'image/jpeg'
+            
+            return {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": media_type,
+                    "data": base64_content
+                }
+            }
+        else:
+            # For documents (PDF), use base64 encoding
+            base64_content = base64.b64encode(content).decode('utf-8')
+            
+            return {
+                "type": "document",
+                "source": {
+                    "type": "base64",
+                    "media_type": chat_file.file_type or "application/pdf",
+                    "data": base64_content
+                },
+                "title": chat_file.original_filename
+            }
+    
+    async def _prepare_openai_file(self, chat_file, content, category):
+        """Prepare file for OpenAI API"""
+        import base64
+        
+        if category in ['image', 'document']:
+            # Use base64 for both images and PDFs
+            base64_content = base64.b64encode(content).decode('utf-8')
+            media_type = chat_file.file_type or ('image/jpeg' if category == 'image' else 'application/pdf')
+            
+            return {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:{media_type};base64,{base64_content}"
+                }
+            }
+        
+        raise ValueError(f"Unsupported file category for OpenAI: {category}")
+    
+    async def _prepare_xai_file(self, chat_file, content, category):
+        """Prepare file for XAI Grok API (OpenAI-compatible)"""
+        # XAI uses the same format as OpenAI
+        return await self._prepare_openai_file(chat_file, content, category)
+    
+    def format_file_message(self, file_data, text_content=None):
+        """Format file data into a message structure for the provider"""
+        if self.provider_name == 'anthropic':
+            # Anthropic supports mixing text and files in content array
+            content = []
+            if text_content:
+                content.append({"type": "text", "text": text_content})
+            content.append(file_data)
+            return content
+        
+        elif self.provider_name in ['openai', 'xai']:
+            # OpenAI/XAI require separate content entries
+            content = []
+            if text_content:
+                content.append({"type": "text", "text": text_content})
+            content.append(file_data)
+            return content
+        
+        else:
+            raise ValueError(f"Unknown provider: {self.provider_name}")
+    
+    @staticmethod
+    def get_handler(provider_name):
+        """Factory method to get a FileHandler instance"""
+        return FileHandler(provider_name)
     

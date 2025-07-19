@@ -21,11 +21,13 @@ from chat.models import (
 )
 from projects.models import ProjectChecklist
 from development.utils import AIProvider
+from development.utils.ai_providers import FileHandler
 from development.utils.prompts import get_system_turbo_mode, \
                                     get_system_prompt_product, \
                                     get_system_prompt_design, \
                                     get_system_prompt_developer
 from development.utils.ai_tools import tools_code, tools_product, tools_design, tools_turbo
+from chat.storage import ChatFileStorage
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -705,12 +707,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 await asyncio.sleep(0.03)
             
             # Finalize any partial message or save the complete message
-            await self.finalize_streaming_message(full_response)
+            if full_response:
+                await self.finalize_streaming_message(full_response)
             
             # Update conversation title if it's new
             if self.conversation and (not self.conversation.title or self.conversation.title == str(self.conversation.id)):
                 # Use AI to generate a title based on first messages
-                await self.generate_title_with_ai(user_message, full_response)
+                try:
+                    await self.generate_title_with_ai(user_message, full_response)
+                except Exception as title_error:
+                    logger.error(f"Error generating title: {title_error}")
+                    # Fallback to simple title
+                    await self.update_conversation_title(user_message[:50] if user_message else "New Conversation")
             
             # Get project_id if conversation is linked to a project
             if not project_id and self.conversation:
@@ -778,7 +786,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
             
         except Exception as e:
             error_message = f"Sorry, I encountered an error: {str(e)}"
-            await self.save_message('assistant', error_message)
+            # Only try to save error message if we have a conversation
+            if self.conversation:
+                try:
+                    await self.save_message('assistant', error_message)
+                except Exception as save_error:
+                    logger.error(f"Error saving error message: {save_error}")
             
             try:
                 # First send the error message as a chunk
@@ -837,11 +850,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
     
     async def process_ai_stream(self, provider, messages, project_id, tools):
         """
-        Enhanced process_ai_stream with auto-save
+        Enhanced process_ai_stream with auto-save and file handling
         """
         logger.debug(f"Messages: {messages}")
         try:
             conversation_id = self.conversation.id if self.conversation else None
+            
+            # Process messages to handle files
+            processed_messages = await self.prepare_messages_with_files(provider, messages)
             
             # Initialize message accumulator for auto-save
             accumulated_content = ""
@@ -849,7 +865,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             save_threshold = 100  # Save every 100 characters (reduced from 500)
             
             # Stream content directly from the now-async provider
-            async for content in provider.generate_stream(messages, project_id, conversation_id, tools):
+            async for content in provider.generate_stream(processed_messages, project_id, conversation_id, tools):
                 # Check if we should stop generation
                 if self.should_stop_generation:
                     logger.debug("Stopping AI stream generation due to user request")
@@ -958,7 +974,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 yield content
                 
         except Exception as e:
+            import traceback
             logger.error(f"Error in process_ai_stream: {str(e)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
             error_message = str(e)
             
             # Check for missing API key attributes
@@ -1103,29 +1121,165 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # logger.debug(f"\n\n\n\nContent if file: {content_if_file}")
 
         if self.conversation:
-            return Message.objects.create(
+            # Create the message
+            message = Message.objects.create(
                 conversation=self.conversation,
                 role=role,
+                content=content,
                 content_if_file=content_if_file
             )
+            # Link the file to the message
+            file_obj.message = message
+            file_obj.save()
+            return message
         return None
         
 
+    async def prepare_messages_with_files(self, provider, messages):
+        """
+        Prepare messages with file attachments for the specific AI provider
+        """
+        # First check if any messages have files
+        has_files = any('files' in msg and msg['files'] for msg in messages)
+        
+        # If no files, ensure messages are properly formatted
+        if not has_files:
+            # Return a clean copy of messages to avoid any Django model references
+            return [
+                {
+                    "role": msg["role"],
+                    "content": msg["content"]
+                }
+                for msg in messages
+            ]
+        
+        # Get provider name from the provider instance
+        provider_name = provider.__class__.__name__.replace('Provider', '').lower()
+        
+        # Get file handler for the provider
+        file_handler = FileHandler.get_handler(provider_name)
+        
+        # Get storage instance
+        storage = ChatFileStorage()
+        
+        processed_messages = []
+        
+        for message in messages:
+            # If message has files, process them
+            if 'files' in message and message['files']:
+                # Get the actual file objects
+                file_ids = [f['id'] for f in message['files']]
+                
+                @database_sync_to_async
+                def get_chat_files(ids):
+                    return list(ChatFile.objects.filter(id__in=ids))
+                
+                chat_files = await get_chat_files(file_ids)
+                
+                # Process files based on provider
+                if provider_name == 'anthropic':
+                    # Anthropic supports mixed content
+                    content_parts = []
+                    
+                    # Add text content if present
+                    if message['content']:
+                        content_parts.append({
+                            "type": "text",
+                            "text": message['content']
+                        })
+                    
+                    # Add file content
+                    for chat_file in chat_files:
+                        try:
+                            file_data = await file_handler.prepare_file_for_provider(chat_file, storage)
+                            content_parts.append(file_data)
+                        except Exception as e:
+                            logger.error(f"Error preparing file {chat_file.original_filename}: {e}")
+                            # Add error message to content
+                            content_parts.append({
+                                "type": "text",
+                                "text": f"[Error loading file: {chat_file.original_filename}]"
+                            })
+                    
+                    processed_messages.append({
+                        "role": message['role'],
+                        "content": content_parts
+                    })
+                
+                else:  # OpenAI and XAI
+                    # For OpenAI/XAI, we need to structure differently
+                    content_parts = []
+                    
+                    # Add text content
+                    if message['content']:
+                        content_parts.append({
+                            "type": "text",
+                            "text": message['content']
+                        })
+                    
+                    # Add file content
+                    for chat_file in chat_files:
+                        try:
+                            file_data = await file_handler.prepare_file_for_provider(chat_file, storage)
+                            content_parts.append(file_data)
+                        except Exception as e:
+                            logger.error(f"Error preparing file {chat_file.original_filename}: {e}")
+                            # Add error message
+                            content_parts.append({
+                                "type": "text", 
+                                "text": f"[Error loading file: {chat_file.original_filename}]"
+                            })
+                    
+                    processed_messages.append({
+                        "role": message['role'],
+                        "content": content_parts
+                    })
+            else:
+                # No files, use message as-is
+                processed_messages.append({
+                    "role": message['role'],
+                    "content": message['content']
+                })
+        
+        return processed_messages
+    
     @database_sync_to_async
     def get_messages_for_ai(self):
         """
-        Get messages for AI processing
+        Get messages for AI processing with file attachments
         """
         if not self.conversation:
             return []
             
-        messages = Message.objects.filter(conversation=self.conversation).order_by('-created_at')[:10]
+        messages = Message.objects.filter(conversation=self.conversation).prefetch_related('files').order_by('-created_at')[:10]
         messages = reversed(list(messages))  # Convert to list and reverse
-        # logger.debug(f"\n\n Messages: {messages}")
-        return [
-            {"role": msg.role, "content": msg.content if msg.content is not None and msg.content != "" else msg.content_if_file}
-            for msg in messages
-        ]
+        
+        formatted_messages = []
+        for msg in messages:
+            # Start with basic message structure
+            message_data = {
+                "role": msg.role,
+                "content": msg.content if msg.content else ""
+            }
+            
+            # Check if message has files attached
+            files = list(msg.files.all())
+            if files:
+                # For user messages with files, we'll need to format content based on provider
+                # This will be handled later when we actually send to the provider
+                message_data["files"] = [
+                    {
+                        "id": file.id,
+                        "filename": file.original_filename,
+                        "file_type": file.file_type,
+                        "file_size": file.file_size
+                    }
+                    for file in files
+                ]
+            
+            formatted_messages.append(message_data)
+        
+        return formatted_messages
     
     @database_sync_to_async
     def get_chat_history(self):
@@ -1257,10 +1411,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
             # Use empty tools list for title generation (no function calls needed)
             tools = []
             
-            # Generate title non-streaming
+            # Generate title without file processing
             title = ""
-            async for content in self.process_ai_stream(provider, title_prompt, project_id, tools):
-                title += content
+            # Skip file processing for title generation by calling provider directly
+            async for content in provider.generate_stream(title_prompt, project_id, self.conversation.id if self.conversation else None, tools):
+                if isinstance(content, str) and not content.startswith("__NOTIFICATION__"):
+                    title += content
                 
             # Clean and truncate the generated title
             title = title.strip()
@@ -1350,13 +1506,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if self.conversation:
             try:
                 # Check if we already have a partial message for this conversation
-                last_message = await database_sync_to_async(
-                    lambda: Message.objects.filter(
+                @database_sync_to_async
+                def get_partial_message():
+                    return Message.objects.filter(
                         conversation=self.conversation,
                         role='assistant',
                         is_partial=True
                     ).order_by('-created_at').first()
-                )()
+                
+                last_message = await get_partial_message()
                 
                 logger.info(f"[AUTO_SAVE] Found existing partial message ID: {last_message.id if last_message else 'None'}")
                 
@@ -1387,13 +1545,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if self.conversation and full_content:
             try:
                 # Find any partial message
-                partial_message = await database_sync_to_async(
-                    lambda: Message.objects.filter(
+                @database_sync_to_async
+                def get_partial_message_to_finalize():
+                    return Message.objects.filter(
                         conversation=self.conversation,
                         role='assistant',
                         is_partial=True
                     ).order_by('-created_at').first()
-                )()
+                
+                partial_message = await get_partial_message_to_finalize()
                 
                 logger.info(f"[FINALIZE] Found partial message ID: {partial_message.id if partial_message else 'None'}")
                 
@@ -1416,6 +1576,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
             except Exception as e:
                 logger.error(f"Error finalizing streaming message: {e}")
                 # Fallback to regular save
-                await self.save_message('assistant', full_content)
+                try:
+                    await self.save_message('assistant', full_content)
+                except Exception as fallback_error:
+                    logger.error(f"Fallback save also failed: {fallback_error}")
                 # Clear pending message even in error case
                 self.pending_message = None 
