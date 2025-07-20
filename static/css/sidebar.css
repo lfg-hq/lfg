@@ -11,16 +11,24 @@
 /* Initial state to prevent flicker */
 .sidebar-minimized-init .sidebar {
     width: 60px !important;
+    transition: none !important;
 }
 
 .sidebar-minimized-init .chat-container,
 .sidebar-minimized-init .main-content-with-sidebar {
     margin-left: 60px !important;
     width: calc(100% - 60px) !important;
+    transition: none !important;
 }
 
 .sidebar-minimized-init .app-container {
     transition: none !important;
+}
+
+/* Ensure NO transitions on ANY element during initial load */
+.sidebar-minimized-init * {
+    transition: none !important;
+    animation: none !important;
 }
 
 /* Base sidebar */
@@ -510,7 +518,11 @@
 .chat-container {
     margin-left: 260px !important;
     width: calc(100% - 260px) !important;
-    transition: margin-left 0.2s ease !important;
+    transition: margin-left 0.2s ease, width 0.2s ease !important;
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100vh !important;
+    overflow: hidden !important;
 }
 
 /* Minimized state */

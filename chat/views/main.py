@@ -37,8 +37,8 @@ def index(request):
         context['project'] = default_project
         context['project_id'] = str(default_project.project_id)  # Use project_id instead of id
     
-    if hasattr(request.user, 'profile'):
-        context['sidebar_collapsed'] = request.user.profile.sidebar_collapsed
+    # if hasattr(request.user, 'profile'):
+    #     context['sidebar_collapsed'] = request.user.profile.sidebar_collapsed
     return render(request, 'chat/main.html', context)
 
 @login_required

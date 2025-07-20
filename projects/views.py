@@ -459,6 +459,14 @@ def project_implementation_api(request, project_id):
         except Exception as e:
             return JsonResponse({'success': False, 'error': str(e)}, status=400)
     
+    elif request.method == 'DELETE':
+        # Delete the implementation
+        try:
+            implementation.delete()
+            return JsonResponse({'success': True, 'message': 'Implementation deleted successfully'})
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=400)
+    
     # Convert to JSON-serializable format
     implementation_data = {
         'id': implementation.id,
