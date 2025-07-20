@@ -598,6 +598,75 @@ document.addEventListener('DOMContentLoaded', () => {
                     messagesContainer.appendChild(recordingIndicator);
                     messagesContainer.scrollTop = messagesContainer.scrollHeight;
                     
+                    // Set up Web Speech API for live transcription
+                    let recognition = null;
+                    let finalTranscript = '';
+                    let interimTranscript = '';
+                    
+                    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+                        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                        recognition = new SpeechRecognition();
+                        
+                        recognition.continuous = true;
+                        recognition.interimResults = true;
+                        recognition.lang = 'en-US';
+                        
+                        recognition.onstart = () => {
+                            console.log('Speech recognition started');
+                        };
+                        
+                        recognition.onresult = (event) => {
+                            interimTranscript = '';
+                            
+                            for (let i = event.resultIndex; i < event.results.length; i++) {
+                                const transcript = event.results[i][0].transcript;
+                                
+                                if (event.results[i].isFinal) {
+                                    finalTranscript += transcript + ' ';
+                                } else {
+                                    interimTranscript += transcript;
+                                }
+                            }
+                            
+                            // Update transcription display
+                            if (recordingIndicator && recordingIndicator.transcriptionArea) {
+                                const displayText = finalTranscript + '<span style="color: #94a3b8; font-style: italic;">' + interimTranscript + '</span>';
+                                recordingIndicator.transcriptionArea.innerHTML = displayText || '<span style="color: #94a3b8; font-style: italic;">Listening...</span>';
+                                
+                                // Show send button if there's any transcribed text
+                                if (finalTranscript.trim() || interimTranscript.trim()) {
+                                    recordingIndicator.sendBtn.style.display = 'block';
+                                }
+                            }
+                        };
+                        
+                        recognition.onerror = (event) => {
+                            console.error('Speech recognition error:', event.error);
+                            if (recordingIndicator && recordingIndicator.transcriptionArea) {
+                                recordingIndicator.transcriptionArea.innerHTML = '<span style="color: #ef4444;">Error: ' + event.error + '</span>';
+                            }
+                        };
+                        
+                        recognition.onend = () => {
+                            console.log('Speech recognition ended');
+                        };
+                        
+                        // Start recognition
+                        try {
+                            recognition.start();
+                        } catch (e) {
+                            console.error('Failed to start speech recognition:', e);
+                        }
+                        
+                        // Store recognition instance for cleanup
+                        window.currentRecognition = recognition;
+                    } else {
+                        console.warn('Web Speech API not supported');
+                        if (recordingIndicator && recordingIndicator.transcriptionArea) {
+                            recordingIndicator.transcriptionArea.innerHTML = '<span style="color: #f59e0b;">Live transcription not supported in this browser</span>';
+                        }
+                    }
+                    
                     // Set up audio analysis for voice-reactive waveform
                     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
                     console.log('AudioContext created, state:', audioContext.state);
@@ -754,6 +823,22 @@ document.addEventListener('DOMContentLoaded', () => {
                             window.currentAudioContext = null;
                         }
                         
+                        // Stop speech recognition
+                        if (window.currentRecognition) {
+                            window.currentRecognition.stop();
+                            window.currentRecognition = null;
+                        }
+                        
+                        // Get final transcript before removing indicator
+                        let transcriptToSend = '';
+                        if (recordingIndicator && recordingIndicator.transcriptionArea) {
+                            // Extract text content without HTML
+                            const tempDiv = document.createElement('div');
+                            tempDiv.innerHTML = recordingIndicator.transcriptionArea.innerHTML;
+                            transcriptToSend = tempDiv.textContent || tempDiv.innerText || '';
+                            transcriptToSend = transcriptToSend.replace('Listening...', '').trim();
+                        }
+                        
                         // Remove recording indicator
                         if (recordingIndicator) {
                             recordingIndicator.remove();
@@ -765,14 +850,14 @@ document.addEventListener('DOMContentLoaded', () => {
                             window.recordingCancelled = false;
                             console.log('Recording cancelled by user');
                         } else {
-                            // Create audio blob
+                            // Always create the audio blob for consistency
                             const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
                             const audioFile = new File([audioBlob], `recording_${Date.now()}.webm`, { type: 'audio/webm' });
                             
                             console.log('Audio recording completed:', audioFile.name, 'size:', audioFile.size);
                             
-                            // Send audio message directly
-                            await sendAudioMessage(audioFile);
+                            // Send audio message with transcript (if available)
+                            await sendAudioMessage(audioFile, transcriptToSend);
                         }
                         
                         // Reset button state
@@ -4003,6 +4088,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const indicator = document.createElement('div');
         indicator.className = 'audio-recording-indicator';
         
+        // Create top row with waveform and controls
+        const topRow = document.createElement('div');
+        topRow.style.cssText = 'display: flex; align-items: center; gap: 8px; width: 100%;';
+        
         // Create waveform
         const waveform = document.createElement('div');
         waveform.className = 'audio-waveform';
@@ -4034,15 +4123,47 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
         
-        indicator.appendChild(waveform);
-        indicator.appendChild(timeDisplay);
-        indicator.appendChild(cancelBtn);
+        topRow.appendChild(waveform);
+        topRow.appendChild(timeDisplay);
+        topRow.appendChild(cancelBtn);
+        
+        // Create transcription row
+        const transcriptionRow = document.createElement('div');
+        transcriptionRow.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-top: 12px;';
+        
+        // Create transcription area
+        const transcriptionArea = document.createElement('div');
+        transcriptionArea.className = 'live-transcription';
+        transcriptionArea.style.cssText = 'flex: 1; padding: 8px 12px; background: rgba(255,255,255,0.05); border-radius: 6px; min-height: 40px; color: #e2e8f0; font-size: 14px; line-height: 1.4;';
+        transcriptionArea.innerHTML = '<span style="color: #94a3b8; font-style: italic;">Listening...</span>';
+        
+        // Create send button (initially hidden)
+        const sendBtn = document.createElement('button');
+        sendBtn.className = 'recording-send-btn';
+        sendBtn.style.cssText = 'width: 36px; height: 36px; padding: 0; background: #3b82f6; color: white; border: none; border-radius: 50%; font-size: 14px; cursor: pointer; display: none; align-self: center; flex-shrink: 0;';
+        sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i>';
+        sendBtn.title = 'Send message';
+        sendBtn.onclick = () => {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+            }
+        };
+        
+        transcriptionRow.appendChild(transcriptionArea);
+        transcriptionRow.appendChild(sendBtn);
+        
+        indicator.appendChild(topRow);
+        indicator.appendChild(transcriptionRow);
+        
+        // Store references for easy access
+        indicator.transcriptionArea = transcriptionArea;
+        indicator.sendBtn = sendBtn;
         
         return indicator;
     }
     
     // Helper function to send audio message
-    async function sendAudioMessage(audioFile) {
+    async function sendAudioMessage(audioFile, liveTranscript = '') {
         // Add user message with audio indicator
         const audioIndicator = document.createElement('div');
         audioIndicator.className = 'message-audio';
@@ -4052,12 +4173,30 @@ document.addEventListener('DOMContentLoaded', () => {
                     <i class="fas fa-microphone" style="font-size: 14px;"></i>
                     Voice message
                 </div>
-                <div class="audio-transcription" style="display: none;">
-                    Transcribing...
-                </div>
+                ${liveTranscript ? `
+                    <div class="audio-transcription">
+                        ${liveTranscript}
+                    </div>
+                ` : `
+                    <div class="audio-transcription" style="display: none;">
+                        Transcribing...
+                    </div>
+                `}
             </div>
         `;
         
+        // If we have a live transcript, send it as a message with audio styling
+        if (liveTranscript && liveTranscript.trim()) {
+            const messageElement = addMessageToChat('user', '', { 
+                audioIndicator: audioIndicator
+            });
+            
+            // Send the transcribed text to the server
+            sendMessageToServer(liveTranscript);
+            return;
+        }
+        
+        // Otherwise, proceed with file upload
         const messageElement = addMessageToChat('user', '', { 
             audioIndicator: audioIndicator,
             file: audioFile 
