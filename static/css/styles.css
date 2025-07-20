@@ -472,7 +472,7 @@ body, html {
 
 /* Preserve line breaks only for user messages */
 .message.user .message-content {
-    white-space: pre-wrap;
+    /* white-space: pre-wrap; */
 }
 
 /* Message actions container */

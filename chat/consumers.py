@@ -1096,27 +1096,40 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # Construct the full file path by joining MEDIA_ROOT with the relative file path
         full_file_path = os.path.join(settings.MEDIA_ROOT, str(file_obj.file))
         
-        # Read the file content if it exists
-        if os.path.exists(full_file_path):
-            with open(full_file_path, 'rb') as f:
-                base64_content = base64.b64encode(f.read()).decode('utf-8')
-        else:
-            logger.error(f"File not found at path: {full_file_path}")
-            base64_content = None
-
-        # Construct data URI
-        data_uri = f"data:{file_obj.file_type};base64,{base64_content}"
-        # logger.debug(f"\n\n\n\nData URI: {data_uri}")
-
-        content_if_file = [
-            {"type": "text", "text": content},
-            {
-                "type": "image_url",
-                "image_url": {
-                    "url": data_uri
-                }
+        # Check if it's an audio file
+        is_audio = file_obj.file_type and 'audio' in file_obj.file_type.lower()
+        
+        if is_audio:
+            # For audio files, store file reference without base64 encoding
+            content_if_file = {
+                "type": "audio_file",
+                "file_id": file_obj.id,
+                "filename": file_obj.original_filename,
+                "file_type": file_obj.file_type,
+                "transcription": content  # The transcription is stored in content
             }
-        ]
+        else:
+            # Read the file content if it exists (for images/documents)
+            if os.path.exists(full_file_path):
+                with open(full_file_path, 'rb') as f:
+                    base64_content = base64.b64encode(f.read()).decode('utf-8')
+            else:
+                logger.error(f"File not found at path: {full_file_path}")
+                base64_content = None
+
+            # Construct data URI
+            data_uri = f"data:{file_obj.file_type};base64,{base64_content}"
+            # logger.debug(f"\n\n\n\nData URI: {data_uri}")
+
+            content_if_file = [
+                {"type": "text", "text": content},
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": data_uri
+                    }
+                }
+            ]
 
         # logger.debug(f"\n\n\n\nContent if file: {content_if_file}")
 
@@ -1290,14 +1303,34 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return []
             
         messages = Message.objects.filter(conversation=self.conversation).order_by('created_at')
-        return [
-            {
+        history = []
+        
+        for msg in messages:
+            message_data = {
                 'role': msg.role,
-                'content': msg.content if msg.content is not None or msg.content != "" else msg.content_if_file,
+                'content': msg.content if msg.content else '',
                 'timestamp': msg.created_at.isoformat(),
                 'is_partial': msg.is_partial  # Include partial status
-            } for msg in messages
-        ]
+            }
+            
+            # Check if there's file data attached
+            if msg.content_if_file:
+                # Check if it's an audio file (new format)
+                if isinstance(msg.content_if_file, dict) and msg.content_if_file.get('type') == 'audio_file':
+                    message_data['audio_file'] = {
+                        'file_id': msg.content_if_file.get('file_id'),
+                        'filename': msg.content_if_file.get('filename'),
+                        'transcription': msg.content_if_file.get('transcription', '')
+                    }
+                    # For audio messages, clear the content to avoid duplication
+                    message_data['content'] = ''
+                # Legacy format for other files
+                else:
+                    message_data['content_if_file'] = msg.content_if_file
+                    
+            history.append(message_data)
+            
+        return history
     
     @database_sync_to_async
     def get_project_id(self):

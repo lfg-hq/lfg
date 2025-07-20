@@ -2,6 +2,7 @@ from django.urls import path
 from . import views
 from .views.main import user_agent_role, user_model_selection, available_models, latest_conversation, daily_token_usage
 from .views.files_extra import get_file_url
+from .views.transcribe_fixed import transcribe_file
 
 
 urlpatterns = [
@@ -17,6 +18,7 @@ urlpatterns = [
     path('api/files/upload/', views.upload_file, name='upload_file'),
     path('api/conversations/<int:conversation_id>/files/', views.conversation_files, name='conversation_files'),
     path('api/files/<int:file_id>/url/', get_file_url, name='get_file_url'),
+    path('api/files/transcribe/<int:file_id>/', transcribe_file, name='transcribe_file'),
 
     # Single Agent Role API
     path('api/user/agent-role/', user_agent_role, name='user_agent_role'),

@@ -558,6 +558,100 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
+    // Audio recording functionality
+    const recordAudioBtn = document.getElementById('record-audio-btn');
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let recordingStartTime = null;
+    let recordingTimer = null;
+    let recordingIndicator = null;
+    
+    if (recordAudioBtn) {
+        recordAudioBtn.addEventListener('click', async () => {
+            if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+                // Start recording
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(stream);
+                    audioChunks = [];
+                    
+                    // Create and show waveform indicator
+                    recordingIndicator = createRecordingIndicator();
+                    const messagesContainer = document.getElementById('chat-messages');
+                    messagesContainer.appendChild(recordingIndicator);
+                    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                    
+                    mediaRecorder.ondataavailable = (event) => {
+                        audioChunks.push(event.data);
+                    };
+                    
+                    mediaRecorder.onstop = async () => {
+                        // Stop all tracks
+                        stream.getTracks().forEach(track => track.stop());
+                        
+                        // Remove recording indicator
+                        if (recordingIndicator) {
+                            recordingIndicator.remove();
+                            recordingIndicator = null;
+                        }
+                        
+                        // Create audio blob
+                        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                        const audioFile = new File([audioBlob], `recording_${Date.now()}.webm`, { type: 'audio/webm' });
+                        
+                        console.log('Audio recording completed:', audioFile.name, 'size:', audioFile.size);
+                        
+                        // Send audio message directly
+                        await sendAudioMessage(audioFile);
+                        
+                        // Reset button state
+                        recordAudioBtn.classList.remove('recording');
+                        recordAudioBtn.innerHTML = '<i class="fas fa-microphone"></i>';
+                        
+                        // Clear timer
+                        if (recordingTimer) {
+                            clearInterval(recordingTimer);
+                            recordingTimer = null;
+                        }
+                    };
+                    
+                    mediaRecorder.start();
+                    recordingStartTime = Date.now();
+                    
+                    // Update button state
+                    recordAudioBtn.classList.add('recording');
+                    recordAudioBtn.innerHTML = '<i class="fas fa-stop"></i>';
+                    
+                    // Update timer in waveform indicator
+                    recordingTimer = setInterval(() => {
+                        const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+                        const minutes = Math.floor(elapsed / 60).toString().padStart(2, '0');
+                        const seconds = (elapsed % 60).toString().padStart(2, '0');
+                        
+                        if (recordingIndicator) {
+                            const timeDisplay = recordingIndicator.querySelector('.recording-time');
+                            if (timeDisplay) {
+                                timeDisplay.textContent = `${minutes}:${seconds}`;
+                            }
+                        }
+                        
+                        // Auto-stop after 5 minutes
+                        if (elapsed >= 300) {
+                            mediaRecorder.stop();
+                        }
+                    }, 1000);
+                    
+                } catch (error) {
+                    console.error('Error accessing microphone:', error);
+                    alert('Unable to access microphone. Please check your permissions.');
+                }
+            } else {
+                // Stop recording
+                mediaRecorder.stop();
+            }
+        });
+    }
+    
     // Connection management variables
     let reconnectAttempts = 0;
     const maxReconnectAttempts = 5;
@@ -740,9 +834,29 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Handle chat history
                     clearChatMessages();
                     data.messages.forEach(msg => {
-                        // Skip empty messages
-                        if (msg.content && msg.content.trim() !== '') {
-                            addMessageToChat(msg.role, msg.content, msg.is_partial);
+                        // Handle audio messages
+                        if (msg.audio_file) {
+                            // Create audio indicator for historical audio messages
+                            const audioIndicator = document.createElement('div');
+                            audioIndicator.className = 'message-audio';
+                            audioIndicator.innerHTML = `
+                                <div class="message-audio-container">
+                                    <div class="message-audio-header">
+                                        <i class="fas fa-microphone" style="font-size: 14px;"></i>
+                                        Voice message
+                                    </div>
+                                    ${msg.audio_file.transcription ? `
+                                        <div class="audio-transcription">
+                                            ${msg.audio_file.transcription}
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            `;
+                            // For audio messages, don't pass content since transcription is in the indicator
+                            addMessageToChat(msg.role, '', { audioIndicator: audioIndicator });
+                        } else if (msg.content && msg.content.trim() !== '') {
+                            // Regular text messages
+                            addMessageToChat(msg.role, msg.content, null, null, msg.is_partial);
                         }
                     });
                     scrollToBottom();
@@ -2313,10 +2427,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function addMessageToChat(role, content, fileData = null, userRole = null, isPartial = false) {
-        // Skip adding empty messages
+        // Skip adding empty messages unless there's an audio indicator
         if (!content || content.trim() === '') {
-            console.log(`Skipping empty ${role} message`);
-            return;
+            if (!fileData || !fileData.audioIndicator) {
+                console.log(`Skipping empty ${role} message`);
+                return;
+            }
         }
         
         // Check for tool mentions in AI messages
@@ -2325,6 +2441,23 @@ document.addEventListener('DOMContentLoaded', () => {
             if (detectedTool && !document.querySelector('.tool-execution-indicator')) {
                 console.log('Tool detected in complete message:', detectedTool);
                 window.triggerToolAnimation(detectedTool);
+            }
+            
+            // Check for audio transcription in the response
+            const transcription = extractAudioTranscription(content);
+            console.log('Checking for transcription. Found:', transcription, 'Last audio element:', window.lastAudioMessageElement);
+            
+            if (transcription && window.lastAudioMessageElement) {
+                // Update the last audio message with transcription
+                const transcriptionDiv = window.lastAudioMessageElement.querySelector('.audio-transcription');
+                console.log('Found transcription div:', transcriptionDiv);
+                if (transcriptionDiv) {
+                    transcriptionDiv.textContent = transcription;
+                    transcriptionDiv.style.display = 'block';
+                    console.log('Updated transcription display');
+                }
+                // Clear the reference
+                window.lastAudioMessageElement = null;
             }
         }
         
@@ -2364,15 +2497,22 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Add file attachment indicator if fileData is provided
             if (fileData) {
-                const fileAttachment = document.createElement('div');
-                fileAttachment.className = 'file-attachment';
-                fileAttachment.innerHTML = `
-                    <i class="fas fa-paperclip"></i>
-                    <span class="file-name">${fileData.name}</span>
-                    <span class="file-type">${fileData.type}</span>
-                `;
-                contentDiv.appendChild(document.createElement('br'));
-                contentDiv.appendChild(fileAttachment);
+                // Check if it's an audio indicator
+                if (fileData.audioIndicator) {
+                    // For audio messages, replace the entire content
+                    contentDiv.innerHTML = '';
+                    contentDiv.appendChild(fileData.audioIndicator);
+                } else if (fileData.name) {
+                    const fileAttachment = document.createElement('div');
+                    fileAttachment.className = 'file-attachment';
+                    fileAttachment.innerHTML = `
+                        <i class="fas fa-paperclip"></i>
+                        <span class="file-name">${fileData.name}</span>
+                        <span class="file-type">${fileData.type}</span>
+                    `;
+                    contentDiv.appendChild(document.createElement('br'));
+                    contentDiv.appendChild(fileAttachment);
+                }
             }
         }
         
@@ -2409,6 +2549,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (typingIndicator) {
             typingIndicator.remove();
         }
+        
+        // Return the message element for reference
+        return messageDiv;
     }
     
     // Function to copy message to clipboard
@@ -3679,5 +3822,203 @@ document.addEventListener('DOMContentLoaded', () => {
             // Update role dropdown visibility
             updateRoleDropdownVisibility(isEnabled);
         });
+    }
+    
+    // Helper function to create recording indicator
+    function createRecordingIndicator() {
+        const indicator = document.createElement('div');
+        indicator.className = 'audio-recording-indicator';
+        
+        // Create waveform
+        const waveform = document.createElement('div');
+        waveform.className = 'audio-waveform';
+        
+        // Add 20 bars for the waveform
+        for (let i = 0; i < 20; i++) {
+            const bar = document.createElement('div');
+            bar.className = 'waveform-bar';
+            waveform.appendChild(bar);
+        }
+        
+        // Create time display
+        const timeDisplay = document.createElement('div');
+        timeDisplay.className = 'recording-time';
+        timeDisplay.textContent = '00:00';
+        
+        indicator.appendChild(waveform);
+        indicator.appendChild(timeDisplay);
+        
+        return indicator;
+    }
+    
+    // Helper function to send audio message
+    async function sendAudioMessage(audioFile) {
+        // Add user message with audio indicator
+        const audioIndicator = document.createElement('div');
+        audioIndicator.className = 'message-audio';
+        audioIndicator.innerHTML = `
+            <div class="message-audio-container">
+                <div class="message-audio-header">
+                    <i class="fas fa-microphone" style="font-size: 14px;"></i>
+                    Voice message
+                </div>
+                <div class="audio-transcription" style="display: none;">
+                    Transcribing...
+                </div>
+            </div>
+        `;
+        
+        const messageElement = addMessageToChat('user', '', { 
+            audioIndicator: audioIndicator,
+            file: audioFile 
+        });
+        
+        // Store reference to update transcription later
+        if (messageElement) {
+            window.lastAudioMessageElement = messageElement;
+        }
+        
+        // Upload audio file
+        const formData = new FormData();
+        formData.append('file', audioFile);
+        formData.append('conversation_id', currentConversationId || '');
+        
+        try {
+            const response = await fetch('/api/files/upload/', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken'),
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: formData
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to upload audio file');
+            }
+            
+            const fileData = await response.json();
+            console.log('Audio file uploaded:', fileData);
+            
+            // Show transcription loading state
+            if (window.lastAudioMessageElement) {
+                const transcriptionDiv = window.lastAudioMessageElement.querySelector('.audio-transcription');
+                if (transcriptionDiv) {
+                    transcriptionDiv.style.display = 'block';
+                }
+            }
+            
+            // Get transcription from the API
+            let transcription = null;
+            try {
+                console.log('Fetching transcription for file:', fileData.id);
+                const transcriptionResponse = await fetch(`/api/files/transcribe/${fileData.id}/`, {
+                    method: 'GET',
+                    headers: {
+                        'X-CSRFToken': getCookie('csrftoken'),
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                });
+                
+                console.log('Transcription response status:', transcriptionResponse.status);
+                
+                if (transcriptionResponse.ok) {
+                    const transcriptionData = await transcriptionResponse.json();
+                    console.log('Transcription received:', transcriptionData);
+                    transcription = transcriptionData.transcription;
+                    
+                    // Update the audio message with transcription
+                    if (window.lastAudioMessageElement) {
+                        const transcriptionDiv = window.lastAudioMessageElement.querySelector('.audio-transcription');
+                        console.log('Found transcription div:', transcriptionDiv);
+                        if (transcriptionDiv && transcription) {
+                            transcriptionDiv.innerHTML = transcription;
+                            transcriptionDiv.style.display = 'block';
+                            console.log('Updated transcription display with:', transcription);
+                        }
+                    } else {
+                        console.log('No lastAudioMessageElement found');
+                    }
+                } else {
+                    const errorData = await transcriptionResponse.text();
+                    console.error('Transcription failed:', transcriptionResponse.status, errorData);
+                    // Show error in UI
+                    if (window.lastAudioMessageElement) {
+                        const transcriptionDiv = window.lastAudioMessageElement.querySelector('.audio-transcription');
+                        if (transcriptionDiv) {
+                            transcriptionDiv.textContent = 'Transcription failed';
+                            transcriptionDiv.style.display = 'block';
+                            transcriptionDiv.style.color = '#ef4444';
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error getting transcription:', error);
+                // Show error in UI
+                if (window.lastAudioMessageElement) {
+                    const transcriptionDiv = window.lastAudioMessageElement.querySelector('.audio-transcription');
+                    if (transcriptionDiv) {
+                        transcriptionDiv.textContent = 'Transcription error';
+                        transcriptionDiv.style.display = 'block';
+                        transcriptionDiv.style.color = '#ef4444';
+                    }
+                }
+            }
+            
+            // Send message via WebSocket with audio file reference
+            if (socket && isSocketConnected) {
+                // Use transcription as message content if available
+                const messageContent = transcription || '[Voice Message]';
+                
+                const messageData = {
+                    type: 'message',
+                    message: messageContent,
+                    conversation_id: currentConversationId,
+                    project_id: currentProjectId,
+                    file: {
+                        id: fileData.id,
+                        name: audioFile.name,
+                        type: audioFile.type,
+                        size: audioFile.size
+                    },
+                    user_role: getCurrentUserRole(),
+                    turbo_mode: document.getElementById('turbo-mode-toggle')?.checked || false
+                };
+                
+                socket.send(JSON.stringify(messageData));
+            }
+            
+        } catch (error) {
+            console.error('Error sending audio message:', error);
+            showToast('Failed to send audio message', 'error');
+        }
+    }
+    
+    // Helper function to format file size
+    function formatFileSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        else if (bytes < 1048576) return Math.round(bytes / 1024) + ' KB';
+        else return Math.round(bytes / 1048576) + ' MB';
+    }
+    
+    // Helper function to extract audio transcription from AI response
+    function extractAudioTranscription(content) {
+        // Match pattern: [Audio Transcription of filename]: transcribed text
+        // Look for the transcription pattern and capture everything after it
+        const match = content.match(/\[Audio Transcription of [^\]]+\]:\s*\n*(.+?)$/s);
+        if (match && match[1]) {
+            // Extract just the transcribed text, stopping at the next paragraph or end
+            const transcribedText = match[1].split(/\n\n/)[0].trim();
+            console.log('Extracted transcription:', transcribedText);
+            return transcribedText;
+        }
+        console.log('No transcription found in:', content);
+        return null;
+    }
+    
+    // Helper function to get current user role
+    function getCurrentUserRole() {
+        const roleDropdown = document.querySelector('#role-dropdown-wrapper .custom-dropdown-item.selected');
+        return roleDropdown ? roleDropdown.dataset.value : 'product_analyst';
     }
 });

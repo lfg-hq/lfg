@@ -270,6 +270,9 @@ EMAIL_BACKEND = 'accounts.email_backend.EmailBackend'
 SENDGRID_API_KEY = os.environ.get('SENDGRID_API_KEY', '')
 SENDGRID_ECHO_TO_STDOUT = False  # Set to True to show emails in console instead of sending
 SENDGRID_SANDBOX_MODE_IN_DEBUG = False  # Set to True to prevent actual email sending in debug mode
+
+# OpenAI Configuration (for Whisper audio transcription)
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
 # # Disable SendGrid click and open tracking for all emails (important for password reset links)
 # SENDGRID_TRACK_CLICKS_HTML = False
 # SENDGRID_TRACK_CLICKS_PLAIN = False
