@@ -1582,7 +1582,8 @@ input:checked + .turbo-slider + .turbo-label,
     transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s ease;
 }
 
-.menu-item:hover .submenu {
+/* Removed hover behavior - now handled by JavaScript */
+.menu-item.active .submenu {
     opacity: 1;
     visibility: visible;
     transform: translateX(0);

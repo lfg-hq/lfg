@@ -191,36 +191,36 @@ function initializeSettingsButton() {
     let closeTimeout;
     let clickedOpen = false;
     
-    // Show dropdown on hover for settings button only
-    settingsBtn.addEventListener('mouseenter', () => {
-        if (!clickedOpen) {
-            clearTimeout(closeTimeout);
+    // Show dropdown on click for settings button
+    settingsBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        const isOpen = settingsDropdown.classList.contains('open');
+        if (isOpen) {
+            settingsDropdown.classList.remove('open');
+            clickedOpen = false;
+        } else {
             settingsDropdown.classList.add('open');
+            clickedOpen = true;
         }
     });
     
-    // Keep dropdown open when hovering over it
-    settingsDropdown.addEventListener('mouseenter', () => {
-        clearTimeout(closeTimeout);
-    });
-    
-    // Hide dropdown when mouse leaves both button and dropdown
-    settingsBtn.addEventListener('mouseleave', () => {
-        if (!clickedOpen) {
-            closeTimeout = setTimeout(() => {
-                if (!settingsDropdown.matches(':hover')) {
-                    settingsDropdown.classList.remove('open');
+    // Handle menu item clicks to show submenus
+    const menuItems = settingsDropdown.querySelectorAll('.menu-item');
+    menuItems.forEach(menuItem => {
+        menuItem.addEventListener('click', (e) => {
+            e.stopPropagation();
+            
+            // Close other open submenus
+            menuItems.forEach(item => {
+                if (item !== menuItem) {
+                    item.classList.remove('active');
                 }
-            }, 200);
-        }
-    });
-    
-    settingsDropdown.addEventListener('mouseleave', () => {
-        if (!clickedOpen) {
-            closeTimeout = setTimeout(() => {
-                settingsDropdown.classList.remove('open');
-            }, 200);
-        }
+            });
+            
+            // Toggle current submenu
+            menuItem.classList.toggle('active');
+        });
     });
     
     // Handle clicking on role status
@@ -234,7 +234,7 @@ function initializeSettingsButton() {
             setTimeout(() => {
                 const roleMenuItem = document.querySelector('[data-submenu="role"]');
                 if (roleMenuItem) {
-                    roleMenuItem.dispatchEvent(new MouseEvent('mouseenter'));
+                    roleMenuItem.classList.add('active');
                 }
             }, 50);
         });
@@ -251,7 +251,7 @@ function initializeSettingsButton() {
             setTimeout(() => {
                 const modelMenuItem = document.querySelector('[data-submenu="model"]');
                 if (modelMenuItem) {
-                    modelMenuItem.dispatchEvent(new MouseEvent('mouseenter'));
+                    modelMenuItem.classList.add('active');
                 }
             }, 50);
         });
