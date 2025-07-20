@@ -3206,8 +3206,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Function to set sidebar state
+    // Function to set sidebar state - COMMENTED OUT: Using new sidebar.js system instead
+    /*
     function setSidebarState(collapsed) {
+        console.log("SIDEBAR!!!")
         const sidebar = document.getElementById('sidebar');
         
         if (collapsed) {
@@ -3233,13 +3235,17 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
     }
+    */
 
-    // Close sidebar when overlay is clicked (mobile)
+    // Close sidebar when overlay is clicked (mobile) - COMMENTED OUT: Handled by sidebar.js
+    /*
     sidebarOverlay.addEventListener('click', () => {
         setSidebarState(true); // Collapse sidebar
     });
+    */
 
-    // Add a mobile toggle button
+    // Add a mobile toggle button - COMMENTED OUT: Handled by sidebar.js
+    /*
     function addMobileToggle() {
         const mobileToggle = document.createElement('button');
         mobileToggle.className = 'mobile-sidebar-toggle';
@@ -3251,11 +3257,16 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         document.body.appendChild(mobileToggle);
     }
+    */
 
     // Call the initialization functions
+    // Mobile toggle - COMMENTED OUT: Handled by sidebar.js
+    /*
     if (window.innerWidth <= 768) {
+        console.log("Mobile Toggle")
         addMobileToggle();
     }
+    */
 
     // Helper function to get CSRF token
     function getCsrfToken() {

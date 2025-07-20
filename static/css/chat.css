@@ -398,9 +398,9 @@
     flex-direction: column;
     height: 100vh;
     position: relative;
-    transition: all 0.3s ease;
+    /* Removed transition to prevent flickering - transitions are handled by sidebar.css */
     width: 100%;
-    margin-left: 20px; /* Small margin to accommodate collapsed sidebar */
+    /* Removed hardcoded margin-left - this is managed by sidebar.css based on sidebar state */
     overflow: visible;
 }
 

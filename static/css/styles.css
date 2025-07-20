@@ -34,13 +34,15 @@ body, html {
     background-color: var(--bg-color);
 }
 
-/* Sidebar styles */
+/* Sidebar styles - COMMENTED OUT DUE TO CONFLICT WITH NEW SIDEBAR SYSTEM
+   These styles conflict with sidebar.css which uses the new minimized system */
+/*
 .sidebar {
     position: absolute;
     top: 0;
     left: 0;
     height: 100%;
-    width: 0; /* Start with no width */
+    width: 0;
     background-color: rgba(18, 18, 18, 0.95);
     border-right: 1px solid rgba(51, 51, 51, 0.3);
     z-index: 100;
@@ -51,38 +53,41 @@ body, html {
     box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
 }
 
-/* Expanded sidebar */
 .sidebar.expanded {
     width: 240px;
 }
+*/
 
-/* Chat container - no margin by default */
+/* Chat container - COMMENTED OUT DUE TO CONFLICT WITH SIDEBAR.CSS
+   The chat-container styles are now handled by sidebar.css */
+/*
 .chat-container {
     flex: 1;
     display: flex;
     flex-direction: column;
     height: 100vh;
-    margin-left: 0; /* No margin when sidebar is collapsed */
+    margin-left: 0;
     width: 100%;
     transition: margin-left 0.3s ease, width 0.3s ease;
     overflow: hidden;
 }
 
-/* Adjust chat container when sidebar is expanded */
 .app-container.sidebar-expanded .chat-container {
-    margin-left: 240px; /* Match the expanded sidebar width */
+    margin-left: 240px;
     width: calc(100% - 240px);
 }
+*/
 
-/* Hide rocket icon when not needed */
+/* Hide rocket icon when not needed - COMMENTED OUT */
+/*
 .sidebar:before {
     display: none;
 }
 
-/* No need for this animation when icon is hidden */
 .sidebar:not(.expanded):before {
     animation: none;
 }
+*/
 
 /* Remove toggle button styles */
 .sidebar-toggle {
@@ -91,15 +96,17 @@ body, html {
 
 /* Responsive styles for mobile */
 @media (max-width: 768px) {
+    /* Sidebar mobile styles - COMMENTED OUT DUE TO CONFLICT
     .sidebar {
         transform: translateX(-100%);
-        width: 240px; /* Set width for transform to work properly */
+        width: 240px;
         transition: transform 0.3s ease;
     }
     
     .sidebar.expanded {
         transform: translateX(0);
     }
+    */
     
     /* Reset chat container position on mobile */
     .chat-container {
@@ -151,10 +158,10 @@ body, html {
     transition: opacity 0.3s ease;
 }
 
-.app-container.sidebar-expanded .sidebar-overlay {
+/* .app-container.sidebar-expanded .sidebar-overlay {
     display: block;
     opacity: 1;
-}
+} */
 
 /* Add subtle animation to the rocket icon */
 @keyframes pulse {
@@ -163,9 +170,9 @@ body, html {
     100% { transform: translateX(-50%) scale(1); }
 }
 
-.sidebar:not(.expanded):before {
+/* .sidebar:not(.expanded):before {
     animation: pulse 3s infinite ease-in-out;
-}
+} */
 
 /* Add subtle glow to active conversation */
 .conversation-item.active {
@@ -460,14 +467,14 @@ body, html {
     background-color: rgba(187, 134, 252, 0.4);
 }
 
-/* Expanded sidebar styles */
+/* Expanded sidebar styles - COMMENTED OUT DUE TO CONFLICT
 .sidebar.expanded {
-    transform: translateX(0); /* Fully visible when expanded */
+    transform: translateX(0);
     width: 240px;
     box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
-    background-color: rgba(30, 30, 30, 0.7); /* Semi-transparent background */
-    backdrop-filter: blur(15px); /* Blur effect for glass morphism */
-    border-right: 1px solid rgba(51, 51, 51, 0.5); /* Subtle border */
+    background-color: rgba(30, 30, 30, 0.7);
+    backdrop-filter: blur(15px);
+    border-right: 1px solid rgba(51, 51, 51, 0.5);
 }
 
 .sidebar.expanded .sidebar-header h1, 
@@ -477,16 +484,18 @@ body, html {
     display: block;
     opacity: 1;
 }
+*/
 
 /* Remove toggle button as we're using hover */
 .toggle-sidebar-btn {
     display: none;
 }
 
-/* Collapsed sidebar layout - specifically hide content */
+/* Collapsed sidebar layout - COMMENTED OUT DUE TO CONFLICT
 .sidebar:not(.expanded) * {
     visibility: hidden;
 }
+*/
 
 /* Sidebar content */
 .sidebar-top-content {
@@ -517,25 +526,22 @@ body, html {
     backdrop-filter: blur(10px);
 }
 
-/* When expanded, allow proper alignment */
+/* When expanded, allow proper alignment - COMMENTED OUT
 .sidebar.expanded .sidebar-bottom-content {
     justify-content: flex-start;
     display: flex;
 }
 
-/* User info in expanded state */
 .sidebar.expanded .user-info {
     display: flex;
     align-items: center;
     padding: 15px;
 }
 
-/* Hide username but show profile link on same line */
 .sidebar.expanded .user-info .username {
     display: none;
 }
 
-/* Remove vertical margins and position link properly */
 .sidebar.expanded .user-info .user-details {
     flex-direction: row;
     align-items: center;
@@ -547,6 +553,7 @@ body, html {
     letter-spacing: 0.2px;
     opacity: 0.9;
 }
+*/
 
 /* Sidebar overlay for all screen sizes */
 .sidebar-overlay {
@@ -563,10 +570,10 @@ body, html {
     transition: opacity 0.3s ease;
 }
 
-.app-container.sidebar-expanded .sidebar-overlay {
+/* .app-container.sidebar-expanded .sidebar-overlay {
     display: block;
     opacity: 1;
-}
+} */
 
 /* Custom scrollbar for sidebar */
 /* Removed these styles as we're now hiding the scrollbar */
