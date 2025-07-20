@@ -571,7 +571,24 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!mediaRecorder || mediaRecorder.state === 'inactive') {
                 // Start recording
                 try {
-                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    const stream = await navigator.mediaDevices.getUserMedia({ 
+                        audio: {
+                            echoCancellation: false,
+                            noiseSuppression: false,
+                            autoGainControl: false
+                        }
+                    });
+                    
+                    console.log('🎙️ Got audio stream:', {
+                        active: stream.active,
+                        tracks: stream.getTracks().map(t => ({
+                            kind: t.kind,
+                            enabled: t.enabled,
+                            muted: t.muted,
+                            readyState: t.readyState
+                        }))
+                    });
+                    
                     mediaRecorder = new MediaRecorder(stream);
                     audioChunks = [];
                     
@@ -581,6 +598,148 @@ document.addEventListener('DOMContentLoaded', () => {
                     messagesContainer.appendChild(recordingIndicator);
                     messagesContainer.scrollTop = messagesContainer.scrollHeight;
                     
+                    // Set up audio analysis for voice-reactive waveform
+                    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    console.log('AudioContext created, state:', audioContext.state);
+                    
+                    // Resume audio context if suspended (browser security)
+                    if (audioContext.state === 'suspended') {
+                        console.log('AudioContext suspended, resuming...');
+                        await audioContext.resume();
+                        console.log('AudioContext resumed, new state:', audioContext.state);
+                    }
+                    
+                    const analyser = audioContext.createAnalyser();
+                    const microphone = audioContext.createMediaStreamSource(stream);
+                    
+                    // Store analyser globally for debugging
+                    window.debugAnalyser = analyser;
+                    window.debugMicrophone = microphone;
+                    
+                    console.log('Audio analysis setup:', {
+                        analyserCreated: !!analyser,
+                        microphoneCreated: !!microphone,
+                        frequencyBinCount: analyser.frequencyBinCount,
+                        streamActive: stream.active,
+                        audioTracks: stream.getAudioTracks().length
+                    });
+                    
+                    analyser.smoothingTimeConstant = 0.8;
+                    analyser.fftSize = 256; // Increase for better frequency resolution
+                    analyser.minDecibels = -90;
+                    analyser.maxDecibels = -10;
+                    
+                    // Connect microphone -> analyser
+                    microphone.connect(analyser);
+                    
+                    // Test the audio by checking if we're getting data
+                    setTimeout(() => {
+                        const testArray = new Uint8Array(analyser.frequencyBinCount);
+                        analyser.getByteFrequencyData(testArray);
+                        const testSum = testArray.reduce((a, b) => a + b, 0);
+                        console.log('🔊 Audio routing test:', {
+                            sum: testSum,
+                            avg: testSum / testArray.length,
+                            contextState: audioContext.state,
+                            analyserConnected: true
+                        });
+                    }, 100);
+                    
+                    console.log('Audio routing established:', {
+                        microphoneConnected: true,
+                        analyserFftSize: analyser.fftSize,
+                        frequencyBinCount: analyser.frequencyBinCount
+                    });
+                    
+                    // Store audio context for cleanup
+                    window.currentAudioContext = audioContext;
+                    
+                    // Simple waveform animation
+                    let frameCount = 0;
+                    let animationRunning = false;
+                    
+                    function animateWaveform() {
+                        // Debug first frame
+                        if (!animationRunning) {
+                            console.log('🚀 First animation frame:', {
+                                hasIndicator: !!recordingIndicator,
+                                hasRecorder: !!mediaRecorder,
+                                recorderState: mediaRecorder?.state,
+                                hasAnalyser: !!analyser,
+                                analyserBinCount: analyser?.frequencyBinCount
+                            });
+                            animationRunning = true;
+                        }
+                        
+                        if (!recordingIndicator || !mediaRecorder || mediaRecorder.state !== 'recording') {
+                            console.log('❌ Animation stopped - missing requirements');
+                            animationRunning = false;
+                            return;
+                        }
+                        
+                        try {
+                            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                            analyser.getByteFrequencyData(dataArray);
+                            
+                            // Get average volume
+                            let sum = 0;
+                            let max = 0;
+                            for (let i = 0; i < dataArray.length; i++) {
+                                sum += dataArray[i];
+                                max = Math.max(max, dataArray[i]);
+                            }
+                            const average = sum / dataArray.length;
+                            
+                            // Log every 30 frames (0.5 second)
+                            if (frameCount % 30 === 0) {
+                                console.log('🎤 Audio:', {
+                                    avg: average.toFixed(1),
+                                    max: max,
+                                    frame: frameCount,
+                                    firstValues: dataArray.slice(0, 5).join(',')
+                                });
+                            }
+                            frameCount++;
+                            
+                            // Update bars
+                            const bars = recordingIndicator.querySelectorAll('.waveform-bar');
+                            if (bars.length === 0) {
+                                console.error('❌ No waveform bars found!');
+                                return;
+                            }
+                            
+                            bars.forEach((bar, i) => {
+                                const index = Math.floor((i / bars.length) * dataArray.length);
+                                const value = dataArray[index] || 0;
+                                const height = 3 + (value / 255) * 30;
+                                bar.style.height = height + 'px';
+                            });
+                            
+                            requestAnimationFrame(animateWaveform);
+                        } catch (error) {
+                            console.error('❌ Animation error:', error);
+                            animationRunning = false;
+                        }
+                    }
+                    
+                    // Start the animation loop
+                    console.log('🎯 Starting waveform animation...');
+                    
+                    // Add test function to window for debugging
+                    window.testAudioLevel = () => {
+                        const testData = new Uint8Array(analyser.frequencyBinCount);
+                        analyser.getByteFrequencyData(testData);
+                        const sum = testData.reduce((a, b) => a + b, 0);
+                        const avg = sum / testData.length;
+                        console.log('Manual audio test:', {
+                            average: avg,
+                            max: Math.max(...testData),
+                            analyserState: analyser.context.state,
+                            dataLength: testData.length
+                        });
+                        return avg;
+                    };
+                    
                     mediaRecorder.ondataavailable = (event) => {
                         audioChunks.push(event.data);
                     };
@@ -589,20 +748,32 @@ document.addEventListener('DOMContentLoaded', () => {
                         // Stop all tracks
                         stream.getTracks().forEach(track => track.stop());
                         
+                        // Clean up audio context
+                        if (window.currentAudioContext) {
+                            window.currentAudioContext.close();
+                            window.currentAudioContext = null;
+                        }
+                        
                         // Remove recording indicator
                         if (recordingIndicator) {
                             recordingIndicator.remove();
                             recordingIndicator = null;
                         }
                         
-                        // Create audio blob
-                        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-                        const audioFile = new File([audioBlob], `recording_${Date.now()}.webm`, { type: 'audio/webm' });
-                        
-                        console.log('Audio recording completed:', audioFile.name, 'size:', audioFile.size);
-                        
-                        // Send audio message directly
-                        await sendAudioMessage(audioFile);
+                        // Check if recording was cancelled
+                        if (window.recordingCancelled) {
+                            window.recordingCancelled = false;
+                            console.log('Recording cancelled by user');
+                        } else {
+                            // Create audio blob
+                            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                            const audioFile = new File([audioBlob], `recording_${Date.now()}.webm`, { type: 'audio/webm' });
+                            
+                            console.log('Audio recording completed:', audioFile.name, 'size:', audioFile.size);
+                            
+                            // Send audio message directly
+                            await sendAudioMessage(audioFile);
+                        }
                         
                         // Reset button state
                         recordAudioBtn.classList.remove('recording');
@@ -621,6 +792,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Update button state
                     recordAudioBtn.classList.add('recording');
                     recordAudioBtn.innerHTML = '<i class="fas fa-stop"></i>';
+                    
+                    // Start the waveform animation after recorder is started
+                    animateWaveform();
                     
                     // Update timer in waveform indicator
                     recordingTimer = setInterval(() => {
@@ -3837,6 +4011,7 @@ document.addEventListener('DOMContentLoaded', () => {
         for (let i = 0; i < 20; i++) {
             const bar = document.createElement('div');
             bar.className = 'waveform-bar';
+            bar.style.height = '4px'; // Set smaller initial height
             waveform.appendChild(bar);
         }
         
@@ -3845,8 +4020,23 @@ document.addEventListener('DOMContentLoaded', () => {
         timeDisplay.className = 'recording-time';
         timeDisplay.textContent = '00:00';
         
+        // Create cancel button
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'recording-cancel-btn';
+        cancelBtn.innerHTML = '<i class="fas fa-times"></i>';
+        cancelBtn.title = 'Cancel recording';
+        cancelBtn.onclick = () => {
+            // Stop recording without saving
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                // Set flag to indicate cancellation
+                window.recordingCancelled = true;
+                mediaRecorder.stop();
+            }
+        };
+        
         indicator.appendChild(waveform);
         indicator.appendChild(timeDisplay);
+        indicator.appendChild(cancelBtn);
         
         return indicator;
     }
