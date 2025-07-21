@@ -15,7 +15,7 @@ from django.views import View
 from django.utils import timezone
 from datetime import datetime, time
 from django.db.models import Sum
-from accounts.models import TokenUsage
+from accounts.models import TokenUsage, ApplicationState
 from accounts.utils import get_daily_token_usage
 
 
@@ -52,8 +52,18 @@ def index(request):
     )
     context['model_key'] = model_selection.selected_model
     
-    # if hasattr(request.user, 'profile'):
-    #     context['sidebar_collapsed'] = request.user.profile.sidebar_collapsed
+    # Get or create ApplicationState for sidebar and other UI state
+    app_state, created = ApplicationState.objects.get_or_create(
+        user=request.user,
+        defaults={
+            'sidebar_minimized': False,
+            'last_selected_model': model_selection.selected_model,
+            'last_selected_role': agent_role.name,
+            'turbo_mode_enabled': agent_role.turbo_mode
+        }
+    )
+    context['sidebar_minimized'] = app_state.sidebar_minimized
+    
     return render(request, 'chat/main.html', context)
 
 @login_required
@@ -82,8 +92,17 @@ def project_chat(request, project_id):
     )
     context['model_key'] = model_selection.selected_model
     
-    if hasattr(request.user, 'profile'):
-        context['sidebar_collapsed'] = request.user.profile.sidebar_collapsed
+    # Get or create ApplicationState for sidebar and other UI state
+    app_state, created = ApplicationState.objects.get_or_create(
+        user=request.user,
+        defaults={
+            'sidebar_minimized': False,
+            'last_selected_model': model_selection.selected_model,
+            'last_selected_role': agent_role.name,
+            'turbo_mode_enabled': agent_role.turbo_mode
+        }
+    )
+    context['sidebar_minimized'] = app_state.sidebar_minimized
         
     return render(request, 'chat/main.html', context)
 
@@ -122,8 +141,17 @@ def show_conversation(request, conversation_id):
     )
     context['model_key'] = model_selection.selected_model
     
-    if hasattr(request.user, 'profile'):
-        context['sidebar_collapsed'] = request.user.profile.sidebar_collapsed
+    # Get or create ApplicationState for sidebar and other UI state
+    app_state, created = ApplicationState.objects.get_or_create(
+        user=request.user,
+        defaults={
+            'sidebar_minimized': False,
+            'last_selected_model': model_selection.selected_model,
+            'last_selected_role': agent_role.name,
+            'turbo_mode_enabled': agent_role.turbo_mode
+        }
+    )
+    context['sidebar_minimized'] = app_state.sidebar_minimized
         
     return render(request, 'chat/main.html', context)
 
@@ -254,16 +282,21 @@ def create_conversation(request):
 @require_http_methods(["POST"])
 @login_required
 def toggle_sidebar(request):
-    """Toggle sidebar collapsed state and save to user profile."""
+    """Toggle sidebar minimized state and save to ApplicationState."""
     data = json.loads(request.body)
-    collapsed = data.get('collapsed', False)
+    minimized = data.get('minimized', False)
     
-    # Update user profile
-    if hasattr(request.user, 'profile'):
-        request.user.profile.sidebar_collapsed = collapsed
-        request.user.profile.save()
+    # Get or create ApplicationState
+    app_state, created = ApplicationState.objects.get_or_create(
+        user=request.user,
+        defaults={'sidebar_minimized': minimized}
+    )
     
-    return JsonResponse({"success": True, "collapsed": collapsed})
+    if not created:
+        app_state.sidebar_minimized = minimized
+        app_state.save()
+    
+    return JsonResponse({"success": True, "minimized": minimized})
 
 @login_required
 @require_http_methods(["GET", "PUT"])

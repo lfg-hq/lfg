@@ -268,21 +268,13 @@
       data-turbo-mode="{% if turbo_mode %}true{% else %}false{% endif %}"
       data-model-key="{{ model_key|default:'o4-mini' }}"
       data-role-key="{{ role_key|default:'product_analyst' }}"
+      data-sidebar-minimized="{% if sidebar_minimized %}true{% else %}false{% endif %}"
       >
-    <script>
-        // Apply sidebar state immediately to prevent flicker
-        (function() {
-            const savedState = localStorage.getItem('sidebarMinimized');
-            if (savedState === 'true') {
-                document.documentElement.classList.add('sidebar-minimized-init');
-            }
-        })();
-    </script>
     <!-- Toast messages container -->
     <div class="messages" id="toast-container"></div>
     
-    <div class="app-container">
-        {% include 'includes/sidebar.html' with show_conversations=True %}
+    <div class="app-container{% if sidebar_minimized %} sidebar-minimized{% endif %}">
+        {% include 'includes/sidebar.html' with show_conversations=True sidebar_minimized=sidebar_minimized %}
         
         <div class="chat-container">
             <div class="chat-messages" id="chat-messages">

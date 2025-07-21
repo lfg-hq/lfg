@@ -8,12 +8,15 @@
     box-shadow: none !important;
 }
 
-/* Initial state to prevent flicker */
+/* Initial state to prevent flicker - using preload class */
+.sidebar-minimized-preload .sidebar,
 .sidebar-minimized-init .sidebar {
     width: 60px !important;
     transition: none !important;
 }
 
+.sidebar-minimized-preload .chat-container,
+.sidebar-minimized-preload .main-content-with-sidebar,
 .sidebar-minimized-init .chat-container,
 .sidebar-minimized-init .main-content-with-sidebar {
     margin-left: 60px !important;
@@ -21,14 +24,26 @@
     transition: none !important;
 }
 
+.sidebar-minimized-preload .app-container,
 .sidebar-minimized-init .app-container {
     transition: none !important;
 }
 
 /* Ensure NO transitions on ANY element during initial load */
+.sidebar-minimized-preload *,
 .sidebar-minimized-init * {
     transition: none !important;
     animation: none !important;
+}
+
+/* Also handle the minimized state classes during preload */
+.sidebar-minimized-preload .sidebar.minimized {
+    width: 60px !important;
+}
+
+.sidebar-minimized-preload .app-container.sidebar-minimized .chat-container {
+    margin-left: 60px !important;
+    width: calc(100% - 60px) !important;
 }
 
 /* Base sidebar */

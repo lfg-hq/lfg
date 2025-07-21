@@ -16,8 +16,8 @@
     {% block extra_css %}{% endblock %}
 </head>
 <body>
-    <div class="app-container">
-        {% include 'includes/sidebar.html' with show_conversations=False %}
+    <div class="app-container{% if user.app_state.sidebar_minimized %} sidebar-minimized{% endif %}">
+        {% include 'includes/sidebar.html' with show_conversations=False sidebar_minimized=user.app_state.sidebar_minimized %}
         
         <main class="main-content-with-sidebar">
             <div class="container">
