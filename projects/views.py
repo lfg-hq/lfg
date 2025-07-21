@@ -16,6 +16,9 @@ import json
 # Import ServerConfig from development app
 from development.models import ServerConfig
 from accounts.models import LLMApiKeys, ExternalServicesAPIKeys
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Import the functions from ai_functions
 from development.utils.ai_functions import execute_local_command, restart_server_from_config
@@ -68,7 +71,7 @@ def project_detail(request, project_id):
             'linear_project_id': project.linear_project_id,
         })
     
-    print(project.direct_conversations.all())
+    logger.info(f"Project direct conversations: {project.direct_conversations.all()}", extra={'easylogs_metadata': {'project_id': project.id, 'project_name': project.name}})
     return render(request, 'projects/project_detail.html', {
         'project': project
     })

@@ -367,45 +367,65 @@ LOGGING = {
             'class': 'logging.StreamHandler',
             'formatter': 'verbose'
         },
+        'easylogs': {
+            'level': 'DEBUG',
+            'class': 'utils.easylogs.DjangoEasyLogsHandler',
+            'formatter': 'simple'
+        },
     },
     'root': {
-        'handlers': ['console'],
+        'handlers': ['console', 'easylogs'],
         'level': 'INFO',
     },
     'loggers': {
         'django': {
-            'handlers': ['console'],
+            'handlers': ['console', 'easylogs'],
             'level': 'INFO',
             'propagate': False,
         },
         'channels': {
-            'handlers': ['console'],
+            'handlers': ['console', 'easylogs'],
             'level': 'INFO',
             'propagate': False,
         },
         'chat': {
-            'handlers': ['console'],
+            'handlers': ['console', 'easylogs'],
             'level': 'DEBUG',
             'propagate': False,
         },
-        'coding': {
-            'handlers': ['console'],
+        'development': {
+            'handlers': ['console', 'easylogs'],
             'level': 'DEBUG',
             'propagate': False,
         },
-        'coding.utils': {
-            'handlers': ['console'],
+        'development.utils': {
+            'handlers': ['console', 'easylogs'],
             'level': 'DEBUG',
             'propagate': False,
         },
-        'coding.utils.ai_providers': {
-            'handlers': ['console'],
+        'development.utils.ai_providers': {
+            'handlers': ['console', 'easylogs'],
             'level': 'DEBUG',
             'propagate': False,
         },
-        'coding.utils.ai_functions': {
-            'handlers': ['console'],
+        'development.utils.ai_functions': {
+            'handlers': ['console', 'easylogs'],
             'level': 'DEBUG',
+            'propagate': False,
+        },
+        'accounts': {
+            'handlers': ['console', 'easylogs'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'projects': {
+            'handlers': ['console', 'easylogs'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'subscriptions': {
+            'handlers': ['console', 'easylogs'],
+            'level': 'INFO',
             'propagate': False,
         },
     },
