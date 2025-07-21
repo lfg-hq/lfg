@@ -112,6 +112,20 @@ class EmailVerificationCode(models.Model):
         return not self.used and timezone.now() < self.expires_at
 
 
+class ApplicationState(models.Model):
+    """Model to store user-specific application UI state"""
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='app_state')
+    sidebar_minimized = models.BooleanField(default=False)
+    last_selected_model = models.CharField(max_length=50, default='o4-mini')
+    last_selected_role = models.CharField(max_length=50, default='product_analyst')
+    turbo_mode_enabled = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"{self.user.username}'s app state"
+
+
 class GitHubToken(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     access_token = models.CharField(max_length=255)
@@ -138,6 +152,7 @@ class TokenUsage(models.Model):
         # OpenAI models
         ('gpt-4o', 'GPT-4o'),
         ('gpt-4.1', 'GPT-4.1'),
+        ('whisper-1', 'Whisper (Audio Transcription)'),
         # Anthropic models
         ('claude-sonnet-4-20250514', 'Claude Sonnet 4'),
         ('claude-opus-4-20250514', 'Claude Opus 4'),
@@ -208,6 +223,8 @@ def create_user_profile(sender, instance, created, **kwargs):
             Profile.objects.create(user=instance)
             # Also create LLMApiKeys for the new user
             LLMApiKeys.objects.create(user=instance)
+            # Create ApplicationState for the new user
+            ApplicationState.objects.create(user=instance)
     except:
         # Handle the case when the table doesn't exist yet
         pass

@@ -220,6 +220,7 @@ AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID', '')
 AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY', '')
 AWS_S3_REGION_NAME = os.environ.get('AWS_S3_REGION_NAME', 'us-east-1')
 AWS_S3_PROJECT_PREFIX = os.environ.get('AWS_S3_PROJECT_PREFIX', 'projects')
+AWS_S3_PRESIGNED_URL_EXPIRY = int(os.environ.get('AWS_S3_PRESIGNED_URL_EXPIRY', 3600))  # Default 1 hour
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
@@ -269,6 +270,9 @@ EMAIL_BACKEND = 'accounts.email_backend.EmailBackend'
 SENDGRID_API_KEY = os.environ.get('SENDGRID_API_KEY', '')
 SENDGRID_ECHO_TO_STDOUT = False  # Set to True to show emails in console instead of sending
 SENDGRID_SANDBOX_MODE_IN_DEBUG = False  # Set to True to prevent actual email sending in debug mode
+
+# OpenAI Configuration (for Whisper audio transcription)
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
 # # Disable SendGrid click and open tracking for all emails (important for password reset links)
 # SENDGRID_TRACK_CLICKS_HTML = False
 # SENDGRID_TRACK_CLICKS_PLAIN = False

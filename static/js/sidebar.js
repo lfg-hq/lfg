@@ -6,22 +6,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const userInfoButton = document.getElementById('user-info-button');
     const userDropdown = document.getElementById('user-dropdown');
     
-    // Load saved state from localStorage
-    const savedState = localStorage.getItem('sidebarMinimized');
-    const isInitiallyMinimized = savedState === 'true';
+    // The sidebar state is already set by the server, just sync localStorage
+    const isMinimized = sidebar && sidebar.classList.contains('minimized');
+    const isSidebarMinimized = appContainer && appContainer.classList.contains('sidebar-minimized');
     
-    // Remove the initial state class
-    document.documentElement.classList.remove('sidebar-minimized-init');
-    
-    // Initialize sidebar state
-    if (isInitiallyMinimized) {
-        sidebar.classList.add('minimized');
-        appContainer.classList.add('sidebar-minimized');
-    }
+    // Sync localStorage with server state
+    localStorage.setItem('sidebarMinimized', isMinimized ? 'true' : 'false');
     
     // Toggle sidebar minimized state
-    function toggleMinimized() {
+    async function toggleMinimized() {
         const isMinimized = sidebar.classList.contains('minimized');
+        const newState = !isMinimized;
         
         if (isMinimized) {
             sidebar.classList.remove('minimized');
@@ -33,6 +28,21 @@ document.addEventListener('DOMContentLoaded', () => {
             localStorage.setItem('sidebarMinimized', 'true');
             // Close dropdown when minimizing
             userInfo.classList.remove('open');
+        }
+        
+        // Sync with server
+        try {
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+            await fetch('/api/toggle-sidebar/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({ minimized: newState })
+            });
+        } catch (error) {
+            console.error('Failed to sync sidebar state:', error);
         }
     }
     

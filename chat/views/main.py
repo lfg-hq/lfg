@@ -15,7 +15,7 @@ from django.views import View
 from django.utils import timezone
 from datetime import datetime, time
 from django.db.models import Sum
-from accounts.models import TokenUsage
+from accounts.models import TokenUsage, ApplicationState
 from accounts.utils import get_daily_token_usage
 
 
@@ -37,8 +37,33 @@ def index(request):
         context['project'] = default_project
         context['project_id'] = str(default_project.project_id)  # Use project_id instead of id
     
-    # if hasattr(request.user, 'profile'):
-    #     context['sidebar_collapsed'] = request.user.profile.sidebar_collapsed
+    # Get user's agent role for turbo mode and role
+    agent_role, created = AgentRole.objects.get_or_create(
+        user=request.user,
+        defaults={'name': 'product_analyst', 'turbo_mode': False}
+    )
+    context['turbo_mode'] = agent_role.turbo_mode
+    context['role_key'] = agent_role.name
+    
+    # Get user's model selection
+    model_selection, created = ModelSelection.objects.get_or_create(
+        user=request.user,
+        defaults={'selected_model': 'o4-mini'}
+    )
+    context['model_key'] = model_selection.selected_model
+    
+    # Get or create ApplicationState for sidebar and other UI state
+    app_state, created = ApplicationState.objects.get_or_create(
+        user=request.user,
+        defaults={
+            'sidebar_minimized': False,
+            'last_selected_model': model_selection.selected_model,
+            'last_selected_role': agent_role.name,
+            'turbo_mode_enabled': agent_role.turbo_mode
+        }
+    )
+    context['sidebar_minimized'] = app_state.sidebar_minimized
+    
     return render(request, 'chat/main.html', context)
 
 @login_required
@@ -52,8 +77,32 @@ def project_chat(request, project_id):
         'project_id': project.project_id
     }
     
-    if hasattr(request.user, 'profile'):
-        context['sidebar_collapsed'] = request.user.profile.sidebar_collapsed
+    # Get user's agent role for turbo mode and role
+    agent_role, created = AgentRole.objects.get_or_create(
+        user=request.user,
+        defaults={'name': 'product_analyst', 'turbo_mode': False}
+    )
+    context['turbo_mode'] = agent_role.turbo_mode
+    context['role_key'] = agent_role.name
+    
+    # Get user's model selection
+    model_selection, created = ModelSelection.objects.get_or_create(
+        user=request.user,
+        defaults={'selected_model': 'o4-mini'}
+    )
+    context['model_key'] = model_selection.selected_model
+    
+    # Get or create ApplicationState for sidebar and other UI state
+    app_state, created = ApplicationState.objects.get_or_create(
+        user=request.user,
+        defaults={
+            'sidebar_minimized': False,
+            'last_selected_model': model_selection.selected_model,
+            'last_selected_role': agent_role.name,
+            'turbo_mode_enabled': agent_role.turbo_mode
+        }
+    )
+    context['sidebar_minimized'] = app_state.sidebar_minimized
         
     return render(request, 'chat/main.html', context)
 
@@ -77,8 +126,32 @@ def show_conversation(request, conversation_id):
         context['project'] = project
         context['project_id'] = str(project.project_id)
     
-    if hasattr(request.user, 'profile'):
-        context['sidebar_collapsed'] = request.user.profile.sidebar_collapsed
+    # Get user's agent role for turbo mode and role
+    agent_role, created = AgentRole.objects.get_or_create(
+        user=request.user,
+        defaults={'name': 'product_analyst', 'turbo_mode': False}
+    )
+    context['turbo_mode'] = agent_role.turbo_mode
+    context['role_key'] = agent_role.name
+    
+    # Get user's model selection
+    model_selection, created = ModelSelection.objects.get_or_create(
+        user=request.user,
+        defaults={'selected_model': 'o4-mini'}
+    )
+    context['model_key'] = model_selection.selected_model
+    
+    # Get or create ApplicationState for sidebar and other UI state
+    app_state, created = ApplicationState.objects.get_or_create(
+        user=request.user,
+        defaults={
+            'sidebar_minimized': False,
+            'last_selected_model': model_selection.selected_model,
+            'last_selected_role': agent_role.name,
+            'turbo_mode_enabled': agent_role.turbo_mode
+        }
+    )
+    context['sidebar_minimized'] = app_state.sidebar_minimized
         
     return render(request, 'chat/main.html', context)
 
@@ -163,6 +236,35 @@ def conversation_detail(request, conversation_id):
     
     return JsonResponse(data)
 
+@require_http_methods(["POST"])
+@login_required
+def create_conversation(request):
+    """Create a new conversation."""
+    try:
+        data = json.loads(request.body)
+        project_id = data.get('project_id')
+        
+        # Create the conversation
+        conversation = Conversation.objects.create(user=request.user)
+        
+        # Link to project if provided
+        if project_id:
+            try:
+                project = Project.objects.get(project_id=project_id, owner=request.user)
+                conversation.project = project
+                conversation.save()
+            except Project.DoesNotExist:
+                pass  # Ignore if project doesn't exist
+        
+        return JsonResponse({
+            'id': conversation.id,
+            'title': conversation.title or f"Conversation {conversation.id}",
+            'created_at': conversation.created_at.isoformat(),
+            'updated_at': conversation.updated_at.isoformat()
+        })
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
 # @csrf_exempt
 # @require_http_methods(["GET", "POST"])
 # def ai_provider(request):
@@ -180,16 +282,21 @@ def conversation_detail(request, conversation_id):
 @require_http_methods(["POST"])
 @login_required
 def toggle_sidebar(request):
-    """Toggle sidebar collapsed state and save to user profile."""
+    """Toggle sidebar minimized state and save to ApplicationState."""
     data = json.loads(request.body)
-    collapsed = data.get('collapsed', False)
+    minimized = data.get('minimized', False)
     
-    # Update user profile
-    if hasattr(request.user, 'profile'):
-        request.user.profile.sidebar_collapsed = collapsed
-        request.user.profile.save()
+    # Get or create ApplicationState
+    app_state, created = ApplicationState.objects.get_or_create(
+        user=request.user,
+        defaults={'sidebar_minimized': minimized}
+    )
     
-    return JsonResponse({"success": True, "collapsed": collapsed})
+    if not created:
+        app_state.sidebar_minimized = minimized
+        app_state.save()
+    
+    return JsonResponse({"success": True, "minimized": minimized})
 
 @login_required
 @require_http_methods(["GET", "PUT"])
@@ -367,6 +474,65 @@ def available_models(request):
         'success': True,
         'models': models
     })
+
+@login_required
+@require_http_methods(["GET", "PUT"])
+@csrf_exempt
+def user_turbo_mode(request):
+    """Get or update the current user's turbo mode setting"""
+    
+    if request.method == "GET":
+        # Get user's agent role or create default one
+        agent_role, created = AgentRole.objects.get_or_create(
+            user=request.user,
+            defaults={'name': 'product_analyst', 'turbo_mode': False}
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'turbo_mode': agent_role.turbo_mode,
+            'updated_at': agent_role.updated_at.isoformat()
+        })
+    
+    elif request.method == "PUT":
+        try:
+            data = json.loads(request.body)
+            turbo_mode = data.get('turbo_mode', False)
+            
+            # Validate turbo_mode is boolean
+            if not isinstance(turbo_mode, bool):
+                return JsonResponse({
+                    'success': False,
+                    'error': 'turbo_mode must be a boolean value'
+                }, status=400)
+            
+            # Get or create user's agent role and update turbo mode
+            agent_role, created = AgentRole.objects.get_or_create(
+                user=request.user,
+                defaults={'name': 'product_analyst', 'turbo_mode': turbo_mode}
+            )
+            
+            if not created:
+                agent_role.turbo_mode = turbo_mode
+                agent_role.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Turbo mode {"enabled" if turbo_mode else "disabled"}',
+                'turbo_mode': agent_role.turbo_mode,
+                'updated_at': agent_role.updated_at.isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({
+                'success': False,
+                'error': 'Invalid JSON data'
+            }, status=400)
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'error': str(e)
+            }, status=500)
 
 
 @login_required

@@ -300,8 +300,7 @@
 .status-indicators {
     display: flex;
     align-items: center;
-    gap: 6px;
-    font-size: 12px;
+    font-size: 10px;
     font-weight: 500;
 }
 
