@@ -1,6 +1,6 @@
 from django.urls import path
 from . import views
-from .views.main import user_agent_role, user_model_selection, available_models, latest_conversation, daily_token_usage
+from .views.main import user_agent_role, user_model_selection, available_models, latest_conversation, daily_token_usage, user_turbo_mode
 from .views.files_extra import get_file_url
 from .views.transcribe_fixed import transcribe_file
 
@@ -26,6 +26,9 @@ urlpatterns = [
     # Model Selection APIs
     path('api/user/model-selection/', user_model_selection, name='user_model_selection'),
     path('api/models/available/', available_models, name='available_models'),
+    
+    # Turbo Mode API
+    path('api/user/turbo-mode/', user_turbo_mode, name='user_turbo_mode'),
     
     # Latest conversation API
     path('api/latest-conversation/', latest_conversation, name='latest_conversation'),

@@ -4,14 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}LFG 🚀 Agent{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/common.css">
+    <link rel="stylesheet" href="/static/css/sidebar.css">
     <link rel="stylesheet" href="/static/css/styles.css">
     <link rel="stylesheet" href="/static/css/artifacts.css">
     <link rel="stylesheet" href="/static/css/chat.css">
     <link rel="stylesheet" href="/static/css/artifacts-fix.css">
-    <link rel="stylesheet" href="/static/css/sidebar.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/marked/marked.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <script src="https://kit.fontawesome.com/c10b7e86e5.js" crossorigin="anonymous"></script>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23bb86fc'><path d='M4 6h10v2H4zm0 5h16v2H4zm0 5h10v2H4zm12-9.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5S18.33 8 17.5 8 16 7.33 16 6.5zm0 5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5-.67 1.5-1.5 1.5-1.5-.67-1.5-1.5zm0 5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5-.67 1.5-1.5 1.5-1.5-.67-1.5-1.5z'/></svg>" type="image/svg+xml">
     <link rel="icon" type="image/x-icon" href="/static/images/favicon.ico">
     
     <style>
@@ -131,6 +132,8 @@
             border: 1px solid rgba(59, 130, 246, 0.3);
             border-radius: 8px;
             margin-bottom: 12px;
+            max-width: 800px;
+            width: 85%;
         }
         
         .audio-waveform {
@@ -262,6 +265,9 @@
     </style>
 </head>
 <body data-user-authenticated="{% if user.is_authenticated %}true{% else %}false{% endif %}" 
+      data-turbo-mode="{% if turbo_mode %}true{% else %}false{% endif %}"
+      data-model-key="{{ model_key|default:'o4-mini' }}"
+      data-role-key="{{ role_key|default:'product_analyst' }}"
       >
     <script>
         // Apply sidebar state immediately to prevent flicker
@@ -291,13 +297,87 @@
             
             <div class="chat-input-container">
                 <form id="chat-form">
-                    <div class="input-wrapper">
-                        <textarea 
-                            id="chat-input" 
-                            placeholder="Type your message here..." 
-                            rows="2"
-                            autofocus
-                        ></textarea>
+                    <div class="input-wrapper">  
+                        <div class="left-actions">
+                            <button type="button" id="file-upload-btn" class="action-btn" title="Upload file">
+                                <i class="fas fa-paperclip"></i>
+                            </button>
+                            <input type="file" id="file-upload-input" style="display: none" multiple accept="image/*,.pdf,.csv,.txt,.md,.docx,.xlsx,.mp3,.mp4,.mpeg,.mpga,.m4a,.wav,.webm">
+                            <button type="button" id="settings-btn" class="action-btn settings-btn-styled" title="Settings">
+                                <i class="fas fa-sliders-h"></i>
+                            </button>
+                            <span class="status-indicators">
+                                <span class="status-item role-status" id="role-status-btn">
+                                    <span id="current-role-left">Analyst</span>
+                                </span>
+                                <span class="status-divider">•</span>
+                                <span class="status-item model-status" id="model-status-btn">
+                                    <span id="current-model-left">o4 mini</span>
+                                </span>
+                            </span>
+                            <div class="settings-dropdown" id="settings-dropdown">
+                                <div class="settings-menu">
+                                    <div class="menu-item" data-submenu="role">
+                                        <i class="fas fa-user-tie"></i>
+                                        <span>Role</span>
+                                        <i class="fas fa-chevron-right submenu-arrow"></i>
+                                        
+                                        <div class="submenu" id="role-submenu">
+                                            <button type="button" class="submenu-option selected" data-value="product_analyst">
+                                                <span>Analyst</span>
+                                                <i class="fas fa-check"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="menu-item" data-submenu="model">
+                                        <i class="fas fa-robot"></i>
+                                        <span>Model</span>
+                                        <i class="fas fa-chevron-right submenu-arrow"></i>
+                                        
+                                        <div class="submenu" id="model-submenu">
+                                            <div class="submenu-group">Claude</div>
+                                            <button type="button" class="submenu-option" data-value="claude_4_sonnet">
+                                                <span>Sonnet 4</span>
+                                                <i class="fas fa-check"></i>
+                                            </button>
+                                            
+                                            <div class="submenu-group">OpenAI</div>
+                                            <button type="button" class="submenu-option" data-value="gpt_4o">
+                                                <span>GPT-4o</span>
+                                                <i class="fas fa-check"></i>
+                                            </button>
+                                            <button type="button" class="submenu-option" data-value="gpt_4_1">
+                                                <span>GPT-4.1</span>
+                                                <i class="fas fa-check"></i>
+                                            </button>
+                                            <button type="button" class="submenu-option" data-value="o3">
+                                                <span>o3</span>
+                                                <i class="fas fa-check"></i>
+                                            </button>
+                                            <button type="button" class="submenu-option selected" data-value="o4-mini">
+                                                <span>o4 mini</span>
+                                                <i class="fas fa-check"></i>
+                                            </button>
+                                            
+                                            <div class="submenu-group">xAI</div>
+                                            <button type="button" class="submenu-option" data-value="grok_4">
+                                                <span>Grok 4</span>
+                                                <i class="fas fa-check"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="chat-input-box"> 
+                            <textarea 
+                                id="chat-input" 
+                                placeholder="Type your message here..." 
+                                rows="2"
+                                autofocus
+                            ></textarea>
+                        </div>
                         <div class="input-actions">
                             <div class="turbo-switch-container" title="Enable turbo mode">
                                 <label class="turbo-switch">
@@ -305,36 +385,6 @@
                                     <span class="turbo-slider"></span>
                                 </label>
                                 <span class="turbo-label">Turbo</span>
-                            </div>
-                            <button type="button" id="file-upload-btn" class="action-btn" title="Upload file">
-                                <i class="fas fa-paperclip"></i>
-                            </button>
-                            <input type="file" id="file-upload-input" style="display: none" multiple accept="image/*,.pdf,.csv,.txt,.md,.docx,.xlsx,.mp3,.mp4,.mpeg,.mpga,.m4a,.wav,.webm">
-                            <div class="custom-dropdown" id="role-dropdown-wrapper">
-                                <button type="button" class="custom-dropdown-button" id="role-dropdown" title="Select a role">
-                                    <span id="role-dropdown-text">Analyst</span>
-                                </button>
-                                <div class="custom-dropdown-menu">
-                                    <div class="custom-dropdown-item selected" data-value="product_analyst">Analyst</div>
-                                </div>
-                            </div>
-                            <div class="custom-dropdown" id="model-dropdown-wrapper">
-                                <button type="button" class="custom-dropdown-button" id="model-dropdown" title="Select a model">
-                                    <span id="model-dropdown-text">Sonnet 4</span>
-                                </button>
-                                <div class="custom-dropdown-menu">
-                                    <div class="dropdown-group-label">Claude</div>
-                                    <div class="custom-dropdown-item" data-value="claude_4_sonnet">Sonnet 4</div>
-                                    
-                                    <div class="dropdown-group-label">OpenAI</div>
-                                    <div class="custom-dropdown-item" data-value="gpt_4o">GPT-4o</div>
-                                    <div class="custom-dropdown-item" data-value="gpt_4_1">GPT-4.1</div>
-                                    <div class="custom-dropdown-item" data-value="o3">o3</div>
-                                    <div class="custom-dropdown-item selected" data-value="o4-mini">o4 mini</div>
-                                    
-                                    <div class="dropdown-group-label">xAI</div>
-                                    <div class="custom-dropdown-item" data-value="grok_4">Grok 4</div>
-                                </div>
                             </div>
                             <button type="button" id="record-audio-btn" class="action-btn" title="Record audio">
                                 <i class="fas fa-microphone"></i>
@@ -351,6 +401,7 @@
 
     {% include 'chat/artifacts.html' %}
 
+    <script src="/static/js/sidebar.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -359,13 +410,13 @@
     <script src="/static/js/app-loader.js"></script>
     <script src="/static/js/custom-dropdown.js"></script>
     <script src="/static/js/chat.js"></script>
-    <script src="/static/js/sidebar.js"></script>
     <script src="/static/js/artifacts.js"></script>
     <script src="/static/js/artifacts-loader.js"></script>
     <script src="/static/js/artifacts-editor.js"></script>
     <script src="/static/js/design-loader.js"></script>
     <script src="/static/js/role-handler.js"></script>
     <script src="/static/js/model-handler.js"></script>
+    <script src="/static/js/turbo-handler.js"></script>
     {% csrf_token %}
 </body>
 </html> 

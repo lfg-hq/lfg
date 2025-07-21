@@ -1,15 +1,47 @@
 class ModelHandler {
     constructor() {
         this.modelDropdown = document.getElementById('model-dropdown');
+        this.modelSubmenu = document.getElementById('model-submenu');
         this.init();
     }
 
     init() {
-        this.loadCurrentModel();
+        // First try to load from page data
+        const modelKeyFromPage = document.body.dataset.modelKey;
+        if (modelKeyFromPage) {
+            this.setDropdownValue(modelKeyFromPage);
+            console.log('Initialized model from page data:', modelKeyFromPage);
+        }
+        
         this.setupEventListeners();
     }
 
     setupEventListeners() {
+        // Listen to left menu submenu options
+        if (this.modelSubmenu) {
+            const modelOptions = this.modelSubmenu.querySelectorAll('.submenu-option');
+            modelOptions.forEach(option => {
+                option.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const value = option.getAttribute('data-value');
+                    this.updateModel(value);
+                    
+                    // Update UI to show selected state
+                    modelOptions.forEach(opt => opt.classList.remove('selected'));
+                    option.classList.add('selected');
+                    
+                    // Update the status display
+                    const modelText = option.querySelector('span').textContent;
+                    const currentModelLeft = document.getElementById('current-model-left');
+                    if (currentModelLeft) {
+                        currentModelLeft.textContent = modelText;
+                    }
+                });
+            });
+        }
+        
+        // Keep old dropdown listener if it exists
         if (this.modelDropdown) {
             // For custom dropdown
             if (this.modelDropdown.classList.contains('custom-dropdown-button')) {
@@ -25,29 +57,6 @@ class ModelHandler {
         }
     }
 
-    async loadCurrentModel() {
-        try {
-            const response = await fetch('/api/user/model-selection/', {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': this.getCSRFToken()
-                }
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                if (data.success && data.model_selection) {
-                    this.setDropdownValue(data.model_selection.selected_model);
-                    console.log('Loaded current model:', data.model_selection.display_name);
-                }
-            } else {
-                console.error('Failed to load current model');
-            }
-        } catch (error) {
-            console.error('Error loading current model:', error);
-        }
-    }
 
     async updateModel(selectedModel) {
         try {
@@ -83,8 +92,26 @@ class ModelHandler {
     }
 
     setDropdownValue(selectedModel) {
-        // For custom dropdown
-        if (typeof setCustomDropdownValue === 'function') {
+        // Update left menu submenu
+        if (this.modelSubmenu) {
+            const modelOptions = this.modelSubmenu.querySelectorAll('.submenu-option');
+            modelOptions.forEach(option => {
+                if (option.getAttribute('data-value') === selectedModel) {
+                    option.classList.add('selected');
+                    // Update the status display
+                    const modelText = option.querySelector('span').textContent;
+                    const currentModelLeft = document.getElementById('current-model-left');
+                    if (currentModelLeft) {
+                        currentModelLeft.textContent = modelText;
+                    }
+                } else {
+                    option.classList.remove('selected');
+                }
+            });
+        }
+        
+        // For custom dropdown (if it still exists)
+        if (typeof setCustomDropdownValue === 'function' && this.modelDropdown) {
             setCustomDropdownValue('model-dropdown', selectedModel);
         } else if (this.modelDropdown && this.modelDropdown.tagName === 'SELECT') {
             // Fallback for old select dropdown

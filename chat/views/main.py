@@ -37,8 +37,23 @@ def index(request):
         context['project'] = default_project
         context['project_id'] = str(default_project.project_id)  # Use project_id instead of id
     
-    if hasattr(request.user, 'profile'):
-        context['sidebar_collapsed'] = request.user.profile.sidebar_collapsed
+    # Get user's agent role for turbo mode and role
+    agent_role, created = AgentRole.objects.get_or_create(
+        user=request.user,
+        defaults={'name': 'product_analyst', 'turbo_mode': False}
+    )
+    context['turbo_mode'] = agent_role.turbo_mode
+    context['role_key'] = agent_role.name
+    
+    # Get user's model selection
+    model_selection, created = ModelSelection.objects.get_or_create(
+        user=request.user,
+        defaults={'selected_model': 'o4-mini'}
+    )
+    context['model_key'] = model_selection.selected_model
+    
+    # if hasattr(request.user, 'profile'):
+    #     context['sidebar_collapsed'] = request.user.profile.sidebar_collapsed
     return render(request, 'chat/main.html', context)
 
 @login_required
@@ -51,6 +66,21 @@ def project_chat(request, project_id):
         'project': project,
         'project_id': project.project_id
     }
+    
+    # Get user's agent role for turbo mode and role
+    agent_role, created = AgentRole.objects.get_or_create(
+        user=request.user,
+        defaults={'name': 'product_analyst', 'turbo_mode': False}
+    )
+    context['turbo_mode'] = agent_role.turbo_mode
+    context['role_key'] = agent_role.name
+    
+    # Get user's model selection
+    model_selection, created = ModelSelection.objects.get_or_create(
+        user=request.user,
+        defaults={'selected_model': 'o4-mini'}
+    )
+    context['model_key'] = model_selection.selected_model
     
     if hasattr(request.user, 'profile'):
         context['sidebar_collapsed'] = request.user.profile.sidebar_collapsed
@@ -76,6 +106,21 @@ def show_conversation(request, conversation_id):
     if project:
         context['project'] = project
         context['project_id'] = str(project.project_id)
+    
+    # Get user's agent role for turbo mode and role
+    agent_role, created = AgentRole.objects.get_or_create(
+        user=request.user,
+        defaults={'name': 'product_analyst', 'turbo_mode': False}
+    )
+    context['turbo_mode'] = agent_role.turbo_mode
+    context['role_key'] = agent_role.name
+    
+    # Get user's model selection
+    model_selection, created = ModelSelection.objects.get_or_create(
+        user=request.user,
+        defaults={'selected_model': 'o4-mini'}
+    )
+    context['model_key'] = model_selection.selected_model
     
     if hasattr(request.user, 'profile'):
         context['sidebar_collapsed'] = request.user.profile.sidebar_collapsed
@@ -396,6 +441,65 @@ def available_models(request):
         'success': True,
         'models': models
     })
+
+@login_required
+@require_http_methods(["GET", "PUT"])
+@csrf_exempt
+def user_turbo_mode(request):
+    """Get or update the current user's turbo mode setting"""
+    
+    if request.method == "GET":
+        # Get user's agent role or create default one
+        agent_role, created = AgentRole.objects.get_or_create(
+            user=request.user,
+            defaults={'name': 'product_analyst', 'turbo_mode': False}
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'turbo_mode': agent_role.turbo_mode,
+            'updated_at': agent_role.updated_at.isoformat()
+        })
+    
+    elif request.method == "PUT":
+        try:
+            data = json.loads(request.body)
+            turbo_mode = data.get('turbo_mode', False)
+            
+            # Validate turbo_mode is boolean
+            if not isinstance(turbo_mode, bool):
+                return JsonResponse({
+                    'success': False,
+                    'error': 'turbo_mode must be a boolean value'
+                }, status=400)
+            
+            # Get or create user's agent role and update turbo mode
+            agent_role, created = AgentRole.objects.get_or_create(
+                user=request.user,
+                defaults={'name': 'product_analyst', 'turbo_mode': turbo_mode}
+            )
+            
+            if not created:
+                agent_role.turbo_mode = turbo_mode
+                agent_role.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Turbo mode {"enabled" if turbo_mode else "disabled"}',
+                'turbo_mode': agent_role.turbo_mode,
+                'updated_at': agent_role.updated_at.isoformat()
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({
+                'success': False,
+                'error': 'Invalid JSON data'
+            }, status=400)
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'error': str(e)
+            }, status=500)
 
 
 @login_required

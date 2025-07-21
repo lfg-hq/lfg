@@ -1,6 +1,8 @@
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize custom dropdowns
     initializeCustomDropdowns();
+    // Initialize settings button
+    initializeSettingsButton();
 });
 
 function initializeCustomDropdowns() {
@@ -69,6 +71,11 @@ function initializeCustomDropdowns() {
                     if (typeof window.currentRole !== 'undefined') {
                         window.currentRole = value;
                     }
+                    // Update status display
+                    const currentRoleSpan = document.getElementById('current-role');
+                    if (currentRoleSpan) {
+                        currentRoleSpan.textContent = item.textContent;
+                    }
                     // Trigger role change event
                     if (typeof handleRoleChange === 'function') {
                         handleRoleChange(value);
@@ -80,6 +87,11 @@ function initializeCustomDropdowns() {
                     // Update the global variable if it exists
                     if (typeof window.currentModel !== 'undefined') {
                         window.currentModel = value;
+                    }
+                    // Update status display
+                    const currentModelSpan = document.getElementById('current-model');
+                    if (currentModelSpan) {
+                        currentModelSpan.textContent = item.textContent;
                     }
                     // Trigger model change event
                     if (typeof handleModelChange === 'function') {
@@ -154,3 +166,178 @@ window.handleModelChange = function(value) {
     console.log('Model changed to:', value);
     // Additional model change logic can be added here
 };
+
+// Initialize settings button functionality
+function initializeSettingsButton() {
+    const settingsBtn = document.getElementById('settings-btn');
+    const settingsDropdown = document.getElementById('settings-dropdown');
+    
+    // Submenus
+    const roleSubmenu = document.getElementById('role-submenu');
+    const modelSubmenu = document.getElementById('model-submenu');
+    
+    // Status display
+    const currentRoleSpan = document.getElementById('current-role');
+    const currentModelSpan = document.getElementById('current-model');
+    const currentRoleLeftSpan = document.getElementById('current-role-left');
+    const currentModelLeftSpan = document.getElementById('current-model-left');
+    
+    // Status click buttons
+    const roleStatusBtn = document.getElementById('role-status-btn');
+    const modelStatusBtn = document.getElementById('model-status-btn');
+    
+    if (!settingsBtn || !settingsDropdown) return;
+    
+    let closeTimeout;
+    let clickedOpen = false;
+    
+    // Show dropdown on click for settings button
+    settingsBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        const isOpen = settingsDropdown.classList.contains('open');
+        if (isOpen) {
+            settingsDropdown.classList.remove('open');
+            clickedOpen = false;
+        } else {
+            settingsDropdown.classList.add('open');
+            clickedOpen = true;
+        }
+    });
+    
+    // Handle menu item clicks to show submenus
+    const menuItems = settingsDropdown.querySelectorAll('.menu-item');
+    menuItems.forEach(menuItem => {
+        menuItem.addEventListener('click', (e) => {
+            e.stopPropagation();
+            
+            // Close other open submenus
+            menuItems.forEach(item => {
+                if (item !== menuItem) {
+                    item.classList.remove('active');
+                }
+            });
+            
+            // Toggle current submenu
+            menuItem.classList.toggle('active');
+        });
+    });
+    
+    // Handle clicking on role status
+    if (roleStatusBtn) {
+        roleStatusBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            clickedOpen = true;
+            settingsDropdown.classList.add('open');
+            // Show role submenu directly
+            setTimeout(() => {
+                const roleMenuItem = document.querySelector('[data-submenu="role"]');
+                if (roleMenuItem) {
+                    roleMenuItem.classList.add('active');
+                }
+            }, 50);
+        });
+    }
+    
+    // Handle clicking on model status
+    if (modelStatusBtn) {
+        modelStatusBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            clickedOpen = true;
+            settingsDropdown.classList.add('open');
+            // Show model submenu directly
+            setTimeout(() => {
+                const modelMenuItem = document.querySelector('[data-submenu="model"]');
+                if (modelMenuItem) {
+                    modelMenuItem.classList.add('active');
+                }
+            }, 50);
+        });
+    }
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('#settings-dropdown') && !e.target.closest('#settings-btn') && 
+            !e.target.closest('#role-status-btn') && !e.target.closest('#model-status-btn')) {
+            settingsDropdown.classList.remove('open');
+            clickedOpen = false;
+        }
+    });
+    
+    // Handle role option selection
+    roleSubmenu.querySelectorAll('.submenu-option').forEach(option => {
+        option.addEventListener('click', (e) => {
+            e.stopPropagation();
+            
+            // Update selection
+            roleSubmenu.querySelectorAll('.submenu-option').forEach(opt => opt.classList.remove('selected'));
+            option.classList.add('selected');
+            
+            // Update display
+            const value = option.getAttribute('data-value');
+            const text = option.querySelector('span').textContent;
+            
+            // Update status display
+            if (currentRoleSpan) {
+                currentRoleSpan.textContent = text;
+            }
+            if (currentRoleLeftSpan) {
+                currentRoleLeftSpan.textContent = text;
+            }
+            
+            // Update global variable
+            if (typeof window.currentRole !== 'undefined') {
+                window.currentRole = value;
+            }
+            
+            // Trigger role change event
+            if (typeof handleRoleChange === 'function') {
+                handleRoleChange(value);
+            }
+            
+            // Close dropdown
+            settingsDropdown.classList.remove('open');
+            clickedOpen = false;
+        });
+    });
+    
+    // Handle model option selection
+    modelSubmenu.querySelectorAll('.submenu-option').forEach(option => {
+        option.addEventListener('click', (e) => {
+            e.stopPropagation();
+            
+            // Update selection
+            modelSubmenu.querySelectorAll('.submenu-option').forEach(opt => opt.classList.remove('selected'));
+            option.classList.add('selected');
+            
+            // Update display
+            const value = option.getAttribute('data-value');
+            const text = option.querySelector('span').textContent;
+            
+            // Update status display
+            if (currentModelSpan) {
+                currentModelSpan.textContent = text;
+            }
+            if (currentModelLeftSpan) {
+                currentModelLeftSpan.textContent = text;
+            }
+            
+            // Update global variable
+            if (typeof window.currentModel !== 'undefined') {
+                window.currentModel = value;
+            }
+            
+            // Trigger model change event
+            if (typeof handleModelChange === 'function') {
+                handleModelChange(value);
+            }
+            
+            // Close dropdown
+            settingsDropdown.classList.remove('open');
+            clickedOpen = false;
+        });
+    });
+}
+

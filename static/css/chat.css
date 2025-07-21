@@ -249,34 +249,83 @@
 .input-actions {
     position: absolute;
     right: 8px;
-    bottom: 8px;
+    bottom: 4px;
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 4px 8px;
-    /* background-color: rgba(30, 30, 30, 0.2); */
-    background-color: var(--card-bg);
-    border-radius: 16px;
+    padding: 4px 0;
+    background: transparent;
+    z-index: 10;
 }
 
 .action-btn {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 24px;
-    height: 24px;
+    width: 28px;
+    height: 28px;
     border-radius: 50%;
     border: none;
-    background-color: rgba(187, 134, 252, 0.1);
-    color: var(--primary-color, #bb86fc);
+    background-color: transparent;
+    color: #64748b;
     cursor: pointer;
     transition: all 0.2s ease;
-    font-size: 11px;
+    font-size: 13px;
 }
 
 .action-btn:hover {
-    background-color: rgba(187, 134, 252, 0.2);
-    transform: translateY(-2px);
+    background-color: rgba(100, 116, 139, 0.1);
+    color: #94a3b8;
+}
+
+/* Settings button with border */
+.settings-btn-styled {
+    width: 32px;
+    height: 32px;
+    border: none;
+    background-color: transparent;
+    font-size: 14px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+}
+
+.settings-btn-styled:hover {
+    background-color: rgba(100, 116, 139, 0.1);
+}
+
+/* Status indicators next to settings icon */
+.status-indicators {
+    display: flex;
+    align-items: center;
+    font-size: 10px;
+    font-weight: 500;
+}
+
+.status-item {
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: background 0.2s ease;
+}
+
+.status-item:hover {
+    background: rgba(100, 116, 139, 0.15);
+}
+
+.role-status span {
+    color: #a78bfa;
+}
+
+.model-status span {
+    color: #60a5fa;
+}
+
+.status-divider {
+    color: #64748b;
+    font-size: 10px;
 }
 
 /* Role dropdown styling */
@@ -341,12 +390,459 @@
     font-size: 12px;
 }
 
-/* Adjust chat input padding to accommodate the action buttons */
-#chat-input {
-    padding-right: 0px;
-    padding-bottom: 40px;
-    min-height: 70px;
+/* Chat container styles */
+.chat-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    position: relative;
+    /* Removed transition to prevent flickering - transitions are handled by sidebar.css */
+    width: 100%;
+    /* Removed hardcoded margin-left - this is managed by sidebar.css based on sidebar state */
+    overflow: visible;
 }
+
+/* Add this new class for message container */
+.message-container {
+    width: 85%;
+    max-width: 800px;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 30px; /* Increase bottom padding for more space */
+    position: relative; /* For the connector */
+}
+
+/* Add a subtle connector between messages and input */
+.message-container:after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 40px;
+    height: 2px;
+    background: linear-gradient(to right, transparent, var(--primary-color) 50%, transparent);
+    opacity: 0.5;
+}
+
+.welcome-message {
+    margin: 0;
+    text-align: center;
+    width: 100%;
+    padding: 40px 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.welcome-message h2 {
+    margin-bottom: 10px;
+    color: var(--primary-color);
+}
+
+.message {
+    margin-bottom: 20px;
+    max-width: 92%;
+    padding: 10px 16px;
+    border-radius: 8px;
+    line-height: 1.5;
+    transition: transform 0.2s ease;
+}
+
+.message:last-child {
+    margin-bottom: 10px; /* Reduce margin for last message to improve transition */
+}
+
+.message.user {
+    background-color: var(--primary-color);
+    color: #121212;
+    align-self: flex-end;
+    border-bottom-right-radius: 2px;
+}
+
+.message.assistant {
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    align-self: flex-start;
+    border-bottom-left-radius: 2px;
+}
+
+/* Add styling for system messages */
+.message.system {
+    background-color: rgba(255, 193, 7, 0.15);
+    border: 1px solid rgba(255, 193, 7, 0.3);
+    color: var(--text-color);
+    align-self: flex-start;
+    border-radius: 4px;
+    font-style: italic;
+    max-width: 70%;
+    text-align: left;
+    font-size: 0.9rem;
+    padding: 8px 8px 0px 8px;
+}
+
+.message-content {
+    overflow-wrap: break-word;
+}
+
+/* Preserve line breaks only for user messages */
+.message.user .message-content {
+    white-space: pre-wrap;
+}
+
+/* Message actions container */
+.message-actions {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+/* Show actions on hover */
+.message:hover .message-actions {
+    opacity: 1;
+}
+
+/* Copy button styling */
+.message-copy-btn {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+    padding: 4px 8px;
+    cursor: pointer;
+    color: var(--text-color);
+    font-size: 12px;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.message-copy-btn .fas {
+    font-weight: 100;
+}
+
+.message-copy-btn:hover {
+    background: transparent;
+    border-color: rgba(255, 255, 255, 0.6);
+    transform: scale(1.05);
+}
+
+.message-copy-btn.copied {
+    background: transparent;
+    border-color: #10b981;
+    color: #10b981;
+}
+
+/* Adjust button color for user messages */
+.message.user .message-copy-btn {
+    background: transparent;
+    border-color: rgba(0, 0, 0, 0.3);
+    color: #121212;
+}
+
+.message.user .message-copy-btn:hover {
+    background: transparent;
+    border-color: rgba(0, 0, 0, 0.6);
+    transform: scale(1.05);
+}
+
+/* Make message position relative for absolute positioning of actions */
+.message {
+    position: relative;
+}
+
+.chat-input-container {
+    padding: 0 16px 24px; /* Remove top padding */
+    border-top: none;
+    background: none; /* Remove background */
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    position: relative; /* For positioning the floating effect */
+    z-index: 5; /* Ensure it's above other elements */
+}
+
+#chat-form {
+    display: flex;
+    align-items: center;
+    width: 85%;
+    max-width: 800px;
+    position: relative; /* For positioning elements */
+    z-index: 2; /* Ensure it's above the gradient */
+    margin-top: -10px; /* Pull the form slightly up to overlap with messages */
+    
+    padding-top: 20px; /* Add padding to accommodate the overlap */
+    
+}
+
+@keyframes float {
+    0% { transform: translateY(0px); }
+    50% { transform: translateY(-3px); }
+    100% { transform: translateY(0px); }
+}
+
+/* Adjust chat input padding to accommodate the action buttons */
+
+
+#chat-input {
+    background-color: var(--card-bg); /* Slightly lighter background */
+    color: var(--text-color);
+    resize: none;
+    width: 100%;
+    min-height: 50px; /* Increased height */
+    max-height: 250px;
+    padding-bottom: 20px;
+    /* transition: all 0.3s ease; */
+    border: none;
+    /* Hide scrollbar but maintain scrolling functionality */
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE and Edge */
+    overflow-y: auto;
+    outline: none;
+    /* Gradient taper at bottom */
+    -webkit-mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
+    mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
+}
+
+#chat-input-box {
+    width: 100%;
+    flex: 1;
+    padding: 16px 0 16px 20px;
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    background-color: var(--card-bg); /* Slightly lighter background */
+    color: var(--text-color);
+    resize: none;
+    width: 100%;
+    min-height: 100px; /* Increased height */
+    max-height: 450px;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15), 0 0 20px rgba(187, 134, 252, 0.05); /* Enhanced glow */
+    backdrop-filter: blur(5px); /* Subtle blur effect */
+    padding-bottom: 35px;
+}
+
+/* Hide webkit scrollbar for chat input */
+#chat-input::-webkit-scrollbar {
+    display: none;
+}
+
+/* #chat-input-box:focus {
+    outline: none;
+    border-color: var(--primary-color); 
+    box-shadow: 0 4px 15px rgba(187, 134, 252, 0.2), 0 0 30px rgba(187, 134, 252, 0.1); 
+    transform: translateY(-2px);
+} */
+
+/* Send button styling - moved into the input box */
+#send-btn {
+    background-color: rgba(187, 134, 252, 0.2);
+    color: var(--primary-color);
+    margin-left: 0;
+}
+
+#send-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0 10px rgba(187, 134, 252, 0.3);
+}
+
+/* Stop button styling */
+#stop-btn {
+    background-color: rgba(239, 83, 80, 0.2); /* Red color for stop with transparency */
+    color: #ef5350;
+    border: none;
+    border-radius: 50%;
+    width: 28px;
+    height: 28px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#stop-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0 10px rgba(239, 83, 80, 0.3);
+}
+
+.send-icon {
+    width: 18px;
+    height: 18px;
+}
+
+/* Markdown styling */
+.message-content h1, 
+.message-content h2, 
+.message-content h3 {
+    margin-top: 1em;
+    margin-bottom: 0.5em;
+}
+
+.message-content p {
+    margin-bottom: 0.75em;
+}
+
+.message-content code {
+    background-color: rgba(0, 0, 0, 0.2);
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-family: monospace;
+}
+
+.message-content pre {
+    background-color: rgba(0, 0, 0, 0.2);
+    padding: 10px;
+    border-radius: 4px;
+    overflow-x: auto;
+    margin: 0.5em 0;
+}
+
+.message-content ul, 
+.message-content ol {
+    margin-left: 1.5em;
+    margin-bottom: 0.75em;
+}
+
+.message-content blockquote {
+    border-left: 3px solid var(--secondary-color);
+    padding-left: 10px;
+    margin-left: 0;
+    color: var(--text-secondary);
+}
+
+/* Table styling for markdown */
+.message-content table {
+    border-collapse: collapse;
+    margin: 1em 0;
+    width: 100%;
+    overflow-x: auto;
+    display: block;
+}
+
+.message-content th {
+    background-color: rgba(187, 134, 252, 0.1);
+    color: var(--primary-color);
+    font-weight: 600;
+    text-align: left;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+}
+
+.message-content td {
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+}
+
+.message-content tr {
+    background-color: rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.message-content tr:nth-child(even) {
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
+.message-content tr:hover {
+    background-color: rgba(187, 134, 252, 0.05);
+}
+
+/* Loading indicator */
+.typing-indicator {
+    display: flex;
+    align-items: center;
+    padding: 10px 16px;
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    border-bottom-left-radius: 2px;
+    align-self: flex-start;
+    margin-bottom: 20px;
+}
+
+.typing-indicator span {
+    height: 8px;
+    width: 8px;
+    background-color: var(--text-secondary);
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 5px;
+    animation: bounce 1.5s infinite ease-in-out;
+}
+
+.typing-indicator span:nth-child(1) {
+    animation-delay: 0s;
+}
+
+.typing-indicator span:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.typing-indicator span:nth-child(3) {
+    animation-delay: 0.4s;
+    margin-right: 0;
+}
+
+@keyframes bounce {
+    0%, 80%, 100% { transform: translateY(0); }
+    40% { transform: translateY(-8px); }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-color);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text-secondary);
+}
+
+/* Add this to your CSS file */
+.provider-selector {
+    padding: 16px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.provider-selector h3 {
+    font-size: 1rem;
+    margin-bottom: 10px;
+    color: var(--primary-color);
+}
+
+.provider-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.provider-options label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+.provider-options input[type="radio"] {
+    margin-right: 8px;
+}
+
 
 /* File info notification styles */
 .file-info {
@@ -768,7 +1264,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    margin: 0 2px;
+    margin: 0 8px 0 0;
 }
 
 .turbo-switch {
@@ -968,3 +1464,203 @@ input:checked + .turbo-slider + .turbo-label,
 .custom-dropdown-item + .dropdown-group-label {
     margin-top: 8px;
 }
+
+/* Left actions container */
+.left-actions {
+    position: absolute;
+    left: 8px;
+    bottom: 4px;
+    z-index: 1001;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Settings button and dropdown styles */
+.settings-status {
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    height: 24px;
+    font-size: 11px;
+    color: #64748b;
+    white-space: nowrap;
+    margin-right: 4px;
+}
+
+.settings-status .status-text {
+    font-weight: 500;
+}
+
+.settings-status #current-role {
+    color: #a78bfa;
+    font-weight: 600;
+}
+
+.settings-status #current-model {
+    color: #60a5fa;
+    font-weight: 600;
+}
+
+.settings-dropdown {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    margin-bottom: 8px;
+    background: #2a2a2a;
+    border: 1px solid #3a3a3a;
+    border-radius: 12px;
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.5);
+    opacity: 0;
+    transform: translateY(8px);
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    z-index: 1000;
+    overflow: visible;
+}
+
+.settings-dropdown.open {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+
+.settings-menu {
+    padding: 8px;
+    min-width: 200px;
+}
+
+/* Menu item styles */
+.menu-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    color: #e2e8f0;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.menu-item:hover {
+    background: rgba(100, 116, 139, 0.15);
+}
+
+.menu-item i:first-child {
+    width: 20px;
+    text-align: center;
+    color: #94a3b8;
+}
+
+.menu-item .submenu-arrow {
+    margin-left: auto;
+    font-size: 10px;
+    color: #64748b;
+}
+
+/* Submenu styles */
+.submenu {
+    position: absolute;
+    left: 100%;
+    bottom: 0;
+    margin-left: 8px;
+    background: #2a2a2a;
+    border: 1px solid #3a3a3a;
+    border-radius: 12px;
+    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.4);
+    padding: 8px;
+    min-width: 200px;
+    max-height: 300px;
+    overflow-y: auto;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateX(-10px);
+    transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s ease;
+}
+
+/* Removed hover behavior - now handled by JavaScript */
+.menu-item.active .submenu {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(0);
+}
+
+.submenu-group {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #64748b;
+    font-weight: 600;
+    padding: 8px 12px;
+    margin: 8px -12px 4px;
+    border-top: 1px solid #3a3a3a;
+}
+
+.submenu-group:first-child {
+    margin-top: 0;
+    border-top: none;
+}
+
+.submenu-option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 10px 12px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    color: #e2e8f0;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s ease;
+    text-align: left;
+    margin-bottom: 4px;
+}
+
+.submenu-option:hover {
+    background: rgba(100, 116, 139, 0.1);
+}
+
+.submenu-option i {
+    color: #60a5fa;
+    font-size: 12px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.submenu-option.selected i {
+    opacity: 1;
+}
+
+/* Adjust custom dropdown styles within settings */
+.settings-dropdown .custom-dropdown-button {
+    width: 100%;
+    justify-content: space-between;
+    min-width: unset;
+    background: #2a2a2a;
+    border: 1px solid #3a3a3a;
+    padding: 6px 10px;
+    padding-right: 30px;
+    height: 32px;
+}
+
+.settings-dropdown .custom-dropdown-button:hover {
+    background: #333;
+    border-color: #444;
+}
+
+.settings-dropdown .custom-dropdown-menu {
+    bottom: auto;
+    top: 100%;
+    margin-bottom: 0;
+    margin-top: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    background: #2a2a2a;
+    border: 1px solid #3a3a3a;
+}
+

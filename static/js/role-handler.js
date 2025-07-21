@@ -21,8 +21,28 @@
         
         // Set the dropdown value based on the last user role
         if (lastUserRole) {
-            // Use custom dropdown helper function
-            if (typeof setCustomDropdownValue === 'function') {
+            // Update left menu submenu
+            const roleSubmenu = document.getElementById('role-submenu');
+            if (roleSubmenu) {
+                const roleOptions = roleSubmenu.querySelectorAll('.submenu-option');
+                roleOptions.forEach(option => {
+                    if (option.getAttribute('data-value') === lastUserRole) {
+                        option.classList.add('selected');
+                        // Update the status display
+                        const roleText = option.querySelector('span').textContent;
+                        const currentRoleLeft = document.getElementById('current-role-left');
+                        if (currentRoleLeft) {
+                            currentRoleLeft.textContent = roleText;
+                        }
+                    } else {
+                        option.classList.remove('selected');
+                    }
+                });
+                console.log('Set role submenu to last used role from DB:', lastUserRole);
+            }
+            
+            // Use custom dropdown helper function (if dropdown still exists)
+            if (typeof setCustomDropdownValue === 'function' && document.getElementById('role-dropdown')) {
                 setCustomDropdownValue('role-dropdown', lastUserRole);
                 console.log('Set role dropdown to last used role from DB:', lastUserRole);
             } else {
@@ -119,15 +139,50 @@
 class RoleHandler {
     constructor() {
         this.roleDropdown = document.getElementById('role-dropdown');
+        this.roleSubmenu = document.getElementById('role-submenu');
         this.init();
     }
 
     init() {
-        this.loadCurrentRole();
+        // First try to load from page data
+        const roleKeyFromPage = document.body.dataset.roleKey;
+        if (roleKeyFromPage) {
+            this.setDropdownValue(roleKeyFromPage);
+            console.log('Initialized role from page data:', roleKeyFromPage);
+        }
+        
         this.setupEventListeners();
     }
 
     setupEventListeners() {
+        // Listen to left menu submenu options
+        if (this.roleSubmenu) {
+            const roleOptions = this.roleSubmenu.querySelectorAll('.submenu-option');
+            roleOptions.forEach(option => {
+                option.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const value = option.getAttribute('data-value');
+                    this.updateRole(value);
+                    
+                    // Update UI to show selected state
+                    roleOptions.forEach(opt => opt.classList.remove('selected'));
+                    option.classList.add('selected');
+                    
+                    // Update the status display
+                    const roleText = option.querySelector('span').textContent;
+                    const currentRoleLeft = document.getElementById('current-role-left');
+                    if (currentRoleLeft) {
+                        currentRoleLeft.textContent = roleText;
+                    }
+                    
+                    // Save to localStorage
+                    localStorage.setItem('user_role', value);
+                });
+            });
+        }
+        
+        // Keep old dropdown listener if it exists
         if (this.roleDropdown) {
             // For custom dropdown
             if (this.roleDropdown.classList.contains('custom-dropdown-button')) {
@@ -143,29 +198,6 @@ class RoleHandler {
         }
     }
 
-    async loadCurrentRole() {
-        try {
-            const response = await fetch('/api/user/agent-role/', {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': this.getCSRFToken()
-                }
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                if (data.success && data.agent_role) {
-                    this.setDropdownValue(data.agent_role.name);
-                    console.log('Loaded current role:', data.agent_role.display_name);
-                }
-            } else {
-                console.error('Failed to load current role');
-            }
-        } catch (error) {
-            console.error('Error loading current role:', error);
-        }
-    }
 
     async updateRole(roleName) {
         try {
@@ -211,8 +243,26 @@ class RoleHandler {
 
         const dropdownValue = roleMapping[roleName] || 'product_analyst';
         
-        // For custom dropdown
-        if (typeof setCustomDropdownValue === 'function') {
+        // Update left menu submenu
+        if (this.roleSubmenu) {
+            const roleOptions = this.roleSubmenu.querySelectorAll('.submenu-option');
+            roleOptions.forEach(option => {
+                if (option.getAttribute('data-value') === dropdownValue) {
+                    option.classList.add('selected');
+                    // Update the status display
+                    const roleText = option.querySelector('span').textContent;
+                    const currentRoleLeft = document.getElementById('current-role-left');
+                    if (currentRoleLeft) {
+                        currentRoleLeft.textContent = roleText;
+                    }
+                } else {
+                    option.classList.remove('selected');
+                }
+            });
+        }
+        
+        // For custom dropdown (if it still exists)
+        if (typeof setCustomDropdownValue === 'function' && this.roleDropdown) {
             setCustomDropdownValue('role-dropdown', dropdownValue);
         } else if (this.roleDropdown && this.roleDropdown.tagName === 'SELECT') {
             // Fallback for old select dropdown
