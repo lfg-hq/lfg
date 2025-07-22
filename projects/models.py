@@ -197,6 +197,107 @@ class ProjectCodeGeneration(models.Model):
     def __str__(self):
         return f"{self.project.name} - Code Generation Folder: {self.folder_name}"
 
+class ProjectFile(models.Model):
+    """Model to store different types of project files (PRD, implementation, etc.)"""
+    FILE_TYPES = [
+        ('prd', 'Product Requirements Document'),
+        ('implementation', 'Technical Implementation Plan'),
+        ('design', 'Design Document'),
+        ('test', 'Test Plan'),
+        ('other', 'Other'),
+    ]
+    
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='files')
+    name = models.CharField(max_length=255)
+    file_type = models.CharField(max_length=50, choices=FILE_TYPES)
+    content = models.TextField(blank=True, null=True)  # Now optional, as content may be in S3
+    s3_key = models.CharField(max_length=500, blank=True, null=True)  # S3 object key
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        unique_together = ('project', 'name', 'file_type')
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['project', 'file_type', '-created_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.project.name} - {self.name} ({self.get_file_type_display()})"
+    
+    @property
+    def file_content(self):
+        """Get file content from database or S3"""
+        # If content is stored in database, return it
+        if self.content:
+            return self.content
+        
+        # If content is in S3, fetch it
+        if self.s3_key:
+            from development.utils.file_storage import get_file_storage
+            storage = get_file_storage()
+            
+            # For S3 storage, we need to extract project_name and file_path from s3_key
+            # S3 key format: prefix/project_name/file_path
+            if hasattr(storage, 's3_client'):  # Check if it's S3 storage
+                try:
+                    response = storage.s3_client.get_object(
+                        Bucket=storage.bucket_name,
+                        Key=self.s3_key
+                    )
+                    return response['Body'].read().decode('utf-8')
+                except Exception as e:
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"Error fetching content from S3: {e}")
+                    return None
+        
+        return None
+    
+    def save_content(self, content_text):
+        """Save content to S3 or database based on settings"""
+        from development.utils.file_storage import get_file_storage
+        from django.conf import settings
+        
+        storage = get_file_storage()
+        
+        # Check if we should use S3
+        if getattr(settings, 'FILE_STORAGE_TYPE', 'local').lower() == 's3':
+            # Generate S3 key
+            s3_key = f"project_files/{self.project.project_id}/{self.file_type}/{self.name}"
+            
+            # Save to S3
+            try:
+                storage.s3_client.put_object(
+                    Bucket=storage.bucket_name,
+                    Key=s3_key,
+                    Body=content_text.encode('utf-8'),
+                    ContentType='text/plain',
+                    ContentEncoding='utf-8'
+                )
+                
+                # Store S3 key and clear content field
+                self.s3_key = s3_key
+                self.content = None
+                
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info(f"Saved ProjectFile content to S3: {s3_key}")
+                
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Error saving to S3, falling back to database: {e}")
+                # Fall back to database storage
+                self.content = content_text
+                self.s3_key = None
+        else:
+            # Use database storage
+            self.content = content_text
+            self.s3_key = None
+
+
 class ToolCallHistory(models.Model):
     """Model to store content generated during tool calls"""
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='tool_call_histories')

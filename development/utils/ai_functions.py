@@ -8,7 +8,7 @@ from pathlib import Path
 from asgiref.sync import sync_to_async
 from projects.models import Project, ProjectFeature, ProjectPersona, \
                             ProjectPRD, ProjectDesignSchema, ProjectChecklist, \
-                            ProjectImplementation
+                            ProjectImplementation, ProjectFile
 from development.utils.prd_functions import analyze_features, analyze_personas, \
                     design_schema
 from development.models import ServerConfig
@@ -2364,6 +2364,116 @@ async def implement_ticket(ticket_id, project_id, conversation_id, ticket_detail
             "notification_type": "ticket_error",
             "message_to_agent": f"Error setting up ticket implementation {ticket_id}: {str(e)}",
             "error": str(e)
+        }
+
+async def save_file_from_stream(file_content, project_id, file_type, file_name):
+    """
+    Save file content that was captured from the streaming response.
+    This function is called from streaming_handlers.py when file generation is complete.
+    
+    Args:
+        file_content: The complete file content captured from streaming
+        project_id: The project ID to save the file for
+        file_type: Type of file (prd, implementation, design, test, etc.)
+        file_name: Name of the file
+        
+    Returns:
+        Dict with notification data
+    """
+    logger.info(f"Saving file from stream for project {project_id}")
+    logger.info(f"File type: {file_type}, Name: {file_name}, Size: {len(file_content)} characters")
+    
+    # Validate project ID
+    if not project_id:
+        logger.error("No project_id provided")
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: project_id is required"
+        }
+    
+    # Get the project
+    try:
+        project = await get_project(project_id)
+        if not project:
+            logger.error(f"Project with ID {project_id} not found")
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Error: Project with ID {project_id} does not exist"
+            }
+    except Exception as e:
+        logger.error(f"Error fetching project: {str(e)}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error fetching project: {str(e)}"
+        }
+    
+    # Validate file content
+    if not file_content or not file_content.strip():
+        logger.error("File content is empty")
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: File content cannot be empty"
+        }
+    
+    # Clean up any residual artifacts
+    file_content = file_content.strip()
+    
+    # Remove leading '>' if present
+    if file_content.startswith('>'):
+        file_content = file_content[1:].strip()
+    
+    # Remove any trailing tag fragments
+    if '</lfg-file' in file_content:
+        file_content = file_content[:file_content.rfind('</lfg-file')].strip()
+    
+    # Remove opening tag if it somehow got included
+    if '<lfg-file' in file_content:
+        import re
+        file_content = re.sub(r'<lfg-file[^>]*>', '', file_content, count=1).lstrip()
+    
+    try:
+        # Save file to database
+        file_obj, created = await sync_to_async(
+            ProjectFile.objects.get_or_create
+        )(
+            project=project,
+            name=file_name,
+            file_type=file_type,
+            defaults={}  # Don't set content in defaults
+        )
+        
+        # Save content using the model's save_content method
+        await sync_to_async(file_obj.save_content)(file_content)
+        await sync_to_async(file_obj.save)()
+        
+        if not created:
+            logger.info(f"Updated existing {file_type} file '{file_name}' for project {project_id}")
+        else:
+            logger.info(f"Created new {file_type} file '{file_name}' for project {project_id}")
+        
+        action = "created" if created else "updated"
+        
+        # Get display name for notification
+        file_type_display = {
+            'prd': 'PRD',
+            'implementation': 'Implementation',
+            'design': 'Design Document',
+            'test': 'Test Plan'
+        }.get(file_type, 'File')
+        
+        return {
+            "is_notification": True,
+            "notification_type": file_type,
+            "message_to_agent": f"{file_type_display} '{file_name}' {action} successfully in the database",
+            "file_name": file_name,
+            "file_type": file_type
+        }
+        
+    except Exception as e:
+        logger.error(f"Error saving file: {str(e)}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error saving file: {str(e)}"
         }
 
 async def save_implementation_from_stream(implementation_content, project_id):
