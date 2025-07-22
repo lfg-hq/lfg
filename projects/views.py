@@ -979,3 +979,130 @@ def linear_create_project_api(request, project_id):
             'error': str(e)
         })
 
+
+@login_required
+def file_browser_api(request, project_id):
+    """Enhanced API for file browser with search, filtering, and sorting"""
+    project = get_object_or_404(Project, project_id=project_id, owner=request.user)
+    
+    from django.db.models import Q
+    from django.core.paginator import Paginator
+    
+    # Get query parameters
+    search_query = request.GET.get('search', '')
+    file_type_filter = request.GET.get('type', '')
+    sort_by = request.GET.get('sort', 'updated_at')  # updated_at, created_at, name, type
+    sort_order = request.GET.get('order', 'desc')  # asc, desc
+    page = request.GET.get('page', 1)
+    per_page = request.GET.get('per_page', 20)
+    
+    # Start with base queryset
+    files = ProjectFile.objects.filter(project=project)
+    
+    # Apply search filter
+    if search_query:
+        # Search in name and content
+        files = files.filter(
+            Q(name__icontains=search_query) |
+            Q(content__icontains=search_query)
+        )
+    
+    # Apply type filter
+    if file_type_filter:
+        files = files.filter(file_type=file_type_filter)
+    
+    # Apply sorting
+    order_prefix = '-' if sort_order == 'desc' else ''
+    if sort_by in ['updated_at', 'created_at', 'name', 'file_type']:
+        files = files.order_by(f'{order_prefix}{sort_by}')
+    else:
+        files = files.order_by(f'{order_prefix}updated_at')
+    
+    # Get file type statistics for filters
+    type_stats = {}
+    all_files = ProjectFile.objects.filter(project=project)
+    for file_type, display_name in ProjectFile.FILE_TYPES:
+        count = all_files.filter(file_type=file_type).count()
+        if count > 0:
+            type_stats[file_type] = {
+                'name': display_name,
+                'count': count
+            }
+    
+    # Paginate results
+    paginator = Paginator(files, per_page)
+    try:
+        page_obj = paginator.page(page)
+    except:
+        page_obj = paginator.page(1)
+    
+    # Build response
+    files_list = []
+    for file_obj in page_obj:
+        # Get file size (approximate based on content length)
+        content = file_obj.file_content or ''
+        file_size = len(content.encode('utf-8'))
+        
+        files_list.append({
+            'id': file_obj.id,
+            'name': file_obj.name,
+            'type': file_obj.file_type,
+            'type_display': file_obj.get_file_type_display(),
+            'is_active': file_obj.is_active,
+            'size': file_size,
+            'size_display': _format_file_size(file_size),
+            'created_at': file_obj.created_at.isoformat(),
+            'updated_at': file_obj.updated_at.isoformat(),
+            'created_at_display': file_obj.created_at.strftime('%Y-%m-%d %H:%M'),
+            'updated_at_display': file_obj.updated_at.strftime('%Y-%m-%d %H:%M'),
+            'has_content': bool(file_obj.content or file_obj.s3_key),
+            'preview': content[:200] + '...' if len(content) > 200 else content,
+            'owner': file_obj.project.owner.username if file_obj.project.owner else 'System'
+        })
+    
+    return JsonResponse({
+        'files': files_list,
+        'pagination': {
+            'page': page_obj.number,
+            'pages': paginator.num_pages,
+            'per_page': per_page,
+            'total': paginator.count,
+            'has_next': page_obj.has_next(),
+            'has_previous': page_obj.has_previous()
+        },
+        'filters': {
+            'types': type_stats,
+            'current_type': file_type_filter,
+            'search': search_query,
+            'sort_by': sort_by,
+            'sort_order': sort_order
+        }
+    })
+
+
+@login_required
+def file_content_api(request, project_id, file_id):
+    """API to get full content of a specific file"""
+    project = get_object_or_404(Project, project_id=project_id, owner=request.user)
+    file_obj = get_object_or_404(ProjectFile, id=file_id, project=project)
+    
+    return JsonResponse({
+        'id': file_obj.id,
+        'name': file_obj.name,
+        'type': file_obj.file_type,
+        'type_display': file_obj.get_file_type_display(),
+        'content': file_obj.file_content,
+        'created_at': file_obj.created_at.isoformat(),
+        'updated_at': file_obj.updated_at.isoformat()
+    })
+
+
+def _format_file_size(size_in_bytes):
+    """Format file size in human readable format"""
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if size_in_bytes < 1024.0:
+            return f"{size_in_bytes:.1f} {unit}"
+        size_in_bytes /= 1024.0
+    return f"{size_in_bytes:.1f} TB"
+
+

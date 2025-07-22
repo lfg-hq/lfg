@@ -213,13 +213,298 @@
         .prd-selector-dropdown::-webkit-scrollbar-thumb:hover {
             background: #555;
         }
+        
+        /* File Browser Table Styles */
+        .file-table-header {
+            display: grid;
+            grid-template-columns: 40px 1fr 200px 120px 100px 80px;
+            padding: 8px 16px;
+            border-bottom: 1px solid #333;
+            background: #1a1a1a;
+            font-size: 12px;
+            font-weight: 600;
+            color: #9ca3af;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            gap: 12px;
+            align-items: center;
+        }
+        
+        .file-list-item {
+            display: grid;
+            grid-template-columns: 40px 1fr 200px 120px 100px 80px;
+            padding: 8px 16px;
+            border-bottom: 1px solid #2a2a2a;
+            transition: all 0.15s ease;
+            cursor: pointer;
+            position: relative;
+            background: transparent;
+            gap: 12px;
+            align-items: center;
+            min-height: 44px;
+        }
+        
+        .file-list-item:hover {
+            background: rgba(139, 92, 246, 0.05);
+        }
+        
+        .file-icon {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        
+        .file-icon i {
+            font-size: 16px;
+        }
+        
+        #filebrowser .file-list-item .file-name {
+            font-size: 14px !important;
+            font-weight: 400 !important;
+            color: #e2e8f0 !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            white-space: nowrap !important;
+            display: block !important;
+            opacity: 1 !important;
+            margin: 0 !important;
+            visibility: visible !important;
+            position: static !important;
+            transform: none !important;
+        }
+        
+        .file-type-cell {
+            display: flex;
+            align-items: center;
+        }
+        
+        .file-type-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            font-size: 11px;
+            font-weight: 500;
+            border-radius: 4px;
+            text-transform: lowercase;
+            letter-spacing: 0.3px;
+            line-height: 1.2;
+        }
+        
+        .file-owner-cell {
+            font-size: 13px;
+            color: #9ca3af;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .file-date-cell {
+            font-size: 13px;
+            color: #9ca3af;
+        }
+        
+        .file-size-cell {
+            font-size: 13px;
+            color: #9ca3af;
+            text-align: right;
+        }
+        
+        /* Right-click context menu */
+        .file-context-menu {
+            position: fixed;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 4px;
+            min-width: 160px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+            display: none;
+        }
+        
+        .context-menu-item {
+            padding: 8px 12px;
+            color: #e2e8f0;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .context-menu-item:hover {
+            background: #2a2a2a;
+        }
+        
+        .context-menu-item.delete {
+            color: #ef4444;
+        }
+        
+        .context-menu-item.delete:hover {
+            background: rgba(239, 68, 68, 0.1);
+        }
+        
+        .context-menu-item i {
+            width: 16px;
+            font-size: 12px;
+        }
+        
+        /* Pagination Styles */
+        .pagination-controls {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        
+        .pagination-btn {
+            padding: 6px 10px;
+            background: transparent;
+            border: 1px solid #333;
+            border-radius: 6px;
+            color: #e2e8f0;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            font-size: 13px;
+        }
+        
+        .pagination-btn:hover:not(:disabled) {
+            background: #2a2a2a;
+            border-color: #444;
+        }
+        
+        .pagination-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        
+        .pagination-btn.active {
+            background: #8b5cf6;
+            border-color: #8b5cf6;
+            color: white;
+        }
+        
+        .pagination-info {
+            color: #9ca3af;
+            font-size: 13px;
+            margin: 0 10px;
+        }
+        
+        /* File type specific colors */
+        .file-type-prd .file-icon { background: rgba(59, 130, 246, 0.1); }
+        .file-type-prd .file-icon i { color: #3b82f6; }
+        .file-type-prd .file-type-badge {
+            background: rgba(59, 130, 246, 0.2);
+            color: #93bbfc;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+        
+        .file-type-implementation .file-icon { background: rgba(16, 185, 129, 0.1); }
+        .file-type-implementation .file-icon i { color: #10b981; }
+        .file-type-implementation .file-type-badge {
+            background: rgba(16, 185, 129, 0.2);
+            color: #6ee7b7;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+        
+        .file-type-design .file-icon { background: rgba(245, 158, 11, 0.1); }
+        .file-type-design .file-icon i { color: #f59e0b; }
+        .file-type-design .file-type-badge {
+            background: rgba(245, 158, 11, 0.2);
+            color: #fbbf24;
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+        
+        .file-type-test .file-icon { background: rgba(239, 68, 68, 0.1); }
+        .file-type-test .file-icon i { color: #ef4444; }
+        .file-type-test .file-type-badge {
+            background: rgba(239, 68, 68, 0.2);
+            color: #fca5a5;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+        
+        .file-type-other .file-icon { background: rgba(156, 163, 175, 0.1); }
+        .file-type-other .file-icon i { color: #9ca3af; }
+        .file-type-other .file-type-badge {
+            background: rgba(156, 163, 175, 0.2);
+            color: #d1d5db;
+            border: 1px solid rgba(156, 163, 175, 0.3);
+        }
+        
+        /* Additional file type styles */
+        .file-type-quotation .file-type-badge {
+            background: rgba(236, 72, 153, 0.2);
+            color: #f9a8d4;
+            border: 1px solid rgba(236, 72, 153, 0.3);
+        }
+        
+        .file-type-proposal .file-type-badge {
+            background: rgba(168, 85, 247, 0.2);
+            color: #c4b5fd;
+            border: 1px solid rgba(168, 85, 247, 0.3);
+        }
+        
+        .file-type-contract .file-type-badge {
+            background: rgba(217, 119, 6, 0.2);
+            color: #fcd34d;
+            border: 1px solid rgba(217, 119, 6, 0.3);
+        }
+        
+        .file-type-meeting_notes .file-type-badge {
+            background: rgba(6, 182, 212, 0.2);
+            color: #67e8f9;
+            border: 1px solid rgba(6, 182, 212, 0.3);
+        }
+        
+        .file-type-research .file-type-badge {
+            background: rgba(34, 197, 94, 0.2);
+            color: #86efac;
+            border: 1px solid rgba(34, 197, 94, 0.3);
+        }
+        
+        .file-type-specification .file-type-badge {
+            background: rgba(99, 102, 241, 0.2);
+            color: #a5b4fc;
+            border: 1px solid rgba(99, 102, 241, 0.3);
+        }
+        
+        /* Default badge style for unknown types */
+        .file-type-badge {
+            background: rgba(156, 163, 175, 0.15);
+            color: #e5e7eb;
+            border: 1px solid rgba(156, 163, 175, 0.25);
+        }
+        
+        /* File browser scrollbar */
+        .filebrowser-content::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .filebrowser-content::-webkit-scrollbar-track {
+            background: #0a0a0a;
+            border-radius: 4px;
+        }
+        
+        .filebrowser-content::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 4px;
+        }
+        
+        .filebrowser-content::-webkit-scrollbar-thumb:hover {
+            background: #444;
+        }
     </style>
     
     <!-- Tabs Navigation - moved to top -->
     <div class="artifacts-tabs" style="display: flex; justify-content: space-between; align-items: center;">
         <div style="display: flex;">
-            <button class="tab-button active" data-tab="prd">PRD</button>
-            <button class="tab-button" data-tab="implementation">Implementation</button>
+            <button class="tab-button" active data-tab="filebrowser">File Browser</button>
+            <!-- <button class="tab-button active" data-tab="prd">PRD</button> -->
+            <!-- <button class="tab-button" data-tab="implementation">Implementation</button> -->
             <!-- <button class="tab-button" data-tab="features">Features</button> -->
             <!-- <button class="tab-button" data-tab="personas">Personas</button> -->
             <!-- <button class="tab-button" data-tab="design">Design</button> -->
@@ -512,6 +797,99 @@
                     </div>
                     <div class="codebase-frame-container" id="codebase-frame-container" style="display: none; width: 100%; height: 100%; position: absolute; top: 0; left: 0; right: 0; bottom: 0;">
                         <iframe id="codebase-iframe" style="width: 100%; height: 100%; border: none;" sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-top-navigation-by-user-activation"></iframe>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- File Browser Tab -->
+            <div class="tab-pane" id="filebrowser">
+                <div class="filebrowser-container" style="height: 100%; display: flex; flex-direction: column;">
+                    <!-- Browser View -->
+                    <div id="filebrowser-main" style="height: 100%; display: flex; flex-direction: column;">
+                        <!-- Header with search and filters -->
+                        <div class="filebrowser-header" style="padding: 20px; border-bottom: 1px solid #2a2a2a;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px;">
+                                <h3 style="color: #e2e8f0; margin: 0; font-size: 18px; font-weight: 600;">Documents</h3>
+                                <div style="display: flex; gap: 10px; align-items: center;">
+                                    <select id="file-type-filter" style="padding: 8px 12px; background: #1a1a1a; border: 1px solid #333; border-radius: 6px; color: #e2e8f0; font-size: 13px;">
+                                        <option value="">All Types</option>
+                                    </select>
+                                    <button id="refresh-filebrowser" class="btn btn-sm" 
+                                            style="padding: 8px 16px; background: #2a2a2a; color: #e2e8f0; border: 1px solid #333; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 13px;">
+                                        <i class="fas fa-sync-alt"></i> Refresh
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <!-- Search Bar -->
+                            <div style="position: relative;">
+                                <input type="text" id="file-search" placeholder="Search documents..." 
+                                       style="width: 100%; padding: 10px 15px 10px 40px; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; color: #e2e8f0; font-size: 14px;">
+                                <i class="fas fa-search" style="position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: #666; font-size: 14px;"></i>
+                            </div>
+                        </div>
+                        
+                        <!-- File List Content -->
+                        <div class="filebrowser-content" style="flex: 1; overflow-y: auto;">
+                            <!-- Table Header -->
+                            <div class="file-table-header" id="file-table-header" style="display: none;">
+                                <div></div>
+                                <div>Name</div>
+                                <div>Type</div>
+                                <div>Owner</div>
+                                <div>Modified</div>
+                                <div style="text-align: right;">Size</div>
+                            </div>
+                            
+                            <!-- Loading State -->
+                            <div class="loading-state" id="filebrowser-loading" style="display: none; text-align: center; padding: 60px;">
+                                <div class="spinner"></div>
+                                <div style="margin-top: 10px; color: #9ca3af;">Loading documents...</div>
+                            </div>
+                            
+                            <!-- Empty State -->
+                            <div class="empty-state" id="filebrowser-empty" style="display: none;">
+                                <div class="empty-state-icon">
+                                    <i class="fas fa-folder-open"></i>
+                                </div>
+                                <div class="empty-state-text">
+                                    No documents found in this project.
+                                </div>
+                            </div>
+                            
+                            <!-- File List -->
+                            <div id="filebrowser-list" style="display: none;">
+                                <!-- Files will be dynamically inserted here -->
+                            </div>
+                            
+                            <!-- Pagination -->
+                            <div id="filebrowser-pagination" style="display: none; padding: 20px; border-top: 1px solid #2a2a2a;">
+                                <!-- Pagination controls will be inserted here -->
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- File Viewer (hidden by default) -->
+                    <div id="filebrowser-viewer" style="height: 100%; display: none; flex-direction: column;">
+                        <div class="viewer-header" style="padding: 15px 20px; border-bottom: 1px solid #2a2a2a; display: flex; align-items: center; justify-content: space-between;">
+                            <div style="display: flex; align-items: center; gap: 15px;">
+                                <button id="viewer-back" class="btn btn-sm" style="padding: 8px 12px; background: #2a2a2a; color: #e2e8f0; border: 1px solid #333; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                                    <i class="fas fa-arrow-left"></i> Back
+                                </button>
+                                <h3 id="viewer-title" style="color: #e2e8f0; margin: 0; font-size: 16px; font-weight: 600;"></h3>
+                            </div>
+                            <div style="display: flex; gap: 10px;">
+                                <button id="viewer-copy" class="btn btn-sm" style="padding: 8px 16px; background: #2a2a2a; color: #e2e8f0; border: 1px solid #333; border-radius: 6px; cursor: pointer;">
+                                    <i class="fas fa-copy"></i> Copy
+                                </button>
+                                <button id="viewer-delete" class="btn btn-sm" style="padding: 8px 16px; background: #dc2626; color: white; border: none; border-radius: 6px; cursor: pointer;">
+                                    <i class="fas fa-trash"></i> Delete
+                                </button>
+                            </div>
+                        </div>
+                        <div class="viewer-content" style="flex: 1; overflow-y: auto;">
+                            <div id="viewer-markdown" class="prd-content markdown-content" style="padding: 20px; color: #e2e8f0;"></div>
+                        </div>
                     </div>
                 </div>
             </div>

@@ -4995,6 +4995,565 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 document.body.removeChild(textArea);
             }
+        },
+        
+        /**
+         * Load File Browser for a project
+         * @param {number} projectId - The project ID
+         */
+        loadFileBrowser: function(projectId) {
+            console.log(`[ArtifactsLoader] Loading file browser for project ${projectId}`);
+            
+            const fileBrowserContainer = document.getElementById('filebrowser');
+            const fileBrowserMain = document.getElementById('filebrowser-main');
+            const fileBrowserViewer = document.getElementById('filebrowser-viewer');
+            const fileBrowserLoading = document.getElementById('filebrowser-loading');
+            const fileBrowserEmpty = document.getElementById('filebrowser-empty');
+            const fileBrowserList = document.getElementById('filebrowser-list');
+            const fileBrowserPagination = document.getElementById('filebrowser-pagination');
+            const fileSearch = document.getElementById('file-search');
+            const fileTypeFilter = document.getElementById('file-type-filter');
+            const refreshButton = document.getElementById('refresh-filebrowser');
+            
+            // Viewer elements
+            const viewerBack = document.getElementById('viewer-back');
+            const viewerTitle = document.getElementById('viewer-title');
+            const viewerCopy = document.getElementById('viewer-copy');
+            const viewerDelete = document.getElementById('viewer-delete');
+            const viewerMarkdown = document.getElementById('viewer-markdown');
+            
+            if (!fileBrowserContainer || !fileBrowserLoading || !fileBrowserEmpty || !fileBrowserList) {
+                console.error('[ArtifactsLoader] File browser UI elements not found');
+                return;
+            }
+            
+            let currentPage = 1;
+            let currentSearch = '';
+            let currentType = '';
+            let currentSort = 'updated_at';
+            let currentOrder = 'desc';
+            let searchTimeout = null;
+            
+            // Function to fetch and display files
+            const fetchFiles = (page = 1) => {
+                // Show loading state
+                fileBrowserLoading.style.display = 'block';
+                fileBrowserEmpty.style.display = 'none';
+                fileBrowserList.style.display = 'none';
+                fileBrowserPagination.style.display = 'none';
+                
+                const params = new URLSearchParams({
+                    page: page,
+                    per_page: 10,
+                    search: currentSearch,
+                    type: currentType,
+                    sort: currentSort,
+                    order: currentOrder
+                });
+                
+                fetch(`/projects/${projectId}/api/files/browser/?${params}`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken(),
+                    }
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    fileBrowserLoading.style.display = 'none';
+                    
+                    // Update filter options if first load
+                    if (page === 1 && data.filters && data.filters.types) {
+                        updateTypeFilterOptions(data.filters.types);
+                    }
+                    
+                    if (data.files && data.files.length > 0) {
+                        fileBrowserList.style.display = 'block';
+                        fileBrowserEmpty.style.display = 'none';
+                        document.getElementById('file-table-header').style.display = 'grid';
+                        
+                        // Clear the list first
+                        fileBrowserList.innerHTML = '';
+                        
+                        // Create file items with table-like layout
+                        data.files.forEach(file => {
+                            const icon = getFileIcon(file.type);
+                            const typeClass = `file-type-${file.type}`;
+                            
+                            // Create the main container
+                            const fileItem = document.createElement('div');
+                            fileItem.className = `file-list-item ${typeClass}`;
+                            fileItem.dataset.fileId = file.id;
+                            
+                            // Create icon
+                            const fileIcon = document.createElement('div');
+                            fileIcon.className = 'file-icon';
+                            fileIcon.innerHTML = `<i class="${icon}"></i>`;
+                            
+                            // Create name element
+                            const fileName = document.createElement('div');
+                            fileName.className = 'file-name';
+                            fileName.textContent = file.name || file.type_display || 'Unnamed File';
+                            
+                            // Create type cell with badge
+                            const fileType = document.createElement('div');
+                            fileType.className = 'file-type-cell';
+                            const typeBadge = document.createElement('span');
+                            typeBadge.className = 'file-type-badge';
+                            // Use the raw type if type_display is not available
+                            const displayType = file.type_display || file.type || 'Unknown';
+                            typeBadge.textContent = displayType;
+                            fileType.appendChild(typeBadge);
+                            
+                            // Create owner cell
+                            const fileOwner = document.createElement('div');
+                            fileOwner.className = 'file-owner-cell';
+                            fileOwner.textContent = file.owner || 'System';
+                            
+                            // Create date cell
+                            const fileDate = document.createElement('div');
+                            fileDate.className = 'file-date-cell';
+                            fileDate.textContent = formatRelativeTime(file.updated_at);
+                            
+                            // Create size cell
+                            const fileSize = document.createElement('div');
+                            fileSize.className = 'file-size-cell';
+                            fileSize.textContent = file.size_display || '0 B';
+                            
+                            // Assemble the structure
+                            fileItem.appendChild(fileIcon);
+                            fileItem.appendChild(fileName);
+                            fileItem.appendChild(fileType);
+                            fileItem.appendChild(fileOwner);
+                            fileItem.appendChild(fileDate);
+                            fileItem.appendChild(fileSize);
+                            
+                            // Add to list
+                            fileBrowserList.appendChild(fileItem);
+                        });
+                        
+                        // Show pagination if needed
+                        if (data.pagination && data.pagination.pages > 1) {
+                            fileBrowserPagination.style.display = 'block';
+                            fileBrowserPagination.innerHTML = buildPaginationHTML(data.pagination);
+                            attachPaginationListeners();
+                        } else {
+                            fileBrowserPagination.style.display = 'none';
+                        }
+                        
+                        // Attach event listeners to file items
+                        attachFileItemListeners();
+                        
+                    } else {
+                        fileBrowserList.style.display = 'none';
+                        fileBrowserEmpty.style.display = 'block';
+                        fileBrowserPagination.style.display = 'none';
+                        document.getElementById('file-table-header').style.display = 'none';
+                    }
+                })
+                .catch(error => {
+                    console.error('[ArtifactsLoader] Error loading file browser:', error);
+                    fileBrowserLoading.style.display = 'none';
+                    fileBrowserEmpty.style.display = 'block';
+                    showToast('Failed to load files', 'error');
+                });
+            };
+            
+            // Helper function to get file icon based on type
+            const getFileIcon = (type) => {
+                const icons = {
+                    'prd': 'fas fa-file-alt',
+                    'implementation': 'fas fa-code',
+                    'design': 'fas fa-palette',
+                    'test': 'fas fa-vial',
+                    'other': 'fas fa-file'
+                };
+                return icons[type] || icons.other;
+            };
+            
+            // Helper function to escape HTML
+            const escapeHtml = (text) => {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            };
+            
+            // Helper function to format relative time
+            const formatRelativeTime = (dateString) => {
+                const date = new Date(dateString);
+                const now = new Date();
+                const diff = now - date;
+                const minutes = Math.floor(diff / 60000);
+                const hours = Math.floor(minutes / 60);
+                const days = Math.floor(hours / 24);
+                
+                if (days > 0) return `${days}d ago`;
+                if (hours > 0) return `${hours}h ago`;
+                if (minutes > 0) return `${minutes}m ago`;
+                return 'just now';
+            };
+            
+            // Update type filter options
+            const updateTypeFilterOptions = (types) => {
+                let html = '<option value="">All Types</option>';
+                Object.keys(types).forEach(type => {
+                    html += `<option value="${type}">${types[type].name} (${types[type].count})</option>`;
+                });
+                fileTypeFilter.innerHTML = html;
+            };
+            
+            // Build pagination HTML
+            const buildPaginationHTML = (pagination) => {
+                let html = '<div class="pagination-controls">';
+                
+                // Previous button
+                html += `<button class="pagination-btn" data-page="${pagination.page - 1}" ${!pagination.has_previous ? 'disabled' : ''}>
+                    <i class="fas fa-chevron-left"></i>
+                </button>`;
+                
+                // Page numbers
+                const maxPages = 5;
+                let startPage = Math.max(1, pagination.page - Math.floor(maxPages / 2));
+                let endPage = Math.min(pagination.pages, startPage + maxPages - 1);
+                
+                if (endPage - startPage < maxPages - 1) {
+                    startPage = Math.max(1, endPage - maxPages + 1);
+                }
+                
+                for (let i = startPage; i <= endPage; i++) {
+                    html += `<button class="pagination-btn ${i === pagination.page ? 'active' : ''}" data-page="${i}">${i}</button>`;
+                }
+                
+                // Next button
+                html += `<button class="pagination-btn" data-page="${pagination.page + 1}" ${!pagination.has_next ? 'disabled' : ''}>
+                    <i class="fas fa-chevron-right"></i>
+                </button>`;
+                
+                html += `<span class="pagination-info">${pagination.total} files</span>`;
+                html += '</div>';
+                
+                return html;
+            };
+            
+            // Attach pagination event listeners
+            const attachPaginationListeners = () => {
+                document.querySelectorAll('.pagination-btn').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        if (!this.disabled) {
+                            currentPage = parseInt(this.dataset.page);
+                            fetchFiles(currentPage);
+                        }
+                    });
+                });
+            };
+            
+            // Attach file item event listeners
+            const attachFileItemListeners = () => {
+                // Click on file item to view
+                document.querySelectorAll('.file-list-item').forEach(item => {
+                    item.addEventListener('click', function(e) {
+                        const fileId = this.dataset.fileId;
+                        const fileName = this.querySelector('.file-name').textContent;
+                        viewFileContent(fileId, fileName);
+                    });
+                    
+                    // Add right-click context menu
+                    item.addEventListener('contextmenu', function(e) {
+                        e.preventDefault();
+                        const fileId = this.dataset.fileId;
+                        const fileName = this.querySelector('.file-name').textContent;
+                        showContextMenu(e.pageX, e.pageY, fileId, fileName);
+                    });
+                });
+            };
+            
+            // Context menu functionality
+            let contextMenu = null;
+            
+            const showContextMenu = (x, y, fileId, fileName) => {
+                // Remove existing menu
+                if (contextMenu) {
+                    contextMenu.remove();
+                }
+                
+                // Create context menu
+                contextMenu = document.createElement('div');
+                contextMenu.className = 'file-context-menu';
+                contextMenu.style.left = x + 'px';
+                contextMenu.style.top = y + 'px';
+                contextMenu.style.display = 'block';
+                
+                contextMenu.innerHTML = `
+                    <div class="context-menu-item" data-action="view">
+                        <i class="fas fa-eye"></i> View
+                    </div>
+                    <div class="context-menu-item" data-action="copy">
+                        <i class="fas fa-copy"></i> Copy Content
+                    </div>
+                    <div class="context-menu-item" data-action="archive">
+                        <i class="fas fa-archive"></i> Archive
+                    </div>
+                    <div class="context-menu-item delete" data-action="delete">
+                        <i class="fas fa-trash"></i> Delete
+                    </div>
+                `;
+                
+                document.body.appendChild(contextMenu);
+                
+                // Handle menu item clicks
+                contextMenu.querySelectorAll('.context-menu-item').forEach(item => {
+                    item.addEventListener('click', function() {
+                        const action = this.dataset.action;
+                        contextMenu.remove();
+                        
+                        switch(action) {
+                            case 'view':
+                                viewFileContent(fileId, fileName);
+                                break;
+                            case 'copy':
+                                copyFileContent(fileId);
+                                break;
+                            case 'archive':
+                                if (confirm(`Are you sure you want to archive "${fileName}"?`)) {
+                                    archiveFile(fileId);
+                                }
+                                break;
+                            case 'delete':
+                                if (confirm(`Are you sure you want to delete "${fileName}"? This action cannot be undone.`)) {
+                                    deleteFile(fileId);
+                                }
+                                break;
+                        }
+                    });
+                });
+                
+                // Close menu when clicking outside
+                const closeMenu = (e) => {
+                    if (contextMenu && !contextMenu.contains(e.target)) {
+                        contextMenu.remove();
+                        contextMenu = null;
+                        document.removeEventListener('click', closeMenu);
+                    }
+                };
+                
+                setTimeout(() => {
+                    document.addEventListener('click', closeMenu);
+                }, 0);
+            };
+            
+            // View file content in the viewer panel
+            const viewFileContent = (fileId, fileName) => {
+                fetch(`/projects/${projectId}/api/files/${fileId}/content/`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken(),
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    // Switch to viewer mode
+                    fileBrowserMain.style.display = 'none';
+                    fileBrowserViewer.style.display = 'flex';
+                    
+                    // Set title
+                    viewerTitle.textContent = data.name || fileName;
+                    
+                    // Render markdown content
+                    const content = data.content || 'No content available';
+                    
+                    // For PRD and implementation files, render as markdown
+                    if (data.type === 'prd' || data.type === 'implementation') {
+                        // Use marked.js if available, otherwise basic rendering
+                        if (typeof marked !== 'undefined') {
+                            viewerMarkdown.innerHTML = marked.parse(content);
+                        } else {
+                            // Simple markdown rendering
+                            let renderedContent = escapeHtml(content);
+                            
+                            // Convert markdown to HTML (basic conversion)
+                            // Headers
+                            renderedContent = renderedContent.replace(/^#### (.*$)/gim, '<h4>$1</h4>');
+                            renderedContent = renderedContent.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+                            renderedContent = renderedContent.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+                            renderedContent = renderedContent.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+                            
+                            // Bold and italic
+                            renderedContent = renderedContent.replace(/\*\*\*(.*?)\*\*\*/g, '<strong><em>$1</em></strong>');
+                            renderedContent = renderedContent.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                            renderedContent = renderedContent.replace(/\*(.*?)\*/g, '<em>$1</em>');
+                            
+                            // Links
+                            renderedContent = renderedContent.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+                            
+                            // Lists
+                            renderedContent = renderedContent.replace(/^\* (.+)$/gim, '<li>$1</li>');
+                            renderedContent = renderedContent.replace(/^\d+\. (.+)$/gim, '<li>$1</li>');
+                            
+                            // Wrap consecutive list items
+                            renderedContent = renderedContent.replace(/(<li>.*?<\/li>\s*)+/gs, function(match) {
+                                return '<ul>' + match + '</ul>';
+                            });
+                            
+                            // Code blocks
+                            renderedContent = renderedContent.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+                            renderedContent = renderedContent.replace(/`([^`]+)`/g, '<code>$1</code>');
+                            
+                            // Paragraphs
+                            renderedContent = renderedContent.split('\n\n').map(para => {
+                                if (para.trim() && !para.startsWith('<') && !para.match(/^[\*\d]/)) {
+                                    return '<p>' + para + '</p>';
+                                }
+                                return para;
+                            }).join('\n');
+                            
+                            viewerMarkdown.innerHTML = renderedContent;
+                        }
+                    } else {
+                        // For other file types, display as preformatted text
+                        viewerMarkdown.innerHTML = '<pre style="white-space: pre-wrap; word-wrap: break-word;">' + escapeHtml(content) + '</pre>';
+                    }
+                    
+                    // Store current file info for actions
+                    viewerCopy.dataset.fileId = fileId;
+                    viewerCopy.dataset.content = content;
+                    viewerDelete.dataset.fileId = fileId;
+                    viewerDelete.dataset.fileName = data.name || fileName;
+                })
+                .catch(error => {
+                    console.error('[ArtifactsLoader] Error loading file content:', error);
+                    showToast('Failed to load file content', 'error');
+                });
+            };
+            
+            // Delete file
+            const deleteFile = (fileId) => {
+                // For now, we'll use the existing delete endpoint
+                // In a real implementation, you'd create a proper delete endpoint
+                const fileItem = document.querySelector(`[data-file-id="${fileId}"]`);
+                const fileType = fileItem.classList.contains('file-type-prd') ? 'prd' : 
+                               fileItem.classList.contains('file-type-implementation') ? 'implementation' :
+                               fileItem.classList.contains('file-type-design') ? 'design' :
+                               fileItem.classList.contains('file-type-test') ? 'test' : 'other';
+                const fileName = fileItem.querySelector('.file-name').textContent;
+                
+                fetch(`/projects/${projectId}/api/files/?type=${fileType}&name=${encodeURIComponent(fileName)}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken(),
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showToast('File deleted successfully', 'success');
+                        fetchFiles(currentPage);
+                    } else {
+                        showToast(data.error || 'Failed to delete file', 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('[ArtifactsLoader] Error deleting file:', error);
+                    showToast('Failed to delete file', 'error');
+                });
+            };
+            
+            // Archive file (for now, same as delete but could be different)
+            const archiveFile = (fileId) => {
+                // In a real implementation, you'd have a separate archive endpoint
+                // For now, we'll just show a message
+                showToast('Archive feature coming soon', 'info');
+            };
+            
+            // Copy file content to clipboard
+            const copyFileContent = (fileId) => {
+                fetch(`/projects/${projectId}/api/files/${fileId}/content/`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken(),
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.content) {
+                        copyToClipboard(data.content);
+                        showToast('Content copied to clipboard!', 'success');
+                    }
+                })
+                .catch(error => {
+                    console.error('[ArtifactsLoader] Error copying file content:', error);
+                    showToast('Failed to copy file content', 'error');
+                });
+            };
+            
+            // Event listeners for search and filters
+            if (fileSearch) {
+                fileSearch.addEventListener('input', function() {
+                    currentSearch = this.value;
+                    
+                    // Debounce search
+                    clearTimeout(searchTimeout);
+                    searchTimeout = setTimeout(() => {
+                        currentPage = 1;
+                        fetchFiles(currentPage);
+                    }, 300);
+                });
+            }
+            
+            if (fileTypeFilter) {
+                fileTypeFilter.addEventListener('change', function() {
+                    currentType = this.value;
+                    currentPage = 1;
+                    fetchFiles(currentPage);
+                });
+            }
+            
+            if (refreshButton) {
+                refreshButton.addEventListener('click', function() {
+                    fetchFiles(currentPage);
+                });
+            }
+            
+            // Viewer event listeners
+            if (viewerBack) {
+                viewerBack.addEventListener('click', function() {
+                    fileBrowserViewer.style.display = 'none';
+                    fileBrowserMain.style.display = 'flex';
+                });
+            }
+            
+            if (viewerCopy) {
+                viewerCopy.addEventListener('click', function() {
+                    const content = this.dataset.content;
+                    if (content) {
+                        copyToClipboard(content);
+                        showToast('Content copied to clipboard!', 'success');
+                    }
+                });
+            }
+            
+            if (viewerDelete) {
+                viewerDelete.addEventListener('click', function() {
+                    const fileId = this.dataset.fileId;
+                    const fileName = this.dataset.fileName;
+                    if (confirm(`Are you sure you want to delete "${fileName}"? This action cannot be undone.`)) {
+                        deleteFile(fileId);
+                        // Go back to list view
+                        fileBrowserViewer.style.display = 'none';
+                        fileBrowserMain.style.display = 'flex';
+                    }
+                });
+            }
+            
+            // Initial load
+            fetchFiles(1);
         }
     };
 

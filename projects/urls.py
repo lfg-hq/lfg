@@ -33,4 +33,8 @@ urlpatterns = [
     path('<str:project_id>/api/linear/teams/', views.linear_teams_api, name='linear_teams_api'),
     path('<str:project_id>/api/linear/projects/', views.linear_projects_api, name='linear_projects_api'),
     path('<str:project_id>/api/linear/create-project/', views.linear_create_project_api, name='linear_create_project_api'),
+    
+    # Enhanced file browser APIs
+    path('<str:project_id>/api/files/browser/', views.file_browser_api, name='file_browser_api'),
+    path('<str:project_id>/api/files/<int:file_id>/content/', views.file_content_api, name='file_content_api'),
 ]

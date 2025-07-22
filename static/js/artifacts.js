@@ -649,6 +649,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     console.warn('[ArtifactsPanel] ArtifactsLoader.loadToolHistory not found');
                 }
                 break;
+            case 'filebrowser':
+                if (window.ArtifactsLoader && typeof window.ArtifactsLoader.loadFileBrowser === 'function') {
+                    console.log('[ArtifactsPanel] Loading file browser from artifacts.js');
+                    window.ArtifactsLoader.loadFileBrowser(projectId);
+                } else {
+                    console.warn('[ArtifactsPanel] ArtifactsLoader.loadFileBrowser not found');
+                }
+                break;
             // Add more cases as needed for other tabs
         }
     }
