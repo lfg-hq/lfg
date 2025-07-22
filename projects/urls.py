@@ -15,6 +15,10 @@ urlpatterns = [
     path('<str:project_id>/terminal/', views.project_terminal, name='project_terminal'),
     # path('<str:project_id>/api/features/', views.project_features_api, name='project_features_api'),
     # path('<str:project_id>/api/personas/', views.project_personas_api, name='project_personas_api'),
+    # Unified file API
+    path('<str:project_id>/api/files/', views.project_files_api, name='project_files_api'),
+    
+    # Legacy APIs - kept for backward compatibility
     path('<str:project_id>/api/prd/', views.project_prd_api, name='project_prd_api'),
     path('<str:project_id>/api/implementation/', views.project_implementation_api, name='project_implementation_api'),
     path('<str:project_id>/api/design-schema/', views.project_design_schema_api, name='project_design_schema_api'),

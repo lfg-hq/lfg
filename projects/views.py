@@ -2,7 +2,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.contrib import messages
-from .models import Project, ProjectFeature, ProjectPersona, ProjectPRD, ProjectImplementation, ProjectDesignSchema, ProjectChecklist, ToolCallHistory
+from .models import Project, ProjectFeature, ProjectPersona, ProjectFile, ProjectDesignSchema, ProjectChecklist, ToolCallHistory
 from django.views.decorators.http import require_POST
 from django.core.exceptions import PermissionDenied
 import asyncio
@@ -265,7 +265,7 @@ def project_prd_api(request, project_id):
     
     if request.method == 'GET' and 'list' in request.GET:
         # List all PRDs for the project
-        prds = ProjectPRD.objects.filter(project=project).order_by('-updated_at')
+        prds = ProjectFile.objects.filter(project=project, file_type='prd').order_by('-updated_at')
         prds_list = []
         for prd in prds:
             prds_list.append({
@@ -278,24 +278,25 @@ def project_prd_api(request, project_id):
         return JsonResponse({'prds': prds_list})
     
     # Get the PRD by name or create it if it doesn't exist
-    prd, created = ProjectPRD.objects.get_or_create(
+    prd, created = ProjectFile.objects.get_or_create(
         project=project,
         name=prd_name,
-        defaults={'prd': ''}  # Default empty content if we're creating a new PRD
+        file_type='prd',
+        defaults={'content': ''}  # Default empty content if we're creating a new PRD
     )
     
     if request.method == 'POST':
         # Update PRD content
         try:
             data = json.loads(request.body)
-            prd.prd = data.get('content', '')
+            prd.save_content(data.get('content', ''))
             prd.save()
             
             return JsonResponse({
                 'success': True,
                 'id': prd.id,
                 'name': prd.name,
-                'content': prd.prd,
+                'content': prd.file_content,
                 'title': f'PRD: {prd.name}',
                 'updated_at': prd.updated_at.strftime('%Y-%m-%d %H:%M') if prd.updated_at else None
             })
@@ -320,7 +321,7 @@ def project_prd_api(request, project_id):
     prd_data = {
         'id': prd.id,
         'name': prd.name,
-        'content': prd.prd,
+        'content': prd.file_content,
         'title': f'PRD: {prd.name}',
         'updated_at': prd.updated_at.strftime('%Y-%m-%d %H:%M') if prd.updated_at else None
     }
@@ -439,9 +440,11 @@ def project_implementation_api(request, project_id):
     project = get_object_or_404(Project, project_id=project_id, owner=request.user)
     
     # Get the implementation or create it if it doesn't exist
-    implementation, created = ProjectImplementation.objects.get_or_create(
+    implementation, created = ProjectFile.objects.get_or_create(
         project=project,
-        defaults={'implementation': ''}  # Default empty content if we're creating a new implementation
+        name='Technical Implementation Plan',
+        file_type='implementation',
+        defaults={'content': ''}  # Default empty content if we're creating a new implementation
     )
     
     if request.method == 'POST':
@@ -449,13 +452,13 @@ def project_implementation_api(request, project_id):
         import json
         try:
             data = json.loads(request.body)
-            implementation.implementation = data.get('content', '')
+            implementation.save_content(data.get('content', ''))
             implementation.save()
             
             return JsonResponse({
                 'success': True,
                 'id': implementation.id,
-                'content': implementation.implementation,
+                'content': implementation.file_content,
                 'title': 'Implementation Plan',
                 'updated_at': implementation.updated_at.strftime('%Y-%m-%d %H:%M') if implementation.updated_at else None
             })
@@ -473,12 +476,104 @@ def project_implementation_api(request, project_id):
     # Convert to JSON-serializable format
     implementation_data = {
         'id': implementation.id,
-        'content': implementation.implementation,
+        'content': implementation.file_content,
         'title': 'Implementation Plan',
         'updated_at': implementation.updated_at.strftime('%Y-%m-%d %H:%M') if implementation.updated_at else None
     }
     
     return JsonResponse(implementation_data)
+
+@login_required
+def project_files_api(request, project_id):
+    """Unified API to get, create, update, or delete project files by type"""
+    project = get_object_or_404(Project, project_id=project_id, owner=request.user)
+    
+    import json
+    
+    # Get file type and name from query params
+    file_type = request.GET.get('type')  # prd, implementation, design, test, etc.
+    file_name = request.GET.get('name')
+    
+    if request.method == 'GET' and 'list' in request.GET:
+        # List all files of a specific type or all files
+        if file_type:
+            files = ProjectFile.objects.filter(project=project, file_type=file_type).order_by('-updated_at')
+        else:
+            files = ProjectFile.objects.filter(project=project).order_by('-updated_at')
+        
+        files_list = []
+        for file_obj in files:
+            files_list.append({
+                'id': file_obj.id,
+                'name': file_obj.name,
+                'type': file_obj.file_type,
+                'is_active': file_obj.is_active,
+                'created_at': file_obj.created_at.strftime('%Y-%m-%d %H:%M'),
+                'updated_at': file_obj.updated_at.strftime('%Y-%m-%d %H:%M')
+            })
+        return JsonResponse({'files': files_list})
+    
+    # For specific file operations, both type and name are required
+    if not file_type or not file_name:
+        return JsonResponse({'error': 'Both type and name parameters are required'}, status=400)
+    
+    if request.method == 'GET':
+        # Get a specific file
+        try:
+            file_obj = ProjectFile.objects.get(project=project, file_type=file_type, name=file_name)
+            return JsonResponse({
+                'id': file_obj.id,
+                'name': file_obj.name,
+                'type': file_obj.file_type,
+                'content': file_obj.file_content,
+                'title': file_obj.name,
+                'created_at': file_obj.created_at.strftime('%Y-%m-%d %H:%M'),
+                'updated_at': file_obj.updated_at.strftime('%Y-%m-%d %H:%M')
+            })
+        except ProjectFile.DoesNotExist:
+            return JsonResponse({'error': 'File not found'}, status=404)
+    
+    elif request.method == 'POST':
+        # Create or update a file
+        try:
+            data = json.loads(request.body)
+            file_obj, created = ProjectFile.objects.get_or_create(
+                project=project,
+                file_type=file_type,
+                name=file_name,
+                defaults={}
+            )
+            
+            file_obj.save_content(data.get('content', ''))
+            file_obj.save()
+            
+            return JsonResponse({
+                'success': True,
+                'id': file_obj.id,
+                'name': file_obj.name,
+                'type': file_obj.file_type,
+                'content': file_obj.file_content,
+                'created': created,
+                'updated_at': file_obj.updated_at.strftime('%Y-%m-%d %H:%M')
+            })
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=400)
+    
+    elif request.method == 'DELETE':
+        # Delete a file
+        try:
+            file_obj = ProjectFile.objects.get(project=project, file_type=file_type, name=file_name)
+            file_obj.delete()
+            return JsonResponse({
+                'success': True,
+                'message': f'{file_obj.get_file_type_display()} "{file_name}" deleted successfully'
+            })
+        except ProjectFile.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'File not found'}, status=404)
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=400)
+    
+    return JsonResponse({'error': 'Invalid request method'}, status=405)
 
 @login_required
 def check_server_status_api(request, project_id):
