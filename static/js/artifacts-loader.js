@@ -5509,6 +5509,59 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
             };
             
+            // Auto-save functionality
+            let autoSaveTimer = null;
+            let hasUnsavedChanges = false;
+            
+            // Function to perform auto-save
+            const performAutoSave = async () => {
+                if (hasUnsavedChanges && window.currentWysiwygEditor) {
+                    console.log('[AutoSave] Performing auto-save...');
+                    await saveFileContent(true); // true indicates auto-save
+                    hasUnsavedChanges = false;
+                }
+            };
+            
+            // Start auto-save timer
+            const startAutoSave = () => {
+                // Clear existing timer
+                if (autoSaveTimer) {
+                    clearInterval(autoSaveTimer);
+                }
+                
+                // Set up auto-save every 15 seconds
+                autoSaveTimer = setInterval(performAutoSave, 15000);
+            };
+            
+            // Stop auto-save timer
+            const stopAutoSave = () => {
+                if (autoSaveTimer) {
+                    clearInterval(autoSaveTimer);
+                    autoSaveTimer = null;
+                }
+            };
+            
+            // Create auto-save indicator
+            const createAutoSaveIndicator = () => {
+                const indicator = document.createElement('span');
+                indicator.id = 'auto-save-indicator';
+                indicator.style.cssText = `
+                    display: none;
+                    margin-left: 15px;
+                    font-size: 14px;
+                    color: #10b981;
+                    font-weight: normal;
+                `;
+                
+                // Add to viewer header
+                const viewerTitle = document.getElementById('viewer-title');
+                if (viewerTitle && viewerTitle.parentElement) {
+                    viewerTitle.parentElement.appendChild(indicator);
+                }
+                
+                return indicator;
+            };
+            
             // Enable edit mode with WYSIWYG editor
             const enableEditMode = () => {
                 if (!window.currentFileData) return;
@@ -5636,6 +5689,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     showCharsCounter: false,
                     showWordsCounter: false,
                     showXPathInStatusbar: false,
+                    // Add keyboard shortcuts
+                    hotkeys: {
+                        'ctrl+s,cmd+s': function(editor) {
+                            saveFileContent();
+                            return false; // Prevent default browser save
+                        }
+                    },
                     buttons: [
                         'bold', 'italic', 'underline', 'strikethrough', '|',
                         'ul', 'ol', '|',
@@ -5699,6 +5759,8 @@ document.addEventListener('DOMContentLoaded', function() {
                             editor.editor.appendChild(style);
                         },
                         change: function() {
+                            // Mark as having unsaved changes
+                            hasUnsavedChanges = true;
                             // Keep text color on change
                             const editor = this.editor;
                             if (editor) {
@@ -5754,6 +5816,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Set initial content
                 window.currentWysiwygEditor.value = initialHTML;
+                
+                // Start auto-save timer
+                startAutoSave();
+                console.log('[AutoSave] Auto-save timer started');
+                
+                // Reset unsaved changes flag
+                hasUnsavedChanges = false;
                 
                 // Force text color after content is set
                 setTimeout(() => {
@@ -6004,7 +6073,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
             
             // Save file content
-            const saveFileContent = async () => {
+            const saveFileContent = async (isAutoSave = false) => {
                 if (!window.currentWysiwygEditor || !window.currentFileData) {
                     console.error('[ArtifactsLoader] Missing editor or file data');
                     return;
@@ -6020,9 +6089,21 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Show saving indicator
                 const saveButton = document.getElementById('viewer-save');
-                const originalText = saveButton.innerHTML;
-                saveButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
-                saveButton.disabled = true;
+                let originalText = saveButton ? saveButton.innerHTML : '';
+                
+                if (isAutoSave) {
+                    // For auto-save, show a subtle indicator
+                    const autoSaveIndicator = document.getElementById('auto-save-indicator') || createAutoSaveIndicator();
+                    autoSaveIndicator.style.display = 'inline-block';
+                    autoSaveIndicator.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Auto-saving...';
+                } else {
+                    // For manual save, update the save button
+                    if (saveButton) {
+                        originalText = saveButton.innerHTML;
+                        saveButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+                        saveButton.disabled = true;
+                    }
+                }
                 
                 try {
                     // Get HTML content from Jodit editor
@@ -6151,12 +6232,25 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     if (data.success || response.ok) {
                         // Show toast with proper function
-                        if (typeof showToast === 'function') {
-                            showToast('File saved successfully', 'success');
-                        } else if (window.showToast && typeof window.showToast === 'function') {
-                            window.showToast('File saved successfully', 'success');
+                        if (isAutoSave) {
+                            // For auto-save, show subtle indicator
+                            const autoSaveIndicator = document.getElementById('auto-save-indicator');
+                            if (autoSaveIndicator) {
+                                autoSaveIndicator.innerHTML = '<i class="fas fa-check"></i> Auto-saved';
+                                setTimeout(() => {
+                                    autoSaveIndicator.style.display = 'none';
+                                }, 2000);
+                            }
+                            console.log('[AutoSave] File auto-saved successfully');
                         } else {
-                            alert('File saved successfully');
+                            // For manual save, show toast
+                            if (typeof showToast === 'function') {
+                                showToast('File saved successfully', 'success');
+                            } else if (window.showToast && typeof window.showToast === 'function') {
+                                window.showToast('File saved successfully', 'success');
+                            } else {
+                                alert('File saved successfully');
+                            }
                         }
                         window.currentFileData.content = content;
                         
@@ -6165,12 +6259,51 @@ document.addEventListener('DOMContentLoaded', function() {
                             window.currentFileData.fileId = data.file_id;
                         }
                         
-                        // Exit edit mode and refresh view
-                        cancelEditMode(true);
+                        // Exit edit mode and refresh view (only for manual save)
+                        if (!isAutoSave) {
+                            cancelEditMode(true);
+                        }
                     } else {
                         console.error('[ArtifactsLoader] Save error:', data);
                         const errorMsg = 'Failed to save file: ' + (data.error || 'Unknown error');
                         
+                        if (isAutoSave) {
+                            console.error('[AutoSave] Auto-save failed:', errorMsg);
+                            const autoSaveIndicator = document.getElementById('auto-save-indicator');
+                            if (autoSaveIndicator) {
+                                autoSaveIndicator.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Auto-save failed';
+                                autoSaveIndicator.style.color = '#ef4444';
+                                setTimeout(() => {
+                                    autoSaveIndicator.style.display = 'none';
+                                    autoSaveIndicator.style.color = '';
+                                }, 3000);
+                            }
+                        } else {
+                            if (typeof showToast === 'function') {
+                                showToast(errorMsg, 'error');
+                            } else if (window.showToast && typeof window.showToast === 'function') {
+                                window.showToast(errorMsg, 'error');
+                            } else {
+                                alert(errorMsg);
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error('[ArtifactsLoader] Error saving file:', error);
+                    const errorMsg = 'Failed to save file: ' + error.message;
+                    
+                    if (isAutoSave) {
+                        console.error('[AutoSave] Auto-save error:', error);
+                        const autoSaveIndicator = document.getElementById('auto-save-indicator');
+                        if (autoSaveIndicator) {
+                            autoSaveIndicator.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Auto-save failed';
+                            autoSaveIndicator.style.color = '#ef4444';
+                            setTimeout(() => {
+                                autoSaveIndicator.style.display = 'none';
+                                autoSaveIndicator.style.color = '';
+                            }, 3000);
+                        }
+                    } else {
                         if (typeof showToast === 'function') {
                             showToast(errorMsg, 'error');
                         } else if (window.showToast && typeof window.showToast === 'function') {
@@ -6179,30 +6312,25 @@ document.addEventListener('DOMContentLoaded', function() {
                             alert(errorMsg);
                         }
                     }
-                } catch (error) {
-                    console.error('[ArtifactsLoader] Error saving file:', error);
-                    const errorMsg = 'Failed to save file: ' + error.message;
-                    
-                    if (typeof showToast === 'function') {
-                        showToast(errorMsg, 'error');
-                    } else if (window.showToast && typeof window.showToast === 'function') {
-                        window.showToast(errorMsg, 'error');
-                    } else {
-                        alert(errorMsg);
-                    }
                 } finally {
-                    saveButton.innerHTML = originalText;
-                    saveButton.disabled = false;
+                    if (!isAutoSave && saveButton) {
+                        saveButton.innerHTML = originalText;
+                        saveButton.disabled = false;
+                    }
                 }
             };
             
             // Cancel edit mode
             const cancelEditMode = (skipConfirm = false) => {
-                if (!skipConfirm && window.currentWysiwygEditor) {
+                if (!skipConfirm && window.currentWysiwygEditor && hasUnsavedChanges) {
                     if (!confirm('Are you sure you want to cancel? Any unsaved changes will be lost.')) {
                         return;
                     }
                 }
+                
+                // Stop auto-save timer
+                stopAutoSave();
+                console.log('[AutoSave] Auto-save timer stopped');
                 
                 // Clear reference
                 if (window.currentWysiwygEditor) {
@@ -6868,7 +6996,20 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Viewer event listeners
             if (viewerBack) {
-                viewerBack.addEventListener('click', function() {
+                viewerBack.addEventListener('click', async function() {
+                    // Check if we're in edit mode with unsaved changes
+                    if (window.currentWysiwygEditor && hasUnsavedChanges) {
+                        // Auto-save before going back
+                        console.log('[FileBrowser] Auto-saving before navigating back...');
+                        await saveFileContent(true); // true for auto-save
+                    }
+                    
+                    // If still in edit mode, cancel it
+                    if (window.currentWysiwygEditor) {
+                        cancelEditMode(true); // true to skip confirmation
+                    }
+                    
+                    // Navigate back to file list
                     fileBrowserViewer.style.display = 'none';
                     fileBrowserMain.style.display = 'flex';
                 });
