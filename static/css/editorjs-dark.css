@@ -1,0 +1,267 @@
+/* Editor.js Dark Theme Styles */
+
+/* Main editor container */
+#editorjs-holder {
+    background: #1a1a1a !important;
+    color: #e2e8f0 !important;
+    min-height: 500px;
+    padding: 20px !important;
+}
+
+/* Editor.js blocks */
+.ce-block {
+    color: #e2e8f0 !important;
+}
+
+.ce-block__content {
+    max-width: 100% !important;
+    margin: 0 !important;
+}
+
+/* Toolbar styles */
+.ce-toolbar {
+    background: #2a2a2a !important;
+    border: 1px solid #444 !important;
+    border-radius: 8px !important;
+}
+
+.ce-toolbar__content {
+    max-width: 100% !important;
+}
+
+.ce-toolbar__plus {
+    color: #8b5cf6 !important;
+    background: #2a2a2a !important;
+}
+
+.ce-toolbar__plus:hover {
+    background: #333 !important;
+}
+
+.ce-toolbar__settings-btn {
+    color: #8b5cf6 !important;
+    background: #2a2a2a !important;
+}
+
+.ce-toolbar__settings-btn:hover {
+    background: #333 !important;
+}
+
+/* Inline toolbar */
+.ce-inline-toolbar {
+    background: #2a2a2a !important;
+    border: 1px solid #444 !important;
+    border-radius: 6px !important;
+    color: #e2e8f0 !important;
+}
+
+.ce-inline-toolbar__button {
+    color: #e2e8f0 !important;
+}
+
+.ce-inline-toolbar__button:hover {
+    background: #333 !important;
+}
+
+.ce-inline-toolbar__button--active {
+    background: #8b5cf6 !important;
+    color: white !important;
+}
+
+/* Conversion toolbar */
+.ce-conversion-toolbar {
+    background: #2a2a2a !important;
+    border: 1px solid #444 !important;
+    color: #e2e8f0 !important;
+}
+
+.ce-conversion-tool {
+    color: #e2e8f0 !important;
+}
+
+.ce-conversion-tool:hover {
+    background: #333 !important;
+}
+
+/* Settings panel */
+.ce-settings {
+    background: #2a2a2a !important;
+    border: 1px solid #444 !important;
+    border-radius: 6px !important;
+    color: #e2e8f0 !important;
+}
+
+.ce-settings__button {
+    color: #e2e8f0 !important;
+}
+
+.ce-settings__button:hover {
+    background: #333 !important;
+}
+
+/* Popover */
+.ce-popover {
+    background: #2a2a2a !important;
+    border: 1px solid #444 !important;
+    color: #e2e8f0 !important;
+    border-radius: 6px !important;
+}
+
+.ce-popover__item {
+    color: #e2e8f0 !important;
+}
+
+.ce-popover__item:hover {
+    background: #333 !important;
+}
+
+.ce-popover__item-icon {
+    color: #8b5cf6 !important;
+}
+
+/* Block types */
+/* Paragraph */
+.ce-paragraph {
+    color: #e2e8f0 !important;
+    line-height: 1.6 !important;
+}
+
+.ce-paragraph[data-placeholder]:empty::before {
+    color: #666 !important;
+}
+
+/* Headers */
+.ce-header {
+    color: #e2e8f0 !important;
+}
+
+/* Lists */
+.cdx-list {
+    color: #e2e8f0 !important;
+}
+
+.cdx-list__item {
+    color: #e2e8f0 !important;
+    padding: 5px 0 !important;
+}
+
+/* Code blocks */
+.ce-code__textarea {
+    background: #2a2a2a !important;
+    color: #e2e8f0 !important;
+    border: 1px solid #444 !important;
+    border-radius: 6px !important;
+    font-family: 'Monaco', 'Courier New', monospace !important;
+}
+
+/* Quotes */
+.cdx-quote {
+    border-left: 4px solid #8b5cf6 !important;
+}
+
+.cdx-quote__text {
+    color: #e2e8f0 !important;
+}
+
+.cdx-quote__caption {
+    color: #999 !important;
+}
+
+/* Tables */
+.tc-table {
+    background: #1a1a1a !important;
+    border: 1px solid #444 !important;
+}
+
+.tc-table__cell {
+    background: #2a2a2a !important;
+    color: #e2e8f0 !important;
+    border: 1px solid #444 !important;
+}
+
+.tc-table__cell--header {
+    background: #333 !important;
+    font-weight: bold !important;
+}
+
+.tc-table__wrap {
+    background: #1a1a1a !important;
+}
+
+.tc-table__cell:focus {
+    background: #333 !important;
+}
+
+/* Delimiter */
+.ce-delimiter {
+    line-height: 1.6em !important;
+}
+
+.ce-delimiter::before {
+    color: #666 !important;
+}
+
+/* Inline code */
+.ce-inline-code {
+    background: #2a2a2a !important;
+    color: #8b5cf6 !important;
+    border-radius: 3px !important;
+    padding: 2px 4px !important;
+}
+
+/* Remove white backgrounds */
+.codex-editor {
+    background: transparent !important;
+}
+
+.codex-editor__redactor {
+    background: transparent !important;
+    padding-bottom: 50px !important;
+}
+
+/* Fix block hover */
+.ce-block:hover {
+    background: rgba(139, 92, 246, 0.05) !important;
+    border-radius: 4px !important;
+}
+
+/* Fix placeholder text */
+[contenteditable]:empty:before {
+    color: #666 !important;
+}
+
+/* Fix selection */
+::selection {
+    background: rgba(139, 92, 246, 0.3) !important;
+    color: white !important;
+}
+
+/* Hide duplicate buttons */
+.viewer-header button {
+    margin: 0 5px;
+}
+
+/* Fix list block display */
+.cdx-list {
+    padding-left: 0 !important;
+}
+
+.cdx-list__item {
+    line-height: 1.6 !important;
+    margin: 5px 0 !important;
+}
+
+/* Fix table display */
+.tc-toolbox {
+    background: #2a2a2a !important;
+    border: 1px solid #444 !important;
+}
+
+.tc-toolbox__toggler {
+    color: #8b5cf6 !important;
+}
+
+/* Ensure proper spacing */
+.ce-block + .ce-block {
+    margin-top: 0.6em !important;
+}

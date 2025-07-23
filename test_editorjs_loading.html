@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editor.js Loading Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #e2e8f0;
+        }
+        .status {
+            padding: 20px;
+            border-radius: 8px;
+            margin: 10px 0;
+            background: #2a2a2a;
+            border: 1px solid #444;
+        }
+        .loading {
+            border-color: #3b82f6;
+        }
+        .success {
+            border-color: #10b981;
+        }
+        .error {
+            border-color: #ef4444;
+        }
+        .tool-list {
+            margin-top: 10px;
+        }
+        .tool-item {
+            padding: 5px 10px;
+            margin: 2px 0;
+            background: #333;
+            border-radius: 4px;
+            display: inline-block;
+        }
+        .loaded {
+            background: #065f46;
+        }
+        .missing {
+            background: #7f1d1d;
+        }
+    </style>
+</head>
+<body>
+    <h1>Editor.js Loading Test</h1>
+    
+    <div id="status" class="status loading">
+        <h2>Loading Editor.js Tools...</h2>
+        <div id="progress">Checking tools...</div>
+        <div id="tool-list" class="tool-list"></div>
+    </div>
+    
+    <button id="test-editor" style="display: none; padding: 10px 20px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer; margin-top: 20px;">
+        Test Editor
+    </button>
+    
+    <div id="editor-holder" style="margin-top: 20px; background: #2a2a2a; padding: 20px; border-radius: 8px; display: none;"></div>
+    
+    <!-- Editor.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@editorjs/editorjs@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@editorjs/header@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@editorjs/list@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@editorjs/code@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@editorjs/inline-code@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@editorjs/delimiter@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@editorjs/marker@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@editorjs/underline@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@editorjs/quote@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@editorjs/table@latest"></script>
+    
+    <!-- Editor.js loader -->
+    <script src="/static/js/editorjs-loader.js"></script>
+    
+    <script>
+        const statusDiv = document.getElementById('status');
+        const progressDiv = document.getElementById('progress');
+        const toolListDiv = document.getElementById('tool-list');
+        const testButton = document.getElementById('test-editor');
+        const editorHolder = document.getElementById('editor-holder');
+        
+        // Test the loading mechanism
+        if (window.waitForEditorJSTools) {
+            window.waitForEditorJSTools().then((result) => {
+                statusDiv.className = result.success ? 'status success' : 'status error';
+                progressDiv.textContent = result.success ? 
+                    'All tools loaded successfully!' : 
+                    'Some tools failed to load';
+                
+                // Display tool status
+                toolListDiv.innerHTML = '';
+                result.loadedTools.forEach(tool => {
+                    const span = document.createElement('span');
+                    span.className = 'tool-item loaded';
+                    span.textContent = tool;
+                    toolListDiv.appendChild(span);
+                });
+                
+                if (result.missingTools.length > 0) {
+                    const missingHeader = document.createElement('div');
+                    missingHeader.textContent = 'Missing tools:';
+                    missingHeader.style.marginTop = '10px';
+                    toolListDiv.appendChild(missingHeader);
+                    
+                    result.missingTools.forEach(tool => {
+                        const span = document.createElement('span');
+                        span.className = 'tool-item missing';
+                        span.textContent = tool;
+                        toolListDiv.appendChild(span);
+                    });
+                }
+                
+                // Show test button
+                testButton.style.display = 'inline-block';
+            });
+        } else {
+            statusDiv.className = 'status error';
+            progressDiv.textContent = 'Editor.js loader script not found!';
+        }
+        
+        // Test editor initialization
+        testButton.addEventListener('click', () => {
+            editorHolder.style.display = 'block';
+            editorHolder.innerHTML = '<div style="text-align: center;">Initializing editor...</div>';
+            
+            const tools = window.getEditorJSToolsConfig ? window.getEditorJSToolsConfig() : {};
+            
+            try {
+                const editor = new EditorJS({
+                    holder: 'editor-holder',
+                    tools: tools,
+                    data: {
+                        blocks: [
+                            {
+                                type: 'header',
+                                data: {
+                                    text: 'Test Editor',
+                                    level: 2
+                                }
+                            },
+                            {
+                                type: 'paragraph',
+                                data: {
+                                    text: 'This is a test of the Editor.js loading system.'
+                                }
+                            }
+                        ]
+                    },
+                    placeholder: 'Start typing...'
+                });
+                
+                editor.isReady.then(() => {
+                    console.log('Editor.js is ready!');
+                    testButton.textContent = 'Editor Initialized!';
+                    testButton.disabled = true;
+                }).catch((error) => {
+                    console.error('Editor initialization failed:', error);
+                    editorHolder.innerHTML = '<div style="color: #ef4444;">Editor initialization failed!</div>';
+                });
+            } catch (error) {
+                console.error('Failed to create editor:', error);
+                editorHolder.innerHTML = '<div style="color: #ef4444;">Failed to create editor!</div>';
+            }
+        });
+    </script>
+</body>
+</html>

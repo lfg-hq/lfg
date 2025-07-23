@@ -295,13 +295,19 @@ document.addEventListener('DOMContentLoaded', function() {
             return projectIdParam;
         }
         
-        // Method 3: Global variables
+        // Method 3: File browser project ID
+        if (window.currentFileBrowserProjectId) {
+            console.log('[ArtifactsLoader] Found project ID from file browser:', window.currentFileBrowserProjectId);
+            return window.currentFileBrowserProjectId;
+        }
+        
+        // Method 4: Global variables
         if (window.project_id) {
             console.log('[ArtifactsLoader] Found project ID in global variable:', window.project_id);
             return window.project_id;
         }
         
-        // Method 4: Data attributes on body or main container
+        // Method 5: Data attributes on body or main container
         const bodyProjectId = document.body.getAttribute('data-project-id');
         if (bodyProjectId) {
             console.log('[ArtifactsLoader] Found project ID in body data attribute:', bodyProjectId);
@@ -5004,6 +5010,9 @@ document.addEventListener('DOMContentLoaded', function() {
         loadFileBrowser: function(projectId) {
             console.log(`[ArtifactsLoader] Loading file browser for project ${projectId}`);
             
+            // Store project ID for use in file operations
+            window.currentFileBrowserProjectId = projectId;
+            
             const fileBrowserContainer = document.getElementById('filebrowser');
             const fileBrowserMain = document.getElementById('filebrowser-main');
             const fileBrowserViewer = document.getElementById('filebrowser-viewer');
@@ -5358,6 +5367,15 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // View file content in the viewer panel
             const viewFileContent = (fileId, fileName) => {
+                const projectId = getCurrentProjectId();
+                if (!projectId) {
+                    console.error('[ArtifactsLoader] No project ID available for viewing file');
+                    showToast('Error: No project ID available', 'error');
+                    return;
+                }
+                
+                console.log('[ArtifactsLoader] Viewing file:', { fileId, fileName, projectId });
+                
                 fetch(`/projects/${projectId}/api/files/${fileId}/content/`, {
                     method: 'GET',
                     headers: {
@@ -5374,8 +5392,32 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Set title
                     viewerTitle.textContent = data.name || fileName;
                     
+                    // Reset editor state
+                    if (window.currentWysiwygEditor) {
+                        window.currentWysiwygEditor = null;
+                    }
+                    window.currentFileData = {
+                        fileId: fileId,
+                        fileName: data.name || fileName,
+                        content: data.content || '',
+                        type: data.type
+                    };
+                    
                     // Render markdown content
                     const content = data.content || 'No content available';
+                    
+                    // Add edit button to header if not already there
+                    let editButton = viewerDelete.parentElement.querySelector('#viewer-edit');
+                    if (!editButton) {
+                        editButton = document.createElement('button');
+                        editButton.id = 'viewer-edit';
+                        editButton.className = 'btn btn-sm';
+                        editButton.style = 'padding: 8px 16px; background: #8b5cf6; color: white; border: none; border-radius: 6px; cursor: pointer;';
+                        editButton.innerHTML = '<i class="fas fa-edit"></i> Edit';
+                        viewerDelete.parentElement.insertBefore(editButton, viewerDelete);
+                        
+                        editButton.addEventListener('click', () => enableEditMode());
+                    }
                     
                     // For PRD and implementation files, render as markdown
                     if (data.type === 'prd' || data.type === 'implementation') {
@@ -5439,6 +5481,720 @@ document.addEventListener('DOMContentLoaded', function() {
                     console.error('[ArtifactsLoader] Error loading file content:', error);
                     showToast('Failed to load file content', 'error');
                 });
+            };
+            
+            // Enable edit mode with WYSIWYG editor
+            const enableEditMode = () => {
+                if (!window.currentFileData) return;
+                
+                const viewerMarkdown = document.getElementById('viewer-markdown');
+                if (!viewerMarkdown) return;
+                
+                // Create container for WYSIWYG editor
+                const editorContainer = document.createElement('div');
+                editorContainer.id = 'wysiwyg-editor';
+                
+                // Clear the viewer and add editor container
+                viewerMarkdown.innerHTML = '';
+                viewerMarkdown.appendChild(editorContainer);
+                
+                // Load Jodit editor if not already loaded
+                if (!window.Jodit) {
+                    // Load Jodit CSS
+                    const joditCss = document.createElement('link');
+                    joditCss.rel = 'stylesheet';
+                    joditCss.href = 'https://unpkg.com/jodit@3.24.9/build/jodit.min.css';
+                    document.head.appendChild(joditCss);
+                    
+                    // Load Jodit JS
+                    const joditScript = document.createElement('script');
+                    joditScript.src = 'https://unpkg.com/jodit@3.24.9/build/jodit.min.js';
+                    joditScript.onload = () => {
+                        setTimeout(() => initializeWysiwygEditor(), 100);
+                    };
+                    document.head.appendChild(joditScript);
+                } else {
+                    // Initialize editor immediately
+                    initializeWysiwygEditor();
+                }
+                
+                // Update buttons
+                const editButton = document.getElementById('viewer-edit');
+                const deleteButton = document.getElementById('viewer-delete');
+                const copyButton = document.getElementById('viewer-copy');
+                
+                if (editButton) editButton.style.display = 'none';
+                if (deleteButton) deleteButton.style.display = 'none';
+                if (copyButton) copyButton.style.display = 'none';
+                
+                // Add save and cancel buttons
+                let saveButton = document.getElementById('viewer-save');
+                let cancelButton = document.getElementById('viewer-cancel');
+                
+                if (!saveButton) {
+                    saveButton = document.createElement('button');
+                    saveButton.id = 'viewer-save';
+                    saveButton.className = 'btn btn-sm';
+                    saveButton.style = 'padding: 8px 16px; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer;';
+                    saveButton.innerHTML = '<i class="fas fa-save"></i> Save';
+                    saveButton.addEventListener('click', () => saveFileContent());
+                    deleteButton.parentElement.appendChild(saveButton);
+                }
+                
+                if (!cancelButton) {
+                    cancelButton = document.createElement('button');
+                    cancelButton.id = 'viewer-cancel';
+                    cancelButton.className = 'btn btn-sm';
+                    cancelButton.style = 'padding: 8px 16px; background: #6b7280; color: white; border: none; border-radius: 6px; cursor: pointer; margin-left: 10px;';
+                    cancelButton.innerHTML = '<i class="fas fa-times"></i> Cancel';
+                    cancelButton.addEventListener('click', () => cancelEditMode());
+                    deleteButton.parentElement.appendChild(cancelButton);
+                }
+                
+                saveButton.style.display = 'inline-block';
+                cancelButton.style.display = 'inline-block';
+            };
+            
+            // Initialize the WYSIWYG editor
+            const initializeWysiwygEditor = () => {
+                const editorContainer = document.getElementById('wysiwyg-editor');
+                if (!editorContainer) return;
+                
+                // Clear the container
+                editorContainer.innerHTML = '';
+                
+                // Create textarea for Jodit
+                const textarea = document.createElement('textarea');
+                textarea.id = 'jodit-editor';
+                editorContainer.appendChild(textarea);
+                
+                // Convert markdown to HTML
+                let initialHTML = window.currentFileData.content;
+                if (window.marked) {
+                    marked.setOptions({
+                        gfm: true,
+                        breaks: true,
+                        tables: true
+                    });
+                    initialHTML = marked.parse(window.currentFileData.content);
+                }
+                
+                // Calculate height to fill the entire viewer area
+                const viewerContainer = document.getElementById('filebrowser-viewer');
+                const viewerHeader = viewerContainer ? viewerContainer.querySelector('.viewer-header') : null;
+                const headerHeight = viewerHeader ? viewerHeader.offsetHeight : 60;
+                // Subtract header height and some padding
+                const viewerHeight = viewerContainer ? viewerContainer.offsetHeight - headerHeight - 20 : 600;
+                
+                // Initialize Jodit with dark theme
+                try {
+                    // Force container to have proper structure
+                    const editorWrapper = document.createElement('div');
+                    editorWrapper.style.cssText = 'height: 100%; display: flex; flex-direction: column; position: relative;';
+                    textarea.parentNode.insertBefore(editorWrapper, textarea);
+                    editorWrapper.appendChild(textarea);
+                    
+                    window.currentWysiwygEditor = Jodit.make('#jodit-editor', {
+                    theme: 'dark',
+                    height: '100%',
+                    minHeight: 400,
+                    maxHeight: '100%',
+                    toolbarSticky: true,
+                    toolbarStickyOffset: 0,
+                    toolbarStickyAlways: true,
+                    showCharsCounter: false,
+                    showWordsCounter: false,
+                    showXPathInStatusbar: false,
+                    buttons: [
+                        'bold', 'italic', 'underline', 'strikethrough', '|',
+                        'ul', 'ol', '|',
+                        'font', 'fontsize', 'paragraph', '|',
+                        'table', 'link', 'image', '|',
+                        'align', '|',
+                        'undo', 'redo', '|',
+                        'eraser', 'fullsize'
+                    ],
+                    buttonsMD: [
+                        'bold', 'italic', 'underline', '|',
+                        'ul', 'ol', '|',
+                        'table', 'link', '|',
+                        'dots'
+                    ],
+                    buttonsXS: [
+                        'bold', 'italic', '|',
+                        'ul', 'ol', '|',
+                        'dots'
+                    ],
+                    style: {
+                        background: '#1a1a1a',
+                        color: '#e2e8f0'
+                    },
+                    editorCssClass: 'dark-editor',
+                    toolbarAdaptive: false,
+                    enter: 'p',
+                    defaultMode: Jodit.MODE_WYSIWYG,
+                    useSplitMode: false,
+                    colors: {
+                        greyscale: ['#000000', '#434343', '#666666', '#999999', '#B7B7B7', '#CCCCCC', '#D9D9D9', '#EFEFEF', '#F3F3F3', '#FFFFFF'],
+                        palette: ['#8B5CF6', '#60A5FA', '#10B981', '#F59E0B', '#EF4444', '#EC4899', '#8B5CF6', '#3B82F6', '#06B6D4', '#84CC16']
+                    },
+                    controls: {
+                        font: {
+                            list: {
+                                "'Open Sans', sans-serif": 'Open Sans',
+                                'Helvetica, sans-serif': 'Helvetica',
+                                'Arial, sans-serif': 'Arial',
+                                'Georgia, serif': 'Georgia',
+                                'Impact, sans-serif': 'Impact',
+                                'Tahoma, sans-serif': 'Tahoma',
+                                'Verdana, sans-serif': 'Verdana'
+                            }
+                        }
+                    },
+                    events: {
+                        afterInit: function(editor) {
+                            // Ensure text color persists
+                            editor.editor.style.color = '#e2e8f0';
+                            editor.editor.style.backgroundColor = '#1a1a1a';
+                            
+                            // Also set default paragraph style
+                            const style = editor.createInside.element('style');
+                            style.innerHTML = `
+                                * { color: #e2e8f0 !important; }
+                                p { color: #e2e8f0 !important; }
+                                div { color: #e2e8f0 !important; }
+                                span { color: #e2e8f0 !important; }
+                            `;
+                            editor.editor.appendChild(style);
+                        },
+                        change: function() {
+                            // Keep text color on change
+                            const editor = this.editor;
+                            if (editor) {
+                                const walker = document.createTreeWalker(
+                                    editor,
+                                    NodeFilter.SHOW_ELEMENT,
+                                    null,
+                                    false
+                                );
+                                
+                                let node;
+                                while (node = walker.nextNode()) {
+                                    if (!node.style.color || node.style.color === '') {
+                                        node.style.color = '#e2e8f0';
+                                    }
+                                }
+                            }
+                        },
+                        beforeEnter: function() {
+                            // Ensure new paragraphs have the right color
+                            const selection = this.selection;
+                            if (selection.current()) {
+                                const current = selection.current();
+                                if (current && current.style) {
+                                    current.style.color = '#e2e8f0';
+                                }
+                            }
+                        }
+                    }
+                });
+                } catch (error) {
+                    console.error('[ArtifactsLoader] Error initializing Jodit editor:', error);
+                    if (error.message && error.message.includes('plugin')) {
+                        showToast('Editor initialization error: ' + error.message, 'error');
+                    } else {
+                        showToast('Failed to initialize editor', 'error');
+                    }
+                    // Fallback to textarea
+                    const fallbackTextarea = document.createElement('textarea');
+                    fallbackTextarea.id = 'fallback-editor';
+                    fallbackTextarea.className = 'artifact-editor';
+                    fallbackTextarea.value = window.currentFileData.content;
+                    fallbackTextarea.style.cssText = 'width: 100%; height: ' + viewerHeight + 'px; background: #1a1a1a; color: #e2e8f0; border: 1px solid #333; padding: 20px; font-family: monospace;';
+                    editorContainer.innerHTML = '';
+                    editorContainer.appendChild(fallbackTextarea);
+                    window.currentWysiwygEditor = {
+                        value: fallbackTextarea.value,
+                        get value() { return fallbackTextarea.value; },
+                        set value(val) { fallbackTextarea.value = val; }
+                    };
+                    return;
+                }
+                
+                // Set initial content
+                window.currentWysiwygEditor.value = initialHTML;
+                
+                // Force text color after content is set and fix toolbar
+                setTimeout(() => {
+                    const editorBody = window.currentWysiwygEditor.editor;
+                    if (editorBody) {
+                        editorBody.style.color = '#e2e8f0';
+                        // Apply color to all existing elements
+                        const allElements = editorBody.querySelectorAll('*');
+                        allElements.forEach(el => {
+                            if (!el.style.color || el.style.color === '') {
+                                el.style.color = '#e2e8f0';
+                            }
+                        });
+                    }
+                    
+                    // Force toolbar to be sticky
+                    const toolbar = document.querySelector('.jodit-toolbar');
+                    const workplace = document.querySelector('.jodit-workplace');
+                    const container = document.querySelector('.jodit-container');
+                    
+                    if (toolbar && workplace && container) {
+                        // Set up proper container structure
+                        container.style.cssText = 'height: 100%; display: flex; flex-direction: column; position: relative;';
+                        toolbar.style.cssText = 'position: sticky; top: 0; z-index: 1000; flex-shrink: 0; background: #2a2a2a;';
+                        workplace.style.cssText = 'flex: 1; overflow-y: auto; overflow-x: hidden;';
+                        
+                        // Ensure the wysiwyg editor itself scrolls
+                        const wysiwygMode = workplace.querySelector('.jodit-wysiwyg_mode');
+                        if (wysiwygMode) {
+                            wysiwygMode.style.cssText = 'height: 100%; overflow-y: auto;';
+                        }
+                    }
+                }, 100);
+                
+                // Apply custom dark theme styles
+                const style = document.createElement('style');
+                style.textContent = `
+                    /* Jodit Dark Theme Overrides */
+                    #wysiwyg-editor {
+                        position: relative !important;
+                        height: 100% !important;
+                        overflow: hidden !important;
+                    }
+                    
+                    .jodit-container:not(.jodit_inline) {
+                        border: 1px solid #333 !important;
+                        background: #1a1a1a !important;
+                        height: 100% !important;
+                        position: relative !important;
+                        display: grid !important;
+                        grid-template-rows: auto 1fr auto !important;
+                    }
+                    
+                    .jodit-toolbar {
+                        position: sticky !important;
+                        top: 0 !important;
+                        z-index: 1000 !important;
+                        background: #2a2a2a !important;
+                    }
+                    
+                    .jodit-toolbar__box {
+                        background: #2a2a2a !important;
+                        border-bottom: 1px solid #333 !important;
+                        position: relative !important;
+                        z-index: 1000 !important;
+                    }
+                    
+                    .jodit-workplace {
+                        overflow-y: auto !important;
+                        height: 100% !important;
+                    }
+                    
+                    .jodit-wysiwyg_mode_1 {
+                        height: 100% !important;
+                    }
+                    
+                    .jodit-toolbar-button {
+                        color: #e2e8f0 !important;
+                    }
+                    
+                    .jodit-toolbar-button:hover {
+                        background: #333 !important;
+                    }
+                    
+                    .jodit-toolbar-button:active,
+                    .jodit-toolbar-button[aria-pressed="true"] {
+                        background: #8b5cf6 !important;
+                    }
+                    
+                    .jodit-wysiwyg {
+                        background: #1a1a1a !important;
+                        color: #e2e8f0 !important;
+                        padding: 20px !important;
+                        min-height: calc(100% - 60px) !important;
+                    }
+                    
+                    .jodit-wysiwyg,
+                    .jodit-wysiwyg * {
+                        color: #e2e8f0 !important;
+                    }
+                    
+                    .jodit-wysiwyg p,
+                    .jodit-wysiwyg div,
+                    .jodit-wysiwyg span {
+                        color: #e2e8f0 !important;
+                    }
+                    
+                    .jodit-wysiwyg h1,
+                    .jodit-wysiwyg h2,
+                    .jodit-wysiwyg h3,
+                    .jodit-wysiwyg h4,
+                    .jodit-wysiwyg h5,
+                    .jodit-wysiwyg h6 {
+                        color: #e2e8f0 !important;
+                    }
+                    
+                    .jodit-wysiwyg table {
+                        border-collapse: collapse !important;
+                        width: 100% !important;
+                        margin: 1em 0 !important;
+                    }
+                    
+                    .jodit-wysiwyg table td,
+                    .jodit-wysiwyg table th {
+                        border: 1px solid #444 !important;
+                        padding: 8px 12px !important;
+                        color: #e2e8f0 !important;
+                    }
+                    
+                    .jodit-wysiwyg table th {
+                        background: #2a2a2a !important;
+                        font-weight: bold !important;
+                    }
+                    
+                    .jodit-wysiwyg blockquote {
+                        border-left: 4px solid #8b5cf6 !important;
+                        background: rgba(139, 92, 246, 0.1) !important;
+                        padding: 10px 20px !important;
+                        margin: 10px 0 !important;
+                        color: #e2e8f0 !important;
+                    }
+                    
+                    .jodit-wysiwyg pre {
+                        background: #0a0a0a !important;
+                        border: 1px solid #333 !important;
+                        border-radius: 4px !important;
+                        padding: 1em !important;
+                        color: #e2e8f0 !important;
+                    }
+                    
+                    .jodit-wysiwyg code {
+                        background: #2a2a2a !important;
+                        color: #e2e8f0 !important;
+                        padding: 0.2em 0.4em !important;
+                        border-radius: 3px !important;
+                    }
+                    
+                    .jodit-wysiwyg a {
+                        color: #60a5fa !important;
+                    }
+                    
+                    /* Status bar */
+                    .jodit-status-bar {
+                        background: #2a2a2a !important;
+                        border-top: 1px solid #333 !important;
+                        color: #9ca3af !important;
+                    }
+                    
+                    /* Popup and dropdown styles */
+                    .jodit-popup__content {
+                        background: #2a2a2a !important;
+                        border: 1px solid #444 !important;
+                        color: #e2e8f0 !important;
+                    }
+                    
+                    .jodit-dropdown__content {
+                        background: #2a2a2a !important;
+                        border: 1px solid #444 !important;
+                    }
+                    
+                    .jodit-dropdown__item {
+                        color: #e2e8f0 !important;
+                    }
+                    
+                    .jodit-dropdown__item:hover {
+                        background: #333 !important;
+                    }
+                    
+                    /* Table selector */
+                    .jodit-toolbar-button__button[aria-controls*="table"] {
+                        color: #e2e8f0 !important;
+                    }
+                    
+                    /* Color picker */
+                    .jodit-color-picker__box {
+                        background: #2a2a2a !important;
+                        border: 1px solid #444 !important;
+                    }
+                    
+                    /* Icons */
+                    .jodit-icon {
+                        fill: #e2e8f0 !important;
+                    }
+                    
+                    .jodit-toolbar-button:hover .jodit-icon {
+                        fill: #fff !important;
+                    }
+                    
+                    .jodit-toolbar-button[aria-pressed="true"] .jodit-icon {
+                        fill: #fff !important;
+                    }
+                `;
+                document.head.appendChild(style);
+                
+                // Focus the editor
+                window.currentWysiwygEditor.focus();
+                
+                // Additional style injection to ensure visibility
+                const additionalStyles = document.createElement('style');
+                additionalStyles.textContent = `
+                    .jodit-wysiwyg[contenteditable="true"] {
+                        color: #e2e8f0 !important;
+                    }
+                    
+                    .jodit-wysiwyg[contenteditable="true"] * {
+                        color: inherit !important;
+                    }
+                    
+                    /* Force text color for all possible elements */
+                    .jodit-wysiwyg p,
+                    .jodit-wysiwyg div,
+                    .jodit-wysiwyg span,
+                    .jodit-wysiwyg h1,
+                    .jodit-wysiwyg h2,
+                    .jodit-wysiwyg h3,
+                    .jodit-wysiwyg h4,
+                    .jodit-wysiwyg h5,
+                    .jodit-wysiwyg h6,
+                    .jodit-wysiwyg li,
+                    .jodit-wysiwyg td,
+                    .jodit-wysiwyg th,
+                    .jodit-wysiwyg a,
+                    .jodit-wysiwyg strong,
+                    .jodit-wysiwyg em,
+                    .jodit-wysiwyg u,
+                    .jodit-wysiwyg s {
+                        color: #e2e8f0 !important;
+                    }
+                `;
+                document.head.appendChild(additionalStyles);
+            };
+            
+            
+            // Save file content
+            const saveFileContent = async () => {
+                if (!window.currentWysiwygEditor || !window.currentFileData) {
+                    console.error('[ArtifactsLoader] Missing editor or file data');
+                    return;
+                }
+                
+                // Get project ID
+                const projectId = getCurrentProjectId();
+                if (!projectId) {
+                    console.error('[ArtifactsLoader] No project ID available');
+                    showToast('Error: No project ID available', 'error');
+                    return;
+                }
+                
+                // Show saving indicator
+                const saveButton = document.getElementById('viewer-save');
+                const originalText = saveButton.innerHTML;
+                saveButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+                saveButton.disabled = true;
+                
+                try {
+                    // Get HTML content from Jodit editor
+                    const htmlContent = window.currentWysiwygEditor.value;
+                    
+                    // Convert HTML back to markdown
+                    let content = htmlContent;
+                    
+                    // Load Turndown if not available for better conversion
+                    if (!window.TurndownService) {
+                        // Load Turndown dynamically
+                        await new Promise((resolve) => {
+                            const script = document.createElement('script');
+                            script.src = 'https://unpkg.com/turndown/dist/turndown.js';
+                            script.onload = resolve;
+                            document.head.appendChild(script);
+                        });
+                    }
+                    
+                    if (window.TurndownService) {
+                        const turndownService = new TurndownService({
+                            headingStyle: 'atx',
+                            codeBlockStyle: 'fenced',
+                            bulletListMarker: '-'
+                        });
+                        
+                        // Add table support using the correct plugin format
+                        turndownService.use(function(service) {
+                            service.addRule('table', {
+                                filter: 'table',
+                                replacement: function(content, node) {
+                                    // Convert HTML table back to markdown table
+                                    const rows = Array.from(node.querySelectorAll('tr'));
+                                    if (rows.length === 0) return '';
+                                    
+                                    let markdown = '';
+                                    rows.forEach((row, index) => {
+                                        const cells = Array.from(row.querySelectorAll('td, th'));
+                                        markdown += '| ' + cells.map(cell => cell.textContent.trim()).join(' | ') + ' |\n';
+                                        
+                                        // Add separator after header row
+                                        if (index === 0) {
+                                            markdown += '|' + cells.map(() => '---').join('|') + '|\n';
+                                        }
+                                    });
+                                    
+                                    return '\n' + markdown + '\n';
+                                }
+                            });
+                        });
+                        
+                        content = turndownService.turndown(htmlContent);
+                    } else {
+                        // Simple HTML to markdown conversion
+                        content = htmlContent
+                            .replace(/<h1[^>]*>(.*?)<\/h1>/gi, '# $1\n')
+                            .replace(/<h2[^>]*>(.*?)<\/h2>/gi, '## $1\n')
+                            .replace(/<h3[^>]*>(.*?)<\/h3>/gi, '### $1\n')
+                            .replace(/<h4[^>]*>(.*?)<\/h4>/gi, '#### $1\n')
+                            .replace(/<strong[^>]*>(.*?)<\/strong>/gi, '**$1**')
+                            .replace(/<b[^>]*>(.*?)<\/b>/gi, '**$1**')
+                            .replace(/<em[^>]*>(.*?)<\/em>/gi, '*$1*')
+                            .replace(/<i[^>]*>(.*?)<\/i>/gi, '*$1*')
+                            .replace(/<ul[^>]*>([\s\S]*?)<\/ul>/gi, function(match, content) {
+                                return content.replace(/<li[^>]*>(.*?)<\/li>/gi, '- $1\n');
+                            })
+                            .replace(/<ol[^>]*>([\s\S]*?)<\/ol>/gi, function(match, content) {
+                                let counter = 1;
+                                return content.replace(/<li[^>]*>(.*?)<\/li>/gi, function(m, text) {
+                                    return (counter++) + '. ' + text + '\n';
+                                });
+                            })
+                            .replace(/<blockquote[^>]*>(.*?)<\/blockquote>/gi, '> $1\n')
+                            .replace(/<br[^>]*>/gi, '\n')
+                            .replace(/<p[^>]*>(.*?)<\/p>/gi, '$1\n\n')
+                            .replace(/<[^>]+>/g, '')
+                            .replace(/\n{3,}/g, '\n\n')
+                            .trim();
+                    }
+                    
+                    const { fileId, fileName, type } = window.currentFileData;
+                    console.log('[ArtifactsLoader] Saving file:', { fileId, fileName, type, projectId });
+                    
+                    // Determine the correct API endpoint based on file type
+                    let url, method, body;
+                    
+                    if (type === 'prd') {
+                        url = `/projects/${projectId}/api/prd/?prd_name=${encodeURIComponent(fileName)}`;
+                        method = 'POST';
+                        body = JSON.stringify({ content: content });
+                    } else if (type === 'implementation') {
+                        url = `/projects/${projectId}/api/implementation/`;
+                        method = 'POST';
+                        body = JSON.stringify({ content: content });
+                    } else {
+                        // For other file types, use the generic files API
+                        // The type should match the file_type in the model (e.g., 'design', 'test', 'other')
+                        const fileType = type || 'other';
+                        url = `/projects/${projectId}/api/files/?type=${fileType}&name=${encodeURIComponent(fileName)}`;
+                        method = 'POST';
+                        body = JSON.stringify({ content: content });
+                    }
+                    
+                    console.log('[ArtifactsLoader] Request URL:', url);
+                    console.log('[ArtifactsLoader] Request method:', method);
+                    
+                    const response = await fetch(url, {
+                        method: method,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCsrfToken(),
+                        },
+                        body: body
+                    });
+                    
+                    console.log('[ArtifactsLoader] Response status:', response.status);
+                    
+                    let data;
+                    try {
+                        data = await response.json();
+                        console.log('[ArtifactsLoader] Response data:', data);
+                    } catch (e) {
+                        console.error('[ArtifactsLoader] Failed to parse response:', e);
+                        data = { success: false, error: 'Failed to parse server response' };
+                    }
+                    
+                    if (data.success || response.ok) {
+                        // Show toast with proper function
+                        if (typeof showToast === 'function') {
+                            showToast('File saved successfully', 'success');
+                        } else if (window.showToast && typeof window.showToast === 'function') {
+                            window.showToast('File saved successfully', 'success');
+                        } else {
+                            alert('File saved successfully');
+                        }
+                        window.currentFileData.content = content;
+                        
+                        // Exit edit mode and refresh view
+                        cancelEditMode(true);
+                    } else {
+                        console.error('[ArtifactsLoader] Save error:', data);
+                        const errorMsg = 'Failed to save file: ' + (data.error || 'Unknown error');
+                        
+                        if (typeof showToast === 'function') {
+                            showToast(errorMsg, 'error');
+                        } else if (window.showToast && typeof window.showToast === 'function') {
+                            window.showToast(errorMsg, 'error');
+                        } else {
+                            alert(errorMsg);
+                        }
+                    }
+                } catch (error) {
+                    console.error('[ArtifactsLoader] Error saving file:', error);
+                    const errorMsg = 'Failed to save file: ' + error.message;
+                    
+                    if (typeof showToast === 'function') {
+                        showToast(errorMsg, 'error');
+                    } else if (window.showToast && typeof window.showToast === 'function') {
+                        window.showToast(errorMsg, 'error');
+                    } else {
+                        alert(errorMsg);
+                    }
+                } finally {
+                    saveButton.innerHTML = originalText;
+                    saveButton.disabled = false;
+                }
+            };
+            
+            // Cancel edit mode
+            const cancelEditMode = (skipConfirm = false) => {
+                if (!skipConfirm && window.currentWysiwygEditor) {
+                    if (!confirm('Are you sure you want to cancel? Any unsaved changes will be lost.')) {
+                        return;
+                    }
+                }
+                
+                // Clear reference
+                if (window.currentWysiwygEditor) {
+                    window.currentWysiwygEditor = null;
+                }
+                
+                // Hide save/cancel buttons
+                const saveButton = document.getElementById('viewer-save');
+                const cancelButton = document.getElementById('viewer-cancel');
+                if (saveButton) saveButton.style.display = 'none';
+                if (cancelButton) cancelButton.style.display = 'none';
+                
+                // Show original buttons
+                const editButton = document.getElementById('viewer-edit');
+                const deleteButton = document.getElementById('viewer-delete');
+                const copyButton = document.getElementById('viewer-copy');
+                if (editButton) editButton.style.display = 'inline-block';
+                if (deleteButton) deleteButton.style.display = 'inline-block';
+                if (copyButton) copyButton.style.display = 'inline-block';
+                
+                // Refresh the file view
+                if (window.currentFileData) {
+                    viewFileContent(window.currentFileData.fileId, window.currentFileData.fileName);
+                }
             };
             
             // Delete file
