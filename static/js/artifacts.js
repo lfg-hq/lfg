@@ -38,16 +38,6 @@ document.addEventListener('DOMContentLoaded', function() {
         appContainer.classList.add('artifacts-expanded');
         artifactsButton.classList.add('active');
         updateChatContainerPosition(true);
-        
-        // Load data for the active tab when panel starts expanded
-        setTimeout(() => {
-            const activeTab = document.querySelector('.tab-button.active');
-            if (activeTab) {
-                const tabId = activeTab.getAttribute('data-tab');
-                console.log(`[ArtifactsPanel] Panel started expanded, loading data for active tab: ${tabId}`);
-                loadTabData(tabId);
-            }
-        }, 100); // Small delay to ensure everything is initialized
     }
     
     // Toggle panel visibility when floating button is clicked
@@ -536,65 +526,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 break;
             case 'prd':
-                // Check if PRD is currently streaming before loading
-                if (window.prdStreamingState && window.prdStreamingState.isStreaming) {
-                    console.log('[ArtifactsPanel] PRD is currently streaming, skipping loadPRD in loadTabData');
-                    break;
-                }
-                
-                // Check if we should reload based on project ID change
-                const currentPrdProjectId = window.prdStreamingState?.projectId;
-                if (currentPrdProjectId && currentPrdProjectId !== projectId) {
-                    console.log('[ArtifactsPanel] Project ID changed, clearing PRD content and reloading');
-                    // Clear the content when project changes
-                    const streamingContent = document.getElementById('prd-streaming-content');
-                    if (streamingContent) {
-                        streamingContent.innerHTML = '';
-                    }
-                    // Reset the streaming state
-                    if (window.prdStreamingState) {
-                        window.prdStreamingState.fullContent = '';
-                        window.prdStreamingState.projectId = projectId;
-                    }
-                }
-                
-                // Always load PRD when tab is selected (unless currently streaming)
-                // This ensures fresh data is loaded when revisiting the tab
-                if (window.ArtifactsLoader && typeof window.ArtifactsLoader.loadPRD === 'function') {
-                    window.ArtifactsLoader.loadPRD(projectId);
+                // PRD tab now uses file browser
+                if (window.ArtifactsLoader && typeof window.ArtifactsLoader.loadFileBrowser === 'function') {
+                    window.ArtifactsLoader.loadFileBrowser(projectId);
                 } else {
-                    console.warn('[ArtifactsPanel] ArtifactsLoader.loadPRD not found');
+                    console.warn('[ArtifactsPanel] ArtifactsLoader.loadFileBrowser not found');
                 }
                 break;
             case 'implementation':
-                // Check if Implementation is currently streaming before loading
-                if (window.implementationStreamingState && window.implementationStreamingState.isStreaming) {
-                    console.log('[ArtifactsPanel] Implementation is currently streaming, skipping loadImplementation in loadTabData');
-                    break;
-                }
-                
-                // Check if we should reload based on project ID change
-                const currentImplementationProjectId = window.implementationStreamingState?.projectId;
-                if (currentImplementationProjectId && currentImplementationProjectId !== projectId) {
-                    console.log('[ArtifactsPanel] Project ID changed, clearing Implementation content and reloading');
-                    // Clear the content when project changes
-                    const streamingContent = document.getElementById('implementation-streaming-content');
-                    if (streamingContent) {
-                        streamingContent.innerHTML = '';
-                    }
-                    // Reset the streaming state
-                    if (window.implementationStreamingState) {
-                        window.implementationStreamingState.fullContent = '';
-                        window.implementationStreamingState.projectId = projectId;
-                    }
-                }
-                
-                // Always load Implementation when tab is selected (unless currently streaming)
-                // This ensures fresh data is loaded when revisiting the tab
-                if (window.ArtifactsLoader && typeof window.ArtifactsLoader.loadImplementation === 'function') {
-                    window.ArtifactsLoader.loadImplementation(projectId);
+                // Implementation tab now uses file browser
+                if (window.ArtifactsLoader && typeof window.ArtifactsLoader.loadFileBrowser === 'function') {
+                    window.ArtifactsLoader.loadFileBrowser(projectId);
                 } else {
-                    console.warn('[ArtifactsPanel] ArtifactsLoader.loadImplementation not found');
+                    console.warn('[ArtifactsPanel] ArtifactsLoader.loadFileBrowser not found');
                 }
                 break;
             case 'personas':
@@ -609,6 +553,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     window.ArtifactsLoader.loadTickets(projectId);
                 } else {
                     console.warn('[ArtifactsPanel] ArtifactsLoader.loadTickets not found');
+                }
+                break;
+            case 'filebrowser':
+                if (window.ArtifactsLoader && typeof window.ArtifactsLoader.loadFileBrowser === 'function') {
+                    window.ArtifactsLoader.loadFileBrowser(projectId);
+                } else {
+                    console.warn('[ArtifactsPanel] ArtifactsLoader.loadFileBrowser not found');
                 }
                 break;
             case 'checklist':
@@ -741,4 +692,38 @@ document.addEventListener('DOMContentLoaded', function() {
             switchTab(tabId);
         });
     });
+    
+    // Load data for the initially active tab when ArtifactsLoader is ready
+    function loadInitialTab() {
+        const activeTab = document.querySelector('.tab-button.active');
+        if (activeTab) {
+            const tabId = activeTab.getAttribute('data-tab');
+            const projectId = getCurrentProjectId();
+            console.log(`[ArtifactsPanel] Initial load - loading data for active tab: ${tabId}, projectId: ${projectId}`);
+            if (projectId) {
+                loadTabData(tabId);
+            } else {
+                console.warn('[ArtifactsPanel] No project ID found on initial load');
+            }
+        }
+    }
+    
+    // Check if ArtifactsLoader is already available
+    if (window.ArtifactsLoader) {
+        loadInitialTab();
+    } else {
+        // Wait for ArtifactsLoader to be ready
+        const checkInterval = setInterval(() => {
+            if (window.ArtifactsLoader) {
+                clearInterval(checkInterval);
+                loadInitialTab();
+            }
+        }, 50); // Check every 50ms
+        
+        // Stop checking after 5 seconds
+        setTimeout(() => {
+            clearInterval(checkInterval);
+            console.error('[ArtifactsPanel] ArtifactsLoader not found after 5 seconds');
+        }, 5000);
+    }
 }); 

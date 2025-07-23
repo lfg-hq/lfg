@@ -5023,7 +5023,12 @@ document.addEventListener('DOMContentLoaded', function() {
             const viewerMarkdown = document.getElementById('viewer-markdown');
             
             if (!fileBrowserContainer || !fileBrowserLoading || !fileBrowserEmpty || !fileBrowserList) {
-                console.error('[ArtifactsLoader] File browser UI elements not found');
+                console.error('[ArtifactsLoader] File browser UI elements not found', {
+                    container: !!fileBrowserContainer,
+                    loading: !!fileBrowserLoading,
+                    empty: !!fileBrowserEmpty,
+                    list: !!fileBrowserList
+                });
                 return;
             }
             
@@ -5075,7 +5080,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (data.files && data.files.length > 0) {
                         fileBrowserList.style.display = 'block';
                         fileBrowserEmpty.style.display = 'none';
-                        document.getElementById('file-table-header').style.display = 'grid';
+                        const tableHeader = document.getElementById('file-table-header');
+                        if (tableHeader) {
+                            tableHeader.style.display = 'grid';
+                        } else {
+                            console.error('[FileBrowser] Table header element not found');
+                        }
                         
                         // Clear the list first
                         fileBrowserList.innerHTML = '';

@@ -502,7 +502,7 @@
     <!-- Tabs Navigation - moved to top -->
     <div class="artifacts-tabs" style="display: flex; justify-content: space-between; align-items: center;">
         <div style="display: flex;">
-            <button class="tab-button" active data-tab="filebrowser">File Browser</button>
+            <button class="tab-button active" data-tab="filebrowser">File Browser</button>
             <!-- <button class="tab-button active" data-tab="prd">PRD</button> -->
             <!-- <button class="tab-button" data-tab="implementation">Implementation</button> -->
             <!-- <button class="tab-button" data-tab="features">Features</button> -->
@@ -524,7 +524,7 @@
         <!-- Tab Content -->
         <div class="tab-content">
             <!-- PRD Tab -->
-            <div class="tab-pane active" id="prd">
+            <div class="tab-pane" id="prd">
                 <!-- Empty state (shown by default) -->
                 <div class="empty-state" id="prd-empty-state">
                     <div class="empty-state-icon">
@@ -802,7 +802,7 @@
             </div>
             
             <!-- File Browser Tab -->
-            <div class="tab-pane" id="filebrowser">
+            <div class="tab-pane active" id="filebrowser">
                 <div class="filebrowser-container" style="height: 100%; display: flex; flex-direction: column;">
                     <!-- Browser View -->
                     <div id="filebrowser-main" style="height: 100%; display: flex; flex-direction: column;">
@@ -832,7 +832,7 @@
                         <!-- File List Content -->
                         <div class="filebrowser-content" style="flex: 1; overflow-y: auto;">
                             <!-- Table Header -->
-                            <div class="file-table-header" id="file-table-header" style="display: none;">
+                            <div class="file-table-header" id="file-table-header">
                                 <div></div>
                                 <div>Name</div>
                                 <div>Type</div>
@@ -842,13 +842,13 @@
                             </div>
                             
                             <!-- Loading State -->
-                            <div class="loading-state" id="filebrowser-loading" style="display: none; text-align: center; padding: 60px;">
+                            <div class="loading-state" id="filebrowser-loading" style="text-align: center; padding: 60px;">
                                 <div class="spinner"></div>
                                 <div style="margin-top: 10px; color: #9ca3af;">Loading documents...</div>
                             </div>
                             
                             <!-- Empty State -->
-                            <div class="empty-state" id="filebrowser-empty" style="display: none;">
+                            <div class="empty-state" id="filebrowser-empty">
                                 <div class="empty-state-icon">
                                     <i class="fas fa-folder-open"></i>
                                 </div>
@@ -858,12 +858,12 @@
                             </div>
                             
                             <!-- File List -->
-                            <div id="filebrowser-list" style="display: none;">
+                            <div id="filebrowser-list">
                                 <!-- Files will be dynamically inserted here -->
                             </div>
                             
                             <!-- Pagination -->
-                            <div id="filebrowser-pagination" style="display: none; padding: 20px; border-top: 1px solid #2a2a2a;">
+                            <div id="filebrowser-pagination" style="padding: 20px; border-top: 1px solid #2a2a2a;">
                                 <!-- Pagination controls will be inserted here -->
                             </div>
                         </div>
