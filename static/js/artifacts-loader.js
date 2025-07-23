@@ -5488,15 +5488,28 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (!window.currentFileData) return;
                 
                 const viewerMarkdown = document.getElementById('viewer-markdown');
-                if (!viewerMarkdown) return;
+                const viewerContent = document.querySelector('.viewer-content');
+                const fileBrowserViewer = document.getElementById('filebrowser-viewer');
+                
+                if (!viewerMarkdown || !fileBrowserViewer) return;
                 
                 // Create container for WYSIWYG editor
                 const editorContainer = document.createElement('div');
                 editorContainer.id = 'wysiwyg-editor';
+                editorContainer.style.cssText = 'flex: 1; height: calc(100% - 60px); position: relative;';
                 
-                // Clear the viewer and add editor container
-                viewerMarkdown.innerHTML = '';
-                viewerMarkdown.appendChild(editorContainer);
+                // Hide the viewer-content to avoid nested scrolling
+                if (viewerContent) {
+                    viewerContent.style.display = 'none';
+                }
+                
+                // Insert editor directly in the viewer, after header
+                const viewerHeader = fileBrowserViewer.querySelector('.viewer-header');
+                if (viewerHeader && viewerHeader.nextSibling) {
+                    fileBrowserViewer.insertBefore(editorContainer, viewerHeader.nextSibling);
+                } else {
+                    fileBrowserViewer.appendChild(editorContainer);
+                }
                 
                 // Load Jodit editor if not already loaded
                 if (!window.Jodit) {
@@ -5588,20 +5601,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Initialize Jodit with dark theme
                 try {
-                    // Force container to have proper structure
-                    const editorWrapper = document.createElement('div');
-                    editorWrapper.style.cssText = 'height: 100%; display: flex; flex-direction: column; position: relative;';
-                    textarea.parentNode.insertBefore(editorWrapper, textarea);
-                    editorWrapper.appendChild(textarea);
-                    
                     window.currentWysiwygEditor = Jodit.make('#jodit-editor', {
                     theme: 'dark',
                     height: '100%',
                     minHeight: 400,
-                    maxHeight: '100%',
                     toolbarSticky: true,
                     toolbarStickyOffset: 0,
-                    toolbarStickyAlways: true,
                     showCharsCounter: false,
                     showWordsCounter: false,
                     showXPathInStatusbar: false,
@@ -5724,7 +5729,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Set initial content
                 window.currentWysiwygEditor.value = initialHTML;
                 
-                // Force text color after content is set and fix toolbar
+                // Force text color after content is set
                 setTimeout(() => {
                     const editorBody = window.currentWysiwygEditor.editor;
                     if (editorBody) {
@@ -5737,66 +5742,21 @@ document.addEventListener('DOMContentLoaded', function() {
                             }
                         });
                     }
-                    
-                    // Force toolbar to be sticky
-                    const toolbar = document.querySelector('.jodit-toolbar');
-                    const workplace = document.querySelector('.jodit-workplace');
-                    const container = document.querySelector('.jodit-container');
-                    
-                    if (toolbar && workplace && container) {
-                        // Set up proper container structure
-                        container.style.cssText = 'height: 100%; display: flex; flex-direction: column; position: relative;';
-                        toolbar.style.cssText = 'position: sticky; top: 0; z-index: 1000; flex-shrink: 0; background: #2a2a2a;';
-                        workplace.style.cssText = 'flex: 1; overflow-y: auto; overflow-x: hidden;';
-                        
-                        // Ensure the wysiwyg editor itself scrolls
-                        const wysiwygMode = workplace.querySelector('.jodit-wysiwyg_mode');
-                        if (wysiwygMode) {
-                            wysiwygMode.style.cssText = 'height: 100%; overflow-y: auto;';
-                        }
-                    }
                 }, 100);
                 
                 // Apply custom dark theme styles
                 const style = document.createElement('style');
                 style.textContent = `
                     /* Jodit Dark Theme Overrides */
-                    #wysiwyg-editor {
-                        position: relative !important;
-                        height: 100% !important;
-                        overflow: hidden !important;
-                    }
-                    
                     .jodit-container:not(.jodit_inline) {
                         border: 1px solid #333 !important;
                         background: #1a1a1a !important;
                         height: 100% !important;
-                        position: relative !important;
-                        display: grid !important;
-                        grid-template-rows: auto 1fr auto !important;
-                    }
-                    
-                    .jodit-toolbar {
-                        position: sticky !important;
-                        top: 0 !important;
-                        z-index: 1000 !important;
-                        background: #2a2a2a !important;
                     }
                     
                     .jodit-toolbar__box {
                         background: #2a2a2a !important;
                         border-bottom: 1px solid #333 !important;
-                        position: relative !important;
-                        z-index: 1000 !important;
-                    }
-                    
-                    .jodit-workplace {
-                        overflow-y: auto !important;
-                        height: 100% !important;
-                    }
-                    
-                    .jodit-wysiwyg_mode_1 {
-                        height: 100% !important;
                     }
                     
                     .jodit-toolbar-button {
@@ -5817,6 +5777,45 @@ document.addEventListener('DOMContentLoaded', function() {
                         color: #e2e8f0 !important;
                         padding: 20px !important;
                         min-height: calc(100% - 60px) !important;
+                        line-height: 1.6 !important;
+                    }
+                    
+                    /* Fix list formatting */
+                    .jodit-wysiwyg ul,
+                    .jodit-wysiwyg ol {
+                        margin: 1em 0 !important;
+                        padding-left: 2em !important;
+                        line-height: 1.6 !important;
+                    }
+                    
+                    .jodit-wysiwyg li {
+                        margin: 0.5em 0 !important;
+                        line-height: 1.6 !important;
+                    }
+                    
+                    /* Fix paragraph spacing */
+                    .jodit-wysiwyg p {
+                        margin: 1em 0 !important;
+                        line-height: 1.6 !important;
+                    }
+                    
+                    /* Fix heading spacing */
+                    .jodit-wysiwyg h1,
+                    .jodit-wysiwyg h2,
+                    .jodit-wysiwyg h3,
+                    .jodit-wysiwyg h4,
+                    .jodit-wysiwyg h5,
+                    .jodit-wysiwyg h6 {
+                        margin-top: 1.5em !important;
+                        margin-bottom: 0.5em !important;
+                        line-height: 1.3 !important;
+                    }
+                    
+                    /* First heading should not have top margin */
+                    .jodit-wysiwyg > h1:first-child,
+                    .jodit-wysiwyg > h2:first-child,
+                    .jodit-wysiwyg > h3:first-child {
+                        margin-top: 0 !important;
                     }
                     
                     .jodit-wysiwyg,
@@ -5842,14 +5841,16 @@ document.addEventListener('DOMContentLoaded', function() {
                     .jodit-wysiwyg table {
                         border-collapse: collapse !important;
                         width: 100% !important;
-                        margin: 1em 0 !important;
+                        margin: 1.5em 0 !important;
                     }
                     
                     .jodit-wysiwyg table td,
                     .jodit-wysiwyg table th {
                         border: 1px solid #444 !important;
-                        padding: 8px 12px !important;
+                        padding: 10px 15px !important;
                         color: #e2e8f0 !important;
+                        line-height: 1.5 !important;
+                        vertical-align: top !important;
                     }
                     
                     .jodit-wysiwyg table th {
@@ -6175,6 +6176,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Clear reference
                 if (window.currentWysiwygEditor) {
                     window.currentWysiwygEditor = null;
+                }
+                
+                // Remove the editor container
+                const editorContainer = document.getElementById('wysiwyg-editor');
+                if (editorContainer) {
+                    editorContainer.remove();
+                }
+                
+                // Show the viewer-content again
+                const viewerContent = document.querySelector('.viewer-content');
+                if (viewerContent) {
+                    viewerContent.style.display = '';
                 }
                 
                 // Hide save/cancel buttons
