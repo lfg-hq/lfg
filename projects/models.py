@@ -255,10 +255,14 @@ class ProjectFile(models.Model):
         
         return None
     
-    def save_content(self, content_text):
-        """Save content to S3 or database based on settings"""
+    def save_content(self, content_text, user=None, change_description=None):
+        """Save content to S3 or database based on settings and create a version"""
         from development.utils.file_storage import get_file_storage
         from django.conf import settings
+        
+        # Create a version before saving new content
+        if self.pk:  # Only create version if this is an existing file
+            self.create_version(user=user, change_description=change_description)
         
         storage = get_file_storage()
         
@@ -296,6 +300,46 @@ class ProjectFile(models.Model):
             # Use database storage
             self.content = content_text
             self.s3_key = None
+    
+    def create_version(self, user=None, change_description=None):
+        """Create a new version of the file with current content"""
+        # Get the current content
+        current_content = self.file_content
+        if current_content is None:
+            return None
+            
+        # Get the next version number
+        last_version = self.versions.first()
+        next_version_number = (last_version.version_number + 1) if last_version else 1
+        
+        # Create the version
+        version = ProjectFileVersion.objects.create(
+            file=self,
+            version_number=next_version_number,
+            content=current_content,
+            created_by=user,
+            change_description=change_description
+        )
+        
+        return version
+    
+    def get_version(self, version_number):
+        """Get a specific version of the file"""
+        try:
+            return self.versions.get(version_number=version_number)
+        except ProjectFileVersion.DoesNotExist:
+            return None
+    
+    def restore_version(self, version_number, user=None):
+        """Restore the file to a specific version"""
+        version = self.get_version(version_number)
+        if version:
+            # Save current as a new version first
+            self.save_content(version.content, user=user, 
+                            change_description=f"Restored to version {version_number}")
+            self.save()
+            return True
+        return False
 
 
 class ToolCallHistory(models.Model):
@@ -321,5 +365,26 @@ class ToolCallHistory(models.Model):
     
     def __str__(self):
         return f"{self.tool_name} - {self.project.name} - {self.created_at}"
+
+
+class ProjectFileVersion(models.Model):
+    """Model to store versions of project files"""
+    file = models.ForeignKey(ProjectFile, on_delete=models.CASCADE, related_name='versions')
+    version_number = models.IntegerField()
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey('auth.User', on_delete=models.SET_NULL, null=True, blank=True, related_name='file_versions')
+    change_description = models.TextField(blank=True, null=True)
+    
+    class Meta:
+        ordering = ['-version_number']
+        unique_together = [('file', 'version_number')]
+        indexes = [
+            models.Index(fields=['file', '-version_number']),
+            models.Index(fields=['file', '-created_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.file.name} - v{self.version_number}"
     
     

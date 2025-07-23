@@ -37,4 +37,8 @@ urlpatterns = [
     # Enhanced file browser APIs
     path('<str:project_id>/api/files/browser/', views.file_browser_api, name='file_browser_api'),
     path('<str:project_id>/api/files/<int:file_id>/content/', views.file_content_api, name='file_content_api'),
+    
+    # File versioning APIs
+    path('<str:project_id>/api/files/<int:file_id>/versions/', views.file_versions_api, name='file_versions_api'),
+    path('<str:project_id>/api/files/<int:file_id>/versions/<int:version_number>/', views.file_version_content_api, name='file_version_content_api'),
 ]

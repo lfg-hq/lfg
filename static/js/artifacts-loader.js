@@ -5376,6 +5376,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 console.log('[ArtifactsLoader] Viewing file:', { fileId, fileName, projectId });
                 
+                // Close any open version drawer when viewing a different file
+                const existingDrawer = document.querySelector('.version-drawer');
+                if (existingDrawer && existingDrawer.dataset.fileId !== String(fileId)) {
+                    window.closeVersionDrawer();
+                }
+                
                 fetch(`/projects/${projectId}/api/files/${fileId}/content/`, {
                     method: 'GET',
                     headers: {
@@ -5418,6 +5424,26 @@ document.addEventListener('DOMContentLoaded', function() {
                         
                         editButton.addEventListener('click', () => enableEditMode());
                     }
+                    
+                    // Add or update version history button
+                    let versionButton = viewerDelete.parentElement.querySelector('#viewer-versions');
+                    if (!versionButton) {
+                        versionButton = document.createElement('button');
+                        versionButton.id = 'viewer-versions';
+                        versionButton.className = 'btn btn-sm';
+                        versionButton.style = 'padding: 8px 16px; background: #4a5568; color: white; border: none; border-radius: 6px; cursor: pointer; margin-right: 10px;';
+                        versionButton.innerHTML = '<i class="fas fa-history"></i> Versions';
+                        viewerDelete.parentElement.insertBefore(versionButton, editButton);
+                    }
+                    
+                    // Remove old event listeners and add new one for current file
+                    const newVersionButton = versionButton.cloneNode(true);
+                    versionButton.parentNode.replaceChild(newVersionButton, versionButton);
+                    newVersionButton.addEventListener('click', () => {
+                        const currentFileId = window.currentFileData ? window.currentFileData.fileId : fileId;
+                        console.log('[VersionButton] Clicked for fileId:', currentFileId);
+                        showVersionHistory(currentFileId);
+                    });
                     
                     // For PRD and implementation files, render as markdown
                     if (data.type === 'prd' || data.type === 'implementation') {
@@ -6134,6 +6160,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
                         window.currentFileData.content = content;
                         
+                        // Also save the file ID if it was created
+                        if (data.file_id) {
+                            window.currentFileData.fileId = data.file_id;
+                        }
+                        
                         // Exit edit mode and refresh view
                         cancelEditMode(true);
                     } else {
@@ -6207,6 +6238,541 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Refresh the file view
                 if (window.currentFileData) {
                     viewFileContent(window.currentFileData.fileId, window.currentFileData.fileName);
+                }
+            };
+            
+            // Show version history in side drawer
+            const showVersionHistory = async (fileId) => {
+                const projectId = getCurrentProjectId();
+                if (!projectId || !fileId) {
+                    showToast('Error: Missing project or file ID', 'error');
+                    return;
+                }
+                
+                // Check if drawer already exists for this file
+                const existingDrawer = document.querySelector('.version-drawer');
+                if (existingDrawer && existingDrawer.dataset.fileId === String(fileId)) {
+                    // Drawer already open for this file, do nothing
+                    return;
+                } else if (existingDrawer) {
+                    // Close existing drawer for different file
+                    window.closeVersionDrawer();
+                }
+                
+                try {
+                    const response = await fetch(`/projects/${projectId}/api/files/${fileId}/versions/`, {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCsrfToken(),
+                        }
+                    });
+                    
+                    const data = await response.json();
+                    if (!response.ok) {
+                        throw new Error(data.error || 'Failed to load versions');
+                    }
+                    
+                    console.log('[VersionHistory] API Response for file', fileId, ':', data);
+                    
+                    // Get filename from current file data
+                    const fileName = window.currentFileData ? window.currentFileData.fileName : 'Unknown File';
+                    
+                    // Create version history drawer with fresh data
+                    createVersionHistoryDrawer(fileId, fileName, data.versions || []);
+                    
+                } catch (error) {
+                    console.error('[ArtifactsLoader] Error loading versions:', error);
+                    showToast('Failed to load version history', 'error');
+                }
+            };
+            
+            // Create version history drawer
+            const createVersionHistoryDrawer = (fileId, fileName, versions) => {
+                console.log('[VersionDrawer] Creating drawer for file:', { fileId, fileName, versionCount: versions.length });
+                
+                // Remove existing drawer and overlay if any
+                const existingDrawer = document.querySelector('.version-drawer');
+                const existingOverlay = document.querySelector('.version-drawer-overlay');
+                if (existingDrawer) {
+                    existingDrawer.remove();
+                }
+                if (existingOverlay) {
+                    existingOverlay.remove();
+                }
+
+                const drawer = document.createElement('div');
+                drawer.className = 'version-drawer';
+                
+                // Group versions by date
+                const versionsByDate = {};
+                const today = new Date().toDateString();
+                const yesterday = new Date(Date.now() - 86400000).toDateString();
+                
+                // Make sure we're using fresh version data
+                const fileVersions = [...versions]; // Create a copy to avoid reference issues
+                
+                fileVersions.forEach(version => {
+                    const versionDate = new Date(version.created_at);
+                    const dateStr = versionDate.toDateString();
+                    let groupLabel;
+                    
+                    if (dateStr === today) {
+                        groupLabel = 'Today';
+                    } else if (dateStr === yesterday) {
+                        groupLabel = 'Yesterday';
+                    } else {
+                        groupLabel = versionDate.toLocaleDateString('en-US', { 
+                            month: 'short', 
+                            day: 'numeric',
+                            year: versionDate.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined
+                        });
+                    }
+                    
+                    if (!versionsByDate[groupLabel]) {
+                        versionsByDate[groupLabel] = [];
+                    }
+                    versionsByDate[groupLabel].push(version);
+                });
+                
+                drawer.innerHTML = `
+                    <div class="version-drawer-header">
+                        <h5>Version History</h5>
+                        <button class="btn btn-ghost btn-sm" onclick="closeVersionDrawer()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="version-drawer-subheader">
+                        <span class="file-name">${fileName}</span>
+                        <span class="version-count">${fileVersions.length} version${fileVersions.length !== 1 ? 's' : ''}</span>
+                    </div>
+                    <div class="version-drawer-content">
+                        ${fileVersions.length === 0 ? '<p class="no-versions">No version history available.</p>' : 
+                            Object.entries(versionsByDate).map(([date, dateVersions]) => `
+                                <div class="version-date-group">
+                                    <div class="version-date-label">${date}</div>
+                                    ${dateVersions.map(version => {
+                                        const versionDate = new Date(version.created_at);
+                                        const timeStr = versionDate.toLocaleTimeString('en-US', { 
+                                            hour: 'numeric', 
+                                            minute: '2-digit',
+                                            hour12: true 
+                                        });
+                                        const isCurrentVersion = version.version_number === fileVersions[0].version_number;
+                                        
+                                        return `
+                                            <div class="version-item ${isCurrentVersion ? 'current-version' : ''}" 
+                                                 onclick="selectVersion(${fileId}, ${version.version_number}, this)">
+                                                <div class="version-item-content">
+                                                    <div class="version-item-header">
+                                                        <span class="version-time">${timeStr}</span>
+                                                        ${isCurrentVersion ? '<span class="current-badge">Current</span>' : ''}
+                                                    </div>
+                                                    <div class="version-item-info">
+                                                        <span class="version-number">Version ${version.version_number}</span>
+                                                        ${version.created_by ? `<span class="version-author">${version.created_by}</span>` : ''}
+                                                    </div>
+                                                    ${version.change_description ? 
+                                                        `<div class="version-description">${version.change_description}</div>` : ''}
+                                                </div>
+                                                <div class="version-item-actions">
+                                                    <button class="btn btn-ghost btn-sm" title="View this version" 
+                                                            onclick="event.stopPropagation(); viewVersion(${fileId}, ${version.version_number})">
+                                                        <i class="fas fa-eye"></i>
+                                                    </button>
+                                                    ${!isCurrentVersion ? `
+                                                        <button class="btn btn-ghost btn-sm" title="Restore this version" 
+                                                                onclick="event.stopPropagation(); restoreVersion(${fileId}, ${version.version_number}, '${fileName.replace(/'/g, "\\'")}')">  
+                                                            <i class="fas fa-undo"></i>
+                                                        </button>
+                                                    ` : ''}
+                                                </div>
+                                            </div>
+                                        `;
+                                    }).join('')}
+                                </div>
+                            `).join('')
+                        }
+                    </div>
+                `;
+                
+                document.body.appendChild(drawer);
+                
+                // Add styles if not already present
+                addVersionDrawerStyles();
+                
+                // Create overlay for click outside functionality
+                let overlay = document.querySelector('.version-drawer-overlay');
+                if (!overlay) {
+                    overlay = document.createElement('div');
+                    overlay.className = 'version-drawer-overlay';
+                    document.body.appendChild(overlay);
+                }
+                
+                // Open drawer with animation
+                setTimeout(() => {
+                    drawer.classList.add('open');
+                    overlay.classList.add('active');
+                }, 10);
+                
+                // Store current file ID in drawer for verification
+                drawer.dataset.fileId = String(fileId);
+                console.log('[VersionDrawer] Drawer created with fileId:', drawer.dataset.fileId);
+                
+                // Close drawer function
+                const closeDrawer = () => {
+                    const drawer = document.querySelector('.version-drawer');
+                    const overlay = document.querySelector('.version-drawer-overlay');
+                    if (drawer) {
+                        drawer.classList.remove('open');
+                        if (overlay) overlay.classList.remove('active');
+                        setTimeout(() => {
+                            drawer.remove();
+                            if (overlay) overlay.remove();
+                        }, 300);
+                    }
+                };
+                
+                // Attach global functions for drawer
+                window.closeVersionDrawer = closeDrawer;
+                
+                // Click outside to close
+                overlay.addEventListener('click', closeDrawer);
+                
+                // ESC key to close
+                const escHandler = (e) => {
+                    if (e.key === 'Escape') {
+                        closeDrawer();
+                        document.removeEventListener('keydown', escHandler);
+                    }
+                };
+                document.addEventListener('keydown', escHandler);
+                
+                window.selectVersion = (fileId, versionNumber, element) => {
+                    // Remove previous selection
+                    document.querySelectorAll('.version-item.selected').forEach(item => {
+                        item.classList.remove('selected');
+                    });
+                    
+                    // Add selection to clicked item
+                    element.classList.add('selected');
+                    
+                    // View the version
+                    viewVersion(fileId, versionNumber);
+                };
+                
+                window.viewVersion = viewVersion;
+                window.restoreVersion = restoreVersion;
+            };
+            
+            // Add version drawer styles
+            const addVersionDrawerStyles = () => {
+                if (!document.querySelector('#versionDrawerStyles')) {
+                    const style = document.createElement('style');
+                    style.id = 'versionDrawerStyles';
+                    style.textContent = `
+                        .version-drawer {
+                            position: fixed;
+                            top: 0;
+                            right: -400px;
+                            width: 400px;
+                            height: 100%;
+                            background: #1a1a1a;
+                            box-shadow: -2px 0 10px rgba(0,0,0,0.5);
+                            z-index: 2050;
+                            display: flex;
+                            flex-direction: column;
+                            transition: right 0.3s ease;
+                        }
+                        
+                        .version-drawer.open {
+                            right: 0;
+                        }
+                        
+                        .version-drawer-header {
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-between;
+                            padding: 1rem 1.5rem;
+                            border-bottom: 1px solid #333;
+                            background: #0a0a0a;
+                        }
+                        
+                        .version-drawer-header h5 {
+                            margin: 0;
+                            font-size: 1.1rem;
+                            font-weight: 600;
+                            color: #e2e8f0;
+                        }
+                        
+                        .version-drawer-subheader {
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-between;
+                            padding: 0.75rem 1.5rem;
+                            border-bottom: 1px solid #333;
+                            background: #1a1a1a;
+                        }
+                        
+                        .version-drawer-subheader .file-name {
+                            font-weight: 500;
+                            color: #94a3b8;
+                            font-size: 0.9rem;
+                        }
+                        
+                        .version-drawer-subheader .version-count {
+                            font-size: 0.85rem;
+                            color: #64748b;
+                        }
+                        
+                        .version-drawer-content {
+                            flex: 1;
+                            overflow-y: auto;
+                            padding: 1rem 0;
+                        }
+                        
+                        .version-date-group {
+                            margin-bottom: 1.5rem;
+                        }
+                        
+                        .version-date-label {
+                            font-size: 0.75rem;
+                            font-weight: 600;
+                            color: #64748b;
+                            text-transform: uppercase;
+                            letter-spacing: 0.5px;
+                            padding: 0 1.5rem;
+                            margin-bottom: 0.5rem;
+                        }
+                        
+                        .version-item {
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-between;
+                            padding: 0.75rem 1.5rem;
+                            cursor: pointer;
+                            transition: all 0.2s ease;
+                            border-left: 3px solid transparent;
+                        }
+                        
+                        .version-item:hover {
+                            background-color: #262626;
+                        }
+                        
+                        .version-item.selected {
+                            background-color: #1e293b;
+                            border-left-color: #3b82f6;
+                        }
+                        
+                        .version-item.current-version {
+                            background-color: #1e1e2e;
+                        }
+                        
+                        .version-item-content {
+                            flex: 1;
+                            min-width: 0;
+                        }
+                        
+                        .version-item-header {
+                            display: flex;
+                            align-items: center;
+                            gap: 0.5rem;
+                            margin-bottom: 0.25rem;
+                        }
+                        
+                        .version-time {
+                            font-size: 0.875rem;
+                            font-weight: 500;
+                            color: #e2e8f0;
+                        }
+                        
+                        .current-badge {
+                            font-size: 0.7rem;
+                            font-weight: 600;
+                            color: #3b82f6;
+                            background: #1e293b;
+                            padding: 0.125rem 0.5rem;
+                            border-radius: 10px;
+                            text-transform: uppercase;
+                        }
+                        
+                        .version-item-info {
+                            display: flex;
+                            align-items: center;
+                            gap: 0.5rem;
+                            font-size: 0.8rem;
+                            color: #94a3b8;
+                        }
+                        
+                        .version-number {
+                            font-weight: 500;
+                        }
+                        
+                        .version-author::before {
+                            content: '•';
+                            margin-right: 0.5rem;
+                        }
+                        
+                        .version-description {
+                            font-size: 0.8rem;
+                            color: #64748b;
+                            margin-top: 0.25rem;
+                            white-space: nowrap;
+                            overflow: hidden;
+                            text-overflow: ellipsis;
+                        }
+                        
+                        .version-item-actions {
+                            display: flex;
+                            gap: 0.25rem;
+                            opacity: 0;
+                            transition: opacity 0.2s ease;
+                        }
+                        
+                        .version-item:hover .version-item-actions {
+                            opacity: 1;
+                        }
+                        
+                        .btn-ghost {
+                            background: transparent;
+                            border: none;
+                            color: #64748b;
+                            padding: 0.25rem 0.5rem;
+                            border-radius: 4px;
+                            transition: all 0.2s ease;
+                        }
+                        
+                        .btn-ghost:hover {
+                            background: #334155;
+                            color: #94a3b8;
+                        }
+                        
+                        .no-versions {
+                            text-align: center;
+                            color: #64748b;
+                            padding: 2rem;
+                        }
+                        
+                        /* Overlay for click outside */
+                        .version-drawer-overlay {
+                            position: fixed;
+                            top: 0;
+                            left: 0;
+                            right: 0;
+                            bottom: 0;
+                            background: rgba(0, 0, 0, 0.5);
+                            z-index: 2049;
+                            opacity: 0;
+                            visibility: hidden;
+                            transition: opacity 0.3s ease, visibility 0.3s ease;
+                        }
+                        
+                        .version-drawer-overlay.active {
+                            opacity: 1;
+                            visibility: visible;
+                        }
+                    `;
+                    document.head.appendChild(style);
+                }
+            };
+            
+            // View specific version
+            const viewVersion = async (fileId, versionNumber) => {
+                const projectId = getCurrentProjectId();
+                if (!projectId || !fileId) return;
+                
+                try {
+                    const response = await fetch(`/projects/${projectId}/api/files/${fileId}/versions/${versionNumber}/`, {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCsrfToken(),
+                        }
+                    });
+                    
+                    const data = await response.json();
+                    if (!data.success) {
+                        throw new Error(data.error || 'Failed to load version');
+                    }
+                    
+                    // Show version content in viewer
+                    const viewerMarkdown = document.getElementById('viewer-markdown');
+                    if (viewerMarkdown) {
+                        // Add version notice
+                        const versionNotice = document.createElement('div');
+                        versionNotice.style.cssText = `
+                            background: #333;
+                            border: 1px solid #8b5cf6;
+                            padding: 10px 15px;
+                            margin-bottom: 20px;
+                            border-radius: 6px;
+                            color: #e2e8f0;
+                            display: flex;
+                            justify-content: space-between;
+                            align-items: center;
+                        `;
+                        versionNotice.innerHTML = `
+                            <span><i class="fas fa-info-circle"></i> Viewing version ${versionNumber} from ${new Date(data.created_at).toLocaleDateString()}</span>
+                            <button id="close-version-view" style="background: #8b5cf6; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">
+                                Back to Current
+                            </button>
+                        `;
+                        
+                        // Render version content
+                        viewerMarkdown.innerHTML = '';
+                        viewerMarkdown.appendChild(versionNotice);
+                        
+                        const contentDiv = document.createElement('div');
+                        if (typeof marked !== 'undefined') {
+                            contentDiv.innerHTML = marked.parse(data.content);
+                        } else {
+                            contentDiv.innerHTML = data.content.replace(/\n/g, '<br>');
+                        }
+                        viewerMarkdown.appendChild(contentDiv);
+                        
+                        // Style the viewer for version view
+                        viewerMarkdown.style.opacity = '0.95';
+                        
+                        // Back to current button
+                        document.getElementById('close-version-view').addEventListener('click', () => {
+                            viewFileContent(fileId, window.currentFileData.fileName);
+                        });
+                    }
+                    
+                } catch (error) {
+                    console.error('[ArtifactsLoader] Error viewing version:', error);
+                    showToast('Failed to load version', 'error');
+                }
+            };
+            
+            // Restore version
+            const restoreVersion = async (fileId, versionNumber) => {
+                const projectId = getCurrentProjectId();
+                if (!projectId || !fileId) return;
+                
+                try {
+                    const response = await fetch(`/projects/${projectId}/api/files/${fileId}/versions/${versionNumber}/`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCsrfToken(),
+                        }
+                    });
+                    
+                    const data = await response.json();
+                    if (!data.success) {
+                        throw new Error(data.error || 'Failed to restore version');
+                    }
+                    
+                    showToast(data.message, 'success');
+                    // Close the version drawer
+                    closeVersionDrawer();
+                    // Reload the file content
+                    viewFileContent(fileId, window.currentFileData.fileName);
+                    
+                } catch (error) {
+                    console.error('[ArtifactsLoader] Error restoring version:', error);
+                    showToast('Failed to restore version', 'error');
                 }
             };
             
@@ -6333,8 +6899,8 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Initial load
             fetchFiles(1);
-        }
-    };
+        } // End of loadFileBrowser function
+    }; // End of ArtifactsLoader object
 
     // ArtifactsLoader is now ready to use
     console.log('[ArtifactsLoader] Loaded and ready');
