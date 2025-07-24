@@ -1040,8 +1040,8 @@ def file_browser_api(request, project_id):
     files_list = []
     for file_obj in page_obj:
         # Get file size (approximate based on content length)
-        content = file_obj.file_content or ''
-        file_size = len(content.encode('utf-8'))
+        # content = file_obj.file_content or ''
+        # file_size = len(content.encode('utf-8'))
         
         files_list.append({
             'id': file_obj.id,
@@ -1049,14 +1049,14 @@ def file_browser_api(request, project_id):
             'type': file_obj.file_type,
             'type_display': file_obj.get_file_type_display(),
             'is_active': file_obj.is_active,
-            'size': file_size,
-            'size_display': _format_file_size(file_size),
+            # 'size': file_size,
+            # 'size_display': _format_file_size(file_size),
             'created_at': file_obj.created_at.isoformat(),
             'updated_at': file_obj.updated_at.isoformat(),
             'created_at_display': file_obj.created_at.strftime('%Y-%m-%d %H:%M'),
             'updated_at_display': file_obj.updated_at.strftime('%Y-%m-%d %H:%M'),
             'has_content': bool(file_obj.content or file_obj.s3_key),
-            'preview': content[:200] + '...' if len(content) > 200 else content,
+            # 'preview': content[:200] + '...' if len(content) > 200 else content,
             'owner': file_obj.project.owner.username if file_obj.project.owner else 'System'
         })
     
@@ -1196,5 +1196,58 @@ def _format_file_size(size_in_bytes):
             return f"{size_in_bytes:.1f} {unit}"
         size_in_bytes /= 1024.0
     return f"{size_in_bytes:.1f} TB"
+
+
+@require_POST
+@login_required
+def file_rename_api(request, project_id, file_id):
+    """API to rename a file"""
+    project = get_object_or_404(Project, project_id=project_id, owner=request.user)
+    file_obj = get_object_or_404(ProjectFile, id=file_id, project=project)
+    
+    try:
+        data = json.loads(request.body)
+        new_name = data.get('name', '').strip()
+        
+        if not new_name:
+            return JsonResponse({
+                'success': False,
+                'error': 'File name cannot be empty'
+            }, status=400)
+        
+        # Check if another file with the same name and type already exists
+        existing_file = ProjectFile.objects.filter(
+            project=project,
+            file_type=file_obj.file_type,
+            name=new_name
+        ).exclude(id=file_obj.id).first()
+        
+        if existing_file:
+            return JsonResponse({
+                'success': False,
+                'error': f'A {file_obj.get_file_type_display()} with name "{new_name}" already exists'
+            }, status=400)
+        
+        # Update the file name
+        old_name = file_obj.name
+        file_obj.name = new_name
+        file_obj.save()
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'File renamed from "{old_name}" to "{new_name}"',
+            'new_name': new_name
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': 'Invalid JSON data'
+        }, status=400)
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
 
 

@@ -217,7 +217,7 @@
         /* File Browser Table Styles */
         .file-table-header {
             display: grid;
-            grid-template-columns: 40px 1fr 200px 120px 100px 80px;
+            grid-template-columns: 40px 1fr 150px 120px 100px;
             padding: 8px 16px;
             border-bottom: 1px solid #333;
             background: #1a1a1a;
@@ -232,7 +232,7 @@
         
         .file-list-item {
             display: grid;
-            grid-template-columns: 40px 1fr 200px 120px 100px 80px;
+            grid-template-columns: 40px 1fr 150px 120px 100px;
             padding: 8px 16px;
             border-bottom: 1px solid #2a2a2a;
             transition: all 0.15s ease;
@@ -284,8 +284,8 @@
         .file-type-badge {
             display: inline-flex;
             align-items: center;
-            padding: 2px 8px;
-            font-size: 11px;
+            padding: 1px 6px;
+            font-size: 10px;
             font-weight: 500;
             border-radius: 4px;
             text-transform: lowercase;
@@ -930,6 +930,7 @@
         
         .jodit-toolbar__box {
             background: #2a2a2a !important;
+            margin-bottom: 40px;
         }
         
         .jodit-toolbar-button__button {
@@ -966,7 +967,7 @@
     <!-- Tabs Navigation - moved to top -->
     <div class="artifacts-tabs" style="display: flex; justify-content: space-between; align-items: center;">
         <div style="display: flex;">
-            <button class="tab-button active" data-tab="filebrowser">File Browser</button>
+            <button class="tab-button active" data-tab="filebrowser">Docs</button>
             <!-- <button class="tab-button active" data-tab="prd">PRD</button> -->
             <!-- <button class="tab-button" data-tab="implementation">Implementation</button> -->
             <!-- <button class="tab-button" data-tab="features">Features</button> -->
@@ -975,7 +976,7 @@
             <!-- <button class="tab-button" data-tab="tickets">Tickets</button> -->
             <button class="tab-button" data-tab="checklist">Task List</button>
             <!-- <button class="tab-button" data-tab="apps">Preview</button> -->
-            <button class="tab-button" data-tab="toolhistory">Tool History</button>
+            <!-- <button class="tab-button" data-tab="toolhistory">Tool History</button> -->
             <!-- <button class="tab-button" data-tab="codebase">Codebase</button> -->
         </div>
         
@@ -1302,7 +1303,7 @@
                                 <div>Type</div>
                                 <div>Owner</div>
                                 <div>Modified</div>
-                                <div style="text-align: right;">Size</div>
+                                <!-- <div style="text-align: right;">Size</div> -->
                             </div>
                             
                             <!-- Loading State -->
@@ -1335,20 +1336,15 @@
                     
                     <!-- File Viewer (hidden by default) -->
                     <div id="filebrowser-viewer" style="height: 100%; display: none; flex-direction: column;">
-                        <div class="viewer-header" style="padding: 15px 20px; border-bottom: 1px solid #2a2a2a; display: flex; align-items: center; justify-content: space-between;">
+                        <div class="viewer-header" style="padding: 12px 20px; border-bottom: 1px solid #2a2a2a; display: flex; align-items: center; justify-content: space-between;">
                             <div style="display: flex; align-items: center; gap: 15px;">
-                                <button id="viewer-back" class="btn btn-sm" style="padding: 8px 12px; background: #2a2a2a; color: #e2e8f0; border: 1px solid #333; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                                <button id="viewer-back" class="btn btn-sm" style="padding: 6px 10px; background: transparent; color: #9ca3af; border: none; cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 14px;">
                                     <i class="fas fa-arrow-left"></i> Back
                                 </button>
                                 <h3 id="viewer-title" style="color: #e2e8f0; margin: 0; font-size: 16px; font-weight: 600;"></h3>
                             </div>
-                            <div style="display: flex; gap: 10px;">
-                                <button id="viewer-copy" class="btn btn-sm" style="padding: 8px 16px; background: #2a2a2a; color: #e2e8f0; border: 1px solid #333; border-radius: 6px; cursor: pointer;">
-                                    <i class="fas fa-copy"></i> Copy
-                                </button>
-                                <button id="viewer-delete" class="btn btn-sm" style="padding: 8px 16px; background: #dc2626; color: white; border: none; border-radius: 6px; cursor: pointer;">
-                                    <i class="fas fa-trash"></i> Delete
-                                </button>
+                            <div id="viewer-actions" style="display: flex; gap: 0;">
+                                <!-- Dynamically added buttons will go here -->
                             </div>
                         </div>
                         <div class="viewer-content" style="flex: 1; overflow-y: auto;">

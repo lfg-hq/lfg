@@ -41,4 +41,7 @@ urlpatterns = [
     # File versioning APIs
     path('<str:project_id>/api/files/<int:file_id>/versions/', views.file_versions_api, name='file_versions_api'),
     path('<str:project_id>/api/files/<int:file_id>/versions/<int:version_number>/', views.file_version_content_api, name='file_version_content_api'),
+    
+    # File rename API
+    path('<str:project_id>/api/files/<int:file_id>/rename/', views.file_rename_api, name='file_rename_api'),
 ]

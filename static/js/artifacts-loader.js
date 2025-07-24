@@ -5027,8 +5027,6 @@ document.addEventListener('DOMContentLoaded', function() {
             // Viewer elements
             const viewerBack = document.getElementById('viewer-back');
             const viewerTitle = document.getElementById('viewer-title');
-            const viewerCopy = document.getElementById('viewer-copy');
-            const viewerDelete = document.getElementById('viewer-delete');
             const viewerMarkdown = document.getElementById('viewer-markdown');
             
             if (!fileBrowserContainer || !fileBrowserLoading || !fileBrowserEmpty || !fileBrowserList) {
@@ -5139,18 +5137,12 @@ document.addEventListener('DOMContentLoaded', function() {
                             fileDate.className = 'file-date-cell';
                             fileDate.textContent = formatRelativeTime(file.updated_at);
                             
-                            // Create size cell
-                            const fileSize = document.createElement('div');
-                            fileSize.className = 'file-size-cell';
-                            fileSize.textContent = file.size_display || '0 B';
-                            
                             // Assemble the structure
                             fileItem.appendChild(fileIcon);
                             fileItem.appendChild(fileName);
                             fileItem.appendChild(fileType);
                             fileItem.appendChild(fileOwner);
                             fileItem.appendChild(fileDate);
-                            fileItem.appendChild(fileSize);
                             
                             // Add to list
                             fileBrowserList.appendChild(fileItem);
@@ -5395,8 +5387,103 @@ document.addEventListener('DOMContentLoaded', function() {
                     fileBrowserMain.style.display = 'none';
                     fileBrowserViewer.style.display = 'flex';
                     
-                    // Set title
-                    viewerTitle.textContent = data.name || fileName;
+                    // Set title with inline edit capability
+                    viewerTitle.innerHTML = `
+                        <span id="viewer-title-text">${data.name || fileName}</span>
+                        <button id="viewer-title-edit" style="background: none; border: none; color: #9ca3af; cursor: pointer; margin-left: 8px; padding: 4px; opacity: 0.7;" title="Edit name" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+                            <i class="fas fa-pencil" style="font-size: 12px;"></i>
+                        </button>
+                    `;
+                    
+                    // Add inline edit functionality
+                    const titleEditBtn = document.getElementById('viewer-title-edit');
+                    const titleText = document.getElementById('viewer-title-text');
+                    
+                    if (titleEditBtn && titleText) {
+                        titleEditBtn.addEventListener('click', function(e) {
+                            e.stopPropagation();
+                            
+                            // Get current name
+                            const currentName = titleText.textContent;
+                            
+                            // Create input field
+                            const input = document.createElement('input');
+                            input.type = 'text';
+                            input.value = currentName;
+                            input.style.cssText = `
+                                background: #1a1a1a;
+                                border: 1px solid #333;
+                                border-radius: 4px;
+                                color: #e2e8f0;
+                                padding: 4px 8px;
+                                font-size: 16px;
+                                font-weight: 600;
+                                width: 300px;
+                            `;
+                            
+                            // Replace text with input
+                            titleText.style.display = 'none';
+                            titleEditBtn.style.display = 'none';
+                            viewerTitle.insertBefore(input, titleText);
+                            input.focus();
+                            input.select();
+                            
+                            // Handle save
+                            const saveTitle = async () => {
+                                const newName = input.value.trim();
+                                if (newName && newName !== currentName) {
+                                    try {
+                                        const response = await fetch(`/projects/${projectId}/api/files/${fileId}/rename/`, {
+                                            method: 'POST',
+                                            headers: {
+                                                'Content-Type': 'application/json',
+                                                'X-CSRFToken': getCsrfToken(),
+                                            },
+                                            body: JSON.stringify({ name: newName })
+                                        });
+                                        
+                                        const result = await response.json();
+                                        if (result.success) {
+                                            titleText.textContent = newName;
+                                            window.currentFileData.fileName = newName;
+                                            showToast('File renamed successfully', 'success');
+                                            // Refresh file list
+                                            fetchFiles(currentPage);
+                                        } else {
+                                            showToast('Failed to rename file: ' + (result.error || 'Unknown error'), 'error');
+                                        }
+                                    } catch (error) {
+                                        console.error('Error renaming file:', error);
+                                        showToast('Failed to rename file', 'error');
+                                    }
+                                }
+                                
+                                // Restore original view
+                                input.remove();
+                                titleText.style.display = '';
+                                titleEditBtn.style.display = '';
+                            };
+                            
+                            // Handle cancel
+                            const cancelEdit = () => {
+                                input.remove();
+                                titleText.style.display = '';
+                                titleEditBtn.style.display = '';
+                            };
+                            
+                            // Event listeners
+                            input.addEventListener('blur', saveTitle);
+                            input.addEventListener('keydown', function(e) {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    saveTitle();
+                                } else if (e.key === 'Escape') {
+                                    e.preventDefault();
+                                    cancelEdit();
+                                }
+                            });
+                        });
+                    }
                     
                     // Reset editor state
                     if (window.currentWysiwygEditor) {
@@ -5412,38 +5499,169 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Render markdown content
                     const content = data.content || 'No content available';
                     
-                    // Add edit button to header if not already there
-                    let editButton = viewerDelete.parentElement.querySelector('#viewer-edit');
-                    if (!editButton) {
-                        editButton = document.createElement('button');
-                        editButton.id = 'viewer-edit';
-                        editButton.className = 'btn btn-sm';
-                        editButton.style = 'padding: 8px 16px; background: #8b5cf6; color: white; border: none; border-radius: 6px; cursor: pointer;';
-                        editButton.innerHTML = '<i class="fas fa-edit"></i> Edit';
-                        viewerDelete.parentElement.insertBefore(editButton, viewerDelete);
+                    // Create compact action buttons
+                    const viewerActions = document.getElementById('viewer-actions');
+                    if (viewerActions) {
+                        // Clear existing buttons
+                        viewerActions.innerHTML = '';
                         
+                        // Common button style
+                        const buttonStyle = `
+                            background: transparent;
+                            border: none;
+                            color: #9ca3af;
+                            cursor: pointer;
+                            padding: 6px;
+                            font-size: 14px;
+                            transition: all 0.2s;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                        `;
+                        
+                        // Edit button with full text
+                        const editButton = document.createElement('button');
+                        editButton.id = 'viewer-edit';
+                        editButton.style.cssText = buttonStyle + 'padding: 8px 12px; gap: 6px;';
+                        editButton.innerHTML = '<i class="fas fa-edit"></i> Edit';
+                        editButton.title = 'Edit full text';
+                        editButton.onmouseover = function() { this.style.color = '#e2e8f0'; };
+                        editButton.onmouseout = function() { this.style.color = '#9ca3af'; };
                         editButton.addEventListener('click', () => enableEditMode());
-                    }
-                    
-                    // Add or update version history button
-                    let versionButton = viewerDelete.parentElement.querySelector('#viewer-versions');
-                    if (!versionButton) {
-                        versionButton = document.createElement('button');
+                        
+                        // Copy button
+                        const copyButton = document.createElement('button');
+                        copyButton.id = 'viewer-copy';
+                        copyButton.style.cssText = buttonStyle;
+                        copyButton.innerHTML = '<i class="fas fa-copy"></i>';
+                        copyButton.title = 'Copy';
+                        copyButton.onmouseover = function() { this.style.color = '#e2e8f0'; };
+                        copyButton.onmouseout = function() { this.style.color = '#9ca3af'; };
+                        copyButton.addEventListener('click', () => {
+                            if (window.currentFileData && window.currentFileData.content) {
+                                copyToClipboard(window.currentFileData.content);
+                                showToast('Content copied to clipboard!', 'success');
+                            }
+                        });
+                        
+                        // Versions button
+                        const versionButton = document.createElement('button');
                         versionButton.id = 'viewer-versions';
-                        versionButton.className = 'btn btn-sm';
-                        versionButton.style = 'padding: 8px 16px; background: #4a5568; color: white; border: none; border-radius: 6px; cursor: pointer; margin-right: 10px;';
-                        versionButton.innerHTML = '<i class="fas fa-history"></i> Versions';
-                        viewerDelete.parentElement.insertBefore(versionButton, editButton);
+                        versionButton.style.cssText = buttonStyle;
+                        versionButton.innerHTML = '<i class="fas fa-history"></i>';
+                        versionButton.title = 'Version history';
+                        versionButton.onmouseover = function() { this.style.color = '#e2e8f0'; };
+                        versionButton.onmouseout = function() { this.style.color = '#9ca3af'; };
+                        versionButton.addEventListener('click', () => {
+                            const currentFileId = window.currentFileData ? window.currentFileData.fileId : fileId;
+                            console.log('[VersionButton] Clicked for fileId:', currentFileId);
+                            showVersionHistory(currentFileId);
+                        });
+                        
+                        // Options dropdown button
+                        const optionsButton = document.createElement('button');
+                        optionsButton.id = 'viewer-options';
+                        optionsButton.style.cssText = buttonStyle + 'position: relative;';
+                        optionsButton.innerHTML = '<i class="fas fa-ellipsis-v"></i>';
+                        optionsButton.title = 'More options';
+                        optionsButton.onmouseover = function() { this.style.color = '#e2e8f0'; };
+                        optionsButton.onmouseout = function() { this.style.color = '#9ca3af'; };
+                        
+                        // Create dropdown menu
+                        const dropdownMenu = document.createElement('div');
+                        dropdownMenu.id = 'viewer-options-dropdown';
+                        dropdownMenu.style.cssText = `
+                            position: absolute;
+                            top: 100%;
+                            right: 0;
+                            background: #1a1a1a;
+                            border: 1px solid #333;
+                            border-radius: 6px;
+                            min-width: 160px;
+                            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                            display: none;
+                            z-index: 1000;
+                            margin-top: 4px;
+                        `;
+                        
+                        // Download option
+                        const downloadOption = document.createElement('button');
+                        downloadOption.style.cssText = `
+                            display: flex;
+                            align-items: center;
+                            gap: 8px;
+                            width: 100%;
+                            padding: 8px 12px;
+                            background: transparent;
+                            border: none;
+                            color: #e2e8f0;
+                            cursor: pointer;
+                            text-align: left;
+                            font-size: 14px;
+                            transition: background 0.2s;
+                        `;
+                        downloadOption.innerHTML = '<i class="fas fa-download"></i> Download';
+                        downloadOption.onmouseover = function() { this.style.background = '#2a2a2a'; };
+                        downloadOption.onmouseout = function() { this.style.background = 'transparent'; };
+                        downloadOption.addEventListener('click', () => {
+                            dropdownMenu.style.display = 'none';
+                            showToast('Download feature coming soon', 'info');
+                        });
+                        
+                        // Delete option
+                        const deleteOption = document.createElement('button');
+                        deleteOption.style.cssText = `
+                            display: flex;
+                            align-items: center;
+                            gap: 8px;
+                            width: 100%;
+                            padding: 8px 12px;
+                            background: transparent;
+                            border: none;
+                            color: #ef4444;
+                            cursor: pointer;
+                            text-align: left;
+                            font-size: 14px;
+                            transition: background 0.2s;
+                        `;
+                        deleteOption.innerHTML = '<i class="fas fa-trash"></i> Delete';
+                        deleteOption.onmouseover = function() { this.style.background = 'rgba(239, 68, 68, 0.1)'; };
+                        deleteOption.onmouseout = function() { this.style.background = 'transparent'; };
+                        deleteOption.addEventListener('click', () => {
+                            dropdownMenu.style.display = 'none';
+                            const fileName = data.name || window.currentFileData.fileName;
+                            if (confirm(`Are you sure you want to delete "${fileName}"? This action cannot be undone.`)) {
+                                deleteFile(fileId);
+                            }
+                        });
+                        
+                        dropdownMenu.appendChild(downloadOption);
+                        dropdownMenu.appendChild(deleteOption);
+                        
+                        // Toggle dropdown
+                        optionsButton.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            const isOpen = dropdownMenu.style.display === 'block';
+                            dropdownMenu.style.display = isOpen ? 'none' : 'block';
+                        });
+                        
+                        // Close dropdown when clicking outside
+                        document.addEventListener('click', () => {
+                            dropdownMenu.style.display = 'none';
+                        });
+                        
+                        // Create wrapper for options button with dropdown
+                        const optionsWrapper = document.createElement('div');
+                        optionsWrapper.style.cssText = 'position: relative; display: flex;';
+                        optionsWrapper.appendChild(optionsButton);
+                        optionsWrapper.appendChild(dropdownMenu);
+                        
+                        // Append buttons to actions container
+                        viewerActions.appendChild(editButton);
+                        viewerActions.appendChild(copyButton);
+                        viewerActions.appendChild(versionButton);
+                        viewerActions.appendChild(optionsWrapper);
                     }
-                    
-                    // Remove old event listeners and add new one for current file
-                    const newVersionButton = versionButton.cloneNode(true);
-                    versionButton.parentNode.replaceChild(newVersionButton, versionButton);
-                    newVersionButton.addEventListener('click', () => {
-                        const currentFileId = window.currentFileData ? window.currentFileData.fileId : fileId;
-                        console.log('[VersionButton] Clicked for fileId:', currentFileId);
-                        showVersionHistory(currentFileId);
-                    });
                     
                     // For PRD and implementation files, render as markdown
                     if (data.type === 'prd' || data.type === 'implementation') {
@@ -5497,11 +5715,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         viewerMarkdown.innerHTML = '<pre style="white-space: pre-wrap; word-wrap: break-word;">' + escapeHtml(content) + '</pre>';
                     }
                     
-                    // Store current file info for actions
-                    viewerCopy.dataset.fileId = fileId;
-                    viewerCopy.dataset.content = content;
-                    viewerDelete.dataset.fileId = fileId;
-                    viewerDelete.dataset.fileName = data.name || fileName;
+                    // File info is now stored in window.currentFileData and used by action buttons
                 })
                 .catch(error => {
                     console.error('[ArtifactsLoader] Error loading file content:', error);
@@ -5610,14 +5824,16 @@ document.addEventListener('DOMContentLoaded', function() {
                     initializeWysiwygEditor();
                 }
                 
-                // Update buttons
+                // Hide all viewer buttons
                 const editButton = document.getElementById('viewer-edit');
-                const deleteButton = document.getElementById('viewer-delete');
                 const copyButton = document.getElementById('viewer-copy');
+                const versionButton = document.getElementById('viewer-versions');
+                const optionsButton = document.getElementById('viewer-options');
                 
                 if (editButton) editButton.style.display = 'none';
-                if (deleteButton) deleteButton.style.display = 'none';
                 if (copyButton) copyButton.style.display = 'none';
+                if (versionButton) versionButton.style.display = 'none';
+                if (optionsButton) optionsButton.style.display = 'none';
                 
                 // Add save and cancel buttons
                 let saveButton = document.getElementById('viewer-save');
@@ -5627,20 +5843,23 @@ document.addEventListener('DOMContentLoaded', function() {
                     saveButton = document.createElement('button');
                     saveButton.id = 'viewer-save';
                     saveButton.className = 'btn btn-sm';
-                    saveButton.style = 'padding: 8px 16px; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer;';
+                    saveButton.style = 'padding: 8px 16px; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 6px;';
                     saveButton.innerHTML = '<i class="fas fa-save"></i> Save';
+                    saveButton.title = 'Save changes';
                     saveButton.addEventListener('click', () => saveFileContent());
-                    deleteButton.parentElement.appendChild(saveButton);
+                    const viewerActions = document.getElementById('viewer-actions');
+                    if (viewerActions) viewerActions.appendChild(saveButton);
                 }
                 
                 if (!cancelButton) {
                     cancelButton = document.createElement('button');
                     cancelButton.id = 'viewer-cancel';
                     cancelButton.className = 'btn btn-sm';
-                    cancelButton.style = 'padding: 8px 16px; background: #6b7280; color: white; border: none; border-radius: 6px; cursor: pointer; margin-left: 10px;';
+                    cancelButton.style = 'padding: 8px 16px; background: #6b7280; color: white; border: none; border-radius: 6px; cursor: pointer; margin-left: 10px; display: flex; align-items: center; gap: 6px;';
                     cancelButton.innerHTML = '<i class="fas fa-times"></i> Cancel';
+                    cancelButton.title = 'Cancel editing';
                     cancelButton.addEventListener('click', () => cancelEditMode());
-                    deleteButton.parentElement.appendChild(cancelButton);
+                    if (viewerActions) viewerActions.appendChild(cancelButton);
                 }
                 
                 saveButton.style.display = 'inline-block';
@@ -6357,11 +6576,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Show original buttons
                 const editButton = document.getElementById('viewer-edit');
-                const deleteButton = document.getElementById('viewer-delete');
                 const copyButton = document.getElementById('viewer-copy');
-                if (editButton) editButton.style.display = 'inline-block';
-                if (deleteButton) deleteButton.style.display = 'inline-block';
-                if (copyButton) copyButton.style.display = 'inline-block';
+                const versionButton = document.getElementById('viewer-versions');
+                const optionsButton = document.getElementById('viewer-options');
+                if (editButton) editButton.style.display = 'flex';
+                if (copyButton) copyButton.style.display = 'flex';
+                if (versionButton) versionButton.style.display = 'flex';
+                if (optionsButton) optionsButton.style.display = 'flex';
                 
                 // Refresh the file view
                 if (window.currentFileData) {
@@ -6926,6 +7147,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 .then(data => {
                     if (data.success) {
                         showToast('File deleted successfully', 'success');
+                        // Go back to file browser
+                        const fileBrowserViewer = document.getElementById('filebrowser-viewer');
+                        const fileBrowserMain = document.getElementById('filebrowser-main');
+                        if (fileBrowserViewer && fileBrowserMain) {
+                            fileBrowserViewer.style.display = 'none';
+                            fileBrowserMain.style.display = 'flex';
+                        }
                         fetchFiles(currentPage);
                     } else {
                         showToast(data.error || 'Failed to delete file', 'error');
@@ -7004,9 +7232,44 @@ document.addEventListener('DOMContentLoaded', function() {
                         await saveFileContent(true); // true for auto-save
                     }
                     
-                    // If still in edit mode, cancel it
+                    // If still in edit mode, cancel it without refreshing
                     if (window.currentWysiwygEditor) {
-                        cancelEditMode(true); // true to skip confirmation
+                        // Stop auto-save timer
+                        if (window.autoSaveTimer) {
+                            clearInterval(window.autoSaveTimer);
+                            window.autoSaveTimer = null;
+                        }
+                        
+                        // Clear reference
+                        window.currentWysiwygEditor = null;
+                        
+                        // Remove the editor container
+                        const editorContainer = document.getElementById('wysiwyg-editor');
+                        if (editorContainer) {
+                            editorContainer.remove();
+                        }
+                        
+                        // Show viewer content again
+                        const viewerContent = document.querySelector('.viewer-content');
+                        if (viewerContent) {
+                            viewerContent.style.display = '';
+                        }
+                        
+                        // Hide save/cancel buttons
+                        const saveButton = document.getElementById('viewer-save');
+                        const cancelButton = document.getElementById('viewer-cancel');
+                        if (saveButton) saveButton.style.display = 'none';
+                        if (cancelButton) cancelButton.style.display = 'none';
+                        
+                        // Show original buttons
+                        const editButton = document.getElementById('viewer-edit');
+                        const copyButton = document.getElementById('viewer-copy');
+                        const versionButton = document.getElementById('viewer-versions');
+                        const optionsButton = document.getElementById('viewer-options');
+                        if (editButton) editButton.style.display = 'flex';
+                        if (copyButton) copyButton.style.display = 'flex';
+                        if (versionButton) versionButton.style.display = 'flex';
+                        if (optionsButton) optionsButton.style.display = 'flex';
                     }
                     
                     // Navigate back to file list
@@ -7015,28 +7278,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
             }
             
-            if (viewerCopy) {
-                viewerCopy.addEventListener('click', function() {
-                    const content = this.dataset.content;
-                    if (content) {
-                        copyToClipboard(content);
-                        showToast('Content copied to clipboard!', 'success');
-                    }
-                });
-            }
-            
-            if (viewerDelete) {
-                viewerDelete.addEventListener('click', function() {
-                    const fileId = this.dataset.fileId;
-                    const fileName = this.dataset.fileName;
-                    if (confirm(`Are you sure you want to delete "${fileName}"? This action cannot be undone.`)) {
-                        deleteFile(fileId);
-                        // Go back to list view
-                        fileBrowserViewer.style.display = 'none';
-                        fileBrowserMain.style.display = 'flex';
-                    }
-                });
-            }
+            // Event listeners for viewer buttons are now attached when buttons are created dynamically
             
             // Initial load
             fetchFiles(1);

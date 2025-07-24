@@ -200,11 +200,11 @@ class ProjectCodeGeneration(models.Model):
 class ProjectFile(models.Model):
     """Model to store different types of project files (PRD, implementation, etc.)"""
     FILE_TYPES = [
-        ('prd', 'Product Requirements Document'),
-        ('implementation', 'Technical Implementation Plan'),
-        ('design', 'Design Document'),
-        ('test', 'Test Plan'),
-        ('other', 'Other'),
+        ('prd', 'prd'),
+        ('implementation', 'technical plan'),
+        ('design', 'design'),
+        ('test', 'test plan'),
+        ('other', 'other'),
     ]
     
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='files')
