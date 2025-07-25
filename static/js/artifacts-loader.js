@@ -346,7 +346,8 @@ document.addEventListener('DOMContentLoaded', function() {
         return '';
     }
 
-    // Initialize the artifact loaders
+    // Initialize the artifact loaders immediately
+    console.log('[ArtifactsLoader] Initializing ArtifactsLoader');
     window.ArtifactsLoader = {
         /**
          * Get the current project ID from various sources
@@ -1450,6 +1451,355 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 }
             }
+        },
+        
+        /**
+         * Unified document streaming function for PRD and Implementation
+         * @param {string} contentChunk - The chunk of content to append
+         * @param {boolean} isComplete - Whether this is the final chunk
+         * @param {number} projectId - The ID of the current project
+         * @param {string} documentType - Type of document ('prd' or 'implementation')
+         * @param {string} documentName - Name of the document
+         */
+        streamDocumentContent: function(contentChunk, isComplete, projectId, documentType, documentName) {
+            console.log(`[ArtifactsLoader] streamDocumentContent called`);
+            console.log(`  Type: ${documentType}, Name: ${documentName}`);
+            console.log(`  Chunk length: ${contentChunk ? contentChunk.length : 0}, isComplete: ${isComplete}`);
+            console.log(`  Project ID: ${projectId}`);
+            
+            // Ensure filebrowser tab is active
+            const filebrowserTab = document.querySelector('.tab-button[data-tab="filebrowser"]');
+            const filebrowserPane = document.getElementById('filebrowser');
+            if (filebrowserTab && !filebrowserTab.classList.contains('active')) {
+                console.log('[ArtifactsLoader] Activating filebrowser tab for streaming');
+                document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+                document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
+                filebrowserTab.classList.add('active');
+                if (filebrowserPane) filebrowserPane.classList.add('active');
+            }
+            
+            // Initialize streaming state
+            const stateKey = `${documentType}StreamingState`;
+            if (!window[stateKey]) {
+                window[stateKey] = {
+                    fullContent: '',
+                    isStreaming: false,
+                    projectId: projectId,
+                    documentName: documentName,
+                    documentType: documentType
+                };
+            }
+            
+            // Get or create streaming viewer
+            const filebrowserViewer = document.getElementById('filebrowser-viewer');
+            const filebrowserMain = document.getElementById('filebrowser-main');
+            
+            if (!filebrowserViewer || !filebrowserMain) {
+                console.error('[ArtifactsLoader] File browser elements not found');
+                return;
+            }
+            
+            // Start streaming if not already started
+            if (!window[stateKey].isStreaming) {
+                window[stateKey].isStreaming = true;
+                window[stateKey].fullContent = '';
+                window[stateKey].projectId = projectId;
+                
+                // Switch to viewer mode
+                filebrowserMain.style.display = 'none';
+                filebrowserViewer.style.display = 'flex';
+                
+                // Set viewer title with edit button
+                const viewerTitle = document.getElementById('viewer-title');
+                if (viewerTitle) {
+                    viewerTitle.innerHTML = `
+                        <span id="viewer-title-text">${documentName} (Generating...)</span>
+                        <button id="viewer-title-edit" style="background: none; border: none; color: #9ca3af; cursor: pointer; margin-left: 8px; padding: 4px; opacity: 0.7;" title="Edit name" disabled>
+                            <i class="fas fa-pencil" style="font-size: 12px;"></i>
+                        </button>
+                    `;
+                }
+                
+                // Clear viewer content but keep the structure
+                const viewerMarkdown = document.getElementById('viewer-markdown');
+                if (viewerMarkdown) {
+                    viewerMarkdown.innerHTML = '';
+                }
+                
+                // Hide action buttons during streaming
+                const viewerActions = document.querySelector('.viewer-actions');
+                if (viewerActions) {
+                    viewerActions.style.display = 'none';
+                }
+                
+                // Show streaming status in metadata area
+                const viewerMeta = document.getElementById('viewer-meta');
+                if (viewerMeta) {
+                    viewerMeta.innerHTML = `
+                        <span style="color: #8b5cf6;"><i class="fas fa-circle-notch fa-spin"></i> Generating ${documentType}...</span>
+                    `;
+                    viewerMeta.style.display = 'flex';
+                }
+                
+                // Make sure back button is visible
+                const backButton = document.querySelector('.viewer-back');
+                if (backButton) {
+                    backButton.style.display = 'flex';
+                }
+                
+                // Open artifacts panel if not already open
+                if (window.ArtifactsPanel && !window.ArtifactsPanel.isOpen()) {
+                    window.ArtifactsPanel.open();
+                    console.log('[ArtifactsLoader] Opened artifacts panel for document streaming');
+                }
+            }
+            
+            // Append content chunk
+            if (contentChunk) {
+                window[stateKey].fullContent += contentChunk;
+                
+                // Update viewer content
+                const viewerMarkdown = document.getElementById('viewer-markdown');
+                if (viewerMarkdown && typeof marked !== 'undefined') {
+                    const renderedHTML = marked.parse(window[stateKey].fullContent);
+                    viewerMarkdown.innerHTML = renderedHTML;
+                } else if (viewerMarkdown) {
+                    // Fallback to plain text
+                    viewerMarkdown.innerHTML = window[stateKey].fullContent
+                        .replace(/\n/g, '<br>')
+                        .replace(/\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;');
+                }
+                
+                // Auto-scroll to show new content
+                if (viewerMarkdown) {
+                    viewerMarkdown.scrollTop = viewerMarkdown.scrollHeight;
+                }
+            }
+            
+            // If streaming is complete
+            if (isComplete) {
+                window[stateKey].isStreaming = false;
+                
+                // Clear the streaming state
+                window[stateKey] = null;
+                
+                console.log('[ArtifactsLoader] Streaming complete, loading saved document with file ID 37');
+                
+                // Call viewFileContent directly with the file ID
+                if (window.viewFileContent) {
+                    window.viewFileContent(37);
+                } else {
+                    console.error('[ArtifactsLoader] viewFileContent function not found');
+                    // Fallback to loading file browser
+                    window.ArtifactsLoader.loadFileBrowser(projectId);
+                }
+            }
+        },
+        
+        /**
+         * Handle save notification after document is saved
+         */
+        handleDocumentSaved: function(notification) {
+            console.log('[ArtifactsLoader] ==========================================');
+            console.log('[ArtifactsLoader] DOCUMENT SAVED NOTIFICATION RECEIVED!');
+            console.log('[ArtifactsLoader] Notification:', notification);
+            console.log('[ArtifactsLoader] File ID:', notification.file_id);
+            console.log('[ArtifactsLoader] File Type:', notification.file_type);
+            console.log('[ArtifactsLoader] File Name:', notification.file_name);
+            console.log('[ArtifactsLoader] Notification Type:', notification.notification_type);
+            console.log('[ArtifactsLoader] Current Project ID:', window.currentProjectId);
+            console.log('[ArtifactsLoader] ==========================================');
+            
+            const documentType = notification.file_type || notification.notification_type;
+            console.log('[ArtifactsLoader] Looking for streaming info for type:', documentType);
+            console.log('[ArtifactsLoader] Available streaming info keys:', Object.keys(window).filter(k => k.includes('StreamingInfo')));
+            
+            // Also check for all possible streaming info variations
+            console.log('[ArtifactsLoader] Checking window.prdStreamingInfo:', window.prdStreamingInfo);
+            console.log('[ArtifactsLoader] Checking window.implementationStreamingInfo:', window.implementationStreamingInfo);
+            
+            const streamingInfo = window[`${documentType}StreamingInfo`];
+            
+            if (!streamingInfo) {
+                console.log('[ArtifactsLoader] No streaming info found for type:', documentType);
+                console.log('[ArtifactsLoader] Will still try to load the file using file_id');
+                // Don't return, continue to load the file
+            }
+            
+            // Clear the streaming info if it exists
+            if (streamingInfo) {
+                window[`${documentType}StreamingInfo`] = null;
+            }
+            
+            // Get project ID and file ID
+            const projectId = streamingInfo?.projectId || window.currentProjectId;
+            const documentName = streamingInfo?.documentName || notification.file_name;
+            const viewerTitle = streamingInfo?.viewerTitle || `${documentType.toUpperCase()} - ${documentName}`;
+            const fileId = notification.file_id;
+            
+            if (!fileId) {
+                console.error('[ArtifactsLoader] No file_id in save notification');
+                return;
+            }
+            
+            console.log(`[ArtifactsLoader] Loading saved document with ID: ${fileId}`);
+            console.log(`[ArtifactsLoader] Making API call to: /projects/${projectId}/api/files/${fileId}/content/`);
+            
+            // Load the saved document directly
+            fetch(`/projects/${projectId}/api/files/${fileId}/content/`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken(),
+                }
+            })
+            .then(response => {
+                console.log('[ArtifactsLoader] API Response status:', response.status);
+                console.log('[ArtifactsLoader] API Response statusText:', response.statusText);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(fileData => {
+                console.log('[ArtifactsLoader] Loaded saved document:', fileData);
+                
+                // Update the viewer with proper content and metadata
+                const viewerTitleElement = document.getElementById('viewer-title');
+                if (viewerTitleElement) {
+                    viewerTitleElement.innerHTML = `
+                        <span id="viewer-title-text">${fileData.name || documentName}</span>
+                        <button id="viewer-title-edit" style="background: none; border: none; color: #9ca3af; cursor: pointer; margin-left: 8px; padding: 4px; opacity: 0.7;" title="Edit name">
+                            <i class="fas fa-pencil" style="font-size: 12px;"></i>
+                        </button>
+                    `;
+                }
+                
+                // Store file data
+                window.currentFileData = {
+                    fileId: fileId,
+                    fileName: fileData.name || documentName,
+                    fileType: fileData.type,
+                    content: fileData.content
+                };
+                
+                // Update content
+                const viewerMarkdown = document.getElementById('viewer-markdown');
+                if (viewerMarkdown && typeof marked !== 'undefined') {
+                    viewerMarkdown.innerHTML = marked.parse(fileData.content || '');
+                }
+                
+                // Show action buttons
+                const viewerActions = document.querySelector('.viewer-actions');
+                if (viewerActions) {
+                    viewerActions.style.display = 'flex';
+                }
+                
+                // Update metadata
+                const viewerMeta = document.getElementById('viewer-meta');
+                if (viewerMeta) {
+                    viewerMeta.innerHTML = `
+                        <span><i class="fas fa-user"></i> ${fileData.owner || 'Unknown'}</span>
+                        <span><i class="fas fa-calendar"></i> ${fileData.created_at ? new Date(fileData.created_at).toLocaleDateString() : 'Unknown'}</span>
+                        <span><i class="fas fa-tag"></i> ${fileData.type_display || fileData.type || 'Document'}</span>
+                    `;
+                    viewerMeta.style.display = 'flex';
+                }
+            })
+            .catch(error => {
+                console.error('[ArtifactsLoader] Error loading file content:', error);
+                const viewerTitleElement = document.getElementById('viewer-title');
+                if (viewerTitleElement) {
+                    viewerTitleElement.textContent = documentName;
+                }
+            });
+        },
+        
+        
+        /**
+         * Save streamed document to the server
+         */
+        saveStreamedDocument: function(documentType, projectId) {
+            const stateKey = `${documentType}StreamingState`;
+            const state = window[stateKey];
+            
+            if (!state || !state.fullContent) {
+                console.error('No content to save');
+                return;
+            }
+            
+            // Show saving indicator
+            const viewerTitle = document.getElementById('viewer-title');
+            if (viewerTitle) {
+                viewerTitle.textContent = `${state.documentName} (Saving...)`;
+            }
+            
+            // Create document via API
+            const payload = {
+                name: state.documentName,
+                type: documentType,
+                content: state.fullContent,
+                project_id: projectId
+            };
+            
+            fetch(`/projects/${projectId}/documents/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                },
+                body: JSON.stringify(payload)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.file_id) {
+                    window.showToast('Document saved successfully', 'success');
+                    // Clear the streaming state
+                    window[stateKey] = null;
+                    
+                    // Reload the file browser and open the saved document
+                    this.loadFileBrowser(projectId, {
+                        openFileId: data.file_id,
+                        openFileName: state.documentName
+                    });
+                } else {
+                    window.showToast('Error saving document', 'error');
+                    if (viewerTitle) {
+                        viewerTitle.textContent = state.documentName;
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error saving document:', error);
+                window.showToast('Error saving document', 'error');
+                if (viewerTitle) {
+                    viewerTitle.textContent = state.documentName;
+                }
+            });
+        },
+        
+        /**
+         * Download streamed document
+         */
+        downloadStreamedDocument: function(documentType, documentName) {
+            const stateKey = `${documentType}StreamingState`;
+            const state = window[stateKey];
+            
+            if (!state || !state.fullContent) {
+                console.error('No content to download');
+                return;
+            }
+            
+            // Create a blob and download
+            const blob = new Blob([state.fullContent], { type: 'text/markdown' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${documentName}.md`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         },
         
         /**
@@ -5006,9 +5356,12 @@ document.addEventListener('DOMContentLoaded', function() {
         /**
          * Load File Browser for a project
          * @param {number} projectId - The project ID
+         * @param {object} options - Optional settings
+         * @param {string} options.openFileId - File ID to open after loading
+         * @param {string} options.openFileName - File name to open after loading
          */
-        loadFileBrowser: function(projectId) {
-            console.log(`[ArtifactsLoader] Loading file browser for project ${projectId}`);
+        loadFileBrowser: function(projectId, options = {}) {
+            console.log(`[ArtifactsLoader] Loading file browser for project ${projectId}`, options);
             
             // Store project ID for use in file operations
             window.currentFileBrowserProjectId = projectId;
@@ -5159,6 +5512,77 @@ document.addEventListener('DOMContentLoaded', function() {
                         
                         // Attach event listeners to file items
                         attachFileItemListeners();
+                        
+                        // Auto-open file if specified
+                        if (options.openFileId && options.openFileName) {
+                            console.log(`[ArtifactsLoader] Auto-opening file: ${options.openFileId} - ${options.openFileName}`);
+                            // Directly call the API to load the file content
+                            setTimeout(() => {
+                                console.log('[ArtifactsLoader] Loading file content via API');
+                                
+                                // Call the file content API directly
+                                fetch(`/projects/${projectId}/api/files/${options.openFileId}/content/`, {
+                                    method: 'GET',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'X-CSRFToken': getCsrfToken(),
+                                    }
+                                })
+                                .then(response => response.json())
+                                .then(data => {
+                                    // Switch to viewer mode
+                                    fileBrowserMain.style.display = 'none';
+                                    fileBrowserViewer.style.display = 'flex';
+                                    
+                                    // Set title
+                                    const viewerTitle = document.getElementById('viewer-title');
+                                    if (viewerTitle) {
+                                        viewerTitle.innerHTML = `
+                                            <span id="viewer-title-text">${data.name || options.openFileName}</span>
+                                            <button id="viewer-title-edit" style="background: none; border: none; color: #9ca3af; cursor: pointer; margin-left: 8px; padding: 4px; opacity: 0.7;" title="Edit name">
+                                                <i class="fas fa-pencil" style="font-size: 12px;"></i>
+                                            </button>
+                                        `;
+                                    }
+                                    
+                                    // Store current file data
+                                    window.currentFileData = {
+                                        fileId: options.openFileId,
+                                        fileName: data.name || options.openFileName,
+                                        fileType: data.type,
+                                        content: data.content
+                                    };
+                                    
+                                    // Render the content
+                                    const viewerMarkdown = document.getElementById('viewer-markdown');
+                                    if (viewerMarkdown) {
+                                        if (data.type === 'prd' || data.type === 'implementation' || data.type === 'design' || data.content.includes('#')) {
+                                            // Render as markdown
+                                            viewerMarkdown.innerHTML = marked.parse(data.content || '');
+                                        } else {
+                                            // Render as plain text
+                                            viewerMarkdown.innerHTML = (data.content || '').replace(/\n/g, '<br>').replace(/\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;');
+                                        }
+                                    }
+                                    
+                                    // Set metadata
+                                    const viewerMeta = document.getElementById('viewer-meta');
+                                    if (viewerMeta) {
+                                        viewerMeta.innerHTML = `
+                                            <span><i class="fas fa-user"></i> ${data.owner || 'Unknown'}</span>
+                                            <span><i class="fas fa-calendar"></i> ${data.created_at ? new Date(data.created_at).toLocaleDateString() : 'Unknown'}</span>
+                                            <span><i class="fas fa-tag"></i> ${data.type_display || data.type || 'Document'}</span>
+                                        `;
+                                    }
+                                    
+                                    console.log('[ArtifactsLoader] File content loaded and displayed');
+                                })
+                                .catch(error => {
+                                    console.error('[ArtifactsLoader] Error loading file content:', error);
+                                    showToast('Failed to load file content', 'error');
+                                });
+                            }, 100); // Small delay to ensure DOM is ready
+                        }
                         
                     } else {
                         fileBrowserList.style.display = 'none';

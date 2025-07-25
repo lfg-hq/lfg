@@ -525,22 +525,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     console.warn('[ArtifactsPanel] ArtifactsLoader.loadFeatures not found');
                 }
                 break;
-            case 'prd':
-                // PRD tab now uses file browser
-                if (window.ArtifactsLoader && typeof window.ArtifactsLoader.loadFileBrowser === 'function') {
-                    window.ArtifactsLoader.loadFileBrowser(projectId);
-                } else {
-                    console.warn('[ArtifactsPanel] ArtifactsLoader.loadFileBrowser not found');
-                }
-                break;
-            case 'implementation':
-                // Implementation tab now uses file browser
-                if (window.ArtifactsLoader && typeof window.ArtifactsLoader.loadFileBrowser === 'function') {
-                    window.ArtifactsLoader.loadFileBrowser(projectId);
-                } else {
-                    console.warn('[ArtifactsPanel] ArtifactsLoader.loadFileBrowser not found');
-                }
-                break;
             case 'personas':
                 if (window.ArtifactsLoader && typeof window.ArtifactsLoader.loadPersonas === 'function') {
                     window.ArtifactsLoader.loadPersonas(projectId);

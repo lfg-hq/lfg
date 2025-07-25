@@ -864,6 +864,29 @@
             height: 100%;
         }
         
+        /* Viewer action buttons */
+        .viewer-action-btn {
+            padding: 6px 10px;
+            background: transparent;
+            border: 1px solid #333;
+            border-radius: 6px;
+            color: #e2e8f0;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-left: 8px;
+            font-size: 14px;
+        }
+        
+        .viewer-action-btn:hover {
+            background: #2a2a2a;
+            border-color: #8b5cf6;
+            color: #a78bfa;
+        }
+        
+        .viewer-action-btn:active {
+            transform: scale(0.95);
+        }
+        
         /* Jodit Dark Theme Global Overrides */
         .jodit-container {
             width: 100% !important;
@@ -968,16 +991,7 @@
     <div class="artifacts-tabs" style="display: flex; justify-content: space-between; align-items: center;">
         <div style="display: flex;">
             <button class="tab-button active" data-tab="filebrowser">Docs</button>
-            <!-- <button class="tab-button active" data-tab="prd">PRD</button> -->
-            <!-- <button class="tab-button" data-tab="implementation">Implementation</button> -->
-            <!-- <button class="tab-button" data-tab="features">Features</button> -->
-            <!-- <button class="tab-button" data-tab="personas">Personas</button> -->
-            <!-- <button class="tab-button" data-tab="design">Design</button> -->
-            <!-- <button class="tab-button" data-tab="tickets">Tickets</button> -->
             <button class="tab-button" data-tab="checklist">Task List</button>
-            <!-- <button class="tab-button" data-tab="apps">Preview</button> -->
-            <!-- <button class="tab-button" data-tab="toolhistory">Tool History</button> -->
-            <!-- <button class="tab-button" data-tab="codebase">Codebase</button> -->
         </div>
         
         <button class="panel-arrow-right" id="artifacts-toggle" style="margin-left: auto; padding: 8px; background: none; border: none; color: #ccc; cursor: pointer;">
@@ -988,81 +1002,6 @@
     <div class="artifacts-content">
         <!-- Tab Content -->
         <div class="tab-content">
-            <!-- PRD Tab -->
-            <div class="tab-pane" id="prd">
-                <!-- Empty state (shown by default) -->
-                <div class="empty-state" id="prd-empty-state">
-                    <div class="empty-state-icon">
-                        <i class="fas fa-file-alt"></i>
-                    </div>
-                    <div class="empty-state-text">
-                        No PRD content available yet.
-                    </div>
-                </div>
-                
-                <!-- PRD Container (hidden by default, shown during streaming) -->
-                <div class="prd-container" id="prd-container" style="display: none;">
-                    <div class="prd-header">
-                        <div class="prd-meta" style="display: flex; justify-content: space-between; align-items: flex-start;">
-                            <div style="display: flex; flex-direction: column; gap: 8px;">
-                                <!-- Custom PRD Selector -->
-                                <div class="prd-selector-wrapper" style="position: relative; display: none;">
-                                    <div id="prd-selector-button" class="prd-selector-button" style="padding: 8px 10px; padding-right: 40px; background: #1a1a1a; border: 1px solid #444; border-radius: 8px; color: #e2e8f0; font-size: 14px; font-weight: 500; min-width: 200px; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: space-between;">
-                                        <span id="prd-selector-text">Main PRD</span>
-                                        <i class="fas fa-chevron-down" style="font-size: 12px; color: #8b5cf6; position: absolute; right: 12px; transition: transform 0.2s ease, color 0.2s ease;"></i>
-                                    </div>
-                                    <!-- Custom dropdown menu -->
-                                    <div id="prd-selector-dropdown" class="prd-selector-dropdown" style="position: absolute; top: 100%; left: 0; right: 0; background: #1a1a1a; border: 1px solid #444; border-radius: 8px; margin-top: 4px; display: none; z-index: 1000; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3); max-height: 300px; overflow-y: auto;">
-                                        <!-- Options will be dynamically added here -->
-                                    </div>
-                                    <!-- Hidden select for form compatibility -->
-                                    <select id="prd-selector" style="display: none;">
-                                        <option value="Main PRD">Main PRD</option>
-                                    </select>
-                                </div>
-                                <!-- Date/Status below the selector -->
-                                <span class="streaming-status" id="prd-streaming-status" style="color: #9ca3af; font-size: 12px; margin-left: 5px;">
-                                    <i class="fas fa-circle-notch fa-spin"></i> Generating PRD...
-                                </span>
-                            </div>
-                            <div class="prd-actions-container">
-                                <!-- Actions will be added here dynamically -->
-                            </div>
-                        </div>
-                    </div>
-                    <div class="prd-streaming-container prd-content markdown-content" id="prd-streaming-content" style="color: #e2e8f0; padding: 20px;">
-                        <!-- Content will be streamed here -->
-                    </div>
-                </div>
-            </div>
-
-            <!-- Implementation Tab -->
-            <div class="tab-pane" id="implementation">
-                <!-- Empty state (shown by default) -->
-                <div class="empty-state" id="implementation-empty-state">
-                    <div class="empty-state-icon">
-                        <i class="fas fa-code"></i>
-                    </div>
-                    <div class="empty-state-text">
-                        No implementation plan available yet.
-                    </div>
-                </div>
-                
-                <!-- Implementation Container (hidden by default, shown during streaming) -->
-                <div class="implementation-container" id="implementation-container" style="display: none;">
-                    <div class="implementation-header">
-                        <h2>Implementation Plan</h2>
-                        <div class="implementation-meta" style="display: flex; justify-content: space-between; align-items: center;">
-                            <span class="streaming-status" id="implementation-streaming-status" style="color: #8b5cf6;">
-                                <i class="fas fa-circle-notch fa-spin"></i> Generating implementation plan...
-                            </span>
-                        </div>
-                    </div>
-                    <div class="implementation-streaming-container implementation-content markdown-content" id="implementation-streaming-content" style="color: #e2e8f0; padding: 20px;">
-                        <!-- Content will be streamed here -->
-                    </div>
-                </div>
-            </div>
 
             <!-- Features Tab -->
             <div class="tab-pane" id="features">

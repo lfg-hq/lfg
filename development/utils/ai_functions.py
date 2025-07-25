@@ -2461,13 +2461,21 @@ async def save_file_from_stream(file_content, project_id, file_type, file_name):
             'test': 'Test Plan'
         }.get(file_type, 'File')
         
-        return {
+        logger.info(f"Returning notification with file_id: {file_obj.id}")
+        logger.info(f"[SAVE NOTIFICATION] Type: {file_type}, Name: {file_name}, ID: {file_obj.id}")
+        
+        notification = {
             "is_notification": True,
             "notification_type": file_type,
             "message_to_agent": f"{file_type_display} '{file_name}' {action} successfully in the database",
             "file_name": file_name,
-            "file_type": file_type
+            "file_type": file_type,
+            "file_id": file_obj.id,
+            "notification_marker": "__NOTIFICATION__"  # Add this marker
         }
+        
+        logger.info(f"[SAVE NOTIFICATION] Full notification data: {notification}")
+        return notification
         
     except Exception as e:
         logger.error(f"Error saving file: {str(e)}")
