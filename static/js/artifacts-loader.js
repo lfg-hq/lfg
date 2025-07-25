@@ -5368,6 +5368,26 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 console.log('[ArtifactsLoader] Viewing file:', { fileId, fileName, projectId });
                 
+                // Ensure artifacts panel is open and documents tab is active
+                const artifactsPanel = document.getElementById('artifacts-panel');
+                const isArtifactsPanelOpen = artifactsPanel && artifactsPanel.classList.contains('expanded');
+                
+                if (!isArtifactsPanelOpen) {
+                    console.log('[ArtifactsLoader] Opening artifacts panel');
+                    if (window.ArtifactsPanel && typeof window.ArtifactsPanel.toggle === 'function') {
+                        window.ArtifactsPanel.toggle(true); // Force open
+                    }
+                }
+                
+                // Switch to documents tab
+                const documentsTab = document.querySelector('[data-tab="documents"]');
+                if (documentsTab && !documentsTab.classList.contains('active')) {
+                    console.log('[ArtifactsLoader] Switching to documents tab');
+                    if (window.switchTab) {
+                        window.switchTab('documents');
+                    }
+                }
+                
                 // Close any open version drawer when viewing a different file
                 const existingDrawer = document.querySelector('.version-drawer');
                 if (existingDrawer && existingDrawer.dataset.fileId !== String(fileId)) {
@@ -5722,6 +5742,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     showToast('Failed to load file content', 'error');
                 });
             };
+            window.viewFileContent = viewFileContent;
             
             // Auto-save functionality
             let autoSaveTimer = null;
