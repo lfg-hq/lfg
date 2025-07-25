@@ -295,13 +295,19 @@ document.addEventListener('DOMContentLoaded', function() {
             return projectIdParam;
         }
         
-        // Method 3: Global variables
+        // Method 3: File browser project ID
+        if (window.currentFileBrowserProjectId) {
+            console.log('[ArtifactsLoader] Found project ID from file browser:', window.currentFileBrowserProjectId);
+            return window.currentFileBrowserProjectId;
+        }
+        
+        // Method 4: Global variables
         if (window.project_id) {
             console.log('[ArtifactsLoader] Found project ID in global variable:', window.project_id);
             return window.project_id;
         }
         
-        // Method 4: Data attributes on body or main container
+        // Method 5: Data attributes on body or main container
         const bodyProjectId = document.body.getAttribute('data-project-id');
         if (bodyProjectId) {
             console.log('[ArtifactsLoader] Found project ID in body data attribute:', bodyProjectId);
@@ -340,7 +346,8 @@ document.addEventListener('DOMContentLoaded', function() {
         return '';
     }
 
-    // Initialize the artifact loaders
+    // Initialize the artifact loaders immediately
+    console.log('[ArtifactsLoader] Initializing ArtifactsLoader');
     window.ArtifactsLoader = {
         /**
          * Get the current project ID from various sources
@@ -1444,6 +1451,355 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 }
             }
+        },
+        
+        /**
+         * Unified document streaming function for PRD and Implementation
+         * @param {string} contentChunk - The chunk of content to append
+         * @param {boolean} isComplete - Whether this is the final chunk
+         * @param {number} projectId - The ID of the current project
+         * @param {string} documentType - Type of document ('prd' or 'implementation')
+         * @param {string} documentName - Name of the document
+         */
+        streamDocumentContent: function(contentChunk, isComplete, projectId, documentType, documentName) {
+            console.log(`[ArtifactsLoader] streamDocumentContent called`);
+            console.log(`  Type: ${documentType}, Name: ${documentName}`);
+            console.log(`  Chunk length: ${contentChunk ? contentChunk.length : 0}, isComplete: ${isComplete}`);
+            console.log(`  Project ID: ${projectId}`);
+            
+            // Ensure filebrowser tab is active
+            const filebrowserTab = document.querySelector('.tab-button[data-tab="filebrowser"]');
+            const filebrowserPane = document.getElementById('filebrowser');
+            if (filebrowserTab && !filebrowserTab.classList.contains('active')) {
+                console.log('[ArtifactsLoader] Activating filebrowser tab for streaming');
+                document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+                document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
+                filebrowserTab.classList.add('active');
+                if (filebrowserPane) filebrowserPane.classList.add('active');
+            }
+            
+            // Initialize streaming state
+            const stateKey = `${documentType}StreamingState`;
+            if (!window[stateKey]) {
+                window[stateKey] = {
+                    fullContent: '',
+                    isStreaming: false,
+                    projectId: projectId,
+                    documentName: documentName,
+                    documentType: documentType
+                };
+            }
+            
+            // Get or create streaming viewer
+            const filebrowserViewer = document.getElementById('filebrowser-viewer');
+            const filebrowserMain = document.getElementById('filebrowser-main');
+            
+            if (!filebrowserViewer || !filebrowserMain) {
+                console.error('[ArtifactsLoader] File browser elements not found');
+                return;
+            }
+            
+            // Start streaming if not already started
+            if (!window[stateKey].isStreaming) {
+                window[stateKey].isStreaming = true;
+                window[stateKey].fullContent = '';
+                window[stateKey].projectId = projectId;
+                
+                // Switch to viewer mode
+                filebrowserMain.style.display = 'none';
+                filebrowserViewer.style.display = 'flex';
+                
+                // Set viewer title with edit button
+                const viewerTitle = document.getElementById('viewer-title');
+                if (viewerTitle) {
+                    viewerTitle.innerHTML = `
+                        <span id="viewer-title-text">${documentName} (Generating...)</span>
+                        <button id="viewer-title-edit" style="background: none; border: none; color: #9ca3af; cursor: pointer; margin-left: 8px; padding: 4px; opacity: 0.7;" title="Edit name" disabled>
+                            <i class="fas fa-pencil" style="font-size: 12px;"></i>
+                        </button>
+                    `;
+                }
+                
+                // Clear viewer content but keep the structure
+                const viewerMarkdown = document.getElementById('viewer-markdown');
+                if (viewerMarkdown) {
+                    viewerMarkdown.innerHTML = '';
+                }
+                
+                // Hide action buttons during streaming
+                const viewerActions = document.querySelector('.viewer-actions');
+                if (viewerActions) {
+                    viewerActions.style.display = 'none';
+                }
+                
+                // Show streaming status in metadata area
+                const viewerMeta = document.getElementById('viewer-meta');
+                if (viewerMeta) {
+                    viewerMeta.innerHTML = `
+                        <span style="color: #8b5cf6;"><i class="fas fa-circle-notch fa-spin"></i> Generating ${documentType}...</span>
+                    `;
+                    viewerMeta.style.display = 'flex';
+                }
+                
+                // Make sure back button is visible
+                const backButton = document.querySelector('.viewer-back');
+                if (backButton) {
+                    backButton.style.display = 'flex';
+                }
+                
+                // Open artifacts panel if not already open
+                if (window.ArtifactsPanel && !window.ArtifactsPanel.isOpen()) {
+                    window.ArtifactsPanel.open();
+                    console.log('[ArtifactsLoader] Opened artifacts panel for document streaming');
+                }
+            }
+            
+            // Append content chunk
+            if (contentChunk) {
+                window[stateKey].fullContent += contentChunk;
+                
+                // Update viewer content
+                const viewerMarkdown = document.getElementById('viewer-markdown');
+                if (viewerMarkdown && typeof marked !== 'undefined') {
+                    const renderedHTML = marked.parse(window[stateKey].fullContent);
+                    viewerMarkdown.innerHTML = renderedHTML;
+                } else if (viewerMarkdown) {
+                    // Fallback to plain text
+                    viewerMarkdown.innerHTML = window[stateKey].fullContent
+                        .replace(/\n/g, '<br>')
+                        .replace(/\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;');
+                }
+                
+                // Auto-scroll to show new content
+                if (viewerMarkdown) {
+                    viewerMarkdown.scrollTop = viewerMarkdown.scrollHeight;
+                }
+            }
+            
+            // If streaming is complete
+            if (isComplete) {
+                window[stateKey].isStreaming = false;
+                
+                // Clear the streaming state
+                window[stateKey] = null;
+                
+                console.log('[ArtifactsLoader] Streaming complete, loading saved document with file ID 37');
+                
+                // Call viewFileContent directly with the file ID
+                if (window.viewFileContent) {
+                    window.viewFileContent(37);
+                } else {
+                    console.error('[ArtifactsLoader] viewFileContent function not found');
+                    // Fallback to loading file browser
+                    window.ArtifactsLoader.loadFileBrowser(projectId);
+                }
+            }
+        },
+        
+        /**
+         * Handle save notification after document is saved
+         */
+        handleDocumentSaved: function(notification) {
+            console.log('[ArtifactsLoader] ==========================================');
+            console.log('[ArtifactsLoader] DOCUMENT SAVED NOTIFICATION RECEIVED!');
+            console.log('[ArtifactsLoader] Notification:', notification);
+            console.log('[ArtifactsLoader] File ID:', notification.file_id);
+            console.log('[ArtifactsLoader] File Type:', notification.file_type);
+            console.log('[ArtifactsLoader] File Name:', notification.file_name);
+            console.log('[ArtifactsLoader] Notification Type:', notification.notification_type);
+            console.log('[ArtifactsLoader] Current Project ID:', window.currentProjectId);
+            console.log('[ArtifactsLoader] ==========================================');
+            
+            const documentType = notification.file_type || notification.notification_type;
+            console.log('[ArtifactsLoader] Looking for streaming info for type:', documentType);
+            console.log('[ArtifactsLoader] Available streaming info keys:', Object.keys(window).filter(k => k.includes('StreamingInfo')));
+            
+            // Also check for all possible streaming info variations
+            console.log('[ArtifactsLoader] Checking window.prdStreamingInfo:', window.prdStreamingInfo);
+            console.log('[ArtifactsLoader] Checking window.implementationStreamingInfo:', window.implementationStreamingInfo);
+            
+            const streamingInfo = window[`${documentType}StreamingInfo`];
+            
+            if (!streamingInfo) {
+                console.log('[ArtifactsLoader] No streaming info found for type:', documentType);
+                console.log('[ArtifactsLoader] Will still try to load the file using file_id');
+                // Don't return, continue to load the file
+            }
+            
+            // Clear the streaming info if it exists
+            if (streamingInfo) {
+                window[`${documentType}StreamingInfo`] = null;
+            }
+            
+            // Get project ID and file ID
+            const projectId = streamingInfo?.projectId || window.currentProjectId;
+            const documentName = streamingInfo?.documentName || notification.file_name;
+            const viewerTitle = streamingInfo?.viewerTitle || `${documentType.toUpperCase()} - ${documentName}`;
+            const fileId = notification.file_id;
+            
+            if (!fileId) {
+                console.error('[ArtifactsLoader] No file_id in save notification');
+                return;
+            }
+            
+            console.log(`[ArtifactsLoader] Loading saved document with ID: ${fileId}`);
+            console.log(`[ArtifactsLoader] Making API call to: /projects/${projectId}/api/files/${fileId}/content/`);
+            
+            // Load the saved document directly
+            fetch(`/projects/${projectId}/api/files/${fileId}/content/`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken(),
+                }
+            })
+            .then(response => {
+                console.log('[ArtifactsLoader] API Response status:', response.status);
+                console.log('[ArtifactsLoader] API Response statusText:', response.statusText);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(fileData => {
+                console.log('[ArtifactsLoader] Loaded saved document:', fileData);
+                
+                // Update the viewer with proper content and metadata
+                const viewerTitleElement = document.getElementById('viewer-title');
+                if (viewerTitleElement) {
+                    viewerTitleElement.innerHTML = `
+                        <span id="viewer-title-text">${fileData.name || documentName}</span>
+                        <button id="viewer-title-edit" style="background: none; border: none; color: #9ca3af; cursor: pointer; margin-left: 8px; padding: 4px; opacity: 0.7;" title="Edit name">
+                            <i class="fas fa-pencil" style="font-size: 12px;"></i>
+                        </button>
+                    `;
+                }
+                
+                // Store file data
+                window.currentFileData = {
+                    fileId: fileId,
+                    fileName: fileData.name || documentName,
+                    fileType: fileData.type,
+                    content: fileData.content
+                };
+                
+                // Update content
+                const viewerMarkdown = document.getElementById('viewer-markdown');
+                if (viewerMarkdown && typeof marked !== 'undefined') {
+                    viewerMarkdown.innerHTML = marked.parse(fileData.content || '');
+                }
+                
+                // Show action buttons
+                const viewerActions = document.querySelector('.viewer-actions');
+                if (viewerActions) {
+                    viewerActions.style.display = 'flex';
+                }
+                
+                // Update metadata
+                const viewerMeta = document.getElementById('viewer-meta');
+                if (viewerMeta) {
+                    viewerMeta.innerHTML = `
+                        <span><i class="fas fa-user"></i> ${fileData.owner || 'Unknown'}</span>
+                        <span><i class="fas fa-calendar"></i> ${fileData.created_at ? new Date(fileData.created_at).toLocaleDateString() : 'Unknown'}</span>
+                        <span><i class="fas fa-tag"></i> ${fileData.type_display || fileData.type || 'Document'}</span>
+                    `;
+                    viewerMeta.style.display = 'flex';
+                }
+            })
+            .catch(error => {
+                console.error('[ArtifactsLoader] Error loading file content:', error);
+                const viewerTitleElement = document.getElementById('viewer-title');
+                if (viewerTitleElement) {
+                    viewerTitleElement.textContent = documentName;
+                }
+            });
+        },
+        
+        
+        /**
+         * Save streamed document to the server
+         */
+        saveStreamedDocument: function(documentType, projectId) {
+            const stateKey = `${documentType}StreamingState`;
+            const state = window[stateKey];
+            
+            if (!state || !state.fullContent) {
+                console.error('No content to save');
+                return;
+            }
+            
+            // Show saving indicator
+            const viewerTitle = document.getElementById('viewer-title');
+            if (viewerTitle) {
+                viewerTitle.textContent = `${state.documentName} (Saving...)`;
+            }
+            
+            // Create document via API
+            const payload = {
+                name: state.documentName,
+                type: documentType,
+                content: state.fullContent,
+                project_id: projectId
+            };
+            
+            fetch(`/projects/${projectId}/documents/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                },
+                body: JSON.stringify(payload)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.file_id) {
+                    window.showToast('Document saved successfully', 'success');
+                    // Clear the streaming state
+                    window[stateKey] = null;
+                    
+                    // Reload the file browser and open the saved document
+                    this.loadFileBrowser(projectId, {
+                        openFileId: data.file_id,
+                        openFileName: state.documentName
+                    });
+                } else {
+                    window.showToast('Error saving document', 'error');
+                    if (viewerTitle) {
+                        viewerTitle.textContent = state.documentName;
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error saving document:', error);
+                window.showToast('Error saving document', 'error');
+                if (viewerTitle) {
+                    viewerTitle.textContent = state.documentName;
+                }
+            });
+        },
+        
+        /**
+         * Download streamed document
+         */
+        downloadStreamedDocument: function(documentType, documentName) {
+            const stateKey = `${documentType}StreamingState`;
+            const state = window[stateKey];
+            
+            if (!state || !state.fullContent) {
+                console.error('No content to download');
+                return;
+            }
+            
+            // Create a blob and download
+            const blob = new Blob([state.fullContent], { type: 'text/markdown' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${documentName}.md`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         },
         
         /**
@@ -4995,8 +5351,2384 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 document.body.removeChild(textArea);
             }
-        }
-    };
+        },
+        
+        /**
+         * Load File Browser for a project
+         * @param {number} projectId - The project ID
+         * @param {object} options - Optional settings
+         * @param {string} options.openFileId - File ID to open after loading
+         * @param {string} options.openFileName - File name to open after loading
+         */
+        loadFileBrowser: function(projectId, options = {}) {
+            console.log(`[ArtifactsLoader] Loading file browser for project ${projectId}`, options);
+            
+            // Store project ID for use in file operations
+            window.currentFileBrowserProjectId = projectId;
+            
+            const fileBrowserContainer = document.getElementById('filebrowser');
+            const fileBrowserMain = document.getElementById('filebrowser-main');
+            const fileBrowserViewer = document.getElementById('filebrowser-viewer');
+            const fileBrowserLoading = document.getElementById('filebrowser-loading');
+            const fileBrowserEmpty = document.getElementById('filebrowser-empty');
+            const fileBrowserList = document.getElementById('filebrowser-list');
+            const fileBrowserPagination = document.getElementById('filebrowser-pagination');
+            const fileSearch = document.getElementById('file-search');
+            const fileTypeFilter = document.getElementById('file-type-filter');
+            const refreshButton = document.getElementById('refresh-filebrowser');
+            
+            // Viewer elements
+            const viewerBack = document.getElementById('viewer-back');
+            const viewerTitle = document.getElementById('viewer-title');
+            const viewerMarkdown = document.getElementById('viewer-markdown');
+            
+            if (!fileBrowserContainer || !fileBrowserLoading || !fileBrowserEmpty || !fileBrowserList) {
+                console.error('[ArtifactsLoader] File browser UI elements not found', {
+                    container: !!fileBrowserContainer,
+                    loading: !!fileBrowserLoading,
+                    empty: !!fileBrowserEmpty,
+                    list: !!fileBrowserList
+                });
+                return;
+            }
+            
+            let currentPage = 1;
+            let currentSearch = '';
+            let currentType = '';
+            let currentSort = 'updated_at';
+            let currentOrder = 'desc';
+            let searchTimeout = null;
+            
+            // Function to fetch and display files
+            const fetchFiles = (page = 1) => {
+                // Show loading state
+                fileBrowserLoading.style.display = 'block';
+                fileBrowserEmpty.style.display = 'none';
+                fileBrowserList.style.display = 'none';
+                fileBrowserPagination.style.display = 'none';
+                
+                const params = new URLSearchParams({
+                    page: page,
+                    per_page: 10,
+                    search: currentSearch,
+                    type: currentType,
+                    sort: currentSort,
+                    order: currentOrder
+                });
+                
+                fetch(`/projects/${projectId}/api/files/browser/?${params}`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken(),
+                    }
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    fileBrowserLoading.style.display = 'none';
+                    
+                    // Update filter options if first load
+                    if (page === 1 && data.filters && data.filters.types) {
+                        updateTypeFilterOptions(data.filters.types);
+                    }
+                    
+                    if (data.files && data.files.length > 0) {
+                        fileBrowserList.style.display = 'block';
+                        fileBrowserEmpty.style.display = 'none';
+                        const tableHeader = document.getElementById('file-table-header');
+                        if (tableHeader) {
+                            tableHeader.style.display = 'grid';
+                        } else {
+                            console.error('[FileBrowser] Table header element not found');
+                        }
+                        
+                        // Clear the list first
+                        fileBrowserList.innerHTML = '';
+                        
+                        // Create file items with table-like layout
+                        data.files.forEach(file => {
+                            const icon = getFileIcon(file.type);
+                            const typeClass = `file-type-${file.type}`;
+                            
+                            // Create the main container
+                            const fileItem = document.createElement('div');
+                            fileItem.className = `file-list-item ${typeClass}`;
+                            fileItem.dataset.fileId = file.id;
+                            
+                            // Create icon
+                            const fileIcon = document.createElement('div');
+                            fileIcon.className = 'file-icon';
+                            fileIcon.innerHTML = `<i class="${icon}"></i>`;
+                            
+                            // Create name element
+                            const fileName = document.createElement('div');
+                            fileName.className = 'file-name';
+                            fileName.textContent = file.name || file.type_display || 'Unnamed File';
+                            
+                            // Create type cell with badge
+                            const fileType = document.createElement('div');
+                            fileType.className = 'file-type-cell';
+                            const typeBadge = document.createElement('span');
+                            typeBadge.className = 'file-type-badge';
+                            // Use the raw type if type_display is not available
+                            const displayType = file.type_display || file.type || 'Unknown';
+                            typeBadge.textContent = displayType;
+                            fileType.appendChild(typeBadge);
+                            
+                            // Create owner cell
+                            const fileOwner = document.createElement('div');
+                            fileOwner.className = 'file-owner-cell';
+                            fileOwner.textContent = file.owner || 'System';
+                            
+                            // Create date cell
+                            const fileDate = document.createElement('div');
+                            fileDate.className = 'file-date-cell';
+                            fileDate.textContent = formatRelativeTime(file.updated_at);
+                            
+                            // Assemble the structure
+                            fileItem.appendChild(fileIcon);
+                            fileItem.appendChild(fileName);
+                            fileItem.appendChild(fileType);
+                            fileItem.appendChild(fileOwner);
+                            fileItem.appendChild(fileDate);
+                            
+                            // Add to list
+                            fileBrowserList.appendChild(fileItem);
+                        });
+                        
+                        // Show pagination if needed
+                        if (data.pagination && data.pagination.pages > 1) {
+                            fileBrowserPagination.style.display = 'block';
+                            fileBrowserPagination.innerHTML = buildPaginationHTML(data.pagination);
+                            attachPaginationListeners();
+                        } else {
+                            fileBrowserPagination.style.display = 'none';
+                        }
+                        
+                        // Attach event listeners to file items
+                        attachFileItemListeners();
+                        
+                        // Auto-open file if specified
+                        if (options.openFileId && options.openFileName) {
+                            console.log(`[ArtifactsLoader] Auto-opening file: ${options.openFileId} - ${options.openFileName}`);
+                            // Directly call the API to load the file content
+                            setTimeout(() => {
+                                console.log('[ArtifactsLoader] Loading file content via API');
+                                
+                                // Call the file content API directly
+                                fetch(`/projects/${projectId}/api/files/${options.openFileId}/content/`, {
+                                    method: 'GET',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'X-CSRFToken': getCsrfToken(),
+                                    }
+                                })
+                                .then(response => response.json())
+                                .then(data => {
+                                    // Switch to viewer mode
+                                    fileBrowserMain.style.display = 'none';
+                                    fileBrowserViewer.style.display = 'flex';
+                                    
+                                    // Set title
+                                    const viewerTitle = document.getElementById('viewer-title');
+                                    if (viewerTitle) {
+                                        viewerTitle.innerHTML = `
+                                            <span id="viewer-title-text">${data.name || options.openFileName}</span>
+                                            <button id="viewer-title-edit" style="background: none; border: none; color: #9ca3af; cursor: pointer; margin-left: 8px; padding: 4px; opacity: 0.7;" title="Edit name">
+                                                <i class="fas fa-pencil" style="font-size: 12px;"></i>
+                                            </button>
+                                        `;
+                                    }
+                                    
+                                    // Store current file data
+                                    window.currentFileData = {
+                                        fileId: options.openFileId,
+                                        fileName: data.name || options.openFileName,
+                                        fileType: data.type,
+                                        content: data.content
+                                    };
+                                    
+                                    // Render the content
+                                    const viewerMarkdown = document.getElementById('viewer-markdown');
+                                    if (viewerMarkdown) {
+                                        if (data.type === 'prd' || data.type === 'implementation' || data.type === 'design' || data.content.includes('#')) {
+                                            // Render as markdown
+                                            viewerMarkdown.innerHTML = marked.parse(data.content || '');
+                                        } else {
+                                            // Render as plain text
+                                            viewerMarkdown.innerHTML = (data.content || '').replace(/\n/g, '<br>').replace(/\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;');
+                                        }
+                                    }
+                                    
+                                    // Set metadata
+                                    const viewerMeta = document.getElementById('viewer-meta');
+                                    if (viewerMeta) {
+                                        viewerMeta.innerHTML = `
+                                            <span><i class="fas fa-user"></i> ${data.owner || 'Unknown'}</span>
+                                            <span><i class="fas fa-calendar"></i> ${data.created_at ? new Date(data.created_at).toLocaleDateString() : 'Unknown'}</span>
+                                            <span><i class="fas fa-tag"></i> ${data.type_display || data.type || 'Document'}</span>
+                                        `;
+                                    }
+                                    
+                                    console.log('[ArtifactsLoader] File content loaded and displayed');
+                                })
+                                .catch(error => {
+                                    console.error('[ArtifactsLoader] Error loading file content:', error);
+                                    showToast('Failed to load file content', 'error');
+                                });
+                            }, 100); // Small delay to ensure DOM is ready
+                        }
+                        
+                    } else {
+                        fileBrowserList.style.display = 'none';
+                        fileBrowserEmpty.style.display = 'block';
+                        fileBrowserPagination.style.display = 'none';
+                        document.getElementById('file-table-header').style.display = 'none';
+                    }
+                })
+                .catch(error => {
+                    console.error('[ArtifactsLoader] Error loading file browser:', error);
+                    fileBrowserLoading.style.display = 'none';
+                    fileBrowserEmpty.style.display = 'block';
+                    showToast('Failed to load files', 'error');
+                });
+            };
+            
+            // Helper function to get file icon based on type
+            const getFileIcon = (type) => {
+                const icons = {
+                    'prd': 'fas fa-file-alt',
+                    'implementation': 'fas fa-code',
+                    'design': 'fas fa-palette',
+                    'test': 'fas fa-vial',
+                    'other': 'fas fa-file'
+                };
+                return icons[type] || icons.other;
+            };
+            
+            // Helper function to escape HTML
+            const escapeHtml = (text) => {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            };
+            
+            // Helper function to format relative time
+            const formatRelativeTime = (dateString) => {
+                const date = new Date(dateString);
+                const now = new Date();
+                const diff = now - date;
+                const minutes = Math.floor(diff / 60000);
+                const hours = Math.floor(minutes / 60);
+                const days = Math.floor(hours / 24);
+                
+                if (days > 0) return `${days}d ago`;
+                if (hours > 0) return `${hours}h ago`;
+                if (minutes > 0) return `${minutes}m ago`;
+                return 'just now';
+            };
+            
+            // Update type filter options
+            const updateTypeFilterOptions = (types) => {
+                let html = '<option value="">All Types</option>';
+                Object.keys(types).forEach(type => {
+                    html += `<option value="${type}">${types[type].name} (${types[type].count})</option>`;
+                });
+                fileTypeFilter.innerHTML = html;
+            };
+            
+            // Build pagination HTML
+            const buildPaginationHTML = (pagination) => {
+                let html = '<div class="pagination-controls">';
+                
+                // Previous button
+                html += `<button class="pagination-btn" data-page="${pagination.page - 1}" ${!pagination.has_previous ? 'disabled' : ''}>
+                    <i class="fas fa-chevron-left"></i>
+                </button>`;
+                
+                // Page numbers
+                const maxPages = 5;
+                let startPage = Math.max(1, pagination.page - Math.floor(maxPages / 2));
+                let endPage = Math.min(pagination.pages, startPage + maxPages - 1);
+                
+                if (endPage - startPage < maxPages - 1) {
+                    startPage = Math.max(1, endPage - maxPages + 1);
+                }
+                
+                for (let i = startPage; i <= endPage; i++) {
+                    html += `<button class="pagination-btn ${i === pagination.page ? 'active' : ''}" data-page="${i}">${i}</button>`;
+                }
+                
+                // Next button
+                html += `<button class="pagination-btn" data-page="${pagination.page + 1}" ${!pagination.has_next ? 'disabled' : ''}>
+                    <i class="fas fa-chevron-right"></i>
+                </button>`;
+                
+                html += `<span class="pagination-info">${pagination.total} files</span>`;
+                html += '</div>';
+                
+                return html;
+            };
+            
+            // Attach pagination event listeners
+            const attachPaginationListeners = () => {
+                document.querySelectorAll('.pagination-btn').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        if (!this.disabled) {
+                            currentPage = parseInt(this.dataset.page);
+                            fetchFiles(currentPage);
+                        }
+                    });
+                });
+            };
+            
+            // Attach file item event listeners
+            const attachFileItemListeners = () => {
+                // Click on file item to view
+                document.querySelectorAll('.file-list-item').forEach(item => {
+                    item.addEventListener('click', function(e) {
+                        const fileId = this.dataset.fileId;
+                        const fileName = this.querySelector('.file-name').textContent;
+                        viewFileContent(fileId, fileName);
+                    });
+                    
+                    // Add right-click context menu
+                    item.addEventListener('contextmenu', function(e) {
+                        e.preventDefault();
+                        const fileId = this.dataset.fileId;
+                        const fileName = this.querySelector('.file-name').textContent;
+                        showContextMenu(e.pageX, e.pageY, fileId, fileName);
+                    });
+                });
+            };
+            
+            // Context menu functionality
+            let contextMenu = null;
+            
+            const showContextMenu = (x, y, fileId, fileName) => {
+                // Remove existing menu
+                if (contextMenu) {
+                    contextMenu.remove();
+                }
+                
+                // Create context menu
+                contextMenu = document.createElement('div');
+                contextMenu.className = 'file-context-menu';
+                contextMenu.style.left = x + 'px';
+                contextMenu.style.top = y + 'px';
+                contextMenu.style.display = 'block';
+                
+                contextMenu.innerHTML = `
+                    <div class="context-menu-item" data-action="view">
+                        <i class="fas fa-eye"></i> View
+                    </div>
+                    <div class="context-menu-item" data-action="copy">
+                        <i class="fas fa-copy"></i> Copy Content
+                    </div>
+                    <div class="context-menu-item" data-action="archive">
+                        <i class="fas fa-archive"></i> Archive
+                    </div>
+                    <div class="context-menu-item delete" data-action="delete">
+                        <i class="fas fa-trash"></i> Delete
+                    </div>
+                `;
+                
+                document.body.appendChild(contextMenu);
+                
+                // Handle menu item clicks
+                contextMenu.querySelectorAll('.context-menu-item').forEach(item => {
+                    item.addEventListener('click', function() {
+                        const action = this.dataset.action;
+                        contextMenu.remove();
+                        
+                        switch(action) {
+                            case 'view':
+                                viewFileContent(fileId, fileName);
+                                break;
+                            case 'copy':
+                                copyFileContent(fileId);
+                                break;
+                            case 'archive':
+                                if (confirm(`Are you sure you want to archive "${fileName}"?`)) {
+                                    archiveFile(fileId);
+                                }
+                                break;
+                            case 'delete':
+                                if (confirm(`Are you sure you want to delete "${fileName}"? This action cannot be undone.`)) {
+                                    deleteFile(fileId);
+                                }
+                                break;
+                        }
+                    });
+                });
+                
+                // Close menu when clicking outside
+                const closeMenu = (e) => {
+                    if (contextMenu && !contextMenu.contains(e.target)) {
+                        contextMenu.remove();
+                        contextMenu = null;
+                        document.removeEventListener('click', closeMenu);
+                    }
+                };
+                
+                setTimeout(() => {
+                    document.addEventListener('click', closeMenu);
+                }, 0);
+            };
+            
+            // View file content in the viewer panel
+            const viewFileContent = (fileId, fileName) => {
+                const projectId = getCurrentProjectId();
+                if (!projectId) {
+                    console.error('[ArtifactsLoader] No project ID available for viewing file');
+                    showToast('Error: No project ID available', 'error');
+                    return;
+                }
+                
+                console.log('[ArtifactsLoader] Viewing file:', { fileId, fileName, projectId });
+                
+                // Ensure artifacts panel is open and documents tab is active
+                const artifactsPanel = document.getElementById('artifacts-panel');
+                const isArtifactsPanelOpen = artifactsPanel && artifactsPanel.classList.contains('expanded');
+                
+                if (!isArtifactsPanelOpen) {
+                    console.log('[ArtifactsLoader] Opening artifacts panel');
+                    if (window.ArtifactsPanel && typeof window.ArtifactsPanel.toggle === 'function') {
+                        window.ArtifactsPanel.toggle(true); // Force open
+                    }
+                }
+                
+                // Switch to documents tab
+                const documentsTab = document.querySelector('[data-tab="documents"]');
+                if (documentsTab && !documentsTab.classList.contains('active')) {
+                    console.log('[ArtifactsLoader] Switching to documents tab');
+                    if (window.switchTab) {
+                        window.switchTab('documents');
+                    }
+                }
+                
+                // Close any open version drawer when viewing a different file
+                const existingDrawer = document.querySelector('.version-drawer');
+                if (existingDrawer && existingDrawer.dataset.fileId !== String(fileId)) {
+                    window.closeVersionDrawer();
+                }
+                
+                fetch(`/projects/${projectId}/api/files/${fileId}/content/`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken(),
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    // Switch to viewer mode
+                    fileBrowserMain.style.display = 'none';
+                    fileBrowserViewer.style.display = 'flex';
+                    
+                    // Set title with inline edit capability
+                    viewerTitle.innerHTML = `
+                        <span id="viewer-title-text">${data.name || fileName}</span>
+                        <button id="viewer-title-edit" style="background: none; border: none; color: #9ca3af; cursor: pointer; margin-left: 8px; padding: 4px; opacity: 0.7;" title="Edit name" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+                            <i class="fas fa-pencil" style="font-size: 12px;"></i>
+                        </button>
+                    `;
+                    
+                    // Add inline edit functionality
+                    const titleEditBtn = document.getElementById('viewer-title-edit');
+                    const titleText = document.getElementById('viewer-title-text');
+                    
+                    if (titleEditBtn && titleText) {
+                        titleEditBtn.addEventListener('click', function(e) {
+                            e.stopPropagation();
+                            
+                            // Get current name
+                            const currentName = titleText.textContent;
+                            
+                            // Create input field
+                            const input = document.createElement('input');
+                            input.type = 'text';
+                            input.value = currentName;
+                            input.style.cssText = `
+                                background: #1a1a1a;
+                                border: 1px solid #333;
+                                border-radius: 4px;
+                                color: #e2e8f0;
+                                padding: 4px 8px;
+                                font-size: 16px;
+                                font-weight: 600;
+                                width: 300px;
+                            `;
+                            
+                            // Replace text with input
+                            titleText.style.display = 'none';
+                            titleEditBtn.style.display = 'none';
+                            viewerTitle.insertBefore(input, titleText);
+                            input.focus();
+                            input.select();
+                            
+                            // Handle save
+                            const saveTitle = async () => {
+                                const newName = input.value.trim();
+                                if (newName && newName !== currentName) {
+                                    try {
+                                        const response = await fetch(`/projects/${projectId}/api/files/${fileId}/rename/`, {
+                                            method: 'POST',
+                                            headers: {
+                                                'Content-Type': 'application/json',
+                                                'X-CSRFToken': getCsrfToken(),
+                                            },
+                                            body: JSON.stringify({ name: newName })
+                                        });
+                                        
+                                        const result = await response.json();
+                                        if (result.success) {
+                                            titleText.textContent = newName;
+                                            window.currentFileData.fileName = newName;
+                                            showToast('File renamed successfully', 'success');
+                                            // Refresh file list
+                                            fetchFiles(currentPage);
+                                        } else {
+                                            showToast('Failed to rename file: ' + (result.error || 'Unknown error'), 'error');
+                                        }
+                                    } catch (error) {
+                                        console.error('Error renaming file:', error);
+                                        showToast('Failed to rename file', 'error');
+                                    }
+                                }
+                                
+                                // Restore original view
+                                input.remove();
+                                titleText.style.display = '';
+                                titleEditBtn.style.display = '';
+                            };
+                            
+                            // Handle cancel
+                            const cancelEdit = () => {
+                                input.remove();
+                                titleText.style.display = '';
+                                titleEditBtn.style.display = '';
+                            };
+                            
+                            // Event listeners
+                            input.addEventListener('blur', saveTitle);
+                            input.addEventListener('keydown', function(e) {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    saveTitle();
+                                } else if (e.key === 'Escape') {
+                                    e.preventDefault();
+                                    cancelEdit();
+                                }
+                            });
+                        });
+                    }
+                    
+                    // Reset editor state
+                    if (window.currentWysiwygEditor) {
+                        window.currentWysiwygEditor = null;
+                    }
+                    window.currentFileData = {
+                        fileId: fileId,
+                        fileName: data.name || fileName,
+                        content: data.content || '',
+                        type: data.type
+                    };
+                    
+                    // Render markdown content
+                    const content = data.content || 'No content available';
+                    
+                    // Create compact action buttons
+                    const viewerActions = document.getElementById('viewer-actions');
+                    if (viewerActions) {
+                        // Clear existing buttons
+                        viewerActions.innerHTML = '';
+                        
+                        // Common button style
+                        const buttonStyle = `
+                            background: transparent;
+                            border: none;
+                            color: #9ca3af;
+                            cursor: pointer;
+                            padding: 6px;
+                            font-size: 14px;
+                            transition: all 0.2s;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                        `;
+                        
+                        // Edit button with full text
+                        const editButton = document.createElement('button');
+                        editButton.id = 'viewer-edit';
+                        editButton.style.cssText = buttonStyle + 'padding: 8px 12px; gap: 6px;';
+                        editButton.innerHTML = '<i class="fas fa-edit"></i> Edit';
+                        editButton.title = 'Edit full text';
+                        editButton.onmouseover = function() { this.style.color = '#e2e8f0'; };
+                        editButton.onmouseout = function() { this.style.color = '#9ca3af'; };
+                        editButton.addEventListener('click', () => enableEditMode());
+                        
+                        // Copy button
+                        const copyButton = document.createElement('button');
+                        copyButton.id = 'viewer-copy';
+                        copyButton.style.cssText = buttonStyle;
+                        copyButton.innerHTML = '<i class="fas fa-copy"></i>';
+                        copyButton.title = 'Copy';
+                        copyButton.onmouseover = function() { this.style.color = '#e2e8f0'; };
+                        copyButton.onmouseout = function() { this.style.color = '#9ca3af'; };
+                        copyButton.addEventListener('click', () => {
+                            if (window.currentFileData && window.currentFileData.content) {
+                                copyToClipboard(window.currentFileData.content);
+                                showToast('Content copied to clipboard!', 'success');
+                            }
+                        });
+                        
+                        // Versions button
+                        const versionButton = document.createElement('button');
+                        versionButton.id = 'viewer-versions';
+                        versionButton.style.cssText = buttonStyle;
+                        versionButton.innerHTML = '<i class="fas fa-history"></i>';
+                        versionButton.title = 'Version history';
+                        versionButton.onmouseover = function() { this.style.color = '#e2e8f0'; };
+                        versionButton.onmouseout = function() { this.style.color = '#9ca3af'; };
+                        versionButton.addEventListener('click', () => {
+                            const currentFileId = window.currentFileData ? window.currentFileData.fileId : fileId;
+                            console.log('[VersionButton] Clicked for fileId:', currentFileId);
+                            showVersionHistory(currentFileId);
+                        });
+                        
+                        // Options dropdown button
+                        const optionsButton = document.createElement('button');
+                        optionsButton.id = 'viewer-options';
+                        optionsButton.style.cssText = buttonStyle + 'position: relative;';
+                        optionsButton.innerHTML = '<i class="fas fa-ellipsis-v"></i>';
+                        optionsButton.title = 'More options';
+                        optionsButton.onmouseover = function() { this.style.color = '#e2e8f0'; };
+                        optionsButton.onmouseout = function() { this.style.color = '#9ca3af'; };
+                        
+                        // Create dropdown menu
+                        const dropdownMenu = document.createElement('div');
+                        dropdownMenu.id = 'viewer-options-dropdown';
+                        dropdownMenu.style.cssText = `
+                            position: absolute;
+                            top: 100%;
+                            right: 0;
+                            background: #1a1a1a;
+                            border: 1px solid #333;
+                            border-radius: 6px;
+                            min-width: 160px;
+                            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                            display: none;
+                            z-index: 1000;
+                            margin-top: 4px;
+                        `;
+                        
+                        // Download option
+                        const downloadOption = document.createElement('button');
+                        downloadOption.style.cssText = `
+                            display: flex;
+                            align-items: center;
+                            gap: 8px;
+                            width: 100%;
+                            padding: 8px 12px;
+                            background: transparent;
+                            border: none;
+                            color: #e2e8f0;
+                            cursor: pointer;
+                            text-align: left;
+                            font-size: 14px;
+                            transition: background 0.2s;
+                        `;
+                        downloadOption.innerHTML = '<i class="fas fa-download"></i> Download';
+                        downloadOption.onmouseover = function() { this.style.background = '#2a2a2a'; };
+                        downloadOption.onmouseout = function() { this.style.background = 'transparent'; };
+                        downloadOption.addEventListener('click', () => {
+                            dropdownMenu.style.display = 'none';
+                            showToast('Download feature coming soon', 'info');
+                        });
+                        
+                        // Delete option
+                        const deleteOption = document.createElement('button');
+                        deleteOption.style.cssText = `
+                            display: flex;
+                            align-items: center;
+                            gap: 8px;
+                            width: 100%;
+                            padding: 8px 12px;
+                            background: transparent;
+                            border: none;
+                            color: #ef4444;
+                            cursor: pointer;
+                            text-align: left;
+                            font-size: 14px;
+                            transition: background 0.2s;
+                        `;
+                        deleteOption.innerHTML = '<i class="fas fa-trash"></i> Delete';
+                        deleteOption.onmouseover = function() { this.style.background = 'rgba(239, 68, 68, 0.1)'; };
+                        deleteOption.onmouseout = function() { this.style.background = 'transparent'; };
+                        deleteOption.addEventListener('click', () => {
+                            dropdownMenu.style.display = 'none';
+                            const fileName = data.name || window.currentFileData.fileName;
+                            if (confirm(`Are you sure you want to delete "${fileName}"? This action cannot be undone.`)) {
+                                deleteFile(fileId);
+                            }
+                        });
+                        
+                        dropdownMenu.appendChild(downloadOption);
+                        dropdownMenu.appendChild(deleteOption);
+                        
+                        // Toggle dropdown
+                        optionsButton.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            const isOpen = dropdownMenu.style.display === 'block';
+                            dropdownMenu.style.display = isOpen ? 'none' : 'block';
+                        });
+                        
+                        // Close dropdown when clicking outside
+                        document.addEventListener('click', () => {
+                            dropdownMenu.style.display = 'none';
+                        });
+                        
+                        // Create wrapper for options button with dropdown
+                        const optionsWrapper = document.createElement('div');
+                        optionsWrapper.style.cssText = 'position: relative; display: flex;';
+                        optionsWrapper.appendChild(optionsButton);
+                        optionsWrapper.appendChild(dropdownMenu);
+                        
+                        // Append buttons to actions container
+                        viewerActions.appendChild(editButton);
+                        viewerActions.appendChild(copyButton);
+                        viewerActions.appendChild(versionButton);
+                        viewerActions.appendChild(optionsWrapper);
+                    }
+                    
+                    // For PRD and implementation files, render as markdown
+                    if (data.type === 'prd' || data.type === 'implementation') {
+                        // Use marked.js if available, otherwise basic rendering
+                        if (typeof marked !== 'undefined') {
+                            viewerMarkdown.innerHTML = marked.parse(content);
+                        } else {
+                            // Simple markdown rendering
+                            let renderedContent = escapeHtml(content);
+                            
+                            // Convert markdown to HTML (basic conversion)
+                            // Headers
+                            renderedContent = renderedContent.replace(/^#### (.*$)/gim, '<h4>$1</h4>');
+                            renderedContent = renderedContent.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+                            renderedContent = renderedContent.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+                            renderedContent = renderedContent.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+                            
+                            // Bold and italic
+                            renderedContent = renderedContent.replace(/\*\*\*(.*?)\*\*\*/g, '<strong><em>$1</em></strong>');
+                            renderedContent = renderedContent.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                            renderedContent = renderedContent.replace(/\*(.*?)\*/g, '<em>$1</em>');
+                            
+                            // Links
+                            renderedContent = renderedContent.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+                            
+                            // Lists
+                            renderedContent = renderedContent.replace(/^\* (.+)$/gim, '<li>$1</li>');
+                            renderedContent = renderedContent.replace(/^\d+\. (.+)$/gim, '<li>$1</li>');
+                            
+                            // Wrap consecutive list items
+                            renderedContent = renderedContent.replace(/(<li>.*?<\/li>\s*)+/gs, function(match) {
+                                return '<ul>' + match + '</ul>';
+                            });
+                            
+                            // Code blocks
+                            renderedContent = renderedContent.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+                            renderedContent = renderedContent.replace(/`([^`]+)`/g, '<code>$1</code>');
+                            
+                            // Paragraphs
+                            renderedContent = renderedContent.split('\n\n').map(para => {
+                                if (para.trim() && !para.startsWith('<') && !para.match(/^[\*\d]/)) {
+                                    return '<p>' + para + '</p>';
+                                }
+                                return para;
+                            }).join('\n');
+                            
+                            viewerMarkdown.innerHTML = renderedContent;
+                        }
+                    } else {
+                        // For other file types, display as preformatted text
+                        viewerMarkdown.innerHTML = '<pre style="white-space: pre-wrap; word-wrap: break-word;">' + escapeHtml(content) + '</pre>';
+                    }
+                    
+                    // File info is now stored in window.currentFileData and used by action buttons
+                })
+                .catch(error => {
+                    console.error('[ArtifactsLoader] Error loading file content:', error);
+                    showToast('Failed to load file content', 'error');
+                });
+            };
+            window.viewFileContent = viewFileContent;
+            
+            // Auto-save functionality
+            let autoSaveTimer = null;
+            let hasUnsavedChanges = false;
+            
+            // Function to perform auto-save
+            const performAutoSave = async () => {
+                if (hasUnsavedChanges && window.currentWysiwygEditor) {
+                    console.log('[AutoSave] Performing auto-save...');
+                    await saveFileContent(true); // true indicates auto-save
+                    hasUnsavedChanges = false;
+                }
+            };
+            
+            // Start auto-save timer
+            const startAutoSave = () => {
+                // Clear existing timer
+                if (autoSaveTimer) {
+                    clearInterval(autoSaveTimer);
+                }
+                
+                // Set up auto-save every 15 seconds
+                autoSaveTimer = setInterval(performAutoSave, 15000);
+            };
+            
+            // Stop auto-save timer
+            const stopAutoSave = () => {
+                if (autoSaveTimer) {
+                    clearInterval(autoSaveTimer);
+                    autoSaveTimer = null;
+                }
+            };
+            
+            // Create auto-save indicator
+            const createAutoSaveIndicator = () => {
+                const indicator = document.createElement('span');
+                indicator.id = 'auto-save-indicator';
+                indicator.style.cssText = `
+                    display: none;
+                    margin-left: 15px;
+                    font-size: 14px;
+                    color: #10b981;
+                    font-weight: normal;
+                `;
+                
+                // Add to viewer header
+                const viewerTitle = document.getElementById('viewer-title');
+                if (viewerTitle && viewerTitle.parentElement) {
+                    viewerTitle.parentElement.appendChild(indicator);
+                }
+                
+                return indicator;
+            };
+            
+            // Enable edit mode with WYSIWYG editor
+            const enableEditMode = () => {
+                if (!window.currentFileData) return;
+                
+                const viewerMarkdown = document.getElementById('viewer-markdown');
+                const viewerContent = document.querySelector('.viewer-content');
+                const fileBrowserViewer = document.getElementById('filebrowser-viewer');
+                
+                if (!viewerMarkdown || !fileBrowserViewer) return;
+                
+                // Create container for WYSIWYG editor
+                const editorContainer = document.createElement('div');
+                editorContainer.id = 'wysiwyg-editor';
+                editorContainer.style.cssText = 'flex: 1; height: calc(100% - 60px); position: relative;';
+                
+                // Hide the viewer-content to avoid nested scrolling
+                if (viewerContent) {
+                    viewerContent.style.display = 'none';
+                }
+                
+                // Insert editor directly in the viewer, after header
+                const viewerHeader = fileBrowserViewer.querySelector('.viewer-header');
+                if (viewerHeader && viewerHeader.nextSibling) {
+                    fileBrowserViewer.insertBefore(editorContainer, viewerHeader.nextSibling);
+                } else {
+                    fileBrowserViewer.appendChild(editorContainer);
+                }
+                
+                // Load Jodit editor if not already loaded
+                if (!window.Jodit) {
+                    // Load Jodit CSS
+                    const joditCss = document.createElement('link');
+                    joditCss.rel = 'stylesheet';
+                    joditCss.href = 'https://unpkg.com/jodit@3.24.9/build/jodit.min.css';
+                    document.head.appendChild(joditCss);
+                    
+                    // Load Jodit JS
+                    const joditScript = document.createElement('script');
+                    joditScript.src = 'https://unpkg.com/jodit@3.24.9/build/jodit.min.js';
+                    joditScript.onload = () => {
+                        setTimeout(() => initializeWysiwygEditor(), 100);
+                    };
+                    document.head.appendChild(joditScript);
+                } else {
+                    // Initialize editor immediately
+                    initializeWysiwygEditor();
+                }
+                
+                // Hide all viewer buttons
+                const editButton = document.getElementById('viewer-edit');
+                const copyButton = document.getElementById('viewer-copy');
+                const versionButton = document.getElementById('viewer-versions');
+                const optionsButton = document.getElementById('viewer-options');
+                
+                if (editButton) editButton.style.display = 'none';
+                if (copyButton) copyButton.style.display = 'none';
+                if (versionButton) versionButton.style.display = 'none';
+                if (optionsButton) optionsButton.style.display = 'none';
+                
+                // Add save and cancel buttons
+                let saveButton = document.getElementById('viewer-save');
+                let cancelButton = document.getElementById('viewer-cancel');
+                
+                if (!saveButton) {
+                    saveButton = document.createElement('button');
+                    saveButton.id = 'viewer-save';
+                    saveButton.className = 'btn btn-sm';
+                    saveButton.style = 'padding: 8px 16px; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 6px;';
+                    saveButton.innerHTML = '<i class="fas fa-save"></i> Save';
+                    saveButton.title = 'Save changes';
+                    saveButton.addEventListener('click', () => saveFileContent());
+                    const viewerActions = document.getElementById('viewer-actions');
+                    if (viewerActions) viewerActions.appendChild(saveButton);
+                }
+                
+                if (!cancelButton) {
+                    cancelButton = document.createElement('button');
+                    cancelButton.id = 'viewer-cancel';
+                    cancelButton.className = 'btn btn-sm';
+                    cancelButton.style = 'padding: 8px 16px; background: #6b7280; color: white; border: none; border-radius: 6px; cursor: pointer; margin-left: 10px; display: flex; align-items: center; gap: 6px;';
+                    cancelButton.innerHTML = '<i class="fas fa-times"></i> Cancel';
+                    cancelButton.title = 'Cancel editing';
+                    cancelButton.addEventListener('click', () => cancelEditMode());
+                    if (viewerActions) viewerActions.appendChild(cancelButton);
+                }
+                
+                saveButton.style.display = 'inline-block';
+                cancelButton.style.display = 'inline-block';
+            };
+            
+            // Initialize the WYSIWYG editor
+            const initializeWysiwygEditor = () => {
+                const editorContainer = document.getElementById('wysiwyg-editor');
+                if (!editorContainer) return;
+                
+                // Clear the container
+                editorContainer.innerHTML = '';
+                
+                // Create textarea for Jodit
+                const textarea = document.createElement('textarea');
+                textarea.id = 'jodit-editor';
+                editorContainer.appendChild(textarea);
+                
+                // Convert markdown to HTML
+                let initialHTML = window.currentFileData.content;
+                if (window.marked) {
+                    marked.setOptions({
+                        gfm: true,
+                        breaks: true,
+                        tables: true
+                    });
+                    initialHTML = marked.parse(window.currentFileData.content);
+                }
+                
+                // Calculate height to fill the entire viewer area
+                const viewerContainer = document.getElementById('filebrowser-viewer');
+                const viewerHeader = viewerContainer ? viewerContainer.querySelector('.viewer-header') : null;
+                const headerHeight = viewerHeader ? viewerHeader.offsetHeight : 60;
+                // Subtract header height and some padding
+                const viewerHeight = viewerContainer ? viewerContainer.offsetHeight - headerHeight - 20 : 600;
+                
+                // Initialize Jodit with dark theme
+                try {
+                    window.currentWysiwygEditor = Jodit.make('#jodit-editor', {
+                    theme: 'dark',
+                    height: '100%',
+                    minHeight: 400,
+                    toolbarSticky: true,
+                    toolbarStickyOffset: 0,
+                    showCharsCounter: false,
+                    showWordsCounter: false,
+                    showXPathInStatusbar: false,
+                    // Add keyboard shortcuts
+                    hotkeys: {
+                        'ctrl+s,cmd+s': function(editor) {
+                            saveFileContent();
+                            return false; // Prevent default browser save
+                        }
+                    },
+                    buttons: [
+                        'bold', 'italic', 'underline', 'strikethrough', '|',
+                        'ul', 'ol', '|',
+                        'font', 'fontsize', 'paragraph', '|',
+                        'table', 'link', 'image', '|',
+                        'align', '|',
+                        'undo', 'redo', '|',
+                        'eraser', 'fullsize'
+                    ],
+                    buttonsMD: [
+                        'bold', 'italic', 'underline', '|',
+                        'ul', 'ol', '|',
+                        'table', 'link', '|',
+                        'dots'
+                    ],
+                    buttonsXS: [
+                        'bold', 'italic', '|',
+                        'ul', 'ol', '|',
+                        'dots'
+                    ],
+                    style: {
+                        background: '#1a1a1a',
+                        color: '#e2e8f0'
+                    },
+                    editorCssClass: 'dark-editor',
+                    toolbarAdaptive: false,
+                    enter: 'p',
+                    defaultMode: Jodit.MODE_WYSIWYG,
+                    useSplitMode: false,
+                    colors: {
+                        greyscale: ['#000000', '#434343', '#666666', '#999999', '#B7B7B7', '#CCCCCC', '#D9D9D9', '#EFEFEF', '#F3F3F3', '#FFFFFF'],
+                        palette: ['#8B5CF6', '#60A5FA', '#10B981', '#F59E0B', '#EF4444', '#EC4899', '#8B5CF6', '#3B82F6', '#06B6D4', '#84CC16']
+                    },
+                    controls: {
+                        font: {
+                            list: {
+                                "'Open Sans', sans-serif": 'Open Sans',
+                                'Helvetica, sans-serif': 'Helvetica',
+                                'Arial, sans-serif': 'Arial',
+                                'Georgia, serif': 'Georgia',
+                                'Impact, sans-serif': 'Impact',
+                                'Tahoma, sans-serif': 'Tahoma',
+                                'Verdana, sans-serif': 'Verdana'
+                            }
+                        }
+                    },
+                    events: {
+                        afterInit: function(editor) {
+                            // Ensure text color persists
+                            editor.editor.style.color = '#e2e8f0';
+                            editor.editor.style.backgroundColor = '#1a1a1a';
+                            
+                            // Also set default paragraph style
+                            const style = editor.createInside.element('style');
+                            style.innerHTML = `
+                                * { color: #e2e8f0 !important; }
+                                p { color: #e2e8f0 !important; }
+                                div { color: #e2e8f0 !important; }
+                                span { color: #e2e8f0 !important; }
+                            `;
+                            editor.editor.appendChild(style);
+                        },
+                        change: function() {
+                            // Mark as having unsaved changes
+                            hasUnsavedChanges = true;
+                            // Keep text color on change
+                            const editor = this.editor;
+                            if (editor) {
+                                const walker = document.createTreeWalker(
+                                    editor,
+                                    NodeFilter.SHOW_ELEMENT,
+                                    null,
+                                    false
+                                );
+                                
+                                let node;
+                                while (node = walker.nextNode()) {
+                                    if (!node.style.color || node.style.color === '') {
+                                        node.style.color = '#e2e8f0';
+                                    }
+                                }
+                            }
+                        },
+                        beforeEnter: function() {
+                            // Ensure new paragraphs have the right color
+                            const selection = this.selection;
+                            if (selection.current()) {
+                                const current = selection.current();
+                                if (current && current.style) {
+                                    current.style.color = '#e2e8f0';
+                                }
+                            }
+                        }
+                    }
+                });
+                } catch (error) {
+                    console.error('[ArtifactsLoader] Error initializing Jodit editor:', error);
+                    if (error.message && error.message.includes('plugin')) {
+                        showToast('Editor initialization error: ' + error.message, 'error');
+                    } else {
+                        showToast('Failed to initialize editor', 'error');
+                    }
+                    // Fallback to textarea
+                    const fallbackTextarea = document.createElement('textarea');
+                    fallbackTextarea.id = 'fallback-editor';
+                    fallbackTextarea.className = 'artifact-editor';
+                    fallbackTextarea.value = window.currentFileData.content;
+                    fallbackTextarea.style.cssText = 'width: 100%; height: ' + viewerHeight + 'px; background: #1a1a1a; color: #e2e8f0; border: 1px solid #333; padding: 20px; font-family: monospace;';
+                    editorContainer.innerHTML = '';
+                    editorContainer.appendChild(fallbackTextarea);
+                    window.currentWysiwygEditor = {
+                        value: fallbackTextarea.value,
+                        get value() { return fallbackTextarea.value; },
+                        set value(val) { fallbackTextarea.value = val; }
+                    };
+                    return;
+                }
+                
+                // Set initial content
+                window.currentWysiwygEditor.value = initialHTML;
+                
+                // Start auto-save timer
+                startAutoSave();
+                console.log('[AutoSave] Auto-save timer started');
+                
+                // Reset unsaved changes flag
+                hasUnsavedChanges = false;
+                
+                // Force text color after content is set
+                setTimeout(() => {
+                    const editorBody = window.currentWysiwygEditor.editor;
+                    if (editorBody) {
+                        editorBody.style.color = '#e2e8f0';
+                        // Apply color to all existing elements
+                        const allElements = editorBody.querySelectorAll('*');
+                        allElements.forEach(el => {
+                            if (!el.style.color || el.style.color === '') {
+                                el.style.color = '#e2e8f0';
+                            }
+                        });
+                    }
+                }, 100);
+                
+                // Apply custom dark theme styles
+                const style = document.createElement('style');
+                style.textContent = `
+                    /* Jodit Dark Theme Overrides */
+                    .jodit-container:not(.jodit_inline) {
+                        border: 1px solid #333 !important;
+                        background: #1a1a1a !important;
+                        height: 100% !important;
+                    }
+                    
+                    .jodit-toolbar__box {
+                        background: #2a2a2a !important;
+                        border-bottom: 1px solid #333 !important;
+                    }
+                    
+                    .jodit-toolbar-button {
+                        color: #e2e8f0 !important;
+                    }
+                    
+                    .jodit-toolbar-button:hover {
+                        background: #333 !important;
+                    }
+                    
+                    .jodit-toolbar-button:active,
+                    .jodit-toolbar-button[aria-pressed="true"] {
+                        background: #8b5cf6 !important;
+                    }
+                    
+                    .jodit-wysiwyg {
+                        background: #1a1a1a !important;
+                        color: #e2e8f0 !important;
+                        padding: 20px !important;
+                        min-height: calc(100% - 60px) !important;
+                        line-height: 1.6 !important;
+                    }
+                    
+                    /* Fix list formatting */
+                    .jodit-wysiwyg ul,
+                    .jodit-wysiwyg ol {
+                        margin: 1em 0 !important;
+                        padding-left: 2em !important;
+                        line-height: 1.6 !important;
+                    }
+                    
+                    .jodit-wysiwyg li {
+                        margin: 0.5em 0 !important;
+                        line-height: 1.6 !important;
+                    }
+                    
+                    /* Fix paragraph spacing */
+                    .jodit-wysiwyg p {
+                        margin: 1em 0 !important;
+                        line-height: 1.6 !important;
+                    }
+                    
+                    /* Fix heading spacing */
+                    .jodit-wysiwyg h1,
+                    .jodit-wysiwyg h2,
+                    .jodit-wysiwyg h3,
+                    .jodit-wysiwyg h4,
+                    .jodit-wysiwyg h5,
+                    .jodit-wysiwyg h6 {
+                        margin-top: 1.5em !important;
+                        margin-bottom: 0.5em !important;
+                        line-height: 1.3 !important;
+                    }
+                    
+                    /* First heading should not have top margin */
+                    .jodit-wysiwyg > h1:first-child,
+                    .jodit-wysiwyg > h2:first-child,
+                    .jodit-wysiwyg > h3:first-child {
+                        margin-top: 0 !important;
+                    }
+                    
+                    .jodit-wysiwyg,
+                    .jodit-wysiwyg * {
+                        color: #e2e8f0 !important;
+                    }
+                    
+                    .jodit-wysiwyg p,
+                    .jodit-wysiwyg div,
+                    .jodit-wysiwyg span {
+                        color: #e2e8f0 !important;
+                    }
+                    
+                    .jodit-wysiwyg h1,
+                    .jodit-wysiwyg h2,
+                    .jodit-wysiwyg h3,
+                    .jodit-wysiwyg h4,
+                    .jodit-wysiwyg h5,
+                    .jodit-wysiwyg h6 {
+                        color: #e2e8f0 !important;
+                    }
+                    
+                    .jodit-wysiwyg table {
+                        border-collapse: collapse !important;
+                        width: 100% !important;
+                        margin: 1.5em 0 !important;
+                    }
+                    
+                    .jodit-wysiwyg table td,
+                    .jodit-wysiwyg table th {
+                        border: 1px solid #444 !important;
+                        padding: 10px 15px !important;
+                        color: #e2e8f0 !important;
+                        line-height: 1.5 !important;
+                        vertical-align: top !important;
+                    }
+                    
+                    .jodit-wysiwyg table th {
+                        background: #2a2a2a !important;
+                        font-weight: bold !important;
+                    }
+                    
+                    .jodit-wysiwyg blockquote {
+                        border-left: 4px solid #8b5cf6 !important;
+                        background: rgba(139, 92, 246, 0.1) !important;
+                        padding: 10px 20px !important;
+                        margin: 10px 0 !important;
+                        color: #e2e8f0 !important;
+                    }
+                    
+                    .jodit-wysiwyg pre {
+                        background: #0a0a0a !important;
+                        border: 1px solid #333 !important;
+                        border-radius: 4px !important;
+                        padding: 1em !important;
+                        color: #e2e8f0 !important;
+                    }
+                    
+                    .jodit-wysiwyg code {
+                        background: #2a2a2a !important;
+                        color: #e2e8f0 !important;
+                        padding: 0.2em 0.4em !important;
+                        border-radius: 3px !important;
+                    }
+                    
+                    .jodit-wysiwyg a {
+                        color: #60a5fa !important;
+                    }
+                    
+                    /* Status bar */
+                    .jodit-status-bar {
+                        background: #2a2a2a !important;
+                        border-top: 1px solid #333 !important;
+                        color: #9ca3af !important;
+                    }
+                    
+                    /* Popup and dropdown styles */
+                    .jodit-popup__content {
+                        background: #2a2a2a !important;
+                        border: 1px solid #444 !important;
+                        color: #e2e8f0 !important;
+                    }
+                    
+                    .jodit-dropdown__content {
+                        background: #2a2a2a !important;
+                        border: 1px solid #444 !important;
+                    }
+                    
+                    .jodit-dropdown__item {
+                        color: #e2e8f0 !important;
+                    }
+                    
+                    .jodit-dropdown__item:hover {
+                        background: #333 !important;
+                    }
+                    
+                    /* Table selector */
+                    .jodit-toolbar-button__button[aria-controls*="table"] {
+                        color: #e2e8f0 !important;
+                    }
+                    
+                    /* Color picker */
+                    .jodit-color-picker__box {
+                        background: #2a2a2a !important;
+                        border: 1px solid #444 !important;
+                    }
+                    
+                    /* Icons */
+                    .jodit-icon {
+                        fill: #e2e8f0 !important;
+                    }
+                    
+                    .jodit-toolbar-button:hover .jodit-icon {
+                        fill: #fff !important;
+                    }
+                    
+                    .jodit-toolbar-button[aria-pressed="true"] .jodit-icon {
+                        fill: #fff !important;
+                    }
+                `;
+                document.head.appendChild(style);
+                
+                // Focus the editor
+                window.currentWysiwygEditor.focus();
+                
+                // Additional style injection to ensure visibility
+                const additionalStyles = document.createElement('style');
+                additionalStyles.textContent = `
+                    .jodit-wysiwyg[contenteditable="true"] {
+                        color: #e2e8f0 !important;
+                    }
+                    
+                    .jodit-wysiwyg[contenteditable="true"] * {
+                        color: inherit !important;
+                    }
+                    
+                    /* Force text color for all possible elements */
+                    .jodit-wysiwyg p,
+                    .jodit-wysiwyg div,
+                    .jodit-wysiwyg span,
+                    .jodit-wysiwyg h1,
+                    .jodit-wysiwyg h2,
+                    .jodit-wysiwyg h3,
+                    .jodit-wysiwyg h4,
+                    .jodit-wysiwyg h5,
+                    .jodit-wysiwyg h6,
+                    .jodit-wysiwyg li,
+                    .jodit-wysiwyg td,
+                    .jodit-wysiwyg th,
+                    .jodit-wysiwyg a,
+                    .jodit-wysiwyg strong,
+                    .jodit-wysiwyg em,
+                    .jodit-wysiwyg u,
+                    .jodit-wysiwyg s {
+                        color: #e2e8f0 !important;
+                    }
+                `;
+                document.head.appendChild(additionalStyles);
+            };
+            
+            
+            // Save file content
+            const saveFileContent = async (isAutoSave = false) => {
+                if (!window.currentWysiwygEditor || !window.currentFileData) {
+                    console.error('[ArtifactsLoader] Missing editor or file data');
+                    return;
+                }
+                
+                // Get project ID
+                const projectId = getCurrentProjectId();
+                if (!projectId) {
+                    console.error('[ArtifactsLoader] No project ID available');
+                    showToast('Error: No project ID available', 'error');
+                    return;
+                }
+                
+                // Show saving indicator
+                const saveButton = document.getElementById('viewer-save');
+                let originalText = saveButton ? saveButton.innerHTML : '';
+                
+                if (isAutoSave) {
+                    // For auto-save, show a subtle indicator
+                    const autoSaveIndicator = document.getElementById('auto-save-indicator') || createAutoSaveIndicator();
+                    autoSaveIndicator.style.display = 'inline-block';
+                    autoSaveIndicator.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Auto-saving...';
+                } else {
+                    // For manual save, update the save button
+                    if (saveButton) {
+                        originalText = saveButton.innerHTML;
+                        saveButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+                        saveButton.disabled = true;
+                    }
+                }
+                
+                try {
+                    // Get HTML content from Jodit editor
+                    const htmlContent = window.currentWysiwygEditor.value;
+                    
+                    // Convert HTML back to markdown
+                    let content = htmlContent;
+                    
+                    // Load Turndown if not available for better conversion
+                    if (!window.TurndownService) {
+                        // Load Turndown dynamically
+                        await new Promise((resolve) => {
+                            const script = document.createElement('script');
+                            script.src = 'https://unpkg.com/turndown/dist/turndown.js';
+                            script.onload = resolve;
+                            document.head.appendChild(script);
+                        });
+                    }
+                    
+                    if (window.TurndownService) {
+                        const turndownService = new TurndownService({
+                            headingStyle: 'atx',
+                            codeBlockStyle: 'fenced',
+                            bulletListMarker: '-'
+                        });
+                        
+                        // Add table support using the correct plugin format
+                        turndownService.use(function(service) {
+                            service.addRule('table', {
+                                filter: 'table',
+                                replacement: function(content, node) {
+                                    // Convert HTML table back to markdown table
+                                    const rows = Array.from(node.querySelectorAll('tr'));
+                                    if (rows.length === 0) return '';
+                                    
+                                    let markdown = '';
+                                    rows.forEach((row, index) => {
+                                        const cells = Array.from(row.querySelectorAll('td, th'));
+                                        markdown += '| ' + cells.map(cell => cell.textContent.trim()).join(' | ') + ' |\n';
+                                        
+                                        // Add separator after header row
+                                        if (index === 0) {
+                                            markdown += '|' + cells.map(() => '---').join('|') + '|\n';
+                                        }
+                                    });
+                                    
+                                    return '\n' + markdown + '\n';
+                                }
+                            });
+                        });
+                        
+                        content = turndownService.turndown(htmlContent);
+                    } else {
+                        // Simple HTML to markdown conversion
+                        content = htmlContent
+                            .replace(/<h1[^>]*>(.*?)<\/h1>/gi, '# $1\n')
+                            .replace(/<h2[^>]*>(.*?)<\/h2>/gi, '## $1\n')
+                            .replace(/<h3[^>]*>(.*?)<\/h3>/gi, '### $1\n')
+                            .replace(/<h4[^>]*>(.*?)<\/h4>/gi, '#### $1\n')
+                            .replace(/<strong[^>]*>(.*?)<\/strong>/gi, '**$1**')
+                            .replace(/<b[^>]*>(.*?)<\/b>/gi, '**$1**')
+                            .replace(/<em[^>]*>(.*?)<\/em>/gi, '*$1*')
+                            .replace(/<i[^>]*>(.*?)<\/i>/gi, '*$1*')
+                            .replace(/<ul[^>]*>([\s\S]*?)<\/ul>/gi, function(match, content) {
+                                return content.replace(/<li[^>]*>(.*?)<\/li>/gi, '- $1\n');
+                            })
+                            .replace(/<ol[^>]*>([\s\S]*?)<\/ol>/gi, function(match, content) {
+                                let counter = 1;
+                                return content.replace(/<li[^>]*>(.*?)<\/li>/gi, function(m, text) {
+                                    return (counter++) + '. ' + text + '\n';
+                                });
+                            })
+                            .replace(/<blockquote[^>]*>(.*?)<\/blockquote>/gi, '> $1\n')
+                            .replace(/<br[^>]*>/gi, '\n')
+                            .replace(/<p[^>]*>(.*?)<\/p>/gi, '$1\n\n')
+                            .replace(/<[^>]+>/g, '')
+                            .replace(/\n{3,}/g, '\n\n')
+                            .trim();
+                    }
+                    
+                    const { fileId, fileName, type } = window.currentFileData;
+                    console.log('[ArtifactsLoader] Saving file:', { fileId, fileName, type, projectId });
+                    
+                    // Determine the correct API endpoint based on file type
+                    let url, method, body;
+                    
+                    if (type === 'prd') {
+                        url = `/projects/${projectId}/api/prd/?prd_name=${encodeURIComponent(fileName)}`;
+                        method = 'POST';
+                        body = JSON.stringify({ content: content });
+                    } else if (type === 'implementation') {
+                        url = `/projects/${projectId}/api/implementation/`;
+                        method = 'POST';
+                        body = JSON.stringify({ content: content });
+                    } else {
+                        // For other file types, use the generic files API
+                        // The type should match the file_type in the model (e.g., 'design', 'test', 'other')
+                        const fileType = type || 'other';
+                        url = `/projects/${projectId}/api/files/?type=${fileType}&name=${encodeURIComponent(fileName)}`;
+                        method = 'POST';
+                        body = JSON.stringify({ content: content });
+                    }
+                    
+                    console.log('[ArtifactsLoader] Request URL:', url);
+                    console.log('[ArtifactsLoader] Request method:', method);
+                    
+                    const response = await fetch(url, {
+                        method: method,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCsrfToken(),
+                        },
+                        body: body
+                    });
+                    
+                    console.log('[ArtifactsLoader] Response status:', response.status);
+                    
+                    let data;
+                    try {
+                        data = await response.json();
+                        console.log('[ArtifactsLoader] Response data:', data);
+                    } catch (e) {
+                        console.error('[ArtifactsLoader] Failed to parse response:', e);
+                        data = { success: false, error: 'Failed to parse server response' };
+                    }
+                    
+                    if (data.success || response.ok) {
+                        // Show toast with proper function
+                        if (isAutoSave) {
+                            // For auto-save, show subtle indicator
+                            const autoSaveIndicator = document.getElementById('auto-save-indicator');
+                            if (autoSaveIndicator) {
+                                autoSaveIndicator.innerHTML = '<i class="fas fa-check"></i> Auto-saved';
+                                setTimeout(() => {
+                                    autoSaveIndicator.style.display = 'none';
+                                }, 2000);
+                            }
+                            console.log('[AutoSave] File auto-saved successfully');
+                        } else {
+                            // For manual save, show toast
+                            if (typeof showToast === 'function') {
+                                showToast('File saved successfully', 'success');
+                            } else if (window.showToast && typeof window.showToast === 'function') {
+                                window.showToast('File saved successfully', 'success');
+                            } else {
+                                alert('File saved successfully');
+                            }
+                        }
+                        window.currentFileData.content = content;
+                        
+                        // Also save the file ID if it was created
+                        if (data.file_id) {
+                            window.currentFileData.fileId = data.file_id;
+                        }
+                        
+                        // Exit edit mode and refresh view (only for manual save)
+                        if (!isAutoSave) {
+                            cancelEditMode(true);
+                        }
+                    } else {
+                        console.error('[ArtifactsLoader] Save error:', data);
+                        const errorMsg = 'Failed to save file: ' + (data.error || 'Unknown error');
+                        
+                        if (isAutoSave) {
+                            console.error('[AutoSave] Auto-save failed:', errorMsg);
+                            const autoSaveIndicator = document.getElementById('auto-save-indicator');
+                            if (autoSaveIndicator) {
+                                autoSaveIndicator.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Auto-save failed';
+                                autoSaveIndicator.style.color = '#ef4444';
+                                setTimeout(() => {
+                                    autoSaveIndicator.style.display = 'none';
+                                    autoSaveIndicator.style.color = '';
+                                }, 3000);
+                            }
+                        } else {
+                            if (typeof showToast === 'function') {
+                                showToast(errorMsg, 'error');
+                            } else if (window.showToast && typeof window.showToast === 'function') {
+                                window.showToast(errorMsg, 'error');
+                            } else {
+                                alert(errorMsg);
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error('[ArtifactsLoader] Error saving file:', error);
+                    const errorMsg = 'Failed to save file: ' + error.message;
+                    
+                    if (isAutoSave) {
+                        console.error('[AutoSave] Auto-save error:', error);
+                        const autoSaveIndicator = document.getElementById('auto-save-indicator');
+                        if (autoSaveIndicator) {
+                            autoSaveIndicator.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Auto-save failed';
+                            autoSaveIndicator.style.color = '#ef4444';
+                            setTimeout(() => {
+                                autoSaveIndicator.style.display = 'none';
+                                autoSaveIndicator.style.color = '';
+                            }, 3000);
+                        }
+                    } else {
+                        if (typeof showToast === 'function') {
+                            showToast(errorMsg, 'error');
+                        } else if (window.showToast && typeof window.showToast === 'function') {
+                            window.showToast(errorMsg, 'error');
+                        } else {
+                            alert(errorMsg);
+                        }
+                    }
+                } finally {
+                    if (!isAutoSave && saveButton) {
+                        saveButton.innerHTML = originalText;
+                        saveButton.disabled = false;
+                    }
+                }
+            };
+            
+            // Cancel edit mode
+            const cancelEditMode = (skipConfirm = false) => {
+                if (!skipConfirm && window.currentWysiwygEditor && hasUnsavedChanges) {
+                    if (!confirm('Are you sure you want to cancel? Any unsaved changes will be lost.')) {
+                        return;
+                    }
+                }
+                
+                // Stop auto-save timer
+                stopAutoSave();
+                console.log('[AutoSave] Auto-save timer stopped');
+                
+                // Clear reference
+                if (window.currentWysiwygEditor) {
+                    window.currentWysiwygEditor = null;
+                }
+                
+                // Remove the editor container
+                const editorContainer = document.getElementById('wysiwyg-editor');
+                if (editorContainer) {
+                    editorContainer.remove();
+                }
+                
+                // Show the viewer-content again
+                const viewerContent = document.querySelector('.viewer-content');
+                if (viewerContent) {
+                    viewerContent.style.display = '';
+                }
+                
+                // Hide save/cancel buttons
+                const saveButton = document.getElementById('viewer-save');
+                const cancelButton = document.getElementById('viewer-cancel');
+                if (saveButton) saveButton.style.display = 'none';
+                if (cancelButton) cancelButton.style.display = 'none';
+                
+                // Show original buttons
+                const editButton = document.getElementById('viewer-edit');
+                const copyButton = document.getElementById('viewer-copy');
+                const versionButton = document.getElementById('viewer-versions');
+                const optionsButton = document.getElementById('viewer-options');
+                if (editButton) editButton.style.display = 'flex';
+                if (copyButton) copyButton.style.display = 'flex';
+                if (versionButton) versionButton.style.display = 'flex';
+                if (optionsButton) optionsButton.style.display = 'flex';
+                
+                // Refresh the file view
+                if (window.currentFileData) {
+                    viewFileContent(window.currentFileData.fileId, window.currentFileData.fileName);
+                }
+            };
+            
+            // Show version history in side drawer
+            const showVersionHistory = async (fileId) => {
+                const projectId = getCurrentProjectId();
+                if (!projectId || !fileId) {
+                    showToast('Error: Missing project or file ID', 'error');
+                    return;
+                }
+                
+                // Check if drawer already exists for this file
+                const existingDrawer = document.querySelector('.version-drawer');
+                if (existingDrawer && existingDrawer.dataset.fileId === String(fileId)) {
+                    // Drawer already open for this file, do nothing
+                    return;
+                } else if (existingDrawer) {
+                    // Close existing drawer for different file
+                    window.closeVersionDrawer();
+                }
+                
+                try {
+                    const response = await fetch(`/projects/${projectId}/api/files/${fileId}/versions/`, {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCsrfToken(),
+                        }
+                    });
+                    
+                    const data = await response.json();
+                    if (!response.ok) {
+                        throw new Error(data.error || 'Failed to load versions');
+                    }
+                    
+                    console.log('[VersionHistory] API Response for file', fileId, ':', data);
+                    
+                    // Get filename from current file data
+                    const fileName = window.currentFileData ? window.currentFileData.fileName : 'Unknown File';
+                    
+                    // Create version history drawer with fresh data
+                    createVersionHistoryDrawer(fileId, fileName, data.versions || []);
+                    
+                } catch (error) {
+                    console.error('[ArtifactsLoader] Error loading versions:', error);
+                    showToast('Failed to load version history', 'error');
+                }
+            };
+            
+            // Create version history drawer
+            const createVersionHistoryDrawer = (fileId, fileName, versions) => {
+                console.log('[VersionDrawer] Creating drawer for file:', { fileId, fileName, versionCount: versions.length });
+                
+                // Remove existing drawer and overlay if any
+                const existingDrawer = document.querySelector('.version-drawer');
+                const existingOverlay = document.querySelector('.version-drawer-overlay');
+                if (existingDrawer) {
+                    existingDrawer.remove();
+                }
+                if (existingOverlay) {
+                    existingOverlay.remove();
+                }
+
+                const drawer = document.createElement('div');
+                drawer.className = 'version-drawer';
+                
+                // Group versions by date
+                const versionsByDate = {};
+                const today = new Date().toDateString();
+                const yesterday = new Date(Date.now() - 86400000).toDateString();
+                
+                // Make sure we're using fresh version data
+                const fileVersions = [...versions]; // Create a copy to avoid reference issues
+                
+                fileVersions.forEach(version => {
+                    const versionDate = new Date(version.created_at);
+                    const dateStr = versionDate.toDateString();
+                    let groupLabel;
+                    
+                    if (dateStr === today) {
+                        groupLabel = 'Today';
+                    } else if (dateStr === yesterday) {
+                        groupLabel = 'Yesterday';
+                    } else {
+                        groupLabel = versionDate.toLocaleDateString('en-US', { 
+                            month: 'short', 
+                            day: 'numeric',
+                            year: versionDate.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined
+                        });
+                    }
+                    
+                    if (!versionsByDate[groupLabel]) {
+                        versionsByDate[groupLabel] = [];
+                    }
+                    versionsByDate[groupLabel].push(version);
+                });
+                
+                drawer.innerHTML = `
+                    <div class="version-drawer-header">
+                        <h5>Version History</h5>
+                        <button class="btn btn-ghost btn-sm" onclick="closeVersionDrawer()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="version-drawer-subheader">
+                        <span class="file-name">${fileName}</span>
+                        <span class="version-count">${fileVersions.length} version${fileVersions.length !== 1 ? 's' : ''}</span>
+                    </div>
+                    <div class="version-drawer-content">
+                        ${fileVersions.length === 0 ? '<p class="no-versions">No version history available.</p>' : 
+                            Object.entries(versionsByDate).map(([date, dateVersions]) => `
+                                <div class="version-date-group">
+                                    <div class="version-date-label">${date}</div>
+                                    ${dateVersions.map(version => {
+                                        const versionDate = new Date(version.created_at);
+                                        const timeStr = versionDate.toLocaleTimeString('en-US', { 
+                                            hour: 'numeric', 
+                                            minute: '2-digit',
+                                            hour12: true 
+                                        });
+                                        const isCurrentVersion = version.version_number === fileVersions[0].version_number;
+                                        
+                                        return `
+                                            <div class="version-item ${isCurrentVersion ? 'current-version' : ''}" 
+                                                 onclick="selectVersion(${fileId}, ${version.version_number}, this)">
+                                                <div class="version-item-content">
+                                                    <div class="version-item-header">
+                                                        <span class="version-time">${timeStr}</span>
+                                                        ${isCurrentVersion ? '<span class="current-badge">Current</span>' : ''}
+                                                    </div>
+                                                    <div class="version-item-info">
+                                                        <span class="version-number">Version ${version.version_number}</span>
+                                                        ${version.created_by ? `<span class="version-author">${version.created_by}</span>` : ''}
+                                                    </div>
+                                                    ${version.change_description ? 
+                                                        `<div class="version-description">${version.change_description}</div>` : ''}
+                                                </div>
+                                                <div class="version-item-actions">
+                                                    <button class="btn btn-ghost btn-sm" title="View this version" 
+                                                            onclick="event.stopPropagation(); viewVersion(${fileId}, ${version.version_number})">
+                                                        <i class="fas fa-eye"></i>
+                                                    </button>
+                                                    ${!isCurrentVersion ? `
+                                                        <button class="btn btn-ghost btn-sm" title="Restore this version" 
+                                                                onclick="event.stopPropagation(); restoreVersion(${fileId}, ${version.version_number}, '${fileName.replace(/'/g, "\\'")}')">  
+                                                            <i class="fas fa-undo"></i>
+                                                        </button>
+                                                    ` : ''}
+                                                </div>
+                                            </div>
+                                        `;
+                                    }).join('')}
+                                </div>
+                            `).join('')
+                        }
+                    </div>
+                `;
+                
+                document.body.appendChild(drawer);
+                
+                // Add styles if not already present
+                addVersionDrawerStyles();
+                
+                // Create overlay for click outside functionality
+                let overlay = document.querySelector('.version-drawer-overlay');
+                if (!overlay) {
+                    overlay = document.createElement('div');
+                    overlay.className = 'version-drawer-overlay';
+                    document.body.appendChild(overlay);
+                }
+                
+                // Open drawer with animation
+                setTimeout(() => {
+                    drawer.classList.add('open');
+                    overlay.classList.add('active');
+                }, 10);
+                
+                // Store current file ID in drawer for verification
+                drawer.dataset.fileId = String(fileId);
+                console.log('[VersionDrawer] Drawer created with fileId:', drawer.dataset.fileId);
+                
+                // Close drawer function
+                const closeDrawer = () => {
+                    const drawer = document.querySelector('.version-drawer');
+                    const overlay = document.querySelector('.version-drawer-overlay');
+                    if (drawer) {
+                        drawer.classList.remove('open');
+                        if (overlay) overlay.classList.remove('active');
+                        setTimeout(() => {
+                            drawer.remove();
+                            if (overlay) overlay.remove();
+                        }, 300);
+                    }
+                };
+                
+                // Attach global functions for drawer
+                window.closeVersionDrawer = closeDrawer;
+                
+                // Click outside to close
+                overlay.addEventListener('click', closeDrawer);
+                
+                // ESC key to close
+                const escHandler = (e) => {
+                    if (e.key === 'Escape') {
+                        closeDrawer();
+                        document.removeEventListener('keydown', escHandler);
+                    }
+                };
+                document.addEventListener('keydown', escHandler);
+                
+                window.selectVersion = (fileId, versionNumber, element) => {
+                    // Remove previous selection
+                    document.querySelectorAll('.version-item.selected').forEach(item => {
+                        item.classList.remove('selected');
+                    });
+                    
+                    // Add selection to clicked item
+                    element.classList.add('selected');
+                    
+                    // View the version
+                    viewVersion(fileId, versionNumber);
+                };
+                
+                window.viewVersion = viewVersion;
+                window.restoreVersion = restoreVersion;
+            };
+            
+            // Add version drawer styles
+            const addVersionDrawerStyles = () => {
+                if (!document.querySelector('#versionDrawerStyles')) {
+                    const style = document.createElement('style');
+                    style.id = 'versionDrawerStyles';
+                    style.textContent = `
+                        .version-drawer {
+                            position: fixed;
+                            top: 0;
+                            right: -400px;
+                            width: 400px;
+                            height: 100%;
+                            background: #1a1a1a;
+                            box-shadow: -2px 0 10px rgba(0,0,0,0.5);
+                            z-index: 2050;
+                            display: flex;
+                            flex-direction: column;
+                            transition: right 0.3s ease;
+                        }
+                        
+                        .version-drawer.open {
+                            right: 0;
+                        }
+                        
+                        .version-drawer-header {
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-between;
+                            padding: 1rem 1.5rem;
+                            border-bottom: 1px solid #333;
+                            background: #0a0a0a;
+                        }
+                        
+                        .version-drawer-header h5 {
+                            margin: 0;
+                            font-size: 1.1rem;
+                            font-weight: 600;
+                            color: #e2e8f0;
+                        }
+                        
+                        .version-drawer-subheader {
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-between;
+                            padding: 0.75rem 1.5rem;
+                            border-bottom: 1px solid #333;
+                            background: #1a1a1a;
+                        }
+                        
+                        .version-drawer-subheader .file-name {
+                            font-weight: 500;
+                            color: #94a3b8;
+                            font-size: 0.9rem;
+                        }
+                        
+                        .version-drawer-subheader .version-count {
+                            font-size: 0.85rem;
+                            color: #64748b;
+                        }
+                        
+                        .version-drawer-content {
+                            flex: 1;
+                            overflow-y: auto;
+                            padding: 1rem 0;
+                        }
+                        
+                        .version-date-group {
+                            margin-bottom: 1.5rem;
+                        }
+                        
+                        .version-date-label {
+                            font-size: 0.75rem;
+                            font-weight: 600;
+                            color: #64748b;
+                            text-transform: uppercase;
+                            letter-spacing: 0.5px;
+                            padding: 0 1.5rem;
+                            margin-bottom: 0.5rem;
+                        }
+                        
+                        .version-item {
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-between;
+                            padding: 0.75rem 1.5rem;
+                            cursor: pointer;
+                            transition: all 0.2s ease;
+                            border-left: 3px solid transparent;
+                        }
+                        
+                        .version-item:hover {
+                            background-color: #262626;
+                        }
+                        
+                        .version-item.selected {
+                            background-color: #1e293b;
+                            border-left-color: #3b82f6;
+                        }
+                        
+                        .version-item.current-version {
+                            background-color: #1e1e2e;
+                        }
+                        
+                        .version-item-content {
+                            flex: 1;
+                            min-width: 0;
+                        }
+                        
+                        .version-item-header {
+                            display: flex;
+                            align-items: center;
+                            gap: 0.5rem;
+                            margin-bottom: 0.25rem;
+                        }
+                        
+                        .version-time {
+                            font-size: 0.875rem;
+                            font-weight: 500;
+                            color: #e2e8f0;
+                        }
+                        
+                        .current-badge {
+                            font-size: 0.7rem;
+                            font-weight: 600;
+                            color: #3b82f6;
+                            background: #1e293b;
+                            padding: 0.125rem 0.5rem;
+                            border-radius: 10px;
+                            text-transform: uppercase;
+                        }
+                        
+                        .version-item-info {
+                            display: flex;
+                            align-items: center;
+                            gap: 0.5rem;
+                            font-size: 0.8rem;
+                            color: #94a3b8;
+                        }
+                        
+                        .version-number {
+                            font-weight: 500;
+                        }
+                        
+                        .version-author::before {
+                            content: '•';
+                            margin-right: 0.5rem;
+                        }
+                        
+                        .version-description {
+                            font-size: 0.8rem;
+                            color: #64748b;
+                            margin-top: 0.25rem;
+                            white-space: nowrap;
+                            overflow: hidden;
+                            text-overflow: ellipsis;
+                        }
+                        
+                        .version-item-actions {
+                            display: flex;
+                            gap: 0.25rem;
+                            opacity: 0;
+                            transition: opacity 0.2s ease;
+                        }
+                        
+                        .version-item:hover .version-item-actions {
+                            opacity: 1;
+                        }
+                        
+                        .btn-ghost {
+                            background: transparent;
+                            border: none;
+                            color: #64748b;
+                            padding: 0.25rem 0.5rem;
+                            border-radius: 4px;
+                            transition: all 0.2s ease;
+                        }
+                        
+                        .btn-ghost:hover {
+                            background: #334155;
+                            color: #94a3b8;
+                        }
+                        
+                        .no-versions {
+                            text-align: center;
+                            color: #64748b;
+                            padding: 2rem;
+                        }
+                        
+                        /* Overlay for click outside */
+                        .version-drawer-overlay {
+                            position: fixed;
+                            top: 0;
+                            left: 0;
+                            right: 0;
+                            bottom: 0;
+                            background: rgba(0, 0, 0, 0.5);
+                            z-index: 2049;
+                            opacity: 0;
+                            visibility: hidden;
+                            transition: opacity 0.3s ease, visibility 0.3s ease;
+                        }
+                        
+                        .version-drawer-overlay.active {
+                            opacity: 1;
+                            visibility: visible;
+                        }
+                    `;
+                    document.head.appendChild(style);
+                }
+            };
+            
+            // View specific version
+            const viewVersion = async (fileId, versionNumber) => {
+                const projectId = getCurrentProjectId();
+                if (!projectId || !fileId) return;
+                
+                try {
+                    const response = await fetch(`/projects/${projectId}/api/files/${fileId}/versions/${versionNumber}/`, {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCsrfToken(),
+                        }
+                    });
+                    
+                    const data = await response.json();
+                    if (!data.success) {
+                        throw new Error(data.error || 'Failed to load version');
+                    }
+                    
+                    // Show version content in viewer
+                    const viewerMarkdown = document.getElementById('viewer-markdown');
+                    if (viewerMarkdown) {
+                        // Add version notice
+                        const versionNotice = document.createElement('div');
+                        versionNotice.style.cssText = `
+                            background: #333;
+                            border: 1px solid #8b5cf6;
+                            padding: 10px 15px;
+                            margin-bottom: 20px;
+                            border-radius: 6px;
+                            color: #e2e8f0;
+                            display: flex;
+                            justify-content: space-between;
+                            align-items: center;
+                        `;
+                        versionNotice.innerHTML = `
+                            <span><i class="fas fa-info-circle"></i> Viewing version ${versionNumber} from ${new Date(data.created_at).toLocaleDateString()}</span>
+                            <button id="close-version-view" style="background: #8b5cf6; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">
+                                Back to Current
+                            </button>
+                        `;
+                        
+                        // Render version content
+                        viewerMarkdown.innerHTML = '';
+                        viewerMarkdown.appendChild(versionNotice);
+                        
+                        const contentDiv = document.createElement('div');
+                        if (typeof marked !== 'undefined') {
+                            contentDiv.innerHTML = marked.parse(data.content);
+                        } else {
+                            contentDiv.innerHTML = data.content.replace(/\n/g, '<br>');
+                        }
+                        viewerMarkdown.appendChild(contentDiv);
+                        
+                        // Style the viewer for version view
+                        viewerMarkdown.style.opacity = '0.95';
+                        
+                        // Back to current button
+                        document.getElementById('close-version-view').addEventListener('click', () => {
+                            viewFileContent(fileId, window.currentFileData.fileName);
+                        });
+                    }
+                    
+                } catch (error) {
+                    console.error('[ArtifactsLoader] Error viewing version:', error);
+                    showToast('Failed to load version', 'error');
+                }
+            };
+            
+            // Restore version
+            const restoreVersion = async (fileId, versionNumber) => {
+                const projectId = getCurrentProjectId();
+                if (!projectId || !fileId) return;
+                
+                try {
+                    const response = await fetch(`/projects/${projectId}/api/files/${fileId}/versions/${versionNumber}/`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCsrfToken(),
+                        }
+                    });
+                    
+                    const data = await response.json();
+                    if (!data.success) {
+                        throw new Error(data.error || 'Failed to restore version');
+                    }
+                    
+                    showToast(data.message, 'success');
+                    // Close the version drawer
+                    closeVersionDrawer();
+                    // Reload the file content
+                    viewFileContent(fileId, window.currentFileData.fileName);
+                    
+                } catch (error) {
+                    console.error('[ArtifactsLoader] Error restoring version:', error);
+                    showToast('Failed to restore version', 'error');
+                }
+            };
+            
+            // Delete file
+            const deleteFile = (fileId) => {
+                // For now, we'll use the existing delete endpoint
+                // In a real implementation, you'd create a proper delete endpoint
+                const fileItem = document.querySelector(`[data-file-id="${fileId}"]`);
+                const fileType = fileItem.classList.contains('file-type-prd') ? 'prd' : 
+                               fileItem.classList.contains('file-type-implementation') ? 'implementation' :
+                               fileItem.classList.contains('file-type-design') ? 'design' :
+                               fileItem.classList.contains('file-type-test') ? 'test' : 'other';
+                const fileName = fileItem.querySelector('.file-name').textContent;
+                
+                fetch(`/projects/${projectId}/api/files/?type=${fileType}&name=${encodeURIComponent(fileName)}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken(),
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showToast('File deleted successfully', 'success');
+                        // Go back to file browser
+                        const fileBrowserViewer = document.getElementById('filebrowser-viewer');
+                        const fileBrowserMain = document.getElementById('filebrowser-main');
+                        if (fileBrowserViewer && fileBrowserMain) {
+                            fileBrowserViewer.style.display = 'none';
+                            fileBrowserMain.style.display = 'flex';
+                        }
+                        fetchFiles(currentPage);
+                    } else {
+                        showToast(data.error || 'Failed to delete file', 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('[ArtifactsLoader] Error deleting file:', error);
+                    showToast('Failed to delete file', 'error');
+                });
+            };
+            
+            // Archive file (for now, same as delete but could be different)
+            const archiveFile = (fileId) => {
+                // In a real implementation, you'd have a separate archive endpoint
+                // For now, we'll just show a message
+                showToast('Archive feature coming soon', 'info');
+            };
+            
+            // Copy file content to clipboard
+            const copyFileContent = (fileId) => {
+                fetch(`/projects/${projectId}/api/files/${fileId}/content/`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken(),
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.content) {
+                        copyToClipboard(data.content);
+                        showToast('Content copied to clipboard!', 'success');
+                    }
+                })
+                .catch(error => {
+                    console.error('[ArtifactsLoader] Error copying file content:', error);
+                    showToast('Failed to copy file content', 'error');
+                });
+            };
+            
+            // Event listeners for search and filters
+            if (fileSearch) {
+                fileSearch.addEventListener('input', function() {
+                    currentSearch = this.value;
+                    
+                    // Debounce search
+                    clearTimeout(searchTimeout);
+                    searchTimeout = setTimeout(() => {
+                        currentPage = 1;
+                        fetchFiles(currentPage);
+                    }, 300);
+                });
+            }
+            
+            if (fileTypeFilter) {
+                fileTypeFilter.addEventListener('change', function() {
+                    currentType = this.value;
+                    currentPage = 1;
+                    fetchFiles(currentPage);
+                });
+            }
+            
+            if (refreshButton) {
+                refreshButton.addEventListener('click', function() {
+                    fetchFiles(currentPage);
+                });
+            }
+            
+            // Viewer event listeners
+            if (viewerBack) {
+                viewerBack.addEventListener('click', async function() {
+                    // Check if we're in edit mode with unsaved changes
+                    if (window.currentWysiwygEditor && hasUnsavedChanges) {
+                        // Auto-save before going back
+                        console.log('[FileBrowser] Auto-saving before navigating back...');
+                        await saveFileContent(true); // true for auto-save
+                    }
+                    
+                    // If still in edit mode, cancel it without refreshing
+                    if (window.currentWysiwygEditor) {
+                        // Stop auto-save timer
+                        if (window.autoSaveTimer) {
+                            clearInterval(window.autoSaveTimer);
+                            window.autoSaveTimer = null;
+                        }
+                        
+                        // Clear reference
+                        window.currentWysiwygEditor = null;
+                        
+                        // Remove the editor container
+                        const editorContainer = document.getElementById('wysiwyg-editor');
+                        if (editorContainer) {
+                            editorContainer.remove();
+                        }
+                        
+                        // Show viewer content again
+                        const viewerContent = document.querySelector('.viewer-content');
+                        if (viewerContent) {
+                            viewerContent.style.display = '';
+                        }
+                        
+                        // Hide save/cancel buttons
+                        const saveButton = document.getElementById('viewer-save');
+                        const cancelButton = document.getElementById('viewer-cancel');
+                        if (saveButton) saveButton.style.display = 'none';
+                        if (cancelButton) cancelButton.style.display = 'none';
+                        
+                        // Show original buttons
+                        const editButton = document.getElementById('viewer-edit');
+                        const copyButton = document.getElementById('viewer-copy');
+                        const versionButton = document.getElementById('viewer-versions');
+                        const optionsButton = document.getElementById('viewer-options');
+                        if (editButton) editButton.style.display = 'flex';
+                        if (copyButton) copyButton.style.display = 'flex';
+                        if (versionButton) versionButton.style.display = 'flex';
+                        if (optionsButton) optionsButton.style.display = 'flex';
+                    }
+                    
+                    // Navigate back to file list
+                    fileBrowserViewer.style.display = 'none';
+                    fileBrowserMain.style.display = 'flex';
+                });
+            }
+            
+            // Event listeners for viewer buttons are now attached when buttons are created dynamically
+            
+            // Initial load
+            fetchFiles(1);
+        } // End of loadFileBrowser function
+    }; // End of ArtifactsLoader object
 
     // ArtifactsLoader is now ready to use
     console.log('[ArtifactsLoader] Loaded and ready');

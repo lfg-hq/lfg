@@ -213,21 +213,785 @@
         .prd-selector-dropdown::-webkit-scrollbar-thumb:hover {
             background: #555;
         }
+        
+        /* File Browser Table Styles */
+        .file-table-header {
+            display: grid;
+            grid-template-columns: 40px 1fr 150px 120px 100px;
+            padding: 8px 16px;
+            border-bottom: 1px solid #333;
+            background: #1a1a1a;
+            font-size: 12px;
+            font-weight: 600;
+            color: #9ca3af;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            gap: 12px;
+            align-items: center;
+        }
+        
+        .file-list-item {
+            display: grid;
+            grid-template-columns: 40px 1fr 150px 120px 100px;
+            padding: 8px 16px;
+            border-bottom: 1px solid #2a2a2a;
+            transition: all 0.15s ease;
+            cursor: pointer;
+            position: relative;
+            background: transparent;
+            gap: 12px;
+            align-items: center;
+            min-height: 44px;
+        }
+        
+        .file-list-item:hover {
+            background: rgba(139, 92, 246, 0.05);
+        }
+        
+        .file-icon {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        
+        .file-icon i {
+            font-size: 16px;
+        }
+        
+        #filebrowser .file-list-item .file-name {
+            font-size: 14px !important;
+            font-weight: 400 !important;
+            color: #e2e8f0 !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            white-space: nowrap !important;
+            display: block !important;
+            opacity: 1 !important;
+            margin: 0 !important;
+            visibility: visible !important;
+            position: static !important;
+            transform: none !important;
+        }
+        
+        .file-type-cell {
+            display: flex;
+            align-items: center;
+        }
+        
+        .file-type-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 1px 6px;
+            font-size: 10px;
+            font-weight: 500;
+            border-radius: 4px;
+            text-transform: lowercase;
+            letter-spacing: 0.3px;
+            line-height: 1.2;
+        }
+        
+        .file-owner-cell {
+            font-size: 13px;
+            color: #9ca3af;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .file-date-cell {
+            font-size: 13px;
+            color: #9ca3af;
+        }
+        
+        .file-size-cell {
+            font-size: 13px;
+            color: #9ca3af;
+            text-align: right;
+        }
+        
+        /* Right-click context menu */
+        .file-context-menu {
+            position: fixed;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 4px;
+            min-width: 160px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+            display: none;
+        }
+        
+        .context-menu-item {
+            padding: 8px 12px;
+            color: #e2e8f0;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .context-menu-item:hover {
+            background: #2a2a2a;
+        }
+        
+        .context-menu-item.delete {
+            color: #ef4444;
+        }
+        
+        .context-menu-item.delete:hover {
+            background: rgba(239, 68, 68, 0.1);
+        }
+        
+        .context-menu-item i {
+            width: 16px;
+            font-size: 12px;
+        }
+        
+        /* Pagination Styles */
+        .pagination-controls {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        
+        .pagination-btn {
+            padding: 6px 10px;
+            background: transparent;
+            border: 1px solid #333;
+            border-radius: 6px;
+            color: #e2e8f0;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            font-size: 13px;
+        }
+        
+        .pagination-btn:hover:not(:disabled) {
+            background: #2a2a2a;
+            border-color: #444;
+        }
+        
+        .pagination-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        
+        .pagination-btn.active {
+            background: #8b5cf6;
+            border-color: #8b5cf6;
+            color: white;
+        }
+        
+        .pagination-info {
+            color: #9ca3af;
+            font-size: 13px;
+            margin: 0 10px;
+        }
+        
+        /* File type specific colors */
+        .file-type-prd .file-icon { background: rgba(59, 130, 246, 0.1); }
+        .file-type-prd .file-icon i { color: #3b82f6; }
+        .file-type-prd .file-type-badge {
+            background: rgba(59, 130, 246, 0.2);
+            color: #93bbfc;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+        
+        .file-type-implementation .file-icon { background: rgba(16, 185, 129, 0.1); }
+        .file-type-implementation .file-icon i { color: #10b981; }
+        .file-type-implementation .file-type-badge {
+            background: rgba(16, 185, 129, 0.2);
+            color: #6ee7b7;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+        
+        .file-type-design .file-icon { background: rgba(245, 158, 11, 0.1); }
+        .file-type-design .file-icon i { color: #f59e0b; }
+        .file-type-design .file-type-badge {
+            background: rgba(245, 158, 11, 0.2);
+            color: #fbbf24;
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+        
+        .file-type-test .file-icon { background: rgba(239, 68, 68, 0.1); }
+        .file-type-test .file-icon i { color: #ef4444; }
+        .file-type-test .file-type-badge {
+            background: rgba(239, 68, 68, 0.2);
+            color: #fca5a5;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+        
+        .file-type-other .file-icon { background: rgba(156, 163, 175, 0.1); }
+        .file-type-other .file-icon i { color: #9ca3af; }
+        .file-type-other .file-type-badge {
+            background: rgba(156, 163, 175, 0.2);
+            color: #d1d5db;
+            border: 1px solid rgba(156, 163, 175, 0.3);
+        }
+        
+        /* Additional file type styles */
+        .file-type-quotation .file-type-badge {
+            background: rgba(236, 72, 153, 0.2);
+            color: #f9a8d4;
+            border: 1px solid rgba(236, 72, 153, 0.3);
+        }
+        
+        .file-type-proposal .file-type-badge {
+            background: rgba(168, 85, 247, 0.2);
+            color: #c4b5fd;
+            border: 1px solid rgba(168, 85, 247, 0.3);
+        }
+        
+        .file-type-contract .file-type-badge {
+            background: rgba(217, 119, 6, 0.2);
+            color: #fcd34d;
+            border: 1px solid rgba(217, 119, 6, 0.3);
+        }
+        
+        .file-type-meeting_notes .file-type-badge {
+            background: rgba(6, 182, 212, 0.2);
+            color: #67e8f9;
+            border: 1px solid rgba(6, 182, 212, 0.3);
+        }
+        
+        .file-type-research .file-type-badge {
+            background: rgba(34, 197, 94, 0.2);
+            color: #86efac;
+            border: 1px solid rgba(34, 197, 94, 0.3);
+        }
+        
+        .file-type-specification .file-type-badge {
+            background: rgba(99, 102, 241, 0.2);
+            color: #a5b4fc;
+            border: 1px solid rgba(99, 102, 241, 0.3);
+        }
+        
+        /* Default badge style for unknown types */
+        .file-type-badge {
+            background: rgba(156, 163, 175, 0.15);
+            color: #e5e7eb;
+            border: 1px solid rgba(156, 163, 175, 0.25);
+        }
+        
+        /* File browser scrollbar */
+        .filebrowser-content::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .filebrowser-content::-webkit-scrollbar-track {
+            background: #0a0a0a;
+            border-radius: 4px;
+        }
+        
+        .filebrowser-content::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 4px;
+        }
+        
+        .filebrowser-content::-webkit-scrollbar-thumb:hover {
+            background: #444;
+        }
+        
+        /* Quill Editor Dark Theme Overrides */
+        .ql-container {
+            background: #1a1a1a !important;
+            border: 1px solid #333 !important;
+            color: #e2e8f0 !important;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        
+        /* Override Quill's default black text */
+        .ql-container .ql-editor {
+            color: #e2e8f0 !important;
+        }
+        
+        .ql-snow .ql-editor h1,
+        .ql-snow .ql-editor h2,
+        .ql-snow .ql-editor h3,
+        .ql-snow .ql-editor h4,
+        .ql-snow .ql-editor h5,
+        .ql-snow .ql-editor h6,
+        .ql-snow .ql-editor p,
+        .ql-snow .ql-editor ol,
+        .ql-snow .ql-editor ul,
+        .ql-snow .ql-editor li,
+        .ql-snow .ql-editor blockquote,
+        .ql-snow .ql-editor pre,
+        .ql-snow .ql-editor table,
+        .ql-snow .ql-editor td,
+        .ql-snow .ql-editor th {
+            color: #e2e8f0 !important;
+        }
+        
+        .ql-toolbar {
+            background: #2a2a2a !important;
+            border: 1px solid #333 !important;
+            border-bottom: none !important;
+        }
+        
+        .ql-editor {
+            color: #e2e8f0 !important;
+            min-height: 350px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        .ql-editor * {
+            color: #e2e8f0 !important;
+        }
+        
+        .ql-editor h1,
+        .ql-editor h2,
+        .ql-editor h3,
+        .ql-editor h4,
+        .ql-editor h5,
+        .ql-editor h6 {
+            color: #e2e8f0 !important;
+            margin-top: 1em;
+            margin-bottom: 0.5em;
+        }
+        
+        .ql-editor p {
+            color: #e2e8f0 !important;
+            margin-bottom: 1em;
+        }
+        
+        .ql-editor ul,
+        .ql-editor ol {
+            color: #e2e8f0 !important;
+        }
+        
+        .ql-editor li {
+            color: #e2e8f0 !important;
+        }
+        
+        .ql-editor table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 1em 0;
+        }
+        
+        .ql-editor table td,
+        .ql-editor table th {
+            border: 1px solid #444 !important;
+            padding: 8px 12px;
+            color: #e2e8f0 !important;
+        }
+        
+        .ql-editor table th {
+            background: #2a2a2a;
+            font-weight: bold;
+        }
+        
+        .ql-editor blockquote {
+            border-left: 4px solid #8b5cf6 !important;
+            background: rgba(139, 92, 246, 0.1) !important;
+            padding: 0.5em 1em;
+            margin: 1em 0;
+        }
+        
+        .ql-editor pre {
+            background: #0a0a0a !important;
+            border: 1px solid #333 !important;
+            border-radius: 4px;
+            padding: 1em;
+            color: #e2e8f0 !important;
+        }
+        
+        /* Toolbar styling */
+        .ql-toolbar button {
+            color: #e2e8f0 !important;
+        }
+        
+        .ql-toolbar button:hover {
+            background: #333 !important;
+        }
+        
+        .ql-toolbar button.ql-active {
+            background: #8b5cf6 !important;
+        }
+        
+        .ql-toolbar .ql-stroke {
+            stroke: #e2e8f0 !important;
+        }
+        
+        .ql-toolbar .ql-fill {
+            fill: #e2e8f0 !important;
+        }
+        
+        .ql-toolbar .ql-picker {
+            color: #e2e8f0 !important;
+        }
+        
+        .ql-toolbar .ql-picker-options {
+            background: #2a2a2a !important;
+            border: 1px solid #333 !important;
+        }
+        
+        .ql-toolbar .ql-picker-item {
+            color: #e2e8f0 !important;
+        }
+        
+        .ql-toolbar .ql-picker-item:hover {
+            background: #333 !important;
+        }
+        
+        /* EasyMDE Dark Theme Overrides (keeping for backward compatibility) */
+        .EasyMDEContainer .CodeMirror {
+            background: #1a1a1a !important;
+            color: #e2e8f0 !important;
+            border: none !important;
+            font-family: 'Monaco', 'Consolas', monospace;
+        }
+        
+        .EasyMDEContainer .CodeMirror-gutters {
+            background: #0a0a0a !important;
+            border-right: 1px solid #333 !important;
+        }
+        
+        .EasyMDEContainer .CodeMirror-linenumber {
+            color: #666 !important;
+        }
+        
+        .EasyMDEContainer .CodeMirror-cursor {
+            border-left: 2px solid #8b5cf6 !important;
+        }
+        
+        .EasyMDEContainer .CodeMirror-selected {
+            background: rgba(139, 92, 246, 0.2) !important;
+        }
+        
+        .EasyMDEContainer .editor-toolbar {
+            background: #2a2a2a !important;
+            border-top: 1px solid #333 !important;
+            border-bottom: 1px solid #333 !important;
+            opacity: 1 !important;
+        }
+        
+        .EasyMDEContainer .editor-toolbar button {
+            color: #e2e8f0 !important;
+            background: transparent !important;
+            border: none !important;
+        }
+        
+        .EasyMDEContainer .editor-toolbar button:hover {
+            background: #333 !important;
+            color: #8b5cf6 !important;
+        }
+        
+        .EasyMDEContainer .editor-toolbar button.active {
+            background: #8b5cf6 !important;
+            color: white !important;
+        }
+        
+        .EasyMDEContainer .editor-toolbar i.separator {
+            border-left-color: #444 !important;
+        }
+        
+        .EasyMDEContainer .editor-preview {
+            background: #1a1a1a !important;
+            color: #e2e8f0 !important;
+            padding: 20px !important;
+        }
+        
+        .EasyMDEContainer .editor-preview-side {
+            background: #1a1a1a !important;
+            color: #e2e8f0 !important;
+            border-left: 1px solid #333 !important;
+            padding: 20px !important;
+        }
+        
+        /* Markdown syntax highlighting in editor */
+        .EasyMDEContainer .cm-header {
+            color: #60a5fa !important;
+            font-weight: bold;
+        }
+        
+        .EasyMDEContainer .cm-header-1 { font-size: 1.4em; }
+        .EasyMDEContainer .cm-header-2 { font-size: 1.3em; }
+        .EasyMDEContainer .cm-header-3 { font-size: 1.2em; }
+        
+        .EasyMDEContainer .cm-quote {
+            color: #9ca3af !important;
+            font-style: italic;
+        }
+        
+        .EasyMDEContainer .cm-link {
+            color: #60a5fa !important;
+            text-decoration: underline;
+        }
+        
+        .EasyMDEContainer .cm-url {
+            color: #3b82f6 !important;
+        }
+        
+        .EasyMDEContainer .cm-strong {
+            color: #e2e8f0 !important;
+            font-weight: bold;
+        }
+        
+        .EasyMDEContainer .cm-em {
+            color: #e2e8f0 !important;
+            font-style: italic;
+        }
+        
+        .EasyMDEContainer .cm-strikethrough {
+            text-decoration: line-through;
+            color: #6b7280 !important;
+        }
+        
+        .EasyMDEContainer .cm-comment {
+            color: #10b981 !important;
+            background: rgba(16, 185, 129, 0.1) !important;
+            padding: 0 2px;
+            border-radius: 2px;
+        }
+        
+        /* Fix for better readability */
+        .EasyMDEContainer .CodeMirror-line {
+            color: #e2e8f0 !important;
+        }
+        
+        .EasyMDEContainer .cm-formatting {
+            color: #6b7280 !important;
+        }
+        
+        .EasyMDEContainer .cm-formatting-header {
+            color: #4b5563 !important;
+        }
+        
+        /* Editor preview styles */
+        .EasyMDEContainer .editor-preview h1,
+        .EasyMDEContainer .editor-preview h2,
+        .EasyMDEContainer .editor-preview h3,
+        .EasyMDEContainer .editor-preview h4,
+        .EasyMDEContainer .editor-preview h5,
+        .EasyMDEContainer .editor-preview h6,
+        .EasyMDEContainer .editor-preview-side h1,
+        .EasyMDEContainer .editor-preview-side h2,
+        .EasyMDEContainer .editor-preview-side h3,
+        .EasyMDEContainer .editor-preview-side h4,
+        .EasyMDEContainer .editor-preview-side h5,
+        .EasyMDEContainer .editor-preview-side h6 {
+            color: #e2e8f0 !important;
+            margin-top: 1em;
+            margin-bottom: 0.5em;
+        }
+        
+        .EasyMDEContainer .editor-preview pre,
+        .EasyMDEContainer .editor-preview-side pre {
+            background: #0a0a0a !important;
+            color: #e2e8f0 !important;
+            border: 1px solid #333 !important;
+            padding: 1em;
+            border-radius: 4px;
+        }
+        
+        .EasyMDEContainer .editor-preview code,
+        .EasyMDEContainer .editor-preview-side code {
+            background: #2a2a2a !important;
+            color: #e2e8f0 !important;
+            padding: 0.2em 0.4em;
+            border-radius: 3px;
+        }
+        
+        .EasyMDEContainer .editor-preview blockquote,
+        .EasyMDEContainer .editor-preview-side blockquote {
+            border-left: 4px solid #8b5cf6 !important;
+            background: rgba(139, 92, 246, 0.1) !important;
+            color: #e2e8f0 !important;
+            padding: 0.5em 1em;
+            margin: 1em 0;
+        }
+        
+        .EasyMDEContainer .editor-preview table,
+        .EasyMDEContainer .editor-preview-side table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 1em 0;
+        }
+        
+        .EasyMDEContainer .editor-preview table th,
+        .EasyMDEContainer .editor-preview table td,
+        .EasyMDEContainer .editor-preview-side table th,
+        .EasyMDEContainer .editor-preview-side table td {
+            border: 1px solid #444;
+            padding: 8px 12px;
+            color: #e2e8f0;
+        }
+        
+        .EasyMDEContainer .editor-preview table th,
+        .EasyMDEContainer .editor-preview-side table th {
+            background: #2a2a2a;
+            font-weight: bold;
+        }
+        
+        .EasyMDEContainer .editor-preview table tr:nth-child(even),
+        .EasyMDEContainer .editor-preview-side table tr:nth-child(even) {
+            background: rgba(255, 255, 255, 0.02);
+        }
+        
+        /* Fullscreen mode */
+        .EasyMDEContainer.EasyMDE-fullscreen {
+            background: #0a0a0a !important;
+            z-index: 9999 !important;
+        }
+        
+        .EasyMDEContainer.EasyMDE-fullscreen .CodeMirror-fullscreen {
+            background: #1a1a1a !important;
+        }
+        
+        /* Status bar */
+        .EasyMDEContainer .editor-statusbar {
+            background: #2a2a2a !important;
+            color: #9ca3af !important;
+            border-top: 1px solid #333 !important;
+        }
+        
+        /* File Browser Tab Full Height */
+        #file-browser.tab-pane {
+            height: 100%;
+            position: relative;
+        }
+        
+        #file-browser-main {
+            height: 100%;
+        }
+        
+        /* Viewer action buttons */
+        .viewer-action-btn {
+            padding: 6px 10px;
+            background: transparent;
+            border: 1px solid #333;
+            border-radius: 6px;
+            color: #e2e8f0;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-left: 8px;
+            font-size: 14px;
+        }
+        
+        .viewer-action-btn:hover {
+            background: #2a2a2a;
+            border-color: #8b5cf6;
+            color: #a78bfa;
+        }
+        
+        .viewer-action-btn:active {
+            transform: scale(0.95);
+        }
+        
+        /* Jodit Dark Theme Global Overrides */
+        .jodit-container {
+            width: 100% !important;
+            max-width: 100% !important;
+        }
+        
+        .jodit-wysiwyg {
+            color: #e2e8f0 !important;
+            background: #1a1a1a !important;
+        }
+        
+        /* Make file browser viewer full height */
+        #filebrowser-viewer {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+        }
+        
+        #filebrowser-viewer .viewer-header {
+            flex-shrink: 0;
+        }
+        
+        #viewer-markdown {
+            flex: 1;
+            overflow-y: auto;
+        }
+        
+        /* Simplified Jodit editor styles */
+        #wysiwyg-editor {
+            height: 100%;
+        }
+        
+        .jodit-wysiwyg * {
+            color: inherit !important;
+        }
+        
+        .jodit-wysiwyg p,
+        .jodit-wysiwyg div,
+        .jodit-wysiwyg span,
+        .jodit-wysiwyg h1,
+        .jodit-wysiwyg h2,
+        .jodit-wysiwyg h3,
+        .jodit-wysiwyg h4,
+        .jodit-wysiwyg h5,
+        .jodit-wysiwyg h6,
+        .jodit-wysiwyg li,
+        .jodit-wysiwyg td,
+        .jodit-wysiwyg th,
+        .jodit-wysiwyg a,
+        .jodit-wysiwyg strong,
+        .jodit-wysiwyg em,
+        .jodit-wysiwyg u,
+        .jodit-wysiwyg s,
+        .jodit-wysiwyg blockquote,
+        .jodit-wysiwyg code,
+        .jodit-wysiwyg pre {
+            color: #e2e8f0 !important;
+        }
+        
+        .jodit-toolbar__box {
+            background: #2a2a2a !important;
+            margin-bottom: 40px;
+        }
+        
+        .jodit-toolbar-button__button {
+            color: #e2e8f0 !important;
+        }
+        
+        .jodit-toolbar-button__button:hover {
+            background: #333 !important;
+        }
+        
+        .jodit-wysiwyg table {
+            border-collapse: collapse !important;
+            width: 100% !important;
+        }
+        
+        .jodit-wysiwyg table td,
+        .jodit-wysiwyg table th {
+            border: 1px solid #444 !important;
+            padding: 8px 12px !important;
+            color: #e2e8f0 !important;
+        }
+        
+        .jodit-wysiwyg table th {
+            background: #2a2a2a !important;
+            font-weight: bold !important;
+            background: #2a2a2a !important;
+            color: #9ca3af !important;
+            border-top: 1px solid #333 !important;
+            padding: 8px 10px;
+            font-size: 12px;
+        }
     </style>
     
     <!-- Tabs Navigation - moved to top -->
     <div class="artifacts-tabs" style="display: flex; justify-content: space-between; align-items: center;">
         <div style="display: flex;">
-            <button class="tab-button active" data-tab="prd">PRD</button>
-            <button class="tab-button" data-tab="implementation">Implementation</button>
-            <!-- <button class="tab-button" data-tab="features">Features</button> -->
-            <!-- <button class="tab-button" data-tab="personas">Personas</button> -->
-            <!-- <button class="tab-button" data-tab="design">Design</button> -->
-            <!-- <button class="tab-button" data-tab="tickets">Tickets</button> -->
+            <button class="tab-button active" data-tab="filebrowser">Docs</button>
             <button class="tab-button" data-tab="checklist">Task List</button>
-            <!-- <button class="tab-button" data-tab="apps">Preview</button> -->
-            <button class="tab-button" data-tab="toolhistory">Tool History</button>
-            <!-- <button class="tab-button" data-tab="codebase">Codebase</button> -->
         </div>
         
         <button class="panel-arrow-right" id="artifacts-toggle" style="margin-left: auto; padding: 8px; background: none; border: none; color: #ccc; cursor: pointer;">
@@ -238,81 +1002,6 @@
     <div class="artifacts-content">
         <!-- Tab Content -->
         <div class="tab-content">
-            <!-- PRD Tab -->
-            <div class="tab-pane active" id="prd">
-                <!-- Empty state (shown by default) -->
-                <div class="empty-state" id="prd-empty-state">
-                    <div class="empty-state-icon">
-                        <i class="fas fa-file-alt"></i>
-                    </div>
-                    <div class="empty-state-text">
-                        No PRD content available yet.
-                    </div>
-                </div>
-                
-                <!-- PRD Container (hidden by default, shown during streaming) -->
-                <div class="prd-container" id="prd-container" style="display: none;">
-                    <div class="prd-header">
-                        <div class="prd-meta" style="display: flex; justify-content: space-between; align-items: flex-start;">
-                            <div style="display: flex; flex-direction: column; gap: 8px;">
-                                <!-- Custom PRD Selector -->
-                                <div class="prd-selector-wrapper" style="position: relative; display: none;">
-                                    <div id="prd-selector-button" class="prd-selector-button" style="padding: 8px 10px; padding-right: 40px; background: #1a1a1a; border: 1px solid #444; border-radius: 8px; color: #e2e8f0; font-size: 14px; font-weight: 500; min-width: 200px; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: space-between;">
-                                        <span id="prd-selector-text">Main PRD</span>
-                                        <i class="fas fa-chevron-down" style="font-size: 12px; color: #8b5cf6; position: absolute; right: 12px; transition: transform 0.2s ease, color 0.2s ease;"></i>
-                                    </div>
-                                    <!-- Custom dropdown menu -->
-                                    <div id="prd-selector-dropdown" class="prd-selector-dropdown" style="position: absolute; top: 100%; left: 0; right: 0; background: #1a1a1a; border: 1px solid #444; border-radius: 8px; margin-top: 4px; display: none; z-index: 1000; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3); max-height: 300px; overflow-y: auto;">
-                                        <!-- Options will be dynamically added here -->
-                                    </div>
-                                    <!-- Hidden select for form compatibility -->
-                                    <select id="prd-selector" style="display: none;">
-                                        <option value="Main PRD">Main PRD</option>
-                                    </select>
-                                </div>
-                                <!-- Date/Status below the selector -->
-                                <span class="streaming-status" id="prd-streaming-status" style="color: #9ca3af; font-size: 12px; margin-left: 5px;">
-                                    <i class="fas fa-circle-notch fa-spin"></i> Generating PRD...
-                                </span>
-                            </div>
-                            <div class="prd-actions-container">
-                                <!-- Actions will be added here dynamically -->
-                            </div>
-                        </div>
-                    </div>
-                    <div class="prd-streaming-container prd-content markdown-content" id="prd-streaming-content" style="color: #e2e8f0; padding: 20px;">
-                        <!-- Content will be streamed here -->
-                    </div>
-                </div>
-            </div>
-
-            <!-- Implementation Tab -->
-            <div class="tab-pane" id="implementation">
-                <!-- Empty state (shown by default) -->
-                <div class="empty-state" id="implementation-empty-state">
-                    <div class="empty-state-icon">
-                        <i class="fas fa-code"></i>
-                    </div>
-                    <div class="empty-state-text">
-                        No implementation plan available yet.
-                    </div>
-                </div>
-                
-                <!-- Implementation Container (hidden by default, shown during streaming) -->
-                <div class="implementation-container" id="implementation-container" style="display: none;">
-                    <div class="implementation-header">
-                        <h2>Implementation Plan</h2>
-                        <div class="implementation-meta" style="display: flex; justify-content: space-between; align-items: center;">
-                            <span class="streaming-status" id="implementation-streaming-status" style="color: #8b5cf6;">
-                                <i class="fas fa-circle-notch fa-spin"></i> Generating implementation plan...
-                            </span>
-                        </div>
-                    </div>
-                    <div class="implementation-streaming-container implementation-content markdown-content" id="implementation-streaming-content" style="color: #e2e8f0; padding: 20px;">
-                        <!-- Content will be streamed here -->
-                    </div>
-                </div>
-            </div>
 
             <!-- Features Tab -->
             <div class="tab-pane" id="features">
@@ -512,6 +1201,94 @@
                     </div>
                     <div class="codebase-frame-container" id="codebase-frame-container" style="display: none; width: 100%; height: 100%; position: absolute; top: 0; left: 0; right: 0; bottom: 0;">
                         <iframe id="codebase-iframe" style="width: 100%; height: 100%; border: none;" sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-top-navigation-by-user-activation"></iframe>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- File Browser Tab -->
+            <div class="tab-pane active" id="filebrowser">
+                <div class="filebrowser-container" style="height: 100%; display: flex; flex-direction: column;">
+                    <!-- Browser View -->
+                    <div id="filebrowser-main" style="height: 100%; display: flex; flex-direction: column;">
+                        <!-- Header with search and filters -->
+                        <div class="filebrowser-header" style="padding: 20px; border-bottom: 1px solid #2a2a2a;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px;">
+                                <h3 style="color: #e2e8f0; margin: 0; font-size: 18px; font-weight: 600;">Documents</h3>
+                                <div style="display: flex; gap: 10px; align-items: center;">
+                                    <select id="file-type-filter" style="padding: 8px 12px; background: #1a1a1a; border: 1px solid #333; border-radius: 6px; color: #e2e8f0; font-size: 13px;">
+                                        <option value="">All Types</option>
+                                    </select>
+                                    <button id="refresh-filebrowser" class="btn btn-sm" 
+                                            style="padding: 8px 16px; background: #2a2a2a; color: #e2e8f0; border: 1px solid #333; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 13px;">
+                                        <i class="fas fa-sync-alt"></i> Refresh
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <!-- Search Bar -->
+                            <div style="position: relative;">
+                                <input type="text" id="file-search" placeholder="Search documents..." 
+                                       style="width: 100%; padding: 10px 15px 10px 40px; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; color: #e2e8f0; font-size: 14px;">
+                                <i class="fas fa-search" style="position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: #666; font-size: 14px;"></i>
+                            </div>
+                        </div>
+                        
+                        <!-- File List Content -->
+                        <div class="filebrowser-content" style="flex: 1; overflow-y: auto;">
+                            <!-- Table Header -->
+                            <div class="file-table-header" id="file-table-header">
+                                <div></div>
+                                <div>Name</div>
+                                <div>Type</div>
+                                <div>Owner</div>
+                                <div>Modified</div>
+                                <!-- <div style="text-align: right;">Size</div> -->
+                            </div>
+                            
+                            <!-- Loading State -->
+                            <div class="loading-state" id="filebrowser-loading" style="text-align: center; padding: 60px;">
+                                <div class="spinner"></div>
+                                <div style="margin-top: 10px; color: #9ca3af;">Loading documents...</div>
+                            </div>
+                            
+                            <!-- Empty State -->
+                            <div class="empty-state" id="filebrowser-empty">
+                                <div class="empty-state-icon">
+                                    <i class="fas fa-folder-open"></i>
+                                </div>
+                                <div class="empty-state-text">
+                                    No documents found in this project.
+                                </div>
+                            </div>
+                            
+                            <!-- File List -->
+                            <div id="filebrowser-list">
+                                <!-- Files will be dynamically inserted here -->
+                            </div>
+                            
+                            <!-- Pagination -->
+                            <div id="filebrowser-pagination" style="padding: 20px; border-top: 1px solid #2a2a2a;">
+                                <!-- Pagination controls will be inserted here -->
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- File Viewer (hidden by default) -->
+                    <div id="filebrowser-viewer" style="height: 100%; display: none; flex-direction: column;">
+                        <div class="viewer-header" style="padding: 12px 20px; border-bottom: 1px solid #2a2a2a; display: flex; align-items: center; justify-content: space-between;">
+                            <div style="display: flex; align-items: center; gap: 15px;">
+                                <button id="viewer-back" class="btn btn-sm" style="padding: 6px 10px; background: transparent; color: #9ca3af; border: none; cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 14px;">
+                                    <i class="fas fa-arrow-left"></i> Back
+                                </button>
+                                <h3 id="viewer-title" style="color: #e2e8f0; margin: 0; font-size: 16px; font-weight: 600;"></h3>
+                            </div>
+                            <div id="viewer-actions" style="display: flex; gap: 0;">
+                                <!-- Dynamically added buttons will go here -->
+                            </div>
+                        </div>
+                        <div class="viewer-content" style="flex: 1; overflow-y: auto;">
+                            <div id="viewer-markdown" class="prd-content markdown-content" style="padding: 20px; color: #e2e8f0;"></div>
+                        </div>
                     </div>
                 </div>
             </div>

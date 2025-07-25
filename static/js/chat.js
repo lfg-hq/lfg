@@ -1542,6 +1542,32 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('Current project ID:', currentProjectId);
             console.log('==========================================\n\n');
             
+            // Check if this is ANY notification with file_id (for debugging)
+            if (data.file_id) {
+                console.log('==================================================');
+                console.log('[Chat] NOTIFICATION WITH FILE_ID DETECTED!');
+                console.log('[Chat] Type:', data.notification_type);
+                console.log('[Chat] File ID:', data.file_id);
+                console.log('[Chat] File Name:', data.file_name);
+                console.log('[Chat] Full data:', data);
+                console.log('==================================================');
+            }
+            
+            // Check if this is a document save notification with file_id
+            if ((data.notification_type === 'prd' || data.notification_type === 'implementation') && data.file_id) {
+                console.log('[Chat] This is a PRD/Implementation save notification');
+                
+                if (window.ArtifactsLoader && typeof window.ArtifactsLoader.handleDocumentSaved === 'function') {
+                    console.log('[Chat] Calling ArtifactsLoader.handleDocumentSaved');
+                    window.ArtifactsLoader.handleDocumentSaved(data);
+                    return; // Don't process further
+                } else {
+                    console.error('[Chat] ArtifactsLoader.handleDocumentSaved not available!');
+                    console.log('[Chat] window.ArtifactsLoader exists:', !!window.ArtifactsLoader);
+                    console.log('[Chat] handleDocumentSaved exists:', !!(window.ArtifactsLoader && window.ArtifactsLoader.handleDocumentSaved));
+                }
+            }
+            
             // Show a function call indicator in the UI for the function that generated this notification
             const functionName = data.notification_type === 'features' ? 'extract_features' : 
                                data.notification_type === 'personas' ? 'extract_personas' : 
@@ -1735,6 +1761,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const tabMapping = {
                     // 'features': 'checklist',
                     // 'personas': 'checklist',
+                    'prd': 'filebrowser',  // Map prd to filebrowser tab
+                    'implementation': 'filebrowser',  // Map implementation to filebrowser tab
                     'design': 'implementation',
                     'tickets': 'checklist',
                     // 'execute_command': 'toolhistory',
@@ -1743,8 +1771,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     // 'get_pending_tickets': 'checklist',
                     'create_checklist_tickets': 'checklist',
                     'implement_ticket': 'implementation',
-                    'prd_stream': 'prd',  // Map prd_stream to prd tab
-                    'implementation_stream': 'implementation'  // Map implementation_stream to implementation tab
+                    'prd_stream': 'filebrowser',  // Map prd_stream to filebrowser tab
+                    'implementation_stream': 'filebrowser'  // Map implementation_stream to filebrowser tab
                 };
                 
                 // Use mapped tab if original doesn't exist
@@ -1838,10 +1866,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             
                             if (projectIdForStreaming) {
                                 console.log('Streaming PRD content with project ID:', projectIdForStreaming);
-                                window.ArtifactsLoader.streamPRDContent(
+                                window.ArtifactsLoader.streamDocumentContent(
                                     data.content_chunk, 
                                     data.is_complete || false, 
                                     projectIdForStreaming,
+                                    'prd',
                                     data.prd_name || 'Main PRD'
                                 );
                             } else {
@@ -1885,10 +1914,12 @@ document.addEventListener('DOMContentLoaded', () => {
                             
                             if (projectIdForStreaming) {
                                 console.log('Streaming Implementation content with project ID:', projectIdForStreaming);
-                                window.ArtifactsLoader.streamImplementationContent(
+                                window.ArtifactsLoader.streamDocumentContent(
                                     data.content_chunk, 
                                     data.is_complete || false, 
-                                    projectIdForStreaming
+                                    projectIdForStreaming,
+                                    'implementation',
+                                    'Implementation Plan'
                                 );
                             } else {
                                 console.error('Implementation stream: No project ID available for streaming!');
@@ -1900,8 +1931,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         const loaderMap = {
                             'features': 'loadFeatures',
                             'personas': 'loadPersonas',
-                            'prd': 'loadPRD',
-                            'implementation': 'loadImplementation',
+                            'prd': 'loadFileBrowser',
+                            'implementation': 'loadFileBrowser',
                             'design': 'loadDesignSchema',
                             'tickets': 'loadTickets',
                             'checklist': 'loadChecklist'
@@ -1910,6 +1941,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         const loaderMethod = loaderMap[data.notification_type];
                         if (loaderMethod && typeof window.ArtifactsLoader[loaderMethod] === 'function') {
                             console.log(`Calling ArtifactsLoader.${loaderMethod}(${currentProjectId})`);
+                            
+                            // Normal loading for all notifications
+                            // PRD and Implementation now use streaming and handle their own display
                             window.ArtifactsLoader[loaderMethod](currentProjectId);
                         } else if (data.notification_type === 'command_output' || 
                                   data.notification_type === 'execute_command' ||
@@ -3899,13 +3933,12 @@ document.addEventListener('DOMContentLoaded', () => {
                             window.ArtifactsLoader.loadFeatures(projectId);
                         } else if (tabType === 'personas' && typeof window.ArtifactsLoader.loadPersonas === 'function') {
                             window.ArtifactsLoader.loadPersonas(projectId);
-                        } else if (tabType === 'prd' && typeof window.ArtifactsLoader.loadPRD === 'function') {
-                            // Check if PRD is currently streaming before loading
-                            if (window.prdStreamingState && window.prdStreamingState.isStreaming) {
-                                console.log('[Chat] PRD is currently streaming, skipping loadPRD');
-                            } else {
-                                window.ArtifactsLoader.loadPRD(projectId);
-                            }
+                        } else if (tabType === 'prd' && typeof window.ArtifactsLoader.loadFileBrowser === 'function') {
+                            // Load file browser for PRD
+                            window.ArtifactsLoader.loadFileBrowser(projectId);
+                        } else if (tabType === 'implementation' && typeof window.ArtifactsLoader.loadFileBrowser === 'function') {
+                            // Load file browser for Implementation
+                            window.ArtifactsLoader.loadFileBrowser(projectId);
                         }
                     }
                 }

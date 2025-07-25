@@ -33,4 +33,15 @@ urlpatterns = [
     path('<str:project_id>/api/linear/teams/', views.linear_teams_api, name='linear_teams_api'),
     path('<str:project_id>/api/linear/projects/', views.linear_projects_api, name='linear_projects_api'),
     path('<str:project_id>/api/linear/create-project/', views.linear_create_project_api, name='linear_create_project_api'),
+    
+    # Enhanced file browser APIs
+    path('<str:project_id>/api/files/browser/', views.file_browser_api, name='file_browser_api'),
+    path('<str:project_id>/api/files/<int:file_id>/content/', views.file_content_api, name='file_content_api'),
+    
+    # File versioning APIs
+    path('<str:project_id>/api/files/<int:file_id>/versions/', views.file_versions_api, name='file_versions_api'),
+    path('<str:project_id>/api/files/<int:file_id>/versions/<int:version_number>/', views.file_version_content_api, name='file_version_content_api'),
+    
+    # File rename API
+    path('<str:project_id>/api/files/<int:file_id>/rename/', views.file_rename_api, name='file_rename_api'),
 ]

@@ -600,7 +600,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     try:
                         notification_json = content[len("__NOTIFICATION__"):-len("__NOTIFICATION__")]
                         notification_data = json.loads(notification_json)
-                        # logger.info(f"NOTIFICATION DETECTED in generate_ai_response: {notification_data}")
+                        logger.info(f"[CONSUMER] NOTIFICATION DETECTED: type={notification_data.get('notification_type')}, has_file_id={bool(notification_data.get('file_id'))}")
+                        if notification_data.get('file_id'):
+                            logger.info(f"[CONSUMER] SAVE NOTIFICATION: file_id={notification_data.get('file_id')}, file_type={notification_data.get('file_type')}, file_name={notification_data.get('file_name')}")
                         
                         # Send notification to client
                         notification_message = {
@@ -632,6 +634,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
                                 content_preview = notification_data['content_chunk'][:200]
                                 logger.info(f"Stream Content: {content_preview}{'...' if len(notification_data['content_chunk']) > 200 else ''}")
                         
+                        # Pass through file_id if present (for save notifications)
+                        if notification_data.get('file_id'):
+                            notification_message['file_id'] = notification_data.get('file_id')
+                            notification_message['file_name'] = notification_data.get('file_name', '')
+                            notification_message['file_type'] = notification_data.get('file_type', '')
+                            logger.info(f"[SAVE NOTIFICATION] Sending save notification with file_id: {notification_data.get('file_id')}, type: {notification_data.get('notification_type')}")
+                        
                         logger.info(f"SENDING NOTIFICATION MESSAGE: {notification_message}")
                         
                         if hasattr(self, 'using_groups') and self.using_groups:
@@ -656,6 +665,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             if notification_data.get('notification_type') == 'implementation_stream':
                                 group_message['content_chunk'] = notification_data.get('content_chunk', '')
                                 group_message['is_complete'] = notification_data.get('is_complete', False)
+                            
+                            # Pass through file_id if present (for save notifications)
+                            if notification_data.get('file_id'):
+                                group_message['file_id'] = notification_data.get('file_id')
+                                group_message['file_name'] = notification_data.get('file_name', '')
+                                group_message['file_type'] = notification_data.get('file_type', '')
+                            
                             # logger.info(f"Group message being sent: {group_message}")
                             await self.channel_layer.group_send(self.room_group_name, group_message)
                         else:
@@ -903,6 +919,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             if is_early:
                                 notification_message['early_notification'] = True
                                 notification_message['function_name'] = function_name
+                            
+                            # Pass through file_id and related fields for save notifications
+                            if notification_data.get('file_id'):
+                                notification_message['file_id'] = notification_data.get('file_id')
+                                notification_message['file_name'] = notification_data.get('file_name', '')
+                                notification_message['file_type'] = notification_data.get('file_type', '')
+                                logger.info(f"[CONSUMER] Processing save notification with file_id: {notification_data.get('file_id')}, type: {notification_data.get('notification_type')}")
                             
                             # Yield the notification string so it can be handled in generate_ai_response
                             yield content

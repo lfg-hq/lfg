@@ -16,8 +16,9 @@ class StreamingTagHandler:
         self.current_file_name = ""
         self.current_file_data = ""
         self.captured_files = []  # List of (file_type, file_name, content) tuples
+        self.pending_save_notifications = []  # List of save notifications to send
         
-    def process_text_chunk(self, text: str) -> Tuple[str, Optional[Dict[str, Any]], Optional[str]]:
+    def process_text_chunk(self, text: str, project_id: str = None) -> Tuple[str, Optional[Dict[str, Any]], Optional[str]]:
         """
         Process a text chunk and detect/handle LFG tags
         
@@ -109,6 +110,19 @@ class StreamingTagHandler:
                 "file_type": self.current_file_type,
                 "notification_marker": "__NOTIFICATION__"
             }
+            
+            # IMPORTANT: Also trigger immediate save of the file
+            logger.info(f"[FILE COMPLETE] Triggering immediate save for {self.current_file_type}: {self.current_file_name}")
+            
+            # Create a save request that will be processed later
+            if project_id and self.current_file_data:
+                self.pending_save_notifications.append({
+                    'file_type': self.current_file_type,
+                    'file_name': self.current_file_name,
+                    'content': self.current_file_data,
+                    'project_id': project_id
+                })
+                logger.info(f"[FILE COMPLETE] Added save request to pending queue")
             
             # Reset current file tracking
             self.current_mode = ""
@@ -244,17 +258,52 @@ class StreamingTagHandler:
                 
                 try:
                     save_result = await save_file_from_stream(content, project_id, file_type, file_name)
-                    logger.info(f"File save result: {save_result}")
+                    logger.info(f"[SAVE RESULT]: {save_result}")
                     
                     if save_result.get("is_notification"):
+                        logger.info(f"[NOTIFICATION] Adding notification to list: {save_result}")
                         notifications.append(save_result)
                 except Exception as e:
                     logger.error(f"Error saving file from stream: {str(e)}")
+        
+        return notifications
+    
+    async def check_and_save_pending_files(self) -> list:
+        """Check if there are any pending files to save and save them immediately"""
+        notifications = []
+        
+        if not self.pending_save_notifications:
+            return notifications
+            
+        from development.utils.ai_functions import save_file_from_stream
+        
+        # Process all pending saves
+        for save_request in self.pending_save_notifications:
+            try:
+                logger.info(f"[IMMEDIATE SAVE] Processing pending save: {save_request['file_type']}")
+                save_result = await save_file_from_stream(
+                    save_request['content'],
+                    save_request['project_id'], 
+                    save_request['file_type'],
+                    save_request['file_name']
+                )
+                logger.info(f"[IMMEDIATE SAVE] Result: {save_result}")
+                
+                if save_result.get("is_notification"):
+                    notifications.append(save_result)
+            except Exception as e:
+                logger.error(f"Error in immediate save: {str(e)}")
+        
+        # Clear pending saves
+        self.pending_save_notifications = []
         
         return notifications
 
 
 def format_notification(notification_data: Dict[str, Any]) -> str:
     """Format notification data as a string for yielding"""
+    logger.info(f"[FORMAT_NOTIFICATION] Formatting notification: {notification_data}")
     notification_json = json.dumps(notification_data)
-    return f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+    formatted = f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+    logger.info(f"[FORMAT_NOTIFICATION] Formatted: {formatted[:100]}...")
+    return formatted

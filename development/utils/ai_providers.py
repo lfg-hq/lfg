@@ -705,7 +705,7 @@ class OpenAIProvider(AIProvider):
                         logger.debug(f"Captured {len(text)} chars of assistant output, total: {len(total_assistant_output)}")
                         
                         # Process text through tag handler
-                        output_text, notification, mode_message = tag_handler.process_text_chunk(text)
+                        output_text, notification, mode_message = tag_handler.process_text_chunk(text, project_id)
                         
                         # Yield mode message if entering a special mode
                         if mode_message:
@@ -847,9 +847,14 @@ class OpenAIProvider(AIProvider):
                         
                         elif finish_reason == "stop":
                             # Save any captured data
+                            logger.info(f"[OPENAI] Stream finished, checking for captured files to save")
                             save_notifications = await tag_handler.save_captured_data(project_id)
+                            logger.info(f"[OPENAI] Got {len(save_notifications)} save notifications")
                             for notification in save_notifications:
-                                yield format_notification(notification)
+                                logger.info(f"[OPENAI] Yielding save notification: {notification}")
+                                formatted = format_notification(notification)
+                                logger.info(f"[OPENAI] Formatted notification: {formatted[:100]}...")
+                                yield formatted
                             
                             # Track token usage before exiting
                             if user:
@@ -1116,7 +1121,7 @@ class XAIProvider(AIProvider):
                         logger.debug(f"Captured {len(text)} chars of assistant output, total: {len(total_assistant_output)}")
                         
                         # Process text through tag handler
-                        output_text, notification, mode_message = tag_handler.process_text_chunk(text)
+                        output_text, notification, mode_message = tag_handler.process_text_chunk(text, project_id)
                         
                         # Yield mode message if entering a special mode
                         if mode_message:
@@ -1235,9 +1240,14 @@ class XAIProvider(AIProvider):
                                 yield flushed_output
                             
                             # Save any captured data
+                            logger.info(f"[XAI] Stream finished, checking for captured files to save")
                             save_notifications = await tag_handler.save_captured_data(project_id)
+                            logger.info(f"[XAI] Got {len(save_notifications)} save notifications")
                             for notification in save_notifications:
-                                yield format_notification(notification)
+                                logger.info(f"[XAI] Yielding save notification: {notification}")
+                                formatted = format_notification(notification)
+                                logger.info(f"[XAI] Formatted notification: {formatted[:100]}...")
+                                yield formatted
                             
                             # Track token usage before exiting
                             if usage_data and user:
@@ -1565,7 +1575,7 @@ class AnthropicProvider(AIProvider):
                                 text = event.delta.text
                                 
                                 # Process text through tag handler
-                                output_text, notification, mode_message = tag_handler.process_text_chunk(text)
+                                output_text, notification, mode_message = tag_handler.process_text_chunk(text, project_id)
                                 
                                 # Yield mode message if entering a special mode
                                 if mode_message:
@@ -1689,9 +1699,14 @@ class AnthropicProvider(AIProvider):
                                     yield flushed_output
                                 
                                 # Save any captured data
+                                logger.info(f"[ANTHROPIC] Stream finished, checking for captured files to save")
                                 save_notifications = await tag_handler.save_captured_data(project_id)
+                                logger.info(f"[ANTHROPIC] Got {len(save_notifications)} save notifications")
                                 for notification in save_notifications:
-                                    yield format_notification(notification)
+                                    logger.info(f"[ANTHROPIC] Yielding save notification: {notification}")
+                                    formatted = format_notification(notification)
+                                    logger.info(f"[ANTHROPIC] Formatted notification: {formatted[:100]}...")
+                                    yield formatted
                                 
                                 return
                             else:
