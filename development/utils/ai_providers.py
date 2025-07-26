@@ -283,11 +283,21 @@ async def execute_tool_call(tool_call_name, tool_call_args_str, project_id, conv
                 notification_data["is_complete"] = tool_result.get("is_complete", False)
                 if "prd_name" in tool_result:
                     notification_data["prd_name"] = tool_result.get("prd_name")
-                logger.info(f"PRD_STREAM in notification handler: chunk_length={len(notification_data['content_chunk'])}, is_complete={notification_data['is_complete']}, prd_name={notification_data.get('prd_name', 'Not specified')}")
+                if "file_id" in tool_result:
+                    notification_data["file_id"] = tool_result.get("file_id")
+                    logger.info(f"PRD_STREAM: Including file_id {tool_result.get('file_id')} in notification")
+                else:
+                    logger.warning(f"PRD_STREAM: No file_id in tool_result. Keys: {list(tool_result.keys())}")
+                logger.info(f"PRD_STREAM in notification handler: chunk_length={len(notification_data['content_chunk'])}, is_complete={notification_data['is_complete']}, prd_name={notification_data.get('prd_name', 'Not specified')}, file_id={notification_data.get('file_id', 'None')}")
             elif raw_notification_type == "implementation_stream":
                 notification_data["content_chunk"] = tool_result.get("content_chunk", "")
                 notification_data["is_complete"] = tool_result.get("is_complete", False)
-                logger.info(f"IMPLEMENTATION_STREAM in notification handler: chunk_length={len(notification_data['content_chunk'])}, is_complete={notification_data['is_complete']}")
+                if "file_id" in tool_result:
+                    notification_data["file_id"] = tool_result.get("file_id")
+                    logger.info(f"IMPLEMENTATION_STREAM: Including file_id {tool_result.get('file_id')} in notification")
+                else:
+                    logger.warning(f"IMPLEMENTATION_STREAM: No file_id in tool_result. Keys: {list(tool_result.keys())}")
+                logger.info(f"IMPLEMENTATION_STREAM in notification handler: chunk_length={len(notification_data['content_chunk'])}, is_complete={notification_data['is_complete']}, file_id={notification_data.get('file_id', 'None')}")
             
             logger.debug(f"Notification data to be yielded: {notification_data}")
             
@@ -852,8 +862,15 @@ class OpenAIProvider(AIProvider):
                             logger.info(f"[OPENAI] Got {len(save_notifications)} save notifications")
                             for notification in save_notifications:
                                 logger.info(f"[OPENAI] Yielding save notification: {notification}")
+                                # Log specific details about file_id
+                                if 'file_id' in notification:
+                                    logger.info(f"[OPENAI] NOTIFICATION HAS FILE_ID: {notification['file_id']}")
+                                    logger.info(f"[OPENAI] Notification type: {notification.get('notification_type')}")
+                                else:
+                                    logger.warning(f"[OPENAI] NO FILE_ID IN NOTIFICATION! Keys: {list(notification.keys())}")
                                 formatted = format_notification(notification)
                                 logger.info(f"[OPENAI] Formatted notification: {formatted[:100]}...")
+                                logger.info(f"[OPENAI] Full formatted notification: {formatted}")
                                 yield formatted
                             
                             # Track token usage before exiting
@@ -1245,8 +1262,15 @@ class XAIProvider(AIProvider):
                             logger.info(f"[XAI] Got {len(save_notifications)} save notifications")
                             for notification in save_notifications:
                                 logger.info(f"[XAI] Yielding save notification: {notification}")
+                                # Log specific details about file_id
+                                if 'file_id' in notification:
+                                    logger.info(f"[XAI] NOTIFICATION HAS FILE_ID: {notification['file_id']}")
+                                    logger.info(f"[XAI] Notification type: {notification.get('notification_type')}")
+                                else:
+                                    logger.warning(f"[XAI] NO FILE_ID IN NOTIFICATION! Keys: {list(notification.keys())}")
                                 formatted = format_notification(notification)
                                 logger.info(f"[XAI] Formatted notification: {formatted[:100]}...")
+                                logger.info(f"[XAI] Full formatted notification: {formatted}")
                                 yield formatted
                             
                             # Track token usage before exiting
@@ -1704,8 +1728,15 @@ class AnthropicProvider(AIProvider):
                                 logger.info(f"[ANTHROPIC] Got {len(save_notifications)} save notifications")
                                 for notification in save_notifications:
                                     logger.info(f"[ANTHROPIC] Yielding save notification: {notification}")
+                                    # Log specific details about file_id
+                                    if 'file_id' in notification:
+                                        logger.info(f"[ANTHROPIC] NOTIFICATION HAS FILE_ID: {notification['file_id']}")
+                                        logger.info(f"[ANTHROPIC] Notification type: {notification.get('notification_type')}")
+                                    else:
+                                        logger.warning(f"[ANTHROPIC] NO FILE_ID IN NOTIFICATION! Keys: {list(notification.keys())}")
                                     formatted = format_notification(notification)
                                     logger.info(f"[ANTHROPIC] Formatted notification: {formatted[:100]}...")
+                                    logger.info(f"[ANTHROPIC] Full formatted notification: {formatted}")
                                     yield formatted
                                 
                                 return

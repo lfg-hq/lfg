@@ -45,6 +45,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentConversationId = null;
     let currentProvider = 'openai';
     let currentProjectId = null;
+    // Make currentProjectId globally accessible for ArtifactsLoader
+    window.currentProjectId = null;
     let socket = null;
     let isSocketConnected = false;
     let messageQueue = [];
@@ -85,19 +87,16 @@ document.addEventListener('DOMContentLoaded', () => {
         currentConversationId = initialConversationId;
     }
     
-    // Check for project ID from different sources
-    if (urlParams.has('project_id')) {
-        currentProjectId = urlParams.get('project_id');
-    } else if (typeof initialProjectId !== 'undefined' && initialProjectId) {
-        currentProjectId = initialProjectId;
-    } else {
-        // Try to extract from path
-        const pathProjectId = extractProjectIdFromPath();
-        if (pathProjectId) {
-            currentProjectId = pathProjectId;
-            console.log('Extracted project ID from path:', currentProjectId);
-        }
+    // Extract project ID from path
+    const pathProjectId = extractProjectIdFromPath();
+    
+    if (!pathProjectId) {
+        throw new Error('No project ID found in path. Expected format: /chat/project/{id}/');
     }
+    
+    currentProjectId = pathProjectId;
+    window.currentProjectId = currentProjectId;
+    console.log('Extracted project ID from path:', currentProjectId);
     
     // Store requirements for later use
     let pendingRequirements = null;
@@ -248,21 +247,13 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // New chat button click handler
     newChatBtn.addEventListener('click', () => {
-        // Reset conversation ID but keep project ID if it's from URL
+        // Reset conversation ID but keep project ID
         currentConversationId = null;
         
-        // Check if we should maintain the project ID
-        const urlParams = new URLSearchParams(window.location.search);
-        console.log('Url Params:', urlParams);
-        const urlProjectId = urlParams.get('project_id');
+        // Project ID should always be available from path
         const pathProjectId = extractProjectIdFromPath();
-        
-        // Only reset project ID if it's not specified in URL or path
-        if (!urlProjectId && !pathProjectId) {
-            currentProjectId = null;
-        } else if (pathProjectId && !currentProjectId) {
-            // Update currentProjectId if it was found in the path but wasn't set
-            currentProjectId = pathProjectId;
+        if (!pathProjectId) {
+            console.error('No project ID found in path during new chat creation');
         }
         
         // Clear chat messages and show welcome message
@@ -277,22 +268,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // Reset WebSocket connection to ensure clean session
         connectWebSocket();
         
-        // Update URL handling
-        if (pathProjectId) {
-            // If we're in path format, keep the same URL format but remove conversation_id param
-            const url = new URL(window.location);
-            url.searchParams.delete('conversation_id');
-            window.history.pushState({}, '', url);
-        } else {
-            // Normal handling for query param style URLs
-            const url = new URL(window.location);
-            url.searchParams.delete('conversation_id');
-            // Only remove project_id from URL if it's not specified
-            if (!urlProjectId) {
-                url.searchParams.delete('project_id');
-            }
-            window.history.pushState({}, '', url);
-        }
+        // Update URL to remove conversation_id param
+        const url = new URL(window.location);
+        url.searchParams.delete('conversation_id');
+        window.history.pushState({}, '', url);
         
         // Remove active class from all conversations in sidebar
         document.querySelectorAll('.conversation-item').forEach(item => {
@@ -952,6 +931,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const pathProjectId = extractProjectIdFromPath();
             if (pathProjectId) {
                 currentProjectId = pathProjectId;
+                window.currentProjectId = currentProjectId;
                 urlParams.push(`project_id=${currentProjectId}`);
                 console.log('Found and added project_id from path:', currentProjectId);
             }
@@ -1459,6 +1439,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if (data.project_id) {
                 currentProjectId = data.project_id;
+                window.currentProjectId = currentProjectId;
             }
             
             // Check if this is the final chunk
@@ -1594,20 +1575,16 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Check if we have a valid project ID from somewhere
             if (!currentProjectId) {
-                // Try to get project ID from URL first
-                const urlParams = new URLSearchParams(window.location.search);
-                const urlProjectId = urlParams.get('project_id');
-                
-                // Then try from path (format: /chat/project/{id}/)
+                // Only use extractProjectIdFromPath
                 const pathProjectId = extractProjectIdFromPath();
                 
-                if (urlProjectId) {
-                    console.log(`Using project ID from URL: ${urlProjectId}`);
-                    currentProjectId = urlProjectId;
-                } else if (pathProjectId) {
-                    console.log(`Using project ID from path: ${pathProjectId}`);
-                    currentProjectId = pathProjectId;
+                if (!pathProjectId) {
+                    throw new Error('No project ID found in path. Expected format: /chat/project/{id}/');
                 }
+                
+                console.log(`Using project ID from path: ${pathProjectId}`);
+                currentProjectId = pathProjectId;
+                window.currentProjectId = currentProjectId;
             }
             
             // If still no project ID, we can't proceed with loading artifacts
@@ -1856,22 +1833,27 @@ document.addEventListener('DOMContentLoaded', () => {
                             // Ensure we have a project ID for streaming
                             let projectIdForStreaming = currentProjectId;
                             if (!projectIdForStreaming) {
-                                // Try to get it from various sources
-                                const urlParams = new URLSearchParams(window.location.search);
-                                projectIdForStreaming = urlParams.get('project_id') || 
-                                                       extractProjectIdFromPath() || 
-                                                       data.project_id;
+                                // Only use extractProjectIdFromPath
+                                projectIdForStreaming = extractProjectIdFromPath();
+                                if (!projectIdForStreaming) {
+                                    throw new Error('No project ID found in path. Expected format: /chat/project/{id}/');
+                                }
                                 console.log(`PRD Streaming: Using project ID: ${projectIdForStreaming}`);
                             }
                             
                             if (projectIdForStreaming) {
                                 console.log('Streaming PRD content with project ID:', projectIdForStreaming);
+                                // Debug log the data object
+                                if (data.is_complete) {
+                                    console.log('[DEBUG] PRD streaming complete, data object:', data);
+                                    console.log('[DEBUG] file_id in data:', data.file_id);
+                                }
                                 window.ArtifactsLoader.streamDocumentContent(
                                     data.content_chunk, 
                                     data.is_complete || false, 
                                     projectIdForStreaming,
                                     'prd',
-                                    data.prd_name || 'Main PRD'
+                                    data.prd_name || 'Main PRD',
                                 );
                             } else {
                                 console.error('PRD stream: No project ID available for streaming!');
@@ -1904,22 +1886,23 @@ document.addEventListener('DOMContentLoaded', () => {
                             // Ensure we have a project ID for streaming
                             let projectIdForStreaming = currentProjectId;
                             if (!projectIdForStreaming) {
-                                // Try to get it from various sources
-                                const urlParams = new URLSearchParams(window.location.search);
-                                projectIdForStreaming = urlParams.get('project_id') || 
-                                                       extractProjectIdFromPath() || 
-                                                       data.project_id;
+                                // Only use extractProjectIdFromPath
+                                projectIdForStreaming = extractProjectIdFromPath();
+                                if (!projectIdForStreaming) {
+                                    throw new Error('No project ID found in path. Expected format: /chat/project/{id}/');
+                                }
                                 console.log(`Implementation Streaming: Using project ID: ${projectIdForStreaming}`);
                             }
                             
                             if (projectIdForStreaming) {
                                 console.log('Streaming Implementation content with project ID:', projectIdForStreaming);
+                                // Debug log the data object
                                 window.ArtifactsLoader.streamDocumentContent(
                                     data.content_chunk, 
                                     data.is_complete || false, 
                                     projectIdForStreaming,
                                     'implementation',
-                                    'Implementation Plan'
+                                    'Implementation Plan',
                                 );
                             } else {
                                 console.error('Implementation stream: No project ID available for streaming!');
@@ -3925,8 +3908,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // Try to load the content based on the tab type
                 if (window.ArtifactsLoader) {
-                    const projectId = currentProjectId || extractProjectIdFromPath() || 
-                                    new URLSearchParams(window.location.search).get('project_id');
+                    const projectId = currentProjectId || extractProjectIdFromPath();
                     
                     if (projectId) {
                         if (tabType === 'features' && typeof window.ArtifactsLoader.loadFeatures === 'function') {

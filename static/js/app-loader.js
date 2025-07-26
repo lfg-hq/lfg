@@ -235,8 +235,13 @@
 
     // Helper functions to get project and conversation IDs
     function getCurrentProjectId() {
-        return window.getCurrentProjectId ? window.getCurrentProjectId() : 
-               (window.project_id || (window.PROJECT_DATA && window.PROJECT_DATA.id));
+        // Use the same logic as extractProjectIdFromPath in chat.js
+        const pathParts = window.location.pathname.split('/').filter(part => part);
+        if (pathParts.length >= 3 && pathParts[0] === 'chat' && pathParts[1] === 'project') {
+            return pathParts[2];
+        }
+        
+        throw new Error('No project ID found in path. Expected format: /chat/project/{id}/');
     }
 
     function getCurrentConversationId() {

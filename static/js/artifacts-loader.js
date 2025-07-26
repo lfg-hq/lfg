@@ -276,46 +276,18 @@ document.addEventListener('DOMContentLoaded', function() {
         return null;
     }
     
-    // Helper function to get current project ID from URL or global variables
+    // Helper function to get current project ID from URL path only
     function getCurrentProjectId() {
-        // Try several methods to get the project ID
-        
-        // Method 1: URL pathname (for direct project URLs with UUID)
-        const pathMatch = window.location.pathname.match(/\/chat\/project\/([a-f0-9-]+)\//);
-        if (pathMatch) {
-            console.log('[ArtifactsLoader] Found project ID (UUID) in URL path:', pathMatch[1]);
-            return pathMatch[1];
+        // Use the same logic as extractProjectIdFromPath in chat.js
+        const pathParts = window.location.pathname.split('/').filter(part => part);
+        if (pathParts.length >= 3 && pathParts[0] === 'chat' && pathParts[1] === 'project') {
+            const projectId = pathParts[2];
+            console.log('[ArtifactsLoader] Found project ID in URL path:', projectId);
+            return projectId;
         }
         
-        // Method 2: URL parameters
-        const urlParams = new URLSearchParams(window.location.search);
-        const projectIdParam = urlParams.get('project_id');
-        if (projectIdParam) {
-            console.log('[ArtifactsLoader] Found project ID in URL params:', projectIdParam);
-            return projectIdParam;
-        }
-        
-        // Method 3: File browser project ID
-        if (window.currentFileBrowserProjectId) {
-            console.log('[ArtifactsLoader] Found project ID from file browser:', window.currentFileBrowserProjectId);
-            return window.currentFileBrowserProjectId;
-        }
-        
-        // Method 4: Global variables
-        if (window.project_id) {
-            console.log('[ArtifactsLoader] Found project ID in global variable:', window.project_id);
-            return window.project_id;
-        }
-        
-        // Method 5: Data attributes on body or main container
-        const bodyProjectId = document.body.getAttribute('data-project-id');
-        if (bodyProjectId) {
-            console.log('[ArtifactsLoader] Found project ID in body data attribute:', bodyProjectId);
-            return bodyProjectId;
-        }
-        
-        console.warn('[ArtifactsLoader] Could not find project ID using any method');
-        return null;
+        console.error('[ArtifactsLoader] No project ID found in path. Expected format: /chat/project/{id}/');
+        throw new Error('No project ID found in path. Expected format: /chat/project/{id}/');
     }
 
     // Helper function to get CSRF token
@@ -1460,6 +1432,7 @@ document.addEventListener('DOMContentLoaded', function() {
          * @param {number} projectId - The ID of the current project
          * @param {string} documentType - Type of document ('prd' or 'implementation')
          * @param {string} documentName - Name of the document
+         * @param {number} fileId - The file ID (optional, provided when document is saved)
          */
         streamDocumentContent: function(contentChunk, isComplete, projectId, documentType, documentName) {
             console.log(`[ArtifactsLoader] streamDocumentContent called`);
@@ -1467,6 +1440,7 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log(`  Chunk length: ${contentChunk ? contentChunk.length : 0}, isComplete: ${isComplete}`);
             console.log(`  Project ID: ${projectId}`);
             
+        
             // Ensure filebrowser tab is active
             const filebrowserTab = document.querySelector('.tab-button[data-tab="filebrowser"]');
             const filebrowserPane = document.getElementById('filebrowser');
@@ -1575,25 +1549,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     viewerMarkdown.scrollTop = viewerMarkdown.scrollHeight;
                 }
             }
-            
-            // If streaming is complete
-            if (isComplete) {
-                window[stateKey].isStreaming = false;
-                
-                // Clear the streaming state
-                window[stateKey] = null;
-                
-                console.log('[ArtifactsLoader] Streaming complete, loading saved document with file ID 37');
-                
-                // Call viewFileContent directly with the file ID
-                if (window.viewFileContent) {
-                    window.viewFileContent(37);
-                } else {
-                    console.error('[ArtifactsLoader] viewFileContent function not found');
-                    // Fallback to loading file browser
-                    window.ArtifactsLoader.loadFileBrowser(projectId);
-                }
-            }
         },
         
         /**
@@ -1632,10 +1587,13 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             // Get project ID and file ID
-            const projectId = streamingInfo?.projectId || window.currentProjectId;
+            // Priority: notification.project_id > streamingInfo.projectId > window.currentProjectId
+            const projectId = notification.project_id || streamingInfo?.projectId || window.currentProjectId;
             const documentName = streamingInfo?.documentName || notification.file_name;
             const viewerTitle = streamingInfo?.viewerTitle || `${documentType.toUpperCase()} - ${documentName}`;
             const fileId = notification.file_id;
+            
+            console.log(`[ArtifactsLoader] Using project ID: ${projectId} (from: ${notification.project_id ? 'notification' : streamingInfo?.projectId ? 'streamingInfo' : 'window.currentProjectId'})`)
             
             if (!fileId) {
                 console.error('[ArtifactsLoader] No file_id in save notification');
@@ -1663,48 +1621,7 @@ document.addEventListener('DOMContentLoaded', function() {
             })
             .then(fileData => {
                 console.log('[ArtifactsLoader] Loaded saved document:', fileData);
-                
-                // Update the viewer with proper content and metadata
-                const viewerTitleElement = document.getElementById('viewer-title');
-                if (viewerTitleElement) {
-                    viewerTitleElement.innerHTML = `
-                        <span id="viewer-title-text">${fileData.name || documentName}</span>
-                        <button id="viewer-title-edit" style="background: none; border: none; color: #9ca3af; cursor: pointer; margin-left: 8px; padding: 4px; opacity: 0.7;" title="Edit name">
-                            <i class="fas fa-pencil" style="font-size: 12px;"></i>
-                        </button>
-                    `;
-                }
-                
-                // Store file data
-                window.currentFileData = {
-                    fileId: fileId,
-                    fileName: fileData.name || documentName,
-                    fileType: fileData.type,
-                    content: fileData.content
-                };
-                
-                // Update content
-                const viewerMarkdown = document.getElementById('viewer-markdown');
-                if (viewerMarkdown && typeof marked !== 'undefined') {
-                    viewerMarkdown.innerHTML = marked.parse(fileData.content || '');
-                }
-                
-                // Show action buttons
-                const viewerActions = document.querySelector('.viewer-actions');
-                if (viewerActions) {
-                    viewerActions.style.display = 'flex';
-                }
-                
-                // Update metadata
-                const viewerMeta = document.getElementById('viewer-meta');
-                if (viewerMeta) {
-                    viewerMeta.innerHTML = `
-                        <span><i class="fas fa-user"></i> ${fileData.owner || 'Unknown'}</span>
-                        <span><i class="fas fa-calendar"></i> ${fileData.created_at ? new Date(fileData.created_at).toLocaleDateString() : 'Unknown'}</span>
-                        <span><i class="fas fa-tag"></i> ${fileData.type_display || fileData.type || 'Document'}</span>
-                    `;
-                    viewerMeta.style.display = 'flex';
-                }
+                window.viewFileContent(fileData.id);
             })
             .catch(error => {
                 console.error('[ArtifactsLoader] Error loading file content:', error);

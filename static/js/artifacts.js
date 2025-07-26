@@ -647,23 +647,15 @@ document.addEventListener('DOMContentLoaded', function() {
         codebaseIframe.src = editorUrl;
     }
     
-    // Helper function to get current project ID from URL or path
+    // Helper function to get current project ID from URL path only
     function getCurrentProjectId() {
-        // Try to get project ID from URL first
-        const urlParams = new URLSearchParams(window.location.search);
-        const urlProjectId = urlParams.get('project_id');
-        
-        if (urlProjectId) {
-            return urlProjectId;
+        // Use the same logic as extractProjectIdFromPath in chat.js
+        const pathParts = window.location.pathname.split('/').filter(part => part);
+        if (pathParts.length >= 3 && pathParts[0] === 'chat' && pathParts[1] === 'project') {
+            return pathParts[2];
         }
         
-        // Then try from path (format: /chat/project/{uuid}/)
-        const pathMatch = window.location.pathname.match(/\/chat\/project\/([a-f0-9-]+)\//);
-        if (pathMatch && pathMatch[1]) {
-            return pathMatch[1];
-        }
-        
-        return null;
+        throw new Error('No project ID found in path. Expected format: /chat/project/{id}/');
     }
 
     // Make switchTab function available globally
