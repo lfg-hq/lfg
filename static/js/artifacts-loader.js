@@ -5750,8 +5750,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     // Set title with inline edit capability
                     viewerTitle.innerHTML = `
-                        <span id="viewer-title-text">${data.name || fileName}</span>
-                        <button id="viewer-title-edit" style="background: none; border: none; color: #9ca3af; cursor: pointer; margin-left: 8px; padding: 4px; opacity: 0.7;" title="Edit name" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+                        <span id="viewer-title-text" title="${data.name || fileName}">${data.name || fileName}</span>
+                        <button id="viewer-title-edit" title="Edit name">
                             <i class="fas fa-pencil" style="font-size: 12px;"></i>
                         </button>
                     `;
@@ -5883,8 +5883,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         // Edit button with full text
                         const editButton = document.createElement('button');
                         editButton.id = 'viewer-edit';
-                        editButton.style.cssText = buttonStyle + 'padding: 8px 12px; gap: 6px;';
-                        editButton.innerHTML = '<i class="fas fa-edit"></i> Edit';
+                        editButton.style.cssText = buttonStyle + 'padding: 6px; gap: 6px;';
+                        editButton.innerHTML = '<i class="fas fa-edit"></i>';
                         editButton.title = 'Edit full text';
                         editButton.onmouseover = function() { this.style.color = '#e2e8f0'; };
                         editButton.onmouseout = function() { this.style.color = '#9ca3af'; };
@@ -5903,20 +5903,6 @@ document.addEventListener('DOMContentLoaded', function() {
                                 copyToClipboard(window.currentFileData.content);
                                 showToast('Content copied to clipboard!', 'success');
                             }
-                        });
-                        
-                        // Versions button
-                        const versionButton = document.createElement('button');
-                        versionButton.id = 'viewer-versions';
-                        versionButton.style.cssText = buttonStyle;
-                        versionButton.innerHTML = '<i class="fas fa-history"></i>';
-                        versionButton.title = 'Version history';
-                        versionButton.onmouseover = function() { this.style.color = '#e2e8f0'; };
-                        versionButton.onmouseout = function() { this.style.color = '#9ca3af'; };
-                        versionButton.addEventListener('click', () => {
-                            const currentFileId = window.currentFileData ? window.currentFileData.fileId : fileId;
-                            console.log('[VersionButton] Clicked for fileId:', currentFileId);
-                            showVersionHistory(currentFileId);
                         });
                         
                         // Options dropdown button
@@ -5996,6 +5982,33 @@ document.addEventListener('DOMContentLoaded', function() {
                             }
                         });
                         
+                        // Version history option
+                        const versionOption = document.createElement('button');
+                        versionOption.style.cssText = `
+                            display: flex;
+                            align-items: center;
+                            gap: 8px;
+                            width: 100%;
+                            padding: 8px 12px;
+                            background: transparent;
+                            border: none;
+                            color: #e2e8f0;
+                            cursor: pointer;
+                            text-align: left;
+                            font-size: 14px;
+                            transition: background 0.2s;
+                        `;
+                        versionOption.innerHTML = '<i class="fas fa-history"></i> Version History';
+                        versionOption.onmouseover = function() { this.style.background = '#2a2a2a'; };
+                        versionOption.onmouseout = function() { this.style.background = 'transparent'; };
+                        versionOption.addEventListener('click', () => {
+                            dropdownMenu.style.display = 'none';
+                            const currentFileId = window.currentFileData ? window.currentFileData.fileId : fileId;
+                            console.log('[VersionButton] Clicked for fileId:', currentFileId);
+                            showVersionHistory(currentFileId);
+                        });
+                        
+                        dropdownMenu.appendChild(versionOption);
                         dropdownMenu.appendChild(downloadOption);
                         dropdownMenu.appendChild(deleteOption);
                         
@@ -6020,7 +6033,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         // Append buttons to actions container
                         viewerActions.appendChild(editButton);
                         viewerActions.appendChild(copyButton);
-                        viewerActions.appendChild(versionButton);
                         viewerActions.appendChild(optionsWrapper);
                     }
                     
@@ -7637,6 +7649,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Navigate back to file list
                     fileBrowserViewer.style.display = 'none';
                     fileBrowserMain.style.display = 'flex';
+                    
+                    // Refresh the file list
+                    fetchFiles(currentPage);
                 });
             }
             
