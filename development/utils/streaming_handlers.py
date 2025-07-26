@@ -108,7 +108,8 @@ class StreamingTagHandler:
                 "is_complete": True,
                 "file_name": self.current_file_name,
                 "file_type": self.current_file_type,
-                "notification_marker": "__NOTIFICATION__"
+                "notification_marker": "__NOTIFICATION__",
+                # Note: file_id will be added after save completes
             }
             
             # IMPORTANT: Also trigger immediate save of the file

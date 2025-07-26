@@ -233,11 +233,17 @@ async def execute_tool_call(
                 notification_data["is_complete"] = tool_result.get("is_complete", False)
                 if "prd_name" in tool_result:
                     notification_data["prd_name"] = tool_result.get("prd_name")
-                logger.info(f"PRD_STREAM in notification handler: chunk_length={len(notification_data['content_chunk'])}, is_complete={notification_data['is_complete']}, prd_name={notification_data.get('prd_name', 'Not specified')}")
+                if "file_id" in tool_result:
+                    notification_data["file_id"] = tool_result.get("file_id")
+                    logger.info(f"PRD_STREAM: Including file_id {tool_result.get('file_id')} in notification")
+                logger.info(f"PRD_STREAM in notification handler: chunk_length={len(notification_data['content_chunk'])}, is_complete={notification_data['is_complete']}, prd_name={notification_data.get('prd_name', 'Not specified')}, file_id={notification_data.get('file_id', 'None')}")
             elif raw_notification_type == "implementation_stream":
                 notification_data["content_chunk"] = tool_result.get("content_chunk", "")
                 notification_data["is_complete"] = tool_result.get("is_complete", False)
-                logger.info(f"IMPLEMENTATION_STREAM in notification handler: chunk_length={len(notification_data['content_chunk'])}, is_complete={notification_data['is_complete']}")
+                if "file_id" in tool_result:
+                    notification_data["file_id"] = tool_result.get("file_id")
+                    logger.info(f"IMPLEMENTATION_STREAM: Including file_id {tool_result.get('file_id')} in notification")
+                logger.info(f"IMPLEMENTATION_STREAM in notification handler: chunk_length={len(notification_data['content_chunk'])}, is_complete={notification_data['is_complete']}, file_id={notification_data.get('file_id', 'None')}")
             
             logger.debug(f"Notification data to be yielded: {notification_data}")
             

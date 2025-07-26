@@ -977,6 +977,7 @@ async def stream_prd_content(function_args, project_id):
                      'project_id': project_id
                  }})
         
+        file_id = None
         if full_prd_content:
             try:
                 # Save PRD to database with name
@@ -997,6 +998,21 @@ async def stream_prd_content(function_args, project_id):
                     ))()
                 
                 logger.info(f"PRD '{prd_name}' {'created' if created else 'updated'} successfully in database")
+                
+                # Save to ProjectFile and get the file_id
+                try:
+                    file_obj, file_created = await sync_to_async(
+                        lambda: ProjectFile.objects.update_or_create(
+                            project=project,
+                            name=prd_name,
+                            file_type='prd',
+                            defaults={'content': full_prd_content}
+                        )
+                    )()
+                    file_id = file_obj.id
+                    logger.info(f"PRD saved to ProjectFile with ID: {file_id}")
+                except Exception as e:
+                    logger.error(f"Error saving PRD to ProjectFile: {str(e)}")
                 
                 # Clear the cache
                 cache.delete(cache_key)
@@ -1025,7 +1041,14 @@ async def stream_prd_content(function_args, project_id):
         "message_to_agent": f"PRD '{prd_name}' content chunk streamed" if not is_complete else f"PRD '{prd_name}' streaming complete and saved"
     }
     
-    logger.info(f"Returning stream result: {result}")
+    # Add file_id to result if streaming is complete and we have a file_id
+    if is_complete and file_id:
+        result["file_id"] = file_id
+        logger.info(f"[PRD_STREAM] Including file_id {file_id} in completion notification")
+    elif is_complete:
+        logger.warning(f"[PRD_STREAM] Completion notification but no file_id available")
+    
+    logger.info(f"[PRD_STREAM] Returning stream result: is_complete={is_complete}, has_file_id={'file_id' in result}, keys={list(result.keys())}")
     return result
 
 async def create_implementation(function_args, project_id):
@@ -1291,6 +1314,7 @@ async def stream_implementation_content(function_args, project_id):
                      'project_id': project_id
                  }})
         
+        file_id = None
         if full_implementation_content:
             try:
                 # Save Implementation to database
@@ -1307,6 +1331,21 @@ async def stream_implementation_content(function_args, project_id):
                     ))()
                 
                 logger.info(f"Implementation {'created' if created else 'updated'} successfully in database")
+                
+                # Save to ProjectFile and get the file_id
+                try:
+                    file_obj, file_created = await sync_to_async(
+                        lambda: ProjectFile.objects.update_or_create(
+                            project=project,
+                            name='Implementation Plan',
+                            file_type='implementation',
+                            defaults={'content': full_implementation_content}
+                        )
+                    )()
+                    file_id = file_obj.id
+                    logger.info(f"Implementation saved to ProjectFile with ID: {file_id}")
+                except Exception as e:
+                    logger.error(f"Error saving Implementation to ProjectFile: {str(e)}")
                 
                 # Clear the cache
                 cache.delete(cache_key)
@@ -1330,7 +1369,14 @@ async def stream_implementation_content(function_args, project_id):
         "message_to_agent": "Implementation content chunk streamed" if not is_complete else "Implementation streaming complete and saved"
     }
     
-    logger.info(f"Returning stream result: {result}")
+    # Add file_id to result if streaming is complete and we have a file_id
+    if is_complete and file_id:
+        result["file_id"] = file_id
+        logger.info(f"[IMPLEMENTATION_STREAM] Including file_id {file_id} in completion notification")
+    elif is_complete:
+        logger.warning(f"[IMPLEMENTATION_STREAM] Completion notification but no file_id available")
+    
+    logger.info(f"[IMPLEMENTATION_STREAM] Returning stream result: is_complete={is_complete}, has_file_id={'file_id' in result}, keys={list(result.keys())}")
     return result
 
 async def save_design_schema(function_args, project_id):
@@ -2471,6 +2517,7 @@ async def save_file_from_stream(file_content, project_id, file_type, file_name):
             "file_name": file_name,
             "file_type": file_type,
             "file_id": file_obj.id,
+            "project_id": str(project.project_id) if project else None,  # Include project_id
             "notification_marker": "__NOTIFICATION__"  # Add this marker
         }
         
