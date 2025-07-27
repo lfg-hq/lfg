@@ -243,6 +243,15 @@ async def app_functions(function_name, function_args, project_id, conversation_i
             query = function_args.get('query')
             logger.debug(f"Search Query: {query}")
             return await web_search(query, conversation_id)
+        
+        case "get_file_list":
+            file_type = function_args.get('file_type', 'all')
+            limit = function_args.get('limit', 10)
+            return await get_file_list(project_id, file_type, limit)
+        
+        case "get_file_content":
+            file_ids = function_args.get('file_ids') or function_args.get('file_id')  # Support both for backwards compatibility
+            return await get_file_content(project_id, file_ids)
 
         # case "implement_ticket_async":
         #     ticket_id = function_args.get('ticket_id')
@@ -2855,5 +2864,167 @@ async def web_search(query, conversation_id=None):
         return {
             "is_notification": False,
             "message_to_agent": f"Error performing web search: {str(e)}"
+        }
+
+async def get_file_list(project_id, file_type="all", limit=10):
+    """
+    Get the list of files in the project
+    
+    Args:
+        project_id: The project ID
+        file_type: Type of files to retrieve ("prd", "implementation", "design", "all")
+        limit: Number of files to return (default: 10)
+        
+    Returns:
+        Dict with list of files or error message
+    """
+    logger.info(f"Get file list function called for project {project_id}, file_type: {file_type}")
+    
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+    
+    project = await get_project(project_id)
+    if not project:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Project with ID {project_id} does not exist"
+        }
+    
+    try:
+        # Build query based on file_type
+        query_kwargs = {"project": project}
+        if file_type != "all":
+            query_kwargs["file_type"] = file_type
+        
+        # Get files from ProjectFile model
+        files = await sync_to_async(
+            lambda: list(ProjectFile.objects.filter(**query_kwargs).order_by("-updated_at")[:limit])
+        )()
+        
+        if not files:
+            return {
+                "is_notification": True,
+                "notification_type": "file_list",
+                "message_to_agent": f"No {file_type} files found for this project"
+            }
+        
+        # Format file list
+        file_list = []
+        for file in files:
+            file_list.append({
+                "id": file.id,
+                "name": file.name,
+                "file_type": file.file_type,
+                "created_at": file.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                "updated_at": file.updated_at.strftime("%Y-%m-%d %H:%M:%S")
+            })
+        
+        return {
+            "is_notification": True,
+            "notification_type": "file_list",
+            "message_to_agent": f"Found {len(file_list)} {file_type} files",
+            "files": file_list
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting file list: {str(e)}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error getting file list: {str(e)}"
+        }
+
+async def get_file_content(project_id, file_ids):
+    """
+    Get the content of multiple files in the project
+    
+    Args:
+        project_id: The project ID
+        file_ids: A single file ID or list of file IDs to retrieve (max 5)
+        
+    Returns:
+        Dict with file contents or error message
+    """
+    logger.info(f"Get file content function called for project {project_id}, file_ids: {file_ids}")
+    
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+    
+    # Handle both single file_id and list of file_ids
+    if isinstance(file_ids, (int, str)):
+        file_ids = [file_ids]
+    elif not isinstance(file_ids, list):
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: file_ids must be an integer, string, or list"
+        }
+    
+    if not file_ids:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: at least one file_id is required"
+        }
+    
+    # Limit to 5 files
+    if len(file_ids) > 5:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: Maximum 5 files can be retrieved at once"
+        }
+    
+    project = await get_project(project_id)
+    if not project:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Project with ID {project_id} does not exist"
+        }
+    
+    try:
+        # Get multiple files by IDs and ensure they belong to the project
+        files = await sync_to_async(
+            lambda: list(ProjectFile.objects.filter(id__in=file_ids, project=project))
+        )()
+        
+        if not files:
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Error: No files found with the provided IDs in project {project_id}"
+            }
+        
+        # Check which file IDs were not found
+        found_ids = {file.id for file in files}
+        missing_ids = set(file_ids) - found_ids
+        
+        # Format file contents
+        file_contents = []
+        for file_obj in files:
+            file_contents.append({
+                "id": file_obj.id,
+                "name": file_obj.name,
+                "file_type": file_obj.file_type,
+                "content": file_obj.content,
+                "created_at": file_obj.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                "updated_at": file_obj.updated_at.strftime("%Y-%m-%d %H:%M:%S")
+            })
+        
+        response = {
+            "is_notification": True,
+            "notification_type": "file_content",
+            "message_to_agent": f"Retrieved {len(files)} file(s)",
+            "files": file_contents
+        }
+        
+        if missing_ids:
+            response["missing_file_ids"] = list(missing_ids)
+            response["message_to_agent"] += f". Warning: File IDs not found: {missing_ids}"
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error getting file content: {str(e)}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error getting file content: {str(e)}"
         }
         

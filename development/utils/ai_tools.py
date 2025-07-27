@@ -577,6 +577,42 @@ capture_name = {
     }
 }
 
+get_file_list = {
+    "type": "function",
+    "function": {
+        "name": "get_file_list",
+        "description": "Call this function to get the list of files in the project",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "file_type": {"type": "string", "enum": ["prd", "implementation", "design", "all"]},
+                "limit": {"type": "integer", "description": "The number of files to return", "default": 10}
+            },
+            "required": ["file_type", "limit"]
+        }
+    }
+}
+
+get_file_content = {
+    "type": "function",
+    "function": {
+        "name": "get_file_content",
+        "description": "Call this function to get the content of one or more files in the project (max 5 files)",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "file_ids": {
+                    "oneOf": [
+                        {"type": "integer", "description": "A single file ID"},
+                        {"type": "array", "items": {"type": "integer"}, "maxItems": 5, "description": "List of file IDs (max 5)"}
+                    ],
+                    "description": "The ID(s) of the file(s) to get the content of"
+                }
+            },
+            "required": ["file_ids"]
+        }
+    }
+}
 
 tools_code = [get_prd, start_server, \
               get_github_access_token, \
@@ -585,7 +621,7 @@ tools_code = [get_prd, start_server, \
               create_implementation, get_implementation, update_implementation, stream_implementation_content, \
               copy_boilerplate_code, capture_name]
 
-tools_product = [get_prd, get_implementation, create_tickets, get_pending_tickets]
+tools_product = [get_file_list, get_file_content, create_tickets, get_pending_tickets]
 
 tools_turbo = [get_prd, create_tickets, get_pending_tickets, update_ticket, execute_command]
 
