@@ -1603,33 +1603,13 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log(`[ArtifactsLoader] Loading saved document with ID: ${fileId}`);
             console.log(`[ArtifactsLoader] Making API call to: /projects/${projectId}/api/files/${fileId}/content/`);
             
-            // Load the saved document directly
-            fetch(`/projects/${projectId}/api/files/${fileId}/content/`, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': getCsrfToken(),
-                }
-            })
-            .then(response => {
-                console.log('[ArtifactsLoader] API Response status:', response.status);
-                console.log('[ArtifactsLoader] API Response statusText:', response.statusText);
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                return response.json();
-            })
-            .then(fileData => {
-                console.log('[ArtifactsLoader] Loaded saved document:', fileData);
-                window.viewFileContent(fileData.id);
-            })
-            .catch(error => {
-                console.error('[ArtifactsLoader] Error loading file content:', error);
-                const viewerTitleElement = document.getElementById('viewer-title');
-                if (viewerTitleElement) {
-                    viewerTitleElement.textContent = documentName;
-                }
-            });
+            // Ensure the viewFileContent function is available globally
+            if (window.viewFileContent) {
+                window.viewFileContent(fileId, documentName);
+            } else {
+                console.error('[ArtifactsLoader] viewFileContent function not available globally');
+            }
+            
         },
         
         
@@ -5859,12 +5839,19 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     // Render markdown content
                     const content = data.content || 'No content available';
+
+                    console.log('[ArtifactsLoader] Getting Viewer Actions');
                     
                     // Create compact action buttons
                     const viewerActions = document.getElementById('viewer-actions');
+
+                    console.log('[ArtifactsLoader] Getting Viewer Actions', viewerActions);
+
                     if (viewerActions) {
                         // Clear existing buttons
                         viewerActions.innerHTML = '';
+
+                        console.log('[ArtifactsLoader] Viewer Actions', viewerActions);
                         
                         // Common button style
                         const buttonStyle = `
@@ -5880,6 +5867,8 @@ document.addEventListener('DOMContentLoaded', function() {
                             justify-content: center;
                         `;
                         
+                        console.log('[ArtifactsLoader] Button Style', buttonStyle);
+
                         // Edit button with full text
                         const editButton = document.createElement('button');
                         editButton.id = 'viewer-edit';
@@ -6034,6 +6023,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         viewerActions.appendChild(editButton);
                         viewerActions.appendChild(copyButton);
                         viewerActions.appendChild(optionsWrapper);
+                        
+                        // Ensure viewer actions are always visible
+                        viewerActions.style.display = 'flex';
+                        console.log('[ArtifactsLoader] Viewer actions display set to flex');
                     }
                     
                     // For PRD and implementation files, render as markdown
@@ -7504,11 +7497,26 @@ document.addEventListener('DOMContentLoaded', function() {
                 // For now, we'll use the existing delete endpoint
                 // In a real implementation, you'd create a proper delete endpoint
                 const fileItem = document.querySelector(`[data-file-id="${fileId}"]`);
-                const fileType = fileItem.classList.contains('file-type-prd') ? 'prd' : 
+                
+                let fileType = 'other';
+                let fileName = '';
+                
+                if (fileItem) {
+                    // We're in the file list view
+                    fileType = fileItem.classList.contains('file-type-prd') ? 'prd' : 
                                fileItem.classList.contains('file-type-implementation') ? 'implementation' :
                                fileItem.classList.contains('file-type-design') ? 'design' :
                                fileItem.classList.contains('file-type-test') ? 'test' : 'other';
-                const fileName = fileItem.querySelector('.file-name').textContent;
+                    fileName = fileItem.querySelector('.file-name').textContent;
+                } else if (window.currentFileData) {
+                    // We're in the viewer mode, use currentFileData
+                    fileType = window.currentFileData.type || 'other';
+                    fileName = window.currentFileData.fileName || '';
+                } else {
+                    console.error('[ArtifactsLoader] Cannot determine file information for deletion');
+                    showToast('Error: Cannot determine file information', 'error');
+                    return;
+                }
                 
                 fetch(`/projects/${projectId}/api/files/?type=${fileType}&name=${encodeURIComponent(fileName)}`, {
                     method: 'DELETE',
