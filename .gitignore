@@ -153,10 +153,12 @@ docker-compose.override.yml
 .kamal/
 
 config/deploy.yml
+config/deploy.dev.yml
 
 storage/
 
 prod_deploy.sh
+dev_deploy.sh 
 
 worktree/
 worktrees/
