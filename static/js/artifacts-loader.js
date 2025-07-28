@@ -756,7 +756,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     const downloadBtn = document.getElementById('prd-download-btn');
                     if (downloadBtn) {
                         downloadBtn.addEventListener('click', function() {
-                            ArtifactsLoader.downloadPRDAsPDF(projectId, data.title || 'Product Requirement Document', prdContent);
+                            ArtifactsLoader.downloadFileAsPDF(projectId, data.title || 'Product Requirement Document', prdContent);
                         });
                     }
                     
@@ -1124,7 +1124,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     const downloadBtn = document.getElementById('prd-download-btn');
                     if (downloadBtn) {
                         downloadBtn.addEventListener('click', () => {
-                            this.downloadPRDAsPDF(projectId, 'Product Requirement Document', window.prdStreamingState.fullContent);
+                            this.downloadFileAsPDF(projectId, 'Product Requirement Document', window.prdStreamingState.fullContent);
                         });
                     }
                     
@@ -4912,13 +4912,13 @@ document.addEventListener('DOMContentLoaded', function() {
         },
         
         /**
-         * Download PRD content as PDF
+         * Download file content as PDF
          * @param {number} projectId - The ID of the current project
-         * @param {string} title - The title of the PRD document
-         * @param {string} content - The markdown content of the PRD
+         * @param {string} title - The title of the document
+         * @param {string} content - The markdown content
          */
-        downloadPRDAsPDF: function(projectId, title, content) {
-            console.log('[ArtifactsLoader] downloadPRDAsPDF called');
+        downloadFileAsPDF: function(projectId, title, content) {
+            console.log('[ArtifactsLoader] downloadFileAsPDF called');
             
             // Check if jsPDF is available
             if (typeof window.jspdf === 'undefined' || typeof window.jspdf.jsPDF === 'undefined') {
@@ -5155,6 +5155,130 @@ document.addEventListener('DOMContentLoaded', function() {
                                     currentY += 4;
                                     break;
                                     
+                                case 'table':
+                                    currentY += 8; // Space before table
+                                    
+                                    // Extract table data first
+                                    const rows = node.querySelectorAll('tr');
+                                    const tableRows = [];
+                                    let maxColumns = 0;
+                                    
+                                    // Process all rows to get data and find max columns
+                                    rows.forEach((row) => {
+                                        const cells = row.querySelectorAll('td, th');
+                                        const rowData = [];
+                                        cells.forEach(cell => {
+                                            rowData.push(cell.textContent.trim());
+                                        });
+                                        if (rowData.length > maxColumns) {
+                                            maxColumns = rowData.length;
+                                        }
+                                        tableRows.push({
+                                            data: rowData,
+                                            isHeader: row.querySelector('th') !== null || row.parentElement.tagName === 'THEAD'
+                                        });
+                                    });
+                                    
+                                    if (tableRows.length > 0 && maxColumns > 0) {
+                                        // Calculate column widths
+                                        const totalTableWidth = pageWidth;
+                                        const columnWidth = totalTableWidth / maxColumns;
+                                        const cellPadding = 3;
+                                        
+                                        // Draw the table
+                                        doc.setFontSize(9);
+                                        
+                                        // First, calculate all row heights
+                                        const rowHeights = [];
+                                        tableRows.forEach((row) => {
+                                            let maxHeight = 10; // minimum row height
+                                            row.data.forEach((cellText) => {
+                                                const cellTextLines = doc.splitTextToSize(cellText, columnWidth - (cellPadding * 2));
+                                                const cellHeight = cellTextLines.length * 4 + 6;
+                                                if (cellHeight > maxHeight) {
+                                                    maxHeight = cellHeight;
+                                                }
+                                            });
+                                            rowHeights.push(maxHeight);
+                                        });
+                                        
+                                        // Calculate total table height
+                                        const totalTableHeight = rowHeights.reduce((sum, height) => sum + height, 0);
+                                        
+                                        // Check if entire table fits on current page
+                                        if (checkNewPage(totalTableHeight + 10)) {
+                                            currentY += 10; // Add some space at top of new page
+                                        }
+                                        
+                                        const tableStartY = currentY;
+                                        
+                                        // Draw table
+                                        tableRows.forEach((row, rowIndex) => {
+                                            const rowHeight = rowHeights[rowIndex];
+                                            const rowY = currentY;
+                                            
+                                            // Draw background for entire row first
+                                            if (row.isHeader) {
+                                                doc.setFillColor(66, 66, 66);
+                                                doc.rect(leftMargin, rowY, totalTableWidth, rowHeight, 'F');
+                                            } else if (rowIndex % 2 === 1) {
+                                                doc.setFillColor(245, 245, 245);
+                                                doc.rect(leftMargin, rowY, totalTableWidth, rowHeight, 'F');
+                                            }
+                                            
+                                            // Draw cells
+                                            row.data.forEach((cellText, colIndex) => {
+                                                const cellX = leftMargin + (colIndex * columnWidth);
+                                                
+                                                // Set font style
+                                                if (row.isHeader) {
+                                                    doc.setFont('helvetica', 'bold');
+                                                    doc.setTextColor(255, 255, 255);
+                                                } else {
+                                                    doc.setFont('helvetica', 'normal');
+                                                    doc.setTextColor(0, 0, 0);
+                                                }
+                                                
+                                                // Split text to fit in cell
+                                                const cellTextLines = doc.splitTextToSize(cellText, columnWidth - (cellPadding * 2));
+                                                
+                                                // Draw text vertically centered in cell
+                                                const textStartY = rowY + ((rowHeight - (cellTextLines.length * 4)) / 2) + 4;
+                                                cellTextLines.forEach((line, lineIndex) => {
+                                                    doc.text(line, cellX + cellPadding, textStartY + (lineIndex * 4));
+                                                });
+                                                
+                                                // Draw vertical cell border
+                                                if (colIndex < row.data.length - 1) {
+                                                    doc.setDrawColor(200, 200, 200);
+                                                    doc.setLineWidth(0.1);
+                                                    doc.line(cellX + columnWidth, rowY, cellX + columnWidth, rowY + rowHeight);
+                                                }
+                                            });
+                                            
+                                            // Draw horizontal border after row
+                                            doc.setDrawColor(200, 200, 200);
+                                            doc.setLineWidth(0.1);
+                                            doc.line(leftMargin, rowY + rowHeight, leftMargin + totalTableWidth, rowY + rowHeight);
+                                            
+                                            // Reset text color
+                                            doc.setTextColor(0, 0, 0);
+                                            
+                                            // Move to next row
+                                            currentY += rowHeight;
+                                        });
+                                        
+                                        // Draw outer table border
+                                        doc.setDrawColor(0, 0, 0);
+                                        doc.setLineWidth(0.3);
+                                        doc.rect(leftMargin, tableStartY, totalTableWidth, totalTableHeight, 'S');
+                                        
+                                        doc.setFontSize(11); // Reset font size
+                                    }
+                                    
+                                    currentY += 8; // Space after table
+                                    break;
+                                    
                                 default:
                                     // Process children for other elements
                                     node.childNodes.forEach(child => processNode(child));
@@ -5173,7 +5297,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     document.head.removeChild(style);
                     
                     // Save the PDF
-                    const fileName = `${title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_prd.pdf`;
+                    const fileName = `${title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`;
                     doc.save(fileName);
                     
                 } catch (error) {
@@ -5248,6 +5372,87 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 document.body.removeChild(textArea);
             }
+        },
+        
+        /**
+         * Download content as Word document
+         * @param {string} fileName - The name of the file (without extension)
+         * @param {string} content - The markdown content
+         */
+        downloadAsDoc: function(fileName, content) {
+            if (!content) {
+                console.error('No content to download');
+                return;
+            }
+            
+            // Convert markdown to HTML for better formatting in Word
+            let htmlContent = content;
+            if (typeof marked !== 'undefined') {
+                htmlContent = marked.parse(content);
+            }
+            
+            // Create a blob with HTML content that Word can understand
+            const html = `
+                <html xmlns:o='urn:schemas-microsoft-com:office:office' 
+                      xmlns:w='urn:schemas-microsoft-com:office:word' 
+                      xmlns='http://www.w3.org/TR/REC-html40'>
+                <head>
+                    <meta charset='utf-8'>
+                    <title>${fileName}</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; line-height: 1.6; }
+                        h1 { font-size: 24pt; font-weight: bold; }
+                        h2 { font-size: 18pt; font-weight: bold; }
+                        h3 { font-size: 14pt; font-weight: bold; }
+                        p { margin: 10pt 0; }
+                        pre { background: #f4f4f4; padding: 10pt; }
+                        code { background: #f4f4f4; padding: 2pt 4pt; }
+                    </style>
+                </head>
+                <body>
+                    ${htmlContent}
+                </body>
+                </html>
+            `;
+            
+            const blob = new Blob(['\ufeff', html], { 
+                type: 'application/msword' 
+            });
+            
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${fileName}.doc`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            window.showToast('Document downloaded successfully', 'success');
+        },
+        
+        /**
+         * Download content as Markdown file
+         * @param {string} fileName - The name of the file (without extension)
+         * @param {string} content - The markdown content
+         */
+        downloadAsMarkdown: function(fileName, content) {
+            if (!content) {
+                console.error('No content to download');
+                return;
+            }
+            
+            const blob = new Blob([content], { type: 'text/markdown' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${fileName}.md`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            window.showToast('Markdown file downloaded successfully', 'success');
         },
         
         /**
@@ -5889,8 +6094,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         copyButton.onmouseout = function() { this.style.color = '#9ca3af'; };
                         copyButton.addEventListener('click', () => {
                             if (window.currentFileData && window.currentFileData.content) {
-                                copyToClipboard(window.currentFileData.content);
-                                showToast('Content copied to clipboard!', 'success');
+                                ArtifactsLoader.copyToClipboard(window.currentFileData.content, 'Markdown content');
                             }
                         });
                         
@@ -5920,9 +6124,14 @@ document.addEventListener('DOMContentLoaded', function() {
                             margin-top: 4px;
                         `;
                         
-                        // Download option
-                        const downloadOption = document.createElement('button');
+                        // Download option with submenu
+                        const downloadOption = document.createElement('div');
                         downloadOption.style.cssText = `
+                            position: relative;
+                        `;
+                        
+                        const downloadButton = document.createElement('button');
+                        downloadButton.style.cssText = `
                             display: flex;
                             align-items: center;
                             gap: 8px;
@@ -5936,12 +6145,123 @@ document.addEventListener('DOMContentLoaded', function() {
                             font-size: 14px;
                             transition: background 0.2s;
                         `;
-                        downloadOption.innerHTML = '<i class="fas fa-download"></i> Download';
-                        downloadOption.onmouseover = function() { this.style.background = '#2a2a2a'; };
-                        downloadOption.onmouseout = function() { this.style.background = 'transparent'; };
-                        downloadOption.addEventListener('click', () => {
+                        downloadButton.innerHTML = '<span><i class="fas fa-download"></i> Download</span>';
+                        downloadButton.onmouseover = function() { this.style.background = '#2a2a2a'; };
+                        downloadButton.onmouseout = function() { this.style.background = 'transparent'; };
+                        
+                        // Create download format submenu
+                        const downloadSubmenu = document.createElement('div');
+                        downloadSubmenu.style.cssText = `
+                            position: absolute;
+                            right: 100%;
+                            top: 0;
+                            background: #1a1a1a;
+                            border: 1px solid #333;
+                            border-radius: 6px;
+                            min-width: 120px;
+                            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                            display: none;
+                            margin-right: 4px;
+                        `;
+                        
+                        // PDF option
+                        const pdfOption = document.createElement('button');
+                        pdfOption.style.cssText = `
+                            display: flex;
+                            align-items: center;
+                            gap: 8px;
+                            width: 100%;
+                            padding: 8px 12px;
+                            background: transparent;
+                            border: none;
+                            color: #e2e8f0;
+                            cursor: pointer;
+                            text-align: left;
+                            font-size: 14px;
+                            transition: background 0.2s;
+                        `;
+                        pdfOption.innerHTML = '<i class="fas fa-file-pdf"></i> PDF';
+                        pdfOption.onmouseover = function() { this.style.background = '#2a2a2a'; };
+                        pdfOption.onmouseout = function() { this.style.background = 'transparent'; };
+                        pdfOption.addEventListener('click', () => {
                             dropdownMenu.style.display = 'none';
-                            showToast('Download feature coming soon', 'info');
+                            if (window.currentFileData) {
+                                const title = window.currentFileData.fileName || 'Document';
+                                const content = window.currentFileData.content || '';
+                                ArtifactsLoader.downloadFileAsPDF(projectId, title, content);
+                            }
+                        });
+                        
+                        // DOC option
+                        const docOption = document.createElement('button');
+                        docOption.style.cssText = `
+                            display: flex;
+                            align-items: center;
+                            gap: 8px;
+                            width: 100%;
+                            padding: 8px 12px;
+                            background: transparent;
+                            border: none;
+                            color: #e2e8f0;
+                            cursor: pointer;
+                            text-align: left;
+                            font-size: 14px;
+                            transition: background 0.2s;
+                        `;
+                        docOption.innerHTML = '<i class="fas fa-file-word"></i> DOC';
+                        docOption.onmouseover = function() { this.style.background = '#2a2a2a'; };
+                        docOption.onmouseout = function() { this.style.background = 'transparent'; };
+                        docOption.addEventListener('click', () => {
+                            dropdownMenu.style.display = 'none';
+                            if (window.currentFileData) {
+                                const fileName = window.currentFileData.fileName || 'document';
+                                const content = window.currentFileData.content || '';
+                                ArtifactsLoader.downloadAsDoc(fileName, content);
+                            }
+                        });
+                        
+                        // Markdown option
+                        const mdOption = document.createElement('button');
+                        mdOption.style.cssText = `
+                            display: flex;
+                            align-items: center;
+                            gap: 8px;
+                            width: 100%;
+                            padding: 8px 12px;
+                            background: transparent;
+                            border: none;
+                            color: #e2e8f0;
+                            cursor: pointer;
+                            text-align: left;
+                            font-size: 14px;
+                            transition: background 0.2s;
+                        `;
+                        mdOption.innerHTML = '<i class="fas fa-file-code"></i> Markdown';
+                        mdOption.onmouseover = function() { this.style.background = '#2a2a2a'; };
+                        mdOption.onmouseout = function() { this.style.background = 'transparent'; };
+                        mdOption.addEventListener('click', () => {
+                            dropdownMenu.style.display = 'none';
+                            if (window.currentFileData) {
+                                const fileName = window.currentFileData.fileName || 'document';
+                                const content = window.currentFileData.content || '';
+                                ArtifactsLoader.downloadAsMarkdown(fileName, content);
+                            }
+                        });
+                        
+                        downloadSubmenu.appendChild(pdfOption);
+                        downloadSubmenu.appendChild(docOption);
+                        downloadSubmenu.appendChild(mdOption);
+                        
+                        downloadOption.appendChild(downloadButton);
+                        downloadOption.appendChild(downloadSubmenu);
+                        
+                        // Show submenu on hover - use the parent div for better hover handling
+                        downloadOption.addEventListener('mouseenter', () => {
+                            downloadSubmenu.style.display = 'block';
+                        });
+                        
+                        downloadOption.addEventListener('mouseleave', () => {
+                            downloadSubmenu.style.display = 'none';
                         });
                         
                         // Delete option
