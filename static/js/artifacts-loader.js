@@ -407,14 +407,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     featuresHtml += '</div>';
                     featuresTab.innerHTML = featuresHtml;
-                    
-                    // Switch to the features tab to show the newly loaded content
-                    if (window.switchTab) {
-                        window.switchTab('features');
-                    } else if (window.ArtifactsPanel && typeof window.ArtifactsPanel.toggle === 'function') {
-                        // Make the artifacts panel visible if it's not
-                        window.ArtifactsPanel.toggle();
-                    }
                 })
                 .catch(error => {
                     console.error('Error fetching features:', error);
@@ -5561,6 +5553,8 @@ document.addEventListener('DOMContentLoaded', function() {
                             const fileItem = document.createElement('div');
                             fileItem.className = `file-list-item ${typeClass}`;
                             fileItem.dataset.fileId = file.id;
+                            fileItem.dataset.fileType = file.type;
+                            fileItem.dataset.fileName = file.name;
                             
                             // Create icon
                             const fileIcon = document.createElement('div');
@@ -5592,12 +5586,140 @@ document.addEventListener('DOMContentLoaded', function() {
                             fileDate.className = 'file-date-cell';
                             fileDate.textContent = formatRelativeTime(file.updated_at);
                             
+                            // Create context menu button (three dots)
+                            const contextMenuBtn = document.createElement('button');
+                            contextMenuBtn.className = 'file-context-menu-btn';
+                            contextMenuBtn.innerHTML = '<i class="fas fa-ellipsis-v"></i>';
+                            contextMenuBtn.style.cssText = `
+                                background: none;
+                                border: none;
+                                color: #9ca3af;
+                                cursor: pointer;
+                                padding: 4px 8px;
+                                opacity: 0;
+                                transition: opacity 0.2s;
+                                position: absolute;
+                                right: 10px;
+                                top: 50%;
+                                transform: translateY(-50%);
+                            `;
+                            
+                            // Show context button on hover
+                            fileItem.addEventListener('mouseenter', () => {
+                                contextMenuBtn.style.opacity = '0.7';
+                            });
+                            fileItem.addEventListener('mouseleave', (e) => {
+                                // Check if we're moving to the context menu or its button
+                                const relatedTarget = e.relatedTarget;
+                                const contextMenu = document.querySelector('.file-context-dropdown');
+                                
+                                // Don't hide if moving to context button or menu
+                                if (relatedTarget && (
+                                    relatedTarget === contextMenuBtn ||
+                                    relatedTarget.closest('.file-context-dropdown') ||
+                                    (contextMenu && contextMenu.contains(relatedTarget))
+                                )) {
+                                    return;
+                                }
+                                
+                                contextMenuBtn.style.opacity = '0';
+                            });
+                            
+                            // Context menu click handler
+                            contextMenuBtn.addEventListener('click', (e) => {
+                                e.stopPropagation();
+                                
+                                // Remove any existing context menu
+                                const existingMenu = document.querySelector('.file-context-dropdown');
+                                if (existingMenu) {
+                                    existingMenu.remove();
+                                }
+                                
+                                // Create context menu
+                                const contextMenu = document.createElement('div');
+                                contextMenu.className = 'file-context-dropdown';
+                                
+                                // Get button position
+                                const btnRect = contextMenuBtn.getBoundingClientRect();
+                                const menuTop = btnRect.bottom + window.scrollY + 5;
+                                const menuLeft = btnRect.right + window.scrollX - 160;
+                                
+                                contextMenu.style.cssText = `
+                                    position: fixed;
+                                    top: ${btnRect.bottom + 5}px;
+                                    left: ${btnRect.right - 160}px;
+                                    background: #2a2a2a;
+                                    border: 1px solid #444;
+                                    border-radius: 6px;
+                                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+                                    z-index: 1000;
+                                    min-width: 150px;
+                                    padding: 4px;
+                                `;
+                                
+                                // Delete option
+                                const deleteOption = document.createElement('button');
+                                deleteOption.style.cssText = `
+                                    display: flex;
+                                    align-items: center;
+                                    gap: 8px;
+                                    width: 100%;
+                                    padding: 8px 12px;
+                                    background: none;
+                                    border: none;
+                                    color: #e2e8f0;
+                                    cursor: pointer;
+                                    text-align: left;
+                                    font-size: 14px;
+                                    transition: background 0.2s;
+                                    border-radius: 4px;
+                                `;
+                                deleteOption.innerHTML = '<i class="fas fa-trash"></i> Delete';
+                                deleteOption.onmouseover = function() { this.style.background = 'rgba(239, 68, 68, 0.1)'; this.style.color = '#ef4444'; };
+                                deleteOption.onmouseout = function() { this.style.background = 'transparent'; this.style.color = '#e2e8f0'; };
+                                deleteOption.addEventListener('click', () => {
+                                    contextMenu.remove();
+                                    if (confirm(`Are you sure you want to delete "${file.name}"? This action cannot be undone.`)) {
+                                        deleteFile(file.id);
+                                    }
+                                });
+                                
+                                contextMenu.appendChild(deleteOption);
+                                document.body.appendChild(contextMenu);
+                                
+                                // Keep context button visible when hovering over the menu
+                                contextMenu.addEventListener('mouseenter', () => {
+                                    contextMenuBtn.style.opacity = '0.7';
+                                });
+                                
+                                contextMenu.addEventListener('mouseleave', (e) => {
+                                    // Check if we're going back to the file item
+                                    if (!fileItem.contains(e.relatedTarget)) {
+                                        contextMenuBtn.style.opacity = '0';
+                                        contextMenu.remove();
+                                    }
+                                });
+                                
+                                // Close menu when clicking outside
+                                const closeMenu = (event) => {
+                                    if (!contextMenu.contains(event.target) && event.target !== contextMenuBtn) {
+                                        contextMenu.remove();
+                                        document.removeEventListener('click', closeMenu);
+                                    }
+                                };
+                                setTimeout(() => document.addEventListener('click', closeMenu), 0);
+                            });
+                            
+                            // Make file item container relative for absolute positioning
+                            fileItem.style.position = 'relative';
+                            
                             // Assemble the structure
                             fileItem.appendChild(fileIcon);
                             fileItem.appendChild(fileName);
                             fileItem.appendChild(fileType);
                             fileItem.appendChild(fileOwner);
                             fileItem.appendChild(fileDate);
+                            fileItem.appendChild(contextMenuBtn);
                             
                             // Add to list
                             fileBrowserList.appendChild(fileItem);
@@ -5658,7 +5780,30 @@ document.addEventListener('DOMContentLoaded', function() {
                                     // Render the content
                                     const viewerMarkdown = document.getElementById('viewer-markdown');
                                     if (viewerMarkdown) {
-                                        if (data.type === 'prd' || data.type === 'implementation' || data.type === 'design' || data.content.includes('#')) {
+                                        // Configure marked if not already configured
+                                        if (typeof marked !== 'undefined' && !window.markedConfigured) {
+                                            marked.setOptions({
+                                                gfm: true,          // Enable GitHub Flavored Markdown
+                                                breaks: true,       // Add <br> on line breaks
+                                                headerIds: true,    // Add IDs to headers
+                                                mangle: false,      // Don't mangle header IDs
+                                                tables: true,       // Enable table support
+                                                smartLists: true,   // Improve behavior of lists
+                                                xhtml: false        // Don't use XHTML compatible tags
+                                            });
+                                            window.markedConfigured = true;
+                                        }
+                                        
+                                        // Check if content appears to be markdown by looking for common markdown patterns
+                                        const isMarkdownContent = (content) => {
+                                            if (!content) return false;
+                                            // Check for headers, lists, code blocks, tables, links, or emphasis
+                                            return /^#{1,6}\s|^\*\s|^\-\s|^\d+\.\s|```|^\|.*\|$|\[.*\]\(.*\)|\*\*.*\*\*|\*.*\*/m.test(content);
+                                        };
+                                        
+                                        // Always render as markdown if it contains markdown patterns or is a known markdown type
+                                        const knownMarkdownTypes = ['prd', 'implementation', 'design', 'analysis', 'documentation', 'readme'];
+                                        if (knownMarkdownTypes.includes(data.type) || isMarkdownContent(data.content)) {
                                             // Render as markdown
                                             viewerMarkdown.innerHTML = marked.parse(data.content || '');
                                         } else {
@@ -5708,9 +5853,16 @@ document.addEventListener('DOMContentLoaded', function() {
                     'implementation': 'fas fa-code',
                     'design': 'fas fa-palette',
                     'test': 'fas fa-vial',
+                    'analysis': 'fas fa-chart-line',
+                    'documentation': 'fas fa-book',
+                    'readme': 'fas fa-info-circle',
+                    'report': 'fas fa-file-contract',
+                    'research': 'fas fa-microscope',
+                    'spec': 'fas fa-clipboard-list',
                     'other': 'fas fa-file'
                 };
-                return icons[type] || icons.other;
+                // Return specific icon if available, otherwise return generic file icon
+                return icons[type.toLowerCase()] || icons.other;
             };
             
             // Helper function to escape HTML
@@ -5905,12 +6057,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 }
                 
-                // Switch to documents tab
-                const documentsTab = document.querySelector('[data-tab="documents"]');
-                if (documentsTab && !documentsTab.classList.contains('active')) {
-                    console.log('[ArtifactsLoader] Switching to documents tab');
+                // Switch to filebrowser tab instead of documents
+                const filebrowserTab = document.querySelector('[data-tab="filebrowser"]');
+                if (filebrowserTab && !filebrowserTab.classList.contains('active')) {
+                    console.log('[ArtifactsLoader] Switching to filebrowser tab');
                     if (window.switchTab) {
-                        window.switchTab('documents');
+                        window.switchTab('filebrowser');
                     }
                 }
                 
@@ -6349,8 +6501,30 @@ document.addEventListener('DOMContentLoaded', function() {
                         console.log('[ArtifactsLoader] Viewer actions display set to flex');
                     }
                     
-                    // For PRD and implementation files, render as markdown
-                    if (data.type === 'prd' || data.type === 'implementation') {
+                    // Configure marked if not already configured
+                    if (typeof marked !== 'undefined' && !window.markedConfigured) {
+                        marked.setOptions({
+                            gfm: true,          // Enable GitHub Flavored Markdown
+                            breaks: true,       // Add <br> on line breaks
+                            headerIds: true,    // Add IDs to headers
+                            mangle: false,      // Don't mangle header IDs
+                            tables: true,       // Enable table support
+                            smartLists: true,   // Improve behavior of lists
+                            xhtml: false        // Don't use XHTML compatible tags
+                        });
+                        window.markedConfigured = true;
+                    }
+                    
+                    // Check if content appears to be markdown by looking for common markdown patterns
+                    const isMarkdownContent = (content) => {
+                        if (!content) return false;
+                        // Check for headers, lists, code blocks, tables, links, or emphasis
+                        return /^#{1,6}\s|^\*\s|^\-\s|^\d+\.\s|```|^\|.*\|$|\[.*\]\(.*\)|\*\*.*\*\*|\*.*\*/m.test(content);
+                    };
+                    
+                    // Always render as markdown if it contains markdown patterns or is a known markdown type
+                    const knownMarkdownTypes = ['prd', 'implementation', 'design', 'analysis', 'documentation', 'readme'];
+                    if (knownMarkdownTypes.includes(data.type) || isMarkdownContent(content)) {
                         // Use marked.js if available, otherwise basic rendering
                         if (typeof marked !== 'undefined') {
                             viewerMarkdown.innerHTML = marked.parse(content);
@@ -7814,30 +7988,30 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Delete file
             const deleteFile = (fileId) => {
-                // For now, we'll use the existing delete endpoint
-                // In a real implementation, you'd create a proper delete endpoint
+                // Get the file information from the DOM data attributes
                 const fileItem = document.querySelector(`[data-file-id="${fileId}"]`);
-                
                 let fileType = 'other';
                 let fileName = '';
                 
                 if (fileItem) {
-                    // We're in the file list view
-                    fileType = fileItem.classList.contains('file-type-prd') ? 'prd' : 
-                               fileItem.classList.contains('file-type-implementation') ? 'implementation' :
-                               fileItem.classList.contains('file-type-design') ? 'design' :
-                               fileItem.classList.contains('file-type-test') ? 'test' : 'other';
-                    fileName = fileItem.querySelector('.file-name').textContent;
-                } else if (window.currentFileData) {
-                    // We're in the viewer mode, use currentFileData
-                    fileType = window.currentFileData.type || 'other';
-                    fileName = window.currentFileData.fileName || '';
-                } else {
-                    console.error('[ArtifactsLoader] Cannot determine file information for deletion');
-                    showToast('Error: Cannot determine file information', 'error');
-                    return;
+                    // Use data attributes which have the actual backend values
+                    fileType = fileItem.dataset.fileType || 'other';
+                    fileName = fileItem.dataset.fileName || '';
+                    
+                    console.log('[ArtifactsLoader] Delete - Using data attributes:', {
+                        fileType: fileType,
+                        fileName: fileName
+                    });
                 }
                 
+                console.log('[ArtifactsLoader] Deleting file:', {
+                    fileId: fileId,
+                    fileName: fileName,
+                    fileType: fileType,
+                    url: `/projects/${projectId}/api/files/?type=${fileType}&name=${encodeURIComponent(fileName)}`
+                });
+                
+                // Use the unified files API with query parameters
                 fetch(`/projects/${projectId}/api/files/?type=${fileType}&name=${encodeURIComponent(fileName)}`, {
                     method: 'DELETE',
                     headers: {
