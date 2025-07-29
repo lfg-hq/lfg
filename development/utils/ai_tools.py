@@ -76,6 +76,37 @@ stream_implementation_content = {
     }
 }
 
+stream_document_content = {
+    "type": "function",
+    "function": {
+        "name": "stream_document_content",
+        "description": "Stream generic document content chunk by chunk to provide live updates while generating any type of document (e.g., competitor analysis, market research, design docs, etc.). Use this for any document that is NOT a PRD or Implementation Plan.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "content_chunk": {
+                    "type": "string",
+                    "description": "A chunk of document content to stream (e.g., a section or paragraph)"
+                },
+                "is_complete": {
+                    "type": "boolean",
+                    "description": "Whether this is the final chunk of the document"
+                },
+                "document_type": {
+                    "type": "string",
+                    "description": "The type of document being streamed (e.g., 'competitor_analysis', 'market_research', 'design_doc', 'api_spec', etc.). Default to 'document' if unsure."
+                },
+                "document_name": {
+                    "type": "string",
+                    "description": "The name/title of the document being streamed (e.g., 'Competitor Analysis Report', 'API Specification', etc.)"
+                }
+            },
+            "required": ["content_chunk", "is_complete", "document_type", "document_name"],
+            "additionalProperties": False,
+        }
+    }
+}
+
 create_implementation = {
     "type": "function",
     "function": {
@@ -619,7 +650,7 @@ tools_code = [get_prd, start_server, \
               create_tickets, update_ticket, \
               get_next_ticket, get_pending_tickets, \
               create_implementation, get_implementation, update_implementation, stream_implementation_content, \
-              copy_boilerplate_code, capture_name]
+              stream_document_content, copy_boilerplate_code, capture_name]
 
 tools_product = [get_file_list, get_file_content, create_tickets, get_pending_tickets]
 

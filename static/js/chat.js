@@ -1,12 +1,12 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // Initialize PRD streaming debug globals
-    window.PRD_STREAM_DEBUG = true;
-    window.PRD_STREAM_CHUNKS = [];
-    window.PRD_STREAM_CONTENT = '';
-    console.log('🎯 PRD STREAMING DEBUG MODE ENABLED');
-    console.log('🎯 PRD content will be logged to console automatically');
-    console.log('🎯 Access chunks: window.PRD_STREAM_CHUNKS');
-    console.log('🎯 Access full content: window.PRD_STREAM_CONTENT');
+    // Initialize file streaming debug globals
+    window.FILE_STREAM_DEBUG = true;
+    window.FILE_STREAM_CHUNKS = [];
+    window.FILE_STREAM_CONTENT = '';
+    console.log('🎯 FILE STREAMING DEBUG MODE ENABLED');
+    console.log('🎯 File content will be logged to console automatically');
+    console.log('🎯 Access chunks: window.FILE_STREAM_CHUNKS');
+    console.log('🎯 Access full content: window.FILE_STREAM_CONTENT');
     
     // Check if the artifacts panel is in the DOM
     const artifactsPanel = document.getElementById('artifacts-panel');
@@ -1002,10 +1002,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.log(`📨 WebSocket notification: type=${data.notification_type}, has_content=${!!data.content_chunk}`);
             }
             
-            // AUTOMATIC LOGGING FOR ALL PRD NOTIFICATIONS AT WEBSOCKET LEVEL
-            if (data.notification_type === 'prd_stream' || (data.is_notification && data.notification_type === 'prd_stream')) {
+            // AUTOMATIC LOGGING FOR ALL FILE NOTIFICATIONS AT WEBSOCKET LEVEL
+            if (data.notification_type === 'file_stream' || (data.is_notification && data.notification_type === 'file_stream')) {
                 console.log('\n' + '🔴'.repeat(50));
-                console.log('🔴🔴🔴 RAW WEBSOCKET PRD MESSAGE RECEIVED! 🔴🔴🔴');
+                console.log('🔴🔴🔴 RAW WEBSOCKET FILE MESSAGE RECEIVED! 🔴🔴🔴');
                 console.log('🔴 Type:', data.type);
                 console.log('🔴 Notification type:', data.notification_type);
                 console.log('🔴 Has content_chunk:', 'content_chunk' in data);
@@ -1324,8 +1324,8 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log('function_name:', data.function_name);
         console.log('===========================\n');
         
-        // AUTOMATIC PRD CONSOLE LOGGING
-        if (data.notification_type === 'prd_stream') {
+        // AUTOMATIC FILE CONSOLE LOGGING
+        if (data.notification_type === 'file_stream' && data.file_type === 'prd') {
             console.log('\n' + '🎯'.repeat(50));
             console.log('🎯🎯🎯 PRD STREAM CONTENT RECEIVED IN BROWSER! 🎯🎯🎯');
             console.log('🎯 Has content_chunk:', 'content_chunk' in data);
@@ -1338,29 +1338,29 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('🎯'.repeat(50) + '\n');
             
             // Store in global variable for easy access
-            if (!window.PRD_STREAM_CONTENT) {
-                window.PRD_STREAM_CONTENT = '';
+            if (!window.FILE_STREAM_CONTENT) {
+                window.FILE_STREAM_CONTENT = '';
             }
-            if (!window.PRD_STREAM_CHUNKS) {
-                window.PRD_STREAM_CHUNKS = [];
+            if (!window.FILE_STREAM_CHUNKS) {
+                window.FILE_STREAM_CHUNKS = [];
             }
             if (data.content_chunk) {
-                window.PRD_STREAM_CONTENT += data.content_chunk;
-                window.PRD_STREAM_CHUNKS.push({
+                window.FILE_STREAM_CONTENT += data.content_chunk;
+                window.FILE_STREAM_CHUNKS.push({
                     timestamp: new Date().toISOString(),
                     length: data.content_chunk.length,
                     content: data.content_chunk,
                     is_complete: data.is_complete
                 });
             }
-            console.log('🎯 Total PRD content so far:', window.PRD_STREAM_CONTENT.length, 'chars');
-            console.log('🎯 Total chunks received:', window.PRD_STREAM_CHUNKS.length);
-            console.log('🎯 Access full content: window.PRD_STREAM_CONTENT');
-            console.log('🎯 Access all chunks: window.PRD_STREAM_CHUNKS');
+            console.log('🎯 Total file content so far:', window.FILE_STREAM_CONTENT.length, 'chars');
+            console.log('🎯 Total chunks received:', window.FILE_STREAM_CHUNKS.length);
+            console.log('🎯 Access full content: window.FILE_STREAM_CONTENT');
+            console.log('🎯 Access all chunks: window.FILE_STREAM_CHUNKS');
         }
         
-        // AUTOMATIC IMPLEMENTATION CONSOLE LOGGING
-        if (data.notification_type === 'implementation_stream') {
+        // AUTOMATIC FILE CONSOLE LOGGING
+        if (data.notification_type === 'file_stream' && data.file_type === 'implementation') {
             console.log('\n' + '💚'.repeat(50));
             console.log('💚💚💚 IMPLEMENTATION STREAM CONTENT RECEIVED IN BROWSER! 💚💚💚');
             console.log('💚 Has content_chunk:', 'content_chunk' in data);
@@ -1373,25 +1373,25 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('💚'.repeat(50) + '\n');
             
             // Store in global variable for easy access
-            if (!window.IMPLEMENTATION_STREAM_CONTENT) {
-                window.IMPLEMENTATION_STREAM_CONTENT = '';
+            if (!window.FILE_STREAM_CONTENT) {
+                window.FILE_STREAM_CONTENT = '';
             }
-            if (!window.IMPLEMENTATION_STREAM_CHUNKS) {
-                window.IMPLEMENTATION_STREAM_CHUNKS = [];
+            if (!window.FILE_STREAM_CHUNKS) {
+                window.FILE_STREAM_CHUNKS = [];
             }
             if (data.content_chunk) {
-                window.IMPLEMENTATION_STREAM_CONTENT += data.content_chunk;
-                window.IMPLEMENTATION_STREAM_CHUNKS.push({
+                window.FILE_STREAM_CONTENT += data.content_chunk;
+                window.FILE_STREAM_CHUNKS.push({
                     timestamp: new Date().toISOString(),
                     length: data.content_chunk.length,
                     content: data.content_chunk,
                     is_complete: data.is_complete
                 });
             }
-            console.log('💚 Total Implementation content so far:', window.IMPLEMENTATION_STREAM_CONTENT.length, 'chars');
-            console.log('💚 Total chunks received:', window.IMPLEMENTATION_STREAM_CHUNKS.length);
-            console.log('💚 Access full content: window.IMPLEMENTATION_STREAM_CONTENT');
-            console.log('💚 Access all chunks: window.IMPLEMENTATION_STREAM_CHUNKS');
+            console.log('💚 Total file content so far:', window.FILE_STREAM_CONTENT.length, 'chars');
+            console.log('💚 Total chunks received:', window.FILE_STREAM_CHUNKS.length);
+            console.log('💚 Access full content: window.FILE_STREAM_CONTENT');
+            console.log('💚 Access all chunks: window.FILE_STREAM_CHUNKS');
         }
         
         // Fix notification detection by checking for either boolean true, string "true", or existence of notification_type
@@ -1535,8 +1535,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             // Check if this is a document save notification with file_id
-            if ((data.notification_type === 'prd' || data.notification_type === 'implementation') && data.file_id) {
-                console.log('[Chat] This is a PRD/Implementation save notification');
+            if ((data.notification_type === 'prd' || data.notification_type === 'implementation' || data.notification_type === 'file_saved') && data.file_id) {
+                console.log('[Chat] This is a document save notification');
                 
                 if (window.ArtifactsLoader && typeof window.ArtifactsLoader.handleDocumentSaved === 'function') {
                     console.log('[Chat] Calling ArtifactsLoader.handleDocumentSaved');
@@ -1557,7 +1557,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                data.notification_type === 'start_server' ? 'start_server' : 
                                data.notification_type === 'implementation' ? 'save_implementation' : 
                                data.notification_type === 'prd' ? 'create_prd' :
-                               data.notification_type === 'prd_stream' ? 'stream_prd_content' :
+                               data.notification_type === 'file_stream' ? 'stream_file_content' :
                                data.notification_type === 'design' ? 'design_schema' :
                                data.notification_type === 'tickets' ? 'generate_tickets' :
                                data.notification_type === 'checklist' ? 'checklist_tickets' :
@@ -1626,8 +1626,8 @@ document.addEventListener('DOMContentLoaded', () => {
             // Make sure artifacts panel is visible
             let panelOpenSuccess = false;
             
-            // For PRD and Implementation streaming, we should open the artifacts panel
-            if (data.notification_type === 'prd_stream' || data.notification_type === 'implementation_stream') {
+            // For file streaming, we should open the artifacts panel
+            if (data.notification_type === 'file_stream') {
                 console.log(`${data.notification_type} detected - checking if artifacts panel is open`);
                 
                 // Check if panel is already open
@@ -1748,8 +1748,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     // 'get_pending_tickets': 'checklist',
                     'create_checklist_tickets': 'checklist',
                     'implement_ticket': 'implementation',
-                    'prd_stream': 'filebrowser',  // Map prd_stream to filebrowser tab
-                    'implementation_stream': 'filebrowser'  // Map implementation_stream to filebrowser tab
+                    'file_stream': 'filebrowser',  // Map file_stream to filebrowser tab
+                    'file_saved': 'filebrowser'    // Map file_saved to filebrowser tab
                 };
                 
                 // Use mapped tab if original doesn't exist
@@ -1757,7 +1757,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // Check if we're already on the target tab to avoid redundant switching during streaming
                 const currentActiveTab = document.querySelector('.tab-button.active')?.getAttribute('data-tab');
-                const isStreamingNotification = data.notification_type === 'prd_stream' || data.notification_type === 'implementation_stream';
+                const isStreamingNotification = data.notification_type === 'file_stream';
                 
                 // Only switch tabs if we're not already on the target tab, or if it's not a streaming notification
                 if (currentActiveTab !== targetTab || !isStreamingNotification) {
@@ -1808,9 +1808,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // Load the appropriate content based on notification type
                 if (window.ArtifactsLoader && currentProjectId) {
-                    // Special handling for PRD streaming
-                    if (data.notification_type === 'prd_stream') {
-                        console.log('PRD stream notification detected');
+                    // Special handling for file streaming
+                    if (data.notification_type === 'file_stream') {
+                        console.log('File stream notification detected');
                         console.log('Full notification data:', data);
                         console.log('Content chunk exists:', data.content_chunk !== undefined);
                         console.log('Content chunk value:', data.content_chunk);
@@ -1828,7 +1828,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         console.log('='.repeat(80) + '\n');
                         
                         if (data.content_chunk !== undefined) {
-                            console.log(`Streaming PRD chunk: ${data.content_chunk.substring(0, 50)}...`);
+                            console.log(`Streaming file chunk: ${data.content_chunk.substring(0, 50)}...`);
                             console.log('Current project ID:', currentProjectId);
                             // Ensure we have a project ID for streaming
                             let projectIdForStreaming = currentProjectId;
@@ -1842,7 +1842,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             }
                             
                             if (projectIdForStreaming) {
-                                console.log('Streaming PRD content with project ID:', projectIdForStreaming);
+                                console.log('Streaming file content with project ID:', projectIdForStreaming);
                                 // Debug log the data object
                                 if (data.is_complete) {
                                     console.log('[DEBUG] PRD streaming complete, data object:', data);
@@ -1861,9 +1861,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         } else {
                             console.error('PRD stream notification missing content_chunk!');
                         }
-                    } else if (data.notification_type === 'implementation_stream') {
-                        // Special handling for Implementation streaming
-                        console.log('Implementation stream notification detected');
+                    } else if (data.notification_type === 'file_stream' && data.file_type === 'implementation') {
+                        // Special handling for file streaming (implementation)
+                        console.log('File stream notification detected (implementation)');
                         console.log('Full notification data:', data);
                         console.log('Content chunk exists:', data.content_chunk !== undefined);
                         console.log('Content chunk value:', data.content_chunk);
@@ -1881,7 +1881,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         console.log('='.repeat(80) + '\n');
                         
                         if (data.content_chunk !== undefined) {
-                            console.log(`Streaming Implementation chunk: ${data.content_chunk.substring(0, 50)}...`);
+                            console.log(`Streaming file chunk: ${data.content_chunk.substring(0, 50)}...`);
                             console.log('Current project ID:', currentProjectId);
                             // Ensure we have a project ID for streaming
                             let projectIdForStreaming = currentProjectId;
@@ -1895,7 +1895,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             }
                             
                             if (projectIdForStreaming) {
-                                console.log('Streaming Implementation content with project ID:', projectIdForStreaming);
+                                console.log('Streaming file content with project ID:', projectIdForStreaming);
                                 // Debug log the data object
                                 window.ArtifactsLoader.streamDocumentContent(
                                     data.content_chunk, 

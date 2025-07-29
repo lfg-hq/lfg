@@ -109,8 +109,9 @@ def get_notification_type_for_tool(tool_name):
         "save_features": "checklist",
         "save_personas": "checklist",
         "create_prd": "prd",
-        "stream_implementation_content": "implementation_stream",  # Stream implementation content to implementation tab
-        "stream_prd_content": "prd_stream",  # Stream PRD content to PRD tab
+        "stream_implementation_content": "file_stream",  # Stream implementation content to filebrowser tab
+        "stream_prd_content": "file_stream",  # Stream PRD content to filebrowser tab
+        "stream_document_content": "file_stream",  # Stream generic document content to filebrowser tab
         "start_server": "apps",  # Server starts should show in apps/preview tab
         "execute_command": "toolhistory",  # Show command execution in tool history
         "save_implementation": "implementation",
@@ -151,8 +152,7 @@ def map_notification_type_to_tab(notification_type):
         "get_pending_tickets": "checklist",
         "command_error": "toolhistory",
         "project_name_saved": "toolhistory",
-        "prd_stream": "prd_stream",  # Map prd_stream to prd tab
-        "implementation_stream": "implementation_stream",  # Map implementation_stream to implementation tab
+        "file_stream": "file_stream",  # Map file_stream to filebrowser tab
         # Add more custom mappings as needed
     }
     
@@ -277,27 +277,18 @@ async def execute_tool_call(tool_call_name, tool_call_args_str, project_id, conv
                 "notification_marker": "__NOTIFICATION__"
             }
             
-            # Special handling for PRD and Implementation streaming
-            if raw_notification_type == "prd_stream":
+            # Special handling for file streaming
+            if raw_notification_type == "file_stream":
                 notification_data["content_chunk"] = tool_result.get("content_chunk", "")
                 notification_data["is_complete"] = tool_result.get("is_complete", False)
-                if "prd_name" in tool_result:
-                    notification_data["prd_name"] = tool_result.get("prd_name")
+                notification_data["file_type"] = tool_result.get("file_type", "")
+                notification_data["file_name"] = tool_result.get("file_name", "")
                 if "file_id" in tool_result:
                     notification_data["file_id"] = tool_result.get("file_id")
-                    logger.info(f"PRD_STREAM: Including file_id {tool_result.get('file_id')} in notification")
+                    logger.info(f"FILE_STREAM: Including file_id {tool_result.get('file_id')} in notification")
                 else:
-                    logger.warning(f"PRD_STREAM: No file_id in tool_result. Keys: {list(tool_result.keys())}")
-                logger.info(f"PRD_STREAM in notification handler: chunk_length={len(notification_data['content_chunk'])}, is_complete={notification_data['is_complete']}, prd_name={notification_data.get('prd_name', 'Not specified')}, file_id={notification_data.get('file_id', 'None')}")
-            elif raw_notification_type == "implementation_stream":
-                notification_data["content_chunk"] = tool_result.get("content_chunk", "")
-                notification_data["is_complete"] = tool_result.get("is_complete", False)
-                if "file_id" in tool_result:
-                    notification_data["file_id"] = tool_result.get("file_id")
-                    logger.info(f"IMPLEMENTATION_STREAM: Including file_id {tool_result.get('file_id')} in notification")
-                else:
-                    logger.warning(f"IMPLEMENTATION_STREAM: No file_id in tool_result. Keys: {list(tool_result.keys())}")
-                logger.info(f"IMPLEMENTATION_STREAM in notification handler: chunk_length={len(notification_data['content_chunk'])}, is_complete={notification_data['is_complete']}, file_id={notification_data.get('file_id', 'None')}")
+                    logger.warning(f"FILE_STREAM: No file_id in tool_result. Keys: {list(tool_result.keys())}")
+                logger.info(f"FILE_STREAM in notification handler: chunk_length={len(notification_data['content_chunk'])}, is_complete={notification_data['is_complete']}, file_type={notification_data.get('file_type', 'Not specified')}, file_name={notification_data.get('file_name', 'Not specified')}, file_id={notification_data.get('file_id', 'None')}")
             
             logger.debug(f"Notification data to be yielded: {notification_data}")
             

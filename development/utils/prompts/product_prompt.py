@@ -448,6 +448,15 @@ After plan: "Tech plan ready with architecture focus! Generate tickets or need m
 - **report**: Status reports, analysis reports
 - **strategy**: Strategic recommendations and plans
 
+### STREAMING INSTRUCTIONS:
+For PRDs: Use stream_prd_content() while generating
+For Implementation Plans: Use stream_implementation_content() while generating
+For ALL OTHER DOCUMENTS: Use stream_document_content() with parameters:
+- content_chunk: The content being generated
+- is_complete: false (true when done)
+- document_type: The type from above (e.g., "competitor-analysis", "research", etc.)
+- document_name: The descriptive name of the document
+
 ### File Naming Convention:
 - Use descriptive names: `Competitor analysis social dog apps`
 - Include month for time-sensitive docs: `Market research pet tech January`

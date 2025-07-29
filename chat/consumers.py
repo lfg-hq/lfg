@@ -629,28 +629,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             notification_message['project_id'] = notification_data.get('project_id')
                             logger.info(f"[CONSUMER] Including project_id in notification_message: {notification_data.get('project_id')}")
                         
-                        # Add additional fields for prd_stream notifications
-                        if notification_data.get('notification_type') == 'prd_stream':
+                        # Add additional fields for file_stream notifications
+                        if notification_data.get('notification_type') == 'file_stream':
                             notification_message['content_chunk'] = notification_data.get('content_chunk', '')
                             notification_message['is_complete'] = notification_data.get('is_complete', False)
+                            notification_message['file_type'] = notification_data.get('file_type', '')
+                            notification_message['file_name'] = notification_data.get('file_name', '')
                             if notification_data.get('file_id'):
                                 notification_message['file_id'] = notification_data.get('file_id')
-                                logger.info(f"[PRD_STREAM] Including file_id: {notification_data.get('file_id')} in completion notification")
+                                logger.info(f"[FILE_STREAM] Including file_id: {notification_data.get('file_id')} in completion notification")
                             
-                            # CONSOLE OUTPUT FOR PRD STREAMING
-                            if notification_data.get('content_chunk'):
-                                content_preview = notification_data['content_chunk'][:200]
-                                logger.info(f"Stream Content: {content_preview}{'...' if len(notification_data['content_chunk']) > 200 else ''}")
-                        
-                        # Add additional fields for implementation_stream notifications
-                        if notification_data.get('notification_type') == 'implementation_stream':
-                            notification_message['content_chunk'] = notification_data.get('content_chunk', '')
-                            notification_message['is_complete'] = notification_data.get('is_complete', False)
-                            if notification_data.get('file_id'):
-                                notification_message['file_id'] = notification_data.get('file_id')
-                                logger.info(f"[IMPLEMENTATION_STREAM] Including file_id: {notification_data.get('file_id')} in completion notification")
-                            
-                            # CONSOLE OUTPUT FOR IMPLEMENTATION STREAMING
+                            # CONSOLE OUTPUT FOR FILE STREAMING
                             if notification_data.get('content_chunk'):
                                 content_preview = notification_data['content_chunk'][:200]
                                 logger.info(f"Stream Content: {content_preview}{'...' if len(notification_data['content_chunk']) > 200 else ''}")
@@ -677,17 +666,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
                                 'function_name': notification_data.get('function_name', '')
                             }
                             
-                            # Add additional fields for prd_stream notifications
-                            if notification_data.get('notification_type') == 'prd_stream':
+                            # Add additional fields for file_stream notifications
+                            if notification_data.get('notification_type') == 'file_stream':
                                 group_message['content_chunk'] = notification_data.get('content_chunk', '')
                                 group_message['is_complete'] = notification_data.get('is_complete', False)
-                                if notification_data.get('file_id'):
-                                    group_message['file_id'] = notification_data.get('file_id')
-                            
-                            # Add additional fields for implementation_stream notifications
-                            if notification_data.get('notification_type') == 'implementation_stream':
-                                group_message['content_chunk'] = notification_data.get('content_chunk', '')
-                                group_message['is_complete'] = notification_data.get('is_complete', False)
+                                group_message['file_type'] = notification_data.get('file_type', '')
+                                group_message['file_name'] = notification_data.get('file_name', '')
                                 if notification_data.get('file_id'):
                                     group_message['file_id'] = notification_data.get('file_id')
                             

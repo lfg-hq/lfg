@@ -1597,7 +1597,11 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Ensure the viewFileContent function is available globally
             if (window.viewFileContent) {
-                window.viewFileContent(fileId, documentName);
+                // Add a small delay to ensure UI is ready after streaming completes
+                setTimeout(() => {
+                    console.log(`[ArtifactsLoader] Calling viewFileContent after delay`);
+                    window.viewFileContent(fileId, documentName);
+                }, 100);
             } else {
                 console.error('[ArtifactsLoader] viewFileContent function not available globally');
             }
@@ -6061,8 +6065,24 @@ document.addEventListener('DOMContentLoaded', function() {
                 const filebrowserTab = document.querySelector('[data-tab="filebrowser"]');
                 if (filebrowserTab && !filebrowserTab.classList.contains('active')) {
                     console.log('[ArtifactsLoader] Switching to filebrowser tab');
+                    
+                    // Try multiple methods to switch tab
                     if (window.switchTab) {
                         window.switchTab('filebrowser');
+                    } else {
+                        // Fallback: manually trigger tab switch
+                        console.log('[ArtifactsLoader] Using fallback tab switch method');
+                        
+                        // Remove active class from all tabs and panes
+                        document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+                        document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
+                        
+                        // Activate filebrowser tab
+                        filebrowserTab.classList.add('active');
+                        const filebrowserPane = document.getElementById('filebrowser');
+                        if (filebrowserPane) {
+                            filebrowserPane.classList.add('active');
+                        }
                     }
                 }
                 
