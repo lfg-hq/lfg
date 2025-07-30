@@ -162,3 +162,5 @@ dev_deploy.sh
 
 worktree/
 worktrees/
+
+dump.rdb

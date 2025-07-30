@@ -171,6 +171,8 @@ async def app_functions(function_name, function_args, project_id, conversation_i
             return await stream_prd_content(function_args, project_id)
         case "stream_implementation_content":
             return await stream_implementation_content(function_args, project_id)
+        case "stream_document_content":
+            return await stream_document_content(function_args, project_id)
         case "create_implementation":
             return await create_implementation(function_args, project_id)
         case "get_implementation":
@@ -243,6 +245,15 @@ async def app_functions(function_name, function_args, project_id, conversation_i
             query = function_args.get('query')
             logger.debug(f"Search Query: {query}")
             return await web_search(query, conversation_id)
+        
+        case "get_file_list":
+            file_type = function_args.get('file_type', 'all')
+            limit = function_args.get('limit', 10)
+            return await get_file_list(project_id, file_type, limit)
+        
+        case "get_file_content":
+            file_ids = function_args.get('file_ids') or function_args.get('file_id')  # Support both for backwards compatibility
+            return await get_file_content(project_id, file_ids)
 
         # case "implement_ticket_async":
         #     ticket_id = function_args.get('ticket_id')
@@ -1379,6 +1390,130 @@ async def stream_implementation_content(function_args, project_id):
     logger.info(f"[IMPLEMENTATION_STREAM] Returning stream result: is_complete={is_complete}, has_file_id={'file_id' in result}, keys={list(result.keys())}")
     return result
 
+async def stream_document_content(function_args, project_id):
+    """
+    Stream generic document content chunk by chunk as it's being generated
+    This function is called multiple times during document generation to provide live updates
+    Supports any document type including competitor analysis, market research, etc.
+    """
+    logger.info(f"Stream document content function called with args: {function_args}")
+    logger.info(f"Project ID: {project_id}")
+    
+    error_response = validate_project_id(project_id)
+    if error_response:
+        logger.error(f"Project ID validation failed: {error_response}")
+        return error_response
+    
+    validation_error = validate_function_args(function_args, ['content_chunk', 'is_complete', 'document_type', 'document_name'])
+    if validation_error:
+        logger.error(f"Function args validation failed: {validation_error}")
+        return validation_error
+    
+    project = await get_project(project_id)
+    if not project:
+        logger.error(f"Project not found for ID: {project_id}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Project with ID {project_id} does not exist"
+        }
+    
+    content_chunk = function_args.get('content_chunk', '')
+    is_complete = function_args.get('is_complete', False)
+    document_type = function_args.get('document_type', 'document')
+    document_name = function_args.get('document_name', 'Document')
+    
+    logger.info(f"Streaming {document_type} chunk - Length: {len(content_chunk)}, Is Complete: {is_complete}, Name: {document_name}")
+    logger.info(f"First 100 chars of chunk: {content_chunk[:100]}...")
+    
+    # CONSOLE OUTPUT FOR DEBUGGING
+    logger.info(f"DOCUMENT STREAM CHUNK - Project {project_id} - Type: {document_type}",
+             extra={'easylogs_metadata': {
+                 'time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                 'length': len(content_chunk),
+                 'complete': is_complete,
+                 'project_id': project_id,
+                 'document_type': document_type,
+                 'document_name': document_name
+             }})
+    if content_chunk:
+        logger.debug(f"Content Preview: {content_chunk[:200]}..." if len(content_chunk) > 200 else f"Content: {content_chunk}")
+    
+    # Create cache key for this project and document
+    cache_key = f"streaming_document_content_{project_id}_{document_type}_{document_name.replace(' ', '_')}"
+    
+    # Get existing content from cache or initialize
+    existing_content = cache.get(cache_key, "")
+    if not existing_content:
+        logger.info(f"Initialized document content storage for project {project_id}, type: {document_type}")
+    
+    # Accumulate content
+    if content_chunk:
+        existing_content += content_chunk
+        # Store updated content in cache with 1 hour timeout
+        cache.set(cache_key, existing_content, timeout=3600)
+        logger.info(f"Accumulated document content length: {len(existing_content)}")
+    
+    # If streaming is complete, save the document to database
+    file_id = None
+    if is_complete:
+        full_document_content = cache.get(cache_key, "")
+        logger.info(f"Streaming complete. Saving document with total length: {len(full_document_content)}")
+        
+        # CONSOLE OUTPUT FOR COMPLETION
+        logger.info(f"DOCUMENT STREAM COMPLETE - Project {project_id} - Type: {document_type}",
+                 extra={'easylogs_metadata': {
+                     'total_length': len(full_document_content),
+                     'status': "saving_to_database",
+                     'project_id': project_id,
+                     'document_type': document_type
+                 }})
+        
+        if full_document_content:
+            try:
+                # Save to ProjectFile
+                file_obj, file_created = await sync_to_async(
+                    lambda: ProjectFile.objects.update_or_create(
+                        project=project,
+                        name=document_name,
+                        file_type=document_type,
+                        defaults={
+                            'content': full_document_content,
+                            'mime_type': 'text/markdown'
+                        }
+                    )
+                )()
+                
+                file_id = file_obj.id
+                logger.info(f"Document file {'created' if file_created else 'updated'} with ID: {file_id}")
+                
+                # Clear the cache
+                cache.delete(cache_key)
+                logger.info(f"Cleared cache for document stream: {cache_key}")
+                
+            except Exception as e:
+                logger.error(f"Error saving document to database: {str(e)}", exc_info=True)
+                # Don't fail the stream, just log the error
+    
+    # Build the result for streaming notification
+    result = {
+        "is_notification": True,
+        "notification_type": "file_stream",
+        "content_chunk": content_chunk,
+        "is_complete": is_complete,
+        "file_type": document_type,
+        "file_name": document_name
+    }
+    
+    # Add file_id to result if streaming is complete and we have a file_id
+    if is_complete and file_id:
+        result["file_id"] = file_id
+        logger.info(f"[DOCUMENT_STREAM] Including file_id {file_id} in completion notification")
+    elif is_complete:
+        logger.warning(f"[DOCUMENT_STREAM] Completion notification but no file_id available")
+    
+    logger.info(f"[DOCUMENT_STREAM] Returning stream result: is_complete={is_complete}, has_file_id={'file_id' in result}, keys={list(result.keys())}")
+    return result
+
 async def save_design_schema(function_args, project_id):
     """
     Save the design schema for a project
@@ -2512,7 +2647,7 @@ async def save_file_from_stream(file_content, project_id, file_type, file_name):
         
         notification = {
             "is_notification": True,
-            "notification_type": file_type,
+            "notification_type": "file_saved",  # Use a generic notification type for all saved files
             "message_to_agent": f"{file_type_display} '{file_name}' {action} successfully in the database",
             "file_name": file_name,
             "file_type": file_type,
@@ -2855,5 +2990,167 @@ async def web_search(query, conversation_id=None):
         return {
             "is_notification": False,
             "message_to_agent": f"Error performing web search: {str(e)}"
+        }
+
+async def get_file_list(project_id, file_type="all", limit=10):
+    """
+    Get the list of files in the project
+    
+    Args:
+        project_id: The project ID
+        file_type: Type of files to retrieve ("prd", "implementation", "design", "all")
+        limit: Number of files to return (default: 10)
+        
+    Returns:
+        Dict with list of files or error message
+    """
+    logger.info(f"Get file list function called for project {project_id}, file_type: {file_type}")
+    
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+    
+    project = await get_project(project_id)
+    if not project:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Project with ID {project_id} does not exist"
+        }
+    
+    try:
+        # Build query based on file_type
+        query_kwargs = {"project": project}
+        if file_type != "all":
+            query_kwargs["file_type"] = file_type
+        
+        # Get files from ProjectFile model
+        files = await sync_to_async(
+            lambda: list(ProjectFile.objects.filter(**query_kwargs).order_by("-updated_at")[:limit])
+        )()
+        
+        if not files:
+            return {
+                "is_notification": True,
+                "notification_type": "file_list",
+                "message_to_agent": f"No {file_type} files found for this project"
+            }
+        
+        # Format file list
+        file_list = []
+        for file in files:
+            file_list.append({
+                "id": file.id,
+                "name": file.name,
+                "file_type": file.file_type,
+                "created_at": file.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                "updated_at": file.updated_at.strftime("%Y-%m-%d %H:%M:%S")
+            })
+        
+        return {
+            "is_notification": True,
+            "notification_type": "file_list",
+            "message_to_agent": f"Found {len(file_list)} {file_type} files",
+            "files": file_list
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting file list: {str(e)}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error getting file list: {str(e)}"
+        }
+
+async def get_file_content(project_id, file_ids):
+    """
+    Get the content of multiple files in the project
+    
+    Args:
+        project_id: The project ID
+        file_ids: A single file ID or list of file IDs to retrieve (max 5)
+        
+    Returns:
+        Dict with file contents or error message
+    """
+    logger.info(f"Get file content function called for project {project_id}, file_ids: {file_ids}")
+    
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+    
+    # Handle both single file_id and list of file_ids
+    if isinstance(file_ids, (int, str)):
+        file_ids = [file_ids]
+    elif not isinstance(file_ids, list):
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: file_ids must be an integer, string, or list"
+        }
+    
+    if not file_ids:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: at least one file_id is required"
+        }
+    
+    # Limit to 5 files
+    if len(file_ids) > 5:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: Maximum 5 files can be retrieved at once"
+        }
+    
+    project = await get_project(project_id)
+    if not project:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Project with ID {project_id} does not exist"
+        }
+    
+    try:
+        # Get multiple files by IDs and ensure they belong to the project
+        files = await sync_to_async(
+            lambda: list(ProjectFile.objects.filter(id__in=file_ids, project=project))
+        )()
+        
+        if not files:
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Error: No files found with the provided IDs in project {project_id}"
+            }
+        
+        # Check which file IDs were not found
+        found_ids = {file.id for file in files}
+        missing_ids = set(file_ids) - found_ids
+        
+        # Format file contents
+        file_contents = []
+        for file_obj in files:
+            file_contents.append({
+                "id": file_obj.id,
+                "name": file_obj.name,
+                "file_type": file_obj.file_type,
+                "content": file_obj.content,
+                "created_at": file_obj.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                "updated_at": file_obj.updated_at.strftime("%Y-%m-%d %H:%M:%S")
+            })
+        
+        response = {
+            "is_notification": True,
+            "notification_type": "file_content",
+            "message_to_agent": f"Retrieved {len(files)} file(s)",
+            "files": file_contents
+        }
+        
+        if missing_ids:
+            response["missing_file_ids"] = list(missing_ids)
+            response["message_to_agent"] += f". Warning: File IDs not found: {missing_ids}"
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error getting file content: {str(e)}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error getting file content: {str(e)}"
         }
         

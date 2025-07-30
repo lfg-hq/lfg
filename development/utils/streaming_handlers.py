@@ -58,7 +58,7 @@ class StreamingTagHandler:
                 if self.current_file_data:
                     notification = {
                         "is_notification": True,
-                        "notification_type": f"{self.current_file_type}_stream",
+                        "notification_type": "file_stream",
                         "content_chunk": self.current_file_data,
                         "is_complete": False,
                         "file_name": self.current_file_name,
@@ -82,7 +82,7 @@ class StreamingTagHandler:
                 if remaining_content:
                     pre_notification = {
                         "is_notification": True,
-                        "notification_type": f"{self.current_file_type}_stream",
+                        "notification_type": "file_stream",
                         "content_chunk": remaining_content,
                         "is_complete": False,
                         "file_name": self.current_file_name,
@@ -103,7 +103,7 @@ class StreamingTagHandler:
             # Send completion notification
             notification = {
                 "is_notification": True,
-                "notification_type": f"{self.current_file_type}_stream",
+                "notification_type": "file_stream",
                 "content_chunk": "",
                 "is_complete": True,
                 "file_name": self.current_file_name,
@@ -168,7 +168,7 @@ class StreamingTagHandler:
             # Stream file content to the appropriate panel
             notification = {
                 "is_notification": True,
-                "notification_type": f"{self.current_file_type}_stream",
+                "notification_type": "file_stream",
                 "content_chunk": text,
                 "is_complete": False,
                 "file_name": self.current_file_name,
@@ -207,6 +207,23 @@ class StreamingTagHandler:
             "implementation": "Technical Implementation Plan",
             "design": "Design Document",
             "test": "Test Plan",
+            "research": "Research Document",
+            "competitor-analysis": "Competitor Analysis",
+            "competitor_analysis": "Competitor Analysis",
+            "market-analysis": "Market Analysis",
+            "market_analysis": "Market Analysis",
+            "technical-research": "Technical Research",
+            "technical_research": "Technical Research",
+            "user-research": "User Research",
+            "user_research": "User Research",
+            "pricing": "Pricing Document",
+            "quotation": "Project Quotation",
+            "proposal": "Project Proposal",
+            "specification": "Technical Specification",
+            "roadmap": "Product Roadmap",
+            "report": "Analysis Report",
+            "strategy": "Strategic Plan",
+            "document": "Document",
         }
         return defaults.get(file_type, "Document")
     
@@ -217,6 +234,23 @@ class StreamingTagHandler:
             "implementation": "implementation plan",
             "design": "design document",
             "test": "test plan",
+            "research": "research document",
+            "competitor-analysis": "competitor analysis",
+            "competitor_analysis": "competitor analysis",
+            "market-analysis": "market analysis",
+            "market_analysis": "market analysis",
+            "technical-research": "technical research",
+            "technical_research": "technical research",
+            "user-research": "user research",
+            "user_research": "user research",
+            "pricing": "pricing document",
+            "quotation": "quotation",
+            "proposal": "proposal",
+            "specification": "specification",
+            "roadmap": "roadmap",
+            "report": "report",
+            "strategy": "strategy document",
+            "document": "document",
         }
         return displays.get(file_type, "document")
     
