@@ -5,6 +5,7 @@ from django.contrib import messages
 from .models import Project, ProjectFeature, ProjectPersona, ProjectFile, ProjectDesignSchema, ProjectChecklist, ToolCallHistory
 from django.views.decorators.http import require_POST, require_http_methods
 from django.core.exceptions import PermissionDenied
+from django.db.models import Q
 import asyncio
 import subprocess
 import time
@@ -1249,5 +1250,46 @@ def file_rename_api(request, project_id, file_id):
             'success': False,
             'error': str(e)
         }, status=500)
+
+
+@login_required
+def file_mentions_api(request, project_id):
+    """API to get files for @ mentions in chat"""
+    project = get_object_or_404(Project, project_id=project_id, owner=request.user)
+    
+    # Get search query if provided
+    search_query = request.GET.get('q', '').strip()
+    
+    # Start with all project files
+    files = ProjectFile.objects.filter(project=project)
+    
+    # Apply search filter if provided
+    if search_query:
+        files = files.filter(
+            Q(name__icontains=search_query) |
+            Q(file_type__icontains=search_query)
+        )
+    
+    # Order by most recently updated first
+    files = files.order_by('-updated_at')[:20]  # Limit to 20 most recent files
+    
+    # Build response
+    files_list = []
+    for file_obj in files:
+        # Create a display label for the file
+        display_label = f"{file_obj.name} ({file_obj.get_file_type_display()})"
+        
+        files_list.append({
+            'id': file_obj.id,
+            'name': file_obj.name,
+            'type': file_obj.file_type,
+            'label': display_label,
+            'updated_at': file_obj.updated_at.strftime('%Y-%m-%d %H:%M')
+        })
+    
+    return JsonResponse({
+        'files': files_list,
+        'count': len(files_list)
+    })
 
 

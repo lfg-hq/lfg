@@ -44,4 +44,7 @@ urlpatterns = [
     
     # File rename API
     path('<str:project_id>/api/files/<int:file_id>/rename/', views.file_rename_api, name='file_rename_api'),
+    
+    # File mentions API for chat
+    path('<str:project_id>/api/files/mentions/', views.file_mentions_api, name='file_mentions_api'),
 ]

@@ -211,14 +211,64 @@ document.addEventListener('DOMContentLoaded', () => {
     //     return true;
     // };
     
+    // Variables for @ mention functionality
+    let mentionDropdown = null;
+    let mentionStartIndex = -1;
+    let selectedMentionIndex = 0;
+    let mentionFiles = [];
+
     // Auto-resize the text area based on content
-    chatInput.addEventListener('input', function() {
+    chatInput.addEventListener('input', function(e) {
         this.style.height = 'auto';
         this.style.height = (this.scrollHeight) + 'px';
+        
+        // Check for @ mentions
+        const cursorPosition = this.selectionStart;
+        const textBeforeCursor = this.value.substring(0, cursorPosition);
+        const lastAtIndex = textBeforeCursor.lastIndexOf('@');
+        
+        // Check if we should show mention dropdown
+        if (lastAtIndex !== -1 && (lastAtIndex === 0 || /\s/.test(textBeforeCursor[lastAtIndex - 1]))) {
+            const textAfterAt = textBeforeCursor.substring(lastAtIndex + 1);
+            // Only show if no space after @ and we're still typing after it
+            if (!textAfterAt.includes(' ') && cursorPosition > lastAtIndex) {
+                mentionStartIndex = lastAtIndex;
+                showMentionDropdown(textAfterAt);
+            } else {
+                hideMentionDropdown();
+            }
+        } else {
+            hideMentionDropdown();
+        }
     });
     
     // Handle Enter key press in the textarea
     chatInput.addEventListener('keydown', function(e) {
+        // Handle navigation in mention dropdown
+        if (mentionDropdown && mentionDropdown.style.display !== 'none') {
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                selectedMentionIndex = Math.min(selectedMentionIndex + 1, mentionFiles.length - 1);
+                updateMentionSelection();
+                return;
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                selectedMentionIndex = Math.max(selectedMentionIndex - 1, 0);
+                updateMentionSelection();
+                return;
+            } else if (e.key === 'Enter' || e.key === 'Tab') {
+                e.preventDefault();
+                if (mentionFiles.length > 0) {
+                    selectMentionFile(mentionFiles[selectedMentionIndex]);
+                }
+                return;
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                hideMentionDropdown();
+                return;
+            }
+        }
+        
         // Check if Enter was pressed without Shift key (Shift+Enter allows for new lines)
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault(); // Prevent the default behavior (new line)
@@ -4353,7 +4403,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
         } catch (error) {
             console.error('Error sending audio message:', error);
-            showToast('Failed to send audio message', 'error');
+            alert('Failed to send audio message');
         }
     }
     
@@ -4384,4 +4434,192 @@ document.addEventListener('DOMContentLoaded', () => {
         const roleDropdown = document.querySelector('#role-dropdown-wrapper .custom-dropdown-item.selected');
         return roleDropdown ? roleDropdown.dataset.value : 'product_analyst';
     }
+    
+    // @ Mention Helper Functions
+    function showMentionDropdown(searchQuery) {
+        // Create dropdown if it doesn't exist
+        if (!mentionDropdown) {
+            mentionDropdown = document.createElement('div');
+            mentionDropdown.className = 'mention-dropdown';
+            mentionDropdown.style.cssText = `
+                position: absolute;
+                background: white;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                max-height: 200px;
+                overflow-y: auto;
+                z-index: 1000;
+                min-width: 250px;
+            `;
+            document.body.appendChild(mentionDropdown);
+        }
+        
+        // Position the dropdown near the cursor
+        const inputRect = chatInput.getBoundingClientRect();
+        const inputStyle = window.getComputedStyle(chatInput);
+        const lineHeight = parseInt(inputStyle.lineHeight);
+        
+        // Calculate approximate position based on cursor
+        mentionDropdown.style.left = inputRect.left + 'px';
+        mentionDropdown.style.bottom = (window.innerHeight - inputRect.top + 5) + 'px';
+        
+        // Fetch files from API
+        fetchMentionFiles(searchQuery);
+    }
+    
+    function hideMentionDropdown() {
+        if (mentionDropdown) {
+            mentionDropdown.style.display = 'none';
+            mentionFiles = [];
+            selectedMentionIndex = 0;
+        }
+    }
+    
+    async function fetchMentionFiles(searchQuery) {
+        if (!currentProjectId) {
+            console.error('No project ID available for fetching files');
+            return;
+        }
+        
+        try {
+            const url = `/projects/${currentProjectId}/api/files/mentions/?q=${encodeURIComponent(searchQuery)}`;
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            mentionFiles = data.files || [];
+            selectedMentionIndex = 0;
+            
+            // Update dropdown content
+            updateMentionDropdown();
+            
+        } catch (error) {
+            console.error('Error fetching mention files:', error);
+            hideMentionDropdown();
+        }
+    }
+    
+    function updateMentionDropdown() {
+        if (!mentionDropdown || mentionFiles.length === 0) {
+            hideMentionDropdown();
+            return;
+        }
+        
+        // Clear existing content
+        mentionDropdown.innerHTML = '';
+        
+        // Add files to dropdown
+        mentionFiles.forEach((file, index) => {
+            const item = document.createElement('div');
+            item.className = 'mention-item';
+            item.style.cssText = `
+                padding: 8px 12px;
+                cursor: pointer;
+                border-bottom: 1px solid #f0f0f0;
+                ${index === selectedMentionIndex ? 'background-color: #f0f0f0;' : ''}
+            `;
+            
+            item.innerHTML = `
+                <div style="font-weight: 500; color: #333;">${file.name}</div>
+                <div style="font-size: 12px; color: #666;">${file.type} • Updated ${file.updated_at}</div>
+            `;
+            
+            item.addEventListener('click', () => selectMentionFile(file));
+            item.addEventListener('mouseenter', () => {
+                selectedMentionIndex = index;
+                updateMentionSelection();
+            });
+            
+            mentionDropdown.appendChild(item);
+        });
+        
+        // Show the dropdown
+        mentionDropdown.style.display = 'block';
+    }
+    
+    function updateMentionSelection() {
+        const items = mentionDropdown.querySelectorAll('.mention-item');
+        items.forEach((item, index) => {
+            if (index === selectedMentionIndex) {
+                item.style.backgroundColor = '#f0f0f0';
+            } else {
+                item.style.backgroundColor = '';
+            }
+        });
+    }
+    
+    async function selectMentionFile(file) {
+        if (!file) return;
+        
+        try {
+            // Fetch the file content
+            const url = `/projects/${currentProjectId}/api/files/${file.id}/content/`;
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const fileData = await response.json();
+            
+            // Replace the @mention with the file content
+            const cursorPosition = chatInput.selectionStart;
+            const textBeforeMention = chatInput.value.substring(0, mentionStartIndex);
+            const textAfterCursor = chatInput.value.substring(cursorPosition);
+            
+            // Format the file content for insertion
+            const fileContent = `\n\n### File: ${file.name} (${file.type})\n\`\`\`\n${fileData.content}\n\`\`\`\n\n`;
+            
+            // Update the input value
+            chatInput.value = textBeforeMention + fileContent + textAfterCursor;
+            
+            // Set cursor position after the inserted content
+            const newCursorPosition = textBeforeMention.length + fileContent.length;
+            chatInput.setSelectionRange(newCursorPosition, newCursorPosition);
+            
+            // Trigger input event to resize textarea
+            chatInput.dispatchEvent(new Event('input'));
+            
+            // Hide the dropdown
+            hideMentionDropdown();
+            
+            // Focus back on the input
+            chatInput.focus();
+            
+        } catch (error) {
+            console.error('Error fetching file content:', error);
+            alert('Failed to fetch file content');
+        }
+    }
+    
+    // Add styles for mention dropdown
+    const mentionStyles = document.createElement('style');
+    mentionStyles.textContent = `
+        .mention-dropdown {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        
+        .mention-item:hover {
+            background-color: #f0f0f0;
+        }
+        
+        .mention-item:last-child {
+            border-bottom: none;
+        }
+    `;
+    document.head.appendChild(mentionStyles);
 });
