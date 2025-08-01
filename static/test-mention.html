@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>@ Mention Feature Documentation</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f5f5f5;
+            line-height: 1.6;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 40px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 32px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 18px;
+        }
+        
+        h2 {
+            color: #444;
+            margin-top: 30px;
+            margin-bottom: 15px;
+            font-size: 24px;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+        
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+        
+        .feature-card {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 20px;
+        }
+        
+        .feature-card h3 {
+            color: #495057;
+            margin-top: 0;
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+        
+        .feature-card p {
+            color: #6c757d;
+            margin: 0;
+            font-size: 14px;
+        }
+        
+        .demo-section {
+            background: #f8f8f8;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .demo-input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            min-height: 100px;
+            resize: vertical;
+        }
+        
+        .code-block {
+            background: #263238;
+            color: #aed581;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 14px;
+            margin: 15px 0;
+        }
+        
+        .highlight {
+            background: #fff3cd;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-weight: 500;
+        }
+        
+        .keyboard-key {
+            display: inline-block;
+            background: #f0f0f0;
+            border: 1px solid #ccc;
+            border-bottom: 2px solid #aaa;
+            border-radius: 4px;
+            padding: 3px 10px;
+            margin: 0 3px;
+            font-family: monospace;
+            font-size: 13px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+        
+        .steps {
+            counter-reset: step-counter;
+            list-style: none;
+            padding: 0;
+        }
+        
+        .steps li {
+            counter-increment: step-counter;
+            position: relative;
+            padding-left: 50px;
+            margin-bottom: 20px;
+        }
+        
+        .steps li::before {
+            content: counter(step-counter);
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 35px;
+            height: 35px;
+            background: #007bff;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+        
+        .api-endpoint {
+            background: #e3f2fd;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin: 20px 0;
+            font-family: monospace;
+        }
+        
+        .implementation-note {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        
+        .implementation-note h4 {
+            margin-top: 0;
+            color: #856404;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>@ Mention Feature for LFG Chat</h1>
+        <p class="subtitle">Seamlessly attach project files to your chat conversations</p>
+        
+        <h2>Overview</h2>
+        <p>The @ mention feature allows users to quickly search and attach files from their project as references in chat messages. This feature enhances collaboration by making it easy to reference PRDs, implementation plans, code files, and other project documents during conversations without copying their entire contents.</p>
+        
+        <h2>Key Features</h2>
+        <div class="feature-grid">
+            <div class="feature-card">
+                <h3>🔍 Real-time Search</h3>
+                <p>Files are searched and filtered as you type after the @ symbol</p>
+            </div>
+            <div class="feature-card">
+                <h3>⌨️ Keyboard Navigation</h3>
+                <p>Navigate with arrow keys, select with Enter or Tab</p>
+            </div>
+            <div class="feature-card">
+                <h3>📄 Multiple File Types</h3>
+                <p>Supports PRDs, Implementation Plans, Code, and more</p>
+            </div>
+            <div class="feature-card">
+                <h3>📎 File Attachments</h3>
+                <p>Files are attached as references, not copied inline</p>
+            </div>
+        </div>
+        
+        <h2>How to Use</h2>
+        <ol class="steps">
+            <li>Type <span class="highlight">@</span> in the chat input to trigger the file dropdown</li>
+            <li>Start typing the file name to filter results (e.g., <span class="highlight">@prd</span>)</li>
+            <li>Use <span class="keyboard-key">↑</span> <span class="keyboard-key">↓</span> to navigate through results</li>
+            <li>Press <span class="keyboard-key">Enter</span> or <span class="keyboard-key">Tab</span> to select a file</li>
+            <li>The file will be attached to your message</li>
+        </ol>
+        
+        <h2>Try It Out</h2>
+        <div class="demo-section">
+            <p><strong>Demo:</strong> Type @ in the textarea below to see how it would work:</p>
+            <textarea class="demo-input" placeholder="Try typing @ to see the feature in action...">I've reviewed the @Main PRD and have some suggestions...</textarea>
+            <p style="margin-top: 10px; color: #666; font-size: 14px;">
+                <em>Note: This is a static demo. In the actual chat, typing @ would show a dropdown with your project files.</em>
+            </p>
+        </div>
+        
+        <h2>Example Output</h2>
+        <p>When you select a file, a reference link is inserted in your message:</p>
+        <div class="demo-section">
+            <p><strong>Your message in the input field:</strong></p>
+            <div style="background: white; border: 1px solid #ddd; border-radius: 4px; padding: 12px; font-family: -apple-system, sans-serif;">
+                I've reviewed the <span style="color: #0066cc; text-decoration: underline;">[@Main PRD](file:123)</span> and have some suggestions...
+            </div>
+            <p style="margin-top: 10px; color: #666; font-size: 14px;">
+                <em>The file content is automatically sent to the AI as context, without cluttering the chat interface.</em>
+            </p>
+        </div>
+        
+        <h2>Keyboard Shortcuts</h2>
+        <table style="width: 100%; margin: 20px 0;">
+            <tr style="background: #f8f9fa;">
+                <th style="padding: 10px; text-align: left;">Action</th>
+                <th style="padding: 10px; text-align: left;">Keys</th>
+            </tr>
+            <tr>
+                <td style="padding: 10px; border-top: 1px solid #dee2e6;">Navigate up</td>
+                <td style="padding: 10px; border-top: 1px solid #dee2e6;"><span class="keyboard-key">↑</span></td>
+            </tr>
+            <tr>
+                <td style="padding: 10px; border-top: 1px solid #dee2e6;">Navigate down</td>
+                <td style="padding: 10px; border-top: 1px solid #dee2e6;"><span class="keyboard-key">↓</span></td>
+            </tr>
+            <tr>
+                <td style="padding: 10px; border-top: 1px solid #dee2e6;">Select file</td>
+                <td style="padding: 10px; border-top: 1px solid #dee2e6;"><span class="keyboard-key">Enter</span> or <span class="keyboard-key">Tab</span></td>
+            </tr>
+            <tr>
+                <td style="padding: 10px; border-top: 1px solid #dee2e6;">Cancel</td>
+                <td style="padding: 10px; border-top: 1px solid #dee2e6;"><span class="keyboard-key">Esc</span></td>
+            </tr>
+        </table>
+        
+        <h2>Technical Implementation</h2>
+        
+        <div class="api-endpoint">
+            <strong>API Endpoint:</strong><br>
+            GET /projects/{project_id}/api/files/mentions/?q={search_query}
+        </div>
+        
+        <h3>Response Format</h3>
+        <div class="code-block">
+{
+    "files": [
+        {
+            "id": 123,
+            "name": "Main PRD",
+            "type": "prd",
+            "label": "Main PRD (PRD)",
+            "updated_at": "2025-07-30 10:30"
+        }
+    ],
+    "count": 1
+}
+        </div>
+        
+        <div class="implementation-note">
+            <h4>Implementation Details</h4>
+            <ul>
+                <li>Files are fetched from the ProjectFile model</li>
+                <li>Results are limited to 20 most recent files</li>
+                <li>Search is performed on file name and type</li>
+                <li>Dropdown positioning is calculated relative to the input</li>
+                <li>File is attached by reference using its file ID</li>
+            </ul>
+        </div>
+        
+        <h2>Benefits</h2>
+        <ul>
+            <li><strong>Cleaner Conversations:</strong> No large blocks of code cluttering the chat</li>
+            <li><strong>Better Performance:</strong> Faster message sending without inline content</li>
+            <li><strong>Context Preservation:</strong> AI has full access to attached file contents</li>
+            <li><strong>Version Control:</strong> Always references the latest version of files</li>
+        </ul>
+        
+        <h2>Future Enhancements</h2>
+        <ul>
+            <li>Support for code file syntax highlighting</li>
+            <li>Preview of file content on hover</li>
+            <li>Recent files section in dropdown</li>
+            <li>Support for partial file inclusion (specific sections)</li>
+        </ul>
+    </div>
+</body>
+</html>

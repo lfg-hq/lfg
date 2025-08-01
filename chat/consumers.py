@@ -257,6 +257,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 conversation_id = text_data_json.get('conversation_id')
                 project_id = text_data_json.get('project_id')
                 file_data = text_data_json.get('file')  # Get file data if present
+                mentioned_files = text_data_json.get('mentioned_files', {})  # Get mentioned files
                 user_role = text_data_json.get('user_role')  # Get user role if present
                 turbo_mode = text_data_json.get('turbo_mode', False)  # Get turbo mode state
                 # file_id = text_data_json.get('file_id')  # Get file_id if present
@@ -314,7 +315,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 # Generate AI response in background task
                 # Store the task so we can cancel it if needed
                 self.active_generation_task = asyncio.create_task(
-                    self.generate_ai_response(user_message, provider_name, project_id, user_role, turbo_mode)
+                    self.generate_ai_response(user_message, provider_name, project_id, user_role, turbo_mode, mentioned_files)
                 )
             
             elif message_type == 'stop_generation':
@@ -462,7 +463,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 logger.error(f"Heartbeat error: {e}")
                 break
     
-    async def generate_ai_response(self, user_message, provider_name, project_id=None, user_role=None, turbo_mode=False):
+    async def generate_ai_response(self, user_message, provider_name, project_id=None, user_role=None, turbo_mode=False, mentioned_files=None):
         """
         Generate response from AI
         """
@@ -563,7 +564,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             full_response = ""
             
             # Process the stream in an async context
-            async for content in self.process_ai_stream(provider, messages, project_id, tools):
+            async for content in self.process_ai_stream(provider, messages, project_id, tools, mentioned_files):
                 logger.debug(f"Content from process_ai_stream: {content[:100] if isinstance(content, str) else content}")
                 
                 # Check if generation should stop
@@ -885,7 +886,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             # Clear the active task reference
             self.active_generation_task = None
     
-    async def process_ai_stream(self, provider, messages, project_id, tools):
+    async def process_ai_stream(self, provider, messages, project_id, tools, mentioned_files=None):
         """
         Enhanced process_ai_stream with auto-save and file handling
         """
@@ -895,6 +896,27 @@ class ChatConsumer(AsyncWebsocketConsumer):
             
             # Process messages to handle files
             processed_messages = await self.prepare_messages_with_files(provider, messages)
+            
+            # Add mentioned files content to messages if any
+            if mentioned_files:
+                # Create a context message with file contents
+                file_context_parts = []
+                for file_id, file_info in mentioned_files.items():
+                    file_name = file_info.get('name', 'Unknown')
+                    file_content = file_info.get('content', '')
+                    file_context_parts.append(f"=== File: {file_name} ===\n{file_content}\n")
+                
+                if file_context_parts:
+                    # Add file context as a system message at the beginning
+                    file_context_message = {
+                        "role": "system",
+                        "content": f"The user has referenced the following files in their message:\n\n{''.join(file_context_parts)}"
+                    }
+                    # Insert after the main system prompt (if exists)
+                    if processed_messages and processed_messages[0].get('role') == 'system':
+                        processed_messages.insert(1, file_context_message)
+                    else:
+                        processed_messages.insert(0, file_context_message)
             
             # Initialize message accumulator for auto-save
             accumulated_content = ""
