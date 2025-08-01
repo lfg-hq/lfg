@@ -2541,6 +2541,13 @@ document.addEventListener('DOMContentLoaded', () => {
             messageData.file = fileData;
         }
         
+        // Add mentioned files if any
+        if (window.mentionedFiles && Object.keys(window.mentionedFiles).length > 0) {
+            messageData.mentioned_files = window.mentionedFiles;
+            // Clear mentioned files after adding to message
+            window.mentionedFiles = {};
+        }
+        
         console.log('sendMessageToServer: Message data:', messageData);
         
         // Send via WebSocket if connected, otherwise queue
@@ -4561,7 +4568,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!file) return;
         
         try {
-            // Fetch the file content
+            // Get the file content
             const url = `/projects/${currentProjectId}/api/files/${file.id}/content/`;
             const response = await fetch(url, {
                 method: 'GET',
@@ -4576,20 +4583,33 @@ document.addEventListener('DOMContentLoaded', () => {
             
             const fileData = await response.json();
             
-            // Replace the @mention with the file content
+            // Remove the @mention from the input
             const cursorPosition = chatInput.selectionStart;
             const textBeforeMention = chatInput.value.substring(0, mentionStartIndex);
             const textAfterCursor = chatInput.value.substring(cursorPosition);
             
-            // Format the file content for insertion
-            const fileContent = `\n\n### File: ${file.name} (${file.type})\n\`\`\`\n${fileData.content}\n\`\`\`\n\n`;
+            // Add a reference to the file in the message
+            const fileReference = `[@${file.name}](file:${file.id})`;
             
-            // Update the input value
-            chatInput.value = textBeforeMention + fileContent + textAfterCursor;
+            // Update the input value with the file reference
+            chatInput.value = textBeforeMention + fileReference + ' ' + textAfterCursor;
             
-            // Set cursor position after the inserted content
-            const newCursorPosition = textBeforeMention.length + fileContent.length;
+            // Set cursor position after the reference
+            const newCursorPosition = textBeforeMention.length + fileReference.length + 1;
             chatInput.setSelectionRange(newCursorPosition, newCursorPosition);
+            
+            // Store the file content in a hidden data structure that will be sent with the message
+            if (!window.mentionedFiles) {
+                window.mentionedFiles = {};
+            }
+            window.mentionedFiles[file.id] = {
+                id: file.id,
+                name: file.name,
+                type: file.type,
+                content: fileData.content
+            };
+            
+            console.log('Mentioned file stored:', file.name);
             
             // Trigger input event to resize textarea
             chatInput.dispatchEvent(new Event('input'));

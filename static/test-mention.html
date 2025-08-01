@@ -171,10 +171,10 @@
 <body>
     <div class="container">
         <h1>@ Mention Feature for LFG Chat</h1>
-        <p class="subtitle">Seamlessly include project files in your chat conversations</p>
+        <p class="subtitle">Seamlessly attach project files to your chat conversations</p>
         
         <h2>Overview</h2>
-        <p>The @ mention feature allows users to quickly search and include file contents from their project directly into chat messages. This feature enhances collaboration by making it easy to reference PRDs, implementation plans, code files, and other project documents during conversations.</p>
+        <p>The @ mention feature allows users to quickly search and attach files from their project as references in chat messages. This feature enhances collaboration by making it easy to reference PRDs, implementation plans, code files, and other project documents during conversations without copying their entire contents.</p>
         
         <h2>Key Features</h2>
         <div class="feature-grid">
@@ -191,8 +191,8 @@
                 <p>Supports PRDs, Implementation Plans, Code, and more</p>
             </div>
             <div class="feature-card">
-                <h3>🎨 Formatted Output</h3>
-                <p>Files are inserted as formatted Markdown code blocks</p>
+                <h3>📎 File Attachments</h3>
+                <p>Files are attached as references, not copied inline</p>
             </div>
         </div>
         
@@ -202,7 +202,7 @@
             <li>Start typing the file name to filter results (e.g., <span class="highlight">@prd</span>)</li>
             <li>Use <span class="keyboard-key">↑</span> <span class="keyboard-key">↓</span> to navigate through results</li>
             <li>Press <span class="keyboard-key">Enter</span> or <span class="keyboard-key">Tab</span> to select a file</li>
-            <li>The file content will be inserted at your cursor position</li>
+            <li>The file will be attached to your message</li>
         </ol>
         
         <h2>Try It Out</h2>
@@ -215,21 +215,15 @@
         </div>
         
         <h2>Example Output</h2>
-        <p>When you select a file, it gets inserted in this format:</p>
-        <div class="code-block">
-### File: Main PRD (prd)
-```
-# Product Requirements Document
-
-## Overview
-This document outlines the requirements for...
-
-## Features
-1. User authentication
-2. Real-time chat
-3. File management
-...
-```
+        <p>When you select a file, a reference link is inserted in your message:</p>
+        <div class="demo-section">
+            <p><strong>Your message in the input field:</strong></p>
+            <div style="background: white; border: 1px solid #ddd; border-radius: 4px; padding: 12px; font-family: -apple-system, sans-serif;">
+                I've reviewed the <span style="color: #0066cc; text-decoration: underline;">[@Main PRD](file:123)</span> and have some suggestions...
+            </div>
+            <p style="margin-top: 10px; color: #666; font-size: 14px;">
+                <em>The file content is automatically sent to the AI as context, without cluttering the chat interface.</em>
+            </p>
         </div>
         
         <h2>Keyboard Shortcuts</h2>
@@ -286,15 +280,15 @@ This document outlines the requirements for...
                 <li>Results are limited to 20 most recent files</li>
                 <li>Search is performed on file name and type</li>
                 <li>Dropdown positioning is calculated relative to the input</li>
-                <li>File content is fetched separately when selected</li>
+                <li>File is attached by reference using its file ID</li>
             </ul>
         </div>
         
         <h2>Benefits</h2>
         <ul>
-            <li><strong>Faster Context Sharing:</strong> No need to manually copy-paste file contents</li>
-            <li><strong>Better Collaboration:</strong> Team members can quickly reference shared documents</li>
-            <li><strong>Consistent Formatting:</strong> Files are always inserted with proper markdown formatting</li>
+            <li><strong>Cleaner Conversations:</strong> No large blocks of code cluttering the chat</li>
+            <li><strong>Better Performance:</strong> Faster message sending without inline content</li>
+            <li><strong>Context Preservation:</strong> AI has full access to attached file contents</li>
             <li><strong>Version Control:</strong> Always references the latest version of files</li>
         </ul>
         
