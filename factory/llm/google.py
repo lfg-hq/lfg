@@ -1,0 +1,433 @@
+import json
+import logging
+import asyncio
+import traceback
+from typing import List, Dict, Any, Optional, AsyncGenerator
+from google import genai
+from google.genai.types import (
+    FunctionDeclaration,
+    GenerateContentConfig,
+    Tool,
+)
+
+from .base import BaseLLMProvider
+
+# These imports will be handled during integration
+# from development.utils.ai_providers import execute_tool_call, get_notification_type_for_tool, track_token_usage
+# from development.utils.streaming_handlers import StreamingTagHandler, format_notification
+
+logger = logging.getLogger(__name__)
+
+
+class GoogleGeminiProvider(BaseLLMProvider):
+    """Google Gemini provider implementation"""
+    
+    MODEL_MAPPING = {
+        "gemini_2.5_pro": "models/gemini-2.5-pro",
+        "gemini_2.5_flash": "models/gemini-2.5-flash",
+        "gemini_2.5_flash_lite": "models/gemini-2.5-flash-lite",
+    }
+    
+    def __init__(self, selected_model: str, user=None, conversation=None, project=None):
+        super().__init__(selected_model, user, conversation, project)
+        
+        # Map model selection to actual model name
+        self.model = self.MODEL_MAPPING.get(selected_model, "models/gemini-2.5-pro")
+        if selected_model not in self.MODEL_MAPPING:
+            logger.warning(f"Unknown model {selected_model}, defaulting to gemini-2.5-pro")
+            
+        logger.info(f"Google Gemini Provider initialized with model: {self.model}")
+    
+    async def _ensure_client(self):
+        """Ensure the client is initialized with API key"""
+        # Try to fetch API key from user profile if available
+        if self.user:
+            try:
+                self.api_key = await self._get_api_key_from_db(self.user, 'google_api_key')
+                logger.info(f"Fetched Google API key from user {self.user.id} profile")
+            except Exception as e:
+                logger.warning(f"Could not fetch Google API key: {e}")
+        
+        # Initialize client
+        if self.api_key:
+            self.client = genai.Client(api_key=self.api_key)
+        else:
+            logger.warning("No Google API key found")
+    
+    def _convert_messages_to_provider_format(self, messages: List[Dict[str, Any]]) -> tuple:
+        """Convert messages to Google Gemini format
+        Returns: (system_instruction, contents)
+        """
+        system_instruction = ""
+        contents = []
+        
+        for msg in messages:
+            role = msg["role"]
+            
+            if role == "system":
+                # Google Gemini handles system messages as system_instruction
+                system_instruction = msg["content"]
+            elif role == "assistant":
+                # Convert assistant messages
+                parts = []
+                if msg.get("content"):
+                    parts.append({"text": msg["content"]})
+                
+                # Handle tool calls
+                if msg.get("tool_calls"):
+                    for tc in msg["tool_calls"]:
+                        parts.append({
+                            "function_call": {
+                                "name": tc["function"]["name"],
+                                "args": json.loads(tc["function"]["arguments"])
+                            }
+                        })
+                
+                if parts:
+                    contents.append({"role": "model", "parts": parts})
+                    
+            elif role == "user":
+                # Handle both string content and array content (for files)
+                parts = []
+                
+                if isinstance(msg.get("content"), list):
+                    # Content is already in array format (with files)
+                    for item in msg["content"]:
+                        if item.get("type") == "text":
+                            parts.append({"text": item["text"]})
+                        elif item.get("type") == "image":
+                            # Handle image content
+                            if item.get("source", {}).get("type") == "base64":
+                                parts.append({
+                                    "inline_data": {
+                                        "mime_type": item["source"].get("media_type", "image/jpeg"),
+                                        "data": item["source"]["data"]
+                                    }
+                                })
+                else:
+                    # Legacy string format
+                    parts.append({"text": msg["content"]})
+                
+                contents.append({"role": "user", "parts": parts})
+                
+            elif role == "tool":
+                # Convert tool results
+                contents.append({
+                    "role": "function",
+                    "parts": [{
+                        "function_response": {
+                            "name": msg.get("name", ""),  # Tool name should be in the message
+                            "response": {"result": msg["content"]}
+                        }
+                    }]
+                })
+        
+        return system_instruction, contents
+    
+    def _convert_tools_to_provider_format(self, tools: List[Dict[str, Any]]) -> List[Tool]:
+        """Convert OpenAI format tools to Google Gemini format"""
+        gemini_tools = []
+        
+        for tool in tools:
+            if tool.get("type") == "function":
+                func = tool["function"]
+                
+                # Convert parameters to Gemini format
+                # Google Gemini requires specific format for array types
+                parameters = func.get("parameters", {})
+                
+                # Process properties to fix array types and other incompatibilities
+                if "properties" in parameters:
+                    fixed_properties = {}
+                    for prop_name, prop_def in parameters["properties"].items():
+                        if prop_def.get("type") == "array":
+                            # For arrays, Google expects simpler format
+                            # Remove any complex structures that might cause validation errors
+                            items = prop_def.get("items", {"type": "string"})
+                            
+                            # If items is a list (like oneOf), simplify it
+                            if isinstance(items, list):
+                                # Take the first item type as the simple type
+                                items = items[0] if items else {"type": "string"}
+                            
+                            fixed_prop = {
+                                "type": "array",
+                                "items": items
+                            }
+                            
+                            # Add description if present
+                            if "description" in prop_def:
+                                fixed_prop["description"] = prop_def["description"]
+                            
+                            fixed_properties[prop_name] = fixed_prop
+                        else:
+                            # Copy other properties as-is
+                            fixed_properties[prop_name] = prop_def
+                    
+                    parameters["properties"] = fixed_properties
+                
+                # Create FunctionDeclaration
+                try:
+                    function_declaration = FunctionDeclaration(
+                        name=func["name"],
+                        description=func.get("description", ""),
+                        parameters=parameters
+                    )
+                    
+                    # Create Tool with the function
+                    gemini_tool = Tool(function_declarations=[function_declaration])
+                    gemini_tools.append(gemini_tool)
+                except Exception as e:
+                    logger.warning(f"Failed to convert tool {func['name']}: {e}")
+                    # Skip tools that fail validation
+                    continue
+        
+        return gemini_tools
+    
+    async def generate_stream(self, messages: List[Dict[str, Any]], 
+                            project_id: Optional[int], 
+                            conversation_id: Optional[int], 
+                            tools: List[Dict[str, Any]]) -> AsyncGenerator[str, None]:
+        """Generate streaming response from Google Gemini"""
+        logger.info(f"Google Gemini generate_stream called - Model: {self.model}, Messages: {len(messages)}, Tools: {len(tools) if tools else 0}")
+        
+        # Ensure client is initialized with API keys
+        await self._ensure_client()
+        
+        # Check if client is initialized
+        if not self.client:
+            yield "Error: No Google API key configured. Please add API key [here](/settings/)."
+            return
+            
+        current_messages = list(messages) # Work on a copy
+        
+        # Get user and project/conversation for token tracking
+        user = None
+        project = None
+        conversation = None
+        
+        try:
+            if conversation_id:
+                # Import Django models dynamically
+                from chat.models import Conversation
+                conversation = await asyncio.to_thread(
+                    Conversation.objects.select_related('user', 'project').get,
+                    id=conversation_id
+                )
+                user = conversation.user
+                project = conversation.project
+            elif project_id:
+                # Import Django models dynamically
+                from projects.models import Project
+                project = await asyncio.to_thread(
+                    Project.objects.select_related('owner').get,
+                    id=project_id
+                )
+                user = project.owner
+        except Exception as e:
+            logger.warning(f"Could not get user/project/conversation for token tracking: {e}")
+
+        # Import will be fixed when integrating with main codebase
+        from development.utils.streaming_handlers import StreamingTagHandler, format_notification
+        
+        # Initialize streaming tag handler
+        tag_handler = StreamingTagHandler()
+        
+        # Add web search tool
+        search_tool = {
+            "type": "function",
+            "function": {
+                "name": "web_search",
+                "description": "Search the web for information",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "The search query"
+                        }
+                    },
+                    "required": ["query"]
+                }
+            }
+        }
+        tools.append(search_tool)
+
+        while True: # Loop to handle potential multi-turn tool calls
+            try:
+                # Convert messages and tools to Gemini format
+                system_instruction, contents = self._convert_messages_to_provider_format(current_messages)
+                gemini_tools = self._convert_tools_to_provider_format(tools)
+                
+                # Create configuration
+                config = GenerateContentConfig(
+                    temperature=0.7,
+                    top_p=0.95,
+                    top_k=40,
+                    max_output_tokens=8192,
+                    system_instruction=system_instruction if system_instruction else None,
+                    tools=gemini_tools if gemini_tools else None,
+                )
+                
+                logger.debug(f"Making Gemini API call with {len(contents)} messages.")
+                
+                # Variables for this specific API call
+                tool_calls_requested = [] # Stores tool call info
+                full_assistant_message = {"role": "assistant", "content": "", "tool_calls": []}
+                
+                # Generate streaming response
+                response_stream = await asyncio.to_thread(
+                    self.client.models.generate_content_stream,
+                    model=self.model,
+                    contents=contents,
+                    config=config
+                )
+                
+                # Process the stream
+                async for chunk in self._process_gemini_stream_async(response_stream):
+                    # Check if chunk has text
+                    if hasattr(chunk, 'text') and chunk.text:
+                        text = chunk.text
+                        
+                        # Process text through tag handler
+                        output_text, notification, mode_message = tag_handler.process_text_chunk(text, project_id)
+                        
+                        # Yield mode message if entering a special mode
+                        if mode_message:
+                            yield mode_message
+                        
+                        # Yield notification if present
+                        if notification:
+                            yield format_notification(notification)
+                        
+                        # Yield output text if present
+                        if output_text:
+                            yield output_text
+                        
+                        # Update the full assistant message
+                        full_assistant_message["content"] += text
+                    
+                    # Check for function calls
+                    if hasattr(chunk, 'candidates') and chunk.candidates:
+                        for candidate in chunk.candidates:
+                            if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
+                                for part in candidate.content.parts:
+                                    if hasattr(part, 'function_call') and part.function_call:
+                                        fc = part.function_call
+                                        # Check if function_call has required attributes
+                                        if not hasattr(fc, 'name') or not fc.name:
+                                            logger.warning("Function call missing name attribute")
+                                            continue
+                                        
+                                        # Extract arguments safely
+                                        args = {}
+                                        if hasattr(fc, 'args'):
+                                            args = fc.args if fc.args else {}
+                                        
+                                        tool_call = {
+                                            "id": f"call_{len(tool_calls_requested)}",
+                                            "type": "function",
+                                            "function": {
+                                                "name": fc.name,
+                                                "arguments": json.dumps(args)
+                                            }
+                                        }
+                                        tool_calls_requested.append(tool_call)
+                                        
+                                        # Send early notification
+                                        # Import will be fixed when integrating with main codebase
+                                        from development.utils.ai_providers import get_notification_type_for_tool
+                                        
+                                        notification_type = get_notification_type_for_tool(fc.name)
+                                        if fc.name not in ["stream_prd_content", "stream_implementation_content"]:
+                                            logger.debug(f"SENDING EARLY NOTIFICATION FOR {fc.name}")
+                                            early_notification = {
+                                                "is_notification": True,
+                                                "notification_type": notification_type or "tool",
+                                                "early_notification": True,
+                                                "function_name": fc.name,
+                                                "notification_marker": "__NOTIFICATION__"
+                                            }
+                                            notification_json = json.dumps(early_notification)
+                                            yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                
+                # After stream completes, check if we have tool calls to execute
+                if tool_calls_requested:
+                    # Update assistant message with tool calls
+                    full_assistant_message["tool_calls"] = tool_calls_requested
+                    if not full_assistant_message["content"]:
+                        full_assistant_message.pop("content")
+                    
+                    current_messages.append(full_assistant_message)
+                    
+                    # Execute tools
+                    tool_results_messages = []
+                    for tool_call in tool_calls_requested:
+                        tool_call_id = tool_call["id"]
+                        tool_call_name = tool_call["function"]["name"]
+                        tool_call_args_str = tool_call["function"]["arguments"]
+                        
+                        logger.debug(f"Google Gemini Provider - Tool Call: {tool_call_name}")
+                        
+                        # Import will be fixed when integrating with main codebase
+                        from development.utils.ai_providers import execute_tool_call
+                        
+                        # Execute the tool
+                        result_content, notification_data, yielded_content = await execute_tool_call(
+                            tool_call_name, tool_call_args_str, project_id, conversation_id
+                        )
+                        
+                        if yielded_content:
+                            yield yielded_content
+                        
+                        # Add tool result message
+                        tool_results_messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call_id,
+                            "name": tool_call_name,  # Gemini needs the function name
+                            "content": f"Tool call {tool_call_name}() completed. {result_content}."
+                        })
+                        
+                        if notification_data:
+                            logger.debug("YIELDING NOTIFICATION DATA TO CONSUMER")
+                            notification_json = json.dumps(notification_data)
+                            yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                    
+                    current_messages.extend(tool_results_messages)
+                    # Continue the loop for next iteration
+                    continue
+                else:
+                    # No tool calls, conversation finished
+                    
+                    # Flush any remaining buffer content
+                    flushed_output = tag_handler.flush_buffer()
+                    if flushed_output:
+                        yield flushed_output
+                    
+                    # Save any captured data
+                    logger.info(f"[GEMINI] Stream finished, checking for captured files to save")
+                    save_notifications = await tag_handler.save_captured_data(project_id)
+                    logger.info(f"[GEMINI] Got {len(save_notifications)} save notifications")
+                    for notification in save_notifications:
+                        logger.info(f"[GEMINI] Yielding save notification: {notification}")
+                        formatted = format_notification(notification)
+                        yield formatted
+                    
+                    # Track token usage if available
+                    # Note: Gemini's token tracking might be different, need to check their API
+                    # For now, we'll log that token tracking is not implemented
+                    logger.info("Token tracking not yet implemented for Google Gemini")
+                    
+                    return
+
+            except Exception as e:
+                logger.error(f"Critical Error: {str(e)}\n{traceback.format_exc()}")
+                yield f"Error with Google Gemini stream: {str(e)}"
+                return
+    
+    async def _process_gemini_stream_async(self, response_stream):
+        """Process the Gemini response stream asynchronously"""
+        for chunk in response_stream:
+            yield chunk
+            # Yield control back to the event loop periodically
+            await asyncio.sleep(0)

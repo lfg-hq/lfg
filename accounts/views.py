@@ -259,6 +259,8 @@ def save_api_key(request, provider):
             llm_keys.anthropic_api_key = api_key
         elif provider == 'xai':
             llm_keys.xai_api_key = api_key
+        elif provider == 'google':
+            llm_keys.google_api_key = api_key
         else:
             messages.error(request, 'Invalid provider')
             return redirect('settings')
@@ -300,6 +302,8 @@ def disconnect_api_key(request, provider):
             llm_keys.anthropic_api_key = ''
         elif provider == 'xai':
             llm_keys.xai_api_key = ''
+        elif provider == 'google':
+            llm_keys.google_api_key = ''
         else:
             messages.error(request, 'Invalid provider')
             return redirect('settings')
@@ -505,10 +509,12 @@ def integrations(request):
         openai_connected = bool(llm_keys.openai_api_key)
         anthropic_connected = bool(llm_keys.anthropic_api_key)
         xai_connected = bool(llm_keys.xai_api_key)
+        google_connected = bool(llm_keys.google_api_key)
     except LLMApiKeys.DoesNotExist:
         openai_connected = False
         anthropic_connected = False
         xai_connected = False
+        google_connected = False
     
     # Check Linear API key
     try:
@@ -526,6 +532,7 @@ def integrations(request):
         'openai_connected': openai_connected,
         'anthropic_connected': anthropic_connected,
         'xai_connected': xai_connected,
+        'google_connected': google_connected,
         'linear_connected': linear_connected,
     }
     
@@ -914,7 +921,8 @@ def api_keys_status(request):
             'error': 'Not authenticated',
             'has_openai_key': False,
             'has_anthropic_key': False,
-            'has_xai_key': False
+            'has_xai_key': False,
+            'has_google_key': False
         }, status=401)
     
     try:
@@ -922,13 +930,15 @@ def api_keys_status(request):
         return JsonResponse({
             'has_openai_key': bool(llm_keys.openai_api_key),
             'has_anthropic_key': bool(llm_keys.anthropic_api_key),
-            'has_xai_key': bool(llm_keys.xai_api_key)
+            'has_xai_key': bool(llm_keys.xai_api_key),
+            'has_google_key': bool(llm_keys.google_api_key)
         })
     except LLMApiKeys.DoesNotExist:
         return JsonResponse({
             'has_openai_key': False,
             'has_anthropic_key': False,
-            'has_xai_key': False
+            'has_xai_key': False,
+            'has_google_key': False
         })
 
 
@@ -955,13 +965,17 @@ def save_api_keys(request):
         if 'xai_api_key' in data and data['xai_api_key']:
             llm_keys.xai_api_key = data['xai_api_key']
         
+        if 'google_api_key' in data and data['google_api_key']:
+            llm_keys.google_api_key = data['google_api_key']
+        
         llm_keys.save()
         
         return JsonResponse({
             'success': True,
             'has_openai_key': bool(llm_keys.openai_api_key),
             'has_anthropic_key': bool(llm_keys.anthropic_api_key),
-            'has_xai_key': bool(llm_keys.xai_api_key)
+            'has_xai_key': bool(llm_keys.xai_api_key),
+            'has_google_key': bool(llm_keys.google_api_key)
         })
     
     except Exception as e:

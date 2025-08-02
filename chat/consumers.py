@@ -546,6 +546,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
             provider_name = "anthropic"
         elif selected_model == "grok_4":
             provider_name = "xai"
+        elif selected_model in ["gemini_2.5_pro", "gemini_2.5_flash", "gemini_2.5_flash_lite"]:
+            provider_name = "google"
         else:
             provider_name = "openai"
         
@@ -1486,6 +1488,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
             provider_name = "anthropic"
         elif selected_model in ["grok_2", "grok_beta", "grok_4"]:
             provider_name = "xai"
+        elif selected_model in ["gemini_2.5_pro", "gemini_2.5_flash", "gemini_2.5_flash_lite"]:
+            provider_name = "google"
         else:
             provider_name = "openai"
         

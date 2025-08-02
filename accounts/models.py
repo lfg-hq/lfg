@@ -11,6 +11,7 @@ class LLMApiKeys(models.Model):
     openai_api_key = models.CharField(max_length=255, blank=True, null=True)
     anthropic_api_key = models.CharField(max_length=255, blank=True, null=True)
     xai_api_key = models.CharField(max_length=255, blank=True, null=True)
+    google_api_key = models.CharField(max_length=255, blank=True, null=True)
 
     free_trial = models.BooleanField(default=True)
     
@@ -19,7 +20,7 @@ class LLMApiKeys(models.Model):
     
     def save(self, *args, **kwargs):
         # If any LLM key is provided, set free_trial to False
-        if any([self.openai_api_key, self.anthropic_api_key, self.xai_api_key]):
+        if any([self.openai_api_key, self.anthropic_api_key, self.xai_api_key, self.google_api_key]):
             self.free_trial = False
         super().save(*args, **kwargs)
 
@@ -146,12 +147,15 @@ class TokenUsage(models.Model):
         ('openai', 'OpenAI'),
         ('anthropic', 'Anthropic'),
         ('xai', 'XAI'),
+        ('google', 'Google'),
     ]
     
     MODEL_CHOICES = [
         # OpenAI models
         ('gpt-4o', 'GPT-4o'),
         ('gpt-4.1', 'GPT-4.1'),
+        ('o3', 'o3'),
+        ('o4-mini', 'o4 mini'),
         ('whisper-1', 'Whisper (Audio Transcription)'),
         # Anthropic models
         ('claude-sonnet-4-20250514', 'Claude Sonnet 4'),
@@ -159,6 +163,10 @@ class TokenUsage(models.Model):
         ('claude-3-5-sonnet-20241022', 'Claude 3.5 Sonnet'),
         # XAI models
         ('grok-4', 'Grok 4'),
+        # Google models
+        ('models/gemini-2.5-pro', 'Gemini 2.5 Pro'),
+        ('models/gemini-2.5-flash', 'Gemini 2.5 Flash'),
+        ('models/gemini-2.5-flash-lite', 'Gemini 2.5 Flash Lite'),
     ]
     
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='token_usage')
