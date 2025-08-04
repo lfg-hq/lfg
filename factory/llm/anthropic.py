@@ -7,9 +7,9 @@ from typing import List, Dict, Any, Optional, AsyncGenerator
 
 from .base import BaseLLMProvider
 
-# These imports will be handled during integration
-# from development.utils.ai_providers import execute_tool_call, get_notification_type_for_tool, track_token_usage
-# from development.utils.streaming_handlers import StreamingTagHandler, format_notification
+# Import functions from ai_common and streaming_handlers
+from development.utils.ai_common import execute_tool_call, get_notification_type_for_tool, track_token_usage
+from development.utils.streaming_handlers import StreamingTagHandler, format_notification
 
 logger = logging.getLogger(__name__)
 
@@ -141,25 +141,17 @@ class AnthropicProvider(BaseLLMProvider):
             
         current_messages = list(messages) # Work on a copy
         
-        # Get user and project/conversation for token tracking
-        user = None
-        project = None
-        conversation = None
+        # Use the user, project, and conversation from the instance
+        # These are already set in the __init__ method of the base class
+        user = self.user
+        project = self.project
+        conversation = self.conversation
         
-        try:
-            if conversation_id:
-                conversation = await asyncio.to_thread(
-                    lambda: self.conversation.__class__.objects.select_related('user', 'project').get(id=conversation_id)
-                )
-                user = conversation.user
-                project = conversation.project
-            elif project_id:
-                project = await asyncio.to_thread(
-                    lambda: self.project.__class__.objects.select_related('owner').get(id=project_id)
-                )
-                user = project.owner
-        except Exception as e:
-            logger.warning(f"Could not get user/project/conversation for token tracking: {e}")
+        # Log if user is available for token tracking
+        if user:
+            logger.debug(f"User available for token tracking: {user.id}")
+        else:
+            logger.warning("No user available for token tracking")
             
         # Initialize streaming tag handler
         tag_handler = StreamingTagHandler()
@@ -248,8 +240,6 @@ class AnthropicProvider(BaseLLMProvider):
                                 
                                 # Send early notification
                                 function_name = event.content_block.name
-                                # Import will be fixed when integrating with main codebase
-                                from development.utils.ai_providers import get_notification_type_for_tool
                                 notification_type = get_notification_type_for_tool(function_name)
                                 
                                 # Skip early notification for stream_prd_content and stream_implementation_content since we need the actual content
@@ -317,10 +307,16 @@ class AnthropicProvider(BaseLLMProvider):
                             logger.debug(f"Stop Reason: {stop_reason}")
                             
                             # Track token usage if available
-                            if hasattr(event.message, 'usage') and event.message.usage and user:
-                                await track_token_usage(
-                                    user, project, conversation, event.message.usage, 'anthropic', self.model
-                                )
+                            if hasattr(event.message, 'usage') and event.message.usage:
+                                if user:
+                                    logger.info(f"Tracking token usage for Anthropic: input={getattr(event.message.usage, 'input_tokens', 0)}, output={getattr(event.message.usage, 'output_tokens', 0)}")
+                                    await track_token_usage(
+                                        user, project, conversation, event.message.usage, 'anthropic', self.model
+                                    )
+                                else:
+                                    logger.warning(f"Cannot track token usage - no user available. Usage data: input={getattr(event.message.usage, 'input_tokens', 0)}, output={getattr(event.message.usage, 'output_tokens', 0)}")
+                            else:
+                                logger.debug("No usage data available in message_stop event")
                             
                             if stop_reason == "tool_use" and tool_calls_requested:
                                 # Build the assistant message

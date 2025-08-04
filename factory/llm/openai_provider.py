@@ -8,9 +8,9 @@ from typing import List, Dict, Any, Optional, AsyncGenerator
 
 from .base import BaseLLMProvider
 
-# These imports will be handled during integration
-# from development.utils.ai_providers import execute_tool_call, get_notification_type_for_tool, track_token_usage
-# from development.utils.streaming_handlers import StreamingTagHandler, format_notification
+# Import functions from ai_common and streaming_handlers
+from development.utils.ai_common import execute_tool_call, get_notification_type_for_tool, track_token_usage
+from development.utils.streaming_handlers import StreamingTagHandler, format_notification
 
 logger = logging.getLogger(__name__)
 
@@ -144,28 +144,18 @@ class OpenAIProvider(BaseLLMProvider):
             
         current_messages = list(messages) # Work on a copy
         
-        # Get user and project/conversation for token tracking
-        user = None
-        project = None
-        conversation = None
+        # Use the user, project, and conversation from the instance
+        # These are already set in the __init__ method of the base class
+        user = self.user
+        project = self.project
+        conversation = self.conversation
         
-        try:
-            if conversation_id:
-                conversation = await asyncio.to_thread(
-                    lambda: self.conversation.__class__.objects.select_related('user', 'project').get(id=conversation_id)
-                )
-                user = conversation.user
-                project = conversation.project
-            elif project_id:
-                project = await asyncio.to_thread(
-                    lambda: self.project.__class__.objects.select_related('owner').get(id=project_id)
-                )
-                user = project.owner
-        except Exception as e:
-            logger.warning(f"Could not get user/project/conversation for token tracking: {e}")
+        # Log if user is available for token tracking
+        if user:
+            logger.debug(f"User available for token tracking: {user.id}")
+        else:
+            logger.warning("No user available for token tracking")
 
-        # Import will be fixed when integrating with main codebase
-        from development.utils.streaming_handlers import StreamingTagHandler
         
         # Initialize streaming tag handler
         tag_handler = StreamingTagHandler()
@@ -228,6 +218,7 @@ class OpenAIProvider(BaseLLMProvider):
                     if hasattr(chunk, 'usage') and chunk.usage:
                         usage_data = chunk.usage
                         logger.info(f"Token usage received from OpenAI API: input={getattr(usage_data, 'prompt_tokens', 'N/A')}, output={getattr(usage_data, 'completion_tokens', 'N/A')}, total={getattr(usage_data, 'total_tokens', 'N/A')}")
+                        logger.debug(f"Usage data object: {usage_data}")
 
                     if not delta and not usage_data: continue # Skip empty chunks
 
@@ -246,8 +237,6 @@ class OpenAIProvider(BaseLLMProvider):
                         if mode_message:
                             yield mode_message
                         
-                        # Import will be fixed when integrating with main codebase
-                        from development.utils.streaming_handlers import format_notification
                         
                         # Yield notification if present
                         if notification:
@@ -280,8 +269,6 @@ class OpenAIProvider(BaseLLMProvider):
                                     function_name = tool_call_chunk.function.name
                                     current_tc["function"]["name"] = function_name
                                     
-                                    # Import will be fixed when integrating with main codebase
-                                    from development.utils.ai_providers import get_notification_type_for_tool
                                     
                                     # Determine notification type based on function name
                                     notification_type = get_notification_type_for_tool(function_name)
@@ -333,8 +320,6 @@ class OpenAIProvider(BaseLLMProvider):
                                 
                                 logger.debug(f"OpenAI Provider - Tool Call ID: {tool_call_id}")
                                 
-                                # Import will be fixed when integrating with main codebase
-                                from development.utils.ai_providers import execute_tool_call
                                 
                                 # Use the shared execute_tool_call function
                                 result_content, notification_data, yielded_content = await execute_tool_call(
@@ -361,11 +346,13 @@ class OpenAIProvider(BaseLLMProvider):
                             if user:
                                 if usage_data:
                                     logger.info(f"Using API-provided token usage for tool calls")
-                                    # Import will be fixed when integrating with main codebase
-                                    from development.utils.ai_providers import track_token_usage
-                                    await track_token_usage(
-                                        user, project, conversation, usage_data, 'openai', self.model
-                                    )
+                                    try:
+                                        await track_token_usage(
+                                            user, project, conversation, usage_data, 'openai', self.model
+                                        )
+                                        logger.debug("Token usage tracked successfully for tool calls")
+                                    except Exception as e:
+                                        logger.error(f"Failed to track token usage for tool calls: {e}")
                                 else:
                                     # Fallback: estimate tokens if usage data not available
                                     logger.warning("No usage data from OpenAI API for tool calls, using tiktoken estimation")
@@ -382,8 +369,6 @@ class OpenAIProvider(BaseLLMProvider):
                                         
                                         mock_usage = MockUsage(estimated_input_tokens, estimated_output_tokens)
                                         logger.info(f"Tracking estimated tokens for tool calls")
-                                        # Import will be fixed when integrating with main codebase
-                                        from development.utils.ai_providers import track_token_usage
                                         await track_token_usage(
                                             user, project, conversation, mock_usage, 'openai', self.model
                                         )
@@ -397,8 +382,6 @@ class OpenAIProvider(BaseLLMProvider):
                             logger.info(f"[OPENAI] Got {len(save_notifications)} save notifications")
                             for notification in save_notifications:
                                 logger.info(f"[OPENAI] Yielding save notification: {notification}")
-                                # Import will be fixed when integrating with main codebase
-                                from development.utils.streaming_handlers import format_notification
                                 formatted = format_notification(notification)
                                 logger.info(f"[OPENAI] Formatted notification: {formatted[:100]}...")
                                 yield formatted
@@ -407,11 +390,17 @@ class OpenAIProvider(BaseLLMProvider):
                             if user:
                                 if usage_data:
                                     logger.info(f"Using API-provided token usage on stop")
-                                    # Import will be fixed when integrating with main codebase
-                                    from development.utils.ai_providers import track_token_usage
-                                    await track_token_usage(
-                                        user, project, conversation, usage_data, 'openai', self.model
-                                    )
+                                    try:
+                                        await track_token_usage(
+                                            user, project, conversation, usage_data, 'openai', self.model
+                                        )
+                                        logger.debug("Token usage tracked successfully on stop")
+                                    except Exception as e:
+                                        logger.error(f"Failed to track token usage on stop: {e}")
+                                else:
+                                    logger.warning("No usage data available from OpenAI API on stop")
+                            else:
+                                logger.warning("Cannot track token usage - no user available")
                             return
                         else:
                             # Handle other finish reasons

@@ -7,9 +7,9 @@ from typing import List, Dict, Any, Optional, AsyncGenerator
 
 from .base import BaseLLMProvider
 
-# These imports will be handled during integration
-# from development.utils.ai_providers import execute_tool_call, get_notification_type_for_tool, track_token_usage
-# from development.utils.streaming_handlers import StreamingTagHandler, format_notification
+# Import functions from ai_common and streaming_handlers
+from development.utils.ai_common import execute_tool_call, get_notification_type_for_tool, track_token_usage
+from development.utils.streaming_handlers import StreamingTagHandler, format_notification
 
 logger = logging.getLogger(__name__)
 
@@ -76,28 +76,18 @@ class XAIProvider(BaseLLMProvider):
             
         current_messages = list(messages) # Work on a copy
         
-        # Get user and project/conversation for token tracking
-        user = None
-        project = None
-        conversation = None
+        # Use the user, project, and conversation from the instance
+        # These are already set in the __init__ method of the base class
+        user = self.user
+        project = self.project
+        conversation = self.conversation
         
-        try:
-            if conversation_id:
-                conversation = await asyncio.to_thread(
-                    lambda: self.conversation.__class__.objects.select_related('user', 'project').get(id=conversation_id)
-                )
-                user = conversation.user
-                project = conversation.project
-            elif project_id:
-                project = await asyncio.to_thread(
-                    lambda: self.project.__class__.objects.select_related('owner').get(id=project_id)
-                )
-                user = project.owner
-        except Exception as e:
-            logger.warning(f"Could not get user/project/conversation for token tracking: {e}")
+        # Log if user is available for token tracking
+        if user:
+            logger.debug(f"User available for token tracking: {user.id}")
+        else:
+            logger.warning("No user available for token tracking")
 
-        # Import will be fixed when integrating with main codebase
-        from development.utils.streaming_handlers import StreamingTagHandler
         
         # Initialize streaming tag handler
         tag_handler = StreamingTagHandler()
@@ -159,8 +149,6 @@ class XAIProvider(BaseLLMProvider):
                         if mode_message:
                             yield mode_message
                         
-                        # Import will be fixed when integrating with main codebase
-                        from development.utils.streaming_handlers import format_notification
                         
                         # Yield notification if present
                         if notification:
@@ -190,8 +178,6 @@ class XAIProvider(BaseLLMProvider):
                                     function_name = tool_call_chunk.function.name
                                     current_tc["function"]["name"] = function_name
                                     
-                                    # Import will be fixed when integrating with main codebase
-                                    from development.utils.ai_providers import get_notification_type_for_tool
                                     
                                     # Determine notification type based on function name
                                     notification_type = get_notification_type_for_tool(function_name)
@@ -242,8 +228,6 @@ class XAIProvider(BaseLLMProvider):
                                 
                                 logger.debug(f"XAI Provider - Tool Call ID: {tool_call_id}")
                                 
-                                # Import will be fixed when integrating with main codebase
-                                from development.utils.ai_providers import execute_tool_call
                                 
                                 # Use the shared execute_tool_call function
                                 result_content, notification_data, yielded_content = await execute_tool_call(
@@ -286,26 +270,20 @@ class XAIProvider(BaseLLMProvider):
                             logger.info(f"[XAI] Got {len(save_notifications)} save notifications")
                             for notification in save_notifications:
                                 logger.info(f"[XAI] Yielding save notification: {notification}")
-                                # Import will be fixed when integrating with main codebase
-                                from development.utils.streaming_handlers import format_notification
                                 formatted = format_notification(notification)
                                 logger.info(f"[XAI] Formatted notification: {formatted[:100]}...")
                                 yield formatted
                             
                             # Track token usage before exiting
                             if usage_data and user:
-                                # Import will be fixed when integrating with main codebase
-                                from development.utils.ai_providers import track_token_usage
-                                await track_token_usage(
+                                    await track_token_usage(
                                     user, project, conversation, usage_data, 'xai', self.model
                                 )
                             return
                         else:
                             logger.warning(f"Unhandled finish reason: {finish_reason}")
                             if usage_data and user:
-                                # Import will be fixed when integrating with main codebase
-                                from development.utils.ai_providers import track_token_usage
-                                await track_token_usage(
+                                    await track_token_usage(
                                     user, project, conversation, usage_data, 'xai', self.model
                                 )
                             return

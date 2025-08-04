@@ -551,9 +551,21 @@ class ChatConsumer(AsyncWebsocketConsumer):
         else:
             provider_name = "openai"
         
+        # Get the project object if project_id is provided
+        project = None
+        if project_id:
+            try:
+                from projects.models import Project
+                project = await database_sync_to_async(
+                    lambda: Project.objects.get(project_id=project_id, owner=self.user)
+                )()
+            except Exception as e:
+                logger.warning(f"Could not get project with id {project_id}: {e}")
+        
         # Get the appropriate AI provider
-        logger.debug(f"Creating provider with user: {self.user} (type: {type(self.user)})", extra={'easylogs_metadata': {'user_id': self.user.id if self.user else None}})
-        provider = AIProvider.get_provider(provider_name, selected_model, user=self.user)
+        logger.debug(f"Creating provider with user: {self.user} (type: {type(self.user)}), conversation: {self.conversation}, project: {project}", 
+                    extra={'easylogs_metadata': {'user_id': self.user.id if self.user else None}})
+        provider = AIProvider.get_provider(provider_name, selected_model, user=self.user, conversation=self.conversation, project=project)
         
         # Debug log to verify settings
         logger.debug(f"Using provider: {provider_name}")
@@ -1493,7 +1505,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         else:
             provider_name = "openai"
         
-        provider = AIProvider.get_provider(provider_name, selected_model, user=self.user)
+        provider = AIProvider.get_provider(provider_name, selected_model, user=self.user, conversation=self.conversation)
         
         # Create a special prompt for title generation
         title_prompt = [

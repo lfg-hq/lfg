@@ -203,6 +203,8 @@ class TokenUsage(models.Model):
             'openai': {
                 'gpt-4o': {'input': 0.005, 'output': 0.015},
                 'gpt-4.1': {'input': 0.01, 'output': 0.03},
+                'o3': {'input': 0.015, 'output': 0.06},
+                'o4-mini': {'input': 0.00015, 'output': 0.0006},
             },
             'anthropic': {
                 'claude-sonnet-4-20250514': {'input': 0.003, 'output': 0.015},
@@ -211,7 +213,13 @@ class TokenUsage(models.Model):
             },
             'xai': {
                 # XAI pricing (estimated based on typical AI model pricing)
-                'xai-4': {'input': 0.003, 'output': 0.008},
+                'grok-4': {'input': 0.003, 'output': 0.008},
+            },
+            'google': {
+                # Google Gemini pricing (as of 2025)
+                'models/gemini-2.5-pro': {'input': 0.002, 'output': 0.006},
+                'models/gemini-2.5-flash': {'input': 0.00025, 'output': 0.00075},
+                'models/gemini-2.5-flash-lite': {'input': 0.0001, 'output': 0.0003},
             }
         }
         

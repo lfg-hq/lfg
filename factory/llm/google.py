@@ -12,9 +12,9 @@ from google.genai.types import (
 
 from .base import BaseLLMProvider
 
-# These imports will be handled during integration
-# from development.utils.ai_providers import execute_tool_call, get_notification_type_for_tool, track_token_usage
-# from development.utils.streaming_handlers import StreamingTagHandler, format_notification
+# Import functions from ai_common and streaming_handlers
+from development.utils.ai_common import execute_tool_call, get_notification_type_for_tool, track_token_usage
+from development.utils.streaming_handlers import StreamingTagHandler, format_notification
 
 logger = logging.getLogger(__name__)
 
@@ -201,34 +201,18 @@ class GoogleGeminiProvider(BaseLLMProvider):
             
         current_messages = list(messages) # Work on a copy
         
-        # Get user and project/conversation for token tracking
-        user = None
-        project = None
-        conversation = None
+        # Use the user, project, and conversation from the instance
+        # These are already set in the __init__ method of the base class
+        user = self.user
+        project = self.project
+        conversation = self.conversation
         
-        try:
-            if conversation_id:
-                # Import Django models dynamically
-                from chat.models import Conversation
-                conversation = await asyncio.to_thread(
-                    Conversation.objects.select_related('user', 'project').get,
-                    id=conversation_id
-                )
-                user = conversation.user
-                project = conversation.project
-            elif project_id:
-                # Import Django models dynamically
-                from projects.models import Project
-                project = await asyncio.to_thread(
-                    Project.objects.select_related('owner').get,
-                    id=project_id
-                )
-                user = project.owner
-        except Exception as e:
-            logger.warning(f"Could not get user/project/conversation for token tracking: {e}")
+        # Log if user is available for token tracking
+        if user:
+            logger.debug(f"User available for token tracking: {user.id}")
+        else:
+            logger.warning("No user available for token tracking")
 
-        # Import will be fixed when integrating with main codebase
-        from development.utils.streaming_handlers import StreamingTagHandler, format_notification
         
         # Initialize streaming tag handler
         tag_handler = StreamingTagHandler()
@@ -274,6 +258,7 @@ class GoogleGeminiProvider(BaseLLMProvider):
                 # Variables for this specific API call
                 tool_calls_requested = [] # Stores tool call info
                 full_assistant_message = {"role": "assistant", "content": "", "tool_calls": []}
+                usage_metadata = None  # Store usage metadata from response
                 
                 # Generate streaming response
                 response_stream = await asyncio.to_thread(
@@ -285,6 +270,11 @@ class GoogleGeminiProvider(BaseLLMProvider):
                 
                 # Process the stream
                 async for chunk in self._process_gemini_stream_async(response_stream):
+                    # Check for usage metadata in chunk
+                    if hasattr(chunk, 'usage_metadata') and chunk.usage_metadata:
+                        usage_metadata = chunk.usage_metadata
+                        logger.debug(f"Google Gemini usage metadata captured: {usage_metadata}")
+                    
                     # Check if chunk has text
                     if hasattr(chunk, 'text') and chunk.text:
                         text = chunk.text
@@ -335,8 +325,6 @@ class GoogleGeminiProvider(BaseLLMProvider):
                                         tool_calls_requested.append(tool_call)
                                         
                                         # Send early notification
-                                        # Import will be fixed when integrating with main codebase
-                                        from development.utils.ai_providers import get_notification_type_for_tool
                                         
                                         notification_type = get_notification_type_for_tool(fc.name)
                                         if fc.name not in ["stream_prd_content", "stream_implementation_content"]:
@@ -369,8 +357,6 @@ class GoogleGeminiProvider(BaseLLMProvider):
                         
                         logger.debug(f"Google Gemini Provider - Tool Call: {tool_call_name}")
                         
-                        # Import will be fixed when integrating with main codebase
-                        from development.utils.ai_providers import execute_tool_call
                         
                         # Execute the tool
                         result_content, notification_data, yielded_content = await execute_tool_call(
@@ -414,9 +400,17 @@ class GoogleGeminiProvider(BaseLLMProvider):
                         yield formatted
                     
                     # Track token usage if available
-                    # Note: Gemini's token tracking might be different, need to check their API
-                    # For now, we'll log that token tracking is not implemented
-                    logger.info("Token tracking not yet implemented for Google Gemini")
+                    # Google Gemini provides token counts in the response
+                    if user and usage_metadata:
+                        try:
+                            logger.info(f"Tracking token usage for Google Gemini: input={getattr(usage_metadata, 'prompt_token_count', 0)}, output={getattr(usage_metadata, 'candidates_token_count', 0)}, total={getattr(usage_metadata, 'total_token_count', 0)}")
+                            await track_token_usage(
+                                user, project, conversation, usage_metadata, 'google', self.model
+                            )
+                        except Exception as e:
+                            logger.error(f"Error tracking Google Gemini token usage: {e}")
+                    elif user:
+                        logger.warning("No usage metadata captured from Google Gemini stream")
                     
                     return
 
