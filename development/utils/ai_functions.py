@@ -3039,7 +3039,7 @@ async def get_file_list(project_id, file_type="all", limit=10):
         file_list = []
         for file in files:
             file_list.append({
-                "id": file.id,
+                "file_id": file.id,
                 "name": file.name,
                 "file_type": file.file_type,
                 "created_at": file.created_at.strftime("%Y-%m-%d %H:%M:%S"),
@@ -3049,7 +3049,7 @@ async def get_file_list(project_id, file_type="all", limit=10):
         return {
             "is_notification": True,
             "notification_type": "file_list",
-            "message_to_agent": f"Found {len(file_list)} {file_type} files",
+            "message_to_agent": f"Found {len(file_list)} {file_type} files. Here are the file details {file_list}",
             "files": file_list
         }
         

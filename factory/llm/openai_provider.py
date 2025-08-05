@@ -1,0 +1,497 @@
+import json
+import logging
+import asyncio
+import traceback
+import openai
+import tiktoken
+from typing import List, Dict, Any, Optional, AsyncGenerator
+
+from .base import BaseLLMProvider
+
+# Import functions from ai_common and streaming_handlers
+from development.utils.ai_common import execute_tool_call, get_notification_type_for_tool, track_token_usage
+from development.utils.streaming_handlers import StreamingTagHandler, format_notification
+
+logger = logging.getLogger(__name__)
+
+
+class OpenAIProvider(BaseLLMProvider):
+    """OpenAI provider implementation"""
+    
+    MODEL_MAPPING = {
+        "gpt_4o": "gpt-4o",
+        "gpt_4.1": "gpt-4.1",
+        "o3": "o3",
+        "o4-mini": "o4-mini",
+    }
+    
+    def __init__(self, selected_model: str, user=None, conversation=None, project=None):
+        super().__init__(selected_model, user, conversation, project)
+        
+        # Map model selection to actual model name
+        self.model = self.MODEL_MAPPING.get(selected_model, "gpt-4o")
+        if selected_model not in self.MODEL_MAPPING:
+            logger.warning(f"Unknown model {selected_model}, defaulting to gpt-4o")
+            
+        logger.info(f"OpenAI Provider initialized with model: {self.model}")
+    
+    async def _ensure_client(self):
+        """Ensure the client is initialized with API key"""
+        # Try to fetch API key from user profile if available
+        if self.user:
+            try:
+                self.api_key = await self._get_api_key_from_db(self.user, 'openai_api_key')
+                logger.info(f"Fetched OpenAI API key from user {self.user.id} profile")
+            except Exception as e:
+                logger.warning(f"Could not fetch OpenAI API key: {e}")
+        
+        # Initialize client
+        if self.api_key:
+            self.client = openai.OpenAI(api_key=self.api_key)
+        else:
+            logger.warning("No OpenAI API key found")
+    
+    def _convert_messages_to_provider_format(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """OpenAI uses the standard format, so just return as-is"""
+        return messages
+    
+    def _convert_tools_to_provider_format(self, tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """OpenAI uses the standard format, so just return as-is"""
+        return tools
+    
+    def estimate_tokens(self, messages, model=None, output_text=None):
+        """Estimate token count for messages and output using tiktoken"""
+        logger.debug(f"estimate_tokens called with {len(messages)} messages, model={model}, output_text length={len(output_text) if output_text else 0}")
+        
+        if not tiktoken:
+            logger.warning("tiktoken not available, cannot estimate tokens")
+            return None, None
+            
+        try:
+            # Use the model-specific encoding or fall back to cl100k_base
+            try:
+                if model == "gpt-4o" or model == "gpt-4.1" or model == "o3" or model == "o4-mini":
+                    # Try to get encoding for gpt-4 (closest available)
+                    encoding = tiktoken.encoding_for_model("gpt-4")
+                else:
+                    encoding = tiktoken.get_encoding("cl100k_base")
+            except Exception:
+                # Fallback to cl100k_base if model-specific encoding not found
+                encoding = tiktoken.get_encoding("cl100k_base")
+            
+            input_tokens = 0
+            
+            # Count input tokens from messages
+            logger.debug(f"Counting tokens for {len(messages)} messages")
+            for i, message in enumerate(messages):
+                msg_tokens = 0
+                # Count role tokens (usually 3-4 tokens)
+                msg_tokens += 4
+                
+                # Count content tokens
+                if message.get("content"):
+                    content_tokens = len(encoding.encode(message["content"]))
+                    msg_tokens += content_tokens
+                    logger.debug(f"Message {i} ({message.get('role')}): {content_tokens} content tokens")
+                
+                # Count tool calls if present
+                if message.get("tool_calls"):
+                    tool_tokens = 0
+                    for tool_call in message["tool_calls"]:
+                        # Estimate tokens for tool call structure
+                        tool_tokens += 10  # Base overhead for tool call
+                        if tool_call.get("function", {}).get("name"):
+                            tool_tokens += len(encoding.encode(tool_call["function"]["name"]))
+                        if tool_call.get("function", {}).get("arguments"):
+                            tool_tokens += len(encoding.encode(tool_call["function"]["arguments"]))
+                    msg_tokens += tool_tokens
+                    logger.debug(f"Message {i}: {tool_tokens} tool call tokens")
+                
+                # Count tool results
+                if message.get("role") == "tool":
+                    msg_tokens += 5  # Tool message overhead
+                    
+                input_tokens += msg_tokens
+            
+            # Add some overhead for formatting
+            input_tokens += 10
+            
+            # Count output tokens if provided
+            output_tokens = 0
+            if output_text:
+                output_tokens = len(encoding.encode(output_text))
+                logger.debug(f"Output text length: {len(output_text)} chars, {output_tokens} tokens")
+            
+            logger.info(f"Token estimation complete - Input: {input_tokens}, Output: {output_tokens}, Total: {input_tokens + output_tokens}")
+            return input_tokens, output_tokens
+            
+        except Exception as e:
+            logger.error(f"Failed to estimate tokens: {e}", exc_info=True)
+            return None, None
+    
+    async def generate_stream(self, messages: List[Dict[str, Any]], 
+                            project_id: Optional[int], 
+                            conversation_id: Optional[int], 
+                            tools: List[Dict[str, Any]]) -> AsyncGenerator[str, None]:
+        """Generate streaming response from OpenAI"""
+        logger.info(f"OpenAI generate_stream called - Model: {self.model}, Messages: {len(messages)}, Tools: {len(tools) if tools else 0}")
+        
+        # Ensure client is initialized with API keys
+        await self._ensure_client()
+        
+        # Check if client is initialized
+        if not self.client:
+            yield "Error: No OpenAI API key configured. Please add API key [here](/settings/)."
+            return
+            
+        current_messages = list(messages) # Work on a copy
+        
+        # Use the user, project, and conversation from the instance
+        # These are already set in the __init__ method of the base class
+        user = self.user
+        project = self.project
+        conversation = self.conversation
+        
+        # Log if user is available for token tracking
+        if user:
+            logger.debug(f"User available for token tracking: {user.id}")
+        else:
+            logger.warning("No user available for token tracking")
+
+        
+        # Initialize streaming tag handler
+        tag_handler = StreamingTagHandler()
+        
+        # Buffer to capture ALL assistant output for accurate token counting
+        total_assistant_output = ""
+
+        logger.debug(f"Starting OpenAI stream generation loop")
+
+        # Add web search tool
+        search_tool = {
+            "type": "function",
+            "function": {
+                "name": "web_search",
+                "description": "Search the web",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"}
+                    },
+                    "required": ["query"]
+                }
+            }
+        }
+        tools.append(search_tool)
+
+        while True: # Loop to handle potential multi-turn tool calls
+            try:
+                params = {
+                    "model": self.model,
+                    "messages": current_messages,
+                    "stream": True,
+                    "tool_choice": "auto", 
+                    "tools": tools,
+                    "stream_options": {"include_usage": True}  # Request usage info in stream
+                }
+                
+                logger.debug(f"Making API call with {len(current_messages)} messages.")
+                
+                # Run the blocking API call in a thread
+                response_stream = await asyncio.to_thread(
+                    self.client.chat.completions.create, **params
+                )
+                
+                # Variables for this specific API call
+                tool_calls_requested = [] # Stores {id, function_name, function_args_str}
+                full_assistant_message = {"role": "assistant", "content": None, "tool_calls": []} # To store the complete assistant turn
+
+                logger.debug("New Loop!!")
+                
+                # Variables for token tracking
+                usage_data = None
+                
+                # --- Process the stream from the API --- 
+                chunk_count = 0
+                last_chunk = None
+                async for chunk in self._process_stream_async(response_stream):
+                    chunk_count += 1
+                    last_chunk = chunk  # Keep track of last chunk
+                    
+                    # OpenAI sometimes sends empty choices array with usage data
+                    delta = chunk.choices[0].delta if chunk.choices and len(chunk.choices) > 0 else None
+                    finish_reason = chunk.choices[0].finish_reason if chunk.choices and len(chunk.choices) > 0 else None
+                    
+                    # Debug log every chunk to understand the structure
+                    if chunk_count <= 3 or finish_reason:  # Log first 3 chunks and final chunk
+                        logger.debug(f"Chunk {chunk_count}: choices={bool(chunk.choices)}, delta={bool(delta)}, finish_reason={finish_reason}, has_usage={hasattr(chunk, 'usage')}")
+                    
+                    # Check for usage information in the chunk
+                    if hasattr(chunk, 'usage') and chunk.usage:
+                        usage_data = chunk.usage
+                        logger.info(f"Token usage received from OpenAI API in chunk {chunk_count}: input={getattr(usage_data, 'prompt_tokens', 'N/A')}, output={getattr(usage_data, 'completion_tokens', 'N/A')}, total={getattr(usage_data, 'total_tokens', 'N/A')}")
+                        logger.debug(f"Usage data object: {usage_data}")
+                        logger.debug(f"Usage data dir: {[attr for attr in dir(usage_data) if not attr.startswith('_')]}")
+                    elif hasattr(chunk, 'usage'):
+                        logger.debug(f"Chunk {chunk_count} has usage attribute but it's None or empty: {chunk.usage}")
+                    
+                    # Also check if usage data might be in a different location
+                    if chunk_count <= 3 or finish_reason:
+                        logger.debug(f"Chunk attributes: {[attr for attr in dir(chunk) if not attr.startswith('_')]}")
+
+                    # Don't skip chunks that might contain only usage data
+                    if not delta and not finish_reason and not hasattr(chunk, 'usage'): 
+                        logger.debug(f"Skipping empty chunk {chunk_count}")
+                        continue # Skip empty chunks
+
+                    # --- Accumulate Text Content --- 
+                    if delta.content:
+                        text = delta.content
+                        
+                        # Capture ALL assistant output for token counting
+                        total_assistant_output += text
+                        logger.debug(f"Captured {len(text)} chars of assistant output, total: {len(total_assistant_output)}")
+                        
+                        # Process text through tag handler
+                        output_text, notification, mode_message = tag_handler.process_text_chunk(text, project_id)
+                        
+                        # Yield mode message if entering a special mode
+                        if mode_message:
+                            yield mode_message
+                        
+                        
+                        # Yield notification if present
+                        if notification:
+                            yield format_notification(notification)
+                        
+                        # Yield output text if present
+                        if output_text:
+                            yield output_text
+                        
+                        # Update the full assistant message
+                        if full_assistant_message["content"] is None:
+                            full_assistant_message["content"] = ""
+                        full_assistant_message["content"] += text
+
+                    # --- Accumulate Tool Call Details --- 
+                    if delta.tool_calls:
+                        for tool_call_chunk in delta.tool_calls:
+                            # Find or create the tool call entry
+                            tc_index = tool_call_chunk.index
+                            while len(tool_calls_requested) <= tc_index:
+                                tool_calls_requested.append({"id": None, "type": "function", "function": {"name": None, "arguments": ""}})
+                            
+                            current_tc = tool_calls_requested[tc_index]
+                            
+                            if tool_call_chunk.id:
+                                current_tc["id"] = tool_call_chunk.id
+                            if tool_call_chunk.function:
+                                if tool_call_chunk.function.name:
+                                    # Send early notification as soon as we know the function name
+                                    function_name = tool_call_chunk.function.name
+                                    current_tc["function"]["name"] = function_name
+                                    
+                                    
+                                    # Determine notification type based on function name
+                                    notification_type = get_notification_type_for_tool(function_name)
+                                    
+                                    # Skip early notification for stream_prd_content and stream_implementation_content
+                                    if function_name not in ["stream_prd_content", "stream_implementation_content"]:
+                                        logger.debug(f"SENDING EARLY NOTIFICATION FOR {function_name}")
+                                        early_notification = {
+                                            "is_notification": True,
+                                            "notification_type": notification_type or "tool",
+                                            "early_notification": True,
+                                            "function_name": function_name,
+                                            "notification_marker": "__NOTIFICATION__"
+                                        }
+                                        notification_json = json.dumps(early_notification)
+                                        yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                
+                                if tool_call_chunk.function.arguments:
+                                    current_tc["function"]["arguments"] += tool_call_chunk.function.arguments
+
+                    # --- Check Finish Reason --- 
+                    if finish_reason:
+                        logger.debug(f"Finish Reason Detected: {finish_reason}")
+                        
+                        # Flush any remaining buffer content
+                        flushed_output = tag_handler.flush_buffer()
+                        if flushed_output:
+                            yield flushed_output
+                        
+                        if finish_reason == "tool_calls":
+                            # Process tool calls...
+                            for tc in tool_calls_requested:
+                                if not tc["function"]["arguments"].strip():
+                                    tc["function"]["arguments"] = "{}"
+
+                            full_assistant_message["tool_calls"] = tool_calls_requested
+
+                            if full_assistant_message["content"] is None:
+                                full_assistant_message.pop("content")
+
+                            current_messages.append(full_assistant_message)
+                            
+                            # Execute tools
+                            tool_results_messages = []
+                            for tool_call_to_execute in tool_calls_requested:
+                                tool_call_id = tool_call_to_execute["id"]
+                                tool_call_name = tool_call_to_execute["function"]["name"]
+                                tool_call_args_str = tool_call_to_execute["function"]["arguments"]
+                                
+                                logger.debug(f"OpenAI Provider - Tool Call ID: {tool_call_id}")
+                                
+                                
+                                # Use the shared execute_tool_call function
+                                result_content, notification_data, yielded_content = await execute_tool_call(
+                                    tool_call_name, tool_call_args_str, project_id, conversation_id
+                                )
+                                
+                                if yielded_content:
+                                    yield yielded_content
+                                
+                                tool_results_messages.append({
+                                    "role": "tool",
+                                    "tool_call_id": tool_call_id,
+                                    "content": f"Tool call {tool_call_name}() completed. {result_content}."
+                                })
+                                
+                                if notification_data:
+                                    logger.debug("YIELDING NOTIFICATION DATA TO CONSUMER")
+                                    notification_json = json.dumps(notification_data)
+                                    yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                
+                            current_messages.extend(tool_results_messages)
+                            
+                            # Track token usage for tool calls
+                            if user:
+                                if usage_data:
+                                    logger.info(f"Using API-provided token usage for tool calls")
+                                    try:
+                                        await track_token_usage(
+                                            user, project, conversation, usage_data, 'openai', self.model
+                                        )
+                                        logger.debug("Token usage tracked successfully for tool calls")
+                                    except Exception as e:
+                                        logger.error(f"Failed to track token usage for tool calls: {e}")
+                                else:
+                                    # Fallback: estimate tokens if usage data not available
+                                    logger.warning("No usage data from OpenAI API for tool calls, using tiktoken estimation")
+                                    estimated_input_tokens, estimated_output_tokens = self.estimate_tokens(
+                                        current_messages, self.model, total_assistant_output
+                                    )
+                                    if estimated_input_tokens is not None:
+                                        # Create a mock usage object for tracking
+                                        class MockUsage:
+                                            def __init__(self, input_tokens, output_tokens):
+                                                self.prompt_tokens = input_tokens
+                                                self.completion_tokens = output_tokens
+                                                self.total_tokens = input_tokens + output_tokens
+                                        
+                                        mock_usage = MockUsage(estimated_input_tokens, estimated_output_tokens)
+                                        logger.info(f"Tracking estimated tokens for tool calls")
+                                        await track_token_usage(
+                                            user, project, conversation, mock_usage, 'openai', self.model
+                                        )
+                            
+                            break # Break inner chunk loop
+                        
+                        elif finish_reason == "stop":
+                            # Don't return immediately - we need to check for usage data after loop
+                            logger.debug("Finish reason is 'stop', will check for usage data after loop")
+                            break  # Break inner loop to check for usage data
+                        else:
+                            # Handle other finish reasons
+                            logger.warning(f"Unhandled finish reason: {finish_reason}")
+                            return
+                
+                # After streaming completes, check last chunk for usage data
+                if not usage_data and last_chunk and hasattr(last_chunk, 'usage') and last_chunk.usage:
+                    usage_data = last_chunk.usage
+                    logger.info(f"Token usage found in last chunk: input={getattr(usage_data, 'prompt_tokens', 'N/A')}, output={getattr(usage_data, 'completion_tokens', 'N/A')}, total={getattr(usage_data, 'total_tokens', 'N/A')}")
+                
+                # If the inner loop finished because of tool_calls, continue
+                if finish_reason == "tool_calls":
+                    continue
+                elif finish_reason == "stop":
+                    # Handle normal completion
+                    # Save any captured data first
+                    logger.info(f"[OPENAI] Stream finished, checking for captured files to save")
+                    save_notifications = await tag_handler.save_captured_data(project_id)
+                    logger.info(f"[OPENAI] Got {len(save_notifications)} save notifications")
+                    for notification in save_notifications:
+                        logger.info(f"[OPENAI] Yielding save notification: {notification}")
+                        formatted = format_notification(notification)
+                        yield formatted
+                    
+                    # Track token usage
+                    if user:
+                        if usage_data:
+                            logger.info(f"Using API-provided token usage on stop")
+                            try:
+                                await track_token_usage(
+                                    user, project, conversation, usage_data, 'openai', self.model
+                                )
+                                logger.debug("Token usage tracked successfully on stop")
+                            except Exception as e:
+                                logger.error(f"Failed to track token usage on stop: {e}")
+                        else:
+                            logger.warning("No usage data available from OpenAI API on stop - will use fallback")
+                            # Fallback to estimation
+                            estimated_input_tokens, estimated_output_tokens = self.estimate_tokens(
+                                current_messages, self.model, total_assistant_output
+                            )
+                            if estimated_input_tokens is not None:
+                                class MockUsage:
+                                    def __init__(self, input_tokens, output_tokens):
+                                        self.prompt_tokens = input_tokens
+                                        self.completion_tokens = output_tokens
+                                        self.total_tokens = input_tokens + output_tokens
+                                
+                                mock_usage = MockUsage(estimated_input_tokens, estimated_output_tokens)
+                                logger.info(f"Using estimated tokens: input={estimated_input_tokens}, output={estimated_output_tokens}")
+                                try:
+                                    await track_token_usage(
+                                        user, project, conversation, mock_usage, 'openai', self.model
+                                    )
+                                    logger.debug("Estimated token usage tracked successfully")
+                                except Exception as e:
+                                    logger.error(f"Failed to track estimated token usage: {e}")
+                    else:
+                        logger.warning("Cannot track token usage - no user available")
+                    
+                    return
+                else:
+                    # Final check for token usage tracking if we haven't tracked yet
+                    if user and not usage_data:
+                        logger.warning("Stream ended without receiving usage data from OpenAI")
+                        # Try to estimate tokens as fallback
+                        logger.info("Attempting to estimate tokens as fallback")
+                        estimated_input_tokens, estimated_output_tokens = self.estimate_tokens(
+                            current_messages, self.model, total_assistant_output
+                        )
+                        if estimated_input_tokens is not None:
+                            class MockUsage:
+                                def __init__(self, input_tokens, output_tokens):
+                                    self.prompt_tokens = input_tokens
+                                    self.completion_tokens = output_tokens
+                                    self.total_tokens = input_tokens + output_tokens
+                            
+                            mock_usage = MockUsage(estimated_input_tokens, estimated_output_tokens)
+                            logger.info(f"Using estimated tokens: input={estimated_input_tokens}, output={estimated_output_tokens}")
+                            try:
+                                await track_token_usage(
+                                    user, project, conversation, mock_usage, 'openai', self.model
+                                )
+                                logger.debug("Estimated token usage tracked successfully")
+                            except Exception as e:
+                                logger.error(f"Failed to track estimated token usage: {e}")
+                    
+                    logger.warning("Stream ended unexpectedly.")
+                    return
+
+            except Exception as e:
+                logger.error(f"Critical Error: {str(e)}\n{traceback.format_exc()}")
+                yield f"Error with OpenAI stream: {str(e)}"
+                return

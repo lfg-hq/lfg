@@ -83,19 +83,23 @@ class ChatFile(models.Model):
 class ModelSelection(models.Model):
     """Model to track which AI model is selected by users"""
     MODEL_CHOICES = [
+        # Anthropic models
         ('claude_4_sonnet', 'Claude 4 Sonnet'),
         ('claude_4_opus', 'Claude 4 Opus'),
         ('claude_3.5_sonnet', 'Claude 3.5 Sonnet'),
-        ('claude_4_opus', 'Claude 4 Opus'),
-        ('claude_3.5_sonnet', 'Claude 3.5 Sonnet'),
+        # OpenAI models
         ('gpt_4_1', 'OpenAI GPT-4.1'),
         ('gpt_4o', 'OpenAI GPT-4o'),
         ('o3', 'OpenAI o3'),
         ('o4-mini', 'OpenAI o4 mini'),
+        # XAI models
         ('grok_4', 'Grok 4'),
         ('grok_2', 'Grok 2'),
         ('grok_beta', 'Grok Beta'),
-        ('grok_4', 'Grok 4'),
+        # Google models
+        ('gemini_2.5_pro', 'Google Gemini 2.5 Pro'),
+        ('gemini_2.5_flash', 'Google Gemini 2.5 Flash'),
+        ('gemini_2.5_flash_lite', 'Google Gemini 2.5 Flash Lite'),
     ]
     
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='model_selection')
