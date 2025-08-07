@@ -416,7 +416,16 @@ class OpenAIProvider(BaseLLMProvider):
                     continue
                 elif finish_reason == "stop":
                     # Handle normal completion
-                    # Save any captured data first
+                    # Check for any pending saves/edits first
+                    logger.info(f"[OPENAI] Checking for pending saves/edits")
+                    pending_notifications = await tag_handler.check_and_save_pending_files()
+                    logger.info(f"[OPENAI] Got {len(pending_notifications)} pending notifications")
+                    for notification in pending_notifications:
+                        logger.info(f"[OPENAI] Yielding pending notification: {notification}")
+                        formatted = format_notification(notification)
+                        yield formatted
+                    
+                    # Save any captured data
                     logger.info(f"[OPENAI] Stream finished, checking for captured files to save")
                     save_notifications = await tag_handler.save_captured_data(project_id)
                     logger.info(f"[OPENAI] Got {len(save_notifications)} save notifications")

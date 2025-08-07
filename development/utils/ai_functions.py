@@ -2666,6 +2666,154 @@ async def save_file_from_stream(file_content, project_id, file_type, file_name):
             "message_to_agent": f"Error saving file: {str(e)}"
         }
 
+async def edit_file_content(file_id, edit_operations, project_id):
+    """
+    Edit an existing file with specified operations
+    
+    Args:
+        file_id: The ID of the file to edit
+        edit_operations: List of edit operations to apply
+        project_id: The project ID
+    
+    Returns:
+        Dict with operation result
+    """
+    logger.info(f"[edit_file_content] Starting edit for file {file_id} with {len(edit_operations)} operations")
+    logger.info(f"[edit_file_content] Project ID: {project_id}")
+    
+    # Validate inputs
+    if not file_id:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: file_id is required for editing"
+        }
+    
+    if not edit_operations or not isinstance(edit_operations, list):
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: edit_operations must be a non-empty list"
+        }
+    
+    # Get the file
+    try:
+        logger.info(f"[edit_file_content] Fetching file with ID {file_id} from project {project_id}")
+        file_obj = await sync_to_async(
+            ProjectFile.objects.get
+        )(id=file_id, project_id=project_id)
+        logger.info(f"[edit_file_content] Found file: {file_obj.name} (Type: {file_obj.file_type})")
+    except ProjectFile.DoesNotExist:
+        logger.error(f"[edit_file_content] File with ID {file_id} not found in project {project_id}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"File with ID {file_id} not found in project {project_id}"
+        }
+    
+    # Get current content and split into lines
+    current_content = file_obj.content
+    lines = current_content.split('\n')
+    original_line_count = len(lines)
+    logger.info(f"[edit_file_content] Current file has {original_line_count} lines")
+    
+    # Sort operations by type and position to apply them in order
+    # Apply replacements first, then insertions
+    replace_ops = [op for op in edit_operations if op.get('type') == 'replace_lines']
+    insert_ops = [op for op in edit_operations if op.get('type') == 'insert_after']
+    pattern_ops = [op for op in edit_operations if op.get('type') == 'pattern_replace']
+    
+    # Sort replace operations by start line (descending) to avoid index shifting
+    replace_ops.sort(key=lambda x: x.get('start', 0), reverse=True)
+    # Sort insert operations by line number (descending) to avoid index shifting
+    insert_ops.sort(key=lambda x: x.get('line', 0), reverse=True)
+    
+    # Apply replace operations
+    logger.info(f"[edit_file_content] Applying {len(replace_ops)} replace operations")
+    for i, operation in enumerate(replace_ops):
+        try:
+            start = operation['start'] - 1  # Convert to 0-based index
+            end = operation['end']  # End is inclusive in 1-based, exclusive in slice
+            new_lines = operation['content'].split('\n')
+            
+            logger.info(f"[edit_file_content] Replace op {i+1}: lines {start+1}-{end} with {len(new_lines)} new lines")
+            
+            # Validate line numbers
+            if start < 0 or end > len(lines):
+                logger.warning(f"[edit_file_content] Invalid line range: {start+1}-{end} for file with {len(lines)} lines")
+                continue
+                
+            lines[start:end] = new_lines
+            logger.info(f"[edit_file_content] Successfully replaced lines {start+1}-{end} with {len(new_lines)} new lines")
+        except Exception as e:
+            logger.error(f"[edit_file_content] Error applying replace operation: {str(e)}", exc_info=True)
+    
+    # Apply insert operations
+    logger.info(f"[edit_file_content] Applying {len(insert_ops)} insert operations")
+    for i, operation in enumerate(insert_ops):
+        try:
+            line_num = operation['line']  # Insert after this line
+            new_lines = operation['content'].split('\n')
+            
+            logger.info(f"[edit_file_content] Insert op {i+1}: {len(new_lines)} lines after line {line_num}")
+            
+            # Validate line number
+            if line_num < 0 or line_num > len(lines):
+                logger.warning(f"[edit_file_content] Invalid insert position: after line {line_num} for file with {len(lines)} lines")
+                continue
+            
+            # Insert after the specified line (Python slice insert at position inserts BEFORE that position)
+            # So to insert after line N, we insert at position N+1
+            insert_position = line_num + 1 if line_num < len(lines) else len(lines)
+            lines[insert_position:insert_position] = new_lines
+            logger.info(f"[edit_file_content] Successfully inserted {len(new_lines)} lines after line {line_num} (at position {insert_position})")
+        except Exception as e:
+            logger.error(f"[edit_file_content] Error applying insert operation: {str(e)}", exc_info=True)
+    
+    # Apply pattern replacements
+    logger.info(f"[edit_file_content] Applying {len(pattern_ops)} pattern operations")
+    for i, operation in enumerate(pattern_ops):
+        try:
+            pattern = operation['pattern']
+            content = operation['content']
+            
+            logger.info(f"[edit_file_content] Pattern op {i+1}: replacing '{pattern[:30]}...' with '{content[:30]}...'")
+            
+            # Join lines, replace pattern, split again
+            full_content = '\n'.join(lines)
+            occurrences = full_content.count(pattern)
+            full_content = full_content.replace(pattern, content)
+            lines = full_content.split('\n')
+            
+            logger.info(f"[edit_file_content] Replaced {occurrences} occurrences of pattern '{pattern[:30]}...'")
+        except Exception as e:
+            logger.error(f"[edit_file_content] Error applying pattern operation: {str(e)}", exc_info=True)
+    
+    # Save the edited content
+    new_content = '\n'.join(lines)
+    new_line_count = len(lines)
+    
+    logger.info(f"[edit_file_content] Saving edited content. New line count: {new_line_count}")
+    
+    # Update the file
+    await sync_to_async(file_obj.save_content)(new_content)
+    await sync_to_async(file_obj.save)()
+    
+    logger.info(f"[edit_file_content] File '{file_obj.name}' edited successfully. Lines changed from {original_line_count} to {new_line_count}")
+    
+    result = {
+        "is_notification": True,
+        "notification_type": "file_edited",
+        "message_to_agent": f"File '{file_obj.name}' edited successfully. Applied {len(edit_operations)} operations. Lines: {original_line_count} → {new_line_count}",
+        "file_id": file_id,
+        "file_name": file_obj.name,
+        "file_type": file_obj.file_type,
+        "operations_applied": len(edit_operations),
+        "line_count_before": original_line_count,
+        "line_count_after": new_line_count,
+        "notification_marker": "__NOTIFICATION__"  # Important for UI processing
+    }
+    
+    logger.info(f"[edit_file_content] Returning result: {result}")
+    return result
+
 async def save_implementation_from_stream(implementation_content, project_id):
     """
     Save implementation content that was captured from the streaming response.
@@ -3126,10 +3274,10 @@ async def get_file_content(project_id, file_ids):
         file_contents = []
         for file_obj in files:
             file_contents.append({
-                "id": file_obj.id,
+                "file_id": file_obj.id,
                 "name": file_obj.name,
                 "file_type": file_obj.file_type,
-                "content": file_obj.content,
+                "content": file_obj.file_content,
                 "created_at": file_obj.created_at.strftime("%Y-%m-%d %H:%M:%S"),
                 "updated_at": file_obj.updated_at.strftime("%Y-%m-%d %H:%M:%S")
             })
@@ -3137,7 +3285,7 @@ async def get_file_content(project_id, file_ids):
         response = {
             "is_notification": True,
             "notification_type": "file_content",
-            "message_to_agent": f"Retrieved {len(files)} file(s)",
+            "message_to_agent": f"Retrieved {len(files)} file(s). Here are the file contents: {file_contents}",
             "files": file_contents
         }
         
@@ -3154,3 +3302,73 @@ async def get_file_content(project_id, file_ids):
             "message_to_agent": f"Error getting file content: {str(e)}"
         }
         
+
+# Add this function to ai_functions.py
+
+async def update_file_content(file_id, updated_content, project_id):
+    """
+    Update an existing file with new content (complete replacement)
+    
+    Args:
+        file_id: The ID of the file to update
+        updated_content: The complete new content for the file
+        project_id: The project ID
+    
+    Returns:
+        Dict with operation result
+    """
+    logger.info(f"Updating file {file_id} with new content ({len(updated_content)} characters)")
+    
+    # Validate inputs
+    if not file_id:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: file_id is required for updating"
+        }
+    
+    if not updated_content:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: updated_content cannot be empty"
+        }
+    
+    # Get the file
+    try:
+        file_obj = await sync_to_async(
+            ProjectFile.objects.get
+        )(id=file_id, project_id=project_id)
+    except ProjectFile.DoesNotExist:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"File with ID {file_id} not found in project {project_id}"
+        }
+    
+    # Store old content length for comparison
+    old_content_length = len(file_obj.content) if file_obj.content else 0
+    new_content_length = len(updated_content)
+    
+    # Update the file content
+    try:
+        # Update content using the model's method
+        await sync_to_async(file_obj.save_content)(updated_content)
+        await sync_to_async(file_obj.save)()
+        
+        logger.info(f"File '{file_obj.name}' updated successfully. Content size: {old_content_length} → {new_content_length} characters")
+        
+        return {
+            "is_notification": True,
+            "notification_type": "file_edited",
+            "message_to_agent": f"File '{file_obj.name}' updated successfully. Content updated from {old_content_length} to {new_content_length} characters.",
+            "file_id": file_id,
+            "file_name": file_obj.name,
+            "file_type": file_obj.file_type,
+            "old_size": old_content_length,
+            "new_size": new_content_length
+        }
+        
+    except Exception as e:
+        logger.error(f"Error updating file content: {str(e)}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error updating file: {str(e)}"
+        }

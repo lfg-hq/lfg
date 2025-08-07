@@ -18,6 +18,11 @@ class StreamingTagHandler:
         self.captured_files = []  # List of (file_type, file_name, content) tuples
         self.pending_save_notifications = []  # List of save notifications to send
         
+        # Edit mode fields
+        self.edit_mode = False
+        self.file_id = None
+        self.file_mode = "create"  # "create" or "edit"
+        
     def process_text_chunk(self, text: str, project_id: str = None) -> Tuple[str, Optional[Dict[str, Any]], Optional[str]]:
         """
         Process a text chunk and detect/handle LFG tags
@@ -32,14 +37,39 @@ class StreamingTagHandler:
         mode_message = None
         output_text = ""
         
-        # Check for file tag opening
+        # Check for file tag opening (handles both create and edit modes)
         if "<lfg-file" in self.buffer and self.current_mode != "file":
-            tag_match = re.search(r'<lfg-file\s+type="([^"]+)"(?:\s+name="([^"]+)")?\s*>', self.buffer)
+            # Enhanced regex to capture mode and file_id
+            tag_match = re.search(
+                r'<lfg-file\s+(?:mode="([^"]+)"\s+)?(?:file_id="([^"]+)"\s+)?type="([^"]+)"(?:\s+name="([^"]+)")?\s*>', 
+                self.buffer
+            )
             if tag_match:
                 self.current_mode = "file"
-                self.current_file_type = tag_match.group(1)
-                self.current_file_name = tag_match.group(2) if tag_match.group(2) else self._get_default_file_name(self.current_file_type)
-                logger.info(f"[FILE MODE ACTIVATED] - Type: {self.current_file_type}, Name: {self.current_file_name}")
+                self.file_mode = tag_match.group(1) or "create"
+                self.file_id = tag_match.group(2)
+                self.current_file_type = tag_match.group(3)
+                self.current_file_name = tag_match.group(4) if tag_match.group(4) else self._get_default_file_name(self.current_file_type)
+                
+                if self.file_mode == "edit":
+                    self.edit_mode = True
+                    logger.info(f"[EDIT MODE ACTIVATED] - Type: {self.current_file_type}, Name: {self.current_file_name}, File ID: {self.file_id}")
+                    mode_message = f"\n\n*Editing {self._get_file_type_display(self.current_file_type)} '{self.current_file_name}'...*\n\n"
+                    
+                    # For edit mode, we'll capture the complete updated content
+                    notification = {
+                        "is_notification": True,
+                        "notification_type": "file_edit_stream",
+                        "content_chunk": "",
+                        "is_complete": False,
+                        "file_name": self.current_file_name,
+                        "file_type": self.current_file_type,
+                        "file_id": self.file_id,
+                        "notification_marker": "__NOTIFICATION__"
+                    }
+                else:
+                    logger.info(f"[FILE MODE ACTIVATED] - Type: {self.current_file_type}, Name: {self.current_file_name}")
+                    mode_message = f"\n\n*Generating {self._get_file_type_display(self.current_file_type)} '{self.current_file_name}'...*\n\n"
                 
                 # Find where the tag ends
                 tag_end = self.buffer.find(tag_match.group(0)) + len(tag_match.group(0))
@@ -50,12 +80,8 @@ class StreamingTagHandler:
                 # Clear the buffer
                 self.buffer = ""
                 
-                # Generate appropriate mode message
-                file_type_display = self._get_file_type_display(self.current_file_type)
-                mode_message = f"\n\n*Generating {file_type_display} '{self.current_file_name}'...*\n\n"
-                
-                # If we already have content, stream it
-                if self.current_file_data:
+                # For create mode, stream the content
+                if not self.edit_mode and self.current_file_data:
                     notification = {
                         "is_notification": True,
                         "notification_type": "file_stream",
@@ -68,7 +94,7 @@ class StreamingTagHandler:
         
         # Check for file tag closing
         elif "</lfg-file>" in self.buffer and self.current_mode == "file":
-            logger.info(f"[FILE MODE DEACTIVATED] - Type: {self.current_file_type}")
+            logger.info(f"[FILE MODE DEACTIVATED] - Type: {self.current_file_type}, Edit Mode: {self.edit_mode}")
             
             # Find where the closing tag starts
             tag_pos = self.buffer.find("</lfg-file>")
@@ -78,8 +104,8 @@ class StreamingTagHandler:
                 remaining_content = self.buffer[:tag_pos]
                 self.current_file_data += remaining_content
                 
-                # Stream the remaining content first
-                if remaining_content:
+                # Stream the remaining content for create mode
+                if not self.edit_mode and remaining_content:
                     pre_notification = {
                         "is_notification": True,
                         "notification_type": "file_stream",
@@ -89,7 +115,6 @@ class StreamingTagHandler:
                         "file_type": self.current_file_type,
                         "notification_marker": "__NOTIFICATION__"
                     }
-                    # We'll return this as part of a list in the refactored version
             
             # Clear buffer after the closing tag
             self.buffer = self.buffer[tag_pos + len("</lfg-file>"):]
@@ -97,39 +122,60 @@ class StreamingTagHandler:
             # Clean any incomplete closing tags from file data
             self.current_file_data = self._clean_incomplete_tags(self.current_file_data, "file")
             
-            # Store the captured file
-            self.captured_files.append((self.current_file_type, self.current_file_name, self.current_file_data))
+            if self.edit_mode:
+                # Store the edit request with the complete updated content
+                logger.info(f"[EDIT MODE] Storing edit request for file ID: {self.file_id}")
+                self.captured_files.append(("edit", self.current_file_name, {
+                    "file_id": self.file_id,
+                    "updated_content": self.current_file_data,  # Complete updated content
+                    "file_type": self.current_file_type
+                }))
+            else:
+                # Store the captured file for creation
+                self.captured_files.append((self.current_file_type, self.current_file_name, self.current_file_data))
             
             # Send completion notification
             notification = {
                 "is_notification": True,
-                "notification_type": "file_stream",
+                "notification_type": "file_stream" if not self.edit_mode else "file_edit_stream",
                 "content_chunk": "",
                 "is_complete": True,
                 "file_name": self.current_file_name,
                 "file_type": self.current_file_type,
                 "notification_marker": "__NOTIFICATION__",
-                # Note: file_id will be added after save completes
             }
+            if self.edit_mode:
+                notification["file_id"] = self.file_id
             
-            # IMPORTANT: Also trigger immediate save of the file
-            logger.info(f"[FILE COMPLETE] Triggering immediate save for {self.current_file_type}: {self.current_file_name}")
-            
-            # Create a save request that will be processed later
-            if project_id and self.current_file_data:
-                self.pending_save_notifications.append({
-                    'file_type': self.current_file_type,
-                    'file_name': self.current_file_name,
-                    'content': self.current_file_data,
-                    'project_id': project_id
-                })
-                logger.info(f"[FILE COMPLETE] Added save request to pending queue")
+            # Trigger save/edit
+            if project_id:
+                if self.edit_mode:
+                    self.pending_save_notifications.append({
+                        'mode': 'edit',
+                        'file_id': self.file_id,
+                        'file_type': self.current_file_type,
+                        'file_name': self.current_file_name,
+                        'updated_content': self.current_file_data,  # Complete updated content
+                        'project_id': project_id
+                    })
+                else:
+                    self.pending_save_notifications.append({
+                        'mode': 'create',
+                        'file_type': self.current_file_type,
+                        'file_name': self.current_file_name,
+                        'content': self.current_file_data,
+                        'project_id': project_id
+                    })
+                logger.info(f"[FILE COMPLETE] Added {'edit' if self.edit_mode else 'save'} request to pending queue")
             
             # Reset current file tracking
             self.current_mode = ""
             self.current_file_type = ""
             self.current_file_name = ""
             self.current_file_data = ""
+            self.edit_mode = False
+            self.file_id = None
+            self.file_mode = "create"
         
         # Legacy tag support - convert old tags to new format
         elif "<lfg-prd" in self.buffer and self.current_mode != "file":
@@ -161,20 +207,37 @@ class StreamingTagHandler:
         
         # Handle content based on current mode
         elif self.current_mode == "file":
-            # We're in file mode, capture everything
+            # Capture everything for both edit and create modes
             self.current_file_data += text
-            logger.debug(f"[CAPTURING FILE DATA]: Type: {self.current_file_type}, Added {len(text)} chars")
             
-            # Stream file content to the appropriate panel
-            notification = {
-                "is_notification": True,
-                "notification_type": "file_stream",
-                "content_chunk": text,
-                "is_complete": False,
-                "file_name": self.current_file_name,
-                "file_type": self.current_file_type,
-                "notification_marker": "__NOTIFICATION__"
-            }
+            if self.edit_mode:
+                # In edit mode, we capture but don't stream (showing "Editing..." is enough)
+                logger.debug(f"[CAPTURING EDIT DATA]: Added {len(text)} chars, total: {len(self.current_file_data)}")
+                # Optionally stream progress for edit mode
+                notification = {
+                    "is_notification": True,
+                    "notification_type": "file_edit_stream",
+                    "content_chunk": text,  # Show what's being edited
+                    "is_complete": False,
+                    "file_name": self.current_file_name,
+                    "file_type": self.current_file_type,
+                    "file_id": self.file_id,
+                    "notification_marker": "__NOTIFICATION__"
+                }
+            else:
+                # In create mode, stream content as before
+                logger.debug(f"[CAPTURING FILE DATA]: Type: {self.current_file_type}, Added {len(text)} chars")
+                
+                # Stream file content to the appropriate panel
+                notification = {
+                    "is_notification": True,
+                    "notification_type": "file_stream",
+                    "content_chunk": text,
+                    "is_complete": False,
+                    "file_name": self.current_file_name,
+                    "file_type": self.current_file_type,
+                    "notification_marker": "__NOTIFICATION__"
+                }
         
         else:
             # Normal mode - keep buffer reasonable and return text for user
@@ -209,13 +272,9 @@ class StreamingTagHandler:
             "test": "Test Plan",
             "research": "Research Document",
             "competitor-analysis": "Competitor Analysis",
-            "competitor_analysis": "Competitor Analysis",
             "market-analysis": "Market Analysis",
-            "market_analysis": "Market Analysis",
             "technical-research": "Technical Research",
-            "technical_research": "Technical Research",
             "user-research": "User Research",
-            "user_research": "User Research",
             "pricing": "Pricing Document",
             "quotation": "Project Quotation",
             "proposal": "Project Proposal",
@@ -236,13 +295,9 @@ class StreamingTagHandler:
             "test": "test plan",
             "research": "research document",
             "competitor-analysis": "competitor analysis",
-            "competitor_analysis": "competitor analysis",
             "market-analysis": "market analysis",
-            "market_analysis": "market analysis",
             "technical-research": "technical research",
-            "technical_research": "technical research",
             "user-research": "user research",
-            "user_research": "user research",
             "pricing": "pricing document",
             "quotation": "quotation",
             "proposal": "proposal",
@@ -284,22 +339,46 @@ class StreamingTagHandler:
         if not project_id or not self.captured_files:
             return notifications
             
-        from development.utils.ai_functions import save_file_from_stream
+        from development.utils.ai_functions import save_file_from_stream, update_file_content
         
         # Save all captured files
-        for file_type, file_name, content in self.captured_files:
-            if content:
-                logger.info(f"[SAVING FILE]: Type: {file_type}, Name: {file_name}, Size: {len(content)} characters")
+        for file_type_or_mode, file_name, content_or_config in self.captured_files:
+            if file_type_or_mode == "edit":
+                # Handle edit mode - update with complete new content
+                config = content_or_config
+                logger.info(f"[EDITING FILE]: ID: {config['file_id']}, Name: {file_name}")
                 
                 try:
-                    save_result = await save_file_from_stream(content, project_id, file_type, file_name)
-                    logger.info(f"[SAVE RESULT]: {save_result}")
+                    # Call a simpler update function that replaces content
+                    edit_result = await update_file_content(
+                        config['file_id'],
+                        config['updated_content'],  # Complete updated content
+                        project_id
+                    )
+                    logger.info(f"[EDIT RESULT]: {edit_result}")
                     
-                    if save_result.get("is_notification"):
-                        logger.info(f"[NOTIFICATION] Adding notification to list: {save_result}")
-                        notifications.append(save_result)
+                    if edit_result.get("is_notification"):
+                        notifications.append(edit_result)
                 except Exception as e:
-                    logger.error(f"Error saving file from stream: {str(e)}")
+                    logger.error(f"Error editing file: {str(e)}", exc_info=True)
+            else:
+                # Handle create mode (existing logic)
+                if content_or_config:
+                    logger.info(f"[SAVING FILE]: Type: {file_type_or_mode}, Name: {file_name}, Size: {len(content_or_config)} characters")
+                    
+                    try:
+                        save_result = await save_file_from_stream(
+                            content_or_config, 
+                            project_id, 
+                            file_type_or_mode, 
+                            file_name
+                        )
+                        logger.info(f"[SAVE RESULT]: {save_result}")
+                        
+                        if save_result.get("is_notification"):
+                            notifications.append(save_result)
+                    except Exception as e:
+                        logger.error(f"Error saving file from stream: {str(e)}")
         
         return notifications
     
@@ -310,24 +389,37 @@ class StreamingTagHandler:
         if not self.pending_save_notifications:
             return notifications
             
-        from development.utils.ai_functions import save_file_from_stream
+        from development.utils.ai_functions import save_file_from_stream, update_file_content
         
-        # Process all pending saves
-        for save_request in self.pending_save_notifications:
+        # Process all pending saves/edits
+        for request in self.pending_save_notifications:
             try:
-                logger.info(f"[IMMEDIATE SAVE] Processing pending save: {save_request['file_type']}")
-                save_result = await save_file_from_stream(
-                    save_request['content'],
-                    save_request['project_id'], 
-                    save_request['file_type'],
-                    save_request['file_name']
-                )
-                logger.info(f"[IMMEDIATE SAVE] Result: {save_result}")
-                
-                if save_result.get("is_notification"):
-                    notifications.append(save_result)
+                if request.get('mode') == 'edit':
+                    logger.info(f"[IMMEDIATE EDIT] Processing pending edit: {request['file_id']}")
+                    # Use simpler update with complete content
+                    edit_result = await update_file_content(
+                        request['file_id'],
+                        request['updated_content'],  # Complete updated content
+                        request['project_id']
+                    )
+                    logger.info(f"[IMMEDIATE EDIT] Result: {edit_result}")
+                    
+                    if edit_result.get("is_notification"):
+                        notifications.append(edit_result)
+                else:
+                    logger.info(f"[IMMEDIATE SAVE] Processing pending save: {request['file_type']}")
+                    save_result = await save_file_from_stream(
+                        request['content'],
+                        request['project_id'], 
+                        request['file_type'],
+                        request['file_name']
+                    )
+                    logger.info(f"[IMMEDIATE SAVE] Result: {save_result}")
+                    
+                    if save_result.get("is_notification"):
+                        notifications.append(save_result)
             except Exception as e:
-                logger.error(f"Error in immediate save: {str(e)}")
+                logger.error(f"Error in immediate save/edit: {str(e)}")
         
         # Clear pending saves
         self.pending_save_notifications = []

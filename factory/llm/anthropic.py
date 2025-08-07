@@ -394,6 +394,15 @@ class AnthropicProvider(BaseLLMProvider):
                                 if flushed_output:
                                     yield flushed_output
                                 
+                                # Check for any pending saves/edits first
+                                logger.info(f"[ANTHROPIC] Checking for pending saves/edits")
+                                pending_notifications = await tag_handler.check_and_save_pending_files()
+                                logger.info(f"[ANTHROPIC] Got {len(pending_notifications)} pending notifications")
+                                for notification in pending_notifications:
+                                    logger.info(f"[ANTHROPIC] Yielding pending notification: {notification}")
+                                    formatted = format_notification(notification)
+                                    yield formatted
+                                
                                 # Save any captured data
                                 logger.info(f"[ANTHROPIC] Stream finished, checking for captured files to save")
                                 save_notifications = await tag_handler.save_captured_data(project_id)
