@@ -1479,7 +1479,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const viewerTitle = document.getElementById('viewer-title');
                 if (viewerTitle) {
                     viewerTitle.innerHTML = `
-                        <span id="viewer-title-text">${documentName} (Generating...)</span>
+                        <span id="viewer-title-text">Generating...</span>
                         <button id="viewer-title-edit" style="background: none; border: none; color: #9ca3af; cursor: pointer; margin-left: 8px; padding: 4px; opacity: 0.7;" title="Edit name" disabled>
                             <i class="fas fa-pencil" style="font-size: 12px;"></i>
                         </button>

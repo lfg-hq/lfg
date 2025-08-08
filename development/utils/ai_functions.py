@@ -3318,6 +3318,8 @@ async def update_file_content(file_id, updated_content, project_id):
         Dict with operation result
     """
     logger.info(f"Updating file {file_id} with new content ({len(updated_content)} characters)")
+
+    logger.info(f"Updated Content: {updated_content}")
     
     # Validate inputs
     if not file_id:
@@ -3332,11 +3334,18 @@ async def update_file_content(file_id, updated_content, project_id):
             "message_to_agent": "Error: updated_content cannot be empty"
         }
     
+    project = await get_project(project_id)
+    if not project:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Project with ID {project_id} does not exist"
+        }
+    
     # Get the file
     try:
         file_obj = await sync_to_async(
             ProjectFile.objects.get
-        )(id=file_id, project_id=project_id)
+        )(id=file_id, project=project)
     except ProjectFile.DoesNotExist:
         return {
             "is_notification": False,
