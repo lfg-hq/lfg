@@ -3285,7 +3285,7 @@ async def get_file_content(project_id, file_ids):
         response = {
             "is_notification": True,
             "notification_type": "file_content",
-            "message_to_agent": f"Retrieved {len(files)} file(s). Here are the file contents: {file_contents}",
+            "message_to_agent": f"Retrieved {len(files)} file(s). Here are the file contents: {file_contents}. You can proceed to the next step.",
             "files": file_contents
         }
         
