@@ -32,7 +32,10 @@ class StreamingTagHandler:
             - notification: Notification data to send (None if no notification)
             - mode_message: Message to show when entering a mode (None if not entering mode)
         """
-        self.buffer += text
+        # When in file mode, don't add to buffer - process directly
+        if self.current_mode != "file":
+            self.buffer += text
+            
         notification = None
         mode_message = None
         output_text = ""
@@ -77,8 +80,11 @@ class StreamingTagHandler:
                 # Everything after the tag is file content
                 self.current_file_data = self.buffer[tag_end:]
                 
-                # Clear the buffer
+                # Clear the buffer completely - we've extracted what we need
                 self.buffer = ""
+                
+                # Log what we captured initially
+                logger.info(f"[FILE TAG OPENED] Initial content captured: {len(self.current_file_data)} chars")
                 
                 # For create mode, stream the content
                 if not self.edit_mode and self.current_file_data:
@@ -92,47 +98,80 @@ class StreamingTagHandler:
                         "notification_marker": "__NOTIFICATION__"
                     }
         
-        # Check for file tag closing
-        elif "</lfg-file>" in self.buffer and self.current_mode == "file":
+        # Check for file tag closing (check both buffer and text when in file mode)
+        elif (("</lfg-file>" in self.buffer) or (self.current_mode == "file" and "</lfg-file>" in text)) and self.current_mode == "file":
             logger.info(f"[FILE MODE DEACTIVATED] - Type: {self.current_file_type}, Edit Mode: {self.edit_mode}")
             
-            # Find where the closing tag starts
-            tag_pos = self.buffer.find("</lfg-file>")
-            
-            # Everything before the tag is file content
-            if tag_pos > 0:
-                remaining_content = self.buffer[:tag_pos]
-                self.current_file_data += remaining_content
+            # Handle closing tag based on where it was found
+            if "</lfg-file>" in text:
+                # Tag is in the current text chunk
+                tag_pos = text.find("</lfg-file>")
                 
-                # Stream the remaining content for create mode
-                if not self.edit_mode and remaining_content:
-                    pre_notification = {
-                        "is_notification": True,
-                        "notification_type": "file_stream",
-                        "content_chunk": remaining_content,
-                        "is_complete": False,
-                        "file_name": self.current_file_name,
-                        "file_type": self.current_file_type,
-                        "notification_marker": "__NOTIFICATION__"
-                    }
-            
-            # Clear buffer after the closing tag
-            self.buffer = self.buffer[tag_pos + len("</lfg-file>"):]
+                # Everything before the tag is file content
+                if tag_pos > 0:
+                    remaining_content = text[:tag_pos]
+                    self.current_file_data += remaining_content
+                    
+                    # Stream the remaining content for create mode
+                    if not self.edit_mode and remaining_content:
+                        pre_notification = {
+                            "is_notification": True,
+                            "notification_type": "file_stream",
+                            "content_chunk": remaining_content,
+                            "is_complete": False,
+                            "file_name": self.current_file_name,
+                            "file_type": self.current_file_type,
+                            "notification_marker": "__NOTIFICATION__"
+                        }
+                
+                # Put anything after the closing tag into buffer for normal processing
+                self.buffer = text[tag_pos + len("</lfg-file>"):]
+            else:
+                # Tag is in the buffer (shouldn't happen in file mode, but handle it)
+                tag_pos = self.buffer.find("</lfg-file>")
+                
+                # Everything before the tag is file content
+                if tag_pos > 0:
+                    remaining_content = self.buffer[:tag_pos]
+                    self.current_file_data += remaining_content
+                    
+                    # Stream the remaining content for create mode
+                    if not self.edit_mode and remaining_content:
+                        pre_notification = {
+                            "is_notification": True,
+                            "notification_type": "file_stream",
+                            "content_chunk": remaining_content,
+                            "is_complete": False,
+                            "file_name": self.current_file_name,
+                            "file_type": self.current_file_type,
+                            "notification_marker": "__NOTIFICATION__"
+                        }
+                
+                # Clear buffer after the closing tag
+                self.buffer = self.buffer[tag_pos + len("</lfg-file>"):]
             
             # Clean any incomplete closing tags from file data
             self.current_file_data = self._clean_incomplete_tags(self.current_file_data, "file")
             
-            if self.edit_mode:
-                # Store the edit request with the complete updated content
-                logger.info(f"[EDIT MODE] Storing edit request for file ID: {self.file_id}")
-                self.captured_files.append(("edit", self.current_file_name, {
-                    "file_id": self.file_id,
-                    "updated_content": self.current_file_data,  # Complete updated content
-                    "file_type": self.current_file_type
-                }))
-            else:
-                # Store the captured file for creation
-                self.captured_files.append((self.current_file_type, self.current_file_name, self.current_file_data))
+            # Log final content before saving
+            logger.info(f"[FILE COMPLETE] Final content length: {len(self.current_file_data)} chars")
+            logger.info(f"[FILE COMPLETE] First 200 chars: {self.current_file_data[:200]}")
+            logger.info(f"[FILE COMPLETE] Last 200 chars: {self.current_file_data[-200:]}")
+            
+            # Only store in captured_files if no project_id (for backward compatibility)
+            # Otherwise, use pending_save_notifications to avoid duplicates
+            if not project_id:
+                if self.edit_mode:
+                    # Store the edit request with the complete updated content
+                    logger.info(f"[EDIT MODE] Storing edit request for file ID: {self.file_id}")
+                    self.captured_files.append(("edit", self.current_file_name, {
+                        "file_id": self.file_id,
+                        "updated_content": self.current_file_data,  # Complete updated content
+                        "file_type": self.current_file_type
+                    }))
+                else:
+                    # Store the captured file for creation
+                    self.captured_files.append((self.current_file_type, self.current_file_name, self.current_file_data))
             
             # Send completion notification
             notification = {
@@ -207,8 +246,14 @@ class StreamingTagHandler:
         
         # Handle content based on current mode
         elif self.current_mode == "file":
-            # Capture everything for both edit and create modes
+            # When in file mode, we need to handle the buffer differently
+            # The buffer should be empty since we cleared it when entering file mode
+            # So we can safely add new text to current_file_data
+            
+            # Important: Only add text that's actually new, not from buffer
             self.current_file_data += text
+            
+            logger.debug(f"[FILE MODE] Added {len(text)} chars, total content: {len(self.current_file_data)} chars")
             
             if self.edit_mode:
                 # In edit mode, we capture but don't stream (showing "Editing..." is enough)
@@ -365,6 +410,8 @@ class StreamingTagHandler:
                 # Handle create mode (existing logic)
                 if content_or_config:
                     logger.info(f"[SAVING FILE]: Type: {file_type_or_mode}, Name: {file_name}, Size: {len(content_or_config)} characters")
+                    logger.info(f"[SAVE_CAPTURED CONTENT DEBUG] First 500 chars: {content_or_config[:500]}")
+                    logger.info(f"[SAVE_CAPTURED CONTENT DEBUG] Last 500 chars: {content_or_config[-500:]}")
                     
                     try:
                         save_result = await save_file_from_stream(
@@ -380,6 +427,10 @@ class StreamingTagHandler:
                     except Exception as e:
                         logger.error(f"Error saving file from stream: {str(e)}")
         
+        # Clear captured files after processing to prevent duplicate saves
+        self.captured_files = []
+        logger.info("[SAVE_CAPTURED_DATA] Cleared captured files after processing")
+        
         return notifications
     
     async def check_and_save_pending_files(self) -> list:
@@ -391,8 +442,15 @@ class StreamingTagHandler:
             
         from development.utils.ai_functions import save_file_from_stream, update_file_content
         
+        # Copy the list to avoid issues with clearing during iteration
+        pending_saves = list(self.pending_save_notifications)
+        
+        # Clear pending saves immediately to prevent duplicate processing
+        self.pending_save_notifications = []
+        logger.info(f"[CHECK_AND_SAVE] Processing {len(pending_saves)} pending saves/edits")
+        
         # Process all pending saves/edits
-        for request in self.pending_save_notifications:
+        for request in pending_saves:
             try:
                 if request.get('mode') == 'edit':
                     logger.info(f"[IMMEDIATE EDIT] Processing pending edit: {request['file_id']}")
@@ -408,6 +466,11 @@ class StreamingTagHandler:
                         notifications.append(edit_result)
                 else:
                     logger.info(f"[IMMEDIATE SAVE] Processing pending save: {request['file_type']}")
+                    logger.info(f"[CONTENT DEBUG] File name: {request['file_name']}")
+                    logger.info(f"[CONTENT DEBUG] Content length: {len(request['content'])} characters")
+                    logger.info(f"[CONTENT DEBUG] First 500 chars: {request['content'][:500]}")
+                    logger.info(f"[CONTENT DEBUG] Last 500 chars: {request['content'][-500:]}")
+                    
                     save_result = await save_file_from_stream(
                         request['content'],
                         request['project_id'], 
@@ -420,9 +483,6 @@ class StreamingTagHandler:
                         notifications.append(save_result)
             except Exception as e:
                 logger.error(f"Error in immediate save/edit: {str(e)}")
-        
-        # Clear pending saves
-        self.pending_save_notifications = []
         
         return notifications
 
