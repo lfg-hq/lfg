@@ -14,8 +14,8 @@ from google.genai.types import (
 from .base import BaseLLMProvider
 
 # Import functions from ai_common and streaming_handlers
-from development.utils.ai_common import execute_tool_call, get_notification_type_for_tool, track_token_usage
-from development.utils.streaming_handlers import StreamingTagHandler, format_notification
+from factory.ai_common import execute_tool_call, get_notification_type_for_tool, track_token_usage
+from factory.streaming_handlers import StreamingTagHandler, format_notification
 
 logger = logging.getLogger(__name__)
 

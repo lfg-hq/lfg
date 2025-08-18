@@ -9,8 +9,7 @@ from asgiref.sync import sync_to_async
 from projects.models import Project, ProjectFeature, ProjectPersona, \
                             ProjectPRD, ProjectDesignSchema, ProjectChecklist, \
                             ProjectImplementation, ProjectFile
-from development.utils.prd_functions import analyze_features, analyze_personas, \
-                    design_schema
+
 from development.models import ServerConfig
 
 from django.conf import settings
@@ -179,12 +178,6 @@ async def app_functions(function_name, function_args, project_id, conversation_i
             return await get_implementation(project_id)
         case "update_implementation":
             return await update_implementation(function_args, project_id)
-        case "save_features":
-            return await save_features(project_id)
-        case "save_personas":
-            return await save_personas(project_id)
-        case "design_schema":
-            return await save_design_schema(function_args, project_id)
         case "create_tickets":
             return await create_tickets(function_args, project_id)
         case "update_ticket":
@@ -269,179 +262,6 @@ async def app_functions(function_name, function_args, project_id, conversation_i
 
     return None
 
-# ============================================================================
-# FEATURE FUNCTIONS
-# ============================================================================
-
-async def save_features(project_id):
-    """
-    Save the features from the PRD into a different list
-    """
-    logger.info("Save features function called ")
-    
-    error_response = validate_project_id(project_id)
-    if error_response:
-        return error_response
-    
-    project = await get_project(project_id)
-    if not project:
-        return {
-            "is_notification": False,
-            "message_to_agent": f"Error: Project with ID {project_id} does not exist"
-        }
-
-    try:
-        # Check if project has PRD - get the most recent one
-        try:
-            latest_prd = await sync_to_async(
-                lambda: ProjectPRD.objects.filter(project=project).order_by('-updated_at').first()
-            )()
-            if not latest_prd:
-                raise ProjectPRD.DoesNotExist
-            prd_content = latest_prd.prd
-        except (ProjectPRD.DoesNotExist, AttributeError):
-            return {
-                "is_notification": False,
-                "message_to_agent": "Error: Project does not have a PRD. Please create a PRD first."
-            }
-
-        # Get all features for this project
-        features = await sync_to_async(
-            lambda: list(ProjectFeature.objects.filter(project=project))
-        )()
-        
-        # Convert features to list of dicts
-        feature_list = []
-        for feature in features:
-            feature_list.append({
-                "name": feature.name,
-                "description": feature.description,
-                "details": feature.details,
-                "priority": feature.priority
-            })
-        
-        # Run AI analysis in thread pool to avoid blocking
-        new_features_data = await asyncio.get_event_loop().run_in_executor(
-            None, analyze_features, feature_list, prd_content
-        )
-
-        # Parse the JSON response
-        new_features_dict = json.loads(new_features_data)
-        
-        # Extract the list of features from the dictionary
-        if 'features' in new_features_dict:
-            new_features = new_features_dict['features']
-        else:
-            new_features = new_features_dict
-
-        logger.debug(f" New features: {new_features}")
-    
-        # Create new features using async database operations
-        await sync_to_async(lambda: [
-            ProjectFeature.objects.create(
-                project=project,
-                name=feature['name'],
-                description=feature['description'],
-                details=feature['details'],
-                priority=feature['priority']
-            ) for feature in new_features
-        ])()
-        
-        return {
-            "is_notification": False,
-            "notification_type": "features",
-            "message_to_agent": f"Features have been saved in the database"
-        }
-    except Exception as e:
-        logger.error(f"Error saving features: {str(e)}")
-        return {
-            "is_notification": False,
-            "message_to_agent": f"Error saving features: {str(e)}"
-        }
-
-async def save_personas(project_id):
-    """
-    Save the personas from the PRD into a different list
-    """
-    logger.info("Save personas function called ")
-    
-    error_response = validate_project_id(project_id)
-    if error_response:
-        return error_response
-    
-    project = await get_project(project_id)
-    if not project:
-        return {
-            "is_notification": False,
-            "message_to_agent": f"Error: Project with ID {project_id} does not exist"
-        }
-
-    try:
-        # Check if project has PRD - get the most recent one
-        try:
-            latest_prd = await sync_to_async(
-                lambda: ProjectPRD.objects.filter(project=project).order_by('-updated_at').first()
-            )()
-            if not latest_prd:
-                raise ProjectPRD.DoesNotExist
-            prd_content = latest_prd.prd
-        except (ProjectPRD.DoesNotExist, AttributeError):
-            return {
-                "is_notification": False,
-                "message_to_agent": "Error: Project does not have a PRD. Please create a PRD first."
-            }
-
-        # Get all personas for this project
-        personas = await sync_to_async(
-            lambda: list(ProjectPersona.objects.filter(project=project))
-        )()
-        
-        # Convert personas to list of dicts
-        persona_list = []
-        for persona in personas:
-            persona_list.append({
-                "name": persona.name,
-                "role": persona.role,
-                "description": persona.description
-            })
-        
-        # Run AI analysis in thread pool to avoid blocking
-        new_personas_data = await asyncio.get_event_loop().run_in_executor(
-            None, analyze_personas, persona_list, prd_content
-        )
-
-        # Parse the JSON response
-        new_personas_dict = json.loads(new_personas_data)
-        
-        # Extract the list of personas from the dictionary
-        if 'personas' in new_personas_dict:
-            new_personas = new_personas_dict['personas']
-        else:
-            new_personas = new_personas_dict
-
-        logger.debug(f" New personas: {new_personas}")
-    
-        # Create new personas using async database operations
-        await sync_to_async(lambda: [
-            ProjectPersona.objects.create(
-                project=project,
-                name=persona['name'],
-                role=persona['role'],
-                description=persona['description']
-            ) for persona in new_personas
-        ])()
-        
-        return {
-            "is_notification": True,
-            "notification_type": "personas",
-            "message_to_agent": f"Personas have been successfully saved in the database"
-        }
-    except Exception as e:
-        logger.error(f"Error saving personas: {str(e)}")
-        return {
-            "is_notification": False,
-            "message_to_agent": f"Error saving personas: {str(e)}"
-        }
 
 async def extract_features(function_args, project_id, conversation_id=None):
     """
@@ -450,7 +270,7 @@ async def extract_features(function_args, project_id, conversation_id=None):
     logger.info("Feature extraction function called ")
     
     # Import progress utility
-    from coding.utils.progress_utils import send_tool_progress
+    from factory.progress_utils import send_tool_progress
     
     # Step 1: Start
     if conversation_id:
@@ -572,7 +392,7 @@ async def extract_personas(function_args, project_id, conversation_id=None):
     logger.info("Persona extraction function called ")
     
     # Import progress utility
-    from coding.utils.progress_utils import send_tool_progress
+    from factory.progress_utils import send_tool_progress
     
     # Step 1: Start
     if conversation_id:
@@ -1513,88 +1333,6 @@ async def stream_document_content(function_args, project_id):
     
     logger.info(f"[DOCUMENT_STREAM] Returning stream result: is_complete={is_complete}, has_file_id={'file_id' in result}, keys={list(result.keys())}")
     return result
-
-async def save_design_schema(function_args, project_id):
-    """
-    Save the design schema for a project
-    """
-    logger.info("Save design schema function called ")
-    
-    error_response = validate_project_id(project_id)
-    if error_response:
-        return error_response
-    
-    validation_error = validate_function_args(function_args, ['user_input'])
-    if validation_error:
-        return validation_error
-    
-    project = await get_project(project_id)
-    if not project:
-        return {
-            "is_notification": False,
-            "message_to_agent": f"Error: Project with ID {project_id} does not exist"
-        }
-    
-    user_input = function_args.get('user_input', '')
-
-    try:
-        # Check if project has PRD - get the most recent one
-        try:
-            latest_prd = await sync_to_async(
-                lambda: ProjectPRD.objects.filter(project=project).order_by('-updated_at').first()
-            )()
-            if not latest_prd:
-                raise ProjectPRD.DoesNotExist
-            prd_content = latest_prd.prd
-        except (ProjectPRD.DoesNotExist, AttributeError):
-            return {
-                "is_notification": False,
-                "message_to_agent": "Error: Project does not have a PRD. Please create a PRD first."
-            }
-
-        # Get existing design schema if any
-        try:
-            existing_schema = await sync_to_async(lambda: project.design_schema.design_schema)()
-        except ProjectDesignSchema.DoesNotExist:
-            existing_schema = ""
-        
-        # Run design schema generation in thread pool
-        design_schema_content = await asyncio.get_event_loop().run_in_executor(
-            None, design_schema, prd_content, existing_schema, user_input
-        )
-        design_schema_content = json.loads(design_schema_content)
-
-        if 'design_schema' in design_schema_content:
-            design_schema_content = design_schema_content['design_schema']
-        else:
-            return {
-                "is_notification": False,
-                "message_to_agent": "Error: design_schema is required to save design schema"
-            }
-        
-        # Save design schema using async database operations
-        await sync_to_async(lambda: (
-            lambda schema, created: None
-        )(*ProjectDesignSchema.objects.get_or_create(
-            project=project, 
-            defaults={'design_schema': design_schema_content}
-        )))()
-        
-        # Update if it already existed
-        await sync_to_async(lambda: (
-            ProjectDesignSchema.objects.filter(project=project).update(design_schema=design_schema_content)
-        ))()
-        
-        return {
-            "is_notification": True,
-            "notification_type": "design_schema",
-            "message_to_agent": f"Design schema successfully updated in the database"
-        }
-    except Exception as e:
-        return {
-            "is_notification": False,
-            "message_to_agent": f"Error saving design schema: {str(e)}"
-        }
 
 async def create_tickets(function_args, project_id):
     """

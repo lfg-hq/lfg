@@ -22,7 +22,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Import the functions from ai_functions
-from development.utils.ai_functions import execute_local_command, restart_server_from_config
+from factory.ai_functions import execute_local_command, restart_server_from_config
 
 # Create your views here.
 

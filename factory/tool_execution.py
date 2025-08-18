@@ -131,7 +131,7 @@ async def execute_tool_call(
             - notification_data: Dict with notification data or None
             - yielded_content: Content to yield immediately (e.g., "*" for explanations)
     """
-    from development.utils.ai_functions import app_functions
+    from factory.ai_functions import app_functions
     import traceback
     
     logger.debug(f"Executing Tool: {tool_call_name}")
@@ -343,10 +343,10 @@ async def get_ai_response(
         Dict containing the AI response with content and tool_calls
     """
     # Import at function level to avoid circular imports
-    from development.utils import ai_providers
+    from factory import ai_providers
     
     if tools is None:
-        from development.utils.ai_tools import tools_code
+        from factory.ai_tools import tools_code
         tools = tools_code
     
     # Create messages list

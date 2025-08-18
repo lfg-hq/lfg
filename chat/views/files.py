@@ -11,7 +11,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 from rest_framework import status
 from chat.models import Conversation, Message, ChatFile
-from development.utils.ai_providers import FileHandler
+from factory.ai_providers import FileHandler
 import asyncio
 from asgiref.sync import sync_to_async
 

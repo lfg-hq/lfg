@@ -405,12 +405,12 @@ LOGGING = {
             'level': 'DEBUG',
             'propagate': False,
         },
-        'development.utils.ai_providers': {
+        'factory.ai_providers': {
             'handlers': ['console', 'easylogs'],
             'level': 'DEBUG',
             'propagate': False,
         },
-        'development.utils.ai_functions': {
+        'factory.ai_functions': {
             'handlers': ['console', 'easylogs'],
             'level': 'DEBUG',
             'propagate': False,

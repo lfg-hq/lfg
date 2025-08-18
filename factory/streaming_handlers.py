@@ -62,7 +62,7 @@ class StreamingTagHandler:
                     # For edit mode, we'll capture the complete updated content
                     notification = {
                         "is_notification": True,
-                        "notification_type": "file_edit_stream",
+                        "notification_type": "file_stream",
                         "content_chunk": "",
                         "is_complete": False,
                         "file_name": self.current_file_name,
@@ -176,7 +176,7 @@ class StreamingTagHandler:
             # Send completion notification
             notification = {
                 "is_notification": True,
-                "notification_type": "file_stream" if not self.edit_mode else "file_edit_stream",
+                "notification_type": "file_stream",
                 "content_chunk": "",
                 "is_complete": True,
                 "file_name": self.current_file_name,
@@ -261,7 +261,7 @@ class StreamingTagHandler:
                 # Optionally stream progress for edit mode
                 notification = {
                     "is_notification": True,
-                    "notification_type": "file_edit_stream",
+                    "notification_type": "file_stream",
                     "content_chunk": text,  # Show what's being edited
                     "is_complete": False,
                     "file_name": self.current_file_name,
@@ -384,7 +384,7 @@ class StreamingTagHandler:
         if not project_id or not self.captured_files:
             return notifications
             
-        from development.utils.ai_functions import save_file_from_stream, update_file_content
+        from factory.ai_functions import save_file_from_stream, update_file_content
         
         # Save all captured files
         for file_type_or_mode, file_name, content_or_config in self.captured_files:
@@ -440,7 +440,7 @@ class StreamingTagHandler:
         if not self.pending_save_notifications:
             return notifications
             
-        from development.utils.ai_functions import save_file_from_stream, update_file_content
+        from factory.ai_functions import save_file_from_stream, update_file_content
         
         # Copy the list to avoid issues with clearing during iteration
         pending_saves = list(self.pending_save_notifications)

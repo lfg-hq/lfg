@@ -45,8 +45,8 @@ Each provider file currently has placeholder imports that need to be updated:
 
 ```python
 # Replace the placeholder imports with:
-from development.utils.ai_providers import execute_tool_call, get_notification_type_for_tool, track_token_usage
-from development.utils.streaming_handlers import StreamingTagHandler, format_notification
+from factory.ai_common import execute_tool_call, get_notification_type_for_tool, track_token_usage
+from factory.streaming_handlers import StreamingTagHandler, format_notification
 ```
 
 ### 4. Database Migration
