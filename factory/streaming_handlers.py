@@ -17,13 +17,14 @@ class StreamingTagHandler:
         self.current_file_data = ""
         self.captured_files = []  # List of (file_type, file_name, content) tuples
         self.pending_save_notifications = []  # List of save notifications to send
+        self.immediate_notifications = []  # Notifications to yield immediately
         
         # Edit mode fields
         self.edit_mode = False
         self.file_id = None
         self.file_mode = "create"  # "create" or "edit"
         
-    def process_text_chunk(self, text: str, project_id: str = None) -> Tuple[str, Optional[Dict[str, Any]], Optional[str]]:
+    async def process_text_chunk(self, text: str, project_id: str = None) -> Tuple[str, Optional[Dict[str, Any]], Optional[str]]:
         """
         Process a text chunk and detect/handle LFG tags
         
@@ -100,7 +101,11 @@ class StreamingTagHandler:
         
         # Check for file tag closing (check both buffer and text when in file mode)
         elif (("</lfg-file>" in self.buffer) or (self.current_mode == "file" and "</lfg-file>" in text)) and self.current_mode == "file":
-            logger.info(f"[FILE MODE DEACTIVATED] - Type: {self.current_file_type}, Edit Mode: {self.edit_mode}")
+            logger.info(f"[FILE TAG CLOSING DETECTED] - Type: {self.current_file_type}, Edit Mode: {self.edit_mode}")
+            logger.info(f"[FILE TAG CLOSING] Current mode: {self.current_mode}")
+            logger.info(f"[FILE TAG CLOSING] Project ID: {project_id}")
+            logger.info(f"[FILE TAG CLOSING] Buffer contains tag: {'</lfg-file>' in self.buffer}")
+            logger.info(f"[FILE TAG CLOSING] Text contains tag: {'</lfg-file>' in text}")
             
             # Handle closing tag based on where it was found
             if "</lfg-file>" in text:
@@ -186,26 +191,60 @@ class StreamingTagHandler:
             if self.edit_mode:
                 notification["file_id"] = self.file_id
             
-            # Trigger save/edit
+            # Trigger save/edit immediately when file is complete
+            logger.info(f"[FILE SAVE CHECK] Project ID available: {bool(project_id)}, value: {project_id}")
             if project_id:
-                if self.edit_mode:
-                    self.pending_save_notifications.append({
-                        'mode': 'edit',
-                        'file_id': self.file_id,
-                        'file_type': self.current_file_type,
-                        'file_name': self.current_file_name,
-                        'updated_content': self.current_file_data,  # Complete updated content
-                        'project_id': project_id
-                    })
-                else:
-                    self.pending_save_notifications.append({
-                        'mode': 'create',
-                        'file_type': self.current_file_type,
-                        'file_name': self.current_file_name,
-                        'content': self.current_file_data,
-                        'project_id': project_id
-                    })
-                logger.info(f"[FILE COMPLETE] Added {'edit' if self.edit_mode else 'save'} request to pending queue")
+                logger.info("[FILE SAVE] Starting immediate save process")
+                from factory.ai_functions import save_file_from_stream, update_file_content
+                
+                logger.info(f"[FILE COMPLETE] Attempting immediate save/edit with project_id: {project_id}")
+                logger.info(f"[FILE COMPLETE] File data length: {len(self.current_file_data)}")
+                logger.info(f"[FILE COMPLETE] File type: {self.current_file_type}, name: {self.current_file_name}")
+                logger.info(f"[FILE COMPLETE] First 100 chars of data: {self.current_file_data[:100]}")
+                logger.info(f"[FILE COMPLETE] Last 100 chars of data: {self.current_file_data[-100:]}")
+                
+                try:
+                    if self.edit_mode:
+                        logger.info(f"[FILE COMPLETE - IMMEDIATE EDIT] Processing edit for file ID: {self.file_id}")
+                        # Update file with complete new content
+                        edit_result = await update_file_content(
+                            self.file_id,
+                            self.current_file_data,  # Complete updated content
+                            project_id
+                        )
+                        logger.info(f"[FILE COMPLETE - EDIT RESULT]: {edit_result}")
+                        
+                        if edit_result.get("is_notification"):
+                            # Add edit notification to immediate notifications queue
+                            self.immediate_notifications.append(edit_result)
+                            logger.info("[FILE COMPLETE] Added edit notification to immediate queue")
+                    else:
+                        logger.info(f"[FILE COMPLETE - IMMEDIATE SAVE] Processing save for file type: {self.current_file_type}")
+                        logger.info(f"[FILE COMPLETE - CONTENT DEBUG] Content length: {len(self.current_file_data)} characters")
+                        logger.info(f"[FILE COMPLETE - CONTENT PREVIEW] First 200 chars: {self.current_file_data[:200]}")
+                        
+                        save_result = await save_file_from_stream(
+                            self.current_file_data,
+                            project_id, 
+                            self.current_file_type,
+                            self.current_file_name
+                        )
+                        logger.info(f"[FILE COMPLETE - SAVE RESULT]: {save_result}")
+                        
+                        if save_result.get("is_notification"):
+                            # Add save notification to immediate notifications queue
+                            logger.info(f"[FILE COMPLETE] Save notification received: {save_result}")
+                            self.immediate_notifications.append(save_result)
+                            logger.info(f"[FILE COMPLETE] Added save notification to immediate queue, queue size: {len(self.immediate_notifications)}")
+                            logger.info(f"[FILE COMPLETE] Immediate queue contents: {self.immediate_notifications}")
+                        else:
+                            logger.warning(f"[FILE COMPLETE] Save result is not a notification: {save_result}")
+                except Exception as e:
+                    logger.error(f"Error in immediate save/edit: {str(e)}", exc_info=True)
+                    notification["save_error"] = str(e)
+            else:
+                logger.warning(f"[FILE COMPLETE] No project_id provided, cannot save file")
+                logger.warning(f"[FILE COMPLETE] Current file would have been: type={self.current_file_type}, name={self.current_file_name}, size={len(self.current_file_data)}")
             
             # Reset current file tracking
             self.current_mode = ""
@@ -250,10 +289,15 @@ class StreamingTagHandler:
             # The buffer should be empty since we cleared it when entering file mode
             # So we can safely add new text to current_file_data
             
+            # Check if the text contains closing tag
+            if "</lfg-file>" in text:
+                logger.info(f"[FILE MODE] CLOSING TAG FOUND IN TEXT: {text}")
+            
             # Important: Only add text that's actually new, not from buffer
             self.current_file_data += text
             
-            logger.debug(f"[FILE MODE] Added {len(text)} chars, total content: {len(self.current_file_data)} chars")
+            logger.info(f"[FILE MODE] Added {len(text)} chars, total content: {len(self.current_file_data)} chars")
+            logger.debug(f"[FILE MODE] Current data ends with: ...{self.current_file_data[-100:] if len(self.current_file_data) > 100 else self.current_file_data}")
             
             if self.edit_mode:
                 # In edit mode, we capture but don't stream (showing "Editing..." is enough)
@@ -377,6 +421,16 @@ class StreamingTagHandler:
             return clean_output
         return ""
     
+    def get_immediate_notifications(self) -> list:
+        """Get and clear any immediate notifications that need to be yielded"""
+        logger.info(f"[GET_IMMEDIATE_NOTIFICATIONS] Called, queue size: {len(self.immediate_notifications)}")
+        if self.immediate_notifications:
+            logger.info(f"[GET_IMMEDIATE_NOTIFICATIONS] Queue contents: {self.immediate_notifications}")
+        notifications = list(self.immediate_notifications)
+        self.immediate_notifications = []
+        logger.info(f"[GET_IMMEDIATE_NOTIFICATIONS] Returning {len(notifications)} notifications")
+        return notifications
+    
     async def save_captured_data(self, project_id: str) -> list:
         """Save any captured file data"""
         notifications = []
@@ -437,6 +491,13 @@ class StreamingTagHandler:
         """Check if there are any pending files to save and save them immediately"""
         notifications = []
         
+        # IMPORTANT: Also check if we have an open file that wasn't closed properly
+        if self.current_mode == "file" and self.current_file_data:
+            logger.warning(f"[CHECK_AND_SAVE] Found unclosed file! Type: {self.current_file_type}, Name: {self.current_file_name}")
+            logger.warning(f"[CHECK_AND_SAVE] File content length: {len(self.current_file_data)}")
+            logger.warning(f"[CHECK_AND_SAVE] This file was not properly closed with </lfg-file> tag")
+            # Don't save it automatically - just log the issue
+        
         if not self.pending_save_notifications:
             return notifications
             
@@ -485,6 +546,42 @@ class StreamingTagHandler:
                 logger.error(f"Error in immediate save/edit: {str(e)}")
         
         return notifications
+    
+    async def force_save_unclosed_file(self, project_id: str) -> Optional[Dict[str, Any]]:
+        """Force save a file that wasn't properly closed with </lfg-file> tag"""
+        if self.current_mode != "file" or not self.current_file_data or not project_id:
+            return None
+            
+        logger.warning(f"[FORCE_SAVE] Forcing save of unclosed file")
+        logger.warning(f"[FORCE_SAVE] Type: {self.current_file_type}, Name: {self.current_file_name}")
+        logger.warning(f"[FORCE_SAVE] Content length: {len(self.current_file_data)}")
+        logger.warning(f"[FORCE_SAVE] First 200 chars: {self.current_file_data[:200]}")
+        logger.warning(f"[FORCE_SAVE] Last 200 chars: {self.current_file_data[-200:]}")
+        
+        from factory.ai_functions import save_file_from_stream
+        
+        try:
+            save_result = await save_file_from_stream(
+                self.current_file_data,
+                project_id, 
+                self.current_file_type,
+                self.current_file_name
+            )
+            logger.info(f"[FORCE_SAVE] Save result: {save_result}")
+            
+            # Reset file tracking
+            self.current_mode = ""
+            self.current_file_type = ""
+            self.current_file_name = ""
+            self.current_file_data = ""
+            self.edit_mode = False
+            self.file_id = None
+            self.file_mode = "create"
+            
+            return save_result
+        except Exception as e:
+            logger.error(f"[FORCE_SAVE] Error saving unclosed file: {str(e)}", exc_info=True)
+            return None
 
 
 def format_notification(notification_data: Dict[str, Any]) -> str:

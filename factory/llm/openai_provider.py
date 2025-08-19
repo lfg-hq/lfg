@@ -19,19 +19,17 @@ class OpenAIProvider(BaseLLMProvider):
     """OpenAI provider implementation"""
     
     MODEL_MAPPING = {
-        "gpt_4o": "gpt-4o",
-        "gpt_4.1": "gpt-4.1",
-        "o3": "o3",
-        "o4-mini": "o4-mini",
+        "gpt_5": "gpt-5",
+        "gpt_5_mini": "gpt-5-mini",
     }
     
     def __init__(self, selected_model: str, user=None, conversation=None, project=None):
         super().__init__(selected_model, user, conversation, project)
         
         # Map model selection to actual model name
-        self.model = self.MODEL_MAPPING.get(selected_model, "gpt-4o")
+        self.model = self.MODEL_MAPPING.get(selected_model, "gpt-5-mini")
         if selected_model not in self.MODEL_MAPPING:
-            logger.warning(f"Unknown model {selected_model}, defaulting to gpt-4o")
+            logger.warning(f"Unknown model {selected_model}, defaulting to gpt-5-mini")
             
         logger.info(f"OpenAI Provider initialized with model: {self.model}")
     
@@ -70,7 +68,7 @@ class OpenAIProvider(BaseLLMProvider):
         try:
             # Use the model-specific encoding or fall back to cl100k_base
             try:
-                if model == "gpt-4o" or model == "gpt-4.1" or model == "o3" or model == "o4-mini":
+                if model == "gpt-5" or model == "gpt-5-mini":
                     # Try to get encoding for gpt-4 (closest available)
                     encoding = tiktoken.encoding_for_model("gpt-4")
                 else:
@@ -253,7 +251,8 @@ class OpenAIProvider(BaseLLMProvider):
                         logger.debug(f"Captured {len(text)} chars of assistant output, total: {len(total_assistant_output)}")
                         
                         # Process text through tag handler
-                        output_text, notification, mode_message = tag_handler.process_text_chunk(text, project_id)
+                        logger.debug(f"[OPENAI] Calling process_text_chunk with project_id: {project_id}")
+                        output_text, notification, mode_message = await tag_handler.process_text_chunk(text, project_id)
                         
                         # Yield mode message if entering a special mode
                         if mode_message:
@@ -267,6 +266,17 @@ class OpenAIProvider(BaseLLMProvider):
                         # Yield output text if present
                         if output_text:
                             yield output_text
+                        
+                        # Check for immediate notifications to yield
+                        immediate_notifications = tag_handler.get_immediate_notifications()
+                        if immediate_notifications:
+                            logger.info(f"[OPENAI] Found {len(immediate_notifications)} immediate notifications")
+                        for immediate_notification in immediate_notifications:
+                            logger.info(f"[OPENAI] Yielding immediate notification: {immediate_notification.get('notification_type')}")
+                            logger.info(f"[OPENAI] Full notification data: {immediate_notification}")
+                            formatted = format_notification(immediate_notification)
+                            logger.info(f"[OPENAI] Formatted notification: {formatted[:200]}...")
+                            yield formatted
                         
                         # Update the full assistant message
                         if full_assistant_message["content"] is None:
@@ -420,6 +430,12 @@ class OpenAIProvider(BaseLLMProvider):
                     logger.info(f"[OPENAI] Checking for pending saves/edits")
                     pending_notifications = await tag_handler.check_and_save_pending_files()
                     logger.info(f"[OPENAI] Got {len(pending_notifications)} pending notifications")
+                    
+                    # Check for unclosed files and force save them
+                    unclosed_save = await tag_handler.force_save_unclosed_file(project_id)
+                    if unclosed_save and unclosed_save.get("is_notification"):
+                        logger.warning(f"[OPENAI] Forced save of unclosed file")
+                        pending_notifications.append(unclosed_save)
                     for notification in pending_notifications:
                         logger.info(f"[OPENAI] Yielding pending notification: {notification}")
                         formatted = format_notification(notification)
@@ -429,6 +445,12 @@ class OpenAIProvider(BaseLLMProvider):
                     logger.info(f"[OPENAI] Stream finished, checking for captured files to save")
                     save_notifications = await tag_handler.save_captured_data(project_id)
                     logger.info(f"[OPENAI] Got {len(save_notifications)} save notifications")
+                    
+                    # Also check for unclosed files here
+                    unclosed_save2 = await tag_handler.force_save_unclosed_file(project_id)
+                    if unclosed_save2 and unclosed_save2.get("is_notification"):
+                        logger.warning(f"[OPENAI] Forced save of unclosed file at stream end")
+                        save_notifications.append(unclosed_save2)
                     for notification in save_notifications:
                         logger.info(f"[OPENAI] Yielding save notification: {notification}")
                         formatted = format_notification(notification)

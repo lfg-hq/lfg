@@ -346,7 +346,7 @@ class GoogleGeminiProvider(BaseLLMProvider):
                             text = chunk.text
                             
                             # Process text through tag handler
-                            output_text, notification, mode_message = tag_handler.process_text_chunk(text, project_id)
+                            output_text, notification, mode_message = await tag_handler.process_text_chunk(text, project_id)
                             
                             # Yield mode message if entering a special mode
                             if mode_message:
@@ -359,6 +359,12 @@ class GoogleGeminiProvider(BaseLLMProvider):
                             # Yield output text if present
                             if output_text:
                                 yield output_text
+                            
+                            # Check for immediate notifications to yield
+                            immediate_notifications = tag_handler.get_immediate_notifications()
+                            for immediate_notification in immediate_notifications:
+                                logger.info(f"[GOOGLE] Yielding immediate notification: {immediate_notification.get('notification_type')}")
+                                yield format_notification(immediate_notification)
                             
                             # Update the full assistant message with original text (for context)
                             full_assistant_message["content"] += text
@@ -460,6 +466,12 @@ class GoogleGeminiProvider(BaseLLMProvider):
                     logger.info(f"[GEMINI] Checking for pending saves/edits")
                     pending_notifications = await tag_handler.check_and_save_pending_files()
                     logger.info(f"[GEMINI] Got {len(pending_notifications)} pending notifications")
+                    
+                    # Check for unclosed files and force save them
+                    unclosed_save = await tag_handler.force_save_unclosed_file(project_id)
+                    if unclosed_save and unclosed_save.get("is_notification"):
+                        logger.warning(f"[GEMINI] Forced save of unclosed file")
+                        pending_notifications.append(unclosed_save)
                     for notification in pending_notifications:
                         logger.info(f"[GEMINI] Yielding pending notification: {notification}")
                         formatted = format_notification(notification)
@@ -469,6 +481,12 @@ class GoogleGeminiProvider(BaseLLMProvider):
                     logger.info(f"[GEMINI] Stream finished, checking for captured files to save")
                     save_notifications = await tag_handler.save_captured_data(project_id)
                     logger.info(f"[GEMINI] Got {len(save_notifications)} save notifications")
+                    
+                    # Also check for unclosed files here
+                    unclosed_save2 = await tag_handler.force_save_unclosed_file(project_id)
+                    if unclosed_save2 and unclosed_save2.get("is_notification"):
+                        logger.warning(f"[GEMINI] Forced save of unclosed file at stream end")
+                        save_notifications.append(unclosed_save2)
                     for notification in save_notifications:
                         logger.info(f"[GEMINI] Yielding save notification: {notification}")
                         formatted = format_notification(notification)

@@ -143,7 +143,7 @@ class XAIProvider(BaseLLMProvider):
                         logger.debug(f"Captured {len(text)} chars of assistant output, total: {len(total_assistant_output)}")
                         
                         # Process text through tag handler
-                        output_text, notification, mode_message = tag_handler.process_text_chunk(text, project_id)
+                        output_text, notification, mode_message = await tag_handler.process_text_chunk(text, project_id)
                         
                         # Yield mode message if entering a special mode
                         if mode_message:
@@ -157,6 +157,12 @@ class XAIProvider(BaseLLMProvider):
                         # Yield output text if present
                         if output_text:
                             yield output_text
+                        
+                        # Check for immediate notifications to yield
+                        immediate_notifications = tag_handler.get_immediate_notifications()
+                        for immediate_notification in immediate_notifications:
+                            logger.info(f"[XAI] Yielding immediate notification: {immediate_notification.get('notification_type')}")
+                            yield format_notification(immediate_notification)
                             
                         if full_assistant_message["content"] is None:
                             full_assistant_message["content"] = ""

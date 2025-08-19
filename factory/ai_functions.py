@@ -2299,12 +2299,15 @@ async def save_file_from_stream(file_content, project_id, file_type, file_name):
     Returns:
         Dict with notification data
     """
-    logger.info(f"Saving file from stream for project {project_id}")
-    logger.info(f"File type: {file_type}, Name: {file_name}, Size: {len(file_content)} characters")
+    logger.info(f"[SAVE_FILE_FROM_STREAM] CALLED!")
+    logger.info(f"[SAVE_FILE_FROM_STREAM] Saving file from stream for project {project_id}")
+    logger.info(f"[SAVE_FILE_FROM_STREAM] File type: {file_type}, Name: {file_name}, Size: {len(file_content)} characters")
+    logger.info(f"[SAVE_FILE_FROM_STREAM] First 200 chars: {file_content[:200]}")
+    logger.info(f"[SAVE_FILE_FROM_STREAM] Last 200 chars: {file_content[-200:]}")
     
     # Validate project ID
     if not project_id:
-        logger.error("No project_id provided")
+        logger.error("[SAVE_FILE_FROM_STREAM] No project_id provided")
         return {
             "is_notification": False,
             "message_to_agent": "Error: project_id is required"
@@ -2352,6 +2355,7 @@ async def save_file_from_stream(file_content, project_id, file_type, file_name):
     
     try:
         # Save file to database
+        logger.info(f"[SAVE_FILE_FROM_STREAM] About to save to database")
         file_obj, created = await sync_to_async(
             ProjectFile.objects.get_or_create
         )(
@@ -2360,15 +2364,18 @@ async def save_file_from_stream(file_content, project_id, file_type, file_name):
             file_type=file_type,
             defaults={}  # Don't set content in defaults
         )
+        logger.info(f"[SAVE_FILE_FROM_STREAM] File object {'created' if created else 'updated'}, ID: {file_obj.id if file_obj else 'None'}")
         
         # Save content using the model's save_content method
+        logger.info(f"[SAVE_FILE_FROM_STREAM] Saving content to file object")
         await sync_to_async(file_obj.save_content)(file_content)
         await sync_to_async(file_obj.save)()
+        logger.info(f"[SAVE_FILE_FROM_STREAM] Content saved successfully")
         
         if not created:
-            logger.info(f"Updated existing {file_type} file '{file_name}' for project {project_id}")
+            logger.info(f"[SAVE_FILE_FROM_STREAM] Updated existing {file_type} file '{file_name}' for project {project_id}")
         else:
-            logger.info(f"Created new {file_type} file '{file_name}' for project {project_id}")
+            logger.info(f"[SAVE_FILE_FROM_STREAM] Created new {file_type} file '{file_name}' for project {project_id}")
         
         action = "created" if created else "updated"
         
@@ -2395,6 +2402,7 @@ async def save_file_from_stream(file_content, project_id, file_type, file_name):
         }
         
         logger.info(f"[SAVE NOTIFICATION] Full notification data: {notification}")
+        logger.info(f"[SAVE_FILE_FROM_STREAM] RETURNING NOTIFICATION - Type: {notification.get('notification_type')}, Has ID: {bool(notification.get('file_id'))}")
         return notification
         
     except Exception as e:
@@ -2835,7 +2843,7 @@ async def web_search(query, conversation_id=None):
     
     try:
         # Get user and conversation details
-        model = "gpt-4.1"  # Default model
+        model = "gpt-5-nano"  # Default model
         
         # Get OpenAI API key
         openai_api_key = os.environ.get('OPENAI_API_KEY')
