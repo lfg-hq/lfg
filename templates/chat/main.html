@@ -266,7 +266,7 @@
 </head>
 <body data-user-authenticated="{% if user.is_authenticated %}true{% else %}false{% endif %}" 
       data-turbo-mode="{% if turbo_mode %}true{% else %}false{% endif %}"
-      data-model-key="{{ model_key|default:'o4-mini' }}"
+      data-model-key="{{ model_key|default:'gpt_5_mini' }}"
       data-role-key="{{ role_key|default:'product_analyst' }}"
       data-sidebar-minimized="{% if sidebar_minimized %}true{% else %}false{% endif %}"
       >
@@ -304,7 +304,7 @@
                                 </span>
                                 <span class="status-divider">•</span>
                                 <span class="status-item model-status" id="model-status-btn">
-                                    <span id="current-model-left">o4 mini</span>
+                                    <span id="current-model-left">GPT-5 mini</span>
                                 </span>
                             </span>
                             <div class="settings-dropdown" id="settings-dropdown">
@@ -335,20 +335,12 @@
                                             </button>
                                             
                                             <div class="submenu-group">OpenAI</div>
-                                            <button type="button" class="submenu-option" data-value="gpt_4o">
-                                                <span>GPT-4o</span>
+                                            <button type="button" class="submenu-option" data-value="gpt_5">
+                                                <span>GPT-5</span>
                                                 <i class="fas fa-check"></i>
                                             </button>
-                                            <button type="button" class="submenu-option" data-value="gpt_4_1">
-                                                <span>GPT-4.1</span>
-                                                <i class="fas fa-check"></i>
-                                            </button>
-                                            <button type="button" class="submenu-option" data-value="o3">
-                                                <span>o3</span>
-                                                <i class="fas fa-check"></i>
-                                            </button>
-                                            <button type="button" class="submenu-option selected" data-value="o4-mini">
-                                                <span>o4 mini</span>
+                                            <button type="button" class="submenu-option selected" data-value="gpt_5_mini">
+                                                <span>GPT-5 mini</span>
                                                 <i class="fas fa-check"></i>
                                             </button>
                                             

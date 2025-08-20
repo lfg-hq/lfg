@@ -20,13 +20,13 @@ from chat.models import (
     AgentRole
 )
 from projects.models import ProjectChecklist
-from development.utils import AIProvider
-from development.utils.ai_providers import FileHandler
-from development.utils.prompts import get_system_turbo_mode, \
+from factory.ai_providers import AIProvider
+from factory.ai_providers import FileHandler
+from factory.prompts import get_system_turbo_mode, \
                                     get_system_prompt_product, \
                                     get_system_prompt_design, \
                                     get_system_prompt_developer
-from development.utils.ai_tools import tools_code, tools_product, tools_design, tools_turbo
+from factory.ai_tools import tools_code, tools_product, tools_design, tools_turbo
 from chat.storage import ChatFileStorage
 
 # Set up logger

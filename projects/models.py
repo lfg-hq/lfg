@@ -235,7 +235,7 @@ class ProjectFile(models.Model):
         
         # If content is in S3, fetch it
         if self.s3_key:
-            from development.utils.file_storage import get_file_storage
+            from factory.file_storage import get_file_storage
             storage = get_file_storage()
             
             # For S3 storage, we need to extract project_name and file_path from s3_key
@@ -257,7 +257,7 @@ class ProjectFile(models.Model):
     
     def save_content(self, content_text, user=None, change_description=None):
         """Save content to S3 or database based on settings and create a version"""
-        from development.utils.file_storage import get_file_storage
+        from factory.file_storage import get_file_storage
         from django.conf import settings
         
         # Create a version before saving new content

@@ -2592,13 +2592,17 @@
     color: #9ca3af;
     cursor: pointer;
     padding: 4px;
-    opacity: 0.7;
+    opacity: 0;
     transition: opacity 0.2s;
     flex-shrink: 0;
 }
 
+#viewer-title:hover #viewer-title-edit {
+    opacity: 0.7;
+}
+
 #viewer-title-edit:hover {
-    opacity: 1;
+    opacity: 1 !important;
 }
 
 .viewer-actions {

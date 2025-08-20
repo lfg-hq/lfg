@@ -8,8 +8,8 @@ from typing import List, Dict, Any, Optional, AsyncGenerator
 from .base import BaseLLMProvider
 
 # Import functions from ai_common and streaming_handlers
-from development.utils.ai_common import execute_tool_call, get_notification_type_for_tool, track_token_usage
-from development.utils.streaming_handlers import StreamingTagHandler, format_notification
+from factory.ai_common import execute_tool_call, get_notification_type_for_tool, track_token_usage
+from factory.streaming_handlers import StreamingTagHandler, format_notification
 
 logger = logging.getLogger(__name__)
 
@@ -265,7 +265,7 @@ class AnthropicProvider(BaseLLMProvider):
                                 text = event.delta.text
                                 
                                 # Process text through tag handler
-                                output_text, notification, mode_message = tag_handler.process_text_chunk(text, project_id)
+                                output_text, notification, mode_message = await tag_handler.process_text_chunk(text, project_id)
                                 
                                 # Yield mode message if entering a special mode
                                 if mode_message:
@@ -278,6 +278,12 @@ class AnthropicProvider(BaseLLMProvider):
                                 # Yield output text if present
                                 if output_text:
                                     yield output_text
+                                
+                                # Check for immediate notifications to yield
+                                immediate_notifications = tag_handler.get_immediate_notifications()
+                                for immediate_notification in immediate_notifications:
+                                    logger.info(f"[ANTHROPIC] Yielding immediate notification: {immediate_notification.get('notification_type')}")
+                                    yield format_notification(immediate_notification)
                                 
                                 # Update the full assistant message
                                 if full_assistant_message["content"] is None:
@@ -394,10 +400,31 @@ class AnthropicProvider(BaseLLMProvider):
                                 if flushed_output:
                                     yield flushed_output
                                 
+                                # Check for any pending saves/edits first
+                                logger.info(f"[ANTHROPIC] Checking for pending saves/edits")
+                                pending_notifications = await tag_handler.check_and_save_pending_files()
+                                logger.info(f"[ANTHROPIC] Got {len(pending_notifications)} pending notifications")
+                                
+                                # Check for unclosed files and force save them
+                                unclosed_save = await tag_handler.force_save_unclosed_file(project_id)
+                                if unclosed_save and unclosed_save.get("is_notification"):
+                                    logger.warning(f"[ANTHROPIC] Forced save of unclosed file")
+                                    pending_notifications.append(unclosed_save)
+                                for notification in pending_notifications:
+                                    logger.info(f"[ANTHROPIC] Yielding pending notification: {notification}")
+                                    formatted = format_notification(notification)
+                                    yield formatted
+                                
                                 # Save any captured data
                                 logger.info(f"[ANTHROPIC] Stream finished, checking for captured files to save")
                                 save_notifications = await tag_handler.save_captured_data(project_id)
                                 logger.info(f"[ANTHROPIC] Got {len(save_notifications)} save notifications")
+                                
+                                # Also check for unclosed files here
+                                unclosed_save2 = await tag_handler.force_save_unclosed_file(project_id)
+                                if unclosed_save2 and unclosed_save2.get("is_notification"):
+                                    logger.warning(f"[ANTHROPIC] Forced save of unclosed file at stream end")
+                                    save_notifications.append(unclosed_save2)
                                 for notification in save_notifications:
                                     logger.info(f"[ANTHROPIC] Yielding save notification: {notification}")
                                     # Log specific details about file_id

@@ -52,7 +52,7 @@ def get_notification_type_for_tool(tool_name: str) -> Optional[str]:
         "stream_implementation_content": "implementation_stream",  # Stream implementation content to implementation tab
         "stream_prd_content": "prd_stream",  # Stream PRD content to PRD tab
         "start_server": "apps",  # Server starts should show in apps/preview tab
-        "execute_command": "toolhistory",  # Show command execution in tool history
+        # "execute_command": "toolhistory",  # Show command execution in tool history
         "save_implementation": "implementation",
         "update_implementation": "implementation",
         "create_implementation": "implementation",
@@ -62,7 +62,7 @@ def get_notification_type_for_tool(tool_name: str) -> Optional[str]:
         "create_tickets": "checklist",  # Add this mapping
         "update_ticket": "checklist",
         "implement_ticket": "implementation",  # Implementation tasks go to implementation tab
-        "save_project_name": "toolhistory",  # Project name saving goes to tool history
+        # "save_project_name": "toolhistory",  # Project name saving goes to tool history
     }
     
     # Default to None (no notification) instead of toolhistory
@@ -90,8 +90,8 @@ def map_notification_type_to_tab(notification_type: str) -> str:
         "design_schema": "implementation",
         "create_tickets": "checklist",
         "get_pending_tickets": "checklist",
-        "command_error": "toolhistory",
-        "project_name_saved": "toolhistory",
+        # "command_error": "toolhistory",
+        # "project_name_saved": "toolhistory",
         "prd_stream": "prd_stream",  # Map prd_stream to prd tab
         "implementation_stream": "implementation_stream",  # Map implementation_stream to implementation tab
         # Add more custom mappings as needed
@@ -107,7 +107,7 @@ def map_notification_type_to_tab(notification_type: str) -> str:
     
     # Default to toolhistory for unknown types
     logger.warning(f"Unknown notification type '{notification_type}', defaulting to toolhistory")
-    return "toolhistory"
+    return ""
 
 
 async def execute_tool_call(
@@ -131,7 +131,7 @@ async def execute_tool_call(
             - notification_data: Dict with notification data or None
             - yielded_content: Content to yield immediately (e.g., "*" for explanations)
     """
-    from development.utils.ai_functions import app_functions
+    from factory.ai_functions import app_functions
     import traceback
     
     logger.debug(f"Executing Tool: {tool_call_name}")
@@ -281,7 +281,7 @@ async def execute_tool_call(
     # Save the tool call history to database
     try:
         # Get the project and conversation objects
-        project = await asyncio.to_thread(Project.objects.get, id=project_id) if project_id else None
+        project = await asyncio.to_thread(Project.objects.get, project_id=project_id) if project_id else None
         conversation = await asyncio.to_thread(Conversation.objects.get, id=conversation_id) if conversation_id else None
         
         if project:
@@ -343,10 +343,10 @@ async def get_ai_response(
         Dict containing the AI response with content and tool_calls
     """
     # Import at function level to avoid circular imports
-    from development.utils import ai_providers
+    from factory import ai_providers
     
     if tools is None:
-        from development.utils.ai_tools import tools_code
+        from factory.ai_tools import tools_code
         tools = tools_code
     
     # Create messages list

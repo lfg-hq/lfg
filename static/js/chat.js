@@ -222,21 +222,19 @@ document.addEventListener('DOMContentLoaded', () => {
         this.style.height = 'auto';
         this.style.height = (this.scrollHeight) + 'px';
         
-        // Check for @ mentions
+        // Check for @file mentions
         const cursorPosition = this.selectionStart;
         const textBeforeCursor = this.value.substring(0, cursorPosition);
-        const lastAtIndex = textBeforeCursor.lastIndexOf('@');
+        
+        // Look for @file pattern
+        const atFileMatch = textBeforeCursor.match(/@file(\S*)$/);
         
         // Check if we should show mention dropdown
-        if (lastAtIndex !== -1 && (lastAtIndex === 0 || /\s/.test(textBeforeCursor[lastAtIndex - 1]))) {
-            const textAfterAt = textBeforeCursor.substring(lastAtIndex + 1);
-            // Only show if no space after @ and we're still typing after it
-            if (!textAfterAt.includes(' ') && cursorPosition > lastAtIndex) {
-                mentionStartIndex = lastAtIndex;
-                showMentionDropdown(textAfterAt);
-            } else {
-                hideMentionDropdown();
-            }
+        if (atFileMatch) {
+            // Found @file pattern at the end of text before cursor
+            const searchQuery = atFileMatch[1]; // Text after @file
+            mentionStartIndex = textBeforeCursor.length - atFileMatch[0].length;
+            showMentionDropdown(searchQuery);
         } else {
             hideMentionDropdown();
         }
@@ -1959,6 +1957,58 @@ document.addEventListener('DOMContentLoaded', () => {
                             }
                         } else {
                             console.error('Implementation stream notification missing content_chunk!');
+                        }
+                    } else if (data.notification_type === 'file_stream' && data.file_type) {
+                        // Generic handler for all other file types (document, design, etc.)
+                        console.log(`File stream notification detected (${data.file_type})`);
+                        console.log('Full notification data:', data);
+                        console.log('Content chunk exists:', data.content_chunk !== undefined);
+                        console.log('Content chunk length:', data.content_chunk ? data.content_chunk.length : 0);
+                        console.log('Is complete:', data.is_complete);
+                        console.log('File name:', data.file_name);
+                        
+                        // CONSOLE STREAMING OUTPUT
+                        console.log('\n' + '='.repeat(80));
+                        console.log(`📄 ${data.file_type.toUpperCase()} STREAM RECEIVED IN BROWSER`);
+                        console.log(`📅 Time: ${new Date().toISOString()}`);
+                        console.log(`📏 Length: ${data.content_chunk ? data.content_chunk.length : 0} chars`);
+                        console.log(`✅ Complete: ${data.is_complete}`);
+                        console.log(`📁 File: ${data.file_name || 'Unnamed'}`);
+                        if (data.content_chunk) {
+                            console.log(`📝 Content: ${data.content_chunk.substring(0, 200)}${data.content_chunk.length > 200 ? '...' : ''}`);
+                        }
+                        console.log('='.repeat(80) + '\n');
+                        
+                        if (data.content_chunk !== undefined) {
+                            console.log(`Streaming ${data.file_type} chunk: ${data.content_chunk.substring(0, 50)}...`);
+                            console.log('Current project ID:', currentProjectId);
+                            
+                            // Ensure we have a project ID for streaming
+                            let projectIdForStreaming = currentProjectId;
+                            if (!projectIdForStreaming) {
+                                projectIdForStreaming = extractProjectIdFromPath();
+                                if (!projectIdForStreaming) {
+                                    throw new Error('No project ID found in path. Expected format: /chat/project/{id}/');
+                                }
+                                console.log(`${data.file_type} Streaming: Using project ID: ${projectIdForStreaming}`);
+                            }
+                            
+                            if (projectIdForStreaming) {
+                                console.log(`Streaming ${data.file_type} content with project ID:`, projectIdForStreaming);
+                                
+                                // Use the generic streamDocumentContent function
+                                window.ArtifactsLoader.streamDocumentContent(
+                                    data.content_chunk, 
+                                    data.is_complete || false, 
+                                    projectIdForStreaming,
+                                    data.file_type,
+                                    data.file_name || `${data.file_type} Document`,
+                                );
+                            } else {
+                                console.error(`${data.file_type} stream: No project ID available for streaming!`);
+                            }
+                        } else {
+                            console.error(`${data.file_type} stream notification missing content_chunk!`);
                         }
                     } else {
                         const loaderMap = {
@@ -4450,10 +4500,10 @@ document.addEventListener('DOMContentLoaded', () => {
             mentionDropdown.className = 'mention-dropdown';
             mentionDropdown.style.cssText = `
                 position: absolute;
-                background: white;
-                border: 1px solid #ddd;
+                background: #1a1a1a;
+                border: 1px solid #333;
                 border-radius: 4px;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                box-shadow: 0 2px 8px rgba(0,0,0,0.5);
                 max-height: 200px;
                 overflow-y: auto;
                 z-index: 1000;
@@ -4531,13 +4581,13 @@ document.addEventListener('DOMContentLoaded', () => {
             item.style.cssText = `
                 padding: 8px 12px;
                 cursor: pointer;
-                border-bottom: 1px solid #f0f0f0;
-                ${index === selectedMentionIndex ? 'background-color: #f0f0f0;' : ''}
+                border-bottom: 1px solid #333;
+                ${index === selectedMentionIndex ? 'background-color: #2a2a2a;' : ''}
             `;
             
             item.innerHTML = `
-                <div style="font-weight: 500; color: #333;">${file.name}</div>
-                <div style="font-size: 12px; color: #666;">${file.type} • Updated ${file.updated_at}</div>
+                <div style="font-weight: 500; color: #e0e0e0;">${file.name}</div>
+                <div style="font-size: 12px; color: #999;">${file.type} • Updated ${file.updated_at}</div>
             `;
             
             item.addEventListener('click', () => selectMentionFile(file));
@@ -4557,7 +4607,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const items = mentionDropdown.querySelectorAll('.mention-item');
         items.forEach((item, index) => {
             if (index === selectedMentionIndex) {
-                item.style.backgroundColor = '#f0f0f0';
+                item.style.backgroundColor = '#2a2a2a';
             } else {
                 item.style.backgroundColor = '';
             }

@@ -8,8 +8,8 @@ from typing import List, Dict, Any, Optional, AsyncGenerator
 from .base import BaseLLMProvider
 
 # Import functions from ai_common and streaming_handlers
-from development.utils.ai_common import execute_tool_call, get_notification_type_for_tool, track_token_usage
-from development.utils.streaming_handlers import StreamingTagHandler, format_notification
+from factory.ai_common import execute_tool_call, get_notification_type_for_tool, track_token_usage
+from factory.streaming_handlers import StreamingTagHandler, format_notification
 
 logger = logging.getLogger(__name__)
 
@@ -143,7 +143,7 @@ class XAIProvider(BaseLLMProvider):
                         logger.debug(f"Captured {len(text)} chars of assistant output, total: {len(total_assistant_output)}")
                         
                         # Process text through tag handler
-                        output_text, notification, mode_message = tag_handler.process_text_chunk(text, project_id)
+                        output_text, notification, mode_message = await tag_handler.process_text_chunk(text, project_id)
                         
                         # Yield mode message if entering a special mode
                         if mode_message:
@@ -157,6 +157,12 @@ class XAIProvider(BaseLLMProvider):
                         # Yield output text if present
                         if output_text:
                             yield output_text
+                        
+                        # Check for immediate notifications to yield
+                        immediate_notifications = tag_handler.get_immediate_notifications()
+                        for immediate_notification in immediate_notifications:
+                            logger.info(f"[XAI] Yielding immediate notification: {immediate_notification.get('notification_type')}")
+                            yield format_notification(immediate_notification)
                             
                         if full_assistant_message["content"] is None:
                             full_assistant_message["content"] = ""
@@ -263,6 +269,15 @@ class XAIProvider(BaseLLMProvider):
                             flushed_output = tag_handler.flush_buffer()
                             if flushed_output:
                                 yield flushed_output
+                            
+                            # Check for any pending saves/edits first
+                            logger.info(f"[XAI] Checking for pending saves/edits")
+                            pending_notifications = await tag_handler.check_and_save_pending_files()
+                            logger.info(f"[XAI] Got {len(pending_notifications)} pending notifications")
+                            for notification in pending_notifications:
+                                logger.info(f"[XAI] Yielding pending notification: {notification}")
+                                formatted = format_notification(notification)
+                                yield formatted
                             
                             # Save any captured data
                             logger.info(f"[XAI] Stream finished, checking for captured files to save")

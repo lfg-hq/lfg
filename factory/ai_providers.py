@@ -17,7 +17,7 @@ from chat.models import Conversation
 from projects.models import Project
 
 # Import shared functions from ai_common to avoid circular imports
-from development.utils.ai_common import (
+from factory.ai_common import (
     track_token_usage,
     get_notification_type_for_tool,
     map_notification_type_to_tab,
@@ -58,7 +58,7 @@ async def get_ai_response(user_message: str, system_prompt: str, project_id: Opt
         Dict containing the AI response with content and tool_calls
     """
     if tools is None:
-        from development.utils.ai_tools import tools_code
+        from factory.ai_tools import tools_code
         tools = tools_code
     
     # Create messages list
