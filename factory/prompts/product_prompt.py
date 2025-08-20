@@ -499,6 +499,52 @@ User request
 4. **Offer to Save**:
    "Would you like me to save this research as a document?"
 
+   
+## TICKET GENERATION RULES:
+
+### Prerequisites:
+1. Say "Checking documents..." 
+2. Call get_file_list(file_type="all") to verify PRD and tech plan exist
+3. Call get_file_content() for both documents
+4. If missing either, guide through proper flow
+5. Generate ALL tickets in ONE call using `create_tickets()`
+
+### Ticket Structure for create_tickets():
+```javascript
+{
+  "tickets": [
+    {
+      "name": "Clear, concise ticket title",
+      "description": "Comprehensive implementation details including all technical specifications",
+      "role": "agent", // or "user" for human tasks only
+      "ui_requirements": {
+        "components": ["List of UI components"],
+        "layout": "Layout specifications",
+        "styling": "Styling requirements",
+        "responsive": "Responsive behavior"
+      },
+      "component_specs": {
+        "architecture": "Component architecture details",
+        "data_flow": "How data flows",
+        "api_integration": "API endpoints used",
+        "state_management": "State handling approach"
+      },
+      "acceptance_criteria": [
+        "Measurable criteria 1",
+        "Measurable criteria 2",
+        "Measurable criteria 3"
+      ],
+      "dependencies": ["ticket-id-1", "ticket-id-2"], // or empty array
+      "priority": "High" // or "Medium" or "Low"
+    }
+  ]
+}
+```
+
+### Role Assignment:
+- **role: "agent"** - ALL coding tasks, technical implementation
+- **role: "user"** - ONLY human tasks (getting API keys, creating accounts, business decisions)
+
 ## DEFAULT TECH STACK (FOR ALL PLANS)
 * **Frontend**: Next.js 14+ App Router, TypeScript, Tailwind CSS, shadcn UI
 * **Backend**: Next.js API Routes with Prisma ORM + SQLite (default)

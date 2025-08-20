@@ -939,6 +939,16 @@ document.addEventListener('DOMContentLoaded', function() {
                     viewerMarkdown.scrollTop = viewerMarkdown.scrollHeight;
                 }
             }
+            
+            // Store streaming info for handleDocumentSaved to use later
+            // This is crucial for the save notification to work properly
+            window[`${documentType}StreamingInfo`] = {
+                projectId: projectId,
+                documentName: documentName,
+                documentType: documentType,
+                viewerTitle: `${documentType.toUpperCase()} - ${documentName}`
+            };
+            console.log(`[ArtifactsLoader] Stored streaming info for ${documentType}:`, window[`${documentType}StreamingInfo`]);
         },
         
         /**

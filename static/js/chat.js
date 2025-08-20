@@ -1960,6 +1960,58 @@ document.addEventListener('DOMContentLoaded', () => {
                         } else {
                             console.error('Implementation stream notification missing content_chunk!');
                         }
+                    } else if (data.notification_type === 'file_stream' && data.file_type) {
+                        // Generic handler for all other file types (document, design, etc.)
+                        console.log(`File stream notification detected (${data.file_type})`);
+                        console.log('Full notification data:', data);
+                        console.log('Content chunk exists:', data.content_chunk !== undefined);
+                        console.log('Content chunk length:', data.content_chunk ? data.content_chunk.length : 0);
+                        console.log('Is complete:', data.is_complete);
+                        console.log('File name:', data.file_name);
+                        
+                        // CONSOLE STREAMING OUTPUT
+                        console.log('\n' + '='.repeat(80));
+                        console.log(`📄 ${data.file_type.toUpperCase()} STREAM RECEIVED IN BROWSER`);
+                        console.log(`📅 Time: ${new Date().toISOString()}`);
+                        console.log(`📏 Length: ${data.content_chunk ? data.content_chunk.length : 0} chars`);
+                        console.log(`✅ Complete: ${data.is_complete}`);
+                        console.log(`📁 File: ${data.file_name || 'Unnamed'}`);
+                        if (data.content_chunk) {
+                            console.log(`📝 Content: ${data.content_chunk.substring(0, 200)}${data.content_chunk.length > 200 ? '...' : ''}`);
+                        }
+                        console.log('='.repeat(80) + '\n');
+                        
+                        if (data.content_chunk !== undefined) {
+                            console.log(`Streaming ${data.file_type} chunk: ${data.content_chunk.substring(0, 50)}...`);
+                            console.log('Current project ID:', currentProjectId);
+                            
+                            // Ensure we have a project ID for streaming
+                            let projectIdForStreaming = currentProjectId;
+                            if (!projectIdForStreaming) {
+                                projectIdForStreaming = extractProjectIdFromPath();
+                                if (!projectIdForStreaming) {
+                                    throw new Error('No project ID found in path. Expected format: /chat/project/{id}/');
+                                }
+                                console.log(`${data.file_type} Streaming: Using project ID: ${projectIdForStreaming}`);
+                            }
+                            
+                            if (projectIdForStreaming) {
+                                console.log(`Streaming ${data.file_type} content with project ID:`, projectIdForStreaming);
+                                
+                                // Use the generic streamDocumentContent function
+                                window.ArtifactsLoader.streamDocumentContent(
+                                    data.content_chunk, 
+                                    data.is_complete || false, 
+                                    projectIdForStreaming,
+                                    data.file_type,
+                                    data.file_name || `${data.file_type} Document`,
+                                );
+                            } else {
+                                console.error(`${data.file_type} stream: No project ID available for streaming!`);
+                            }
+                        } else {
+                            console.error(`${data.file_type} stream notification missing content_chunk!`);
+                        }
                     } else {
                         const loaderMap = {
                             'features': 'loadFeatures',
