@@ -222,21 +222,19 @@ document.addEventListener('DOMContentLoaded', () => {
         this.style.height = 'auto';
         this.style.height = (this.scrollHeight) + 'px';
         
-        // Check for @ mentions
+        // Check for @file mentions
         const cursorPosition = this.selectionStart;
         const textBeforeCursor = this.value.substring(0, cursorPosition);
-        const lastAtIndex = textBeforeCursor.lastIndexOf('@');
+        
+        // Look for @file pattern
+        const atFileMatch = textBeforeCursor.match(/@file(\S*)$/);
         
         // Check if we should show mention dropdown
-        if (lastAtIndex !== -1 && (lastAtIndex === 0 || /\s/.test(textBeforeCursor[lastAtIndex - 1]))) {
-            const textAfterAt = textBeforeCursor.substring(lastAtIndex + 1);
-            // Only show if no space after @ and we're still typing after it
-            if (!textAfterAt.includes(' ') && cursorPosition > lastAtIndex) {
-                mentionStartIndex = lastAtIndex;
-                showMentionDropdown(textAfterAt);
-            } else {
-                hideMentionDropdown();
-            }
+        if (atFileMatch) {
+            // Found @file pattern at the end of text before cursor
+            const searchQuery = atFileMatch[1]; // Text after @file
+            mentionStartIndex = textBeforeCursor.length - atFileMatch[0].length;
+            showMentionDropdown(searchQuery);
         } else {
             hideMentionDropdown();
         }
@@ -4502,10 +4500,10 @@ document.addEventListener('DOMContentLoaded', () => {
             mentionDropdown.className = 'mention-dropdown';
             mentionDropdown.style.cssText = `
                 position: absolute;
-                background: white;
-                border: 1px solid #ddd;
+                background: #1a1a1a;
+                border: 1px solid #333;
                 border-radius: 4px;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                box-shadow: 0 2px 8px rgba(0,0,0,0.5);
                 max-height: 200px;
                 overflow-y: auto;
                 z-index: 1000;
@@ -4583,13 +4581,13 @@ document.addEventListener('DOMContentLoaded', () => {
             item.style.cssText = `
                 padding: 8px 12px;
                 cursor: pointer;
-                border-bottom: 1px solid #f0f0f0;
-                ${index === selectedMentionIndex ? 'background-color: #f0f0f0;' : ''}
+                border-bottom: 1px solid #333;
+                ${index === selectedMentionIndex ? 'background-color: #2a2a2a;' : ''}
             `;
             
             item.innerHTML = `
-                <div style="font-weight: 500; color: #333;">${file.name}</div>
-                <div style="font-size: 12px; color: #666;">${file.type} • Updated ${file.updated_at}</div>
+                <div style="font-weight: 500; color: #e0e0e0;">${file.name}</div>
+                <div style="font-size: 12px; color: #999;">${file.type} • Updated ${file.updated_at}</div>
             `;
             
             item.addEventListener('click', () => selectMentionFile(file));
@@ -4609,7 +4607,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const items = mentionDropdown.querySelectorAll('.mention-item');
         items.forEach((item, index) => {
             if (index === selectedMentionIndex) {
-                item.style.backgroundColor = '#f0f0f0';
+                item.style.backgroundColor = '#2a2a2a';
             } else {
                 item.style.backgroundColor = '';
             }
