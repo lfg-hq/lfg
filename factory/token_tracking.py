@@ -11,6 +11,7 @@ import tiktoken
 from accounts.models import TokenUsage
 from projects.models import Project
 from chat.models import Conversation
+from subscriptions.models import UserCredit
 from django.contrib.auth.models import User
 
 logger = logging.getLogger(__name__)
@@ -68,6 +69,29 @@ async def track_token_usage(
         await asyncio.to_thread(token_usage.save)
         
         logger.debug(f"Token usage tracked: {token_usage}")
+        
+        # Update user credit token usage
+        try:
+            user_credit, created = await asyncio.to_thread(
+                UserCredit.objects.get_or_create,
+                user=user
+            )
+            
+            # Update total and monthly token usage
+            user_credit.total_tokens_used += total_tokens
+            
+            # Track free vs paid tokens
+            if user_credit.is_free_tier:
+                user_credit.free_tokens_used += total_tokens
+            else:
+                user_credit.paid_tokens_used += total_tokens
+                user_credit.monthly_tokens_used += total_tokens
+            
+            await asyncio.to_thread(user_credit.save)
+            logger.debug(f"Updated user credit token usage: total={user_credit.total_tokens_used}, monthly={user_credit.monthly_tokens_used}")
+            
+        except Exception as e:
+            logger.error(f"Error updating user credit token usage: {e}")
         
     except Exception as e:
         logger.error(f"Error tracking token usage: {e}")

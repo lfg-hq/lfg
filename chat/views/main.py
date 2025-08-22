@@ -16,6 +16,7 @@ from django.utils import timezone
 from datetime import datetime, time
 from django.db.models import Sum
 from accounts.models import TokenUsage, ApplicationState
+from subscriptions.models import UserCredit
 from accounts.utils import get_daily_token_usage
 
 
@@ -48,8 +49,16 @@ def index(request):
     # Get user's model selection
     model_selection, created = ModelSelection.objects.get_or_create(
         user=request.user,
-        defaults={'selected_model': 'o4-mini'}
+        defaults={'selected_model': 'gpt-5-mini'}
     )
+    
+    # Force free tier users to use o4-mini
+    if hasattr(request.user, 'credit'):
+        user_credit = request.user.credit
+        if user_credit.is_free_tier and model_selection.selected_model != 'gpt-5-mini':
+            model_selection.selected_model = 'gpt-5-mini'
+            model_selection.save()
+    
     context['model_key'] = model_selection.selected_model
     
     # Get or create ApplicationState for sidebar and other UI state
@@ -63,6 +72,29 @@ def index(request):
         }
     )
     context['sidebar_minimized'] = app_state.sidebar_minimized
+    
+    # Check user's subscription status for popups
+    user_credit, created = UserCredit.objects.get_or_create(user=request.user)
+    
+    # Check if we should show upgrade popup (free tier users who haven't upgraded)
+    show_upgrade_popup = False
+    if user_credit.is_free_tier:
+        # Check if user has been shown the popup recently (stored in session)
+        last_upgrade_popup = request.session.get('last_upgrade_popup_shown')
+        if not last_upgrade_popup:
+            show_upgrade_popup = True
+            request.session['last_upgrade_popup_shown'] = timezone.now().isoformat()
+    
+    # Check if tokens are exhausted
+    show_tokens_exhausted_popup = False
+    if user_credit.get_remaining_tokens() <= 0:
+        show_tokens_exhausted_popup = True
+    
+    context['show_upgrade_popup'] = show_upgrade_popup
+    context['show_tokens_exhausted_popup'] = show_tokens_exhausted_popup
+    context['is_free_tier'] = user_credit.is_free_tier
+    context['remaining_tokens'] = user_credit.get_remaining_tokens()
+    context['total_tokens_limit'] = 100000 if user_credit.is_free_tier else 300000
     
     return render(request, 'chat/main.html', context)
 
@@ -88,8 +120,16 @@ def project_chat(request, project_id):
     # Get user's model selection
     model_selection, created = ModelSelection.objects.get_or_create(
         user=request.user,
-        defaults={'selected_model': 'o4-mini'}
+        defaults={'selected_model': 'gpt-5-mini'}
     )
+    
+    # Force free tier users to use o4-mini
+    if hasattr(request.user, 'credit'):
+        user_credit = request.user.credit
+        if user_credit.is_free_tier and model_selection.selected_model != 'gpt-5-mini':
+            model_selection.selected_model = 'gpt-5-mini'
+            model_selection.save()
+    
     context['model_key'] = model_selection.selected_model
     
     # Get or create ApplicationState for sidebar and other UI state
@@ -137,8 +177,16 @@ def show_conversation(request, conversation_id):
     # Get user's model selection
     model_selection, created = ModelSelection.objects.get_or_create(
         user=request.user,
-        defaults={'selected_model': 'o4-mini'}
+        defaults={'selected_model': 'gpt-5-mini'}
     )
+    
+    # Force free tier users to use o4-mini
+    if hasattr(request.user, 'credit'):
+        user_credit = request.user.credit
+        if user_credit.is_free_tier and model_selection.selected_model != 'gpt-5-mini':
+            model_selection.selected_model = 'gpt-5-mini'
+            model_selection.save()
+    
     context['model_key'] = model_selection.selected_model
     
     # Get or create ApplicationState for sidebar and other UI state
@@ -393,7 +441,7 @@ def user_model_selection(request):
         # Get user's model selection or create default one
         model_selection, created = ModelSelection.objects.get_or_create(
             user=request.user,
-            defaults={'selected_model': 'o4-mini'}
+            defaults={'selected_model': 'gpt-5-mini'}
         )
         
         return JsonResponse({
@@ -424,6 +472,15 @@ def user_model_selection(request):
                     'success': False,
                     'error': f'Invalid model. Must be one of: {", ".join(valid_models)}'
                 }, status=400)
+            
+            # Check if user is free tier
+            if hasattr(request.user, 'credit'):
+                user_credit = request.user.credit
+                if user_credit.is_free_tier and selected_model != 'gpt-5-mini':
+                    return JsonResponse({
+                        'success': False,
+                        'error': 'Free tier users can only use GPT-5-mini model. Please upgrade to Pro to use other models.'
+                    }, status=403)
             
             # Get or create user's model selection and update it
             model_selection, created = ModelSelection.objects.get_or_create(

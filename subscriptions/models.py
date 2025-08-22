@@ -9,6 +9,15 @@ class UserCredit(models.Model):
     is_subscribed = models.BooleanField(default=False)
     stripe_subscription_id = models.CharField(max_length=255, blank=True, null=True)
     subscription_end_date = models.DateTimeField(null=True, blank=True)
+    total_tokens_used = models.BigIntegerField(default=0)  # Track all-time token usage
+    monthly_tokens_used = models.BigIntegerField(default=0)  # Track monthly token usage
+    monthly_reset_date = models.DateTimeField(null=True, blank=True)  # When to reset monthly usage
+    free_tokens_used = models.BigIntegerField(default=0)  # Track free tier token usage
+    paid_tokens_used = models.BigIntegerField(default=0)  # Track paid tier token usage
+    subscription_tier = models.CharField(max_length=50, default='free', choices=[
+        ('free', 'Free Tier'),
+        ('pro', 'Pro Monthly'),
+    ])
     
     def __str__(self):
         return f"{self.user.username} - {self.credits} credits"
@@ -21,6 +30,33 @@ class UserCredit(models.Model):
         if not self.subscription_end_date:
             return False
         return self.subscription_end_date > timezone.now()
+    
+    @property
+    def is_free_tier(self):
+        """Check if user is on free tier"""
+        return self.subscription_tier == 'free' and not self.has_active_subscription
+    
+    def get_remaining_tokens(self):
+        """Get remaining tokens based on subscription tier"""
+        if self.is_free_tier:
+            # Free tier: 100K lifetime limit
+            return max(0, 100000 - self.total_tokens_used)
+        elif self.has_active_subscription and self.subscription_tier == 'pro':
+            # Pro tier: 300K monthly limit
+            # Check if we need to reset monthly usage
+            if self.monthly_reset_date and timezone.now() > self.monthly_reset_date:
+                self.monthly_tokens_used = 0
+                self.monthly_reset_date = timezone.now() + timezone.timedelta(days=30)
+                self.save()
+            return max(0, 300000 - self.monthly_tokens_used)
+        return 0
+    
+    def can_use_model(self, model_name):
+        """Check if user can use a specific model"""
+        if self.is_free_tier:
+            # Free tier can only use gpt-5-mini
+            return model_name == 'gpt-5-mini'
+        return True  # Pro tier can use all models
 
 class PaymentPlan(models.Model):
     name = models.CharField(max_length=100)

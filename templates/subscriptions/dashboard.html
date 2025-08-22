@@ -1,664 +1,805 @@
-{% extends 'base.html' %}
+{% extends "accounts/base_with_sidebar.html" %}
 {% load static %}
+{% load humanize %}
 
-{% block title %}Your Credits - LFG{% endblock %}
+{% block title %}Subscription & Billing - LFG 🚀🚀{% endblock %}
 
-{% block extra_head %}
-<!-- Make sure Bootstrap is loaded -->
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
+{% block extra_css %}
 <style>
-    body {
-        background-color: #0f172a;
-        color: #f8fafc;
+    /* Ensure full height for parent containers */
+    html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
     }
     
-    .credit-card {
-        background: linear-gradient(135deg, #13294B 0%, #1e3a5f 100%);
-        color: white;
-        border-radius: 12px;
-        overflow: hidden;
-        box-shadow: 0 10px 20px rgba(0,0,0,0.15);
+    .app-container {
+        height: 100vh;
+        display: flex;
+    }
+    
+    .main-content-with-sidebar {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
         height: 100%;
     }
     
-    .credit-header {
-        padding: 20px 25px;
-        border-bottom: 1px solid rgba(255,255,255,0.1);
+    /* Override container styles for full-height layout */
+    .main-content-with-sidebar .container {
+        max-width: 100%;
+        padding: 0;
+        height: 100%;
+        overflow-y: auto;
+        /* Hide scrollbar but keep functionality */
+        scrollbar-width: none; /* Firefox */
+        -ms-overflow-style: none; /* IE and Edge */
     }
     
-    .credit-body {
-        padding: 30px 25px;
+    /* Hide scrollbar for Chrome, Safari and Opera */
+    .main-content-with-sidebar .container::-webkit-scrollbar {
+        display: none;
     }
     
-    .credit-amount {
-        font-size: 48px;
+    /* Page header matching Projects style */
+    .page-header {
+        padding: 2rem 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 2rem;
+        flex-shrink: 0;
+    }
+    
+    .page-title {
+        font-size: 1.25rem;
         font-weight: 700;
-        margin: 10px 0;
-        line-height: 1;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
     }
     
+    .subscription-container {
+        width: 80%;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 2rem 0 4rem;
+        min-height: 100%;
+        overflow-y: auto;
+        /* Hide scrollbar but keep functionality */
+        scrollbar-width: none; /* Firefox */
+        -ms-overflow-style: none; /* IE and Edge */
+    }
+    
+    /* Hide scrollbar for Chrome, Safari and Opera */
+    .subscription-container::-webkit-scrollbar {
+        display: none;
+    }
+
+    .subscription-container .page-header {
+        border-bottom: 1px solid var(--border-color);
+    }
+    
+    .page-title i {
+        font-size: 1.125rem;
+    }
+    
+    /* Current Plan Card */
     .plan-card {
+        background: #1a1a1a;
+        border: 1px solid #2a2a2a;
         border-radius: 12px;
-        overflow: hidden;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.08);
-        transition: all 0.3s ease;
-        height: 100%;
-    }
-    
-    .plan-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 15px 30px rgba(0,0,0,0.1);
+        padding: 20px;
+        margin-bottom: 20px;
     }
     
     .plan-header {
-        padding: 25px 20px 15px;
-        text-align: center;
-        border-bottom: 1px solid rgba(0,0,0,0.05);
-    }
-    
-    .monthly-plan .plan-header {
-        background-color: #2563EB;
-        color: white;
-    }
-    
-    .addon-plan .plan-header {
-        background-color: #ffffff;
-        color: #1F2937;
-        border-bottom: 1px solid #E5E7EB;
-    }
-    
-    .plan-price {
-        font-size: 42px;
-        font-weight: 700;
-        line-height: 1;
-        margin: 15px 0 5px;
-    }
-    
-    .monthly-plan .plan-price {
-        color: white;
-    }
-    
-    .addon-plan .plan-price {
-        color: #1F2937;
-    }
-    
-    .plan-body {
-        padding: 25px 20px;
-        background-color: white;
-        color: #1F2937;
-    }
-    
-    .plan-features {
-        margin: 25px 0;
-        padding: 0;
-        list-style: none;
-    }
-    
-    .plan-features li {
-        padding: 8px 0;
         display: flex;
         align-items: center;
+        justify-content: space-between;
+        margin-bottom: 20px;
     }
     
-    .plan-features li:before {
-        content: "✓";
-        margin-right: 10px;
-        color: #10B981;
-        font-weight: bold;
+    .plan-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        background: #1f2937;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 500;
+        color: #9ca3af;
     }
     
-    .btn-subscribe {
-        padding: 12px 20px;
-        border-radius: 8px;
-        text-transform: uppercase;
-        font-weight: 600;
-        letter-spacing: 0.5px;
-        transition: all 0.3s ease;
-        width: 100%;
-        display: inline-block;
-        text-decoration: none;
+    .plan-badge.pro {
+        background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+        color: #e9d5ff;
+    }
+    
+    .plan-badge i {
+        font-size: 14px;
+    }
+    
+    .plan-details {
+        color: #6b7280;
+        font-size: 12px;
+        margin-top: 6px;
+    }
+    
+    /* Usage Progress */
+    .usage-progress {
+        margin-bottom: 24px;
+    }
+    
+    .progress-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        margin-bottom: 12px;
+    }
+    
+    .progress-title {
+        color: #e5e7eb;
+        font-size: 14px;
+        font-weight: 500;
+    }
+    
+    .progress-percentage {
+        color: #9ca3af;
+        font-size: 12px;
+    }
+    
+    .progress-bar-container {
+        background: #0f0f0f;
+        height: 6px;
+        border-radius: 3px;
+        overflow: hidden;
+    }
+    
+    .progress-bar-fill {
+        height: 100%;
+        background: #a78bfa;
+        transition: width 0.3s ease;
+    }
+    
+    .progress-bar-fill.warning {
+        background: #f59e0b;
+    }
+    
+    .progress-bar-fill.danger {
+        background: #ef4444;
+    }
+    
+    /* Usage Stats Grid */
+    .usage-stats {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+        margin-bottom: 20px;
+    }
+    
+    .stat-item {
         text-align: center;
     }
     
-    .monthly-plan .btn-subscribe {
-        background-color: #2563EB;
-        color: white;
-        border: none;
+    .stat-label {
+        display: block;
+        color: #6b7280;
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 4px;
     }
     
-    .monthly-plan .btn-subscribe:hover {
-        background-color: #1D4ED8;
-        color: white;
-        text-decoration: none;
+    .stat-value {
+        display: block;
+        font-size: 24px;
+        font-weight: 700;
+        line-height: 1;
+        font-variant-numeric: tabular-nums;
+        color: #e5e7eb;
     }
     
-    .addon-plan .btn-subscribe {
-        background-color: white;
-        color: #2563EB;
-        border: 2px solid #2563EB;
+    .stat-value.remaining {
+        color: #10b981;
     }
     
-    .addon-plan .btn-subscribe:hover {
-        background-color: #2563EB;
-        color: white;
-        text-decoration: none;
+    .stat-value.remaining.low {
+        color: #ef4444;
     }
     
-    .transaction-table {
-        border-radius: 8px;
-        overflow: hidden;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+    .stat-value.limit {
+        color: #6b7280;
     }
     
-    .transaction-table th {
-        background-color: #F3F4F6;
-        padding: 12px 16px;
-        font-weight: 600;
-        color: #1F2937;
+    /* Usage Breakdown */
+    .usage-breakdown {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+        padding-top: 16px;
+        border-top: 1px solid #2a2a2a;
     }
     
-    .transaction-table td {
-        padding: 16px;
-        vertical-align: middle;
-        color: #1F2937;
+    .breakdown-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
     }
     
-    .badge {
-        padding: 6px 12px;
-        border-radius: 6px;
-        font-weight: 500;
+    .breakdown-label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: #9ca3af;
         font-size: 12px;
-        display: inline-block;
+    }
+    
+    .breakdown-value {
+        color: #e5e7eb;
+        font-size: 14px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+    }
+    
+    /* Plans Grid */
+    .plans-section {
+        margin-bottom: 32px;
     }
     
     .section-title {
-        margin-bottom: 30px;
-        font-weight: 700;
+        font-size: 16px;
+        font-weight: 600;
+        margin-bottom: 16px;
+        color: #e5e7eb;
+    }
+    
+    .plans-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 16px;
+    }
+    
+    .pricing-card {
+        background: rgba(30, 30, 35, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 12px;
+        padding: 20px;
+        transition: all 0.3s ease;
+        backdrop-filter: blur(10px);
         position: relative;
-        display: inline-block;
-        color: #f8fafc;
     }
     
-    .section-title:after {
-        content: '';
+    .pricing-card:hover {
+        border-color: rgba(167, 139, 250, 0.5);
+        background: rgba(167, 139, 250, 0.08);
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+    }
+    
+    .pricing-card.recommended {
+        border-color: rgba(167, 139, 250, 0.3);
+        background: rgba(167, 139, 250, 0.05);
+    }
+    
+    .recommended-badge {
         position: absolute;
-        bottom: -10px;
-        left: 0;
-        width: 50px;
-        height: 3px;
-        background-color: #2563EB;
+        top: -10px;
+        right: 16px;
+        background: linear-gradient(135deg, #8B5CF6, #A855F7);
+        color: white;
+        padding: 3px 12px;
+        border-radius: 999px;
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
     }
     
-    .page-header {
-        background-color: #1e293b;
-        padding: 40px 0 30px;
-        margin-bottom: 40px;
-        border-bottom: 1px solid #334155;
+    .plan-name {
+        font-size: 16px;
+        font-weight: 600;
+        margin-bottom: 6px;
+        color: #e5e7eb;
     }
     
-    .bg-primary {
-        background-color: #2563EB !important;
-    }
-    
-    .text-primary {
-        color: #2563EB !important;
-    }
-    
-    .text-white-50 {
-        color: rgba(255, 255, 255, 0.5) !important;
-    }
-    
-    .text-muted {
-        color: #94a3b8 !important;
-    }
-    
-    .display-5 {
-        font-size: 2.5rem;
+    .plan-price {
+        font-size: 28px;
         font-weight: 700;
-        line-height: 1.2;
+        margin-bottom: 4px;
+        color: #e5e7eb;
     }
     
-    .fw-bold {
-        font-weight: 700 !important;
+    .plan-price span {
+        font-size: 14px;
+        font-weight: 400;
+        color: #9ca3af;
     }
     
-    .accordion-item {
-        background-color: #1e293b;
-        border: 1px solid #334155;
+    .plan-description {
+        color: #9ca3af;
+        font-size: 12px;
+        margin-bottom: 16px;
     }
     
-    .accordion-button {
-        background-color: #1e293b;
-        color: #f8fafc;
+    .plan-features {
+        list-style: none;
+        padding: 0;
+        margin: 0 0 20px 0;
     }
     
-    .accordion-button:not(.collapsed) {
-        background-color: #2d3748;
-        color: #f8fafc;
+    .plan-features li {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+        color: #e5e7eb;
+        font-size: 12px;
     }
     
-    .accordion-body {
-        background-color: #1e293b;
-        color: #cbd5e1;
+    .plan-features i {
+        color: #10b981;
+        font-size: 10px;
     }
     
-    .accordion-button:focus {
-        box-shadow: 0 0 0 0.25rem rgba(37, 99, 235, 0.25);
+    .plan-button {
+        width: 100%;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-decoration: none;
+        display: inline-block;
+        text-align: center;
     }
     
-    /* Fix for collapsed accordion */
-    .accordion-button::after {
-        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23fff'%3e%3cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3e%3c/svg%3e");
+    .plan-button.primary {
+        background: linear-gradient(135deg, #8B5CF6, #A855F7);
+        color: white;
+        box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);
     }
     
-    .table {
-        background-color: white;
+    .plan-button.primary:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 16px rgba(139, 92, 246, 0.35);
+    }
+    
+    .plan-button.secondary {
+        background: transparent;
+        color: #9ca3af;
+        border: 1px solid #374151;
+    }
+    
+    .plan-button.secondary:hover {
+        background: rgba(255, 255, 255, 0.05);
+        border-color: #4b5563;
+    }
+    
+    .plan-button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    
+    /* Transactions Section */
+    .transactions-section {
+        margin-bottom: 32px;
+    }
+    
+    .transactions-card {
+        background: #1a1a1a;
+        border: 1px solid #2a2a2a;
+        border-radius: 8px;
+        padding: 16px;
+        overflow: hidden;
+    }
+    
+    .transactions-table {
+        width: 100%;
+        font-size: 12px;
+    }
+    
+    .transactions-table thead {
+        border-bottom: 1px solid #2a2a2a;
+    }
+    
+    .transactions-table th {
+        padding: 8px 12px;
+        text-align: left;
+        font-weight: 500;
+        color: #9ca3af;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-size: 10px;
+    }
+    
+    .transactions-table td {
+        padding: 12px;
+        border-bottom: 1px solid #1f2937;
+        color: #e5e7eb;
+    }
+    
+    .transactions-table tbody tr:last-child td {
+        border-bottom: none;
+    }
+    
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px 8px;
+        border-radius: 999px;
+        font-size: 10px;
+        font-weight: 500;
+    }
+    
+    .status-badge.completed {
+        background: rgba(16, 185, 129, 0.1);
+        color: #10b981;
+    }
+    
+    .status-badge.pending {
+        background: rgba(245, 158, 11, 0.1);
+        color: #f59e0b;
+    }
+    
+    .status-badge.failed {
+        background: rgba(239, 68, 68, 0.1);
+        color: #ef4444;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 32px;
+        color: #6b7280;
+    }
+    
+    .empty-state i {
+        font-size: 36px;
+        opacity: 0.3;
+        margin-bottom: 12px;
+    }
+    
+    /* Cancel Button */
+    .cancel-button {
+        padding: 6px 12px;
+        background: transparent;
+        color: #ef4444;
+        border: 1px solid rgba(239, 68, 68, 0.3);
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    
+    .cancel-button:hover {
+        background: rgba(239, 68, 68, 0.1);
+        border-color: rgba(239, 68, 68, 0.5);
+    }
+    
+    /* Messages */
+    .messages {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 1000;
+        max-width: 400px;
     }
     
     .alert {
-        border-radius: 8px;
-        margin-bottom: 30px;
-    }
-    
-    .alert-info {
-        background-color: rgba(37, 99, 235, 0.1);
-        border-color: rgba(37, 99, 235, 0.2);
-        color: #93c5fd;
-    }
-    
-    .loading-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(0, 0, 0, 0.7);
+        background: rgba(167, 139, 250, 0.1);
+        border: 1px solid rgba(167, 139, 250, 0.3);
+        color: #a78bfa;
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-size: 0.75rem;
         display: flex;
         align-items: center;
-        justify-content: center;
-        z-index: 9999;
-        opacity: 0;
-        visibility: hidden;
-        transition: opacity 0.3s, visibility 0.3s;
+        gap: 8px;
+        margin-bottom: 8px;
+        animation: slideIn 0.3s ease-out;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     }
     
-    .loading-overlay.active {
-        opacity: 1;
-        visibility: visible;
+    .alert::before {
+        content: '\f05a';
+        font-family: 'Font Awesome 6 Free';
+        font-weight: 900;
+        font-size: 1rem;
     }
     
-    .spinner-container {
-        text-align: center;
-        color: white;
+    .alert-success {
+        background: rgba(34, 197, 94, 0.1);
+        border-color: rgba(34, 197, 94, 0.3);
+        color: #22c55e;
     }
     
-    .spinner-border {
-        width: 3rem;
-        height: 3rem;
-        margin-bottom: 1rem;
+    .alert-success::before {
+        content: '\f058';
     }
     
-    .subscription-status {
-        background: linear-gradient(135deg, #10B981 0%, #34D399 100%);
-        color: white;
-        border-radius: 12px;
-        overflow: hidden;
-        box-shadow: 0 10px 20px rgba(0,0,0,0.15);
-        margin-bottom: 2rem;
-        position: relative;
+    .alert-danger {
+        background: rgba(239, 68, 68, 0.1);
+        border-color: rgba(239, 68, 68, 0.3);
+        color: #ef4444;
     }
     
-    .subscription-header {
-        padding: 20px 25px;
-        background-color: rgba(0,0,0,0.1);
-        font-weight: 600;
+    .alert-danger::before {
+        content: '\f06a';
     }
     
-    .subscription-body {
-        padding: 25px;
+    @keyframes slideIn {
+        from {
+            transform: translateX(100%);
+            opacity: 0;
+        }
+        to {
+            transform: translateX(0);
+            opacity: 1;
+        }
     }
     
-    .subscription-badge {
-        position: absolute;
-        top: 20px;
-        right: 20px;
-        padding: 6px 12px;
-        border-radius: 20px;
-        font-size: 12px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
+    /* Auto-hide after 5 seconds */
+    .alert {
+        animation: slideIn 0.3s ease-out, fadeOut 0.5s ease-out 5s forwards;
     }
     
-    .badge-active {
-        background-color: white;
-        color: #10B981;
+    @keyframes fadeOut {
+        to {
+            opacity: 0;
+            transform: translateX(100%);
+        }
     }
     
-    .badge-inactive {
-        background-color: #F87171;
-        color: white;
-    }
-    
-    .btn-danger {
-        background-color: #EF4444;
-        border-color: #EF4444;
-    }
-    
-    .btn-danger:hover {
-        background-color: #DC2626;
-        border-color: #DC2626;
-    }
-    
-    .renewal-date {
-        margin-top: 15px;
-        font-size: 14px;
-        opacity: 0.9;
-    }
-    
-    /* Modal styles */
-    .modal-content {
-        background-color: #1e293b;
-        color: #f8fafc;
-        border: 1px solid #334155;
-    }
-    
-    .modal-header {
-        border-bottom: 1px solid #334155;
-    }
-    
-    .modal-footer {
-        border-top: 1px solid #334155;
-    }
-    
-    .btn-close {
-        filter: invert(1) grayscale(100%) brightness(200%);
+    /* Responsive */
+    @media (max-width: 768px) {
+        .subscription-container {
+            width: 95%;
+            padding: 1rem;
+        }
+        
+        .usage-stats {
+            grid-template-columns: 1fr;
+            gap: 16px;
+        }
+        
+        .usage-breakdown {
+            grid-template-columns: 1fr;
+        }
+        
+        .plans-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .transactions-table {
+            font-size: 12px;
+        }
+        
+        .transactions-table th,
+        .transactions-table td {
+            padding: 8px;
+        }
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<!-- Loading overlay -->
-<div id="loadingOverlay" class="loading-overlay">
-    <div class="spinner-container">
-        <div class="spinner-border text-light" role="status">
-            <span class="visually-hidden">Loading...</span>
-        </div>
-        <p>Redirecting to secure payment page...</p>
+<!-- Display messages -->
+{% if messages %}
+<div class="messages">
+    {% for message in messages %}
+    <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}">
+        {{ message }}
     </div>
+    {% endfor %}
 </div>
+{% endif %}
 
-<!-- Cancel Subscription Modal -->
-<div class="modal fade" id="cancelSubscriptionModal" tabindex="-1" aria-labelledby="cancelSubscriptionModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="cancelSubscriptionModalLabel">Cancel Subscription</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <p>Are you sure you want to cancel your subscription?</p>
-                <p>You will continue to have access until the end of your current billing period.</p>
-                <p>After that, you will no longer receive monthly credits, but any remaining credits in your account will still be available.</p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Keep Subscription</button>
-                <a href="{% url 'subscriptions:cancel_subscription' %}" class="btn btn-danger">Yes, Cancel Subscription</a>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="page-header">
-    <div class="container">
-        <h1 class="display-5 fw-bold">Your Credits</h1>
-        <p class="text-muted">Manage your credits and subscription plans</p>
-    </div>
-</div>
-
-<div class="container py-4">
-    {% if messages %}
-    <div class="messages mb-4">
-        {% for message in messages %}
-        <div class="alert alert-{{ message.tags }}">
-            {{ message }}
-        </div>
-        {% endfor %}
-    </div>
-    {% endif %}
-    
-    <div class="alert alert-info">
-        <i class="fas fa-info-circle me-2"></i> We use Stripe for secure payments. When you click on a payment option, you'll be redirected to Stripe's secure checkout page.
+<div class="subscription-container">
+    <div class="page-header">
+        <h1 class="page-title">
+            <i class="fas fa-credit-card"></i>
+            Subscription & Billing
+        </h1>
     </div>
 
-    <!-- Subscription Status (if subscribed) -->
-    {% if user_credit.has_active_subscription %}
-    <div class="subscription-status">
-        <div class="subscription-badge badge-active">Active</div>
-        <div class="subscription-header">
-            Monthly Subscription
-        </div>
-        <div class="subscription-body">
-            <p>Your subscription is active. You receive 1,000,000 credits each month.</p>
-            <p class="renewal-date">Next renewal: {{ user_credit.subscription_end_date|date:"F j, Y" }}</p>
-            <button class="btn btn-danger mt-3" data-bs-toggle="modal" data-bs-target="#cancelSubscriptionModal">
-                Cancel Subscription
-            </button>
-        </div>
-    </div>
-    {% endif %}
-
-    <!-- Credit Balance Section -->
-    <div class="row mb-5">
-        <div class="col-md-6 col-lg-4">
-            <div class="credit-card">
-                <div class="credit-header">
-                    <h5 class="mb-0">Current Balance</h5>
+    <!-- Current Plan Card -->
+    <div class="plan-card">
+        <div class="plan-header">
+            <div>
+                <div class="plan-badge{% if not user_credit.is_free_tier %} pro{% endif %}">
+                    <i class="fas fa-{% if user_credit.is_free_tier %}user{% else %}crown{% endif %}"></i>
+                    {% if user_credit.is_free_tier %}Free Tier{% else %}Pro Monthly{% endif %}
                 </div>
-                <div class="credit-body">
-                    <div class="credit-amount">{{ user_credit.credits|default:"0" }}</div>
-                    <p class="text-white-50 mb-0">Available credits in your account</p>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Plans Section -->
-    <h2 class="section-title mb-4">Buy Credits</h2>
-    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4 mb-5">
-        <!-- Monthly Plan -->
-        <div class="col">
-            <div class="plan-card monthly-plan">
-                <div class="plan-header">
-                    <h3 class="mb-1">Monthly Plan</h3>
-                    <div class="plan-price">$10</div>
-                    <div class="text-white-50">per month</div>
-                </div>
-                <div class="plan-body">
-                    <div class="text-center mb-3">
-                        <div class="badge bg-primary">Best Value</div>
-                    </div>
-                    <p class="text-center fw-bold">Get 1,000,000 credits</p>
-                    <ul class="plan-features">
-                        <li>Monthly billing</li>
-                        <li>Full access to all features</li>
-                        <li>Email support</li>
-                        <li>No contract, cancel anytime</li>
-                    </ul>
-                    {% if user_credit.has_active_subscription %}
-                        <button class="btn-subscribe" disabled>Currently Subscribed</button>
+                <div class="plan-details">
+                    {% if user_credit.is_free_tier %}
+                        100,000 lifetime tokens • gpt-5-mini only
                     {% else %}
-                        <a href="{% url 'subscriptions:checkout' 1 %}" class="btn-subscribe checkout-btn">Subscribe</a>
+                        300,000 tokens per month • All AI models
                     {% endif %}
                 </div>
             </div>
+            {% if user_credit.has_active_subscription %}
+            <form method="post" action="{% url 'subscriptions:cancel_subscription' %}" onsubmit="return confirm('Are you sure you want to cancel your subscription?');">
+                {% csrf_token %}
+                <button type="submit" class="cancel-button">Cancel Subscription</button>
+            </form>
+            {% endif %}
         </div>
         
-        <!-- Additional Credits -->
-        <div class="col">
-            <div class="plan-card addon-plan">
-                <div class="plan-header">
-                    <h3 class="mb-1">Additional Credits</h3>
-                    <div class="plan-price">$5</div>
-                    <div class="text-muted">one-time</div>
-                </div>
-                <div class="plan-body">
-                    <p class="text-center fw-bold">Get 1,000,000 more credits</p>
-                    <ul class="plan-features">
-                        <li>One-time purchase</li>
-                        <li>Added to existing balance</li>
-                        <li>Never expires</li>
-                        <li>Instant delivery</li>
-                    </ul>
-                    <a href="{% url 'subscriptions:checkout' 2 %}" class="btn-subscribe checkout-btn">Buy Credits</a>
-                </div>
+        <div class="usage-progress">
+            <div class="progress-header">
+                <span class="progress-title">{% if user_credit.is_free_tier %}Lifetime Usage{% else %}Monthly Usage{% endif %}</span>
+                <span class="progress-percentage">{{ usage_percentage|floatformat:0 }}% used</span>
+            </div>
+            <div class="progress-bar-container">
+                <div class="progress-bar-fill{% if usage_percentage > 80 %} danger{% elif usage_percentage > 60 %} warning{% endif %}" 
+                     style="width: {{ usage_percentage }}%"></div>
             </div>
         </div>
         
-        <!-- Add more plans here -->
-    </div>
-    
-    {% if transactions %}
-    <!-- Transactions Section -->
-    <h2 class="section-title mb-4">Recent Transactions</h2>
-    <div class="table-responsive mb-5">
-        <table class="table transaction-table">
-            <thead>
-                <tr>
-                    <th>Date</th>
-                    <th>Plan</th>
-                    <th>Amount</th>
-                    <th>Credits</th>
-                    <th>Status</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for transaction in transactions %}
-                <tr>
-                    <td>{{ transaction.created_at|date:"M d, Y" }}</td>
-                    <td>{{ transaction.payment_plan.name }}</td>
-                    <td>${{ transaction.amount }}</td>
-                    <td>{{ transaction.credits_added|floatformat:"0g" }}</td>
-                    <td>
-                        {% if transaction.status == 'completed' %}
-                        <span class="badge bg-success">Completed</span>
-                        {% elif transaction.status == 'pending' %}
-                        <span class="badge bg-warning text-dark">Pending</span>
-                        {% elif transaction.status == 'failed' %}
-                        <span class="badge bg-danger">Failed</span>
-                        {% else %}
-                        <span class="badge bg-secondary">{{ transaction.status }}</span>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-    {% endif %}
-    
-    <!-- FAQ Section -->
-    <div class="row mt-5">
-        <div class="col-md-8 mx-auto">
-            <h3 class="text-center mb-4" style="color: #f8fafc;">Frequently Asked Questions</h3>
-            <div class="accordion" id="creditsAccordion">
-                <div class="accordion-item">
-                    <h2 class="accordion-header" id="headingOne">
-                        <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="true" aria-controls="collapseOne">
-                            What can I do with credits?
-                        </button>
-                    </h2>
-                    <div id="collapseOne" class="accordion-collapse collapse show" aria-labelledby="headingOne" data-bs-parent="#creditsAccordion">
-                        <div class="accordion-body">
-                            Credits allow you to use various features on our platform, such as generating AI responses, creating projects, and using premium tools.
-                        </div>
-                    </div>
-                </div>
-                <div class="accordion-item">
-                    <h2 class="accordion-header" id="headingTwo">
-                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTwo" aria-expanded="false" aria-controls="collapseTwo">
-                            Do credits expire?
-                        </button>
-                    </h2>
-                    <div id="collapseTwo" class="accordion-collapse collapse" aria-labelledby="headingTwo" data-bs-parent="#creditsAccordion">
-                        <div class="accordion-body">
-                            No, credits purchased never expire. You can use them at your own pace.
-                        </div>
-                    </div>
-                </div>
-                <div class="accordion-item">
-                    <h2 class="accordion-header" id="headingThree">
-                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseThree" aria-expanded="false" aria-controls="collapseThree">
-                            How can I cancel my subscription?
-                        </button>
-                    </h2>
-                    <div id="collapseThree" class="accordion-collapse collapse" aria-labelledby="headingThree" data-bs-parent="#creditsAccordion">
-                        <div class="accordion-body">
-                            You can cancel your subscription at any time from your dashboard by clicking the "Cancel Subscription" button. Your subscription will remain active until the end of your current billing period, and you will continue to have access to any remaining credits in your account.
-                        </div>
-                    </div>
-                </div>
-                <div class="accordion-item">
-                    <h2 class="accordion-header" id="headingFour">
-                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseFour" aria-expanded="false" aria-controls="collapseFour">
-                            Is my payment information secure?
-                        </button>
-                    </h2>
-                    <div id="collapseFour" class="accordion-collapse collapse" aria-labelledby="headingFour" data-bs-parent="#creditsAccordion">
-                        <div class="accordion-body">
-                            Yes, we use Stripe for payment processing. Your payment information is never stored on our servers - all payment details are securely handled by Stripe, which maintains the highest level of security certification in the payments industry.
-                        </div>
-                    </div>
-                </div>
+        <div class="usage-stats">
+            <div class="stat-item">
+                <span class="stat-label">Tokens Used</span>
+                <span class="stat-value">{{ user_credit.total_tokens_used|intcomma }}</span>
             </div>
+            <div class="stat-item">
+                <span class="stat-label">Remaining</span>
+                <span class="stat-value remaining{% if user_credit.get_remaining_tokens < 10000 %} low{% endif %}">
+                    {{ user_credit.get_remaining_tokens|intcomma }}
+                </span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Total Limit</span>
+                <span class="stat-value limit">
+                    {% if user_credit.is_free_tier %}100,000{% else %}300,000{% endif %}
+                </span>
+            </div>
+        </div>
+        
+        <div class="usage-breakdown">
+            <div class="breakdown-item">
+                <span class="breakdown-label">
+                    <i class="fas fa-gift" style="color: #a78bfa;"></i>
+                    Free Tokens Used
+                </span>
+                <span class="breakdown-value">{{ user_credit.free_tokens_used|intcomma }}</span>
+            </div>
+            <div class="breakdown-item">
+                <span class="breakdown-label">
+                    <i class="fas fa-credit-card" style="color: #10b981;"></i>
+                    Paid Tokens Used
+                </span>
+                <span class="breakdown-value">{{ user_credit.paid_tokens_used|intcomma }}</span>
+            </div>
+        </div>
+        
+        {% if not user_credit.is_free_tier and user_credit.subscription_end_date %}
+        <div style="text-align: center; margin-top: 16px; padding-top: 16px; border-top: 1px solid #2a2a2a; color: #6b7280; font-size: 12px;">
+            <i class="fas fa-sync-alt"></i>
+            Your subscription renews on {{ user_credit.subscription_end_date|date:"F d, Y" }}
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Available Plans -->
+    <div class="plans-section">
+        <h2 class="section-title">Available Plans</h2>
+        <div class="plans-grid">
+            {% for plan in payment_plans %}
+            <div class="pricing-card{% if plan.name == 'Pro Monthly' %} recommended{% endif %}">
+                {% if plan.name == 'Pro Monthly' %}
+                <span class="recommended-badge">Recommended</span>
+                {% endif %}
+                
+                <h3 class="plan-name">{{ plan.name }}</h3>
+                <div class="plan-price">
+                    {% if plan.price == 0 %}
+                        Free
+                    {% else %}
+                        ${{ plan.price|floatformat:0 }}
+                        {% if plan.is_subscription %}<span>/ month</span>{% endif %}
+                    {% endif %}
+                </div>
+                <p class="plan-description">{{ plan.description }}</p>
+                
+                <ul class="plan-features">
+                    {% if plan.name == 'Free Tier' %}
+                        <li><i class="fas fa-check"></i> 100,000 lifetime tokens</li>
+                        <li><i class="fas fa-check"></i> GPT-5-mini model only</li>
+                        <li><i class="fas fa-check"></i> Basic features</li>
+                        <li><i class="fas fa-check"></i> Community support</li>
+                    {% elif plan.name == 'Pro Monthly' %}
+                        <li><i class="fas fa-check"></i> 300,000 tokens per month</li>
+                        <li><i class="fas fa-check"></i> All AI models (GPT-4o, Claude, Gemini)</li>
+                        <li><i class="fas fa-check"></i> Priority support</li>
+                        <li><i class="fas fa-check"></i> Advanced features</li>
+                    {% else %}
+                        <li><i class="fas fa-check"></i> {{ plan.credits|intcomma }} additional tokens</li>
+                        <li><i class="fas fa-check"></i> One-time purchase</li>
+                        <li><i class="fas fa-check"></i> Never expires</li>
+                        <li><i class="fas fa-check"></i> Use with any plan</li>
+                    {% endif %}
+                </ul>
+                
+                {% if plan.price > 0 %}
+                    {% if user_credit.has_active_subscription and plan.is_subscription %}
+                        <button class="plan-button secondary" disabled>Current Plan</button>
+                    {% else %}
+                        <a href="{% url 'subscriptions:checkout' plan.id %}" class="plan-button primary">
+                            {% if plan.is_subscription %}Get Started{% else %}Purchase Credits{% endif %}
+                        </a>
+                    {% endif %}
+                {% else %}
+                    {% if user_credit.is_free_tier %}
+                        <button class="plan-button secondary" disabled>Your Current Plan</button>
+                    {% else %}
+                        <button class="plan-button secondary" disabled>Free Tier</button>
+                    {% endif %}
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Recent Transactions -->
+    <div class="transactions-section">
+        <h2 class="section-title">Recent Transactions</h2>
+        <div class="transactions-card">
+            {% if transactions %}
+            <table class="transactions-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Plan</th>
+                        <th>Amount</th>
+                        <th>Credits</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for transaction in transactions %}
+                    <tr>
+                        <td>{{ transaction.created_at|date:"M d, Y" }}</td>
+                        <td>{{ transaction.payment_plan.name }}</td>
+                        <td>${{ transaction.amount|floatformat:2 }}</td>
+                        <td>{{ transaction.credits_added|intcomma }}</td>
+                        <td>
+                            <span class="status-badge {{ transaction.status }}">
+                                <i class="fas fa-{% if transaction.status == 'completed' %}check-circle{% elif transaction.status == 'pending' %}clock{% else %}times-circle{% endif %}"></i>
+                                {{ transaction.get_status_display }}
+                            </span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty-state">
+                <i class="fas fa-receipt"></i>
+                <p>No transactions yet</p>
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>
-{% endblock %}
 
-{% block extra_js %}
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-ka7Sk0Gln4gmtz2MlQnikT1wXgYsOg+OMhuP+IlRH9sENBO0LRn5q+8nbTov4+1p" crossorigin="anonymous"></script>
 <script>
+    // Handle notification dismissal
     document.addEventListener('DOMContentLoaded', function() {
-        // Initialize any Bootstrap components that need JavaScript
-        var accordionElements = document.querySelectorAll('.accordion');
-        if (accordionElements.length > 0 && typeof bootstrap !== 'undefined') {
-            accordionElements.forEach(function(el) {
-                new bootstrap.Collapse(el.querySelector('.accordion-collapse.collapse.show'));
-            });
-        }
-        
-        // Show loading overlay when redirecting to checkout
-        const checkoutButtons = document.querySelectorAll('.checkout-btn');
-        const loadingOverlay = document.getElementById('loadingOverlay');
-        
-        checkoutButtons.forEach(function(button) {
-            button.addEventListener('click', function(e) {
-                // Show loading overlay
-                loadingOverlay.classList.add('active');
-                
-                // Disable the button to prevent multiple clicks
-                this.disabled = true;
-                this.style.opacity = '0.7';
-                this.style.cursor = 'not-allowed';
-                
-                // Store the original text
-                const originalText = this.textContent;
-                this.textContent = 'Processing...';
-                
-                // If something goes wrong and the page doesn't redirect after 10 seconds,
-                // re-enable the button
-                setTimeout(function() {
-                    if (document.body.contains(button)) {
-                        button.disabled = false;
-                        button.style.opacity = '1';
-                        button.style.cursor = 'pointer';
-                        button.textContent = originalText;
-                        loadingOverlay.classList.remove('active');
-                    }
-                }, 10000);
+        const alerts = document.querySelectorAll('.alert');
+        alerts.forEach(alert => {
+            alert.style.cursor = 'pointer';
+            alert.addEventListener('click', function() {
+                this.style.animation = 'fadeOut 0.3s ease-out forwards';
+                setTimeout(() => this.remove(), 300);
             });
         });
     });
 </script>
-{% endblock %} 
+{% endblock %}

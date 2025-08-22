@@ -227,6 +227,12 @@ class GoogleGeminiProvider(BaseLLMProvider):
         """Generate streaming response from Google Gemini"""
         logger.info(f"Google Gemini generate_stream called - Model: {self.model}, Messages: {len(messages)}, Tools: {len(tools) if tools else 0}")
         
+        # Check token limits before proceeding
+        can_proceed, error_message, remaining_tokens = await self.check_token_limits()
+        if not can_proceed:
+            yield f"Error: {error_message}"
+            return
+        
         # Ensure client is initialized with API keys
         await self._ensure_client()
         
