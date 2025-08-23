@@ -9,16 +9,25 @@ class Command(BaseCommand):
         # Define our default plans
         default_plans = [
             {
-                'name': 'Monthly Subscription',
-                'price': 10.00,
-                'credits': 1000000,
-                'description': 'Get 1,000,000 credits for $10 per month.'
+                'name': 'Free Tier',
+                'price': 0.00,
+                'credits': 100000,  # 100K tokens total (all-time)
+                'description': 'Free tier with 100,000 tokens lifetime limit. Only supports gpt-5-mini model.',
+                'is_subscription': False
+            },
+            {
+                'name': 'Pro Monthly',
+                'price': 9.00,
+                'credits': 300000,  # 300K tokens per month
+                'description': 'Pro tier with 300,000 tokens per month. Access to all AI models.',
+                'is_subscription': True
             },
             {
                 'name': 'Additional Credits',
                 'price': 5.00,
-                'credits': 1000000,
-                'description': 'Get 1,000,000 more credits for $5 (one-time purchase).'
+                'credits': 100000,  # 100K additional tokens
+                'description': 'Get 100,000 more tokens for $5 (one-time purchase).',
+                'is_subscription': False
             }
         ]
         
@@ -37,6 +46,7 @@ class Command(BaseCommand):
                 existing_plan.credits = plan_data['credits']
                 existing_plan.description = plan_data['description']
                 existing_plan.is_active = True
+                existing_plan.is_subscription = plan_data.get('is_subscription', False)
                 existing_plan.save()
                 plans_updated += 1
                 self.stdout.write(self.style.SUCCESS(f"Updated plan: {existing_plan.name}"))
@@ -47,7 +57,8 @@ class Command(BaseCommand):
                     price=plan_data['price'],
                     credits=plan_data['credits'],
                     description=plan_data['description'],
-                    is_active=True
+                    is_active=True,
+                    is_subscription=plan_data.get('is_subscription', False)
                 )
                 plans_created += 1
                 self.stdout.write(self.style.SUCCESS(f"Created plan: {new_plan.name}"))

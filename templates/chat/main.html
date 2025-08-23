@@ -398,6 +398,97 @@
     </div>
 
     {% include 'chat/artifacts.html' %}
+    
+    <!-- Upgrade Popup Modal -->
+    {% if show_upgrade_popup %}
+    <div id="upgrade-popup" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); display: flex; align-items: center; justify-content: center; z-index: 10000;">
+        <div style="background: #1f2937; border-radius: 12px; padding: 2rem; max-width: 500px; width: 90%; border: 1px solid #374151; position: relative;">
+            <button onclick="document.getElementById('upgrade-popup').style.display='none'" style="position: absolute; top: 1rem; right: 1rem; background: none; border: none; color: #9ca3af; font-size: 1.5rem; cursor: pointer;">
+                <i class="fas fa-times"></i>
+            </button>
+            
+            <div style="text-align: center; margin-bottom: 1.5rem;">
+                <i class="fas fa-rocket" style="font-size: 3rem; color: #a78bfa; margin-bottom: 1rem; display: block;"></i>
+                <h2 style="color: #f3f4f6; font-size: 1.5rem; margin-bottom: 0.5rem;">Welcome to LFG! 🚀</h2>
+                <p style="color: #9ca3af;">Start building with AI-powered development</p>
+            </div>
+            
+            <div style="background: #111827; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
+                <h3 style="color: #f3f4f6; font-size: 1rem; margin-bottom: 1rem;">Your Free Tier Includes:</h3>
+                <ul style="color: #9ca3af; list-style: none; padding: 0; margin: 0;">
+                    <li style="margin-bottom: 0.5rem;"><i class="fas fa-check" style="color: #10b981; margin-right: 0.5rem;"></i> 100,000 lifetime tokens</li>
+                    <li style="margin-bottom: 0.5rem;"><i class="fas fa-check" style="color: #10b981; margin-right: 0.5rem;"></i> Access to GPT-4o-mini model</li>
+                    <li><i class="fas fa-check" style="color: #10b981; margin-right: 0.5rem;"></i> Basic code generation features</li>
+                </ul>
+            </div>
+            
+            <div style="background: linear-gradient(135deg, #9333ea 0%, #7c3aed 100%); padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                <h3 style="color: #ffffff; font-size: 1rem; margin-bottom: 0.5rem;">🎯 Upgrade to Pro for $9/month</h3>
+                <ul style="color: #e9d5ff; list-style: none; padding: 0; margin: 0;">
+                    <li style="margin-bottom: 0.25rem;"><i class="fas fa-star" style="margin-right: 0.5rem;"></i> 300,000 tokens per month</li>
+                    <li style="margin-bottom: 0.25rem;"><i class="fas fa-star" style="margin-right: 0.5rem;"></i> Access to all AI models (GPT-4o, Claude, Gemini)</li>
+                    <li><i class="fas fa-star" style="margin-right: 0.5rem;"></i> Priority support & advanced features</li>
+                </ul>
+            </div>
+            
+            <div style="display: flex; gap: 1rem;">
+                <button onclick="document.getElementById('upgrade-popup').style.display='none'" style="flex: 1; background: #374151; color: #f3f4f6; border: none; padding: 0.75rem; border-radius: 8px; cursor: pointer; font-size: 1rem;">
+                    Start with Free Tier
+                </button>
+                <a href="{% url 'subscriptions:dashboard' %}" style="flex: 1; background: #10b981; color: white; border: none; padding: 0.75rem; border-radius: 8px; cursor: pointer; font-size: 1rem; text-align: center; text-decoration: none; display: block;">
+                    Upgrade to Pro
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    
+    <!-- Tokens Exhausted Popup -->
+    {% if show_tokens_exhausted_popup %}
+    <div id="tokens-exhausted-popup" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); display: flex; align-items: center; justify-content: center; z-index: 10000;">
+        <div style="background: #1f2937; border-radius: 12px; padding: 2rem; max-width: 500px; width: 90%; border: 1px solid #374151; position: relative;">
+            <button onclick="document.getElementById('tokens-exhausted-popup').style.display='none'" style="position: absolute; top: 1rem; right: 1rem; background: none; border: none; color: #9ca3af; font-size: 1.5rem; cursor: pointer;">
+                <i class="fas fa-times"></i>
+            </button>
+            
+            <div style="text-align: center; margin-bottom: 1.5rem;">
+                <i class="fas fa-exclamation-triangle" style="font-size: 3rem; color: #f59e0b; margin-bottom: 1rem; display: block;"></i>
+                <h2 style="color: #f3f4f6; font-size: 1.5rem; margin-bottom: 0.5rem;">Token Limit Reached</h2>
+                <p style="color: #9ca3af;">You've used all your available tokens</p>
+            </div>
+            
+            {% if is_free_tier %}
+            <div style="background: #111827; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
+                <p style="color: #f3f4f6; margin-bottom: 0.5rem;">You've used your 100,000 free tokens.</p>
+                <p style="color: #9ca3af;">Upgrade to Pro to continue building with AI.</p>
+            </div>
+            
+            <div style="background: linear-gradient(135deg, #9333ea 0%, #7c3aed 100%); padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                <h3 style="color: #ffffff; font-size: 1rem; margin-bottom: 0.5rem;">Pro Plan - $9/month</h3>
+                <ul style="color: #e9d5ff; list-style: none; padding: 0; margin: 0;">
+                    <li style="margin-bottom: 0.25rem;"><i class="fas fa-check" style="margin-right: 0.5rem;"></i> 300,000 tokens per month</li>
+                    <li style="margin-bottom: 0.25rem;"><i class="fas fa-check" style="margin-right: 0.5rem;"></i> Access to all AI models</li>
+                    <li><i class="fas fa-check" style="margin-right: 0.5rem;"></i> Monthly token reset</li>
+                </ul>
+            </div>
+            {% else %}
+            <div style="background: #111827; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
+                <p style="color: #f3f4f6; margin-bottom: 0.5rem;">You've used your monthly quota of 300,000 tokens.</p>
+                <p style="color: #9ca3af;">Purchase additional tokens or wait for your monthly reset.</p>
+            </div>
+            {% endif %}
+            
+            <div style="display: flex; gap: 1rem;">
+                <button onclick="document.getElementById('tokens-exhausted-popup').style.display='none'" style="flex: 1; background: #374151; color: #f3f4f6; border: none; padding: 0.75rem; border-radius: 8px; cursor: pointer; font-size: 1rem;">
+                    Close
+                </button>
+                <a href="{% url 'subscriptions:dashboard' %}" style="flex: 1; background: #10b981; color: white; border: none; padding: 0.75rem; border-radius: 8px; cursor: pointer; font-size: 1rem; text-align: center; text-decoration: none; display: block;">
+                    {% if is_free_tier %}Upgrade to Pro{% else %}Buy More Tokens{% endif %}
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 
     <script src="/static/js/sidebar.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -415,6 +506,14 @@
     <script src="/static/js/role-handler.js"></script>
     <script src="/static/js/model-handler.js"></script>
     <script src="/static/js/turbo-handler.js"></script>
+    
+    <script>
+        // Pass user subscription info to JavaScript
+        window.isFreeTier = {{ is_free_tier|lower }};
+        window.remainingTokens = {{ remaining_tokens|default:0 }};
+        window.totalTokensLimit = {{ total_tokens_limit|default:0 }};
+    </script>
+    
     {% csrf_token %}
 </body>
 </html> 

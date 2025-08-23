@@ -1234,6 +1234,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     
                 case 'error':
                     console.error('WebSocket error:', data.message);
+                    
+                    // Check if this is a token exhaustion error
+                    if (data.message && (
+                        data.message.includes('token limit') || 
+                        data.message.includes('tokens. Please upgrade') ||
+                        data.message.includes('reached your') ||
+                        data.message.includes('token quota')
+                    )) {
+                        showTokenExhaustedPopup();
+                    }
+                    
                     // Display error message to user
                     const errorMsg = document.createElement('div');
                     errorMsg.className = 'error-message';
@@ -4692,4 +4703,68 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     `;
     document.head.appendChild(mentionStyles);
+    
+    // Function to show token exhausted popup dynamically
+    function showTokenExhaustedPopup() {
+        // Check if popup already exists
+        if (document.getElementById('dynamic-tokens-exhausted-popup')) {
+            return;
+        }
+        
+        // Get user tier info from window or default values
+        const isFreeTier = window.isFreeTier !== undefined ? window.isFreeTier : true;
+        
+        const popup = document.createElement('div');
+        popup.id = 'dynamic-tokens-exhausted-popup';
+        popup.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); display: flex; align-items: center; justify-content: center; z-index: 10000;';
+        
+        popup.innerHTML = `
+            <div style="background: #1f2937; border-radius: 12px; padding: 2rem; max-width: 500px; width: 90%; border: 1px solid #374151; position: relative;">
+                <button onclick="document.getElementById('dynamic-tokens-exhausted-popup').remove()" style="position: absolute; top: 1rem; right: 1rem; background: none; border: none; color: #9ca3af; font-size: 1.5rem; cursor: pointer;">
+                    <i class="fas fa-times"></i>
+                </button>
+                
+                <div style="text-align: center; margin-bottom: 1.5rem;">
+                    <i class="fas fa-exclamation-triangle" style="font-size: 3rem; color: #f59e0b; margin-bottom: 1rem; display: block;"></i>
+                    <h2 style="color: #f3f4f6; font-size: 1.5rem; margin-bottom: 0.5rem;">Token Limit Reached</h2>
+                    <p style="color: #9ca3af;">You've used all your available tokens</p>
+                </div>
+                
+                ${isFreeTier ? `
+                <div style="background: #111827; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
+                    <p style="color: #f3f4f6; margin-bottom: 0.5rem;">You've used your 100,000 free tokens.</p>
+                    <p style="color: #9ca3af;">Upgrade to Pro to continue building with AI.</p>
+                </div>
+                
+                <div style="background: linear-gradient(135deg, #9333ea 0%, #7c3aed 100%); padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                    <h3 style="color: #ffffff; font-size: 1rem; margin-bottom: 0.5rem;">Pro Plan - $9/month</h3>
+                    <ul style="color: #e9d5ff; list-style: none; padding: 0; margin: 0;">
+                        <li style="margin-bottom: 0.25rem;"><i class="fas fa-check" style="margin-right: 0.5rem;"></i> 300,000 tokens per month</li>
+                        <li style="margin-bottom: 0.25rem;"><i class="fas fa-check" style="margin-right: 0.5rem;"></i> Access to all AI models</li>
+                        <li><i class="fas fa-check" style="margin-right: 0.5rem;"></i> Monthly token reset</li>
+                    </ul>
+                </div>
+                ` : `
+                <div style="background: #111827; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
+                    <p style="color: #f3f4f6; margin-bottom: 0.5rem;">You've used your monthly quota of 300,000 tokens.</p>
+                    <p style="color: #9ca3af;">Purchase additional tokens or wait for your monthly reset.</p>
+                </div>
+                `}
+                
+                <div style="display: flex; gap: 1rem;">
+                    <button onclick="document.getElementById('dynamic-tokens-exhausted-popup').remove()" style="flex: 1; background: #374151; color: #f3f4f6; border: none; padding: 0.75rem; border-radius: 8px; cursor: pointer; font-size: 1rem;">
+                        Close
+                    </button>
+                    <a href="/subscriptions/" style="flex: 1; background: #10b981; color: white; border: none; padding: 0.75rem; border-radius: 8px; cursor: pointer; font-size: 1rem; text-align: center; text-decoration: none; display: block;">
+                        ${isFreeTier ? 'Upgrade to Pro' : 'Buy More Tokens'}
+                    </a>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(popup);
+    }
+    
+    // Make it available globally
+    window.showTokenExhaustedPopup = showTokenExhaustedPopup;
 });

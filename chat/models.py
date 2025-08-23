@@ -88,10 +88,8 @@ class ModelSelection(models.Model):
         ('claude_4_opus', 'Claude 4 Opus'),
         ('claude_3.5_sonnet', 'Claude 3.5 Sonnet'),
         # OpenAI models
-        ('gpt_4_1', 'OpenAI GPT-4.1'),
-        ('gpt_4o', 'OpenAI GPT-4o'),
-        ('o3', 'OpenAI o3'),
-        ('o4-mini', 'OpenAI o4 mini'),
+        ('gpt-5', 'GPT-5'),
+        ('gpt-5-mini', 'GPT-5-mini'),
         # XAI models
         ('grok_4', 'Grok 4'),
         ('grok_2', 'Grok 2'),

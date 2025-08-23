@@ -7,6 +7,7 @@ from django.conf import settings
 from .forms import UserRegisterForm, UserUpdateForm, ProfileUpdateForm, EmailAuthenticationForm, PasswordResetForm
 from django.contrib.auth.models import User
 from .models import GitHubToken, EmailVerificationToken, LLMApiKeys, ExternalServicesAPIKeys
+from subscriptions.models import UserCredit
 from chat.models import AgentRole
 import requests
 import uuid
@@ -523,6 +524,19 @@ def integrations(request):
     except ExternalServicesAPIKeys.DoesNotExist:
         linear_connected = False
     
+    # Get user's credit and token usage information
+    user_credit, created = UserCredit.objects.get_or_create(user=request.user)
+    
+    # Calculate usage percentages
+    if user_credit.is_free_tier:
+        total_limit = 100000  # 100K for free tier
+        tokens_used = user_credit.total_tokens_used
+        usage_percentage = min((tokens_used / total_limit * 100), 100) if total_limit > 0 else 0
+    else:
+        total_limit = 300000  # 300K monthly for pro tier
+        tokens_used = user_credit.monthly_tokens_used
+        usage_percentage = min((tokens_used / total_limit * 100), 100) if total_limit > 0 else 0
+    
     context = {
         'github_connected': github_connected,
         'github_username': github_username,
@@ -534,6 +548,16 @@ def integrations(request):
         'xai_connected': xai_connected,
         'google_connected': google_connected,
         'linear_connected': linear_connected,
+        # Token usage data
+        'user_credit': user_credit,
+        'tokens_used': tokens_used,
+        'tokens_remaining': user_credit.get_remaining_tokens(),
+        'total_limit': total_limit,
+        'usage_percentage': round(usage_percentage, 1),
+        'is_free_tier': user_credit.is_free_tier,
+        'subscription_tier': user_credit.subscription_tier,
+        'free_tokens_used': user_credit.free_tokens_used,
+        'paid_tokens_used': user_credit.paid_tokens_used,
     }
     
     return render(request, 'accounts/settings_new.html', context)

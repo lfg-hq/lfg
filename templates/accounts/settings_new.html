@@ -1,5 +1,6 @@
 {% extends "accounts/base_with_sidebar.html" %}
 {% load static %}
+{% load humanize %}
 
 {% block title %}Settings - LFG 🚀🚀{% endblock %}
 
@@ -515,6 +516,7 @@
             max-width: 100%;
         }
     }
+    
 </style>
 {% endblock %}
 
@@ -531,7 +533,11 @@
     <!-- Settings Sidebar -->
     <aside class="settings-sidebar">
         <nav class="settings-nav">
-            <a href="#llm-settings" class="settings-nav-item active" data-section="llm-settings">
+            <a href="#usage" class="settings-nav-item active" data-section="usage">
+                <i class="fas fa-chart-line"></i>
+                <span>Token Usage</span>
+            </a>
+            <a href="#llm-settings" class="settings-nav-item" data-section="llm-settings">
                 <i class="fas fa-robot"></i>
                 <span>LLM Settings</span>
             </a>
@@ -552,8 +558,299 @@
     
     <!-- Settings Content -->
     <div class="settings-content">
+        <!-- Token Usage Section -->
+        <div id="usage" class="settings-section active">
+            <h2 class="section-heading">Token Usage</h2>
+            
+            <style>
+                .usage-content-wrapper {
+                    max-width: 600px;
+                    margin: 0 auto;
+                }
+                .usage-card {
+                    background: #1a1a1a;
+                    border: 1px solid #2a2a2a;
+                    border-radius: 12px;
+                    padding: 24px;
+                    margin-bottom: 16px;
+                }
+                
+                .usage-header {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    margin-bottom: 24px;
+                }
+                
+                .plan-badge {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 8px 16px;
+                    background: {% if is_free_tier %}#1f2937{% else %}linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%){% endif %};
+                    border-radius: 20px;
+                    font-size: 14px;
+                    font-weight: 500;
+                    color: {% if is_free_tier %}#9ca3af{% else %}#e9d5ff{% endif %};
+                }
+                
+                .plan-badge i {
+                    font-size: 16px;
+                }
+                
+                .plan-details {
+                    color: #6b7280;
+                    font-size: 14px;
+                }
+                
+                .usage-progress {
+                    margin-bottom: 32px;
+                }
+                
+                .progress-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: baseline;
+                    margin-bottom: 12px;
+                }
+                
+                .progress-title {
+                    color: #e5e7eb;
+                    font-size: 16px;
+                    font-weight: 500;
+                }
+                
+                .progress-percentage {
+                    color: #9ca3af;
+                    font-size: 14px;
+                }
+                
+                .progress-bar-container {
+                    background: #0f0f0f;
+                    height: 8px;
+                    border-radius: 4px;
+                    overflow: hidden;
+                }
+                
+                .progress-bar-fill {
+                    height: 100%;
+                    background: {% if usage_percentage > 80 %}#ef4444{% elif usage_percentage > 60 %}#f59e0b{% else %}#a78bfa{% endif %};
+                    width: {{ usage_percentage }}%;
+                    transition: width 0.3s ease;
+                }
+                
+                .usage-stats {
+                    display: grid;
+                    grid-template-columns: repeat(3, 1fr);
+                    gap: 24px;
+                    margin-bottom: 24px;
+                }
+                
+                .stat-item {
+                    text-align: center;
+                }
+                
+                .stat-label {
+                    display: block;
+                    color: #6b7280;
+                    font-size: 12px;
+                    text-transform: uppercase;
+                    letter-spacing: 0.05em;
+                    margin-bottom: 8px;
+                }
+                
+                .stat-value {
+                    display: block;
+                    font-size: 24px;
+                    font-weight: 700;
+                    line-height: 1;
+                    font-variant-numeric: tabular-nums;
+                }
+                
+                .stat-value.used {
+                    color: #e5e7eb;
+                }
+                
+                .stat-value.remaining {
+                    color: {% if tokens_remaining < 10000 %}#ef4444{% else %}#10b981{% endif %};
+                }
+                
+                .stat-value.limit {
+                    color: #6b7280;
+                }
+                
+                .usage-breakdown {
+                    display: grid;
+                    grid-template-columns: repeat(2, 1fr);
+                    gap: 16px;
+                    padding-top: 24px;
+                    border-top: 1px solid #2a2a2a;
+                }
+                
+                .breakdown-item {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                }
+                
+                .breakdown-label {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    color: #9ca3af;
+                    font-size: 14px;
+                }
+                
+                .breakdown-value {
+                    color: #e5e7eb;
+                    font-size: 18px;
+                    font-weight: 600;
+                    font-variant-numeric: tabular-nums;
+                }
+                
+                .upgrade-card {
+                    background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
+                    border: 1px solid #4c1d95;
+                    border-radius: 12px;
+                    padding: 24px;
+                    text-align: center;
+                }
+                
+                .upgrade-title {
+                    color: #e5e7eb;
+                    font-size: 20px;
+                    font-weight: 600;
+                    margin-bottom: 8px;
+                }
+                
+                .upgrade-description {
+                    color: #c7d2fe;
+                    font-size: 14px;
+                    margin-bottom: 20px;
+                    line-height: 1.5;
+                }
+                
+                .upgrade-button {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 8px;
+                    background: #10b981;
+                    color: white;
+                    padding: 12px 24px;
+                    border-radius: 8px;
+                    font-weight: 500;
+                    text-decoration: none;
+                    transition: transform 0.2s, box-shadow 0.2s;
+                }
+                
+                .upgrade-button:hover {
+                    transform: translateY(-1px);
+                    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+                }
+                
+                .reset-info {
+                    margin-top: 16px;
+                    padding-top: 16px;
+                    border-top: 1px solid #2a2a2a;
+                    text-align: center;
+                    color: #6b7280;
+                    font-size: 14px;
+                }
+            </style>
+            
+            <div class="usage-content-wrapper">
+                <!-- Main Usage Card -->
+                <div class="usage-card">
+                <div class="usage-header">
+                    <div>
+                        <div class="plan-badge">
+                            <i class="fas fa-{% if is_free_tier %}user{% else %}crown{% endif %}"></i>
+                            {% if is_free_tier %}Free Tier{% else %}Pro Monthly{% endif %}
+                        </div>
+                        <div class="plan-details" style="margin-top: 8px;">
+                            {% if is_free_tier %}
+                                100,000 lifetime tokens • gpt-5-mini only
+                            {% else %}
+                                300,000 tokens per month • All AI models
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% if is_free_tier %}
+                    <a href="{% url 'subscriptions:dashboard' %}" class="upgrade-button" style="padding: 8px 16px; font-size: 14px;">
+                        <i class="fas fa-rocket"></i> Upgrade
+                    </a>
+                    {% endif %}
+                </div>
+                
+                <div class="usage-progress">
+                    <div class="progress-header">
+                        <span class="progress-title">{% if is_free_tier %}Lifetime Usage{% else %}Monthly Usage{% endif %}</span>
+                        <span class="progress-percentage">{{ usage_percentage }}%</span>
+                    </div>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar-fill"></div>
+                    </div>
+                </div>
+                
+                <div class="usage-stats">
+                    <div class="stat-item">
+                        <span class="stat-label">Used</span>
+                        <span class="stat-value used">{{ tokens_used|intcomma }}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Remaining</span>
+                        <span class="stat-value remaining">{{ tokens_remaining|intcomma }}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Limit</span>
+                        <span class="stat-value limit">{{ total_limit|intcomma }}</span>
+                    </div>
+                </div>
+                
+                <div class="usage-breakdown">
+                    <div class="breakdown-item">
+                        <span class="breakdown-label">
+                            <i class="fas fa-gift" style="color: #a78bfa;"></i>
+                            Free Tokens
+                        </span>
+                        <span class="breakdown-value">{{ free_tokens_used|intcomma }}</span>
+                    </div>
+                    <div class="breakdown-item">
+                        <span class="breakdown-label">
+                            <i class="fas fa-credit-card" style="color: #10b981;"></i>
+                            Paid Tokens
+                        </span>
+                        <span class="breakdown-value">{{ paid_tokens_used|intcomma }}</span>
+                    </div>
+                </div>
+                
+                {% if not is_free_tier and user_credit.subscription_end_date %}
+                <div class="reset-info">
+                    <i class="fas fa-sync-alt"></i>
+                    Resets {{ user_credit.subscription_end_date|date:"M d, Y" }}
+                </div>
+                {% endif %}
+            </div>
+            
+            {% if is_free_tier %}
+            <!-- Upgrade Card -->
+            <div class="upgrade-card">
+                <i class="fas fa-rocket" style="font-size: 32px; color: #a78bfa; margin-bottom: 16px;"></i>
+                <h3 class="upgrade-title">Unlock Pro Features</h3>
+                <p class="upgrade-description">
+                    Get 300,000 tokens every month, access to GPT-4o, Claude, Gemini, and all premium AI models. Perfect for serious builders.
+                </p>
+                <a href="{% url 'subscriptions:dashboard' %}" class="upgrade-button">
+                    <i class="fas fa-credit-card"></i>
+                    View Plans - $9/month
+                </a>
+            </div>
+            {% endif %}
+            </div>
+        </div>
+        
         <!-- LLM Settings Section -->
-        <div id="llm-settings" class="settings-section active">
+        <div id="llm-settings" class="settings-section">
             <h2 class="section-heading">Language Model API Keys</h2>
             <div class="integrations-list">
                 <!-- OpenAI Integration -->
@@ -573,7 +870,7 @@
                                     </span>
                                 {% endif %}
                             </h3>
-                            <p class="integration-description">GPT-4o, GPT-4.1, GPT-o3, GPT-4o-mini</p>
+                            <p class="integration-description">GPT-5, GPT-5-mini</p>
                         </div>
                     </div>
                     

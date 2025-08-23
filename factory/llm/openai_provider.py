@@ -19,8 +19,8 @@ class OpenAIProvider(BaseLLMProvider):
     """OpenAI provider implementation"""
     
     MODEL_MAPPING = {
-        "gpt_5": "gpt-5",
-        "gpt_5_mini": "gpt-5-mini",
+        "gpt-5": "gpt-5",
+        "gpt-5-mini": "gpt-5-mini",
     }
     
     def __init__(self, selected_model: str, user=None, conversation=None, project=None):
@@ -133,6 +133,12 @@ class OpenAIProvider(BaseLLMProvider):
                             tools: List[Dict[str, Any]]) -> AsyncGenerator[str, None]:
         """Generate streaming response from OpenAI"""
         logger.info(f"OpenAI generate_stream called - Model: {self.model}, Messages: {len(messages)}, Tools: {len(tools) if tools else 0}")
+        
+        # Check token limits before proceeding
+        can_proceed, error_message, remaining_tokens = await self.check_token_limits()
+        if not can_proceed:
+            yield f"Error: {error_message}"
+            return
         
         # Ensure client is initialized with API keys
         await self._ensure_client()

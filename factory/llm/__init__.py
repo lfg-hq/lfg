@@ -30,10 +30,8 @@ class LLMProviderFactory:
         'claude_3.5_sonnet': 'anthropic',
         
         # OpenAI models
-        'gpt_4o': 'openai',
-        'gpt_4.1': 'openai',
-        'o3': 'openai',
-        'o4-mini': 'openai',
+        'gpt-5': 'openai',
+        'gpt-5-mini': 'openai',
         
         # XAI models
         'grok_4': 'xai',

@@ -40,10 +40,17 @@ def dashboard(request):
     # Get user's recent transactions
     transactions = Transaction.objects.filter(user=request.user).order_by('-created_at')[:5]
     
+    # Calculate usage percentage
+    if user_credit.is_free_tier:
+        usage_percentage = (user_credit.total_tokens_used / 100000) * 100 if user_credit.total_tokens_used else 0
+    else:
+        usage_percentage = (user_credit.monthly_tokens_used / 300000) * 100 if user_credit.monthly_tokens_used else 0
+    
     context = {
         'user_credit': user_credit,
         'payment_plans': payment_plans,
         'transactions': transactions,
+        'usage_percentage': min(usage_percentage, 100),  # Cap at 100%
     }
     
     return render(request, 'subscriptions/dashboard.html', context)
@@ -293,10 +300,12 @@ def payment_success(request):
                     user_credit = UserCredit.objects.get(user=transaction.user)
                     user_credit.is_subscribed = True
                     user_credit.stripe_subscription_id = session.subscription
+                    user_credit.subscription_tier = 'pro'  # Set to pro tier
                     
                     # Get subscription details to set end date
                     subscription = stripe.Subscription.retrieve(session.subscription)
                     user_credit.subscription_end_date = timezone.datetime.fromtimestamp(subscription.current_period_end)
+                    user_credit.monthly_reset_date = timezone.datetime.fromtimestamp(subscription.current_period_end)
                     user_credit.save()
                 
                 # Add success message
@@ -433,11 +442,13 @@ def handle_subscription_created(subscription):
             user_credit.is_subscribed = True
             user_credit.stripe_subscription_id = subscription.id
             user_credit.subscription_end_date = timezone.datetime.fromtimestamp(subscription.current_period_end)
+            user_credit.subscription_tier = 'pro'  # Set to pro tier
+            user_credit.monthly_reset_date = timezone.datetime.fromtimestamp(subscription.current_period_end)
             user_credit.save()
             
             # Add credits for the first subscription period
             from .utils import add_credits
-            add_credits(user, 1000000, "Monthly subscription credits")
+            add_credits(user, 300000, "Pro Monthly subscription credits")  # 300K for pro tier
     except Exception as e:
         logger.error(f"Error handling subscription creation: {str(e)}", extra={'easylogs_metadata': {'error_type': type(e).__name__}})
 
@@ -489,9 +500,14 @@ def handle_subscription_payment(invoice):
         user_credit.subscription_end_date = timezone.datetime.fromtimestamp(subscription.current_period_end)
         user_credit.save()
         
-        # Add monthly credits
+        # Add monthly credits and reset monthly usage
         from .utils import add_credits
-        add_credits(user_credit.user, 1000000, "Monthly subscription credits")
+        add_credits(user_credit.user, 300000, "Pro Monthly subscription credits")  # 300K for pro tier
+        
+        # Reset monthly token usage
+        user_credit.monthly_tokens_used = 0
+        user_credit.monthly_reset_date = timezone.datetime.fromtimestamp(subscription.current_period_end)
+        user_credit.save()
         
         # Create a transaction record
         Transaction.objects.create(

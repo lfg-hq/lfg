@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional, AsyncGenerator
 from django.contrib.auth.models import User
 from channels.db import database_sync_to_async
+from subscriptions.models import UserCredit
 
 logger = logging.getLogger(__name__)
 
@@ -71,3 +72,35 @@ class BaseLLMProvider(ABC):
             yield chunk
             # Yield control back to the event loop periodically
             await asyncio.sleep(0)
+    
+    @database_sync_to_async
+    def check_token_limits(self) -> tuple[bool, str, int]:
+        """
+        Check if user has enough tokens to make a request.
+        
+        Returns:
+            tuple: (can_proceed, error_message, remaining_tokens)
+        """
+        if not self.user:
+            return True, "", 0  # Allow if no user (shouldn't happen)
+        
+        try:
+            user_credit, created = UserCredit.objects.get_or_create(user=self.user)
+            
+            # Check if user can use this model
+            if not user_credit.can_use_model(self.selected_model):
+                return False, f"Free tier users can only use gpt-5-mini model. Please upgrade to Pro to use {self.selected_model}.", 0
+            
+            # Check token limits
+            remaining_tokens = user_credit.get_remaining_tokens()
+            if remaining_tokens <= 0:
+                if user_credit.is_free_tier:
+                    return False, "You have reached your free tier limit of 100,000 tokens. Please upgrade to Pro for 300,000 tokens per month.", 0
+                else:
+                    return False, "You have reached your monthly token limit of 300,000 tokens. Additional tokens can be purchased.", 0
+            
+            return True, "", remaining_tokens
+            
+        except Exception as e:
+            logger.error(f"Error checking token limits: {e}")
+            return True, "", 0  # Allow on error to not block users

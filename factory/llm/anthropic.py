@@ -130,6 +130,12 @@ class AnthropicProvider(BaseLLMProvider):
                             conversation_id: Optional[int], 
                             tools: List[Dict[str, Any]]) -> AsyncGenerator[str, None]:
         """Generate streaming response from Anthropic Claude"""
+        # Check token limits before proceeding
+        can_proceed, error_message, remaining_tokens = await self.check_token_limits()
+        if not can_proceed:
+            yield f"Error: {error_message}"
+            return
+        
         # Ensure client is initialized with API key
         logger.info("Generating stream for Anthropic provider")
         await self._ensure_client()
