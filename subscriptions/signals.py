@@ -11,13 +11,21 @@ def create_user_credit(sender, instance, created, **kwargs):
 
 @receiver(post_save, sender=Transaction)
 def update_user_credits(sender, instance, **kwargs):
-    """Update user credits when a transaction is completed."""
+    """Update user subscription when a transaction is completed."""
     if instance.status == Transaction.COMPLETED:
         # Get or create user credit
         user_credit, created = UserCredit.objects.get_or_create(user=instance.user)
         
-        # Add credits to user account
-        user_credit.credits += instance.credits_added
+        # For subscription transactions (plan_id = 1), update subscription tier
+        if instance.payment_plan and instance.payment_plan.is_subscription:
+            # This is a subscription - set to pro tier
+            user_credit.subscription_tier = 'pro'
+            user_credit.is_subscribed = True
+            user_credit.monthly_tokens_used = 0  # Reset monthly tokens
+            print(f"Signal: Updated user {instance.user.id} to pro tier via transaction completion")
+        
+        # Do NOT update the old credits field - it's not used
+        # The token tracking system handles actual usage limits
         user_credit.save()
 
 

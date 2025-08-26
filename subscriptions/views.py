@@ -298,36 +298,55 @@ def payment_success(request):
         try:
             # Retrieve session information
             session = stripe.checkout.Session.retrieve(session_id)
+            logger.info(f"Processing payment success for session {session_id}, mode: {session.mode}")
             
             # Check if payment was successful
             if session.payment_status == 'paid' or session.mode == 'subscription':
                 # Update transaction status
-                transaction = Transaction.objects.get(payment_intent_id=session_id)
-                transaction.status = Transaction.COMPLETED
-                transaction.save()
+                try:
+                    transaction = Transaction.objects.get(payment_intent_id=session_id)
+                    transaction.status = Transaction.COMPLETED
+                    transaction.save()
+                    logger.info(f"Updated transaction {transaction.id} to completed")
+                except Transaction.DoesNotExist:
+                    logger.warning(f"Transaction not found for session {session_id}")
                 
                 # If this was a subscription, update user's subscription status
                 if session.mode == 'subscription' and hasattr(session, 'subscription'):
-                    user_credit = UserCredit.objects.get(user=transaction.user)
+                    user_credit, created = UserCredit.objects.get_or_create(user=request.user)
+                    
+                    # Set subscription fields
                     user_credit.is_subscribed = True
                     user_credit.stripe_subscription_id = session.subscription
-                    user_credit.subscription_tier = 'pro'  # Set to pro tier
+                    user_credit.subscription_tier = 'pro'  # CRITICAL: Set to pro tier
                     
-                    # Get subscription details to set end date
+                    # Get subscription details to set dates
                     subscription = stripe.Subscription.retrieve(session.subscription)
-                    user_credit.subscription_end_date = timezone.datetime.fromtimestamp(subscription.current_period_end)
-                    user_credit.monthly_reset_date = timezone.datetime.fromtimestamp(subscription.current_period_end)
+                    user_credit.subscription_end_date = timezone.datetime.fromtimestamp(subscription.current_period_end, tz=timezone.utc)
+                    user_credit.monthly_reset_date = timezone.datetime.fromtimestamp(subscription.current_period_end, tz=timezone.utc)
+                    
+                    # Reset monthly token usage for new subscription
+                    user_credit.monthly_tokens_used = 0
+                    
                     user_credit.save()
+                    logger.info(f"Updated user {request.user.id} subscription: tier={user_credit.subscription_tier}, subscribed={user_credit.is_subscribed}")
+                
+                # For one-time payments (additional credits), just update transaction
+                elif session.mode == 'payment':
+                    logger.info(f"One-time payment processed for user {request.user.id}")
                 
                 # Add success message
                 if session.mode == 'subscription':
-                    messages.success(request, "Subscription started successfully! Credits have been added to your account.")
+                    messages.success(request, "Subscription started successfully! You now have access to 300,000 tokens per month and all AI models.")
                 else:
-                    messages.success(request, "Payment successful! Credits have been added to your account.")
+                    messages.success(request, "Payment successful! Additional tokens have been added to your account.")
+                    
         except Exception as e:
-            messages.warning(request, f"Unable to verify payment: {str(e)}")
+            logger.error(f"Error processing payment success: {str(e)}", extra={'easylogs_metadata': {'session_id': session_id, 'error_type': type(e).__name__}})
+            messages.warning(request, f"Payment was successful but there was an issue updating your account. Please contact support if you don't see your subscription activated.")
     
-    return render(request, 'subscriptions/payment_success.html')
+    # Redirect to dashboard with success message instead of showing static page
+    return redirect('subscriptions:dashboard')
 
 @login_required
 def payment_cancel(request):
@@ -359,7 +378,7 @@ def cancel_subscription(request):
         )
         
         # Update the subscription end date
-        user_credit.subscription_end_date = timezone.datetime.fromtimestamp(subscription.current_period_end)
+        user_credit.subscription_end_date = timezone.datetime.fromtimestamp(subscription.current_period_end, tz=timezone.utc)
         user_credit.save()
         
         messages.success(request, f"Your subscription has been canceled. You will continue to have access until {user_credit.subscription_end_date.strftime('%B %d, %Y')}.")
@@ -376,67 +395,123 @@ def stripe_webhook(request):
     sig_header = request.META.get('HTTP_STRIPE_SIGNATURE')
     endpoint_secret = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
     
+    logger.info(f"Received webhook with signature: {sig_header[:20] if sig_header else 'None'}...")
+    
     try:
         event = stripe.Webhook.construct_event(
             payload, sig_header, endpoint_secret
         )
+        logger.info(f"Webhook event verified successfully: {event['type']}")
     except ValueError as e:
         # Invalid payload
+        logger.error(f"Invalid webhook payload: {e}")
         return JsonResponse({'error': str(e)}, status=400)
     except stripe.error.SignatureVerificationError as e:
         # Invalid signature
+        logger.error(f"Invalid webhook signature: {e}")
         return JsonResponse({'error': str(e)}, status=400)
     
     # Handle the event
-    if event['type'] == 'checkout.session.completed':
-        session = event['data']['object']
-        handle_successful_payment(session)
-    elif event['type'] == 'customer.subscription.created':
-        subscription = event['data']['object']
-        handle_subscription_created(subscription)
-    elif event['type'] == 'customer.subscription.updated':
-        subscription = event['data']['object']
-        handle_subscription_updated(subscription)
-    elif event['type'] == 'customer.subscription.deleted':
-        subscription = event['data']['object']
-        handle_subscription_canceled(subscription)
-    elif event['type'] == 'invoice.payment_succeeded':
-        invoice = event['data']['object']
-        if hasattr(invoice, 'subscription'):
-            handle_subscription_payment(invoice)
+    try:
+        if event['type'] == 'checkout.session.completed':
+            session = event['data']['object']
+            logger.info(f"Processing checkout.session.completed for session {session.id}")
+            handle_successful_payment(session)
+        elif event['type'] == 'customer.subscription.created':
+            subscription = event['data']['object']
+            logger.info(f"Processing customer.subscription.created for subscription {subscription.id}")
+            handle_subscription_created(subscription)
+        elif event['type'] == 'customer.subscription.updated':
+            subscription = event['data']['object']
+            logger.info(f"Processing customer.subscription.updated for subscription {subscription.id}")
+            handle_subscription_updated(subscription)
+        elif event['type'] == 'customer.subscription.deleted':
+            subscription = event['data']['object']
+            logger.info(f"Processing customer.subscription.deleted for subscription {subscription.id}")
+            handle_subscription_canceled(subscription)
+        elif event['type'] == 'invoice.payment_succeeded':
+            invoice = event['data']['object']
+            logger.info(f"Processing invoice.payment_succeeded for invoice {invoice.id}")
+            if hasattr(invoice, 'subscription'):
+                handle_subscription_payment(invoice)
+        else:
+            logger.info(f"Unhandled webhook event type: {event['type']}")
+    except Exception as e:
+        logger.error(f"Error processing webhook event {event['type']}: {e}")
+        # Still return success to prevent Stripe from retrying
     
     return JsonResponse({'status': 'success'})
 
 def handle_successful_payment(session):
     """Process a successful payment"""
+    logger.info(f"Processing successful payment webhook for session {session.id}")
+    
     # Update transaction status
     try:
         transaction = Transaction.objects.get(payment_intent_id=session.id)
         transaction.status = Transaction.COMPLETED
         transaction.save()
+        logger.info(f"Updated transaction {transaction.id} status to completed")
         
-        # Signal will handle updating the user's credits
+        # If this was a subscription payment, update user subscription
+        if session.mode == 'subscription' and hasattr(session, 'subscription'):
+            user_credit, created = UserCredit.objects.get_or_create(user=transaction.user)
+            user_credit.subscription_tier = 'pro'
+            user_credit.is_subscribed = True
+            user_credit.stripe_subscription_id = session.subscription
+            user_credit.monthly_tokens_used = 0  # Reset monthly tokens
+            
+            # Get subscription details for dates
+            try:
+                subscription = stripe.Subscription.retrieve(session.subscription)
+                user_credit.subscription_end_date = timezone.datetime.fromtimestamp(subscription.current_period_end, tz=timezone.utc)
+                user_credit.monthly_reset_date = timezone.datetime.fromtimestamp(subscription.current_period_end, tz=timezone.utc)
+            except Exception as e:
+                logger.error(f"Error retrieving subscription details: {e}")
+            
+            user_credit.save()
+            logger.info(f"Updated user {transaction.user.id} subscription via webhook: tier=pro, subscribed=True")
+        
     except Transaction.DoesNotExist:
+        logger.warning(f"Transaction not found for session {session.id}")
         # If transaction doesn't exist, create it
         if 'user_id' in session.metadata and 'plan_id' in session.metadata:
             from django.contrib.auth.models import User
             
-            user = User.objects.get(id=session.metadata['user_id'])
-            plan = PaymentPlan.objects.get(id=session.metadata['plan_id'])
-            
-            transaction = Transaction.objects.create(
-                user=user,
-                payment_plan=plan,
-                amount=session.amount_total / 100,  # Convert from cents
-                credits_added=int(session.metadata['credits']),
-                status=Transaction.COMPLETED,
-                payment_intent_id=session.id
-            )
+            try:
+                user = User.objects.get(id=session.metadata['user_id'])
+                plan = PaymentPlan.objects.get(id=session.metadata['plan_id'])
+                
+                transaction = Transaction.objects.create(
+                    user=user,
+                    payment_plan=plan,
+                    amount=session.amount_total / 100,  # Convert from cents
+                    credits_added=int(session.metadata['credits']),
+                    status=Transaction.COMPLETED,
+                    payment_intent_id=session.id
+                )
+                logger.info(f"Created new transaction {transaction.id} from webhook")
+                
+                # If subscription, update user credit directly
+                if session.mode == 'subscription' and hasattr(session, 'subscription'):
+                    user_credit, created = UserCredit.objects.get_or_create(user=user)
+                    user_credit.subscription_tier = 'pro'
+                    user_credit.is_subscribed = True
+                    user_credit.stripe_subscription_id = session.subscription
+                    user_credit.monthly_tokens_used = 0
+                    user_credit.save()
+                    logger.info(f"Set user {user.id} to pro tier via webhook")
+                    
+            except Exception as e:
+                logger.error(f"Error creating transaction from webhook: {e}")
 
 def handle_subscription_created(subscription):
     """Process a new subscription"""
+    logger.info(f"Processing subscription created webhook for subscription {subscription.id}")
+    
     # Find the customer
     if not hasattr(subscription, 'customer'):
+        logger.warning("Subscription has no customer attribute")
         return
     
     # Get the customer to find the user
@@ -452,16 +527,21 @@ def handle_subscription_created(subscription):
             user_credit, created = UserCredit.objects.get_or_create(user=user)
             user_credit.is_subscribed = True
             user_credit.stripe_subscription_id = subscription.id
-            user_credit.subscription_end_date = timezone.datetime.fromtimestamp(subscription.current_period_end)
-            user_credit.subscription_tier = 'pro'  # Set to pro tier
-            user_credit.monthly_reset_date = timezone.datetime.fromtimestamp(subscription.current_period_end)
-            user_credit.save()
+            user_credit.subscription_end_date = timezone.datetime.fromtimestamp(subscription.current_period_end, tz=timezone.utc)
+            user_credit.subscription_tier = 'pro'  # CRITICAL: Set to pro tier
+            user_credit.monthly_reset_date = timezone.datetime.fromtimestamp(subscription.current_period_end, tz=timezone.utc)
             
-            # Add credits for the first subscription period
-            from .utils import add_credits
-            add_credits(user, 300000, "Pro Monthly subscription credits")  # 300K for pro tier
+            # Reset monthly token usage for new subscription
+            user_credit.monthly_tokens_used = 0
+            
+            user_credit.save()
+            logger.info(f"Updated user {user_id} subscription via webhook: tier=pro, subscription_id={subscription.id}")
+            
+            # Do NOT add to old credits system - that's the bug
+            # The token system is what actually matters
+            
     except Exception as e:
-        logger.error(f"Error handling subscription creation: {str(e)}", extra={'easylogs_metadata': {'error_type': type(e).__name__}})
+        logger.error(f"Error handling subscription creation: {str(e)}", extra={'easylogs_metadata': {'subscription_id': subscription.id, 'error_type': type(e).__name__}})
 
 def handle_subscription_updated(subscription):
     """Process an updated subscription"""
@@ -470,7 +550,7 @@ def handle_subscription_updated(subscription):
         user_credit = UserCredit.objects.get(stripe_subscription_id=subscription.id)
         
         # Update subscription end date
-        user_credit.subscription_end_date = timezone.datetime.fromtimestamp(subscription.current_period_end)
+        user_credit.subscription_end_date = timezone.datetime.fromtimestamp(subscription.current_period_end, tz=timezone.utc)
         
         # Check if subscription is still active
         if subscription.status in ['active', 'trialing']:
@@ -685,7 +765,7 @@ def handle_subscription_payment(invoice):
         
         # Get subscription to update end date
         subscription = stripe.Subscription.retrieve(invoice.subscription)
-        user_credit.subscription_end_date = timezone.datetime.fromtimestamp(subscription.current_period_end)
+        user_credit.subscription_end_date = timezone.datetime.fromtimestamp(subscription.current_period_end, tz=timezone.utc)
         user_credit.save()
         
         # Add monthly credits and reset monthly usage
@@ -694,7 +774,7 @@ def handle_subscription_payment(invoice):
         
         # Reset monthly token usage
         user_credit.monthly_tokens_used = 0
-        user_credit.monthly_reset_date = timezone.datetime.fromtimestamp(subscription.current_period_end)
+        user_credit.monthly_reset_date = timezone.datetime.fromtimestamp(subscription.current_period_end, tz=timezone.utc)
         user_credit.save()
         
         # Create a transaction record
