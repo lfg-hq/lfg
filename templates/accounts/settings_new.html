@@ -5,6 +5,7 @@
 {% block title %}Settings - LFG 🚀🚀{% endblock %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/organizations.css' %}">
 <style>
     /* Subtle notification styling */
     .messages {
@@ -545,6 +546,10 @@
                 <i class="fas fa-tasks"></i>
                 <span>Project Management Tools</span>
             </a>
+            <a href="#organizations" class="settings-nav-item" data-section="organizations">
+                <i class="fas fa-users"></i>
+                <span>Organizations</span>
+            </a>
             <a href="#github" class="settings-nav-item" data-section="github">
                 <i class="fab fa-github"></i>
                 <span>GitHub</span>
@@ -875,7 +880,7 @@
                     </div>
                     
                     {% if openai_connected %}
-                        <form method="post" action="{% url 'disconnect_api_key' 'openai' %}">
+                        <form method="post" action="{% url 'accounts:disconnect_api_key' 'openai' %}">
                             {% csrf_token %}
                             <div class="api-key-section">
                                 <div class="api-key-input-wrapper">
@@ -888,7 +893,7 @@
                             </div>
                         </form>
                     {% else %}
-                        <form method="post" action="{% url 'save_api_key' 'openai' %}">
+                        <form method="post" action="{% url 'accounts:save_api_key' 'openai' %}">
                             {% csrf_token %}
                             <div class="api-key-section">
                                 <div class="api-key-input-wrapper">
@@ -927,7 +932,7 @@
                     </div>
                     
                     {% if anthropic_connected %}
-                        <form method="post" action="{% url 'disconnect_api_key' 'anthropic' %}">
+                        <form method="post" action="{% url 'accounts:disconnect_api_key' 'anthropic' %}">
                             {% csrf_token %}
                             <div class="api-key-section">
                                 <div class="api-key-input-wrapper">
@@ -940,7 +945,7 @@
                             </div>
                         </form>
                     {% else %}
-                        <form method="post" action="{% url 'save_api_key' 'anthropic' %}">
+                        <form method="post" action="{% url 'accounts:save_api_key' 'anthropic' %}">
                             {% csrf_token %}
                             <div class="api-key-section">
                                 <div class="api-key-input-wrapper">
@@ -979,7 +984,7 @@
                     </div>
                     
                     {% if xai_connected %}
-                        <form method="post" action="{% url 'disconnect_api_key' 'xai' %}">
+                        <form method="post" action="{% url 'accounts:disconnect_api_key' 'xai' %}">
                             {% csrf_token %}
                             <div class="api-key-section">
                                 <div class="api-key-input-wrapper">
@@ -992,7 +997,7 @@
                             </div>
                         </form>
                     {% else %}
-                        <form method="post" action="{% url 'save_api_key' 'xai' %}">
+                        <form method="post" action="{% url 'accounts:save_api_key' 'xai' %}">
                             {% csrf_token %}
                             <div class="api-key-section">
                                 <div class="api-key-input-wrapper">
@@ -1034,7 +1039,7 @@
                     </div>
                     
                     {% if google_connected %}
-                        <form method="post" action="{% url 'disconnect_api_key' 'google' %}">
+                        <form method="post" action="{% url 'accounts:disconnect_api_key' 'google' %}">
                             {% csrf_token %}
                             <div class="api-key-section">
                                 <div class="api-key-input-wrapper">
@@ -1047,7 +1052,7 @@
                             </div>
                         </form>
                     {% else %}
-                        <form method="post" action="{% url 'save_api_key' 'google' %}">
+                        <form method="post" action="{% url 'accounts:save_api_key' 'google' %}">
                             {% csrf_token %}
                             <div class="api-key-section">
                                 <div class="api-key-input-wrapper">
@@ -1092,7 +1097,7 @@
                     </div>
                     
                     {% if linear_connected %}
-                        <form method="post" action="{% url 'disconnect_api_key' 'linear' %}">
+                        <form method="post" action="{% url 'accounts:disconnect_api_key' 'linear' %}">
                             {% csrf_token %}
                             <div class="api-key-section">
                                 <div class="api-key-input-wrapper">
@@ -1105,7 +1110,7 @@
                             </div>
                         </form>
                     {% else %}
-                        <form method="post" action="{% url 'save_api_key' 'linear' %}">
+                        <form method="post" action="{% url 'accounts:save_api_key' 'linear' %}">
                             {% csrf_token %}
                             <div class="api-key-section">
                                 <div class="api-key-input-wrapper">
@@ -1120,6 +1125,125 @@
                         Get API Key
                         <i class="fas fa-external-link-alt"></i>
                     </a>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Organizations Section -->
+        <div id="organizations" class="settings-section">
+            <h2 class="section-heading">Organizations</h2>
+            <div class="integrations-list">
+                <div class="integration-item">
+                    <div class="integration-header">
+                        <div class="integration-icon">
+                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 12C14.21 12 16 10.21 16 8C16 5.79 14.21 4 12 4C9.79 4 8 5.79 8 8C8 10.21 9.79 12 12 12ZM12 14C9.33 14 4 15.34 4 18V20H20V18C20 15.34 14.67 14 12 14Z" fill="#a78bfa"/>
+                                <circle cx="18" cy="8" r="3" fill="#a78bfa" opacity="0.7"/>
+                                <circle cx="6" cy="8" r="3" fill="#a78bfa" opacity="0.7"/>
+                            </svg>
+                        </div>
+                        <div class="integration-info">
+                            <h3 class="integration-name">
+                                Team Organizations
+                                {% if user.profile.current_organization %}
+                                    <span class="connected-check">
+                                        <i class="fas fa-check"></i>
+                                    </span>
+                                {% endif %}
+                            </h3>
+                            <p class="integration-description">Manage your team organizations and billing</p>
+                        </div>
+                    </div>
+                    
+                    {% if user.profile.current_organization %}
+                        <div class="team-organization-card current">
+                            <div class="organization-header">
+                                {% if user.profile.current_organization.avatar %}
+                                    <img src="{{ user.profile.current_organization.avatar.url }}" alt="{{ user.profile.current_organization.name }}" class="organization-avatar">
+                                {% else %}
+                                    <div class="organization-avatar placeholder">
+                                        {{ user.profile.current_organization.name|first|upper }}
+                                    </div>
+                                {% endif %}
+                                <div class="organization-info">
+                                    <h3>{{ user.profile.current_organization.name }}</h3>
+                                    <p class="subtitle">
+                                        {{ current_org_role|capfirst|default:"Member" }} • 
+                                        {{ user.profile.current_organization.member_count }} member{{ user.profile.current_organization.member_count|pluralize }}
+                                    </p>
+                                </div>
+                            </div>
+                            
+                            <div class="organization-stats">
+                                <div class="stat-card">
+                                    <div class="stat-value">{{ user.profile.current_organization.credit.credits|default:0 }}</div>
+                                    <div class="stat-label">Credits</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-value {% if user.profile.current_organization.credit.is_subscribed %}success{% else %}muted{% endif %}">
+                                        {% if user.profile.current_organization.credit.is_subscribed %}<i class="fas fa-check"></i> Pro{% else %}<i class="fas fa-building"></i> Free{% endif %}
+                                    </div>
+                                    <div class="stat-label">Plan</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-value">{{ user.profile.current_organization.credit.seat_count|default:1 }}</div>
+                                    <div class="stat-label">Seats</div>
+                                </div>
+                            </div>
+                        </div>
+                    {% else %}
+                        <div class="personal-space-card">
+                            <div class="organization-header">
+                                <div class="organization-avatar placeholder">
+                                    {{ user.first_name|first|default:user.username|first|upper }}
+                                </div>
+                                <div class="organization-info">
+                                    <h3>Personal Space</h3>
+                                    <p class="subtitle">Individual account</p>
+                                </div>
+                            </div>
+                            
+                            <div class="organization-stats">
+                                <div class="stat-card">
+                                    <div class="stat-value">{{ user_credits|default:0 }}</div>
+                                    <div class="stat-label">Credits</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-value {% if user.llm_api_keys.free_trial %}muted{% else %}success{% endif %}">
+                                        {% if user.llm_api_keys.free_trial %}<i class="fas fa-times"></i>{% else %}<i class="fas fa-check"></i>{% endif %}
+                                    </div>
+                                    <div class="stat-label">API Keys</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-value">1</div>
+                                    <div class="stat-label">Members</div>
+                                </div>
+                            </div>
+                        </div>
+                    {% endif %}
+                    
+                    <div class="organization-actions">
+                        <a href="{% url 'accounts:organization_list' %}" class="btn btn-primary">
+                            <i class="fas fa-building"></i>
+                            Manage Organizations
+                        </a>
+                        <a href="{% url 'accounts:create_organization' %}" class="btn btn-secondary">
+                            <i class="fas fa-plus"></i>
+                            Create New
+                        </a>
+                    </div>
+                    
+                    {% if user.profile.current_organization %}
+                        <a href="{% url 'accounts:organization_dashboard' user.profile.current_organization.slug %}" class="external-link">
+                            Organization Billing
+                            <i class="fas fa-arrow-right"></i>
+                        </a>
+                    {% else %}
+                        <a href="{% url 'subscriptions:dashboard' %}" target="_blank" class="external-link">
+                            Billing & Subscriptions
+                            <i class="fas fa-external-link-alt"></i>
+                        </a>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -1157,7 +1281,7 @@
                                 {% endif %}
                                 <span>Connected as <strong>{{ github_username }}</strong></span>
                             </div>
-                            <form method="post" action="{% url 'integrations' %}" style="margin: 0;">
+                            <form method="post" action="{% url 'accounts:integrations' %}" style="margin: 0;">
                                 {% csrf_token %}
                                 <input type="hidden" name="action" value="github_disconnect">
                                 <button type="submit" class="disconnect-button" style="margin-top: 0.75rem;">Disconnect</button>

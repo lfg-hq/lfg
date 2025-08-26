@@ -556,14 +556,14 @@
 
         <div class="auth-forms">
             <div class="auth-form login-form active">
-                <a href="{% url 'google_login' %}" class="google-btn">
+                <a href="{% url 'accounts:google_login' %}" class="google-btn">
                     <span class="google-icon"></span>
                     <span>Sign in with Google</span>
                 </a>
 
                 <div class="divider">Or continue with email</div>
 
-                <form method="post" action="{% url 'auth' %}{% if request.GET.next %}?next={{ request.GET.next }}{% endif %}">
+                <form method="post" action="{% url 'accounts:auth' %}{% if request.GET.next %}?next={{ request.GET.next }}{% endif %}">
                     {% csrf_token %}
                     <input type="hidden" name="form_type" value="login">
                     {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
@@ -600,7 +600,7 @@
                             <span>Remember me</span>
                         </label>
                         <div class="forgot-password">
-                            <a href="{% url 'password_reset' %}">Forgot password?</a>
+                            <a href="{% url 'accounts:password_reset' %}">Forgot password?</a>
                         </div>
                     </div>
 
@@ -609,14 +609,14 @@
             </div>
 
             <div class="auth-form register-form">
-                <a href="{% url 'google_login' %}" class="google-btn">
+                <a href="{% url 'accounts:google_login' %}" class="google-btn">
                     <span class="google-icon"></span>
                     <span>Sign up with Google</span>
                 </a>
 
                 <div class="divider">Or continue with email</div>
 
-                <form method="post" action="{% url 'auth' %}">
+                <form method="post" action="{% url 'accounts:auth' %}">
                     {% csrf_token %}
                     <input type="hidden" name="form_type" value="register">
                     {% if register_form.errors %}

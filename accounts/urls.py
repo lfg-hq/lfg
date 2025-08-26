@@ -4,10 +4,12 @@ from . import views
 from .forms import PasswordResetForm
 from django.urls import reverse_lazy
 
+app_name = 'accounts'
+
 urlpatterns = [
     path('register/', views.register, name='register'),
     path('login/', views.auth, name='login'),
-    path('logout/', auth_views.LogoutView.as_view(next_page=reverse_lazy('login')), name='logout'),
+    path('logout/', auth_views.LogoutView.as_view(next_page=reverse_lazy('accounts:login')), name='logout'),
     path('profile/', views.profile, name='profile'),
     path('auth/', views.auth, name='auth'),
     path('integrations/', views.integrations, name='integrations'),
@@ -51,4 +53,15 @@ urlpatterns = [
     path('profile/api-keys/', views.save_api_keys, name='api_save_keys'),
     path('verify-email-code/', views.verify_email_code, name='verify_email_code'),
     path('resend-verification-code/', views.resend_verification_code, name='resend_verification_code'),
+    
+    # Organization URLs
+    path('organizations/', views.organization_list, name='organization_list'),
+    path('organizations/create/', views.create_organization, name='create_organization'),
+    path('organizations/switch/', views.switch_organization, name='switch_organization'),
+    path('organization/<slug:slug>/', views.organization_dashboard, name='organization_dashboard'),
+    path('organization/<slug:slug>/settings/', views.organization_settings, name='organization_settings'),
+    path('organization/<slug:slug>/invite/', views.invite_member, name='invite_member'),
+    path('organization/<slug:slug>/remove-member/<int:user_id>/', views.remove_member, name='remove_member'),
+    path('organization/<slug:slug>/update-role/<int:user_id>/', views.update_member_role, name='update_member_role'),
+    path('invitation/<str:token>/', views.accept_invitation, name='accept_invitation'),
 ] 

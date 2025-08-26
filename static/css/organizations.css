@@ -1,0 +1,541 @@
+/* Organization Management Styles */
+
+/* Organization List Styles */
+.organizations-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+    gap: 2rem;
+    margin-top: 2rem;
+}
+
+.organization-card {
+    background: rgba(30, 30, 35, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 2rem;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    position: relative;
+    overflow: hidden;
+}
+
+.organization-card:hover {
+    border-color: rgba(167, 139, 250, 0.5);
+    background: rgba(167, 139, 250, 0.08);
+    transform: translateY(-4px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+}
+
+.organization-card.current-org {
+    border-color: #8B5CF6;
+    background: rgba(139, 92, 246, 0.1);
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
+}
+
+.organization-card.current-org::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 4px;
+    background: linear-gradient(135deg, #8B5CF6, #A855F7);
+}
+
+.org-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    position: relative;
+}
+
+.org-avatar, .org-avatar-placeholder {
+    width: 50px;
+    height: 50px;
+    border-radius: 12px;
+    flex-shrink: 0;
+}
+
+.org-avatar-placeholder {
+    background: linear-gradient(135deg, #8B5CF6, #A855F7);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 1.25rem;
+}
+
+.org-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.org-info h3 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #ffffff;
+    word-wrap: break-word;
+}
+
+.org-info p {
+    margin: 0;
+    font-size: 0.875rem;
+    color: rgba(255, 255, 255, 0.6);
+    line-height: 1.4;
+}
+
+.current-badge {
+    position: absolute;
+    top: -0.5rem;
+    right: -0.5rem;
+    background: linear-gradient(135deg, #10B981, #059669);
+    color: white;
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+}
+
+.org-details {
+    margin: 1.5rem 0;
+    padding: 1rem 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.detail-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+    font-size: 0.875rem;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.detail-item:last-child {
+    margin-bottom: 0;
+}
+
+.detail-item i {
+    width: 16px;
+    color: #8B5CF6;
+    text-align: center;
+}
+
+.org-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+}
+
+.org-actions .btn {
+    flex: 1;
+    padding: 0.75rem 1rem;
+    border: none;
+    border-radius: 10px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 44px;
+}
+
+.org-actions .btn-outline {
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.org-actions .btn-outline:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+    border-color: rgba(255, 255, 255, 0.3);
+    transform: translateY(-1px);
+}
+
+.org-actions .btn-primary {
+    background: linear-gradient(135deg, #8B5CF6, #A855F7);
+    color: white;
+    border: none;
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);
+}
+
+.org-actions .btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(139, 92, 246, 0.35);
+}
+
+.org-actions .btn i {
+    font-size: 0.875rem;
+}
+
+/* Organization List Integration Items */
+.integration-item.organization-current {
+    border-color: #8B5CF6;
+    background: rgba(139, 92, 246, 0.1);
+    position: relative;
+}
+
+.integration-item.organization-current::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 4px;
+    background: linear-gradient(135deg, #8B5CF6, #A855F7);
+    border-radius: 16px 16px 0 0;
+}
+
+.organization-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin: 1rem 0;
+    padding: 1rem 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.organization-stats .detail-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.875rem;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.organization-stats .detail-item i {
+    width: 16px;
+    color: #8B5CF6;
+    text-align: center;
+}
+
+/* Settings Page Organization Section */
+.team-organization-card {
+    background: rgba(30, 30, 35, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 2rem;
+    margin: 1rem 0;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.team-organization-card.current {
+    border-color: #8B5CF6;
+    background: rgba(139, 92, 246, 0.08);
+    position: relative;
+}
+
+.team-organization-card.current::before {
+    content: 'Current Organization';
+    position: absolute;
+    top: -0.5rem;
+    right: 1rem;
+    background: linear-gradient(135deg, #8B5CF6, #A855F7);
+    color: white;
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.organization-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+}
+
+.organization-avatar {
+    width: 50px;
+    height: 50px;
+    border-radius: 12px;
+    flex-shrink: 0;
+}
+
+.organization-avatar.placeholder {
+    background: linear-gradient(135deg, #8B5CF6, #A855F7);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 1.25rem;
+}
+
+.organization-info h3 {
+    margin: 0 0 0.25rem 0;
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.organization-info .subtitle {
+    font-size: 0.875rem;
+    color: rgba(255, 255, 255, 0.6);
+    margin: 0;
+}
+
+.organization-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.stat-card {
+    background: rgba(10, 10, 15, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    padding: 1rem;
+    text-align: center;
+}
+
+.stat-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 0.25rem;
+    color: #8B5CF6;
+}
+
+.stat-value.success {
+    color: #10B981;
+}
+
+.stat-value.muted {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.stat-label {
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.6);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 500;
+}
+
+.organization-actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.organization-actions .btn {
+    padding: 0.75rem 1.25rem;
+    border: none;
+    border-radius: 10px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 44px;
+    white-space: nowrap;
+}
+
+.organization-actions .btn-primary {
+    background: linear-gradient(135deg, #8B5CF6, #A855F7);
+    color: white;
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);
+}
+
+.organization-actions .btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(139, 92, 246, 0.35);
+}
+
+.organization-actions .btn-secondary {
+    background: transparent;
+    color: #8B5CF6;
+    border: 1px solid rgba(139, 92, 246, 0.3);
+}
+
+.organization-actions .btn-secondary:hover {
+    background: rgba(139, 92, 246, 0.1);
+    border-color: rgba(139, 92, 246, 0.5);
+}
+
+/* Personal Space Card */
+.personal-space-card {
+    background: rgba(30, 30, 35, 0.5);
+    border: 1px solid rgba(167, 139, 250, 0.2);
+    border-radius: 16px;
+    padding: 2rem;
+    margin: 1rem 0;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    position: relative;
+}
+
+.personal-space-card::before {
+    content: 'Personal Space';
+    position: absolute;
+    top: -0.5rem;
+    right: 1rem;
+    background: linear-gradient(135deg, #6B73FF, #9C40FF);
+    color: white;
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Empty State */
+.empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.empty-state i {
+    color: rgba(255, 255, 255, 0.4);
+    margin-bottom: 1.5rem;
+}
+
+.empty-state h3 {
+    margin: 1rem 0 0.5rem 0;
+    color: #ffffff;
+    font-weight: 600;
+}
+
+.empty-state p {
+    color: rgba(255, 255, 255, 0.6);
+    margin-bottom: 2rem;
+    line-height: 1.6;
+}
+
+/* Actions Bar */
+.actions-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 1rem 0 2rem 0;
+    gap: 1rem;
+}
+
+.actions-bar .btn {
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 10px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.actions-bar .btn-primary {
+    background: linear-gradient(135deg, #8B5CF6, #A855F7);
+    color: white;
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);
+}
+
+.actions-bar .btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(139, 92, 246, 0.35);
+}
+
+/* Back Button */
+.back-button {
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    margin-bottom: 1rem;
+}
+
+.back-button:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+    border-color: rgba(255, 255, 255, 0.3);
+    transform: translateX(-2px);
+}
+
+.back-button i {
+    font-size: 0.875rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .organizations-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+    
+    .organization-card {
+        padding: 1.5rem;
+    }
+    
+    .org-actions {
+        flex-direction: column;
+    }
+    
+    .actions-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .organization-actions {
+        justify-content: stretch;
+    }
+    
+    .organization-actions .btn {
+        flex: 1;
+        min-width: 0;
+    }
+    
+    .organization-stats {
+        grid-template-columns: 1fr;
+        gap: 0.5rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .organization-card {
+        padding: 1rem;
+    }
+    
+    .org-header {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .current-badge {
+        position: static;
+        margin-top: 0.5rem;
+        align-self: center;
+    }
+}

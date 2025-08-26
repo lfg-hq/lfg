@@ -263,14 +263,14 @@
                 <button type="submit" class="button">Verify Email</button>
             </form>
             
-            <form method="post" action="{% url 'resend_verification_email' %}" style="margin-top: 1rem;">
+            <form method="post" action="{% url 'accounts:resend_verification_email' %}" style="margin-top: 1rem;">
                 {% csrf_token %}
                 <button type="submit" class="button" style="background: transparent; border: 1px solid var(--primary-light);">
                     Resend Code
                 </button>
             </form>
             
-            <a href="{% url 'logout' %}" class="sign-out-link">Sign out</a>
+            <a href="{% url 'accounts:logout' %}" class="sign-out-link">Sign out</a>
         </div>
         
         <p class="help-text">

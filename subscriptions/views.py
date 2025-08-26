@@ -40,6 +40,16 @@ def dashboard(request):
     # Get user's recent transactions
     transactions = Transaction.objects.filter(user=request.user).order_by('-created_at')[:5]
     
+    # Get Stripe public key for frontend
+    stripe_public_key = os.environ.get('STRIPE_PUBLIC_KEY', '')
+    
+    # Check for setup success/cancel messages
+    setup_status = request.GET.get('setup')
+    if setup_status == 'success':
+        messages.success(request, 'Payment method added successfully!')
+    elif setup_status == 'cancel':
+        messages.info(request, 'Payment method setup was cancelled.')
+    
     # Calculate usage percentage
     if user_credit.is_free_tier:
         usage_percentage = (user_credit.total_tokens_used / 100000) * 100 if user_credit.total_tokens_used else 0
@@ -51,6 +61,7 @@ def dashboard(request):
         'payment_plans': payment_plans,
         'transactions': transactions,
         'usage_percentage': min(usage_percentage, 100),  # Cap at 100%
+        'STRIPE_PUBLIC_KEY': stripe_public_key,
     }
     
     return render(request, 'subscriptions/dashboard.html', context)
@@ -485,6 +496,183 @@ def handle_subscription_canceled(subscription):
         pass
     except Exception as e:
         logger.error(f"Error handling subscription cancellation: {str(e)}", extra={'easylogs_metadata': {'error_type': type(e).__name__}})
+
+@login_required
+def payment_methods(request):
+    """Get user's payment methods"""
+    if request.method != 'GET':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    try:
+        user_credit = UserCredit.objects.get(user=request.user)
+        
+        # Find existing customer
+        existing_customer = None
+        if user_credit.stripe_subscription_id:
+            try:
+                subscription = stripe.Subscription.retrieve(user_credit.stripe_subscription_id)
+                existing_customer = stripe.Customer.retrieve(subscription.customer)
+            except Exception as e:
+                logger.error(f"Error retrieving customer from subscription: {e}")
+        
+        if not existing_customer:
+            # Search by email
+            try:
+                customer_query = stripe.Customer.list(email=request.user.email, limit=1)
+                if customer_query and customer_query.data:
+                    existing_customer = customer_query.data[0]
+            except Exception as e:
+                logger.error(f"Error searching for customer: {e}")
+        
+        payment_methods = []
+        if existing_customer:
+            try:
+                # Get customer's payment methods
+                stripe_methods = stripe.PaymentMethod.list(
+                    customer=existing_customer.id,
+                    type='card'
+                )
+                
+                # Get default payment method
+                default_pm_id = existing_customer.invoice_settings.default_payment_method
+                
+                for pm in stripe_methods.data:
+                    payment_methods.append({
+                        'id': pm.id,
+                        'card': {
+                            'brand': pm.card.brand,
+                            'last4': pm.card.last4,
+                            'exp_month': pm.card.exp_month,
+                            'exp_year': pm.card.exp_year
+                        },
+                        'is_default': pm.id == default_pm_id
+                    })
+            except Exception as e:
+                logger.error(f"Error retrieving payment methods: {e}")
+        
+        return JsonResponse({'payment_methods': payment_methods})
+    except UserCredit.DoesNotExist:
+        return JsonResponse({'payment_methods': []})
+    except Exception as e:
+        logger.error(f"Error in payment_methods view: {e}")
+        return JsonResponse({'error': 'Internal server error'}, status=500)
+
+@login_required
+@require_POST
+def create_setup_intent(request):
+    """Create a setup session for adding payment methods"""
+    try:
+        user_credit, created = UserCredit.objects.get_or_create(user=request.user)
+        
+        # Find or create customer
+        existing_customer = None
+        if user_credit.stripe_subscription_id:
+            try:
+                subscription = stripe.Subscription.retrieve(user_credit.stripe_subscription_id)
+                existing_customer = stripe.Customer.retrieve(subscription.customer)
+            except Exception:
+                pass
+        
+        if not existing_customer:
+            # Search by email
+            try:
+                customer_query = stripe.Customer.list(email=request.user.email, limit=1)
+                if customer_query and customer_query.data:
+                    existing_customer = customer_query.data[0]
+            except Exception:
+                pass
+        
+        if not existing_customer:
+            # Create new customer
+            existing_customer = stripe.Customer.create(
+                email=request.user.email,
+                name=f"{request.user.first_name} {request.user.last_name}".strip() or request.user.username,
+                metadata={'user_id': request.user.id}
+            )
+        
+        # Get domain for success and cancel URLs
+        domain_url = request.build_absolute_uri('/').rstrip('/')
+        success_url = domain_url + '/subscriptions/?setup=success'
+        cancel_url = domain_url + '/subscriptions/?setup=cancel'
+        
+        # Create a checkout session for setup mode
+        checkout_session = stripe.checkout.Session.create(
+            customer=existing_customer.id,
+            mode='setup',
+            currency='usd',  # Required for setup mode
+            success_url=success_url,
+            cancel_url=cancel_url,
+        )
+        
+        return JsonResponse({
+            'setup_url': checkout_session.url,
+            'session_id': checkout_session.id
+        })
+    except Exception as e:
+        logger.error(f"Error creating setup session: {e}")
+        return JsonResponse({'error': f'Failed to create setup session: {str(e)}'}, status=500)
+
+@login_required
+@require_POST
+def set_default_payment_method(request):
+    """Set default payment method"""
+    try:
+        data = json.loads(request.body)
+        payment_method_id = data.get('payment_method_id')
+        
+        if not payment_method_id:
+            return JsonResponse({'error': 'Payment method ID required'}, status=400)
+        
+        user_credit = UserCredit.objects.get(user=request.user)
+        
+        # Find customer
+        existing_customer = None
+        if user_credit.stripe_subscription_id:
+            try:
+                subscription = stripe.Subscription.retrieve(user_credit.stripe_subscription_id)
+                existing_customer = stripe.Customer.retrieve(subscription.customer)
+            except Exception:
+                pass
+        
+        if not existing_customer:
+            customer_query = stripe.Customer.list(email=request.user.email, limit=1)
+            if customer_query and customer_query.data:
+                existing_customer = customer_query.data[0]
+        
+        if not existing_customer:
+            return JsonResponse({'error': 'Customer not found'}, status=404)
+        
+        # Update customer's default payment method
+        stripe.Customer.modify(
+            existing_customer.id,
+            invoice_settings={
+                'default_payment_method': payment_method_id
+            }
+        )
+        
+        return JsonResponse({'success': True})
+    except Exception as e:
+        logger.error(f"Error setting default payment method: {e}")
+        return JsonResponse({'error': 'Failed to set default payment method'}, status=500)
+
+@login_required
+@require_POST
+def remove_payment_method(request):
+    """Remove a payment method"""
+    try:
+        data = json.loads(request.body)
+        payment_method_id = data.get('payment_method_id')
+        
+        if not payment_method_id:
+            return JsonResponse({'error': 'Payment method ID required'}, status=400)
+        
+        # Detach the payment method from customer
+        stripe.PaymentMethod.detach(payment_method_id)
+        
+        return JsonResponse({'success': True})
+    except Exception as e:
+        logger.error(f"Error removing payment method: {e}")
+        return JsonResponse({'error': 'Failed to remove payment method'}, status=500)
 
 def handle_subscription_payment(invoice):
     """Process a successful subscription payment"""

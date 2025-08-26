@@ -1,0 +1,721 @@
+{% extends "accounts/base_with_sidebar.html" %}
+{% load static %}
+
+{% block title %}{{ organization.name }} Dashboard - LFG 🚀{% endblock %}
+
+{% block content %}
+<div class="main-content">
+    <div class="container">
+        <div class="org-header">
+            <div class="org-info">
+                {% if organization.avatar %}
+                    <img src="{{ organization.avatar.url }}" alt="{{ organization.name }}" class="org-avatar">
+                {% else %}
+                    <div class="org-avatar-placeholder">
+                        {{ organization.name|first|upper }}
+                    </div>
+                {% endif %}
+                <div>
+                    <h1>{{ organization.name }}</h1>
+                    <p>{{ organization.description|default:"No description available" }}</p>
+                    <div class="org-meta">
+                        <span class="meta-item">
+                            <i class="fas fa-users"></i>
+                            {{ members|length }} member{{ members|length|pluralize }}
+                        </span>
+                        <span class="meta-item">
+                            <i class="fas fa-calendar"></i>
+                            Created {{ organization.created_at|date:"M d, Y" }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+            
+            {% if user_role == 'owner' or user_role == 'admin' %}
+                <div class="org-actions">
+                    <a href="{% url 'accounts:organization_settings' organization.slug %}" class="btn btn-outline">
+                        <i class="fas fa-cog"></i> Settings
+                    </a>
+                    <a href="{% url 'accounts:invite_member' organization.slug %}" class="btn btn-primary">
+                        <i class="fas fa-user-plus"></i> Invite Member
+                    </a>
+                </div>
+            {% endif %}
+        </div>
+
+        <div class="dashboard-grid">
+            <!-- Organization Stats -->
+            <div class="stats-section">
+                <h3><i class="fas fa-chart-bar"></i> Overview</h3>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value">{{ members|length }}</div>
+                        <div class="stat-label">Team Members</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">{{ organization.credit.credits|default:0 }}</div>
+                        <div class="stat-label">Available Credits</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">{{ organization.credit.seat_count|default:1 }}</div>
+                        <div class="stat-label">Paid Seats</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">
+                            {% if organization.credit.is_subscribed %}
+                                <i class="fas fa-check text-success"></i> Pro
+                            {% else %}
+                                <i class="fas fa-building text-muted"></i> Free
+                            {% endif %}
+                        </div>
+                        <div class="stat-label">Plan</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Team Members -->
+            <div class="members-section">
+                <div class="section-header">
+                    <h3><i class="fas fa-users"></i> Team Members</h3>
+                    {% if user_role == 'owner' or user_role == 'admin' %}
+                        <a href="{% url 'accounts:invite_member' organization.slug %}" class="btn btn-sm btn-primary">
+                            <i class="fas fa-plus"></i> Invite
+                        </a>
+                    {% endif %}
+                </div>
+
+                <div class="members-list">
+                    {% for member in members %}
+                        <div class="member-card">
+                            <div class="member-info">
+                                <div class="member-avatar">
+                                    {% if member.user.profile.github_avatar_url %}
+                                        <img src="{{ member.user.profile.github_avatar_url }}" alt="{{ member.user.get_full_name|default:member.user.username }}">
+                                    {% else %}
+                                        <div class="avatar-placeholder">
+                                            {{ member.user.first_name|default:member.user.username|first|upper }}
+                                        </div>
+                                    {% endif %}
+                                </div>
+                                <div class="member-details">
+                                    <h4>{{ member.user.get_full_name|default:member.user.username }}</h4>
+                                    <p>{{ member.user.email }}</p>
+                                    <div class="member-meta">
+                                        <span class="role-badge role-{{ member.role }}">{{ member.role|capfirst }}</span>
+                                        <span class="join-date">Joined {{ member.joined_at|date:"M d, Y" }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            {% if user_role == 'owner' and member.user != user %}
+                                <div class="member-actions">
+                                    <div class="dropdown">
+                                        <button class="btn btn-sm btn-outline dropdown-toggle" type="button">
+                                            <i class="fas fa-ellipsis-v"></i>
+                                        </button>
+                                        <div class="dropdown-menu">
+                                            {% if member.role != 'owner' %}
+                                                <form method="post" action="{% url 'accounts:update_member_role' organization.slug member.user.id %}">
+                                                    {% csrf_token %}
+                                                    <input type="hidden" name="role" value="{% if member.role == 'admin' %}member{% else %}admin{% endif %}">
+                                                    <button type="submit" class="dropdown-item">
+                                                        <i class="fas fa-user-{% if member.role == 'admin' %}minus{% else %}plus{% endif %}"></i>
+                                                        Make {% if member.role == 'admin' %}Member{% else %}Admin{% endif %}
+                                                    </button>
+                                                </form>
+                                            {% endif %}
+                                            <form method="post" action="{% url 'accounts:remove_member' organization.slug member.user.id %}" 
+                                                  onsubmit="return confirm('Are you sure you want to remove this member?')">
+                                                {% csrf_token %}
+                                                <button type="submit" class="dropdown-item text-danger">
+                                                    <i class="fas fa-trash"></i>
+                                                    Remove Member
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                            {% endif %}
+                        </div>
+                    {% empty %}
+                        <div class="empty-state">
+                            <i class="fas fa-users fa-2x"></i>
+                            <p>No team members yet.</p>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Billing & Subscription -->
+            {% if user_role == 'owner' or user_role == 'admin' %}
+                <div class="billing-section">
+                    <div class="section-header">
+                        <h3><i class="fas fa-credit-card"></i> Billing & Subscription</h3>
+                        {% if not organization.credit.is_subscribed %}
+                            <button class="btn btn-primary" onclick="alert('Organization billing coming soon! Contact support for enterprise plans.')">
+                                <i class="fas fa-arrow-up"></i> Upgrade Plan
+                            </button>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="billing-content">
+                        {% if organization.credit.is_subscribed %}
+                            <div class="current-plan">
+                                <div class="plan-info">
+                                    <h4>Organization Pro Plan</h4>
+                                    <p>{{ organization.credit.seat_count }} seat{{ organization.credit.seat_count|pluralize }} × ${{ organization.credit.price_per_seat }}/month</p>
+                                    <div class="plan-features">
+                                        <span class="feature-item"><i class="fas fa-check"></i> 300K tokens per seat monthly</span>
+                                        <span class="feature-item"><i class="fas fa-check"></i> Access to all AI models</span>
+                                        <span class="feature-item"><i class="fas fa-check"></i> Team collaboration</span>
+                                    </div>
+                                </div>
+                                <div class="plan-cost">
+                                    <div class="cost-value">${{ organization.credit.monthly_seat_cost }}</div>
+                                    <div class="cost-label">per month</div>
+                                </div>
+                            </div>
+                        {% else %}
+                            <div class="upgrade-prompt">
+                                <div class="prompt-content">
+                                    <h4>Upgrade to Organization Pro</h4>
+                                    <p>Get unlimited access to all AI models with per-seat billing starting at ${{ organization.credit.price_per_seat }}/seat/month.</p>
+                                    <div class="plan-benefits">
+                                        <div class="benefit-item">
+                                            <i class="fas fa-infinity"></i>
+                                            <span>300K tokens per seat monthly</span>
+                                        </div>
+                                        <div class="benefit-item">
+                                            <i class="fas fa-brain"></i>
+                                            <span>Access to Claude, GPT-4, and all AI models</span>
+                                        </div>
+                                        <div class="benefit-item">
+                                            <i class="fas fa-users"></i>
+                                            <span>Team collaboration features</span>
+                                        </div>
+                                        <div class="benefit-item">
+                                            <i class="fas fa-headset"></i>
+                                            <span>Priority support</span>
+                                        </div>
+                                    </div>
+                                    <p class="cost-preview">Current cost: {{ organization.credit.seat_count }} seat{{ organization.credit.seat_count|pluralize }} × ${{ organization.credit.price_per_seat }} = <strong>${{ organization.credit.monthly_seat_cost }}/month</strong></p>
+                                </div>
+                            </div>
+                        {% endif %}
+                        
+                        <div class="usage-section">
+                            <h5>Token Usage</h5>
+                            <div class="usage-bar">
+                                <div class="usage-fill" style="width: {{ usage_percentage }}%"></div>
+                            </div>
+                            <div class="usage-stats">
+                                <span>{{ organization.credit.monthly_tokens_used|default:0|floatformat:0 }} / {{ organization.credit.get_remaining_tokens|add:organization.credit.monthly_tokens_used|floatformat:0 }} tokens used this month</span>
+                                <span>{{ usage_percentage|floatformat:1 }}%</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+            
+            <!-- Pending Invitations -->
+            {% if pending_invitations %}
+                <div class="invitations-section">
+                    <h3><i class="fas fa-clock"></i> Pending Invitations</h3>
+                    <div class="invitations-list">
+                        {% for invitation in pending_invitations %}
+                            <div class="invitation-card">
+                                <div class="invitation-info">
+                                    <h4>{{ invitation.email }}</h4>
+                                    <p>Invited {{ invitation.created_at|timesince }} ago</p>
+                                    <span class="role-badge role-{{ invitation.role }}">{{ invitation.role|capfirst }}</span>
+                                </div>
+                                <div class="invitation-status">
+                                    <span class="status-badge status-{{ invitation.status }}">
+                                        {{ invitation.status|capfirst }}
+                                    </span>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<style>
+.org-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 2rem;
+    margin-bottom: 2rem;
+    padding-bottom: 2rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.org-info {
+    display: flex;
+    gap: 1rem;
+    flex: 1;
+}
+
+.org-avatar, .org-avatar-placeholder {
+    width: 80px;
+    height: 80px;
+    border-radius: 12px;
+    flex-shrink: 0;
+}
+
+.org-avatar-placeholder {
+    background: var(--primary-color);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 2rem;
+}
+
+.org-info h1 {
+    margin: 0 0 0.5rem 0;
+    color: var(--text-primary);
+}
+
+.org-info p {
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+}
+
+.org-meta {
+    display: flex;
+    gap: 1rem;
+}
+
+.meta-item {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.org-actions {
+    display: flex;
+    gap: 0.75rem;
+}
+
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 2rem;
+}
+
+.stats-section,
+.members-section,
+.invitations-section,
+.billing-section {
+    background: var(--card-background);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 2rem;
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.section-header h3 {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0;
+    color: var(--text-primary);
+}
+
+.section-header h3 i {
+    color: var(--primary-color);
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1rem;
+}
+
+.stat-card {
+    text-align: center;
+    padding: 1.5rem 1rem;
+    background: var(--background-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.stat-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    margin-bottom: 0.5rem;
+}
+
+.stat-label {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.members-list {
+    display: grid;
+    gap: 1rem;
+}
+
+.member-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    background: var(--background-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.member-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.member-avatar img,
+.member-avatar .avatar-placeholder {
+    width: 50px;
+    height: 50px;
+    border-radius: 8px;
+}
+
+.avatar-placeholder {
+    background: var(--primary-color);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 1.25rem;
+}
+
+.member-details h4 {
+    margin: 0 0 0.25rem 0;
+    color: var(--text-primary);
+}
+
+.member-details p {
+    margin: 0 0 0.5rem 0;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.member-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.role-badge {
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.role-owner {
+    background: rgba(220, 53, 69, 0.1);
+    color: #dc3545;
+}
+
+.role-admin {
+    background: rgba(255, 193, 7, 0.1);
+    color: #ffc107;
+}
+
+.role-member {
+    background: rgba(40, 167, 69, 0.1);
+    color: #28a745;
+}
+
+.join-date {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.dropdown {
+    position: relative;
+}
+
+.dropdown-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: var(--card-background);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    min-width: 160px;
+    z-index: 1000;
+    display: none;
+}
+
+.dropdown:hover .dropdown-menu {
+    display: block;
+}
+
+.dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border: none;
+    background: none;
+    text-align: left;
+    color: var(--text-primary);
+    text-decoration: none;
+    font-size: 0.875rem;
+}
+
+.dropdown-item:hover {
+    background: var(--background-color);
+}
+
+.dropdown-item.text-danger {
+    color: #dc3545;
+}
+
+.invitations-list {
+    display: grid;
+    gap: 1rem;
+}
+
+.invitation-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    background: var(--background-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.invitation-info h4 {
+    margin: 0 0 0.25rem 0;
+    color: var(--text-primary);
+}
+
+.invitation-info p {
+    margin: 0 0 0.5rem 0;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.status-badge {
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.status-pending {
+    background: rgba(255, 193, 7, 0.1);
+    color: #ffc107;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 2rem;
+    color: var(--text-secondary);
+}
+
+.empty-state i {
+    margin-bottom: 1rem;
+    opacity: 0.5;
+}
+
+.text-success {
+    color: #28a745;
+}
+
+.text-muted {
+    color: var(--text-muted);
+}
+
+/* Billing Section */
+.billing-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+.current-plan {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem;
+    background: rgba(40, 167, 69, 0.1);
+    border: 1px solid rgba(40, 167, 69, 0.2);
+    border-radius: 8px;
+}
+
+.plan-info h4 {
+    margin: 0 0 0.5rem 0;
+    color: var(--text-primary);
+}
+
+.plan-info p {
+    margin: 0 0 1rem 0;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.plan-features {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.feature-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.feature-item i {
+    color: #28a745;
+    width: 16px;
+}
+
+.plan-cost {
+    text-align: right;
+}
+
+.cost-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--primary-color);
+}
+
+.cost-label {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.upgrade-prompt {
+    padding: 2rem;
+    background: rgba(139, 92, 246, 0.05);
+    border: 1px solid rgba(139, 92, 246, 0.1);
+    border-radius: 12px;
+    text-align: center;
+}
+
+.prompt-content h4 {
+    margin: 0 0 1rem 0;
+    color: var(--text-primary);
+    font-size: 1.25rem;
+}
+
+.prompt-content p {
+    margin: 0 0 1.5rem 0;
+    color: var(--text-secondary);
+}
+
+.plan-benefits {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+    margin: 1.5rem 0;
+    text-align: left;
+}
+
+.benefit-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    background: var(--background-color);
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+}
+
+.benefit-item i {
+    color: var(--primary-color);
+    width: 20px;
+    text-align: center;
+}
+
+.benefit-item span {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.cost-preview {
+    font-size: 1rem;
+    color: var(--text-secondary);
+    margin-top: 1.5rem;
+}
+
+.cost-preview strong {
+    color: var(--primary-color);
+    font-size: 1.125rem;
+}
+
+.usage-section {
+    margin-top: 1rem;
+}
+
+.usage-section h5 {
+    margin: 0 0 1rem 0;
+    color: var(--text-primary);
+    font-size: 1rem;
+}
+
+.usage-bar {
+    width: 100%;
+    height: 8px;
+    background: var(--border-color);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+}
+
+.usage-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #28a745, #20c997);
+    transition: width 0.3s ease;
+}
+
+.usage-stats {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+@media (max-width: 768px) {
+    .current-plan {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+    
+    .plan-benefits {
+        grid-template-columns: 1fr;
+    }
+    
+    .plan-cost {
+        text-align: left;
+    }
+}
+</style>
+{% endblock %}

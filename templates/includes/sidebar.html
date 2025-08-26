@@ -62,22 +62,22 @@
                     <i class="fas fa-chevron-down dropdown-icon"></i>
                 </button>
                 <div class="user-dropdown" id="user-dropdown">
-                    <!-- <a href="{% url 'profile' %}" class="dropdown-item">
-                        <i class="fas fa-user"></i>
-                        <span>Profile</span>
-                    </a> -->
                     <a href="{% url 'settings' %}" class="dropdown-item">
                         <i class="fas fa-cog"></i>
                         <span>Settings</span>
                     </a>
+                    <a href="{% url 'accounts:organization_list' %}" class="dropdown-item">
+                        <i class="fas fa-users"></i>
+                        <span>Organizations</span>
+                    </a>
                     <div class="dropdown-divider"></div>
-                    <a href="{% url 'logout' %}" class="dropdown-item">
+                    <a href="{% url 'accounts:logout' %}" class="dropdown-item">
                         <i class="fas fa-sign-out-alt"></i>
                         <span>Logout</span>
                     </a>
                 </div>
             {% else %}
-                <a href="{% url 'login' %}" class="login-button">Log In</a>
+                <a href="{% url 'accounts:login' %}" class="login-button">Log In</a>
             {% endif %}
         </div>
     </div>

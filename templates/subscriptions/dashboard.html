@@ -244,6 +244,159 @@
         font-variant-numeric: tabular-nums;
     }
     
+    /* Payment Methods Section */
+    .payment-methods-section {
+        margin-bottom: 32px;
+    }
+    
+    .payment-methods-card {
+        background: #1a1a1a;
+        border: 1px solid #2a2a2a;
+        border-radius: 12px;
+        padding: 20px;
+    }
+    
+    .payment-method-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        margin-bottom: 12px;
+        transition: all 0.2s ease;
+    }
+    
+    .payment-method-item:hover {
+        background: rgba(255, 255, 255, 0.05);
+        border-color: rgba(167, 139, 250, 0.3);
+    }
+    
+    .payment-method-info {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    
+    .card-icon {
+        width: 32px;
+        height: 20px;
+        background: #4b5563;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        color: white;
+        font-weight: 600;
+    }
+    
+    .card-icon.visa { background: #1e40af; }
+    .card-icon.mastercard { background: #dc2626; }
+    .card-icon.amex { background: #059669; }
+    .card-icon.discover { background: #ea580c; }
+    
+    .card-details {
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .card-number {
+        font-size: 14px;
+        font-weight: 500;
+        color: #e5e7eb;
+        font-family: monospace;
+    }
+    
+    .card-expiry {
+        font-size: 12px;
+        color: #9ca3af;
+    }
+    
+    .payment-method-actions {
+        display: flex;
+        gap: 8px;
+    }
+    
+    .method-action {
+        padding: 6px 12px;
+        border: none;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    
+    .method-default {
+        background: rgba(16, 185, 129, 0.1);
+        color: #10b981;
+        border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    
+    .method-make-default {
+        background: transparent;
+        color: #9ca3af;
+        border: 1px solid #374151;
+    }
+    
+    .method-make-default:hover {
+        background: rgba(255, 255, 255, 0.05);
+        border-color: #4b5563;
+    }
+    
+    .method-remove {
+        background: transparent;
+        color: #ef4444;
+        border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+    
+    .method-remove:hover {
+        background: rgba(239, 68, 68, 0.1);
+        border-color: rgba(239, 68, 68, 0.5);
+    }
+    
+    .add-payment-button {
+        width: 100%;
+        padding: 16px;
+        background: rgba(139, 92, 246, 0.1);
+        color: #a78bfa;
+        border: 2px dashed rgba(139, 92, 246, 0.3);
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+    }
+    
+    .add-payment-button:hover {
+        background: rgba(139, 92, 246, 0.15);
+        border-color: rgba(139, 92, 246, 0.5);
+    }
+    
+    .loading-payment-methods {
+        text-align: center;
+        padding: 32px;
+        color: #6b7280;
+    }
+    
+    .no-payment-methods {
+        text-align: center;
+        padding: 32px;
+        color: #6b7280;
+    }
+    
+    .no-payment-methods i {
+        font-size: 36px;
+        opacity: 0.3;
+        margin-bottom: 12px;
+    }
+    
     /* Plans Grid */
     .plans-section {
         margin-bottom: 32px;
@@ -589,6 +742,8 @@
 {% endblock %}
 
 {% block content %}
+<!-- CSRF Token for JavaScript -->
+{% csrf_token %}
 <!-- Display messages -->
 {% if messages %}
 <div class="messages">
@@ -687,10 +842,33 @@
         {% endif %}
     </div>
 
+    <!-- Payment Methods -->
+    <div class="payment-methods-section">
+        <h2 class="section-title">Payment Methods</h2>
+        <div class="payment-methods-card">
+            <div id="payment-methods-list">
+                <div class="loading-payment-methods">
+                    <i class="fas fa-spinner fa-spin"></i> Loading payment methods...
+                </div>
+            </div>
+            <button id="add-payment-method" class="add-payment-button" style="display: none;">
+                <i class="fas fa-plus"></i> Add Payment Method
+            </button>
+        </div>
+    </div>
+
     <!-- Available Plans -->
     <div class="plans-section">
         <h2 class="section-title">Available Plans</h2>
         <div class="plans-grid">
+            <!-- Debug: Show plan count -->
+            {% if not payment_plans %}
+                <div style="grid-column: 1 / -1; text-align: center; padding: 2rem; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; color: #ef4444;">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <p style="margin: 0.5rem 0 0 0;">No payment plans found in database</p>
+                    <p style="margin: 0.5rem 0 0 0; font-size: 12px;">Run: <code>python manage.py create_default_plans</code></p>
+                </div>
+            {% endif %}
             {% for plan in payment_plans %}
             <div class="pricing-card{% if plan.name == 'Pro Monthly' %} recommended{% endif %}">
                 {% if plan.name == 'Pro Monthly' %}
@@ -789,7 +967,18 @@
     </div>
 </div>
 
+<script src="https://js.stripe.com/v3/"></script>
 <script>
+    // Initialize Stripe
+    let stripe = null;
+    const stripePublicKey = '{{ STRIPE_PUBLIC_KEY|default:"" }}';
+    
+    if (stripePublicKey) {
+        stripe = Stripe(stripePublicKey);
+    } else {
+        console.error('Stripe public key not configured');
+    }
+    
     // Handle notification dismissal
     document.addEventListener('DOMContentLoaded', function() {
         const alerts = document.querySelectorAll('.alert');
@@ -800,6 +989,197 @@
                 setTimeout(() => this.remove(), 300);
             });
         });
+        
+        // Load payment methods
+        loadPaymentMethods();
+        
+        // Add payment method button handler
+        document.getElementById('add-payment-method').addEventListener('click', addPaymentMethod);
     });
+    
+    async function loadPaymentMethods() {
+        try {
+            const response = await fetch('/subscriptions/payment-methods/');
+            const data = await response.json();
+            
+            const container = document.getElementById('payment-methods-list');
+            const addButton = document.getElementById('add-payment-method');
+            
+            if (data.payment_methods && data.payment_methods.length > 0) {
+                container.innerHTML = '';
+                data.payment_methods.forEach(method => {
+                    container.appendChild(createPaymentMethodElement(method));
+                });
+            } else {
+                container.innerHTML = `
+                    <div class="no-payment-methods">
+                        <i class="fas fa-credit-card"></i>
+                        <p>No payment methods added yet</p>
+                        <p style="font-size: 12px; margin-top: 8px;">Add a payment method to upgrade your plan or purchase credits</p>
+                    </div>
+                `;
+            }
+            
+            addButton.style.display = 'flex';
+        } catch (error) {
+            console.error('Error loading payment methods:', error);
+            document.getElementById('payment-methods-list').innerHTML = `
+                <div class="no-payment-methods">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <p>Unable to load payment methods</p>
+                </div>
+            `;
+            document.getElementById('add-payment-method').style.display = 'flex';
+        }
+    }
+    
+    function createPaymentMethodElement(method) {
+        const div = document.createElement('div');
+        div.className = 'payment-method-item';
+        
+        const brand = method.card.brand;
+        const last4 = method.card.last4;
+        const expMonth = method.card.exp_month.toString().padStart(2, '0');
+        const expYear = method.card.exp_year.toString().slice(-2);
+        const isDefault = method.is_default;
+        
+        div.innerHTML = `
+            <div class="payment-method-info">
+                <div class="card-icon ${brand}">
+                    ${brand.toUpperCase()}
+                </div>
+                <div class="card-details">
+                    <div class="card-number">•••• •••• •••• ${last4}</div>
+                    <div class="card-expiry">Expires ${expMonth}/${expYear}</div>
+                </div>
+            </div>
+            <div class="payment-method-actions">
+                ${isDefault ? 
+                    '<button class="method-action method-default" disabled><i class="fas fa-check"></i> Default</button>' :
+                    `<button class="method-action method-make-default" onclick="setDefaultPaymentMethod('${method.id}')">Make Default</button>`
+                }
+                <button class="method-action method-remove" onclick="removePaymentMethod('${method.id}')"><i class="fas fa-trash"></i></button>
+            </div>
+        `;
+        
+        return div;
+    }
+    
+    async function addPaymentMethod() {
+        try {
+            if (!stripe) {
+                alert('Stripe is not configured. Please contact support.');
+                return;
+            }
+            
+            // Create a setup intent on the server
+            const response = await fetch('/subscriptions/create-setup-intent/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                }
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: 'Server error' }));
+                throw new Error(errorData.error || `HTTP ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            if (data.setup_url) {
+                // Redirect to Stripe setup page
+                window.location.href = data.setup_url;
+            } else if (data.client_secret) {
+                // Use Stripe to collect payment method (alternative method)
+                const { error } = await stripe.confirmCardSetup(data.client_secret);
+                
+                if (error) {
+                    console.error('Stripe error:', error);
+                    alert('Error adding payment method: ' + error.message);
+                } else {
+                    // Reload payment methods
+                    loadPaymentMethods();
+                    showMessage('Payment method added successfully!', 'success');
+                }
+            } else {
+                throw new Error(data.error || 'No setup URL or client secret received');
+            }
+        } catch (error) {
+            console.error('Error adding payment method:', error);
+            alert('Error adding payment method: ' + error.message);
+        }
+    }
+    
+    async function setDefaultPaymentMethod(paymentMethodId) {
+        try {
+            const response = await fetch('/subscriptions/set-default-payment-method/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                },
+                body: JSON.stringify({ payment_method_id: paymentMethodId })
+            });
+            
+            if (response.ok) {
+                loadPaymentMethods();
+                showMessage('Default payment method updated!', 'success');
+            } else {
+                alert('Error setting default payment method');
+            }
+        } catch (error) {
+            console.error('Error setting default payment method:', error);
+            alert('Error setting default payment method');
+        }
+    }
+    
+    async function removePaymentMethod(paymentMethodId) {
+        if (!confirm('Are you sure you want to remove this payment method?')) {
+            return;
+        }
+        
+        try {
+            const response = await fetch('/subscriptions/remove-payment-method/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                },
+                body: JSON.stringify({ payment_method_id: paymentMethodId })
+            });
+            
+            if (response.ok) {
+                loadPaymentMethods();
+                showMessage('Payment method removed!', 'success');
+            } else {
+                alert('Error removing payment method');
+            }
+        } catch (error) {
+            console.error('Error removing payment method:', error);
+            alert('Error removing payment method');
+        }
+    }
+    
+    function getCsrfToken() {
+        return document.querySelector('[name=csrfmiddlewaretoken]').value;
+    }
+    
+    function showMessage(message, type = 'info') {
+        const messagesContainer = document.querySelector('.messages') || document.body;
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type}`;
+        alertDiv.textContent = message;
+        messagesContainer.appendChild(alertDiv);
+        
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            if (alertDiv.parentNode) {
+                alertDiv.style.animation = 'fadeOut 0.3s ease-out forwards';
+                setTimeout(() => alertDiv.remove(), 300);
+            }
+        }, 5000);
+    }
 </script>
 {% endblock %}
