@@ -59,7 +59,7 @@ def register(request):
             login(request, user)
             
             # Redirect to email verification page
-            return redirect('email_verification_required')
+            return redirect('accounts:email_verification_required')
     else:
         form = UserRegisterForm()
     return render(request, 'accounts/auth.html', {'form': form, 'active_tab': 'register'})
@@ -88,7 +88,7 @@ def auth(request):
                 if not profile.email_verified and ENVIRONMENT != 'local':
                     # Login the user but redirect to verification page
                     login(request, user)
-                    return redirect('email_verification_required')
+                    return redirect('accounts:email_verification_required')
                 
                 login(request, user)
                 
@@ -125,7 +125,7 @@ def auth(request):
                 login(request, user)
                 
                 # Redirect to email verification page
-                return redirect('email_verification_required')
+                return redirect('accounts:email_verification_required')
     
     # Render the template with both forms
     context = {
@@ -669,9 +669,9 @@ def resend_verification_email(request):
         else:
             messages.error(request, 'Failed to send verification email. Please try again later.')
         
-        return redirect('email_verification_required')
+        return redirect('accounts:email_verification_required')
     
-    return redirect('email_verification_required')
+    return redirect('accounts:email_verification_required')
 
 
 def verify_email(request, token):
@@ -778,7 +778,7 @@ def password_reset(request):
                         email_sent = True
             
             # Always redirect to done page (don't reveal if email exists)
-            return redirect('password_reset_done')
+            return redirect('accounts:password_reset_done')
     else:
         form = PasswordResetForm()
     

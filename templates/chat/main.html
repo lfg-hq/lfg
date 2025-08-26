@@ -262,6 +262,57 @@
             max-width: 320px !important;
             margin-left: auto !important;
         }
+        
+        /* Project Header Styles */
+        .project-header {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.015) 0%, rgba(59, 130, 246, 0.01) 50%, transparent 100%);
+            backdrop-filter: blur(2px);
+            border-bottom: 1px solid rgba(139, 92, 246, 0.03);
+            padding: 16px 24px;
+            margin: 0;
+        }
+        
+        .project-header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .project-name {
+            font-size: 1.1rem;
+            font-weight: 500;
+            color: #f3f4f6;
+            margin: 0;
+            text-align: left;
+            opacity: 0.95;
+            letter-spacing: -0.025em;
+        }
+        
+        /* Artifacts Button in Header */
+        .project-header .artifacts-button {
+            background: transparent;
+            border: none;
+            color: #a78bfa;
+            padding: 0;
+            font-size: 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            height: auto;
+        }
+        
+        .project-header .artifacts-button:hover {
+            color: #c4b5fd;
+        }
+        
+        .project-header .artifacts-button.active {
+            color: #ddd6fe;
+        }
     </style>
 </head>
 <body data-user-authenticated="{% if user.is_authenticated %}true{% else %}false{% endif %}" 
@@ -277,6 +328,16 @@
         {% include 'includes/sidebar.html' with show_conversations=True sidebar_minimized=sidebar_minimized %}
         
         <div class="chat-container">
+            <!-- Project Header -->
+            <div class="project-header">
+                <div class="project-header-content">
+                    <h1 class="project-name">{{ project.name|default:"LFG Project" }}</h1>
+                    <button id="artifacts-button" class="artifacts-button" title="Toggle Artifacts Panel">
+                        <i class="fas fa-cube"></i>
+                    </button>
+                </div>
+            </div>
+            
             <div class="chat-messages" id="chat-messages">
                 <!-- Messages will appear here -->
                 <div class="message-container">
