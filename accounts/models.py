@@ -243,6 +243,12 @@ class Profile(models.Model):
         help_text="The currently selected organization for this user"
     )
     
+    # Project collaboration settings
+    allow_project_invitations = models.BooleanField(
+        default=True,
+        help_text="Allow inviting external users to collaborate on projects"
+    )
+    
     def __str__(self):
         return f"{self.user.username}'s profile"
     

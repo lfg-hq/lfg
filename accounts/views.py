@@ -556,6 +556,8 @@ def integrations(request):
         'google_connected': google_connected,
         'linear_connected': linear_connected,
         'current_org_role': current_org_role,
+        # Project collaboration setting
+        'allow_project_invitations': request.user.profile.allow_project_invitations,
         # Token usage data
         'user_credit': user_credit,
         'tokens_used': tokens_used,
@@ -1531,3 +1533,37 @@ The LFG Team
             }
         })
         return False
+
+
+@login_required
+def update_project_collaboration_setting(request):
+    """Update user's project collaboration setting"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    try:
+        import json
+        data = json.loads(request.body)
+        allow_project_invitations = data.get('allow_project_invitations', True)
+        
+        # Update the user's profile setting
+        profile = request.user.profile
+        profile.allow_project_invitations = bool(allow_project_invitations)
+        profile.save(update_fields=['allow_project_invitations'])
+        
+        logger.info(f"Updated project collaboration setting for user {request.user.username}: {allow_project_invitations}")
+        
+        return JsonResponse({
+            'success': True,
+            'allow_project_invitations': profile.allow_project_invitations,
+            'message': 'Project collaboration setting updated successfully'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error updating project collaboration setting: {e}", extra={
+            'easylogs_metadata': {
+                'user_id': request.user.id,
+                'error_type': type(e).__name__
+            }
+        })
+        return JsonResponse({'error': 'Failed to update setting'}, status=500)

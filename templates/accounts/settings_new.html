@@ -493,6 +493,107 @@
         margin-bottom: 0.75rem;
     }
     
+    /* Project Collaboration Settings */
+    .collaboration-setting {
+        width: 100%;
+        max-width: 500px;
+    }
+    
+    .setting-toggle-wrapper {
+        display: flex;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+    
+    .toggle-switch {
+        position: relative;
+        display: inline-block;
+        width: 52px;
+        height: 28px;
+        margin: 0;
+        flex-shrink: 0;
+        margin-top: 2px;
+    }
+    
+    .toggle-switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+    
+    .toggle-slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        transition: 0.3s;
+        border-radius: 28px;
+    }
+    
+    .toggle-slider:before {
+        position: absolute;
+        content: "";
+        height: 20px;
+        width: 20px;
+        left: 3px;
+        bottom: 3px;
+        background-color: rgba(255, 255, 255, 0.6);
+        transition: 0.3s;
+        border-radius: 50%;
+    }
+    
+    .toggle-switch input:checked + .toggle-slider {
+        background: linear-gradient(135deg, #8B5CF6, #A855F7);
+        border-color: #A855F7;
+    }
+    
+    .toggle-switch input:checked + .toggle-slider:before {
+        transform: translateX(24px);
+        background-color: white;
+    }
+    
+    .setting-info {
+        flex: 1;
+    }
+    
+    .setting-title {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--text-color);
+        margin: 0 0 0.5rem 0;
+    }
+    
+    .setting-description {
+        font-size: 0.875rem;
+        color: rgba(255, 255, 255, 0.6);
+        margin: 0;
+        line-height: 1.5;
+    }
+    
+    .setting-details {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+    
+    .detail-item {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        font-size: 0.875rem;
+        color: rgba(255, 255, 255, 0.7);
+    }
+    
+    .detail-item i {
+        width: 16px;
+        text-align: center;
+        flex-shrink: 0;
+    }
+
     /* Responsive */
     @media (max-width: 768px) {
         .settings-container {
@@ -516,12 +617,22 @@
         .integrations-list {
             max-width: 100%;
         }
+        
+        .setting-toggle-wrapper {
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        
+        .toggle-switch {
+            align-self: flex-start;
+        }
     }
     
 </style>
 {% endblock %}
 
 {% block content %}
+{% csrf_token %}
 <div class="settings-container">
     <div class="page-header">
         <h1 class="page-title">
@@ -545,6 +656,10 @@
             <a href="#project-management" class="settings-nav-item" data-section="project-management">
                 <i class="fas fa-tasks"></i>
                 <span>Project Management Tools</span>
+            </a>
+            <a href="#project-collaboration" class="settings-nav-item" data-section="project-collaboration">
+                <i class="fas fa-user-friends"></i>
+                <span>Project Collaboration</span>
             </a>
             <a href="#organizations" class="settings-nav-item" data-section="organizations">
                 <i class="fas fa-users"></i>
@@ -1129,6 +1244,72 @@
             </div>
         </div>
         
+        <!-- Project Collaboration Section -->
+        <div id="project-collaboration" class="settings-section">
+            <h2 class="section-heading">Project Collaboration</h2>
+            <div class="integrations-list">
+                <div class="integration-item">
+                    <div class="integration-header">
+                        <div class="integration-icon">
+                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M16 4C18.2091 4 20 5.79086 20 8C20 10.2091 18.2091 12 16 12C13.7909 12 12 10.2091 12 8C12 5.79086 13.7909 4 16 4Z" fill="#a78bfa"/>
+                                <path d="M12 14C12 11.79 10.21 10 8 10C5.79 10 4 11.79 4 14V16C4 17.1 4.9 18 6 18H10C11.1 18 12 17.1 12 16V14Z" fill="#a78bfa" opacity="0.7"/>
+                                <path d="M15 13C15 12.45 14.55 12 14 12H10C9.45 12 9 12.45 9 13C9 13.55 9.45 14 10 14H14C14.55 14 15 13.55 15 13Z" fill="#a78bfa"/>
+                                <path d="M22 16V20C22 21.1 21.1 22 20 22H16C14.9 22 14 21.1 14 20V16C14 14.9 14.9 14 16 14H20C21.1 14 22 14.9 22 16Z" fill="#a78bfa" opacity="0.8"/>
+                            </svg>
+                        </div>
+                        <div class="integration-info">
+                            <h3 class="integration-name">
+                                Guest Invitations
+                                <span class="connected-check">
+                                    <i class="fas fa-check"></i>
+                                </span>
+                            </h3>
+                            <p class="integration-description">Allow inviting users to collaborate on projects</p>
+                        </div>
+                    </div>
+                    
+                    <div class="api-key-section" style="margin-top: 1rem;">
+                        <div class="collaboration-setting">
+                            <div class="setting-toggle-wrapper">
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="allow-guest-invitations" {% if allow_project_invitations %}checked{% endif %}>
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <div class="setting-info">
+                                    <h4 class="setting-title">Enable Guest Invitations</h4>
+                                    <p class="setting-description">
+                                        Allow project members to invite external users to collaborate on projects. 
+                                        Invited users will automatically be added to your organization with member access.
+                                    </p>
+                                </div>
+                            </div>
+                            
+                            <div class="setting-details" style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid rgba(255, 255, 255, 0.1);">
+                                <div class="detail-item">
+                                    <i class="fas fa-shield-alt" style="color: #10b981;"></i>
+                                    <span>Invited users get secure project access with role-based permissions</span>
+                                </div>
+                                <div class="detail-item">
+                                    <i class="fas fa-users" style="color: #3b82f6;"></i>
+                                    <span>Automatic organization membership for seamless collaboration</span>
+                                </div>
+                                <div class="detail-item">
+                                    <i class="fas fa-clock" style="color: #f59e0b;"></i>
+                                    <span>Invitation links expire after 7 days for security</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <a href="#" class="external-link" onclick="showProjectInvitationHelp(); return false;">
+                        Learn more about project invitations
+                        <i class="fas fa-question-circle"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+        
         <!-- Organizations Section -->
         <div id="organizations" class="settings-section">
             <h2 class="section-heading">Organizations</h2>
@@ -1363,6 +1544,189 @@
                 setTimeout(() => this.remove(), 300);
             });
         });
+        
+        // Handle project collaboration toggle
+        const projectInvitationsToggle = document.getElementById('allow-guest-invitations');
+        if (projectInvitationsToggle) {
+            projectInvitationsToggle.addEventListener('change', function() {
+                const enabled = this.checked;
+                
+                // Show a loading state or feedback
+                const settingInfo = this.closest('.setting-toggle-wrapper').querySelector('.setting-info');
+                const originalDescription = settingInfo.querySelector('.setting-description').textContent;
+                
+                if (enabled) {
+                    settingInfo.querySelector('.setting-description').textContent = 'Enabling guest invitations...';
+                } else {
+                    settingInfo.querySelector('.setting-description').textContent = 'Disabling guest invitations...';
+                }
+                
+                // Make API call to save the setting
+                fetch('/accounts/settings/project-collaboration/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                    },
+                    body: JSON.stringify({
+                        allow_project_invitations: enabled
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Show success state
+                        settingInfo.querySelector('.setting-description').textContent = enabled 
+                            ? 'Project invitations are now enabled. Team members can invite external collaborators.' 
+                            : 'Project invitations are disabled. Only organization members can access projects.';
+                        
+                        // Show a temporary success indicator
+                        const checkIcon = settingInfo.querySelector('.setting-title');
+                        const originalTitle = checkIcon.textContent;
+                        checkIcon.innerHTML = '<i class="fas fa-check" style="color: #10b981; margin-right: 0.5rem;"></i>' + originalTitle;
+                        
+                        setTimeout(() => {
+                            checkIcon.textContent = originalTitle;
+                            settingInfo.querySelector('.setting-description').textContent = originalDescription;
+                        }, 3000);
+                    } else {
+                        // Revert toggle state on error
+                        this.checked = !enabled;
+                        settingInfo.querySelector('.setting-description').textContent = 'Error updating setting. Please try again.';
+                        setTimeout(() => {
+                            settingInfo.querySelector('.setting-description').textContent = originalDescription;
+                        }, 3000);
+                    }
+                })
+                .catch(error => {
+                    // Revert toggle state on error
+                    this.checked = !enabled;
+                    settingInfo.querySelector('.setting-description').textContent = 'Network error. Please try again.';
+                    setTimeout(() => {
+                        settingInfo.querySelector('.setting-description').textContent = originalDescription;
+                    }, 3000);
+                });
+            });
+        }
     });
+    
+    // Help modal function
+    function showProjectInvitationHelp() {
+        const helpModal = document.createElement('div');
+        helpModal.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            backdrop-filter: blur(4px);
+        `;
+        
+        helpModal.innerHTML = `
+            <div style="
+                background: #1a1a1a;
+                border: 1px solid rgba(167, 139, 250, 0.3);
+                border-radius: 16px;
+                padding: 2rem;
+                max-width: 500px;
+                max-height: 80vh;
+                overflow-y: auto;
+                position: relative;
+                box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+            ">
+                <button onclick="this.closest('.help-modal').remove()" style="
+                    position: absolute;
+                    top: 1rem;
+                    right: 1rem;
+                    background: none;
+                    border: none;
+                    color: rgba(255, 255, 255, 0.6);
+                    font-size: 1.25rem;
+                    cursor: pointer;
+                    width: 32px;
+                    height: 32px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    border-radius: 8px;
+                    transition: all 0.2s;
+                " onmouseover="this.style.background='rgba(255,255,255,0.1)'; this.style.color='white';" onmouseout="this.style.background='none'; this.style.color='rgba(255,255,255,0.6)';">
+                    <i class="fas fa-times"></i>
+                </button>
+                
+                <h3 style="
+                    color: #a78bfa;
+                    font-size: 1.25rem;
+                    margin: 0 0 1.5rem 0;
+                    display: flex;
+                    align-items: center;
+                    gap: 0.75rem;
+                ">
+                    <i class="fas fa-user-friends"></i>
+                    Project Invitations Guide
+                </h3>
+                
+                <div style="color: rgba(255, 255, 255, 0.8); line-height: 1.6; font-size: 0.875rem;">
+                    <div style="margin-bottom: 1.5rem;">
+                        <h4 style="color: white; font-size: 1rem; margin: 0 0 0.75rem 0; display: flex; align-items: center; gap: 0.5rem;">
+                            <i class="fas fa-envelope" style="color: #3b82f6;"></i>
+                            How it works
+                        </h4>
+                        <p style="margin: 0 0 0.75rem 0;">When you invite someone to a project:</p>
+                        <ul style="margin: 0; padding-left: 1.5rem;">
+                            <li>They receive a secure invitation email with a unique link</li>
+                            <li>Upon accepting, they're automatically added to your organization</li>
+                            <li>They gain access to project files, tickets, and AI assistant</li>
+                            <li>Their access level is determined by the role you assign</li>
+                        </ul>
+                    </div>
+                    
+                    <div style="margin-bottom: 1.5rem;">
+                        <h4 style="color: white; font-size: 1rem; margin: 0 0 0.75rem 0; display: flex; align-items: center; gap: 0.5rem;">
+                            <i class="fas fa-user-tag" style="color: #10b981;"></i>
+                            Permission Roles
+                        </h4>
+                        <div style="display: grid; gap: 0.75rem;">
+                            <div style="padding: 0.75rem; background: rgba(167, 139, 250, 0.1); border-radius: 8px; border-left: 3px solid #a78bfa;">
+                                <strong>Admin:</strong> Can manage project, invite members, edit files, manage tickets
+                            </div>
+                            <div style="padding: 0.75rem; background: rgba(59, 130, 246, 0.1); border-radius: 8px; border-left: 3px solid #3b82f6;">
+                                <strong>Member:</strong> Can edit files, manage tickets, chat with AI assistant
+                            </div>
+                            <div style="padding: 0.75rem; background: rgba(107, 114, 128, 0.1); border-radius: 8px; border-left: 3px solid #6b7280;">
+                                <strong>Viewer:</strong> Read-only access to files and tickets, can chat with AI
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 8px; padding: 1rem;">
+                        <h4 style="color: #f59e0b; font-size: 0.875rem; margin: 0 0 0.5rem 0; display: flex; align-items: center; gap: 0.5rem;">
+                            <i class="fas fa-shield-alt"></i>
+                            Security Note
+                        </h4>
+                        <p style="margin: 0; color: rgba(255, 255, 255, 0.7); font-size: 0.8125rem;">
+                            Invitation links expire after 7 days and can only be used once. 
+                            You can revoke access or change roles at any time from the project settings.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        helpModal.className = 'help-modal';
+        document.body.appendChild(helpModal);
+        
+        // Close on outside click
+        helpModal.addEventListener('click', function(e) {
+            if (e.target === helpModal) {
+                helpModal.remove();
+            }
+        });
+    }
 </script>
 {% endblock %}

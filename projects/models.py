@@ -55,6 +55,70 @@ class Project(models.Model):
             icon="🚀"
         )
         return project
+    
+    def has_member(self, user):
+        """Check if user is a member of this project"""
+        return self.members.filter(user=user, status='active').exists() or self.owner == user
+    
+    def get_member(self, user):
+        """Get project member instance for user"""
+        if self.owner == user:
+            # Return a virtual owner membership
+            return type('ProjectMember', (), {
+                'user': user,
+                'project': self,
+                'role': 'owner',
+                'status': 'active',
+                'can_edit_files': True,
+                'can_manage_tickets': True,
+                'can_chat': True,
+                'can_invite_members': True,
+                'can_manage_project': True,
+                'can_delete_project': True,
+                'get_permissions': lambda: {
+                    'can_edit_files': True,
+                    'can_manage_tickets': True,
+                    'can_chat': True,
+                    'can_invite_members': True,
+                    'can_manage_project': True,
+                    'can_delete_project': True,
+                }
+            })()
+        try:
+            return self.members.get(user=user, status='active')
+        except ProjectMember.DoesNotExist:
+            return None
+    
+    def get_user_role(self, user):
+        """Get user's role in this project"""
+        if self.owner == user:
+            return 'owner'
+        member = self.get_member(user)
+        return member.role if member else None
+    
+    def can_user_access(self, user):
+        """Check if user can access this project"""
+        return self.has_member(user)
+    
+    def can_user_edit_files(self, user):
+        """Check if user can edit files in this project"""
+        member = self.get_member(user)
+        return member and member.get_permissions().get('can_edit_files', False)
+    
+    def can_user_manage_tickets(self, user):
+        """Check if user can manage tickets in this project"""
+        member = self.get_member(user)
+        return member and member.get_permissions().get('can_manage_tickets', False)
+    
+    def can_user_chat(self, user):
+        """Check if user can chat in this project"""
+        member = self.get_member(user)
+        return member and member.get_permissions().get('can_chat', False)
+    
+    def can_user_invite_members(self, user):
+        """Check if user can invite members to this project"""
+        member = self.get_member(user)
+        return member and member.get_permissions().get('can_invite_members', False)
 
 class ProjectFeature(models.Model):
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="features")
@@ -386,5 +450,197 @@ class ProjectFileVersion(models.Model):
     
     def __str__(self):
         return f"{self.file.name} - v{self.version_number}"
+
+
+class ProjectMember(models.Model):
+    """Model to represent project membership and access control"""
+    ROLE_CHOICES = [
+        ('owner', 'Owner'),
+        ('admin', 'Admin'),
+        ('member', 'Member'),
+        ('viewer', 'Viewer'),
+    ]
     
+    STATUS_CHOICES = [
+        ('active', 'Active'),
+        ('pending', 'Pending'),
+        ('inactive', 'Inactive'),
+    ]
+    
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='members')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='project_memberships')
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='member')
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='active')
+    
+    # Permissions
+    can_edit_files = models.BooleanField(default=True)
+    can_manage_tickets = models.BooleanField(default=True)
+    can_chat = models.BooleanField(default=True)
+    can_invite_members = models.BooleanField(default=False)
+    
+    # Timestamps
+    joined_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    invited_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='project_members_invited')
+    
+    class Meta:
+        unique_together = ['project', 'user']
+        verbose_name = "Project Member"
+        verbose_name_plural = "Project Members"
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.project.name} ({self.role})"
+    
+    @property
+    def can_manage_project(self):
+        """Check if user can manage project settings"""
+        return self.role in ['owner', 'admin']
+    
+    @property
+    def can_delete_project(self):
+        """Check if user can delete the project"""
+        return self.role == 'owner'
+    
+    def get_permissions(self):
+        """Get all permissions for this member"""
+        base_permissions = {
+            'can_edit_files': self.can_edit_files,
+            'can_manage_tickets': self.can_manage_tickets,
+            'can_chat': self.can_chat,
+            'can_invite_members': self.can_invite_members,
+            'can_manage_project': self.can_manage_project,
+            'can_delete_project': self.can_delete_project,
+        }
+        
+        # Override permissions based on role
+        if self.role == 'viewer':
+            base_permissions.update({
+                'can_edit_files': False,
+                'can_manage_tickets': False,
+                'can_invite_members': False,
+            })
+        elif self.role == 'admin':
+            base_permissions.update({
+                'can_invite_members': True,
+            })
+        elif self.role == 'owner':
+            base_permissions.update({
+                'can_edit_files': True,
+                'can_manage_tickets': True,
+                'can_chat': True,
+                'can_invite_members': True,
+            })
+        
+        return base_permissions
+
+
+class ProjectInvitation(models.Model):
+    """Model to handle project invitations"""
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='invitations')
+    inviter = models.ForeignKey(User, on_delete=models.CASCADE, related_name='project_invitations_sent')
+    email = models.EmailField()
+    role = models.CharField(max_length=10, choices=ProjectMember.ROLE_CHOICES, default='member')
+    
+    # Token for secure invitation
+    token = models.CharField(max_length=128, unique=True, db_index=True)
+    
+    # Status tracking
+    status = models.CharField(max_length=10, choices=[
+        ('pending', 'Pending'),
+        ('accepted', 'Accepted'),
+        ('declined', 'Declined'),
+        ('expired', 'Expired'),
+    ], default='pending')
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    responded_at = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        verbose_name = "Project Invitation"
+        verbose_name_plural = "Project Invitations"
+        unique_together = ['project', 'email']
+    
+    def __str__(self):
+        return f"Invitation to {self.email} for {self.project.name}"
+    
+    @classmethod
+    def create_invitation(cls, project, inviter, email, role='member'):
+        """Create a new invitation with a secure token"""
+        import secrets
+        from datetime import timedelta
+        from django.utils import timezone
+        
+        # Cancel any existing pending invitations for this email/project
+        cls.objects.filter(
+            project=project,
+            email=email,
+            status='pending'
+        ).update(status='expired')
+        
+        # Create new invitation
+        token = secrets.token_urlsafe(48)
+        expires_at = timezone.now() + timedelta(days=7)  # 7 days to accept
+        
+        return cls.objects.create(
+            project=project,
+            inviter=inviter,
+            email=email,
+            role=role,
+            token=token,
+            expires_at=expires_at
+        )
+    
+    def is_valid(self):
+        """Check if invitation is still valid"""
+        from django.utils import timezone
+        return (
+            self.status == 'pending' and 
+            timezone.now() < self.expires_at
+        )
+    
+    def accept(self, user):
+        """Accept the invitation and create project membership"""
+        from django.utils import timezone
+        from accounts.models import Organization, OrganizationMembership
+        
+        if not self.is_valid():
+            raise ValueError("Invitation is not valid")
+        
+        if user.email.lower() != self.email.lower():
+            raise ValueError("User email doesn't match invitation email")
+        
+        # Create project membership
+        membership, created = ProjectMember.objects.get_or_create(
+            user=user,
+            project=self.project,
+            defaults={
+                'role': self.role,
+                'invited_by': self.inviter,
+                'status': 'active'
+            }
+        )
+        
+        # Add user to project owner's organization if they're not already a member
+        if self.project.owner.profile.current_organization:
+            org = self.project.owner.profile.current_organization
+            if not org.is_member(user):
+                OrganizationMembership.objects.get_or_create(
+                    user=user,
+                    organization=org,
+                    defaults={'role': 'member', 'status': 'active'}
+                )
+                
+                # Set as current organization if user doesn't have one
+                if not user.profile.current_organization:
+                    user.profile.current_organization = org
+                    user.profile.save()
+        
+        # Mark invitation as accepted
+        self.status = 'accepted'
+        self.responded_at = timezone.now()
+        self.save()
+        
+        return membership
     

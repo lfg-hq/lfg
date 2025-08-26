@@ -64,4 +64,7 @@ urlpatterns = [
     path('organization/<slug:slug>/remove-member/<int:user_id>/', views.remove_member, name='remove_member'),
     path('organization/<slug:slug>/update-role/<int:user_id>/', views.update_member_role, name='update_member_role'),
     path('invitation/<str:token>/', views.accept_invitation, name='accept_invitation'),
+    
+    # Settings endpoints
+    path('settings/project-collaboration/', views.update_project_collaboration_setting, name='update_project_collaboration_setting'),
 ] 

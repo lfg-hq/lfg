@@ -2,7 +2,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.contrib import messages
-from .models import Project, ProjectFeature, ProjectPersona, ProjectFile, ProjectDesignSchema, ProjectChecklist, ToolCallHistory
+from .models import Project, ProjectFeature, ProjectPersona, ProjectFile, ProjectDesignSchema, ProjectChecklist, ToolCallHistory, ProjectMember, ProjectInvitation
 from django.views.decorators.http import require_POST, require_http_methods
 from django.core.exceptions import PermissionDenied
 from django.db.models import Q
@@ -29,7 +29,22 @@ from factory.ai_functions import execute_local_command, restart_server_from_conf
 @login_required
 def project_list(request):
     """View to display all projects for the current user"""
-    projects = Project.objects.filter(owner=request.user).order_by('-created_at')
+    # Get projects where user is owner
+    owned_projects = Project.objects.filter(owner=request.user)
+    
+    # Get projects where user is a member (with fallback for migration issues)
+    try:
+        member_projects = Project.objects.filter(
+            members__user=request.user,
+            members__status='active'
+        ).exclude(owner=request.user)
+    except Exception:
+        # Fallback if ProjectMember table doesn't exist yet
+        member_projects = Project.objects.none()
+    
+    # Combine and order projects
+    projects = list(owned_projects) + list(member_projects)
+    projects.sort(key=lambda p: p.updated_at, reverse=True)
     
     # Annotate each project with counts
     projects_with_stats = []
@@ -59,7 +74,11 @@ def project_list(request):
 @login_required
 def project_detail(request, project_id):
     """View to display a specific project"""
-    project = get_object_or_404(Project, project_id=project_id, owner=request.user)
+    project = get_object_or_404(Project, project_id=project_id)
+    
+    # Check if user has access to this project
+    if not project.can_user_access(request.user):
+        raise PermissionDenied("You don't have permission to access this project.")
     
     # If it's an API request, return JSON
     if request.headers.get('Accept') == 'application/json' or request.GET.get('format') == 'json':
@@ -222,7 +241,11 @@ def delete_project(request, project_id):
 @login_required
 def project_features_api(request, project_id):
     """API view to get features for a project"""
-    project = get_object_or_404(Project, project_id=project_id, owner=request.user)
+    project = get_object_or_404(Project, project_id=project_id)
+    
+    # Check if user has access to this project
+    if not project.can_user_access(request.user):
+        raise PermissionDenied("You don't have permission to access this project.")
     features = ProjectFeature.objects.filter(project=project).order_by('-created_at')
     
     features_list = []
@@ -257,7 +280,18 @@ def project_personas_api(request, project_id):
 @login_required
 def project_prd_api(request, project_id):
     """API view to get or update PRD for a project"""
-    project = get_object_or_404(Project, project_id=project_id, owner=request.user)
+    project = get_object_or_404(Project, project_id=project_id)
+    
+    # Check if user has access to this project
+    if not project.can_user_access(request.user):
+        raise PermissionDenied("You don't have permission to access this project.")
+    
+    # For POST requests (updates), check file editing permission
+    if request.method == 'POST' and not project.can_user_edit_files(request.user):
+        return JsonResponse({
+            'success': False,
+            'error': 'You do not have permission to edit files in this project'
+        }, status=403)
     
     import json
     
@@ -355,7 +389,11 @@ def project_design_schema_api(request, project_id):
 @login_required
 def project_checklist_api(request, project_id):
     """API view to get checklist items for a project"""
-    project = get_object_or_404(Project, project_id=project_id, owner=request.user)
+    project = get_object_or_404(Project, project_id=project_id)
+    
+    # Check if user has access to this project
+    if not project.can_user_access(request.user):
+        raise PermissionDenied("You don't have permission to access this project.")
     
     # Get all checklist items for this project
     checklist_items = ProjectChecklist.objects.filter(project=project)
@@ -699,7 +737,14 @@ def update_checklist_item_api(request, project_id):
     except Exception as e:
         return JsonResponse({'success': False, 'error': 'Invalid request data', 'details': str(e)}, status=400)
 
-    project = get_object_or_404(Project, project_id=project_id, owner=request.user)
+    project = get_object_or_404(Project, project_id=project_id)
+    
+    # Check if user can manage tickets
+    if not project.can_user_manage_tickets(request.user):
+        return JsonResponse({
+            'success': False,
+            'error': 'You do not have permission to manage tickets in this project'
+        }, status=403)
     try:
         item = ProjectChecklist.objects.get(id=item_id, project=project)
     except ProjectChecklist.DoesNotExist:
@@ -1291,5 +1336,300 @@ def file_mentions_api(request, project_id):
         'files': files_list,
         'count': len(files_list)
     })
+
+
+@login_required
+def project_members_api(request, project_id):
+    """API view to get project members"""
+    project = get_object_or_404(Project, project_id=project_id)
+    
+    # Check if user has access to this project
+    if not project.can_user_access(request.user):
+        raise PermissionDenied("You don't have permission to access this project.")
+    
+    # Get all active members
+    members = ProjectMember.objects.filter(project=project, status='active').select_related('user', 'invited_by')
+    
+    members_list = []
+    
+    # Add owner as first member
+    members_list.append({
+        'id': None,
+        'user_id': project.owner.id,
+        'username': project.owner.username,
+        'email': project.owner.email,
+        'first_name': project.owner.first_name,
+        'last_name': project.owner.last_name,
+        'role': 'owner',
+        'status': 'active',
+        'joined_at': project.created_at.isoformat(),
+        'invited_by': None,
+        'is_owner': True,
+        'permissions': {
+            'can_edit_files': True,
+            'can_manage_tickets': True,
+            'can_chat': True,
+            'can_invite_members': True,
+            'can_manage_project': True,
+            'can_delete_project': True,
+        }
+    })
+    
+    # Add other members
+    for member in members:
+        members_list.append({
+            'id': member.id,
+            'user_id': member.user.id,
+            'username': member.user.username,
+            'email': member.user.email,
+            'first_name': member.user.first_name,
+            'last_name': member.user.last_name,
+            'role': member.role,
+            'status': member.status,
+            'joined_at': member.joined_at.isoformat(),
+            'invited_by': member.invited_by.username if member.invited_by else None,
+            'is_owner': False,
+            'permissions': member.get_permissions()
+        })
+    
+    return JsonResponse({
+        'members': members_list,
+        'total_members': len(members_list),
+        'user_can_invite': project.can_user_invite_members(request.user)
+    })
+
+
+@login_required
+@require_POST
+def invite_project_member_api(request, project_id):
+    """API view to invite a user to a project"""
+    project = get_object_or_404(Project, project_id=project_id)
+    
+    # Check if user can invite members
+    if not project.can_user_invite_members(request.user):
+        return JsonResponse({
+            'success': False,
+            'error': 'You do not have permission to invite members to this project'
+        }, status=403)
+    
+    try:
+        data = json.loads(request.body)
+        email = data.get('email', '').strip().lower()
+        role = data.get('role', 'member')
+        
+        if not email:
+            return JsonResponse({
+                'success': False,
+                'error': 'Email address is required'
+            }, status=400)
+        
+        # Validate role
+        valid_roles = [choice[0] for choice in ProjectMember.ROLE_CHOICES if choice[0] != 'owner']
+        if role not in valid_roles:
+            return JsonResponse({
+                'success': False,
+                'error': f'Invalid role. Must be one of: {", ".join(valid_roles)}'
+            }, status=400)
+        
+        # Check if user is already a member
+        from django.contrib.auth.models import User
+        try:
+            user = User.objects.get(email=email)
+            if project.has_member(user):
+                return JsonResponse({
+                    'success': False,
+                    'error': 'User is already a member of this project'
+                }, status=400)
+        except User.DoesNotExist:
+            pass  # User doesn't exist yet, invitation will be sent
+        
+        # Create invitation
+        invitation = ProjectInvitation.create_invitation(
+            project=project,
+            inviter=request.user,
+            email=email,
+            role=role
+        )
+        
+        # Send invitation email (you can implement this separately)
+        # send_project_invitation_email(invitation)
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Invitation sent to {email}',
+            'invitation_id': invitation.id
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': 'Invalid JSON data'
+        }, status=400)
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+@require_POST
+def update_project_member_api(request, project_id, member_id):
+    """API view to update a project member's role or permissions"""
+    project = get_object_or_404(Project, project_id=project_id)
+    member = get_object_or_404(ProjectMember, id=member_id, project=project)
+    
+    # Check if user can manage project
+    if not project.get_member(request.user) or not project.get_member(request.user).can_manage_project:
+        return JsonResponse({
+            'success': False,
+            'error': 'You do not have permission to manage project members'
+        }, status=403)
+    
+    try:
+        data = json.loads(request.body)
+        
+        # Update role if provided
+        new_role = data.get('role')
+        if new_role and new_role != member.role:
+            valid_roles = [choice[0] for choice in ProjectMember.ROLE_CHOICES if choice[0] != 'owner']
+            if new_role not in valid_roles:
+                return JsonResponse({
+                    'success': False,
+                    'error': f'Invalid role. Must be one of: {", ".join(valid_roles)}'
+                }, status=400)
+            member.role = new_role
+        
+        # Update individual permissions if provided
+        if 'can_edit_files' in data:
+            member.can_edit_files = data['can_edit_files']
+        if 'can_manage_tickets' in data:
+            member.can_manage_tickets = data['can_manage_tickets']
+        if 'can_chat' in data:
+            member.can_chat = data['can_chat']
+        if 'can_invite_members' in data:
+            member.can_invite_members = data['can_invite_members']
+        
+        member.save()
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Member updated successfully',
+            'member': {
+                'id': member.id,
+                'role': member.role,
+                'permissions': member.get_permissions()
+            }
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': 'Invalid JSON data'
+        }, status=400)
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+@require_POST
+def remove_project_member_api(request, project_id, member_id):
+    """API view to remove a member from a project"""
+    project = get_object_or_404(Project, project_id=project_id)
+    member = get_object_or_404(ProjectMember, id=member_id, project=project)
+    
+    # Check if user can manage project
+    if not project.get_member(request.user) or not project.get_member(request.user).can_manage_project:
+        return JsonResponse({
+            'success': False,
+            'error': 'You do not have permission to manage project members'
+        }, status=403)
+    
+    # Don't allow removing the project owner
+    if member.user == project.owner:
+        return JsonResponse({
+            'success': False,
+            'error': 'Cannot remove the project owner'
+        }, status=400)
+    
+    try:
+        member_username = member.user.username
+        member.delete()
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Member {member_username} removed from project'
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+def project_invitations_api(request, project_id):
+    """API view to get pending project invitations"""
+    project = get_object_or_404(Project, project_id=project_id)
+    
+    # Check if user can invite members (to view invitations)
+    if not project.can_user_invite_members(request.user):
+        return JsonResponse({
+            'success': False,
+            'error': 'You do not have permission to view project invitations'
+        }, status=403)
+    
+    # Get pending invitations
+    invitations = ProjectInvitation.objects.filter(
+        project=project,
+        status='pending'
+    ).select_related('inviter').order_by('-created_at')
+    
+    invitations_list = []
+    for invitation in invitations:
+        invitations_list.append({
+            'id': invitation.id,
+            'email': invitation.email,
+            'role': invitation.role,
+            'status': invitation.status,
+            'created_at': invitation.created_at.isoformat(),
+            'expires_at': invitation.expires_at.isoformat(),
+            'invited_by': invitation.inviter.username,
+            'is_valid': invitation.is_valid()
+        })
+    
+    return JsonResponse({
+        'invitations': invitations_list,
+        'total_invitations': len(invitations_list)
+    })
+
+
+@login_required
+def accept_project_invitation(request, token):
+    """View to accept a project invitation"""
+    invitation = get_object_or_404(ProjectInvitation, token=token)
+    
+    if not invitation.is_valid():
+        messages.error(request, "This invitation has expired or is no longer valid.")
+        return redirect('project_list')
+    
+    if request.user.email.lower() != invitation.email.lower():
+        messages.error(request, "This invitation is for a different email address.")
+        return redirect('project_list')
+    
+    try:
+        membership = invitation.accept(request.user)
+        messages.success(request, f"You have successfully joined the project '{invitation.project.name}'!")
+        return redirect('projects:project_detail', project_id=invitation.project.project_id)
+    except ValueError as e:
+        messages.error(request, str(e))
+        return redirect('project_list')
+    except Exception as e:
+        messages.error(request, "An error occurred while accepting the invitation. Please try again.")
+        return redirect('project_list')
 
 

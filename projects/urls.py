@@ -47,4 +47,14 @@ urlpatterns = [
     
     # File mentions API for chat
     path('<str:project_id>/api/files/mentions/', views.file_mentions_api, name='file_mentions_api'),
+    
+    # Project member management APIs
+    path('<str:project_id>/api/members/', views.project_members_api, name='project_members_api'),
+    path('<str:project_id>/api/members/invite/', views.invite_project_member_api, name='invite_project_member_api'),
+    path('<str:project_id>/api/members/<int:member_id>/update/', views.update_project_member_api, name='update_project_member_api'),
+    path('<str:project_id>/api/members/<int:member_id>/remove/', views.remove_project_member_api, name='remove_project_member_api'),
+    path('<str:project_id>/api/invitations/', views.project_invitations_api, name='project_invitations_api'),
+    
+    # Project invitation acceptance (public URL with token)
+    path('invitation/<str:token>/accept/', views.accept_project_invitation, name='accept_project_invitation'),
 ]
