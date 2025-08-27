@@ -8,6 +8,7 @@ class UserCredit(models.Model):
     credits = models.BigIntegerField(default=0)
     is_subscribed = models.BooleanField(default=False)
     stripe_subscription_id = models.CharField(max_length=255, blank=True, null=True)
+    stripe_customer_id = models.CharField(max_length=255, blank=True, null=True)
     subscription_end_date = models.DateTimeField(null=True, blank=True)
     total_tokens_used = models.BigIntegerField(default=0)  # Track all-time token usage
     monthly_tokens_used = models.BigIntegerField(default=0)  # Track monthly token usage
@@ -38,18 +39,24 @@ class UserCredit(models.Model):
     
     def get_remaining_tokens(self):
         """Get remaining tokens based on subscription tier"""
-        if self.is_free_tier:
-            # Free tier: 100K lifetime limit
-            return max(0, 100000 - self.total_tokens_used)
-        elif self.has_active_subscription and self.subscription_tier == 'pro':
+        base_tokens = 0
+        
+        if self.subscription_tier == 'pro' and self.is_subscribed:
             # Pro tier: 300K monthly limit
             # Check if we need to reset monthly usage
             if self.monthly_reset_date and timezone.now() > self.monthly_reset_date:
                 self.monthly_tokens_used = 0
                 self.monthly_reset_date = timezone.now() + timezone.timedelta(days=30)
                 self.save()
-            return max(0, 300000 - self.monthly_tokens_used)
-        return 0
+            base_tokens = max(0, 300000 - self.monthly_tokens_used)
+        elif self.is_free_tier:
+            # Free tier: 100K lifetime limit
+            base_tokens = max(0, 100000 - self.total_tokens_used)
+        
+        # Add any additional credits purchased (one-time purchases)
+        additional_credits = max(0, self.credits)
+        
+        return base_tokens + additional_credits
     
     def can_use_model(self, model_name):
         """Check if user can use a specific model"""

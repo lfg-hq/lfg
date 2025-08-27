@@ -1594,7 +1594,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             // Check if this is a document save notification with file_id
-            if ((data.notification_type === 'prd' || data.notification_type === 'implementation' || data.notification_type === 'file_saved') && data.file_id) {
+            // Handle any notification with a file_id as a potential document save, except for non-document types
+            const nonDocumentTypes = ['features', 'personas', 'execute_command', 'command_output', 'start_server', 'checklist', 'file_stream'];
+            if (data.file_id && !nonDocumentTypes.includes(data.notification_type)) {
                 console.log('[Chat] This is a document save notification');
                 
                 if (window.ArtifactsLoader && typeof window.ArtifactsLoader.handleDocumentSaved === 'function') {

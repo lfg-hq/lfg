@@ -164,14 +164,24 @@
         flex-shrink: 0;
         padding-left: 0;
         height: 100%;
-        /* Hide scrollbar */
-        scrollbar-width: none; /* Firefox */
-        -ms-overflow-style: none; /* IE and Edge */
     }
     
-    /* Hide scrollbar for Chrome, Safari and Opera */
+    /* Custom scrollbar styling for settings sidebar */
     .settings-sidebar::-webkit-scrollbar {
-        display: none;
+        width: 4px;
+    }
+    
+    .settings-sidebar::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    
+    .settings-sidebar::-webkit-scrollbar-thumb {
+        background: rgba(167, 139, 250, 0.2);
+        border-radius: 2px;
+    }
+    
+    .settings-sidebar::-webkit-scrollbar-thumb:hover {
+        background: rgba(167, 139, 250, 0.4);
     }
     
     .settings-nav {
@@ -243,14 +253,26 @@
         flex-direction: column;
         align-items: center;
         overflow-y: auto;
-        /* Hide scrollbar but allow scrolling */
-        scrollbar-width: none; /* Firefox */
-        -ms-overflow-style: none; /* IE and Edge */
+        /* Allow visible scrollbar for better usability */
     }
     
-    /* Hide scrollbar for Chrome, Safari and Opera */
+    /* Custom scrollbar styling for settings sections */
     .settings-section::-webkit-scrollbar {
-        display: none;
+        width: 6px;
+    }
+    
+    .settings-section::-webkit-scrollbar-track {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 3px;
+    }
+    
+    .settings-section::-webkit-scrollbar-thumb {
+        background: rgba(167, 139, 250, 0.3);
+        border-radius: 3px;
+    }
+    
+    .settings-section::-webkit-scrollbar-thumb:hover {
+        background: rgba(167, 139, 250, 0.5);
     }
     
     .settings-section.active {
@@ -792,7 +814,7 @@
                 }
                 
                 .stat-value.remaining {
-                    color: {% if tokens_remaining < 10000 %}#ef4444{% else %}#10b981{% endif %};
+                    color: {% if tokens_remaining <= 0 %}#ef4444{% elif tokens_remaining < 10000 %}#f59e0b{% else %}#10b981{% endif %};
                 }
                 
                 .stat-value.limit {
@@ -926,6 +948,111 @@
                         <span class="stat-value limit">{{ total_limit|intcomma }}</span>
                     </div>
                 </div>
+                
+                {% if tokens_remaining <= 0 %}
+                <!-- Token Exhausted Alert -->
+                <div class="token-exhausted-alert" style="
+                    background: transparent;
+                    border: 2px solid #ef4444;
+                    border-radius: 12px;
+                    padding: 24px;
+                    margin: 20px 0;
+                    text-align: center;
+                    position: relative;
+                    overflow: hidden;
+                ">
+                    <div style="position: relative; z-index: 1;">
+                        <div style="display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 16px;">
+                            <i class="fas fa-info-circle" style="font-size: 24px; color: #ef4444;"></i>
+                            <h3 style="color: #ef4444; font-size: 18px; font-weight: 600; margin: 0;">Tokens Used Up</h3>
+                        </div>
+                        <p style="color: #dc2626; margin: 0 0 20px 0; font-size: 14px; line-height: 1.5;">
+                            {% if is_free_tier %}
+                                You've used all {{ total_limit|intcomma }} tokens in your free tier account. Upgrade to Pro to get 300,000 tokens monthly and access to all AI models.
+                            {% else %}
+                                You've reached your monthly limit of {{ total_limit|intcomma }} tokens. Your tokens will reset on {{ user_credit.subscription_end_date|date:"M d, Y" }}.
+                            {% endif %}
+                        </p>
+                        <div style="display: flex; flex-direction: column; gap: 12px; align-items: center;">
+                            {% if is_free_tier %}
+                                <a href="{% url 'subscriptions:dashboard' %}" style="
+                                    display: inline-flex;
+                                    align-items: center;
+                                    gap: 8px;
+                                    background: linear-gradient(135deg, #16a34a, #15803d);
+                                    color: white;
+                                    padding: 12px 24px;
+                                    border-radius: 8px;
+                                    font-weight: 600;
+                                    text-decoration: none;
+                                    transition: all 0.2s;
+                                    box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3);
+                                " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 20px rgba(34, 197, 94, 0.4)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 12px rgba(34, 197, 94, 0.3)';">
+                                    <i class="fas fa-rocket"></i>
+                                    Upgrade to Pro - $9/month
+                                </a>
+                                <small style="color: #f87171; font-size: 12px;">Get 30x more tokens + access to all AI models</small>
+                            {% else %}
+                                <a href="{% url 'subscriptions:checkout' plan_id=3 %}" style="
+                                    display: inline-flex;
+                                    align-items: center;
+                                    gap: 8px;
+                                    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+                                    color: white;
+                                    padding: 12px 24px;
+                                    border-radius: 8px;
+                                    font-weight: 600;
+                                    text-decoration: none;
+                                    transition: all 0.2s;
+                                    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+                                " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 20px rgba(59, 130, 246, 0.4)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 12px rgba(59, 130, 246, 0.3)';">
+                                    <i class="fas fa-plus"></i>
+                                    Buy Additional Tokens
+                                </a>
+                                <small style="color: #f87171; font-size: 12px;">
+                                    Or wait {{ user_credit.days_until_reset|default:"N/A" }} days for your monthly reset
+                                </small>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% elif tokens_remaining < 10000 %}
+                <!-- Low Tokens Warning -->
+                <div class="low-tokens-warning" style="
+                    background: linear-gradient(135deg, #92400e 0%, #b45309 100%);
+                    border: 1px solid #d97706;
+                    border-radius: 12px;
+                    padding: 20px;
+                    margin: 16px 0;
+                    text-align: center;
+                ">
+                    <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 12px;">
+                        <i class="fas fa-exclamation-circle" style="font-size: 20px; color: #fed7aa;"></i>
+                        <h4 style="color: #fed7aa; font-size: 16px; font-weight: 600; margin: 0;">Running Low on Tokens</h4>
+                    </div>
+                    <p style="color: #fdba74; margin: 0 0 16px 0; font-size: 14px;">
+                        You have {{ tokens_remaining|intcomma }} tokens remaining. Consider upgrading to avoid interruptions.
+                    </p>
+                    {% if is_free_tier %}
+                        <a href="{% url 'subscriptions:dashboard' %}" style="
+                            display: inline-flex;
+                            align-items: center;
+                            gap: 6px;
+                            background: linear-gradient(135deg, #f59e0b, #d97706);
+                            color: white;
+                            padding: 8px 16px;
+                            border-radius: 6px;
+                            font-weight: 500;
+                            text-decoration: none;
+                            font-size: 14px;
+                            transition: all 0.2s;
+                        " onmouseover="this.style.transform='translateY(-1px)';" onmouseout="this.style.transform='translateY(0)';">
+                            <i class="fas fa-arrow-up"></i>
+                            Upgrade Now
+                        </a>
+                    {% endif %}
+                </div>
+                {% endif %}
                 
                 <div class="usage-breakdown">
                     <div class="breakdown-item">

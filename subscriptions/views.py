@@ -121,9 +121,16 @@ def checkout(request, plan_id):
                 }
             )
             customer_id = stripe_customer.id
+            # Save customer ID immediately
+            user_credit.stripe_customer_id = customer_id
+            user_credit.save()
         else:
             customer_id = existing_customer.id
             logger.info(f"Found existing customer: {customer_id}", extra={'easylogs_metadata': {'user_id': request.user.id, 'customer_id': customer_id}})
+            # Save customer ID if not already saved
+            if not user_credit.stripe_customer_id:
+                user_credit.stripe_customer_id = customer_id
+                user_credit.save()
         
         # Check if this is a subscription plan (Monthly Subscription - plan_id 1)
         if plan_id == 1:  # Monthly Subscription
@@ -168,6 +175,14 @@ def checkout(request, plan_id):
                 mode='subscription',
                 success_url=success_url + '?session_id={CHECKOUT_SESSION_ID}',
                 cancel_url=cancel_url,
+                # CRITICAL: Save payment method for future use
+                payment_method_collection='if_required',
+                invoice_creation={'enabled': True},
+                subscription_data={
+                    'metadata': {
+                        'user_id': request.user.id
+                    }
+                }
             )
             
             # Create a pending transaction
@@ -185,8 +200,8 @@ def checkout(request, plan_id):
         else:
             # One-time payment for additional credits
             
-            # If already subscribed, we know they have a payment method, so use it directly
-            if user_credit.has_active_subscription and existing_customer:
+            # If customer exists, check for payment methods and use them directly
+            if existing_customer:
                 # First check if customer has payment methods
                 payment_methods = None
                 try:
@@ -265,7 +280,13 @@ def checkout(request, plan_id):
                 mode='payment',
                 success_url=success_url + '?session_id={CHECKOUT_SESSION_ID}',
                 cancel_url=cancel_url,
-                expires_at=int((timezone.now() + timedelta(minutes=30)).timestamp())  # Session expires after 30 minutes
+                expires_at=int((timezone.now() + timedelta(minutes=30)).timestamp()),  # Session expires after 30 minutes
+                # CRITICAL: Save payment method for future use
+                payment_method_options={
+                    'card': {
+                        'setup_future_usage': 'off_session'
+                    }
+                }
             )
             
             # Create a pending transaction
@@ -498,9 +519,16 @@ def handle_successful_payment(session):
                     user_credit.subscription_tier = 'pro'
                     user_credit.is_subscribed = True
                     user_credit.stripe_subscription_id = session.subscription
+                    user_credit.stripe_customer_id = session.customer  # Save customer ID
                     user_credit.monthly_tokens_used = 0
                     user_credit.save()
                     logger.info(f"Set user {user.id} to pro tier via webhook")
+                else:
+                    # For one-time purchases, also save the customer ID
+                    user_credit, created = UserCredit.objects.get_or_create(user=user)
+                    user_credit.stripe_customer_id = session.customer
+                    user_credit.save()
+                    logger.info(f"Saved customer ID {session.customer} for user {user.id}")
                     
             except Exception as e:
                 logger.error(f"Error creating transaction from webhook: {e}")
@@ -527,6 +555,7 @@ def handle_subscription_created(subscription):
             user_credit, created = UserCredit.objects.get_or_create(user=user)
             user_credit.is_subscribed = True
             user_credit.stripe_subscription_id = subscription.id
+            user_credit.stripe_customer_id = subscription.customer  # Save customer ID
             user_credit.subscription_end_date = timezone.datetime.fromtimestamp(subscription.current_period_end, tz=timezone.utc)
             user_credit.subscription_tier = 'pro'  # CRITICAL: Set to pro tier
             user_credit.monthly_reset_date = timezone.datetime.fromtimestamp(subscription.current_period_end, tz=timezone.utc)
@@ -588,19 +617,43 @@ def payment_methods(request):
         
         # Find existing customer
         existing_customer = None
-        if user_credit.stripe_subscription_id:
+        customer_search_method = "none"
+        
+        # First try direct customer ID lookup
+        if user_credit.stripe_customer_id:
+            try:
+                existing_customer = stripe.Customer.retrieve(user_credit.stripe_customer_id)
+                customer_search_method = "direct_customer_id"
+                logger.info(f"Found customer via direct customer ID: {existing_customer.id}")
+            except Exception as e:
+                logger.error(f"Error retrieving customer from direct ID: {e}")
+        
+        # Fallback to subscription lookup
+        if not existing_customer and user_credit.stripe_subscription_id:
             try:
                 subscription = stripe.Subscription.retrieve(user_credit.stripe_subscription_id)
                 existing_customer = stripe.Customer.retrieve(subscription.customer)
+                customer_search_method = "subscription"
+                logger.info(f"Found customer via subscription: {existing_customer.id}")
+                
+                # Save the customer ID for future use
+                user_credit.stripe_customer_id = existing_customer.id
+                user_credit.save()
             except Exception as e:
                 logger.error(f"Error retrieving customer from subscription: {e}")
         
+        # Final fallback to email search
         if not existing_customer:
-            # Search by email
             try:
                 customer_query = stripe.Customer.list(email=request.user.email, limit=1)
                 if customer_query and customer_query.data:
                     existing_customer = customer_query.data[0]
+                    customer_search_method = "email"
+                    logger.info(f"Found customer via email search: {existing_customer.id}")
+                    
+                    # Save the customer ID for future use
+                    user_credit.stripe_customer_id = existing_customer.id
+                    user_credit.save()
             except Exception as e:
                 logger.error(f"Error searching for customer: {e}")
         
@@ -612,6 +665,8 @@ def payment_methods(request):
                     customer=existing_customer.id,
                     type='card'
                 )
+                
+                logger.info(f"Found {len(stripe_methods.data)} payment methods for customer {existing_customer.id}")
                 
                 # Get default payment method
                 default_pm_id = existing_customer.invoice_settings.default_payment_method
@@ -629,8 +684,19 @@ def payment_methods(request):
                     })
             except Exception as e:
                 logger.error(f"Error retrieving payment methods: {e}")
+        else:
+            logger.warning(f"No customer found for user {request.user.email}")
         
-        return JsonResponse({'payment_methods': payment_methods})
+        return JsonResponse({
+            'payment_methods': payment_methods,
+            'debug': {
+                'customer_found': existing_customer is not None,
+                'customer_search_method': customer_search_method,
+                'customer_id': existing_customer.id if existing_customer else None,
+                'user_email': request.user.email,
+                'has_subscription_id': bool(user_credit.stripe_subscription_id)
+            }
+        })
     except UserCredit.DoesNotExist:
         return JsonResponse({'payment_methods': []})
     except Exception as e:
@@ -669,6 +735,9 @@ def create_setup_intent(request):
                 name=f"{request.user.first_name} {request.user.last_name}".strip() or request.user.username,
                 metadata={'user_id': request.user.id}
             )
+            # Save customer ID immediately
+            user_credit.stripe_customer_id = existing_customer.id
+            user_credit.save()
         
         # Get domain for success and cancel URLs
         domain_url = request.build_absolute_uri('/').rstrip('/')
@@ -791,3 +860,177 @@ def handle_subscription_payment(invoice):
         pass
     except Exception as e:
         logger.error(f"Error handling subscription payment: {str(e)}", extra={'easylogs_metadata': {'error_type': type(e).__name__}})
+
+
+@login_required
+def fix_customer_ids(request):
+    """Fix missing customer IDs for users - temporary endpoint"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST method required'}, status=405)
+    
+    try:
+        user = request.user
+        user_credit, created = UserCredit.objects.get_or_create(user=user)
+        
+        if user_credit.stripe_customer_id:
+            return JsonResponse({
+                'status': 'already_fixed',
+                'customer_id': user_credit.stripe_customer_id,
+                'message': 'Customer ID already exists'
+            })
+        
+        # Method 1: Check via subscription
+        if user_credit.stripe_subscription_id:
+            try:
+                subscription = stripe.Subscription.retrieve(user_credit.stripe_subscription_id)
+                user_credit.stripe_customer_id = subscription.customer
+                user_credit.save()
+                return JsonResponse({
+                    'status': 'fixed_via_subscription',
+                    'customer_id': subscription.customer,
+                    'message': 'Customer ID found via subscription'
+                })
+            except Exception as e:
+                logger.error(f"Subscription lookup failed: {e}")
+        
+        # Method 2: Search by email
+        try:
+            customers = stripe.Customer.list(email=user.email, limit=5)
+            if customers.data:
+                customer = customers.data[0]
+                user_credit.stripe_customer_id = customer.id
+                user_credit.save()
+                
+                # Check payment methods
+                payment_methods = stripe.PaymentMethod.list(customer=customer.id, type='card')
+                
+                return JsonResponse({
+                    'status': 'fixed_via_email',
+                    'customer_id': customer.id,
+                    'payment_methods_count': len(payment_methods.data),
+                    'message': f'Customer ID found via email search ({len(payment_methods.data)} payment methods)'
+                })
+            else:
+                return JsonResponse({
+                    'status': 'not_found',
+                    'message': f'No Stripe customer found for {user.email}'
+                })
+                
+        except Exception as e:
+            logger.error(f"Email search failed: {e}")
+            return JsonResponse({
+                'status': 'error',
+                'message': f'Search failed: {str(e)}'
+            })
+            
+    except Exception as e:
+        logger.error(f"Error in fix_customer_ids: {e}")
+        return JsonResponse({'error': 'Internal server error'}, status=500)
+
+
+@login_required
+def debug_account(request):
+    """Debug endpoint to check account status"""
+    try:
+        user = request.user
+        user_credit, created = UserCredit.objects.get_or_create(user=user)
+        
+        # Check if stripe_customer_id field exists
+        has_customer_id_field = hasattr(user_credit, 'stripe_customer_id')
+        
+        # Get recent transactions
+        recent_transactions = Transaction.objects.filter(user=user).order_by('-created_at')[:5]
+        transactions_data = [
+            {
+                'id': t.id,
+                'amount': str(t.amount),
+                'status': t.status,
+                'created_at': t.created_at.isoformat(),
+                'payment_plan': t.payment_plan.name if t.payment_plan else None
+            }
+            for t in recent_transactions
+        ]
+        
+        debug_info = {
+            'user_email': user.email,
+            'user_id': user.id,
+            'has_customer_id_field': has_customer_id_field,
+            'user_credit': {
+                'stripe_subscription_id': user_credit.stripe_subscription_id,
+                'stripe_customer_id': getattr(user_credit, 'stripe_customer_id', 'FIELD_MISSING'),
+                'subscription_tier': user_credit.subscription_tier,
+                'is_subscribed': user_credit.is_subscribed,
+                'has_active_subscription': user_credit.has_active_subscription,
+            },
+            'recent_transactions': transactions_data,
+        }
+        
+        # Try to find Stripe customer
+        stripe_customer_info = None
+        if has_customer_id_field and user_credit.stripe_customer_id:
+            try:
+                customer = stripe.Customer.retrieve(user_credit.stripe_customer_id)
+                payment_methods = stripe.PaymentMethod.list(customer=customer.id, type='card')
+                stripe_customer_info = {
+                    'customer_id': customer.id,
+                    'email': customer.email,
+                    'payment_methods_count': len(payment_methods.data),
+                    'payment_methods': [
+                        {
+                            'id': pm.id,
+                            'brand': pm.card.brand,
+                            'last4': pm.card.last4
+                        } for pm in payment_methods.data
+                    ]
+                }
+            except Exception as e:
+                stripe_customer_info = {'error': str(e)}
+        
+        debug_info['stripe_customer_info'] = stripe_customer_info
+        
+        return JsonResponse(debug_info)
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@login_required  
+def fix_pro_subscription(request):
+    """Fix pro subscription without proper monthly reset date"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST method required'}, status=405)
+    
+    try:
+        user = request.user
+        user_credit, created = UserCredit.objects.get_or_create(user=user)
+        
+        if user_credit.subscription_tier == 'pro' and user_credit.is_subscribed:
+            # Set monthly reset date to next month if not set
+            if not user_credit.monthly_reset_date:
+                from django.utils import timezone
+                from datetime import timedelta
+                
+                user_credit.monthly_reset_date = timezone.now() + timedelta(days=30)
+                user_credit.monthly_tokens_used = 0  # Reset monthly usage
+                user_credit.save()
+                
+                return JsonResponse({
+                    'status': 'fixed',
+                    'message': 'Pro subscription monthly reset date set',
+                    'new_remaining_tokens': user_credit.get_remaining_tokens(),
+                    'monthly_reset_date': user_credit.monthly_reset_date.isoformat()
+                })
+            else:
+                return JsonResponse({
+                    'status': 'already_ok',
+                    'message': 'Monthly reset date already set',
+                    'remaining_tokens': user_credit.get_remaining_tokens()
+                })
+        else:
+            return JsonResponse({
+                'status': 'not_pro',
+                'message': f'User is not pro (tier: {user_credit.subscription_tier}, subscribed: {user_credit.is_subscribed})'
+            })
+            
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
