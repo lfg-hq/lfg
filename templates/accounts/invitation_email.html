@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invitation to join {{ organization.name }} on LFG</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f8f9fa;
+        }
+        .email-container {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            padding: 40px 30px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0 0 10px 0;
+            font-size: 28px;
+            font-weight: 700;
+        }
+        .header p {
+            margin: 0;
+            font-size: 16px;
+            opacity: 0.9;
+        }
+        .content {
+            padding: 40px 30px;
+        }
+        .org-info {
+            background: #f8f9ff;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 30px 0;
+        }
+        .org-info h3 {
+            margin: 0 0 15px 0;
+            color: #6366f1;
+            font-size: 18px;
+        }
+        .org-details {
+            display: grid;
+            gap: 10px;
+        }
+        .detail-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: #6b7280;
+        }
+        .detail-item strong {
+            color: #374151;
+        }
+        .personal-message {
+            background: #f0f9ff;
+            border-left: 4px solid #0ea5e9;
+            padding: 20px;
+            margin: 30px 0;
+            border-radius: 0 8px 8px 0;
+        }
+        .personal-message h4 {
+            margin: 0 0 10px 0;
+            color: #0369a1;
+            font-size: 16px;
+        }
+        .personal-message p {
+            margin: 0;
+            font-style: italic;
+            color: #374151;
+        }
+        .actions {
+            text-align: center;
+            margin: 40px 0;
+        }
+        .btn {
+            display: inline-block;
+            padding: 12px 30px;
+            margin: 0 10px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+        .btn-primary {
+            background: #6366f1;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #4f46e5;
+        }
+        .btn-outline {
+            background: white;
+            color: #6b7280;
+            border: 2px solid #e5e7eb;
+        }
+        .footer {
+            background: #f9fafb;
+            padding: 30px;
+            text-align: center;
+            border-top: 1px solid #e5e7eb;
+            color: #6b7280;
+            font-size: 14px;
+        }
+        .footer p {
+            margin: 5px 0;
+        }
+        .logo {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+        @media (max-width: 600px) {
+            body {
+                padding: 10px;
+            }
+            .content,
+            .header,
+            .footer {
+                padding: 20px;
+            }
+            .btn {
+                display: block;
+                margin: 10px 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="header">
+            <div class="logo">🚀</div>
+            <h1>You're invited to join {{ organization.name }}</h1>
+            <p>{{ inviter.get_full_name|default:inviter.username }} has invited you to collaborate</p>
+        </div>
+        
+        <div class="content">
+            <p>Hello!</p>
+            
+            <p>{{ inviter.get_full_name|default:inviter.username }} ({{ inviter.email }}) has invited you to join <strong>{{ organization.name }}</strong> on LFG, an AI-powered product development platform.</p>
+            
+            {% if organization.description %}
+            <div class="org-info">
+                <h3>About {{ organization.name }}</h3>
+                <p>{{ organization.description }}</p>
+                
+                <div class="org-details">
+                    <div class="detail-item">
+                        👤 <span>Your role: <strong>{{ invitation.role|capfirst }}</strong></span>
+                    </div>
+                    <div class="detail-item">
+                        👥 <span>Organization: <strong>{{ organization.name }}</strong></span>
+                    </div>
+                    <div class="detail-item">
+                        📅 <span>Invited: <strong>{{ invitation.created_at|date:"F d, Y" }}</strong></span>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            
+            {% if invitation.message %}
+            <div class="personal-message">
+                <h4>Personal message from {{ inviter.get_full_name|default:inviter.username }}:</h4>
+                <p>{{ invitation.message }}</p>
+            </div>
+            {% endif %}
+            
+            <p>LFG combines human creativity with artificial intelligence to accelerate software development. With your team, you'll be able to:</p>
+            
+            <ul>
+                <li>🤖 Collaborate with AI agents for coding and design</li>
+                <li>📋 Generate and manage product requirements</li>
+                <li>🚀 Build and deploy applications faster</li>
+                <li>👥 Work together in real-time with your team</li>
+            </ul>
+            
+            <div class="actions">
+                <a href="{{ accept_url }}" class="btn btn-primary">Accept Invitation</a>
+                <a href="{{ decline_url }}" class="btn btn-outline">Decline</a>
+            </div>
+            
+            <p><small><strong>Note:</strong> This invitation will expire on {{ invitation.expires_at|date:"F d, Y" }}. If you don't have an account yet, one will be created for you when you accept the invitation.</small></p>
+        </div>
+        
+        <div class="footer">
+            <p><strong>LFG - Let's F***ing Go! 🚀</strong></p>
+            <p>AI-Powered Product Development Platform</p>
+            <p>If you didn't expect this invitation, you can safely ignore this email.</p>
+        </div>
+    </div>
+</body>
+</html>

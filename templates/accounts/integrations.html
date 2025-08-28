@@ -27,14 +27,14 @@
       <p class="integration-description">Link your OpenAI account to leverage GPT models in your projects.</p>
       
       {% if openai_connected %}
-        <form method="post" action="{% url 'disconnect_api_key' 'openai' %}">
+        <form method="post" action="{% url 'accounts:disconnect_api_key' 'openai' %}">
           {% csrf_token %}
           <button type="submit" class="disconnect-button">Disconnect OpenAI</button>
         </form>
       {% else %}
         <button class="connect-button" id="openai-toggle">Connect OpenAI</button>
         <div class="api-form" id="openai-form">
-          <form method="post" action="{% url 'save_api_key' 'openai' %}">
+          <form method="post" action="{% url 'accounts:save_api_key' 'openai' %}">
             {% csrf_token %}
             <input type="password" name="api_key" class="api-input" placeholder="Enter your OpenAI API key" required>
             <button type="submit" class="api-button">Save API Key</button>
@@ -67,14 +67,14 @@
       <p class="integration-description">Integrate Anthropic Claude models into your workflow and applications.</p>
       
       {% if anthropic_connected %}
-        <form method="post" action="{% url 'disconnect_api_key' 'anthropic' %}">
+        <form method="post" action="{% url 'accounts:disconnect_api_key' 'anthropic' %}">
           {% csrf_token %}
           <button type="submit" class="disconnect-button">Disconnect Anthropic</button>
         </form>
       {% else %}
         <button class="connect-button" id="anthropic-toggle">Connect Anthropic</button>
         <div class="api-form" id="anthropic-form">
-          <form method="post" action="{% url 'save_api_key' 'anthropic' %}">
+          <form method="post" action="{% url 'accounts:save_api_key' 'anthropic' %}">
             {% csrf_token %}
             <input type="password" name="api_key" class="api-input" placeholder="Enter your Anthropic API key" required>
             <button type="submit" class="api-button">Save API Key</button>
@@ -109,14 +109,14 @@
       <p class="integration-description">Connect to XAI AI models for advanced language processing capabilities.</p>
       
       {% if xai_connected %}
-        <form method="post" action="{% url 'disconnect_api_key' 'xai' %}">
+        <form method="post" action="{% url 'accounts:disconnect_api_key' 'xai' %}">
           {% csrf_token %}
           <button type="submit" class="disconnect-button">Disconnect XAI</button>
         </form>
       {% else %}
         <button class="connect-button" id="xai-toggle">Connect XAI</button>
         <div class="api-form" id="xai-form">
-          <form method="post" action="{% url 'save_api_key' 'xai' %}">
+          <form method="post" action="{% url 'accounts:save_api_key' 'xai' %}">
             {% csrf_token %}
             <input type="password" name="api_key" class="api-input" placeholder="Enter your XAI API key" required>
             <button type="submit" class="api-button">Save API Key</button>
@@ -157,14 +157,14 @@
       <p class="integration-description">Sync your project tickets with Linear for seamless issue tracking.</p>
       
       {% if linear_connected %}
-        <form method="post" action="{% url 'disconnect_api_key' 'linear' %}">
+        <form method="post" action="{% url 'accounts:disconnect_api_key' 'linear' %}">
           {% csrf_token %}
           <button type="submit" class="disconnect-button">Disconnect Linear</button>
         </form>
       {% else %}
         <button class="connect-button" id="linear-toggle">Connect Linear</button>
         <div class="api-form" id="linear-form">
-          <form method="post" action="{% url 'save_api_key' 'linear' %}">
+          <form method="post" action="{% url 'accounts:save_api_key' 'linear' %}">
             {% csrf_token %}
             <input type="password" name="api_key" class="api-input" placeholder="Enter your Linear API key" required>
             <button type="submit" class="api-button">Save API Key</button>
@@ -210,7 +210,7 @@
       
       
       {% if github_connected %}
-        <form method="post" action="{% url 'integrations' %}">
+        <form method="post" action="{% url 'accounts:integrations' %}">
           {% csrf_token %}
           <input type="hidden" name="action" value="github_disconnect">
           <button type="submit" class="disconnect-button">Disconnect GitHub</button>

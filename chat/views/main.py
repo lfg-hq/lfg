@@ -623,6 +623,8 @@ def latest_conversation(request):
 @login_required
 def daily_token_usage(request):
     """Get daily token usage for the current user."""
+    from subscriptions.models import UserCredit
+    
     # Get today's date
     today = timezone.now().date()
     today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -635,8 +637,18 @@ def daily_token_usage(request):
         timestamp__lt=today_end
     ).aggregate(total=Sum('total_tokens'))['total'] or 0
     
+    # Get remaining tokens
+    remaining_tokens = 0
+    try:
+        user_credit, created = UserCredit.objects.get_or_create(user=request.user)
+        remaining_tokens = user_credit.get_remaining_tokens()
+    except Exception:
+        # If there's any error, default to 0
+        pass
+    
     return JsonResponse({
         'success': True,
         'tokens': daily_tokens,
+        'remaining_tokens': remaining_tokens,
         'date': today.isoformat()
     }) 

@@ -6,6 +6,7 @@ import logging
 import asyncio
 import json
 from typing import Optional, Any, Tuple
+from dataclasses import dataclass
 import tiktoken
 
 from accounts.models import TokenUsage
@@ -15,6 +16,44 @@ from subscriptions.models import UserCredit
 from django.contrib.auth.models import User
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class UsageData:
+    """Standardized usage data class that works across all AI providers"""
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    
+    @classmethod
+    def from_openai(cls, usage_obj: Any) -> 'UsageData':
+        """Create UsageData from OpenAI usage object"""
+        input_tokens = getattr(usage_obj, 'prompt_tokens', 0)
+        output_tokens = getattr(usage_obj, 'completion_tokens', 0)
+        total_tokens = getattr(usage_obj, 'total_tokens', input_tokens + output_tokens)
+        return cls(input_tokens=input_tokens, output_tokens=output_tokens, total_tokens=total_tokens)
+    
+    @classmethod
+    def from_anthropic(cls, usage_obj: Any) -> 'UsageData':
+        """Create UsageData from Anthropic usage object"""
+        input_tokens = getattr(usage_obj, 'input_tokens', 0)
+        output_tokens = getattr(usage_obj, 'output_tokens', 0)
+        total_tokens = input_tokens + output_tokens
+        return cls(input_tokens=input_tokens, output_tokens=output_tokens, total_tokens=total_tokens)
+    
+    @classmethod
+    def from_xai(cls, usage_obj: Any) -> 'UsageData':
+        """Create UsageData from XAI usage object (same format as OpenAI)"""
+        return cls.from_openai(usage_obj)
+    
+    @classmethod
+    def from_estimation(cls, input_tokens: int, output_tokens: int) -> 'UsageData':
+        """Create UsageData from estimated token counts"""
+        return cls(input_tokens=input_tokens, output_tokens=output_tokens, total_tokens=input_tokens + output_tokens)
+    
+    def is_valid(self) -> bool:
+        """Check if usage data has valid values"""
+        return self.input_tokens >= 0 and self.output_tokens >= 0 and self.total_tokens >= 0
 
 
 async def track_token_usage(
@@ -32,21 +71,31 @@ async def track_token_usage(
         user: The user making the request
         project: The project context (optional)
         conversation: The conversation context (optional)
-        usage_data: Provider-specific usage data object
+        usage_data: Provider-specific usage data object or UsageData instance
         provider: The AI provider name ('openai', 'anthropic', 'xai')
         model: The specific model used
     """
     try:
-        # Handle different attribute names for token counts
-        if provider == 'anthropic':
-            input_tokens = getattr(usage_data, 'input_tokens', 0)
-            output_tokens = getattr(usage_data, 'output_tokens', 0)
-            total_tokens = input_tokens + output_tokens
+        # Convert to standardized UsageData if needed
+        if isinstance(usage_data, UsageData):
+            standardized_usage = usage_data
         else:
-            # OpenAI and XAI use the same attribute names
-            input_tokens = getattr(usage_data, 'prompt_tokens', 0)
-            output_tokens = getattr(usage_data, 'completion_tokens', 0)
-            total_tokens = getattr(usage_data, 'total_tokens', 0)
+            # Convert from provider-specific format
+            if provider == 'anthropic':
+                standardized_usage = UsageData.from_anthropic(usage_data)
+            elif provider == 'xai':
+                standardized_usage = UsageData.from_xai(usage_data)
+            else:  # openai
+                standardized_usage = UsageData.from_openai(usage_data)
+        
+        # Validate usage data
+        if not standardized_usage.is_valid():
+            logger.warning(f"Invalid usage data: {standardized_usage}")
+            return
+        
+        input_tokens = standardized_usage.input_tokens
+        output_tokens = standardized_usage.output_tokens
+        total_tokens = standardized_usage.total_tokens
         
         logger.info(f"Tracking token usage - Provider: {provider}, Model: {model}, Input: {input_tokens}, Output: {output_tokens}, Total: {total_tokens}")
         
@@ -80,12 +129,42 @@ async def track_token_usage(
             # Update total and monthly token usage
             user_credit.total_tokens_used += total_tokens
             
-            # Track free vs paid tokens
+            # Track tokens with correct deduction order: free -> monthly -> additional
             if user_credit.is_free_tier:
                 user_credit.free_tokens_used += total_tokens
             else:
                 user_credit.paid_tokens_used += total_tokens
-                user_credit.monthly_tokens_used += total_tokens
+                
+                # Deduction order: free (one-time 100K) -> monthly (300K) -> additional credits
+                remaining_tokens = total_tokens
+                
+                # 1. First use free tokens (one-time 100K allowance)
+                free_limit = 100000
+                free_remaining = max(0, free_limit - user_credit.free_tokens_used)
+                if remaining_tokens > 0 and free_remaining > 0:
+                    free_tokens_to_use = min(remaining_tokens, free_remaining)
+                    user_credit.free_tokens_used += free_tokens_to_use
+                    remaining_tokens -= free_tokens_to_use
+                    logger.debug(f"Used {free_tokens_to_use} free tokens, {remaining_tokens} remaining")
+                
+                # 2. Then use monthly credits (300K per month)
+                monthly_limit = 300000
+                monthly_remaining = max(0, monthly_limit - user_credit.monthly_tokens_used)
+                if remaining_tokens > 0 and monthly_remaining > 0:
+                    monthly_tokens_to_use = min(remaining_tokens, monthly_remaining)
+                    user_credit.monthly_tokens_used += monthly_tokens_to_use
+                    remaining_tokens -= monthly_tokens_to_use
+                    logger.debug(f"Used {monthly_tokens_to_use} monthly tokens, {remaining_tokens} remaining")
+                
+                # 3. Finally use additional credits (purchased)
+                if remaining_tokens > 0 and user_credit.credits > 0:
+                    additional_tokens_to_use = min(remaining_tokens, user_credit.credits)
+                    user_credit.credits -= additional_tokens_to_use
+                    remaining_tokens -= additional_tokens_to_use
+                    logger.debug(f"Used {additional_tokens_to_use} additional credits, {remaining_tokens} remaining")
+                
+                if remaining_tokens > 0:
+                    logger.warning(f"User exceeded all available credits by {remaining_tokens} tokens")
             
             await asyncio.to_thread(user_credit.save)
             logger.debug(f"Updated user credit token usage: total={user_credit.total_tokens_used}, monthly={user_credit.monthly_tokens_used}")

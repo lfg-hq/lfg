@@ -4,10 +4,10 @@ from django.contrib.auth.decorators import login_required
 from django.urls import reverse
 from django.contrib.auth import authenticate, login
 from django.conf import settings
-from .forms import UserRegisterForm, UserUpdateForm, ProfileUpdateForm, EmailAuthenticationForm, PasswordResetForm
+from .forms import UserRegisterForm, UserUpdateForm, ProfileUpdateForm, EmailAuthenticationForm, PasswordResetForm, OrganizationCreationForm, OrganizationUpdateForm, OrganizationInvitationForm, MembershipUpdateForm, OrganizationSwitchForm
 from django.contrib.auth.models import User
-from .models import GitHubToken, EmailVerificationToken, LLMApiKeys, ExternalServicesAPIKeys
-from subscriptions.models import UserCredit
+from .models import GitHubToken, EmailVerificationToken, LLMApiKeys, ExternalServicesAPIKeys, Organization, OrganizationMembership, OrganizationInvitation
+from subscriptions.models import UserCredit, OrganizationCredit
 from chat.models import AgentRole
 import requests
 import uuid
@@ -20,6 +20,8 @@ from django.utils.html import strip_tags
 from django.contrib.auth.tokens import default_token_generator
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
+from django.core.exceptions import PermissionDenied
+from django.db import transaction
 import logging
 
 logger = logging.getLogger(__name__)
@@ -57,7 +59,7 @@ def register(request):
             login(request, user)
             
             # Redirect to email verification page
-            return redirect('email_verification_required')
+            return redirect('accounts:email_verification_required')
     else:
         form = UserRegisterForm()
     return render(request, 'accounts/auth.html', {'form': form, 'active_tab': 'register'})
@@ -86,7 +88,7 @@ def auth(request):
                 if not profile.email_verified and ENVIRONMENT != 'local':
                     # Login the user but redirect to verification page
                     login(request, user)
-                    return redirect('email_verification_required')
+                    return redirect('accounts:email_verification_required')
                 
                 login(request, user)
                 
@@ -102,7 +104,7 @@ def auth(request):
                 # If both OpenAI and Anthropic keys are missing, redirect to integrations
                 if openai_key_missing and anthropic_key_missing:
                     messages.success(request, 'Please set up OpenAI or Anthropic API keys to get started.')
-                    return redirect('settings')
+                    return redirect('accounts:integrations')
                 
                 # Redirect to the chat page or next parameter if provided
                 next_url = request.GET.get('next')
@@ -123,7 +125,7 @@ def auth(request):
                 login(request, user)
                 
                 # Redirect to email verification page
-                return redirect('email_verification_required')
+                return redirect('accounts:email_verification_required')
     
     # Render the template with both forms
     context = {
@@ -175,7 +177,7 @@ def profile(request):
 #     github_auth_url = None
 #     if (not github_connected and not github_missing_config) or show_github:
 #         GITHUB_CLIENT_ID = settings.GITHUB_CLIENT_ID
-#         GITHUB_REDIRECT_URI = build_secure_absolute_uri(request, reverse('github_callback'))
+#         GITHUB_REDIRECT_URI = build_secure_absolute_uri(request, reverse('accounts:github_callback'))
 #         state = str(uuid.uuid4())
 #         request.session['github_oauth_state'] = state
 #         params = {
@@ -237,12 +239,12 @@ def save_api_key(request, provider):
     """Handle saving API keys for various providers"""
     if request.method != 'POST':
         messages.error(request, 'Invalid request')
-        return redirect('settings')
+        return redirect('accounts:integrations')
     
     api_key = request.POST.get('api_key', '').strip()
     if not api_key:
         messages.error(request, 'API key cannot be empty')
-        return redirect('settings')
+        return redirect('accounts:integrations')
     
     # Handle Linear separately as it's in ExternalServicesAPIKeys
     if provider == 'linear':
@@ -264,20 +266,20 @@ def save_api_key(request, provider):
             llm_keys.google_api_key = api_key
         else:
             messages.error(request, 'Invalid provider')
-            return redirect('settings')
+            return redirect('accounts:integrations')
         
         # Save the LLM keys
         llm_keys.save()
     
     messages.success(request, f'{provider.capitalize()} API key saved successfully.')
-    return redirect('settings')
+    return redirect('accounts:integrations')
 
 @login_required
 def disconnect_api_key(request, provider):
     """Handle disconnecting API keys for various providers"""
     if request.method != 'POST':
         messages.error(request, 'Invalid request')
-        return redirect('settings')
+        return redirect('accounts:integrations')
     
     # Handle Linear separately as it's in ExternalServicesAPIKeys
     if provider == 'linear':
@@ -287,14 +289,14 @@ def disconnect_api_key(request, provider):
             external_keys.save()
         except ExternalServicesAPIKeys.DoesNotExist:
             messages.error(request, 'No Linear API key found')
-            return redirect('settings')
+            return redirect('accounts:integrations')
     else:
         # Get LLMApiKeys for user
         try:
             llm_keys = LLMApiKeys.objects.get(user=request.user)
         except LLMApiKeys.DoesNotExist:
             messages.error(request, 'No API keys found')
-            return redirect('settings')
+            return redirect('accounts:integrations')
         
         # Update the appropriate API key based on provider
         if provider == 'openai':
@@ -307,13 +309,13 @@ def disconnect_api_key(request, provider):
             llm_keys.google_api_key = ''
         else:
             messages.error(request, 'Invalid provider')
-            return redirect('settings')
+            return redirect('accounts:integrations')
         
         # Save the LLM keys
         llm_keys.save()
     
     messages.success(request, f'{provider.capitalize()} connection removed successfully.')
-    return redirect('settings')
+    return redirect('accounts:integrations')
 
 # @login_required
 # def user_settings(request):
@@ -334,7 +336,7 @@ def disconnect_api_key(request, provider):
     
 #     # Create GitHub redirect URI
 #     global GITHUB_REDIRECT_URI
-#     GITHUB_REDIRECT_URI = build_secure_absolute_uri(request, reverse('github_callback'))
+#     GITHUB_REDIRECT_URI = build_secure_absolute_uri(request, reverse('accounts:github_callback'))
     
 #     # GitHub OAuth setup
 #     github_auth_url = None
@@ -354,7 +356,7 @@ def disconnect_api_key(request, provider):
 #         if has_github_token:
 #             github_token.delete()
 #             messages.success(request, 'GitHub connection removed successfully.')
-#             return redirect('settings')
+#             return redirect('accounts:integrations')
     
 #     context = {
 #         'has_github_token': has_github_token,
@@ -378,11 +380,11 @@ def github_callback(request):
     # Validate state to prevent CSRF
     if not state or state != stored_state:
         messages.error(request, 'Invalid OAuth state. Please try connecting to GitHub again.')
-        return redirect('settings')
+        return redirect('accounts:integrations')
     
     if not code:
         messages.error(request, 'No authorization code received from GitHub.')
-        return redirect('settings')
+        return redirect('accounts:integrations')
     
     # Exchange code for access token
     response = requests.post(
@@ -399,20 +401,20 @@ def github_callback(request):
     # Check if token exchange was successful
     if response.status_code != 200:
         messages.error(request, 'Failed to authenticate with GitHub. Please try again.')
-        return redirect('settings')
+        return redirect('accounts:integrations')
     
     # Parse token response
     token_data = response.json()
     if 'error' in token_data:
         messages.error(request, f"GitHub authentication error: {token_data.get('error_description', 'Unknown error')}")
-        return redirect('settings')
+        return redirect('accounts:integrations')
     
     access_token = token_data.get('access_token')
     scope = token_data.get('scope', '')
     
     if not access_token:
         messages.error(request, 'Failed to get access token from GitHub.')
-        return redirect('settings')
+        return redirect('accounts:integrations')
     
     # Get GitHub user info
     user_response = requests.get(
@@ -425,7 +427,7 @@ def github_callback(request):
     
     if user_response.status_code != 200:
         messages.error(request, 'Failed to get user info from GitHub.')
-        return redirect('settings')
+        return redirect('accounts:integrations')
     
     github_user_data = user_response.json()
     
@@ -449,7 +451,7 @@ def github_callback(request):
         )
     
     messages.success(request, 'Successfully connected to GitHub!')
-    return redirect('settings')
+    return redirect('accounts:integrations')
 
 @login_required
 def integrations(request):
@@ -483,7 +485,7 @@ def integrations(request):
     github_auth_url = None
     if not github_connected and not github_missing_config:
         global GITHUB_REDIRECT_URI
-        GITHUB_REDIRECT_URI = build_secure_absolute_uri(request, reverse('github_callback'))
+        GITHUB_REDIRECT_URI = build_secure_absolute_uri(request, reverse('accounts:github_callback'))
         state = str(uuid.uuid4())
         request.session['github_oauth_state'] = state
         params = {
@@ -500,7 +502,7 @@ def integrations(request):
             try:
                 GitHubToken.objects.filter(user=request.user).delete()
                 messages.success(request, 'GitHub connection removed successfully.')
-                return redirect('settings')
+                return redirect('accounts:integrations')
             except Exception as e:
                 messages.error(request, f'Error disconnecting GitHub: {str(e)}')
     
@@ -524,18 +526,38 @@ def integrations(request):
     except ExternalServicesAPIKeys.DoesNotExist:
         linear_connected = False
     
+    # Get user's organization role if in an organization
+    current_org_role = None
+    if request.user.profile.current_organization:
+        current_org_role = request.user.profile.current_organization.get_user_role(request.user)
+
     # Get user's credit and token usage information
     user_credit, created = UserCredit.objects.get_or_create(user=request.user)
     
-    # Calculate usage percentages
+    # Calculate usage percentages and display tokens
     if user_credit.is_free_tier:
         total_limit = 100000  # 100K for free tier
         tokens_used = user_credit.total_tokens_used
         usage_percentage = min((tokens_used / total_limit * 100), 100) if total_limit > 0 else 0
     else:
-        total_limit = 300000  # 300K monthly for pro tier
-        tokens_used = user_credit.monthly_tokens_used
-        usage_percentage = min((tokens_used / total_limit * 100), 100) if total_limit > 0 else 0
+        # Pro tier: Show monthly allocation + additional credits as total limit
+        monthly_limit = 300000
+        additional_credits = max(0, user_credit.credits)
+        total_limit = monthly_limit + additional_credits
+        
+        # For "Used" display: Show actual tokens consumed (from paid_tokens_used)
+        # This represents actual token consumption regardless of source
+        tokens_used = user_credit.paid_tokens_used
+        
+        # For usage percentage: Only count usage against monthly allocation (not additional credits)  
+        monthly_usage_percent = min((user_credit.monthly_tokens_used / monthly_limit * 100), 100) if monthly_limit > 0 else 0
+        usage_percentage = monthly_usage_percent
+    
+    # Calculate free tokens remaining for Pro tier display
+    free_tokens_remaining = 0
+    if not user_credit.is_free_tier:
+        free_limit = 100000
+        free_tokens_remaining = max(0, free_limit - user_credit.free_tokens_used)
     
     context = {
         'github_connected': github_connected,
@@ -548,6 +570,9 @@ def integrations(request):
         'xai_connected': xai_connected,
         'google_connected': google_connected,
         'linear_connected': linear_connected,
+        'current_org_role': current_org_role,
+        # Project collaboration setting
+        'allow_project_invitations': request.user.profile.allow_project_invitations,
         # Token usage data
         'user_credit': user_credit,
         'tokens_used': tokens_used,
@@ -558,6 +583,7 @@ def integrations(request):
         'subscription_tier': user_credit.subscription_tier,
         'free_tokens_used': user_credit.free_tokens_used,
         'paid_tokens_used': user_credit.paid_tokens_used,
+        'free_tokens_remaining': free_tokens_remaining,
     }
     
     return render(request, 'accounts/settings_new.html', context)
@@ -632,7 +658,7 @@ def email_verification_required(request):
         # If both OpenAI and Anthropic keys are missing, redirect to integrations
         if openai_key_missing and anthropic_key_missing:
             messages.success(request, 'Please set up OpenAI or Anthropic API keys to get started.')
-            return redirect('settings')
+            return redirect('accounts:integrations')
         
         return redirect('projects:project_list')
     
@@ -659,9 +685,9 @@ def resend_verification_email(request):
         else:
             messages.error(request, 'Failed to send verification email. Please try again later.')
         
-        return redirect('email_verification_required')
+        return redirect('accounts:email_verification_required')
     
-    return redirect('email_verification_required')
+    return redirect('accounts:email_verification_required')
 
 
 def verify_email(request, token):
@@ -701,7 +727,7 @@ def verify_email(request, token):
             # If both keys are missing, redirect to integrations
             if openai_key_missing and anthropic_key_missing:
                 messages.success(request, 'Please set up OpenAI or Anthropic API keys to get started.')
-                return redirect('settings')
+                return redirect('accounts:integrations')
             
             return redirect('projects:project_list')
         else:
@@ -768,7 +794,7 @@ def password_reset(request):
                         email_sent = True
             
             # Always redirect to done page (don't reveal if email exists)
-            return redirect('password_reset_done')
+            return redirect('accounts:password_reset_done')
     else:
         form = PasswordResetForm()
     
@@ -779,11 +805,11 @@ def google_login(request):
     """Initiate Google OAuth flow"""
     if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
         messages.error(request, 'Google OAuth is not configured. Please contact the administrator.')
-        return redirect('auth')
+        return redirect('accounts:auth')
     
     # Build redirect URI
     global GOOGLE_REDIRECT_URI
-    GOOGLE_REDIRECT_URI = build_secure_absolute_uri(request, reverse('google_callback'))
+    GOOGLE_REDIRECT_URI = build_secure_absolute_uri(request, reverse('accounts:google_callback'))
     
     # Generate state for CSRF protection
     state = str(uuid.uuid4())
@@ -819,11 +845,11 @@ def google_callback(request):
     # Validate state to prevent CSRF
     if not state or state != stored_state:
         messages.error(request, 'Invalid OAuth state. Please try connecting to Google again.')
-        return redirect('auth')
+        return redirect('accounts:auth')
     
     if not code:
         messages.error(request, 'No authorization code received from Google.')
-        return redirect('auth')
+        return redirect('accounts:auth')
     
     # Exchange code for access token
     token_url = 'https://oauth2.googleapis.com/token'
@@ -842,13 +868,13 @@ def google_callback(request):
         
         if 'error' in token_response:
             messages.error(request, f"Google authentication error: {token_response.get('error_description', 'Unknown error')}")
-            return redirect('auth')
+            return redirect('accounts:auth')
         
         access_token = token_response.get('access_token')
         
         if not access_token:
             messages.error(request, 'Failed to get access token from Google.')
-            return redirect('auth')
+            return redirect('accounts:auth')
         
         # Get user info from Google
         userinfo_url = 'https://www.googleapis.com/oauth2/v2/userinfo'
@@ -862,7 +888,7 @@ def google_callback(request):
         email = user_data.get('email')
         if not email:
             messages.error(request, 'Could not retrieve email from Google.')
-            return redirect('auth')
+            return redirect('accounts:auth')
         
         # Check if user exists
         is_new_user = False
@@ -916,17 +942,17 @@ def google_callback(request):
         # If both keys are missing, redirect to integrations (for both new and existing users)
         if openai_key_missing and anthropic_key_missing:
             messages.info(request, 'Please set up OpenAI or Anthropic API keys to get started.')
-            return redirect('settings')
+            return redirect('accounts:integrations')
         
         # Otherwise redirect to projects page (matching the regular registration flow)
         return redirect('projects:project_list')
         
     except requests.exceptions.RequestException as e:
         messages.error(request, f'Error communicating with Google: {str(e)}')
-        return redirect('auth')
+        return redirect('accounts:auth')
     except Exception as e:
         messages.error(request, f'An unexpected error occurred: {str(e)}')
-        return redirect('auth')
+        return redirect('accounts:auth')
 
 
 # API Endpoints
@@ -1112,3 +1138,448 @@ def get_agent_settings(request):
 
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=400)
+
+
+# Organization Views
+
+@login_required
+def create_organization(request):
+    """Create a new organization"""
+    if request.method == 'POST':
+        form = OrganizationCreationForm(request.POST, request.FILES)
+        if form.is_valid():
+            organization = form.save(commit=False)
+            organization.owner = request.user
+            organization.save()
+            
+            # Create organization credit instance
+            OrganizationCredit.objects.get_or_create(organization=organization)
+            
+            messages.success(request, f'Organization "{organization.name}" created successfully!')
+            return redirect('accounts:organization_dashboard', slug=organization.slug)
+    else:
+        form = OrganizationCreationForm()
+    
+    context = {
+        'form': form,
+        'page_title': 'Create Organization',
+        'form_action': 'Create Organization'
+    }
+    return render(request, 'accounts/organization_form.html', context)
+
+
+@login_required
+def organization_dashboard(request, slug):
+    """Organization dashboard showing members, billing, and settings"""
+    organization = get_object_or_404(Organization, slug=slug)
+    
+    # Check if user is a member
+    if not organization.is_member(request.user):
+        raise PermissionDenied("You are not a member of this organization.")
+    
+    # Get user's role in the organization
+    user_role = organization.get_user_role(request.user)
+    
+    # Get organization credit info
+    org_credit, created = OrganizationCredit.objects.get_or_create(organization=organization)
+    if created:
+        # Update seat count on first access
+        org_credit.update_seat_count()
+    
+    # Get members and invitations
+    memberships = organization.memberships.filter(status='active').select_related('user')
+    pending_invitations = organization.invitations.filter(status='pending').order_by('-created_at')
+    recent_transactions = organization.transactions.all()[:5]
+    
+    # Calculate usage statistics
+    if org_credit.is_free_tier:
+        total_limit = 100000
+        tokens_used = org_credit.total_tokens_used
+        usage_percentage = min((tokens_used / total_limit * 100), 100) if total_limit > 0 else 0
+    else:
+        total_limit = 300000 * org_credit.seat_count
+        tokens_used = org_credit.monthly_tokens_used
+        usage_percentage = min((tokens_used / total_limit * 100), 100) if total_limit > 0 else 0
+    
+    context = {
+        'organization': organization,
+        'user_role': user_role,
+        'org_credit': org_credit,
+        'memberships': memberships,
+        'pending_invitations': pending_invitations,
+        'recent_transactions': recent_transactions,
+        'can_manage_members': user_role in ['owner', 'admin'],
+        'can_manage_billing': user_role == 'owner',
+        'can_invite_members': (
+            user_role in ['owner', 'admin'] or 
+            (user_role == 'member' and organization.allow_member_invites)
+        ),
+        'tokens_used': tokens_used,
+        'tokens_remaining': org_credit.get_remaining_tokens(),
+        'total_limit': total_limit,
+        'usage_percentage': round(usage_percentage, 1),
+        'is_free_tier': org_credit.is_free_tier,
+        'monthly_cost': org_credit.monthly_seat_cost,
+    }
+    
+    return render(request, 'accounts/organization_dashboard.html', context)
+
+
+@login_required
+def organization_settings(request, slug):
+    """Organization settings page"""
+    organization = get_object_or_404(Organization, slug=slug)
+    
+    # Check if user can manage organization settings
+    user_role = organization.get_user_role(request.user)
+    if user_role not in ['owner', 'admin']:
+        raise PermissionDenied("You don't have permission to manage organization settings.")
+    
+    if request.method == 'POST':
+        form = OrganizationUpdateForm(request.POST, request.FILES, instance=organization)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Organization settings updated successfully!')
+            return redirect('accounts:organization_dashboard', slug=organization.slug)
+    else:
+        form = OrganizationUpdateForm(instance=organization)
+    
+    context = {
+        'form': form,
+        'organization': organization,
+        'user_role': user_role,
+        'page_title': 'Organization Settings',
+        'form_action': 'Update Settings'
+    }
+    
+    return render(request, 'accounts/organization_form.html', context)
+
+
+@login_required
+def invite_member(request, slug):
+    """Invite new member to organization"""
+    organization = get_object_or_404(Organization, slug=slug)
+    
+    # Check if user can invite members
+    user_role = organization.get_user_role(request.user)
+    can_invite = (
+        user_role in ['owner', 'admin'] or 
+        (user_role == 'member' and organization.allow_member_invites)
+    )
+    
+    if not can_invite:
+        raise PermissionDenied("You don't have permission to invite members.")
+    
+    if request.method == 'POST':
+        form = OrganizationInvitationForm(
+            request.POST, 
+            organization=organization, 
+            inviter=request.user
+        )
+        if form.is_valid():
+            email = form.cleaned_data['email']
+            role = form.cleaned_data['role']
+            message = form.cleaned_data['message']
+            
+            # Create invitation
+            invitation = OrganizationInvitation.create_invitation(
+                organization=organization,
+                inviter=request.user,
+                email=email,
+                role=role
+            )
+            
+            # Send invitation email
+            send_invitation_email(request, invitation, message)
+            
+            messages.success(request, f'Invitation sent to {email}!')
+            return redirect('accounts:organization_dashboard', slug=organization.slug)
+    else:
+        form = OrganizationInvitationForm(
+            organization=organization, 
+            inviter=request.user
+        )
+    
+    context = {
+        'form': form,
+        'organization': organization,
+        'user_role': user_role,
+        'page_title': 'Invite Member',
+        'form_action': 'Send Invitation'
+    }
+    
+    return render(request, 'accounts/invite_member.html', context)
+
+
+def accept_invitation(request, token):
+    """Accept organization invitation"""
+    try:
+        invitation = OrganizationInvitation.objects.get(token=token)
+        
+        if not invitation.is_valid():
+            messages.error(request, 'This invitation has expired or is no longer valid.')
+            return redirect('accounts:auth')
+        
+        # If user is not logged in, redirect to login with invitation token
+        if not request.user.is_authenticated:
+            return redirect(f'/auth/?invitation_token={token}')
+        
+        # Check if user's email matches invitation
+        if request.user.email.lower() != invitation.email.lower():
+            messages.error(request, 'Your email does not match the invitation email.')
+            return redirect('accounts:auth')
+        
+        # Accept the invitation
+        try:
+            membership = invitation.accept(request.user)
+            
+            # Update organization seat count and credits
+            org_credit, created = OrganizationCredit.objects.get_or_create(
+                organization=invitation.organization
+            )
+            org_credit.update_seat_count()
+            
+            messages.success(request, f'Successfully joined {invitation.organization.name}!')
+            return redirect('accounts:organization_dashboard', slug=invitation.organization.slug)
+            
+        except ValueError as e:
+            messages.error(request, str(e))
+            return redirect('accounts:auth')
+        
+    except OrganizationInvitation.DoesNotExist:
+        messages.error(request, 'Invalid invitation link.')
+        return redirect('accounts:auth')
+
+
+@login_required
+def remove_member(request, slug, user_id):
+    """Remove member from organization"""
+    organization = get_object_or_404(Organization, slug=slug)
+    member_user = get_object_or_404(User, id=user_id)
+    
+    # Check permissions
+    user_role = organization.get_user_role(request.user)
+    if user_role not in ['owner', 'admin']:
+        raise PermissionDenied("You don't have permission to remove members.")
+    
+    # Get the membership
+    try:
+        membership = OrganizationMembership.objects.get(
+            organization=organization, 
+            user=member_user, 
+            status='active'
+        )
+    except OrganizationMembership.DoesNotExist:
+        messages.error(request, 'User is not a member of this organization.')
+        return redirect('accounts:organization_dashboard', slug=slug)
+    
+    # Prevent removing the owner
+    if membership.role == 'owner':
+        messages.error(request, 'Cannot remove the organization owner.')
+        return redirect('accounts:organization_dashboard', slug=slug)
+    
+    # Prevent non-owners from removing admins
+    if user_role == 'admin' and membership.role == 'admin':
+        messages.error(request, 'Admins cannot remove other admins.')
+        return redirect('accounts:organization_dashboard', slug=slug)
+    
+    if request.method == 'POST':
+        # Remove the member
+        membership.status = 'inactive'
+        membership.save()
+        
+        # Update seat count
+        org_credit, created = OrganizationCredit.objects.get_or_create(organization=organization)
+        org_credit.update_seat_count()
+        
+        # Clear current organization if user was using it
+        if member_user.profile.current_organization == organization:
+            member_user.profile.current_organization = None
+            member_user.profile.save()
+        
+        messages.success(request, f'{member_user.email} has been removed from the organization.')
+    
+    return redirect('accounts:organization_dashboard', slug=slug)
+
+
+@login_required
+def update_member_role(request, slug, user_id):
+    """Update member role in organization"""
+    organization = get_object_or_404(Organization, slug=slug)
+    member_user = get_object_or_404(User, id=user_id)
+    
+    # Check permissions - only owners can change roles
+    user_role = organization.get_user_role(request.user)
+    if user_role != 'owner':
+        raise PermissionDenied("Only organization owners can change member roles.")
+    
+    try:
+        membership = OrganizationMembership.objects.get(
+            organization=organization,
+            user=member_user,
+            status='active'
+        )
+    except OrganizationMembership.DoesNotExist:
+        messages.error(request, 'User is not a member of this organization.')
+        return redirect('accounts:organization_dashboard', slug=slug)
+    
+    if request.method == 'POST':
+        form = MembershipUpdateForm(request.POST, instance=membership, current_user=request.user)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f'Role updated for {member_user.email}.')
+            return redirect('accounts:organization_dashboard', slug=slug)
+    
+    return redirect('accounts:organization_dashboard', slug=slug)
+
+
+@login_required
+def switch_organization(request):
+    """Switch organization context"""
+    if request.method == 'POST':
+        form = OrganizationSwitchForm(request.POST, user=request.user)
+        if form.is_valid():
+            organization = form.cleaned_data['organization']
+            current_org = request.user.profile.current_organization
+            
+            # Only show message if actually switching
+            if organization != current_org:
+                # Switch to the selected organization
+                request.user.profile.switch_organization(organization)
+                
+                if organization:
+                    messages.success(request, f'Switched to {organization.name}.')
+                else:
+                    messages.success(request, 'Switched to personal space.')
+            
+            # Redirect to the page they came from or dashboard
+            next_url = request.POST.get('next') or request.META.get('HTTP_REFERER')
+            if next_url:
+                return redirect(next_url)
+            return redirect('projects:project_list')
+    
+    return redirect('projects:project_list')
+
+
+@login_required
+def organization_list(request):
+    """List user's organizations"""
+    # Get organizations where user is a member
+    organizations = Organization.objects.filter(
+        memberships__user=request.user,
+        memberships__status='active',
+        is_active=True
+    ).select_related().order_by('name')
+    
+    # Add role and member count to each organization
+    org_data = []
+    for org in organizations:
+        org_data.append({
+            'organization': org,
+            'role': org.get_user_role(request.user),
+            'member_count': org.member_count,
+            'is_current': request.user.profile.current_organization == org
+        })
+    
+    context = {
+        'organizations': org_data,
+        'current_organization': request.user.profile.current_organization,
+    }
+    
+    return render(request, 'accounts/organization_list.html', context)
+
+
+def send_invitation_email(request, invitation, custom_message=""):
+    """Send invitation email to new member"""
+    try:
+        # Build invitation URL
+        invitation_url = request.build_absolute_uri(
+            reverse('accounts:accept_invitation', kwargs={'token': invitation.token})
+        )
+        
+        # Email content
+        subject = f'You\'re invited to join {invitation.organization.name} on LFG'
+        
+        context = {
+            'invitation': invitation,
+            'invitation_url': invitation_url,
+            'custom_message': custom_message,
+            'inviter_name': invitation.inviter.get_full_name() or invitation.inviter.username,
+        }
+        
+        try:
+            html_message = render_to_string('accounts/invitation_email.html', context)
+        except:
+            html_message = None
+        
+        plain_message = f"""
+Hi!
+
+{invitation.inviter.get_full_name() or invitation.inviter.username} has invited you to join {invitation.organization.name} on LFG as a {invitation.get_role_display()}.
+
+{custom_message if custom_message else ''}
+
+Click here to accept the invitation:
+{invitation_url}
+
+This invitation will expire in 7 days.
+
+Best regards,
+The LFG Team
+"""
+        
+        # Send email
+        send_mail(
+            subject=subject,
+            message=plain_message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[invitation.email],
+            html_message=html_message,
+            fail_silently=False,
+        )
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error sending invitation email: {e}", extra={
+            'easylogs_metadata': {
+                'invitation_id': invitation.id,
+                'email': invitation.email,
+                'error_type': type(e).__name__
+            }
+        })
+        return False
+
+
+@login_required
+def update_project_collaboration_setting(request):
+    """Update user's project collaboration setting"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    try:
+        import json
+        data = json.loads(request.body)
+        allow_project_invitations = data.get('allow_project_invitations', True)
+        
+        # Update the user's profile setting
+        profile = request.user.profile
+        profile.allow_project_invitations = bool(allow_project_invitations)
+        profile.save(update_fields=['allow_project_invitations'])
+        
+        logger.info(f"Updated project collaboration setting for user {request.user.username}: {allow_project_invitations}")
+        
+        return JsonResponse({
+            'success': True,
+            'allow_project_invitations': profile.allow_project_invitations,
+            'message': 'Project collaboration setting updated successfully'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error updating project collaboration setting: {e}", extra={
+            'easylogs_metadata': {
+                'user_id': request.user.id,
+                'error_type': type(e).__name__
+            }
+        })
+        return JsonResponse({'error': 'Failed to update setting'}, status=500)

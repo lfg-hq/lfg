@@ -31,19 +31,19 @@ ALLOWED_HOSTS = [
     'dev-rocks.lfg.run'
 ]
 
-CSRF_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = False
 
 # HTTPS/SSL Settings for production
 # Apply these settings when running on production domains
-if os.environ.get('ENVIRONMENT') == 'production':
-    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-    USE_X_FORWARDED_HOST = True
-    USE_X_FORWARDED_PORT = True
+# if os.environ.get('ENVIRONMENT') == 'production':
+#     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+#     USE_X_FORWARDED_HOST = True
+#     USE_X_FORWARDED_PORT = True
     
-    # Only enable these if not in DEBUG mode
-    if not DEBUG:
-        SECURE_SSL_REDIRECT = True
-        SESSION_COOKIE_SECURE = True
+#     # Only enable these if not in DEBUG mode
+#     if not DEBUG:
+#         SECURE_SSL_REDIRECT = True
+#         SESSION_COOKIE_SECURE = True
 
 # Application definition
 INSTALLED_APPS = [

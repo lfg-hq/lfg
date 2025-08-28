@@ -218,11 +218,87 @@
 
 /* Token display specific styling */
 .nav-link.token-display {
-    cursor: default !important;
+    cursor: pointer !important;
     background: transparent !important;
     border: none !important;
-    pointer-events: none !important;
+    pointer-events: auto !important;
     margin: 5px !important;
+    position: relative !important;
+}
+
+/* Tooltip styling for token display */
+.nav-link.token-display[data-tooltip] {
+    position: relative;
+}
+
+/* Custom tooltip with smaller font and adjusted positioning */
+.nav-link.token-display::before {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(1%);
+    background: rgba(0, 0, 0, 0.9);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px !important;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s, visibility 0.2s;
+    z-index: 1000;
+    margin-bottom: 5px;
+    pointer-events: none;
+}
+
+.nav-link.token-display:hover::before {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Red indicator for blocked access */
+.nav-link.token-display.access-blocked {
+    border-left: 3px solid #ef4444 !important;
+    background: rgba(239, 68, 68, 0.05) !important;
+}
+
+.nav-link.token-display.access-blocked i {
+    color: #ef4444 !important;
+}
+
+.nav-link.token-display.access-blocked #daily-tokens,
+.nav-link.token-display.access-blocked .token-label {
+    color: #ef4444 !important;
+}
+
+/* Token exhausted badge */
+.token-exhausted-badge {
+    position: absolute !important;
+    top: -5px !important;
+    right: -5px !important;
+    width: 16px !important;
+    height: 16px !important;
+    background: #ef4444 !important;
+    border-radius: 50% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 8px !important;
+    color: white !important;
+    animation: pulse-alert 1s infinite !important;
+    z-index: 10 !important;
+}
+
+@keyframes pulse-alert {
+    0%, 100% { 
+        transform: scale(1) !important; 
+        opacity: 1 !important;
+    }
+    50% { 
+        transform: scale(1.1) !important; 
+        opacity: 0.8 !important;
+    }
 }
 
 .nav-link.token-display:hover {

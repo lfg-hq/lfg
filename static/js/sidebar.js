@@ -153,6 +153,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.success) {
                 const tokenElement = document.getElementById('daily-tokens');
                 const minimizedTokenElement = document.getElementById('minimized-tokens');
+                const tokenDisplay = document.querySelector('.nav-link.token-display');
                 
                 if (tokenElement || minimizedTokenElement) {
                     const formattedTokens = formatTokenCount(data.tokens);
@@ -162,6 +163,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     if (minimizedTokenElement) {
                         minimizedTokenElement.textContent = formattedTokens;
+                    }
+                    
+                    // Check if access is blocked (no remaining tokens)
+                    if (tokenDisplay && data.remaining_tokens !== undefined) {
+                        if (data.remaining_tokens <= 0) {
+                            tokenDisplay.classList.add('access-blocked');
+                        } else {
+                            tokenDisplay.classList.remove('access-blocked');
+                        }
                     }
                 }
             }

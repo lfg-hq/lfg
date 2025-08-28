@@ -262,6 +262,218 @@
             max-width: 320px !important;
             margin-left: auto !important;
         }
+        
+        /* Project Header Styles */
+        .project-header {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.015) 0%, rgba(59, 130, 246, 0.01) 50%, transparent 100%);
+            backdrop-filter: blur(2px);
+            border-bottom: 1px solid rgba(139, 92, 246, 0.03);
+            padding: 16px 24px;
+            margin: 0;
+        }
+        
+        .project-header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .project-name {
+            font-size: 1.1rem;
+            font-weight: 500;
+            color: #f3f4f6;
+            margin: 0;
+            text-align: left;
+            opacity: 0.95;
+            letter-spacing: -0.025em;
+        }
+
+        .project-name-container {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 4px;
+            transition: background-color 0.2s ease;
+        }
+
+        .project-name-container:hover {
+            background-color: rgba(139, 92, 246, 0.05);
+        }
+
+        .project-name-edit-icon {
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            color: #a78bfa;
+            font-size: 0.9rem;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 2px;
+        }
+
+        .project-name-edit-icon:hover {
+            background-color: rgba(139, 92, 246, 0.1);
+        }
+
+        .project-name-container:hover .project-name-edit-icon {
+            opacity: 1;
+        }
+
+        /* Project Name Modal Styles */
+        .project-modal {
+            display: none;
+            position: fixed;
+            z-index: 10001;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            animation: fadeIn 0.3s ease;
+        }
+
+        .project-modal-content {
+            background-color: #1f2937;
+            margin: 15% auto;
+            border: 1px solid #374151;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            animation: slideIn 0.3s ease;
+        }
+
+        .project-modal-header {
+            padding: 20px 24px 0 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .project-modal-header h3 {
+            margin: 0;
+            color: #f3f4f6;
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .project-modal-close {
+            background: none;
+            border: none;
+            color: #9ca3af;
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+        }
+
+        .project-modal-close:hover {
+            background-color: rgba(239, 68, 68, 0.1);
+            color: #ef4444;
+        }
+
+        .project-modal-body {
+            padding: 20px 24px;
+        }
+
+        .project-modal-input {
+            width: 100%;
+            padding: 12px 16px;
+            background: #111827;
+            border: 1px solid #374151;
+            border-radius: 8px;
+            color: #f3f4f6;
+            font-size: 1rem;
+            font-weight: 500;
+            outline: none;
+            transition: border-color 0.2s ease;
+            box-sizing: border-box;
+        }
+
+        .project-modal-input:focus {
+            border-color: #a78bfa;
+            box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.1);
+        }
+
+        .project-modal-footer {
+            padding: 0 24px 24px 24px;
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+
+        .project-modal-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 0.875rem;
+        }
+
+        .project-modal-btn-cancel {
+            background: #374151;
+            color: #f3f4f6;
+        }
+
+        .project-modal-btn-cancel:hover {
+            background: #4b5563;
+        }
+
+        .project-modal-btn-save {
+            background: #a78bfa;
+            color: #1f2937;
+        }
+
+        .project-modal-btn-save:hover {
+            background: #c4b5fd;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideIn {
+            from { 
+                transform: translateY(-50px);
+                opacity: 0;
+            }
+            to { 
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        
+        /* Artifacts Button in Header */
+        .project-header .artifacts-button {
+            background: transparent;
+            border: none;
+            color: #a78bfa;
+            padding: 0;
+            font-size: 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            height: auto;
+        }
+        
+        .project-header .artifacts-button:hover {
+            color: #c4b5fd;
+        }
+        
+        .project-header .artifacts-button.active {
+            color: #ddd6fe;
+        }
     </style>
 </head>
 <body data-user-authenticated="{% if user.is_authenticated %}true{% else %}false{% endif %}" 
@@ -277,6 +489,19 @@
         {% include 'includes/sidebar.html' with show_conversations=True sidebar_minimized=sidebar_minimized %}
         
         <div class="chat-container">
+            <!-- Project Header -->
+            <div class="project-header">
+                <div class="project-header-content">
+                    <div class="project-name-container" id="project-name-container">
+                        <h1 class="project-name" id="project-name-display">{{ project.name|default:"LFG Project" }}</h1>
+                        <i class="fas fa-pencil-alt project-name-edit-icon" id="project-name-edit-icon"></i>
+                    </div>
+                    <button id="artifacts-button" class="artifacts-button" title="Toggle Artifacts Panel">
+                        <i class="fas fa-cube"></i>
+                    </button>
+                </div>
+            </div>
+            
             <div class="chat-messages" id="chat-messages">
                 <!-- Messages will appear here -->
                 <div class="message-container">
@@ -399,6 +624,23 @@
 
     {% include 'chat/artifacts.html' %}
     
+    <!-- Project Name Edit Modal -->
+    <div id="project-name-modal" class="project-modal">
+        <div class="project-modal-content">
+            <div class="project-modal-header">
+                <h3>Edit Project Name</h3>
+                <button class="project-modal-close" id="project-modal-close">&times;</button>
+            </div>
+            <div class="project-modal-body">
+                <input type="text" id="project-name-modal-input" class="project-modal-input" placeholder="Enter project name..." value="{{ project.name|default:'LFG Project' }}">
+            </div>
+            <div class="project-modal-footer">
+                <button id="project-name-cancel" class="project-modal-btn project-modal-btn-cancel">Cancel</button>
+                <button id="project-name-save" class="project-modal-btn project-modal-btn-save">Save</button>
+            </div>
+        </div>
+    </div>
+    
     <!-- Upgrade Popup Modal -->
     {% if show_upgrade_popup %}
     <div id="upgrade-popup" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); display: flex; align-items: center; justify-content: center; z-index: 10000;">
@@ -509,9 +751,146 @@
     
     <script>
         // Pass user subscription info to JavaScript
-        window.isFreeTier = {{ is_free_tier|lower }};
-        window.remainingTokens = {{ remaining_tokens|default:0 }};
-        window.totalTokensLimit = {{ total_tokens_limit|default:0 }};
+        window.isFreeTier = {% if is_free_tier %}true{% else %}false{% endif %};
+        window.remainingTokens = {% if remaining_tokens %}{{ remaining_tokens }}{% else %}0{% endif %};
+        window.totalTokensLimit = {% if total_tokens_limit %}{{ total_tokens_limit }}{% else %}0{% endif %};
+        
+        // Project name modal functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const editIcon = document.getElementById('project-name-edit-icon');
+            const container = document.getElementById('project-name-container');
+            const modal = document.getElementById('project-name-modal');
+            const modalInput = document.getElementById('project-name-modal-input');
+            const modalClose = document.getElementById('project-modal-close');
+            const cancelBtn = document.getElementById('project-name-cancel');
+            const saveBtn = document.getElementById('project-name-save');
+            const projectNameDisplay = document.getElementById('project-name-display');
+            
+            if (!modal || !modalInput || !projectNameDisplay) {
+                return; // Exit if required elements not found
+            }
+            
+            let originalName = projectNameDisplay.textContent.trim();
+            
+            // Open modal when clicking edit icon or container
+            function openModal() {
+                modalInput.value = originalName;
+                modal.style.display = 'block';
+                setTimeout(() => {
+                    modalInput.focus();
+                    modalInput.select();
+                }, 100);
+            }
+            
+            // Close modal
+            function closeModal() {
+                modal.style.display = 'none';
+                modalInput.value = originalName; // Reset input value
+            }
+            
+            // Save project name
+            function saveProjectName() {
+                const newName = modalInput.value.trim();
+                if (!newName) {
+                    alert('Project name cannot be empty');
+                    return;
+                }
+                
+                if (newName === originalName) {
+                    closeModal();
+                    return;
+                }
+                
+                // Disable save button to prevent double-clicking
+                saveBtn.disabled = true;
+                saveBtn.textContent = 'Saving...';
+                
+                // Send update to server
+                fetch('{% url "projects:update_project_name" %}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                    },
+                    body: JSON.stringify({
+                        project_id: {% if project.id %}{{ project.id }}{% else %}null{% endif %},
+                        name: newName
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Update display
+                        projectNameDisplay.textContent = newName;
+                        originalName = newName;
+                        closeModal();
+                    } else {
+                        alert('Error: ' + (data.error || 'Failed to update project name'));
+                    }
+                })
+                .catch(error => {
+                    console.error('Error updating project name:', error);
+                    alert('Network error occurred. Please try again.');
+                })
+                .finally(() => {
+                    // Re-enable save button
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = 'Save';
+                });
+            }
+            
+            // Event listeners
+            if (editIcon) {
+                editIcon.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openModal();
+                });
+            }
+            
+            if (container) {
+                container.addEventListener('click', function(e) {
+                    // Only trigger if clicking the container itself or the project name
+                    if (e.target === container || e.target === projectNameDisplay) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openModal();
+                    }
+                });
+            }
+            
+            // Close modal events
+            if (modalClose) {
+                modalClose.addEventListener('click', closeModal);
+            }
+            
+            if (cancelBtn) {
+                cancelBtn.addEventListener('click', closeModal);
+            }
+            
+            // Save button
+            if (saveBtn) {
+                saveBtn.addEventListener('click', saveProjectName);
+            }
+            
+            // Close modal when clicking outside
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    closeModal();
+                }
+            });
+            
+            // Handle Enter and Escape keys
+            modalInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    saveProjectName();
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    closeModal();
+                }
+            });
+        });
     </script>
     
     {% csrf_token %}

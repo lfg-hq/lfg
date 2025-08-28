@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Profile, GitHubToken, TokenUsage, LLMApiKeys, ExternalServicesAPIKeys
+from .models import Profile, GitHubToken, TokenUsage, LLMApiKeys, ExternalServicesAPIKeys, Organization, OrganizationMembership, OrganizationInvitation
 
 admin.site.register(Profile)
 admin.site.register(GitHubToken)
@@ -57,4 +57,84 @@ class TokenUsageAdmin(admin.ModelAdmin):
     search_fields = ('user__username', 'project__name', 'conversation__title')
     date_hierarchy = 'timestamp'
     ordering = ('-timestamp',)
-    readonly_fields = ('cost',) 
+    readonly_fields = ('cost',)
+
+
+class OrganizationMembershipInline(admin.TabularInline):
+    model = OrganizationMembership
+    extra = 0
+    readonly_fields = ('joined_at', 'updated_at')
+    fields = ('user', 'role', 'status', 'joined_at')
+
+
+@admin.register(Organization)
+class OrganizationAdmin(admin.ModelAdmin):
+    list_display = ('name', 'owner', 'member_count', 'is_active', 'created_at')
+    list_filter = ('is_active', 'created_at', 'allow_member_invites')
+    search_fields = ('name', 'owner__username', 'owner__email', 'description')
+    readonly_fields = ('slug', 'created_at', 'updated_at', 'member_count')
+    prepopulated_fields = {'slug': ('name',)}
+    inlines = [OrganizationMembershipInline]
+    
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('name', 'slug', 'description', 'avatar', 'owner')
+        }),
+        ('Settings', {
+            'fields': ('allow_member_invites', 'is_active')
+        }),
+        ('Billing', {
+            'fields': ('stripe_customer_id',)
+        }),
+        ('Metadata', {
+            'fields': ('created_at', 'updated_at', 'member_count'),
+            'classes': ('collapse',)
+        })
+    )
+    
+    def member_count(self, obj):
+        return obj.member_count
+    member_count.short_description = 'Members'
+
+
+@admin.register(OrganizationMembership)
+class OrganizationMembershipAdmin(admin.ModelAdmin):
+    list_display = ('user', 'organization', 'role', 'status', 'joined_at')
+    list_filter = ('role', 'status', 'joined_at')
+    search_fields = ('user__username', 'user__email', 'organization__name')
+    readonly_fields = ('joined_at', 'updated_at')
+    
+    fieldsets = (
+        (None, {
+            'fields': ('user', 'organization', 'role', 'status')
+        }),
+        ('Timestamps', {
+            'fields': ('joined_at', 'updated_at'),
+            'classes': ('collapse',)
+        })
+    )
+
+
+@admin.register(OrganizationInvitation)
+class OrganizationInvitationAdmin(admin.ModelAdmin):
+    list_display = ('email', 'organization', 'role', 'status', 'inviter', 'created_at', 'expires_at')
+    list_filter = ('role', 'status', 'created_at', 'expires_at')
+    search_fields = ('email', 'organization__name', 'inviter__username')
+    readonly_fields = ('token', 'created_at', 'expires_at', 'responded_at')
+    
+    fieldsets = (
+        ('Invitation Details', {
+            'fields': ('organization', 'inviter', 'email', 'role')
+        }),
+        ('Status', {
+            'fields': ('status', 'responded_at')
+        }),
+        ('Security & Timestamps', {
+            'fields': ('token', 'created_at', 'expires_at'),
+            'classes': ('collapse',)
+        })
+    )
+    
+    def has_add_permission(self, request):
+        # Prevent creating invitations through admin
+        return False 

@@ -10,18 +10,11 @@ document.addEventListener('DOMContentLoaded', function() {
     const resizeHandle = document.getElementById('resize-handle');
     const chatContainer = document.querySelector('.chat-container');
     
-    // Create floating button if it doesn't exist
-    let artifactsButton = document.getElementById('artifacts-button');
-    if (!artifactsButton) {
-        artifactsButton = document.createElement('button');
-        artifactsButton.id = 'artifacts-button';
-        artifactsButton.className = 'artifacts-button';
-        artifactsButton.innerHTML = '<i class="fas fa-cube"></i>';
-        document.body.appendChild(artifactsButton);
-    }
+    // Get the artifacts button (now in HTML header)
+    const artifactsButton = document.getElementById('artifacts-button');
     
     // If elements don't exist, exit early
-    if (!artifactsPanel || !artifactsToggle || !resizeHandle) {
+    if (!artifactsPanel || !artifactsToggle || !resizeHandle || !artifactsButton) {
         console.warn('Artifacts panel elements not found');
         return;
     }

@@ -1,0 +1,489 @@
+{% extends "accounts/base_with_sidebar.html" %}
+{% load static %}
+
+{% block title %}Organizations - LFG 🚀{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/organizations.css' %}">
+<style>
+/* Ensure styles are loaded */
+.settings-container {
+    width: 80%;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem 0 0;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    flex: 1;
+}
+
+.page-header {
+    padding: 2rem 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    flex-shrink: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.page-title {
+    font-size: 1.75rem;
+    font-weight: 700;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #ffffff;
+}
+
+.settings-wrapper {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    gap: 2rem;
+    height: 100%;
+}
+
+.settings-content {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    background: #1a1a1a;
+    border-radius: 8px;
+    position: relative;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: 2rem;
+    /* Hide scrollbar but allow scrolling */
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE and Edge */
+}
+
+.settings-content::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Opera */
+}
+
+.section-heading {
+    font-size: 1.125rem;
+    font-weight: 600;
+    margin-bottom: 1.5rem;
+    color: #ffffff;
+    text-align: center;
+    width: 100%;
+}
+
+.integrations-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    width: 100%;
+    max-width: 500px;
+    margin: 0 auto;
+}
+
+.integration-item {
+    background: rgba(30, 30, 35, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 1.75rem;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.integration-item:hover {
+    border-color: rgba(167, 139, 250, 0.5);
+    background: rgba(167, 139, 250, 0.08);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+}
+
+.integration-item.organization-current {
+    border-color: #8B5CF6;
+    background: rgba(139, 92, 246, 0.1);
+    position: relative;
+}
+
+.integration-item.organization-current::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 4px;
+    background: linear-gradient(135deg, #8B5CF6, #A855F7);
+    border-radius: 16px 16px 0 0;
+}
+
+.integration-header {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    margin-bottom: 1.25rem;
+}
+
+.integration-icon {
+    width: 3rem;
+    height: 3rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    background: white;
+    border-radius: 12px;
+    padding: 0.75rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.integration-info {
+    flex: 1;
+}
+
+.integration-name {
+    font-size: 1.125rem;
+    font-weight: 600;
+    margin: 0;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.integration-description {
+    font-size: 0.875rem;
+    color: rgba(255, 255, 255, 0.6);
+    margin: 0.375rem 0 0 0;
+}
+
+.connected-check {
+    width: 20px;
+    height: 20px;
+    background: rgba(34, 197, 94, 0.1);
+    color: #22c55e;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+}
+
+.organization-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin: 1rem 0;
+    padding: 1rem 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.organization-stats .detail-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.875rem;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.organization-stats .detail-item i {
+    width: 16px;
+    color: #8B5CF6;
+    text-align: center;
+}
+
+.api-key-section {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    margin-top: 1rem;
+}
+
+.save-button, .disconnect-button {
+    padding: 0.625rem 1.25rem;
+    border: none;
+    border-radius: 10px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    height: 42px;
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
+    gap: 0.5rem;
+}
+
+.save-button i, .disconnect-button i {
+    font-size: 0.875rem;
+}
+
+.save-button {
+    background: linear-gradient(135deg, #8B5CF6, #A855F7);
+    color: white;
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);
+}
+
+.save-button:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(139, 92, 246, 0.35);
+}
+
+.disconnect-button {
+    background: transparent;
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.disconnect-button:hover {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.5);
+}
+
+.actions-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 1rem 0 2rem 0;
+    gap: 1rem;
+}
+
+.actions-bar .btn {
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 10px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.actions-bar .btn-primary {
+    background: linear-gradient(135deg, #8B5CF6, #A855F7);
+    color: white;
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);
+}
+
+.actions-bar .btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(139, 92, 246, 0.35);
+}
+
+.back-button {
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.back-button i {
+    margin-right: 0.25rem;
+}
+
+.back-button:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+    border-color: rgba(255, 255, 255, 0.3);
+    transform: translateX(-2px);
+}
+
+.empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.empty-state i {
+    color: rgba(255, 255, 255, 0.4);
+    margin-bottom: 1.5rem;
+}
+
+.empty-state h3 {
+    margin: 1rem 0 0.5rem 0;
+    color: #ffffff;
+    font-weight: 600;
+}
+
+.empty-state p {
+    color: rgba(255, 255, 255, 0.6);
+    margin-bottom: 2rem;
+    line-height: 1.6;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="settings-container">
+    <div class="page-header">
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            <a href="{% url 'accounts:integrations' %}#organizations" class="back-button">
+                <i class="fas fa-arrow-left"></i><span>Back to Settings</span>
+            </a>
+        </div>
+        <h1 class="page-title">
+            <i class="fas fa-users"></i>
+            Organizations
+        </h1>
+    </div>
+
+    <div class="settings-wrapper">
+        <div class="settings-content" style="padding: 2rem;">
+            <div class="section-heading">Team Organizations</div>
+            
+            <div class="actions-bar" style="margin-bottom: 2rem; justify-content: center; max-width: 600px; margin-left: auto; margin-right: auto;">
+                <div>
+                    {% if user.profile.current_organization %}
+                        <span style="color: rgba(255, 255, 255, 0.8); font-size: 0.875rem;">
+                            <i class="fas fa-building"></i> 
+                            Currently in: <strong style="color: #8B5CF6;">{{ user.profile.current_organization.name }}</strong>
+                        </span>
+                    {% else %}
+                        <span style="color: rgba(255, 255, 255, 0.8); font-size: 0.875rem;">
+                            <i class="fas fa-user"></i> 
+                            Currently in: <strong style="color: #6B73FF;">Personal Space</strong>
+                        </span>
+                    {% endif %}
+                </div>
+                <a href="{% url 'accounts:create_organization' %}" class="btn btn-primary">
+                    <i class="fas fa-plus"></i> Create Organization
+                </a>
+            </div>
+
+            <div class="integrations-list">
+                <!-- Personal Space Integration Item -->
+                <div class="integration-item {% if not user.profile.current_organization %}organization-current{% endif %}">
+                    <div class="integration-header">
+                        <div class="integration-icon" style="background: linear-gradient(135deg, #6B73FF, #9C40FF);">
+                            <div style="color: white; font-weight: 600; font-size: 1.125rem;">
+                                {{ user.first_name|first|default:user.username|first|upper }}
+                            </div>
+                        </div>
+                        <div class="integration-info">
+                            <h3 class="integration-name">
+                                Personal Space
+                                {% if not user.profile.current_organization %}
+                                    <span class="connected-check">
+                                        <i class="fas fa-check"></i>
+                                    </span>
+                                {% endif %}
+                            </h3>
+                            <p class="integration-description">Individual account with your personal projects and settings</p>
+                        </div>
+                    </div>
+                    
+                    <div class="organization-stats">
+                        <div class="detail-item">
+                            <i class="fas fa-user"></i>
+                            <span>Role: Owner</span>
+                        </div>
+                        <div class="detail-item">
+                            <i class="fas fa-credit-card"></i>
+                            <span>{{ user_credits|default:0 }} credits</span>
+                        </div>
+                    </div>
+
+                    <div class="api-key-section">
+                        {% if user.profile.current_organization %}
+                            <form method="post" action="{% url 'accounts:switch_organization' %}" style="display: contents;">
+                                {% csrf_token %}
+                                <input type="hidden" name="organization" value="">
+                                <button type="submit" class="save-button">
+                                    <i class="fas fa-exchange-alt"></i> Switch to Personal
+                                </button>
+                            </form>
+                        {% else %}
+                            <span class="save-button" style="opacity: 0.6; cursor: not-allowed;">
+                                <i class="fas fa-check"></i> Current Space
+                            </span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Organization Integration Items -->
+                {% for org_data in organizations %}
+                    <div class="integration-item {% if org_data.is_current %}organization-current{% endif %}">
+                        <div class="integration-header">
+                            <div class="integration-icon">
+                                {% if org_data.organization.avatar %}
+                                    <img src="{{ org_data.organization.avatar.url }}" alt="{{ org_data.organization.name }}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 12px;">
+                                {% else %}
+                                    <div style="color: #8B5CF6; font-weight: 600; font-size: 1.125rem;">
+                                        {{ org_data.organization.name|first|upper }}
+                                    </div>
+                                {% endif %}
+                            </div>
+                            <div class="integration-info">
+                                <h3 class="integration-name">
+                                    {{ org_data.organization.name }}
+                                    {% if org_data.is_current %}
+                                        <span class="connected-check">
+                                            <i class="fas fa-check"></i>
+                                        </span>
+                                    {% endif %}
+                                </h3>
+                                <p class="integration-description">{{ org_data.organization.description|default:"No description" }}</p>
+                            </div>
+                        </div>
+                        
+                        <div class="organization-stats">
+                            <div class="detail-item">
+                                <i class="fas fa-user-tag"></i>
+                                <span>Role: {{ org_data.role|capfirst }}</span>
+                            </div>
+                            <div class="detail-item">
+                                <i class="fas fa-users"></i>
+                                <span>{{ org_data.member_count }} member{{ org_data.member_count|pluralize }}</span>
+                            </div>
+                        </div>
+
+                        <div class="api-key-section">
+                            <a href="{% url 'accounts:organization_dashboard' org_data.organization.slug %}" class="save-button" style="text-decoration: none; margin-right: 0.75rem;">
+                                <i class="fas fa-tachometer-alt"></i> Dashboard
+                            </a>
+                            {% if not org_data.is_current %}
+                                <form method="post" action="{% url 'accounts:switch_organization' %}" style="display: inline;">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="organization" value="{{ org_data.organization.id }}">
+                                    <button type="submit" class="disconnect-button" style="background: linear-gradient(135deg, #8B5CF6, #A855F7); color: white; border: none;">
+                                        <i class="fas fa-exchange-alt"></i> Switch
+                                    </button>
+                                </form>
+                            {% else %}
+                                <span class="save-button" style="opacity: 0.6; cursor: not-allowed;">
+                                    <i class="fas fa-check"></i> Current
+                                </span>
+                            {% endif %}
+                        </div>
+                    </div>
+                {% endfor %}
+                
+                {% if not organizations %}
+                    <!-- Empty State for Organizations -->
+                    <div class="integration-item" style="text-align: center; padding: 3rem;">
+                        <div class="empty-state">
+                            <i class="fas fa-users fa-3x"></i>
+                            <h3>No Team Organizations Yet</h3>
+                            <p>Create your first organization to start collaborating with your team.</p>
+                        </div>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

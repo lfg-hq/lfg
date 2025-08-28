@@ -11,8 +11,12 @@ from .base import BaseLLMProvider
 # Import functions from ai_common and streaming_handlers
 from factory.ai_common import execute_tool_call, get_notification_type_for_tool, track_token_usage
 from factory.streaming_handlers import StreamingTagHandler, format_notification
+from factory.token_tracking import UsageData
 
 logger = logging.getLogger(__name__)
+
+# Debug flag for enhanced token tracking logging
+DEBUG_TOKEN_TRACKING = logger.isEnabledFor(logging.DEBUG)
 
 
 class OpenAIProvider(BaseLLMProvider):
@@ -21,6 +25,14 @@ class OpenAIProvider(BaseLLMProvider):
     MODEL_MAPPING = {
         "gpt-5": "gpt-5",
         "gpt-5-mini": "gpt-5-mini",
+    }
+    
+    # Class-level metrics for tracking token usage success rates
+    _usage_tracking_stats = {
+        'api_success': 0,
+        'api_failure': 0,
+        'estimation_fallback': 0,
+        'validation_failure': 0
     }
     
     def __init__(self, selected_model: str, user=None, conversation=None, project=None):
@@ -87,10 +99,18 @@ class OpenAIProvider(BaseLLMProvider):
                 msg_tokens += 4
                 
                 # Count content tokens
-                if message.get("content"):
-                    content_tokens = len(encoding.encode(message["content"]))
+                content = message.get("content")
+                if content and isinstance(content, str):
+                    content_tokens = len(encoding.encode(content))
                     msg_tokens += content_tokens
                     logger.debug(f"Message {i} ({message.get('role')}): {content_tokens} content tokens")
+                elif content:
+                    # Handle non-string content (list, dict, etc.) by converting to string
+                    logger.debug(f"Message {i} has non-string content of type {type(content)}, converting to string")
+                    content_str = str(content) if content else ""
+                    content_tokens = len(encoding.encode(content_str))
+                    msg_tokens += content_tokens
+                    logger.debug(f"Message {i} ({message.get('role')}): {content_tokens} content tokens (converted)")
                 
                 # Count tool calls if present
                 if message.get("tool_calls"):
@@ -98,10 +118,17 @@ class OpenAIProvider(BaseLLMProvider):
                     for tool_call in message["tool_calls"]:
                         # Estimate tokens for tool call structure
                         tool_tokens += 10  # Base overhead for tool call
-                        if tool_call.get("function", {}).get("name"):
-                            tool_tokens += len(encoding.encode(tool_call["function"]["name"]))
-                        if tool_call.get("function", {}).get("arguments"):
-                            tool_tokens += len(encoding.encode(tool_call["function"]["arguments"]))
+                        func_name = tool_call.get("function", {}).get("name")
+                        if func_name and isinstance(func_name, str):
+                            tool_tokens += len(encoding.encode(func_name))
+                        
+                        func_args = tool_call.get("function", {}).get("arguments")
+                        if func_args:
+                            if isinstance(func_args, str):
+                                tool_tokens += len(encoding.encode(func_args))
+                            else:
+                                # Convert non-string arguments to string
+                                tool_tokens += len(encoding.encode(str(func_args)))
                     msg_tokens += tool_tokens
                     logger.debug(f"Message {i}: {tool_tokens} tool call tokens")
                 
@@ -126,6 +153,154 @@ class OpenAIProvider(BaseLLMProvider):
         except Exception as e:
             logger.error(f"Failed to estimate tokens: {e}", exc_info=True)
             return None, None
+    
+    def _extract_usage_from_chunk(self, chunk) -> Optional[Any]:
+        """Extract usage data from a chunk, checking all possible locations"""
+        try:
+            # Check primary location
+            if hasattr(chunk, 'usage') and chunk.usage:
+                if DEBUG_TOKEN_TRACKING:
+                    logger.debug(f"Found usage data in chunk.usage: {chunk.usage}")
+                return chunk.usage
+            
+            # Check if usage might be in choices (some API versions)
+            if hasattr(chunk, 'choices') and chunk.choices:
+                for i, choice in enumerate(chunk.choices):
+                    if hasattr(choice, 'usage') and choice.usage:
+                        if DEBUG_TOKEN_TRACKING:
+                            logger.debug(f"Found usage data in chunk.choices[{i}].usage: {choice.usage}")
+                        return choice.usage
+            
+            # Check if usage is in the chunk directly as dict
+            if isinstance(chunk, dict) and 'usage' in chunk:
+                usage_data = chunk['usage']
+                if usage_data:
+                    if DEBUG_TOKEN_TRACKING:
+                        logger.debug(f"Found usage data in chunk['usage']: {usage_data}")
+                    return usage_data
+            
+            # Enhanced debugging for missing usage data
+            if DEBUG_TOKEN_TRACKING:
+                chunk_attrs = [attr for attr in dir(chunk) if not attr.startswith('_')]
+                logger.debug(f"No usage data found in chunk. Available attributes: {chunk_attrs}")
+                if hasattr(chunk, 'usage'):
+                    logger.debug(f"chunk.usage exists but is: {repr(chunk.usage)}")
+                
+            return None
+        except Exception as e:
+            logger.debug(f"Error extracting usage from chunk: {e}")
+            if DEBUG_TOKEN_TRACKING:
+                logger.debug(f"Chunk type: {type(chunk)}, Chunk repr: {repr(chunk)[:200]}")
+            return None
+    
+    def _validate_usage_data(self, usage_data) -> bool:
+        """Validate that usage data has the expected attributes"""
+        try:
+            if not usage_data:
+                return False
+            
+            required_attrs = ['prompt_tokens', 'completion_tokens']
+            for attr in required_attrs:
+                if not hasattr(usage_data, attr):
+                    logger.debug(f"Usage data missing attribute: {attr}")
+                    return False
+                if getattr(usage_data, attr) is None:
+                    logger.debug(f"Usage data attribute {attr} is None")
+                    return False
+            
+            return True
+        except Exception as e:
+            logger.debug(f"Error validating usage data: {e}")
+            return False
+    
+    async def _get_or_estimate_usage(self, messages: List[Dict[str, Any]], total_assistant_output: str, 
+                                   usage_data: Optional[Any] = None) -> Optional[UsageData]:
+        """Get usage data from API or estimate tokens as fallback"""
+        try:
+            # Try to use API-provided usage data first
+            if usage_data and self._validate_usage_data(usage_data):
+                logger.info(f"Using API-provided token usage: input={usage_data.prompt_tokens}, output={usage_data.completion_tokens}")
+                self._usage_tracking_stats['api_success'] += 1
+                return UsageData.from_openai(usage_data)
+            elif usage_data:
+                # Usage data exists but failed validation
+                self._usage_tracking_stats['validation_failure'] += 1
+                logger.warning(f"Usage data validation failed for: {usage_data}")
+            else:
+                # No usage data provided
+                self._usage_tracking_stats['api_failure'] += 1
+            
+            # Fall back to estimation
+            logger.warning("No valid usage data from OpenAI API, using tiktoken estimation")
+            self._usage_tracking_stats['estimation_fallback'] += 1
+            
+            estimated_input_tokens, estimated_output_tokens = self.estimate_tokens(
+                messages, self.model, total_assistant_output
+            )
+            
+            if estimated_input_tokens is not None and estimated_output_tokens is not None:
+                logger.info(f"Using estimated tokens: input={estimated_input_tokens}, output={estimated_output_tokens}")
+                return UsageData.from_estimation(estimated_input_tokens, estimated_output_tokens)
+            
+            logger.error("Failed to estimate tokens")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error getting or estimating usage: {e}")
+            return None
+    
+    async def _track_usage_if_available(self, user, project, conversation, 
+                                      messages: List[Dict[str, Any]], total_assistant_output: str,
+                                      usage_data: Optional[Any] = None) -> bool:
+        """Track token usage if user is available, return True if successful"""
+        if not user:
+            logger.warning("Cannot track token usage - no user available")
+            return False
+        
+        try:
+            standardized_usage = await self._get_or_estimate_usage(messages, total_assistant_output, usage_data)
+            if standardized_usage:
+                await track_token_usage(user, project, conversation, standardized_usage, 'openai', self.model)
+                logger.debug("Token usage tracked successfully")
+                
+                # Log tracking statistics periodically
+                self._log_usage_tracking_stats()
+                
+                return True
+            else:
+                logger.error("Failed to get usage data for tracking")
+                return False
+        except Exception as e:
+            logger.error(f"Failed to track token usage: {e}")
+            return False
+    
+    @classmethod
+    def get_usage_tracking_stats(cls) -> dict:
+        """Get token usage tracking statistics"""
+        return cls._usage_tracking_stats.copy()
+    
+    @classmethod
+    def reset_usage_tracking_stats(cls):
+        """Reset token usage tracking statistics"""
+        cls._usage_tracking_stats = {
+            'api_success': 0,
+            'api_failure': 0,
+            'estimation_fallback': 0,
+            'validation_failure': 0
+        }
+    
+    def _log_usage_tracking_stats(self):
+        """Log current usage tracking statistics periodically"""
+        stats = self._usage_tracking_stats
+        total_requests = sum(stats.values())
+        
+        if total_requests > 0 and total_requests % 10 == 0:  # Log every 10 requests
+            api_success_rate = (stats['api_success'] / total_requests) * 100
+            logger.info(f"Token tracking stats (last {total_requests} requests): "
+                       f"API success: {api_success_rate:.1f}%, "
+                       f"Estimation fallback: {stats['estimation_fallback']}, "
+                       f"Validation failures: {stats['validation_failure']}, "
+                       f"API failures: {stats['api_failure']}")
     
     async def generate_stream(self, messages: List[Dict[str, Any]], 
                             project_id: Optional[int], 
@@ -230,21 +405,21 @@ class OpenAIProvider(BaseLLMProvider):
                     if chunk_count <= 3 or finish_reason:  # Log first 3 chunks and final chunk
                         logger.debug(f"Chunk {chunk_count}: choices={bool(chunk.choices)}, delta={bool(delta)}, finish_reason={finish_reason}, has_usage={hasattr(chunk, 'usage')}")
                     
-                    # Check for usage information in the chunk
-                    if hasattr(chunk, 'usage') and chunk.usage:
-                        usage_data = chunk.usage
+                    # Check for usage information in the chunk using helper method
+                    chunk_usage = self._extract_usage_from_chunk(chunk)
+                    if chunk_usage:
+                        usage_data = chunk_usage
                         logger.info(f"Token usage received from OpenAI API in chunk {chunk_count}: input={getattr(usage_data, 'prompt_tokens', 'N/A')}, output={getattr(usage_data, 'completion_tokens', 'N/A')}, total={getattr(usage_data, 'total_tokens', 'N/A')}")
-                        logger.debug(f"Usage data object: {usage_data}")
-                        logger.debug(f"Usage data dir: {[attr for attr in dir(usage_data) if not attr.startswith('_')]}")
-                    elif hasattr(chunk, 'usage'):
-                        logger.debug(f"Chunk {chunk_count} has usage attribute but it's None or empty: {chunk.usage}")
+                        if chunk_count <= 3 or finish_reason:  # Detailed logging for debugging
+                            logger.debug(f"Usage data object: {usage_data}")
+                            logger.debug(f"Usage data dir: {[attr for attr in dir(usage_data) if not attr.startswith('_')]}")
                     
-                    # Also check if usage data might be in a different location
+                    # Debug logging for first few chunks and final chunk
                     if chunk_count <= 3 or finish_reason:
                         logger.debug(f"Chunk attributes: {[attr for attr in dir(chunk) if not attr.startswith('_')]}")
 
                     # Don't skip chunks that might contain only usage data
-                    if not delta and not finish_reason and not hasattr(chunk, 'usage'): 
+                    if not delta and not finish_reason and not chunk_usage: 
                         logger.debug(f"Skipping empty chunk {chunk_count}")
                         continue # Skip empty chunks
 
@@ -380,36 +555,10 @@ class OpenAIProvider(BaseLLMProvider):
                                 
                             current_messages.extend(tool_results_messages)
                             
-                            # Track token usage for tool calls
-                            if user:
-                                if usage_data:
-                                    logger.info(f"Using API-provided token usage for tool calls")
-                                    try:
-                                        await track_token_usage(
-                                            user, project, conversation, usage_data, 'openai', self.model
-                                        )
-                                        logger.debug("Token usage tracked successfully for tool calls")
-                                    except Exception as e:
-                                        logger.error(f"Failed to track token usage for tool calls: {e}")
-                                else:
-                                    # Fallback: estimate tokens if usage data not available
-                                    logger.warning("No usage data from OpenAI API for tool calls, using tiktoken estimation")
-                                    estimated_input_tokens, estimated_output_tokens = self.estimate_tokens(
-                                        current_messages, self.model, total_assistant_output
-                                    )
-                                    if estimated_input_tokens is not None:
-                                        # Create a mock usage object for tracking
-                                        class MockUsage:
-                                            def __init__(self, input_tokens, output_tokens):
-                                                self.prompt_tokens = input_tokens
-                                                self.completion_tokens = output_tokens
-                                                self.total_tokens = input_tokens + output_tokens
-                                        
-                                        mock_usage = MockUsage(estimated_input_tokens, estimated_output_tokens)
-                                        logger.info(f"Tracking estimated tokens for tool calls")
-                                        await track_token_usage(
-                                            user, project, conversation, mock_usage, 'openai', self.model
-                                        )
+                            # Track token usage for tool calls using consolidated helper
+                            await self._track_usage_if_available(
+                                user, project, conversation, current_messages, total_assistant_output, usage_data
+                            )
                             
                             break # Break inner chunk loop
                         
@@ -423,9 +572,11 @@ class OpenAIProvider(BaseLLMProvider):
                             return
                 
                 # After streaming completes, check last chunk for usage data
-                if not usage_data and last_chunk and hasattr(last_chunk, 'usage') and last_chunk.usage:
-                    usage_data = last_chunk.usage
-                    logger.info(f"Token usage found in last chunk: input={getattr(usage_data, 'prompt_tokens', 'N/A')}, output={getattr(usage_data, 'completion_tokens', 'N/A')}, total={getattr(usage_data, 'total_tokens', 'N/A')}")
+                if not usage_data and last_chunk:
+                    last_chunk_usage = self._extract_usage_from_chunk(last_chunk)
+                    if last_chunk_usage:
+                        usage_data = last_chunk_usage
+                        logger.info(f"Token usage found in last chunk: input={getattr(usage_data, 'prompt_tokens', 'N/A')}, output={getattr(usage_data, 'completion_tokens', 'N/A')}, total={getattr(usage_data, 'total_tokens', 'N/A')}")
                 
                 # If the inner loop finished because of tool_calls, continue
                 if finish_reason == "tool_calls":
@@ -462,68 +613,17 @@ class OpenAIProvider(BaseLLMProvider):
                         formatted = format_notification(notification)
                         yield formatted
                     
-                    # Track token usage
-                    if user:
-                        if usage_data:
-                            logger.info(f"Using API-provided token usage on stop")
-                            try:
-                                await track_token_usage(
-                                    user, project, conversation, usage_data, 'openai', self.model
-                                )
-                                logger.debug("Token usage tracked successfully on stop")
-                            except Exception as e:
-                                logger.error(f"Failed to track token usage on stop: {e}")
-                        else:
-                            logger.warning("No usage data available from OpenAI API on stop - will use fallback")
-                            # Fallback to estimation
-                            estimated_input_tokens, estimated_output_tokens = self.estimate_tokens(
-                                current_messages, self.model, total_assistant_output
-                            )
-                            if estimated_input_tokens is not None:
-                                class MockUsage:
-                                    def __init__(self, input_tokens, output_tokens):
-                                        self.prompt_tokens = input_tokens
-                                        self.completion_tokens = output_tokens
-                                        self.total_tokens = input_tokens + output_tokens
-                                
-                                mock_usage = MockUsage(estimated_input_tokens, estimated_output_tokens)
-                                logger.info(f"Using estimated tokens: input={estimated_input_tokens}, output={estimated_output_tokens}")
-                                try:
-                                    await track_token_usage(
-                                        user, project, conversation, mock_usage, 'openai', self.model
-                                    )
-                                    logger.debug("Estimated token usage tracked successfully")
-                                except Exception as e:
-                                    logger.error(f"Failed to track estimated token usage: {e}")
-                    else:
-                        logger.warning("Cannot track token usage - no user available")
+                    # Track token usage using consolidated helper
+                    await self._track_usage_if_available(
+                        user, project, conversation, current_messages, total_assistant_output, usage_data
+                    )
                     
                     return
                 else:
                     # Final check for token usage tracking if we haven't tracked yet
-                    if user and not usage_data:
-                        logger.warning("Stream ended without receiving usage data from OpenAI")
-                        # Try to estimate tokens as fallback
-                        logger.info("Attempting to estimate tokens as fallback")
-                        estimated_input_tokens, estimated_output_tokens = self.estimate_tokens(
-                            current_messages, self.model, total_assistant_output
-                        )
-                        if estimated_input_tokens is not None:
-                            class MockUsage:
-                                def __init__(self, input_tokens, output_tokens):
-                                    self.prompt_tokens = input_tokens
-                                    self.completion_tokens = output_tokens
-                                    self.total_tokens = input_tokens + output_tokens
-                            
-                            mock_usage = MockUsage(estimated_input_tokens, estimated_output_tokens)
-                            logger.info(f"Using estimated tokens: input={estimated_input_tokens}, output={estimated_output_tokens}")
-                            try:
-                                await track_token_usage(
-                                    user, project, conversation, mock_usage, 'openai', self.model
-                                )
-                                logger.debug("Estimated token usage tracked successfully")
-                            except Exception as e:
-                                logger.error(f"Failed to track estimated token usage: {e}")
+                    await self._track_usage_if_available(
+                        user, project, conversation, current_messages, total_assistant_output, usage_data
+                    )
                     
                     logger.warning("Stream ended unexpectedly.")
                     return

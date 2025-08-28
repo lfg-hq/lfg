@@ -3,6 +3,7 @@ from django.contrib.auth.models import User
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
+from django.utils.text import slugify
 import secrets
 from datetime import timedelta
 
@@ -36,6 +37,195 @@ class ExternalServicesAPIKeys(models.Model):
         return f"{self.user.username}'s External Services"
 
 
+class Organization(models.Model):
+    """Model to represent an organization/team"""
+    name = models.CharField(max_length=100)
+    slug = models.SlugField(max_length=100, unique=True)
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='owned_organizations')
+    description = models.TextField(max_length=500, blank=True)
+    avatar = models.ImageField(upload_to='organization_avatars/', null=True, blank=True)
+    
+    # Billing information
+    stripe_customer_id = models.CharField(max_length=255, blank=True, null=True)
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    # Settings
+    allow_member_invites = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    
+    class Meta:
+        verbose_name = "Organization"
+        verbose_name_plural = "Organizations"
+        ordering = ['name']
+    
+    def __str__(self):
+        return self.name
+    
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.name)
+            # Ensure uniqueness
+            counter = 1
+            original_slug = self.slug
+            while Organization.objects.filter(slug=self.slug).exists():
+                self.slug = f"{original_slug}-{counter}"
+                counter += 1
+        super().save(*args, **kwargs)
+    
+    @property
+    def member_count(self):
+        return self.memberships.filter(status='active').count()
+    
+    def get_members(self):
+        return User.objects.filter(
+            organization_memberships__organization=self,
+            organization_memberships__status='active'
+        )
+    
+    def is_member(self, user):
+        return self.memberships.filter(user=user, status='active').exists()
+    
+    def get_user_role(self, user):
+        try:
+            membership = self.memberships.get(user=user, status='active')
+            return membership.role
+        except OrganizationMembership.DoesNotExist:
+            return None
+
+
+class OrganizationMembership(models.Model):
+    """Model to represent membership in an organization"""
+    ROLE_CHOICES = [
+        ('owner', 'Owner'),
+        ('admin', 'Admin'),
+        ('member', 'Member'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('active', 'Active'),
+        ('inactive', 'Inactive'),
+    ]
+    
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='organization_memberships')
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='memberships')
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='member')
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='active')
+    
+    # Timestamps
+    joined_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        unique_together = ['user', 'organization']
+        verbose_name = "Organization Membership"
+        verbose_name_plural = "Organization Memberships"
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.organization.name} ({self.role})"
+    
+    @property
+    def can_invite_members(self):
+        return self.role in ['owner', 'admin'] or (
+            self.role == 'member' and self.organization.allow_member_invites
+        )
+    
+    @property
+    def can_manage_members(self):
+        return self.role in ['owner', 'admin']
+    
+    @property
+    def can_manage_billing(self):
+        return self.role == 'owner'
+
+
+class OrganizationInvitation(models.Model):
+    """Model to handle organization invitations"""
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='invitations')
+    inviter = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sent_invitations')
+    email = models.EmailField()
+    role = models.CharField(max_length=10, choices=OrganizationMembership.ROLE_CHOICES, default='member')
+    
+    # Token for secure invitation
+    token = models.CharField(max_length=128, unique=True, db_index=True)
+    
+    # Status tracking
+    status = models.CharField(max_length=10, choices=[
+        ('pending', 'Pending'),
+        ('accepted', 'Accepted'),
+        ('declined', 'Declined'),
+        ('expired', 'Expired'),
+    ], default='pending')
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    responded_at = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        verbose_name = "Organization Invitation"
+        verbose_name_plural = "Organization Invitations"
+        unique_together = ['organization', 'email']
+    
+    def __str__(self):
+        return f"Invitation to {self.email} for {self.organization.name}"
+    
+    @classmethod
+    def create_invitation(cls, organization, inviter, email, role='member'):
+        """Create a new invitation with a secure token"""
+        # Cancel any existing pending invitations for this email/organization
+        cls.objects.filter(
+            organization=organization,
+            email=email,
+            status='pending'
+        ).update(status='expired')
+        
+        # Create new invitation
+        token = secrets.token_urlsafe(48)
+        expires_at = timezone.now() + timedelta(days=7)  # 7 days to accept
+        
+        return cls.objects.create(
+            organization=organization,
+            inviter=inviter,
+            email=email,
+            role=role,
+            token=token,
+            expires_at=expires_at
+        )
+    
+    def is_valid(self):
+        """Check if invitation is still valid"""
+        return (
+            self.status == 'pending' and 
+            timezone.now() < self.expires_at
+        )
+    
+    def accept(self, user):
+        """Accept the invitation and create membership"""
+        if not self.is_valid():
+            raise ValueError("Invitation is not valid")
+        
+        if user.email.lower() != self.email.lower():
+            raise ValueError("User email doesn't match invitation email")
+        
+        # Create membership
+        membership, created = OrganizationMembership.objects.get_or_create(
+            user=user,
+            organization=self.organization,
+            defaults={'role': self.role}
+        )
+        
+        # Mark invitation as accepted
+        self.status = 'accepted'
+        self.responded_at = timezone.now()
+        self.save()
+        
+        return membership
+
+
 class Profile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     bio = models.TextField(max_length=500, blank=True)
@@ -43,8 +233,39 @@ class Profile(models.Model):
     sidebar_collapsed = models.BooleanField(default=False)
     email_verified = models.BooleanField(default=False)
     
+    # Organization context
+    current_organization = models.ForeignKey(
+        Organization, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='current_users',
+        help_text="The currently selected organization for this user"
+    )
+    
+    # Project collaboration settings
+    allow_project_invitations = models.BooleanField(
+        default=True,
+        help_text="Allow inviting external users to collaborate on projects"
+    )
+    
     def __str__(self):
         return f"{self.user.username}'s profile"
+    
+    def get_organizations(self):
+        """Get all organizations this user is a member of"""
+        return Organization.objects.filter(
+            memberships__user=self.user,
+            memberships__status='active'
+        )
+    
+    def switch_organization(self, organization):
+        """Switch to a specific organization context"""
+        if organization and not organization.is_member(self.user):
+            raise ValueError("User is not a member of this organization")
+        
+        self.current_organization = organization
+        self.save(update_fields=['current_organization'])
 
 
 class EmailVerificationToken(models.Model):
@@ -231,6 +452,16 @@ class TokenUsage(models.Model):
             return self.cost
         return None
 
+
+@receiver(post_save, sender=Organization)
+def create_owner_membership(sender, instance, created, **kwargs):
+    """Create owner membership when organization is created"""
+    if created:
+        OrganizationMembership.objects.get_or_create(
+            user=instance.owner,
+            organization=instance,
+            defaults={'role': 'owner', 'status': 'active'}
+        )
 
 @receiver(post_save, sender=User)
 def create_user_profile(sender, instance, created, **kwargs):

@@ -1,0 +1,396 @@
+{% extends "accounts/base_with_sidebar.html" %}
+{% load static %}
+
+{% block title %}Invite Member - {{ organization.name }} - LFG 🚀{% endblock %}
+
+{% block content %}
+<div class="main-content">
+    <div class="container">
+        <div class="page-header">
+            <div class="breadcrumb">
+                <a href="{% url 'accounts:organization_dashboard' organization.slug %}">{{ organization.name }}</a>
+                <span class="breadcrumb-separator">/</span>
+                <span>Invite Member</span>
+            </div>
+            <h1><i class="fas fa-user-plus"></i> Invite Team Member</h1>
+            <p>Send an invitation to join {{ organization.name }}</p>
+        </div>
+
+        <div class="form-container">
+            <form method="post" class="invite-form">
+                {% csrf_token %}
+                
+                {% if form.errors %}
+                    <div class="alert alert-error">
+                        <i class="fas fa-exclamation-circle"></i>
+                        <div>
+                            <h4>Please fix the following errors:</h4>
+                            {% for field, errors in form.errors.items %}
+                                {% for error in errors %}
+                                    <p>{{ field|capfirst }}: {{ error }}</p>
+                                {% endfor %}
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endif %}
+
+                <div class="form-section">
+                    <h3><i class="fas fa-envelope"></i> Invitation Details</h3>
+                    
+                    <div class="form-group">
+                        <label for="{{ form.email.id_for_label }}">Email Address *</label>
+                        {{ form.email }}
+                        <p class="form-help">Enter the email address of the person you want to invite</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="{{ form.role.id_for_label }}">Role *</label>
+                        {{ form.role }}
+                        <div class="role-descriptions">
+                            <div class="role-desc">
+                                <strong>Member:</strong> Can use the platform and collaborate on projects
+                            </div>
+                            <div class="role-desc">
+                                <strong>Admin:</strong> Can manage members and organization settings
+                            </div>
+                            <div class="role-desc">
+                                <strong>Owner:</strong> Full access to organization and billing
+                            </div>
+                        </div>
+                    </div>
+
+                    {% if form.message %}
+                    <div class="form-group">
+                        <label for="{{ form.message.id_for_label }}">Personal Message (Optional)</label>
+                        {{ form.message }}
+                        <p class="form-help">Add a personal note to the invitation email</p>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div class="preview-section">
+                    <h3><i class="fas fa-eye"></i> Invitation Preview</h3>
+                    <div class="invitation-preview">
+                        <div class="preview-header">
+                            <h4>You're invited to join {{ organization.name }}</h4>
+                        </div>
+                        <div class="preview-body">
+                            <p>{{ user.get_full_name|default:user.username }} has invited you to join <strong>{{ organization.name }}</strong> on LFG.</p>
+                            
+                            {% if organization.description %}
+                                <p class="org-description">{{ organization.description }}</p>
+                            {% endif %}
+
+                            <div class="invite-details">
+                                <div class="detail-item">
+                                    <i class="fas fa-user-tag"></i>
+                                    <span>Role: <strong id="preview-role">Member</strong></span>
+                                </div>
+                                <div class="detail-item">
+                                    <i class="fas fa-users"></i>
+                                    <span>Organization: <strong>{{ organization.name }}</strong></span>
+                                </div>
+                            </div>
+
+                            <div class="preview-message" id="preview-message" style="display: none;">
+                                <h5>Personal message:</h5>
+                                <p id="message-content"></p>
+                            </div>
+
+                            <div class="preview-actions">
+                                <button type="button" class="btn btn-primary" disabled>Accept Invitation</button>
+                                <button type="button" class="btn btn-outline" disabled>Decline</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <a href="{% url 'accounts:organization_dashboard' organization.slug %}" class="btn btn-outline">
+                        <i class="fas fa-arrow-left"></i> Cancel
+                    </a>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-paper-plane"></i> Send Invitation
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<style>
+.form-container {
+    max-width: 800px;
+    margin: 2rem auto;
+}
+
+.invite-form {
+    background: var(--card-background);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 2rem;
+}
+
+.breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.breadcrumb a {
+    color: var(--primary-color);
+    text-decoration: none;
+}
+
+.breadcrumb-separator {
+    color: var(--text-muted);
+}
+
+.form-section,
+.preview-section {
+    margin-bottom: 2rem;
+    padding-bottom: 2rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.form-section:last-of-type,
+.preview-section:last-of-type {
+    border-bottom: none;
+}
+
+.form-section h3,
+.preview-section h3 {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    color: var(--text-primary);
+    font-size: 1.1rem;
+}
+
+.form-section h3 i,
+.preview-section h3 i {
+    color: var(--primary-color);
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 1rem;
+    transition: border-color 0.3s ease;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(var(--primary-color-rgb), 0.1);
+}
+
+.form-group textarea {
+    min-height: 100px;
+    resize: vertical;
+}
+
+.form-help {
+    margin-top: 0.25rem;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.role-descriptions {
+    margin-top: 0.75rem;
+    padding: 1rem;
+    background: var(--background-color);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+}
+
+.role-desc {
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.role-desc:last-child {
+    margin-bottom: 0;
+}
+
+.invitation-preview {
+    background: var(--background-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.preview-header {
+    background: var(--primary-color);
+    color: white;
+    padding: 1rem 1.5rem;
+}
+
+.preview-header h4 {
+    margin: 0;
+    font-size: 1.1rem;
+}
+
+.preview-body {
+    padding: 1.5rem;
+}
+
+.preview-body p {
+    margin-bottom: 1rem;
+    color: var(--text-primary);
+}
+
+.org-description {
+    font-style: italic;
+    color: var(--text-secondary);
+    border-left: 3px solid var(--primary-color);
+    padding-left: 1rem;
+}
+
+.invite-details {
+    margin: 1.5rem 0;
+    padding: 1rem;
+    background: rgba(var(--primary-color-rgb), 0.05);
+    border-radius: 6px;
+}
+
+.detail-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.detail-item:last-child {
+    margin-bottom: 0;
+}
+
+.detail-item i {
+    color: var(--primary-color);
+    width: 16px;
+}
+
+.preview-message {
+    margin: 1.5rem 0;
+    padding: 1rem;
+    background: var(--card-background);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+}
+
+.preview-message h5 {
+    margin: 0 0 0.5rem 0;
+    font-size: 0.875rem;
+    color: var(--text-primary);
+}
+
+.preview-message p {
+    margin: 0;
+    font-style: italic;
+    color: var(--text-secondary);
+}
+
+.preview-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+}
+
+.preview-actions button {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.form-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.alert {
+    padding: 1rem;
+    border-radius: 6px;
+    margin-bottom: 2rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+}
+
+.alert-error {
+    background: rgba(220, 53, 69, 0.1);
+    border: 1px solid rgba(220, 53, 69, 0.3);
+    color: #dc3545;
+}
+
+.alert i {
+    margin-top: 0.125rem;
+}
+
+.alert h4 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1rem;
+}
+
+.alert p {
+    margin: 0;
+    font-size: 0.875rem;
+}
+
+.alert p:not(:last-child) {
+    margin-bottom: 0.25rem;
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const roleSelect = document.querySelector('select[name="role"]');
+    const messageTextarea = document.querySelector('textarea[name="message"]');
+    const previewRole = document.getElementById('preview-role');
+    const previewMessage = document.getElementById('preview-message');
+    const messageContent = document.getElementById('message-content');
+
+    if (roleSelect) {
+        roleSelect.addEventListener('change', function() {
+            previewRole.textContent = this.options[this.selectedIndex].text;
+        });
+    }
+
+    if (messageTextarea) {
+        messageTextarea.addEventListener('input', function() {
+            if (this.value.trim()) {
+                messageContent.textContent = this.value;
+                previewMessage.style.display = 'block';
+            } else {
+                previewMessage.style.display = 'none';
+            }
+        });
+    }
+});
+</script>
+{% endblock %}
