@@ -28,6 +28,7 @@ ALLOWED_HOSTS = [
     'lfg.run',
     'www.lfg.run',
     'localhost',
+    '127.0.0.1',
     'dev-rocks.lfg.run'
 ]
 
@@ -201,6 +202,9 @@ AUTH_PASSWORD_VALIDATORS = [
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
 USE_I18N = True
+
+# Fix health check redirect loop
+APPEND_SLASH = False
 USE_TZ = True
 
 # Static files (CSS, JavaScript, Images)
@@ -223,7 +227,7 @@ AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID', '')
 AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY', '')
 AWS_S3_REGION_NAME = os.environ.get('AWS_S3_REGION_NAME', 'us-east-1')
 AWS_S3_PROJECT_PREFIX = os.environ.get('AWS_S3_PROJECT_PREFIX', 'projects')
-AWS_S3_PRESIGNED_URL_EXPIRY = int(os.environ.get('AWS_S3_PRESIGNED_URL_EXPIRY', 3600))  # Default 1 hour
+AWS_S3_PRESIGNED_URL_EXPIRY = int(os.environ.get('AWS_S3_PRESIGNED_URL_EXPIRY', 3600) or 3600)  # Default 1 hour
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
