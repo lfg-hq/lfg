@@ -189,6 +189,55 @@ def create_project_api(request):
         }, status=500)
 
 @login_required
+@require_POST
+def update_project_name(request):
+    """API endpoint to update a project's name"""
+    try:
+        data = json.loads(request.body)
+        project_id = data.get('project_id')
+        new_name = data.get('name', '').strip()
+        
+        if not project_id:
+            return JsonResponse({
+                'success': False,
+                'error': 'Project ID is required'
+            }, status=400)
+            
+        if not new_name:
+            return JsonResponse({
+                'success': False,
+                'error': 'Project name is required'
+            }, status=400)
+        
+        # Get the project and ensure user owns it or has permission
+        project = get_object_or_404(Project, id=project_id)
+        if not project.can_user_access(request.user):
+            return JsonResponse({
+                'success': False,
+                'error': 'You do not have permission to update this project'
+            }, status=403)
+        
+        # Update the project name
+        project.name = new_name
+        project.save()
+        
+        return JsonResponse({
+            'success': True,
+            'name': project.name
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': 'Invalid JSON data'
+        }, status=400)
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+@login_required
 def update_project(request, project_id):
     """View to update a project"""
     project = get_object_or_404(Project, project_id=project_id, owner=request.user)

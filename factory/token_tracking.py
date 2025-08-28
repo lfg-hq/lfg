@@ -129,22 +129,42 @@ async def track_token_usage(
             # Update total and monthly token usage
             user_credit.total_tokens_used += total_tokens
             
-            # Track free vs paid tokens and handle additional credits
+            # Track tokens with correct deduction order: free -> monthly -> additional
             if user_credit.is_free_tier:
                 user_credit.free_tokens_used += total_tokens
             else:
                 user_credit.paid_tokens_used += total_tokens
                 
-                # If user has additional credits, use those first before monthly allocation
-                tokens_from_monthly = total_tokens
-                if user_credit.credits > 0:
-                    credits_to_use = min(total_tokens, user_credit.credits)
-                    user_credit.credits = max(0, user_credit.credits - credits_to_use)
-                    tokens_from_monthly = total_tokens - credits_to_use  # Remaining tokens come from monthly
-                    logger.debug(f"Used {credits_to_use} additional credits, {tokens_from_monthly} from monthly allocation")
+                # Deduction order: free (one-time 100K) -> monthly (300K) -> additional credits
+                remaining_tokens = total_tokens
                 
-                # Only count tokens that came from monthly allocation
-                user_credit.monthly_tokens_used += tokens_from_monthly
+                # 1. First use free tokens (one-time 100K allowance)
+                free_limit = 100000
+                free_remaining = max(0, free_limit - user_credit.free_tokens_used)
+                if remaining_tokens > 0 and free_remaining > 0:
+                    free_tokens_to_use = min(remaining_tokens, free_remaining)
+                    user_credit.free_tokens_used += free_tokens_to_use
+                    remaining_tokens -= free_tokens_to_use
+                    logger.debug(f"Used {free_tokens_to_use} free tokens, {remaining_tokens} remaining")
+                
+                # 2. Then use monthly credits (300K per month)
+                monthly_limit = 300000
+                monthly_remaining = max(0, monthly_limit - user_credit.monthly_tokens_used)
+                if remaining_tokens > 0 and monthly_remaining > 0:
+                    monthly_tokens_to_use = min(remaining_tokens, monthly_remaining)
+                    user_credit.monthly_tokens_used += monthly_tokens_to_use
+                    remaining_tokens -= monthly_tokens_to_use
+                    logger.debug(f"Used {monthly_tokens_to_use} monthly tokens, {remaining_tokens} remaining")
+                
+                # 3. Finally use additional credits (purchased)
+                if remaining_tokens > 0 and user_credit.credits > 0:
+                    additional_tokens_to_use = min(remaining_tokens, user_credit.credits)
+                    user_credit.credits -= additional_tokens_to_use
+                    remaining_tokens -= additional_tokens_to_use
+                    logger.debug(f"Used {additional_tokens_to_use} additional credits, {remaining_tokens} remaining")
+                
+                if remaining_tokens > 0:
+                    logger.warning(f"User exceeded all available credits by {remaining_tokens} tokens")
             
             await asyncio.to_thread(user_credit.save)
             logger.debug(f"Updated user credit token usage: total={user_credit.total_tokens_used}, monthly={user_credit.monthly_tokens_used}")

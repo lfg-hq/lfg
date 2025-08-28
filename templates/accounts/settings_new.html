@@ -667,13 +667,13 @@
     <!-- Settings Sidebar -->
     <aside class="settings-sidebar">
         <nav class="settings-nav">
-            <a href="#usage" class="settings-nav-item active" data-section="usage">
-                <i class="fas fa-chart-line"></i>
-                <span>Token Usage</span>
-            </a>
             <a href="#llm-settings" class="settings-nav-item" data-section="llm-settings">
                 <i class="fas fa-robot"></i>
                 <span>LLM Settings</span>
+            </a>
+            <a href="#usage" class="settings-nav-item active" data-section="usage">
+                <i class="fas fa-chart-line"></i>
+                <span>Token Usage</span>
             </a>
             <a href="#project-management" class="settings-nav-item" data-section="project-management">
                 <i class="fas fa-tasks"></i>
@@ -683,10 +683,10 @@
                 <i class="fas fa-user-friends"></i>
                 <span>Project Collaboration</span>
             </a>
-            <a href="#organizations" class="settings-nav-item" data-section="organizations">
+            <!-- <a href="#organizations" class="settings-nav-item" data-section="organizations">
                 <i class="fas fa-users"></i>
                 <span>Organizations</span>
-            </a>
+            </a> -->
             <a href="#github" class="settings-nav-item" data-section="github">
                 <i class="fab fa-github"></i>
                 <span>GitHub</span>
@@ -943,10 +943,23 @@
                         <span class="stat-label">Remaining</span>
                         <span class="stat-value remaining">{{ tokens_remaining|intcomma }}</span>
                     </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Limit</span>
-                        <span class="stat-value limit">{{ total_limit|intcomma }}</span>
+                </div>
+                
+                <!-- Credit breakdown in smaller font -->
+                <div class="credit-breakdown" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.1);">
+                    {% if is_free_tier %}
+                    <div style="font-size: 12px; color: rgba(255, 255, 255, 0.6); text-align: center;">
+                        <span>Free (one time): {{ total_limit|intcomma }}</span>
                     </div>
+                    {% else %}
+                    <div style="font-size: 12px; color: rgba(255, 255, 255, 0.6); display: flex; justify-content: space-between; gap: 16px;">
+                        <span>Free (one time): {{ free_tokens_remaining|intcomma }}</span>
+                        <span>Monthly Credits: 300,000</span>
+                        {% if user_credit.credits > 0 %}
+                        <span>Additional: {{ user_credit.credits|intcomma }}</span>
+                        {% endif %}
+                    </div>
+                    {% endif %}
                 </div>
                 
                 {% if tokens_remaining <= 0 %}

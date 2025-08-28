@@ -11,6 +11,7 @@ urlpatterns = [
     path('api/create/', views.create_project_api, name='create_project_api'),
     path('<str:project_id>/', views.project_detail, name='project_detail'),
     # path('<str:project_id>/update/', views.update_project, name='update_project'),
+    path('api/update-name/', views.update_project_name, name='update_project_name'),
     path('<str:project_id>/delete/', views.delete_project, name='delete_project'),
     path('<str:project_id>/terminal/', views.project_terminal, name='project_terminal'),
     # path('<str:project_id>/api/features/', views.project_features_api, name='project_features_api'),
