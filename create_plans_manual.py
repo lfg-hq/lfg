@@ -7,6 +7,7 @@ Run this from the project root directory after setting up Django environment
 import os
 import sys
 import django
+import logging
 
 # Add the project directory to Python path
 sys.path.append('/home/jitinp/Projects/lfg')
@@ -16,6 +17,8 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'LFG.settings')
 django.setup()
 
 from subscriptions.models import PaymentPlan
+
+logger = logging.getLogger(__name__)
 
 def create_payment_plans():
     """Create the default payment plans"""
@@ -59,7 +62,7 @@ def create_payment_plans():
         
         if created:
             created_count += 1
-            print(f"✅ Created: {plan.name} - ${plan.price}")
+            logger.info(f"✅ Created: {plan.name} - ${plan.price}")
         else:
             # Update existing plan
             for key, value in plan_data.items():
@@ -67,12 +70,12 @@ def create_payment_plans():
                     setattr(plan, key, value)
             plan.save()
             updated_count += 1
-            print(f"🔄 Updated: {plan.name} - ${plan.price}")
+            logger.info(f"🔄 Updated: {plan.name} - ${plan.price}")
     
-    print(f"\n🎉 Successfully created {created_count} and updated {updated_count} payment plans!")
-    print("\nAll Plans in Database:")
+    logger.info(f"\n🎉 Successfully created {created_count} and updated {updated_count} payment plans!")
+    logger.info("\nAll Plans in Database:")
     for plan in PaymentPlan.objects.all():
-        print(f"  - {plan.name}: ${plan.price} ({plan.credits:,} credits) {'[Subscription]' if plan.is_subscription else '[One-time]'}")
+        logger.info(f"  - {plan.name}: ${plan.price} ({plan.credits:,} credits) {'[Subscription]' if plan.is_subscription else '[One-time]'}")
 
 if __name__ == "__main__":
     create_payment_plans()

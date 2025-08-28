@@ -8,6 +8,7 @@ that didn't get their credits added.
 import os
 import sys
 import django
+import logging
 
 # Setup Django environment
 sys.path.append('/home/jitinp/Projects/lfg')
@@ -16,6 +17,8 @@ django.setup()
 
 from subscriptions.models import Transaction, UserCredit, PaymentPlan
 from django.contrib.auth.models import User
+
+logger = logging.getLogger(__name__)
 
 def fix_missing_credits():
     """Check for completed transactions that haven't added credits"""
@@ -26,25 +29,25 @@ def fix_missing_credits():
         payment_plan__is_subscription=False  # One-time purchases
     )
     
-    print(f"Found {completed_transactions.count()} completed one-time transactions")
+    logger.info(f"Found {completed_transactions.count()} completed one-time transactions")
     
     for transaction in completed_transactions:
         user_credit, created = UserCredit.objects.get_or_create(user=transaction.user)
         
-        print(f"\nTransaction ID: {transaction.id}")
-        print(f"User: {transaction.user.email}")
-        print(f"Plan: {transaction.payment_plan.name if transaction.payment_plan else 'N/A'}")
-        print(f"Credits to add: {transaction.credits_added}")
-        print(f"Current user credits: {user_credit.credits}")
-        print(f"Current remaining tokens: {user_credit.get_remaining_tokens()}")
+        logger.info(f"\nTransaction ID: {transaction.id}")
+        logger.info(f"User: {transaction.user.email}")
+        logger.info(f"Plan: {transaction.payment_plan.name if transaction.payment_plan else 'N/A'}")
+        logger.info(f"Credits to add: {transaction.credits_added}")
+        logger.info(f"Current user credits: {user_credit.credits}")
+        logger.info(f"Current remaining tokens: {user_credit.get_remaining_tokens()}")
         
         # Add credits (the signal should handle this going forward)
         user_credit.credits += transaction.credits_added
         user_credit.save()
         
-        print(f"Updated user credits: {user_credit.credits}")
-        print(f"New remaining tokens: {user_credit.get_remaining_tokens()}")
-        print("-" * 50)
+        logger.info(f"Updated user credits: {user_credit.credits}")
+        logger.info(f"New remaining tokens: {user_credit.get_remaining_tokens()}")
+        logger.info("-" * 50)
 
 if __name__ == "__main__":
     fix_missing_credits()

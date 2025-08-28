@@ -12,6 +12,9 @@ from accounts.models import LLMApiKeys, TokenUsage
 import json
 import tempfile
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @method_decorator(login_required, name='dispatch')
@@ -80,8 +83,8 @@ class TranscribeFileView(View):
             
         except Exception as e:
             import traceback
-            print(f"Transcription error: {str(e)}")
-            print(traceback.format_exc())
+            logger.error(f"Transcription error: {str(e)}")
+            logger.error(traceback.format_exc())
             return JsonResponse({'error': f'Transcription failed: {str(e)}'}, status=500)
     
     def _get_openai_api_key(self, user):
@@ -94,7 +97,7 @@ class TranscribeFileView(View):
             if llm_keys and llm_keys.openai_api_key:
                 api_key = llm_keys.openai_api_key
         except Exception as e:
-            print(f"Error getting API key from LLMApiKeys: {e}")
+            logger.error(f"Error getting API key from LLMApiKeys: {e}")
         
         # Fallback to settings
         if not api_key:

@@ -5,6 +5,7 @@ One-time script to migrate existing ProjectPRD and ProjectImplementation data to
 import os
 import sys
 import django
+import logging
 
 # Setup Django
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -13,9 +14,11 @@ django.setup()
 
 from projects.models import Project, ProjectPRD, ProjectImplementation, ProjectFile
 
+logger = logging.getLogger(__name__)
+
 def migrate_prds_to_files():
     """Migrate ProjectPRD entries to ProjectFile"""
-    print("Migrating PRDs to ProjectFile...")
+    logger.info("Migrating PRDs to ProjectFile...")
     
     prds = ProjectPRD.objects.all()
     migrated = 0
@@ -30,7 +33,7 @@ def migrate_prds_to_files():
         ).first()
         
         if existing:
-            print(f"  Skipping {prd.project.name} - {prd.name} (already exists)")
+            logger.info(f"  Skipping {prd.project.name} - {prd.name} (already exists)")
             skipped += 1
             continue
         
@@ -51,15 +54,15 @@ def migrate_prds_to_files():
             updated_at=prd.updated_at
         )
         
-        print(f"  Migrated {prd.project.name} - {prd.name}")
+        logger.info(f"  Migrated {prd.project.name} - {prd.name}")
         migrated += 1
     
-    print(f"PRDs: Migrated {migrated}, Skipped {skipped}")
+    logger.info(f"PRDs: Migrated {migrated}, Skipped {skipped}")
     return migrated, skipped
 
 def migrate_implementations_to_files():
     """Migrate ProjectImplementation entries to ProjectFile"""
-    print("\nMigrating Implementations to ProjectFile...")
+    logger.info("\nMigrating Implementations to ProjectFile...")
     
     implementations = ProjectImplementation.objects.all()
     migrated = 0
@@ -74,7 +77,7 @@ def migrate_implementations_to_files():
         ).first()
         
         if existing:
-            print(f"  Skipping {impl.project.name} implementation (already exists)")
+            logger.info(f"  Skipping {impl.project.name} implementation (already exists)")
             skipped += 1
             continue
         
@@ -95,18 +98,18 @@ def migrate_implementations_to_files():
             updated_at=impl.updated_at
         )
         
-        print(f"  Migrated {impl.project.name} implementation")
+        logger.info(f"  Migrated {impl.project.name} implementation")
         migrated += 1
     
-    print(f"Implementations: Migrated {migrated}, Skipped {skipped}")
+    logger.info(f"Implementations: Migrated {migrated}, Skipped {skipped}")
     return migrated, skipped
 
 if __name__ == '__main__':
-    print("Starting migration of PRDs and Implementations to ProjectFile model...")
+    logger.info("Starting migration of PRDs and Implementations to ProjectFile model...")
     
     prd_migrated, prd_skipped = migrate_prds_to_files()
     impl_migrated, impl_skipped = migrate_implementations_to_files()
     
-    print(f"\nMigration complete!")
-    print(f"Total migrated: {prd_migrated + impl_migrated}")
-    print(f"Total skipped: {prd_skipped + impl_skipped}")
+    logger.info(f"\nMigration complete!")
+    logger.info(f"Total migrated: {prd_migrated + impl_migrated}")
+    logger.info(f"Total skipped: {prd_skipped + impl_skipped}")

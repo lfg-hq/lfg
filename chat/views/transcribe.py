@@ -11,6 +11,9 @@ from chat.models import ChatFile
 from accounts.models import LLMApiKeys, TokenUsage
 import tempfile
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @api_view(['GET'])
@@ -86,7 +89,7 @@ def transcribe_file(request, file_id):
                 if llm_keys and llm_keys.openai_api_key:
                     api_key = llm_keys.openai_api_key
             except Exception as e:
-                print(f"Error getting API key from LLMApiKeys: {e}")
+                logger.error(f"Error getting API key from LLMApiKeys: {e}")
         
         if not api_key:
             api_key = getattr(settings, 'OPENAI_API_KEY', None)
@@ -146,7 +149,7 @@ def transcribe_file(request, file_id):
     
     except Exception as e:
         import traceback
-        print(f"Transcription error: {str(e)}")
-        print(traceback.format_exc())
+        logger.error(f"Transcription error: {str(e)}")
+        logger.error(traceback.format_exc())
         return Response({'error': f'Transcription failed: {str(e)}'}, 
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -5,6 +5,7 @@ Quick test script to verify project member functionality
 import os
 import sys
 import django
+import logging
 
 # Setup Django
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'LFG.settings')
@@ -14,21 +15,23 @@ django.setup()
 from django.contrib.auth.models import User
 from projects.models import Project, ProjectMember, ProjectInvitation
 
+logger = logging.getLogger(__name__)
+
 def test_project_members():
-    print("Testing Project Member functionality...")
+    logger.info("Testing Project Member functionality...")
     
     # Get or create test users
     try:
         owner = User.objects.get(username='testowner')
     except User.DoesNotExist:
         owner = User.objects.create_user(username='testowner', email='owner@test.com', password='testpass')
-        print("Created test owner user")
+        logger.info("Created test owner user")
     
     try:
         member = User.objects.get(username='testmember')
     except User.DoesNotExist:
         member = User.objects.create_user(username='testmember', email='member@test.com', password='testpass')
-        print("Created test member user")
+        logger.info("Created test member user")
     
     # Create a test project
     project, created = Project.objects.get_or_create(
@@ -40,14 +43,14 @@ def test_project_members():
         }
     )
     if created:
-        print(f"Created test project: {project.name}")
+        logger.info(f"Created test project: {project.name}")
     else:
-        print(f"Using existing test project: {project.name}")
+        logger.info(f"Using existing test project: {project.name}")
     
     # Test project access methods
-    print(f"\nProject access tests:")
-    print(f"Owner has access: {project.can_user_access(owner)}")
-    print(f"Member has access (should be False): {project.can_user_access(member)}")
+    logger.info(f"\nProject access tests:")
+    logger.info(f"Owner has access: {project.can_user_access(owner)}")
+    logger.info(f"Member has access (should be False): {project.can_user_access(member)}")
     
     # Create a project member
     project_member, created = ProjectMember.objects.get_or_create(
@@ -59,16 +62,16 @@ def test_project_members():
         }
     )
     if created:
-        print(f"Added {member.username} as project member")
+        logger.info(f"Added {member.username} as project member")
     else:
-        print(f"{member.username} already a project member")
+        logger.info(f"{member.username} already a project member")
     
     # Test access after adding member
-    print(f"\nAfter adding member:")
-    print(f"Member has access: {project.can_user_access(member)}")
-    print(f"Member can edit files: {project.can_user_edit_files(member)}")
-    print(f"Member can manage tickets: {project.can_user_manage_tickets(member)}")
-    print(f"Member can chat: {project.can_user_chat(member)}")
+    logger.info(f"\nAfter adding member:")
+    logger.info(f"Member has access: {project.can_user_access(member)}")
+    logger.info(f"Member can edit files: {project.can_user_edit_files(member)}")
+    logger.info(f"Member can manage tickets: {project.can_user_manage_tickets(member)}")
+    logger.info(f"Member can chat: {project.can_user_chat(member)}")
     
     # Test invitation creation
     invitation = ProjectInvitation.create_invitation(
@@ -77,10 +80,10 @@ def test_project_members():
         email='newmember@test.com',
         role='viewer'
     )
-    print(f"\nCreated invitation: {invitation.token[:10]}...")
-    print(f"Invitation is valid: {invitation.is_valid()}")
+    logger.info(f"\nCreated invitation: {invitation.token[:10]}...")
+    logger.info(f"Invitation is valid: {invitation.is_valid()}")
     
-    print("\n✅ Project member functionality is working!")
+    logger.info("\n✅ Project member functionality is working!")
     
     return True
 
@@ -88,6 +91,6 @@ if __name__ == '__main__':
     try:
         test_project_members()
     except Exception as e:
-        print(f"❌ Error testing project members: {e}")
+        logger.error(f"❌ Error testing project members: {e}")
         import traceback
         traceback.print_exc()

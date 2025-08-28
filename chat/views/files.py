@@ -14,6 +14,9 @@ from chat.models import Conversation, Message, ChatFile
 from factory.ai_providers import FileHandler
 import asyncio
 from asgiref.sync import sync_to_async
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @api_view(['POST'])
@@ -207,7 +210,7 @@ def transcribe_file(request, file_id):
                     except Profile.DoesNotExist:
                         pass
             except Exception as e:
-                print(f"Error getting API key: {e}")
+                logger.error(f"Error getting API key: {e}")
         
         if not api_key:
             api_key = getattr(settings, 'OPENAI_API_KEY', None)

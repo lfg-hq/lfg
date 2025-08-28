@@ -2,6 +2,9 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.contrib.auth.models import User
 from .models import UserCredit, Transaction, OrganizationCredit, OrganizationTransaction
+import logging
+
+logger = logging.getLogger(__name__)
 
 @receiver(post_save, sender=User)
 def create_user_credit(sender, instance, created, **kwargs):
@@ -22,11 +25,11 @@ def update_user_credits(sender, instance, **kwargs):
             user_credit.subscription_tier = 'pro'
             user_credit.is_subscribed = True
             user_credit.monthly_tokens_used = 0  # Reset monthly tokens
-            print(f"Signal: Updated user {instance.user.id} to pro tier via transaction completion")
+            logger.info(f"Signal: Updated user {instance.user.id} to pro tier via transaction completion")
         else:
             # This is a one-time credit purchase - add credits to user account
             user_credit.credits += instance.credits_added
-            print(f"Signal: Added {instance.credits_added} credits to user {instance.user.id} (total: {user_credit.credits})")
+            logger.info(f"Signal: Added {instance.credits_added} credits to user {instance.user.id} (total: {user_credit.credits})")
         
         user_credit.save()
 

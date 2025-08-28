@@ -350,6 +350,60 @@ CACHES = {
 }
 
 # Logging Configuration
+# Configure logging level and handlers via environment variables
+LOGGING_LEVEL = os.environ.get('LOGGING_LEVEL', 'INFO')
+LOGGING_FILE_PATH = os.environ.get('LOGGING_FILE_PATH', '')
+LOGGING_ENABLE_CONSOLE = os.environ.get('LOGGING_ENABLE_CONSOLE', 'True').lower() == 'true'
+LOGGING_ENABLE_EASYLOGS = os.environ.get('LOGGING_ENABLE_EASYLOGS', 'True').lower() == 'true'
+LOGGING_REMOTE_ENDPOINT = os.environ.get('LOGGING_REMOTE_ENDPOINT', '')
+
+# EasyLogs Configuration
+EASYLOGS_API_KEY = os.environ.get('EASYLOGS_API_KEY', 'AQFswgyY0AnZnTpdyCk7twdirql_eRdqN8Omj9-YIyLT-kDmFT7TDcRy1_QJEInB9Zv7naxNF45yRElf3uNWLzfyOHrcHbCeJPcB1qpE7KohoEBTSs32tBpl')
+
+# Build handlers dynamically based on configuration
+logging_handlers = {}
+root_handlers = []
+
+# Console handler
+if LOGGING_ENABLE_CONSOLE:
+    logging_handlers['console'] = {
+        'level': LOGGING_LEVEL,
+        'class': 'logging.StreamHandler',
+        'formatter': 'verbose'
+    }
+    root_handlers.append('console')
+
+# File handler (if configured)
+if LOGGING_FILE_PATH:
+    logging_handlers['file'] = {
+        'level': LOGGING_LEVEL,
+        'class': 'logging.FileHandler',
+        'filename': LOGGING_FILE_PATH,
+        'formatter': 'verbose'
+    }
+    root_handlers.append('file')
+
+# EasyLogs handler (if enabled)
+if LOGGING_ENABLE_EASYLOGS:
+    logging_handlers['easylogs'] = {
+        'level': LOGGING_LEVEL,
+        'class': 'utils.easylogs.DjangoEasyLogsHandler',
+        'formatter': 'simple'
+    }
+    root_handlers.append('easylogs')
+
+# Remote logging handler (if configured)
+if LOGGING_REMOTE_ENDPOINT:
+    logging_handlers['remote'] = {
+        'level': LOGGING_LEVEL,
+        'class': 'logging.handlers.HTTPHandler',
+        'host': LOGGING_REMOTE_ENDPOINT.replace('https://', '').replace('http://', '').split('/')[0],
+        'url': '/' + '/'.join(LOGGING_REMOTE_ENDPOINT.replace('https://', '').replace('http://', '').split('/')[1:]) if '/' in LOGGING_REMOTE_ENDPOINT.replace('https://', '').replace('http://', '') else '/logs',
+        'method': 'POST',
+        'formatter': 'verbose'
+    }
+    root_handlers.append('remote')
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -364,70 +418,59 @@ LOGGING = {
             'style': '{',
         },
     },
-    'handlers': {
-        'console': {
-            'level': 'DEBUG',
-            'class': 'logging.StreamHandler',
-            'formatter': 'verbose'
-        },
-        'easylogs': {
-            'level': 'DEBUG',
-            'class': 'utils.easylogs.DjangoEasyLogsHandler',
-            'formatter': 'simple'
-        },
-    },
+    'handlers': logging_handlers,
     'root': {
-        'handlers': ['console', 'easylogs'],
-        'level': 'INFO',
+        'handlers': root_handlers,
+        'level': LOGGING_LEVEL,
     },
     'loggers': {
         'django': {
-            'handlers': ['console', 'easylogs'],
+            'handlers': root_handlers,
             'level': 'INFO',
             'propagate': False,
         },
         'channels': {
-            'handlers': ['console', 'easylogs'],
+            'handlers': root_handlers,
             'level': 'INFO',
             'propagate': False,
         },
         'chat': {
-            'handlers': ['console', 'easylogs'],
+            'handlers': root_handlers,
             'level': 'DEBUG',
             'propagate': False,
         },
         'development': {
-            'handlers': ['console', 'easylogs'],
+            'handlers': root_handlers,
             'level': 'DEBUG',
             'propagate': False,
         },
         'development.utils': {
-            'handlers': ['console', 'easylogs'],
+            'handlers': root_handlers,
             'level': 'DEBUG',
             'propagate': False,
         },
         'factory.ai_providers': {
-            'handlers': ['console', 'easylogs'],
+            'handlers': root_handlers,
             'level': 'DEBUG',
             'propagate': False,
         },
         'factory.ai_functions': {
-            'handlers': ['console', 'easylogs'],
+            'handlers': root_handlers,
             'level': 'DEBUG',
             'propagate': False,
         },
         'accounts': {
-            'handlers': ['console', 'easylogs'],
+            'handlers': root_handlers,
             'level': 'INFO',
             'propagate': False,
         },
         'projects': {
-            'handlers': ['console', 'easylogs'],
+            'handlers': root_handlers,
             'level': 'INFO',
             'propagate': False,
         },
         'subscriptions': {
-            'handlers': ['console', 'easylogs'],
+            'handlers': root_handlers,
             'level': 'INFO',
             'propagate': False,
         },

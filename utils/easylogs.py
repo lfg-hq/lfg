@@ -20,7 +20,12 @@ class EasyLogsHandler:
     """
     
     def __init__(self):
-        self.api_key = os.environ.get('EASYLOGS_API_KEY')
+        # Try to get API key from Django settings first, then environment
+        try:
+            from django.conf import settings
+            self.api_key = getattr(settings, 'EASYLOGS_API_KEY', None) or os.environ.get('EASYLOGS_API_KEY')
+        except ImportError:
+            self.api_key = os.environ.get('EASYLOGS_API_KEY')
         self.api_url = "https://ingest.easylogs.co/logs"
         self.batch_queue = Queue()
         self.batch_size = 10
@@ -69,9 +74,11 @@ class EasyLogsHandler:
                 "Content-Type": "application/json"
             }
             
+            
             # Send each log entry individually for now
             # Could be optimized to send in batches if EasyLogs supports it
             for log_entry in batch:
+                
                 response = requests.post(
                     self.api_url,
                     headers=headers,
@@ -79,8 +86,9 @@ class EasyLogsHandler:
                     timeout=5,
                     verify=False  # Using -k flag equivalent
                 )
+                
         except Exception as e:
-            # Silently handle errors
+            # Silently handle errors to avoid disrupting the application
             pass
     
     def log(self, level: str, message: str, metadata: Optional[Dict[str, Any]] = None):

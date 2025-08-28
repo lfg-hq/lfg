@@ -11,6 +11,9 @@ from accounts.models import LLMApiKeys, TokenUsage
 from asgiref.sync import sync_to_async
 import tempfile
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @require_GET
@@ -150,8 +153,8 @@ def transcribe_file(request, file_id):
     except Exception as e:
         import traceback
         error_details = traceback.format_exc()
-        print(f"Transcription error: {str(e)}")
-        print(error_details)
+        logger.error(f"Transcription error: {str(e)}")
+        logger.error(error_details)
         
         # Return a more detailed error in development
         if settings.DEBUG:
