@@ -1,0 +1,694 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LFG for Dev Agencies 🚀 | Win More Clients with AI-Powered Proposals</title>
+    <meta name="description" content="Transform your agency with AI-powered client proposals, technical specifications, and project planning. Generate comprehensive PRDs and development estimates in minutes, not days.">
+    <meta name="keywords" content="dev agency tools, client proposals, technical specifications, project estimation, agency automation, PRD generator, development planning">
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://lfg.run/for-agencies/">
+    <meta property="og:title" content="LFG for Dev Agencies 🚀 | Win More Clients with AI-Powered Proposals">
+    <meta property="og:description" content="Transform your agency with AI-powered client proposals, technical specifications, and project planning. Generate comprehensive PRDs in minutes.">
+    <meta property="og:image" content="/static/images/og-agencies.jpg">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://lfg.run/for-agencies/">
+    <meta property="twitter:title" content="LFG for Dev Agencies 🚀 | Win More Clients with AI-Powered Proposals">
+    <meta property="twitter:description" content="Transform your agency with AI-powered client proposals, technical specifications, and project planning. Generate comprehensive PRDs in minutes.">
+    <meta property="twitter:image" content="/static/images/og-agencies.jpg">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="icon" type="image/x-icon" href="/static/images/favicon.ico">
+    <style>
+        :root {
+            --primary-purple: #8B5CF6;
+            --secondary-purple: #A855F7;
+            --dark-purple: #6D28D9;
+            --accent-purple: #C084FC;
+            --neon-purple: #E879F9;
+            --bg-dark: #0A0A0F;
+            --bg-darker: #050507;
+            --bg-card: #1A1A2E;
+            --bg-card-hover: #252545;
+            --text-primary: #FFFFFF;
+            --text-secondary: #B8B8D1;
+            --text-muted: #8B8BA7;
+            --border-color: #2D2D4A;
+            --success: #10B981;
+            --warning: #F59E0B;
+            --error: #EF4444;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        html::-webkit-scrollbar {
+            display: none;
+        }
+
+        body {
+            font-family: 'Space Grotesk', sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+            position: relative;
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        body::-webkit-scrollbar {
+            display: none;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        /* Navigation */
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: rgba(10, 10, 15, 0.95);
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+            padding: 1rem 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .nav-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: var(--primary-purple);
+            text-decoration: none;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+            list-style: none;
+        }
+
+        .nav-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.3s ease;
+        }
+
+        .nav-links a:hover {
+            color: var(--primary-purple);
+        }
+
+        .nav-cta {
+            background: linear-gradient(135deg, var(--primary-purple), var(--secondary-purple));
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .nav-cta:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(139, 92, 246, 0.4);
+        }
+
+        /* Hero Section */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 8rem 2rem 4rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero-content {
+            max-width: 900px;
+            z-index: 2;
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            background: rgba(139, 92, 246, 0.1);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            border-radius: 50px;
+            color: var(--primary-purple);
+            font-weight: 600;
+            margin-bottom: 2rem;
+            font-size: 0.9rem;
+        }
+
+        .hero h1 {
+            font-size: clamp(2.5rem, 5vw, 4.5rem);
+            font-weight: 800;
+            margin-bottom: 1.5rem;
+            background: linear-gradient(135deg, var(--text-primary), var(--primary-purple), var(--neon-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            line-height: 1.2;
+        }
+
+        .hero p {
+            font-size: 1.35rem;
+            color: var(--text-secondary);
+            margin-bottom: 3rem;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+            line-height: 1.6;
+        }
+
+        .hero-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-bottom: 2rem;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary-purple), var(--secondary-purple));
+            color: white;
+            padding: 1rem 2rem;
+            border: none;
+            border-radius: 12px;
+            font-size: 1.1rem;
+            font-weight: 700;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(139, 92, 246, 0.4);
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: var(--text-primary);
+            padding: 1rem 2rem;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--primary-purple);
+            background: rgba(139, 92, 246, 0.1);
+        }
+
+        /* Agency Benefits Section */
+        .agency-benefits {
+            padding: 6rem 0;
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.02), rgba(168, 85, 247, 0.02));
+        }
+
+        .section-header {
+            text-align: center;
+            margin-bottom: 4rem;
+        }
+
+        .section-header h2 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+        }
+
+        .section-header p {
+            font-size: 1.2rem;
+            color: var(--text-secondary);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .benefits-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 2rem;
+        }
+
+        .benefit-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 2.5rem;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .benefit-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), rgba(168, 85, 247, 0.05));
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .benefit-card:hover::before {
+            opacity: 1;
+        }
+
+        .benefit-card:hover {
+            transform: translateY(-8px);
+            border-color: var(--primary-purple);
+            box-shadow: 0 15px 40px rgba(139, 92, 246, 0.2);
+        }
+
+        .benefit-icon {
+            width: 70px;
+            height: 70px;
+            background: linear-gradient(135deg, var(--primary-purple), var(--secondary-purple));
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 1.5rem;
+            font-size: 1.8rem;
+            color: white;
+            position: relative;
+            z-index: 1;
+        }
+
+        .benefit-card h3 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+            position: relative;
+            z-index: 1;
+        }
+
+        .benefit-card p {
+            color: var(--text-secondary);
+            margin-bottom: 1.5rem;
+            position: relative;
+            z-index: 1;
+        }
+
+        .benefit-metrics {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .metric {
+            background: rgba(139, 92, 246, 0.1);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            color: var(--primary-purple);
+            font-weight: 600;
+        }
+
+        /* Use Cases Section */
+        .use-cases {
+            padding: 6rem 0;
+        }
+
+        .use-cases-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+
+        .use-case {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 2rem;
+            transition: all 0.3s ease;
+        }
+
+        .use-case:hover {
+            border-color: var(--primary-purple);
+            transform: translateY(-5px);
+        }
+
+        .use-case h4 {
+            font-size: 1.3rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            color: var(--primary-purple);
+        }
+
+        .use-case-steps {
+            list-style: none;
+            padding: 0;
+        }
+
+        .use-case-steps li {
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+            padding-left: 1.5rem;
+            position: relative;
+        }
+
+        .use-case-steps li::before {
+            content: '→';
+            position: absolute;
+            left: 0;
+            color: var(--primary-purple);
+            font-weight: bold;
+        }
+
+        /* ROI Section */
+        .roi-section {
+            padding: 6rem 0;
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), rgba(168, 85, 247, 0.05));
+            text-align: center;
+        }
+
+        .roi-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+
+        .roi-stat {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 2rem;
+        }
+
+        .roi-number {
+            font-size: 3rem;
+            font-weight: 800;
+            color: var(--primary-purple);
+            margin-bottom: 0.5rem;
+        }
+
+        .roi-label {
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+
+        /* CTA Section */
+        .cta-section {
+            padding: 6rem 0;
+            text-align: center;
+        }
+
+        .cta-content {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .cta-section h2 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, var(--text-primary), var(--primary-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .nav-links {
+                display: none;
+            }
+
+            .hero h1 {
+                font-size: 2.5rem;
+            }
+
+            .hero p {
+                font-size: 1.1rem;
+            }
+
+            .hero-buttons {
+                flex-direction: column;
+                align-items: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav>
+        <div class="nav-content">
+            <a href="/" class="logo">LFG</a>
+            <ul class="nav-links">
+                <li><a href="/">Home</a></li>
+                <li><a href="/for-agencies/" class="active">For Agencies</a></li>
+                <li><a href="/for-startups/">For Startups</a></li>
+                <li><a href="#pricing">Pricing</a></li>
+            </ul>
+            <a href="/accounts/register/" class="nav-cta">Start Free Trial</a>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-content">
+            <div class="hero-badge">
+                <i class="fas fa-rocket"></i>
+                Win 3x More Clients
+            </div>
+            <h1>Close Deals Faster with AI-Powered Proposals</h1>
+            <p>Transform your development agency with comprehensive client proposals, technical specifications, and project estimates generated in <strong>minutes, not days</strong>. Impress clients with detailed PRDs and accurate project scoping.</p>
+            <div class="hero-buttons">
+                <a href="/accounts/register/" class="btn-primary">
+                    <i class="fas fa-play"></i>
+                    Start Free Trial
+                </a>
+                <a href="#demo" class="btn-secondary">
+                    <i class="fas fa-video"></i>
+                    Watch Demo
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Agency Benefits -->
+    <section class="agency-benefits">
+        <div class="container">
+            <div class="section-header">
+                <h2>Built Specifically for Development Agencies</h2>
+                <p>Stop losing deals to slow turnaround times. Generate professional proposals that win clients and showcase your technical expertise.</p>
+            </div>
+            <div class="benefits-grid">
+                <div class="benefit-card">
+                    <div class="benefit-icon">
+                        <i class="fas fa-file-contract"></i>
+                    </div>
+                    <h3>Professional Client Proposals</h3>
+                    <p>Generate comprehensive project proposals with detailed technical specifications, timeline estimates, and cost breakdowns that impress clients.</p>
+                    <div class="benefit-metrics">
+                        <span class="metric">80% Faster Proposals</span>
+                        <span class="metric">3x Win Rate</span>
+                    </div>
+                </div>
+
+                <div class="benefit-card">
+                    <div class="benefit-icon">
+                        <i class="fas fa-cogs"></i>
+                    </div>
+                    <h3>Technical Architecture Planning</h3>
+                    <p>Create detailed system architecture documents, database schemas, and API specifications that demonstrate your technical depth to prospects.</p>
+                    <div class="benefit-metrics">
+                        <span class="metric">40+ Hours Saved</span>
+                        <span class="metric">Enterprise Ready</span>
+                    </div>
+                </div>
+
+                <div class="benefit-card">
+                    <div class="benefit-icon">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <h3>Team Collaboration & Planning</h3>
+                    <p>Coordinate your development team with auto-generated tickets, user stories, and project roadmaps that integrate directly with Linear and GitHub.</p>
+                    <div class="benefit-metrics">
+                        <span class="metric">Linear Integration</span>
+                        <span class="metric">Team Sync</span>
+                    </div>
+                </div>
+
+                <div class="benefit-card">
+                    <div class="benefit-icon">
+                        <i class="fas fa-dollar-sign"></i>
+                    </div>
+                    <h3>Accurate Project Estimation</h3>
+                    <p>Generate realistic project timelines and cost estimates based on technical complexity analysis, reducing scope creep and improving profitability.</p>
+                    <div class="benefit-metrics">
+                        <span class="metric">25% Higher Margins</span>
+                        <span class="metric">Scope Protection</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Use Cases -->
+    <section class="use-cases">
+        <div class="container">
+            <div class="section-header">
+                <h2>How Agencies Use LFG</h2>
+                <p>Real workflows that transform your client delivery process</p>
+            </div>
+            <div class="use-cases-grid">
+                <div class="use-case">
+                    <h4>Client Discovery & Proposal Generation</h4>
+                    <ul class="use-case-steps">
+                        <li>Upload client requirements or meeting notes</li>
+                        <li>Generate comprehensive PRD with technical analysis</li>
+                        <li>Create detailed project timeline and cost estimate</li>
+                        <li>Export professional proposal document</li>
+                        <li>Present to client with confidence</li>
+                    </ul>
+                </div>
+
+                <div class="use-case">
+                    <h4>Technical Specification Creation</h4>
+                    <ul class="use-case-steps">
+                        <li>Define product requirements and user stories</li>
+                        <li>Generate system architecture diagrams</li>
+                        <li>Create database schema and API documentation</li>
+                        <li>Plan deployment and infrastructure needs</li>
+                        <li>Share with development team</li>
+                    </ul>
+                </div>
+
+                <div class="use-case">
+                    <h4>Project Planning & Team Coordination</h4>
+                    <ul class="use-case-steps">
+                        <li>Break down features into development tickets</li>
+                        <li>Sync automatically with Linear workspace</li>
+                        <li>Assign tasks and set sprint priorities</li>
+                        <li>Track progress with built-in metrics</li>
+                        <li>Deliver on time and on budget</li>
+                    </ul>
+                </div>
+
+                <div class="use-case">
+                    <h4>Client Communication & Updates</h4>
+                    <ul class="use-case-steps">
+                        <li>Generate progress reports automatically</li>
+                        <li>Create technical documentation for handoff</li>
+                        <li>Explain complex features in client-friendly language</li>
+                        <li>Maintain project transparency throughout</li>
+                        <li>Build long-term client relationships</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ROI Section -->
+    <section class="roi-section">
+        <div class="container">
+            <div class="section-header">
+                <h2>The Agency Impact</h2>
+                <p>See how development agencies are transforming their business with LFG</p>
+            </div>
+            <div class="roi-stats">
+                <div class="roi-stat">
+                    <div class="roi-number">40+</div>
+                    <div class="roi-label">Hours Saved Per Project</div>
+                </div>
+                <div class="roi-stat">
+                    <div class="roi-number">3x</div>
+                    <div class="roi-label">Higher Proposal Win Rate</div>
+                </div>
+                <div class="roi-stat">
+                    <div class="roi-number">25%</div>
+                    <div class="roi-label">Improved Project Margins</div>
+                </div>
+                <div class="roi-stat">
+                    <div class="roi-number">90%</div>
+                    <div class="roi-label">Client Satisfaction Rate</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="cta-section">
+        <div class="container">
+            <div class="cta-content">
+                <h2>Ready to Transform Your Agency?</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 2rem; font-size: 1.2rem;">Join development agencies already using LFG to win more clients and deliver better projects.</p>
+                <div class="hero-buttons">
+                    <a href="/accounts/register/" class="btn-primary">
+                        <i class="fas fa-rocket"></i>
+                        Start Free Trial
+                    </a>
+                    <a href="mailto:hello@lfg.run" class="btn-secondary">
+                        <i class="fas fa-envelope"></i>
+                        Contact Sales
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <script>
+        // Smooth scrolling for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                document.querySelector(this.getAttribute('href')).scrollIntoView({
+                    behavior: 'smooth'
+                });
+            });
+        });
+    </script>
+</body>
+</html>

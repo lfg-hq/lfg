@@ -1,0 +1,736 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LFG for Startups 🚀 | Build Your MVP 10x Faster with AI</title>
+    <meta name="description" content="Startup-focused AI platform for rapid MVP development. Generate technical specifications, user stories, and development roadmaps. Perfect for pre-seed to Series A startups.">
+    <meta name="keywords" content="startup MVP, technical planning, startup development, AI product development, startup tools, MVP generator, technical roadmap">
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://lfg.run/for-startups/">
+    <meta property="og:title" content="LFG for Startups 🚀 | Build Your MVP 10x Faster with AI">
+    <meta property="og:description" content="Startup-focused AI platform for rapid MVP development. Generate technical specifications and development roadmaps in minutes.">
+    <meta property="og:image" content="/static/images/og-startups.jpg">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://lfg.run/for-startups/">
+    <meta property="twitter:title" content="LFG for Startups 🚀 | Build Your MVP 10x Faster with AI">
+    <meta property="twitter:description" content="Startup-focused AI platform for rapid MVP development. Generate technical specifications and development roadmaps in minutes.">
+    <meta property="twitter:image" content="/static/images/og-startups.jpg">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="icon" type="image/x-icon" href="/static/images/favicon.ico">
+    <style>
+        :root {
+            --primary-purple: #8B5CF6;
+            --secondary-purple: #A855F7;
+            --dark-purple: #6D28D9;
+            --accent-purple: #C084FC;
+            --neon-purple: #E879F9;
+            --startup-orange: #F59E0B;
+            --startup-green: #10B981;
+            --bg-dark: #0A0A0F;
+            --bg-darker: #050507;
+            --bg-card: #1A1A2E;
+            --bg-card-hover: #252545;
+            --text-primary: #FFFFFF;
+            --text-secondary: #B8B8D1;
+            --text-muted: #8B8BA7;
+            --border-color: #2D2D4A;
+            --success: #10B981;
+            --warning: #F59E0B;
+            --error: #EF4444;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        html::-webkit-scrollbar {
+            display: none;
+        }
+
+        body {
+            font-family: 'Space Grotesk', sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+            position: relative;
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        body::-webkit-scrollbar {
+            display: none;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        /* Navigation */
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: rgba(10, 10, 15, 0.95);
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+            padding: 1rem 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .nav-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: var(--primary-purple);
+            text-decoration: none;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+            list-style: none;
+        }
+
+        .nav-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.3s ease;
+        }
+
+        .nav-links a:hover,
+        .nav-links a.active {
+            color: var(--primary-purple);
+        }
+
+        .nav-cta {
+            background: linear-gradient(135deg, var(--primary-purple), var(--secondary-purple));
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .nav-cta:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(139, 92, 246, 0.4);
+        }
+
+        /* Hero Section */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 8rem 2rem 4rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero-content {
+            max-width: 900px;
+            z-index: 2;
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            background: rgba(139, 92, 246, 0.1);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            border-radius: 50px;
+            color: var(--primary-purple);
+            font-weight: 600;
+            margin-bottom: 2rem;
+            font-size: 0.9rem;
+        }
+
+        .hero h1 {
+            font-size: clamp(2.5rem, 5vw, 4.5rem);
+            font-weight: 800;
+            margin-bottom: 1.5rem;
+            background: linear-gradient(135deg, var(--text-primary), var(--primary-purple), var(--neon-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            line-height: 1.2;
+        }
+
+        .hero p {
+            font-size: 1.35rem;
+            color: var(--text-secondary);
+            margin-bottom: 3rem;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+            line-height: 1.6;
+        }
+
+        .hero-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-bottom: 2rem;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary-purple), var(--secondary-purple));
+            color: white;
+            padding: 1rem 2rem;
+            border: none;
+            border-radius: 12px;
+            font-size: 1.1rem;
+            font-weight: 700;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(139, 92, 246, 0.4);
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: var(--text-primary);
+            padding: 1rem 2rem;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--primary-purple);
+            background: rgba(139, 92, 246, 0.1);
+        }
+
+        /* Startup Journey Section */
+        .startup-journey {
+            padding: 6rem 0;
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.02), rgba(168, 85, 247, 0.02));
+        }
+
+        .section-header {
+            text-align: center;
+            margin-bottom: 4rem;
+        }
+
+        .section-header h2 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+        }
+
+        .section-header p {
+            font-size: 1.2rem;
+            color: var(--text-secondary);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .journey-stages {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+
+        .stage-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 2.5rem;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            text-align: center;
+        }
+
+        .stage-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), rgba(168, 85, 247, 0.05));
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .stage-card:hover::before {
+            opacity: 1;
+        }
+
+        .stage-card:hover {
+            transform: translateY(-8px);
+            border-color: var(--primary-purple);
+            box-shadow: 0 15px 40px rgba(139, 92, 246, 0.2);
+        }
+
+        .stage-number {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, var(--primary-purple), var(--secondary-purple));
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1.5rem;
+            font-size: 1.5rem;
+            color: white;
+            font-weight: 800;
+            position: relative;
+            z-index: 1;
+        }
+
+        .stage-card h3 {
+            font-size: 1.4rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+            position: relative;
+            z-index: 1;
+        }
+
+        .stage-card p {
+            color: var(--text-secondary);
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Features Section */
+        .startup-features {
+            padding: 6rem 0;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 2rem;
+        }
+
+        .feature-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 2.5rem;
+            transition: all 0.3s ease;
+        }
+
+        .feature-card:hover {
+            border-color: var(--primary-purple);
+            transform: translateY(-5px);
+        }
+
+        .feature-icon {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, var(--primary-purple), var(--secondary-purple));
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 1.5rem;
+            font-size: 1.5rem;
+            color: white;
+        }
+
+        .feature-card h3 {
+            font-size: 1.4rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+        }
+
+        .feature-benefits {
+            list-style: none;
+            padding: 0;
+        }
+
+        .feature-benefits li {
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+            padding-left: 1.5rem;
+            position: relative;
+        }
+
+        .feature-benefits li::before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: var(--success);
+            font-weight: bold;
+        }
+
+        /* Stats Section */
+        .startup-stats {
+            padding: 6rem 0;
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), rgba(168, 85, 247, 0.05));
+            text-align: center;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 2rem;
+        }
+
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: var(--primary-purple);
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+
+        /* Testimonial Section */
+        .testimonials {
+            padding: 6rem 0;
+        }
+
+        .testimonial-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 3rem;
+            text-align: center;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .testimonial-quote {
+            font-size: 1.3rem;
+            color: var(--text-secondary);
+            margin-bottom: 2rem;
+            font-style: italic;
+            line-height: 1.6;
+        }
+
+        .testimonial-author {
+            color: var(--text-primary);
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .testimonial-role {
+            color: var(--primary-purple);
+            font-weight: 600;
+        }
+
+        /* CTA Section */
+        .cta-section {
+            padding: 6rem 0;
+            text-align: center;
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), rgba(168, 85, 247, 0.05));
+        }
+
+        .cta-content {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .cta-section h2 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, var(--text-primary), var(--primary-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .nav-links {
+                display: none;
+            }
+
+            .hero h1 {
+                font-size: 2.5rem;
+            }
+
+            .hero p {
+                font-size: 1.1rem;
+            }
+
+            .hero-buttons {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .journey-stages,
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav>
+        <div class="nav-content">
+            <a href="/" class="logo">LFG</a>
+            <ul class="nav-links">
+                <li><a href="/">Home</a></li>
+                <li><a href="/for-agencies/">For Agencies</a></li>
+                <li><a href="/for-startups/" class="active">For Startups</a></li>
+                <li><a href="#pricing">Pricing</a></li>
+            </ul>
+            <a href="/accounts/register/" class="nav-cta">Start Free Trial</a>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-content">
+            <div class="hero-badge">
+                <i class="fas fa-seedling"></i>
+                From Idea to MVP in Weeks
+            </div>
+            <h1>Build Your Startup MVP 10x Faster</h1>
+            <p>Transform your startup idea into a detailed technical roadmap. Generate comprehensive PRDs, user stories, and development plans that get you to market faster and help you <strong>raise funding with confidence</strong>.</p>
+            <div class="hero-buttons">
+                <a href="/accounts/register/" class="btn-primary">
+                    <i class="fas fa-rocket"></i>
+                    Start Building Now
+                </a>
+                <a href="#demo" class="btn-secondary">
+                    <i class="fas fa-play-circle"></i>
+                    See How It Works
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Startup Journey -->
+    <section class="startup-journey">
+        <div class="container">
+            <div class="section-header">
+                <h2>Your Startup Journey, Accelerated</h2>
+                <p>From ideation to product-market fit, LFG guides you through every critical phase of startup development</p>
+            </div>
+            <div class="journey-stages">
+                <div class="stage-card">
+                    <div class="stage-number">1</div>
+                    <h3>Idea Validation</h3>
+                    <p>Transform your concept into a comprehensive product requirements document with market analysis, user personas, and technical feasibility assessment.</p>
+                </div>
+
+                <div class="stage-card">
+                    <div class="stage-number">2</div>
+                    <h3>Technical Planning</h3>
+                    <p>Generate detailed system architecture, database design, and technology stack recommendations optimized for scalability and team resources.</p>
+                </div>
+
+                <div class="stage-card">
+                    <div class="stage-number">3</div>
+                    <h3>MVP Development</h3>
+                    <p>Break down features into actionable development tickets, create sprint plans, and coordinate your team with Linear integration.</p>
+                </div>
+
+                <div class="stage-card">
+                    <div class="stage-number">4</div>
+                    <h3>Launch & Iterate</h3>
+                    <p>Plan your go-to-market strategy, set up analytics, and prepare for rapid iteration based on user feedback and growth metrics.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Startup Features -->
+    <section class="startup-features">
+        <div class="container">
+            <div class="section-header">
+                <h2>Everything Your Startup Needs</h2>
+                <p>Purpose-built tools for lean startups focused on speed and efficiency</p>
+            </div>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-lightbulb"></i>
+                    </div>
+                    <h3>Investor-Ready Documentation</h3>
+                    <ul class="feature-benefits">
+                        <li>Professional PRDs for pitch decks</li>
+                        <li>Technical architecture diagrams</li>
+                        <li>Market analysis and competitive research</li>
+                        <li>Development timeline projections</li>
+                        <li>Resource requirement planning</li>
+                    </ul>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-users-cog"></i>
+                    </div>
+                    <h3>Lean Team Coordination</h3>
+                    <ul class="feature-benefits">
+                        <li>Auto-generated user stories and tickets</li>
+                        <li>Sprint planning and backlog management</li>
+                        <li>Linear and GitHub integration</li>
+                        <li>Progress tracking and reporting</li>
+                        <li>Remote team collaboration tools</li>
+                    </ul>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <h3>Growth & Analytics Planning</h3>
+                    <ul class="feature-benefits">
+                        <li>User metrics and KPI definitions</li>
+                        <li>A/B testing strategy planning</li>
+                        <li>Product analytics implementation</li>
+                        <li>Growth funnel optimization</li>
+                        <li>Customer feedback integration</li>
+                    </ul>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-dollar-sign"></i>
+                    </div>
+                    <h3>Budget & Resource Optimization</h3>
+                    <ul class="feature-benefits">
+                        <li>Accurate development cost estimation</li>
+                        <li>Technology stack cost analysis</li>
+                        <li>Infrastructure scaling planning</li>
+                        <li>Team hiring roadmaps</li>
+                        <li>Funding milestone planning</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Stats Section -->
+    <section class="startup-stats">
+        <div class="container">
+            <div class="section-header">
+                <h2>Startup Success Metrics</h2>
+                <p>How startups are accelerating their journey with LFG</p>
+            </div>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-number">75%</div>
+                    <div class="stat-label">Faster Time to MVP</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">$50K</div>
+                    <div class="stat-label">Average Development Cost Saved</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">2x</div>
+                    <div class="stat-label">Higher Funding Success Rate</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">60%</div>
+                    <div class="stat-label">Reduction in Technical Debt</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Testimonial -->
+    <section class="testimonials">
+        <div class="container">
+            <div class="testimonial-card">
+                <div class="testimonial-quote">
+                    "LFG helped us go from a rough idea to a comprehensive technical plan in just 2 days. Our seed round presentation was so much stronger because we had detailed specifications and realistic timelines."
+                </div>
+                <div class="testimonial-author">Sarah Chen</div>
+                <div class="testimonial-role">Founder & CEO, TechFlow</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="cta-section">
+        <div class="container">
+            <div class="cta-content">
+                <h2>Ready to Build Your Startup?</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 2rem; font-size: 1.2rem;">Join hundreds of startups using LFG to accelerate their journey from idea to market.</p>
+                <div class="hero-buttons">
+                    <a href="/accounts/register/" class="btn-primary">
+                        <i class="fas fa-rocket"></i>
+                        Start Free Trial
+                    </a>
+                    <a href="mailto:hello@lfg.run" class="btn-secondary">
+                        <i class="fas fa-calendar"></i>
+                        Book Demo Call
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <script>
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                document.querySelector(this.getAttribute('href')).scrollIntoView({
+                    behavior: 'smooth'
+                });
+            });
+        });
+    </script>
+</body>
+</html>
