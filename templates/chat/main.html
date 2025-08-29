@@ -478,7 +478,7 @@
 </head>
 <body data-user-authenticated="{% if user.is_authenticated %}true{% else %}false{% endif %}" 
       data-turbo-mode="{% if turbo_mode %}true{% else %}false{% endif %}"
-      data-model-key="{{ model_key|default:'gpt_5_mini' }}"
+      data-model-key="{{ model_key|default:'gpt-5-mini' }}"
       data-role-key="{{ role_key|default:'product_analyst' }}"
       data-sidebar-minimized="{% if sidebar_minimized %}true{% else %}false{% endif %}"
       >
@@ -560,11 +560,11 @@
                                             </button>
                                             
                                             <div class="submenu-group">OpenAI</div>
-                                            <button type="button" class="submenu-option" data-value="gpt_5">
+                                            <button type="button" class="submenu-option" data-value="gpt-5">
                                                 <span>GPT-5</span>
                                                 <i class="fas fa-check"></i>
                                             </button>
-                                            <button type="button" class="submenu-option selected" data-value="gpt_5_mini">
+                                            <button type="button" class="submenu-option selected" data-value="gpt-5-mini">
                                                 <span>GPT-5 mini</span>
                                                 <i class="fas fa-check"></i>
                                             </button>

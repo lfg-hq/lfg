@@ -85,15 +85,11 @@ class ModelSelection(models.Model):
     MODEL_CHOICES = [
         # Anthropic models
         ('claude_4_sonnet', 'Claude 4 Sonnet'),
-        ('claude_4_opus', 'Claude 4 Opus'),
-        ('claude_3.5_sonnet', 'Claude 3.5 Sonnet'),
         # OpenAI models
         ('gpt-5', 'GPT-5'),
         ('gpt-5-mini', 'GPT-5-mini'),
         # XAI models
         ('grok_4', 'Grok 4'),
-        ('grok_2', 'Grok 2'),
-        ('grok_beta', 'Grok Beta'),
         # Google models
         ('gemini_2.5_pro', 'Google Gemini 2.5 Pro'),
         ('gemini_2.5_flash', 'Google Gemini 2.5 Flash'),
