@@ -74,7 +74,7 @@ def checkout(request, plan_id):
     # Get domain for success and cancel URLs
     domain_url = request.build_absolute_uri('/').rstrip('/')
     success_url = domain_url + reverse('subscriptions:payment_success')
-    cancel_url = domain_url + reverse('subscriptions:payment_cancel')
+    cancel_url = domain_url + reverse('subscriptions:dashboard')
     
     # First, clean up any pending transactions for this plan
     Transaction.objects.filter(
@@ -1036,7 +1036,8 @@ def fix_pro_subscription(request):
         return JsonResponse({'error': str(e)}, status=500)
 
 
-@login_required  
+@login_required
+@csrf_exempt
 def init_default_plans(request):
     """Initialize default payment plans - admin only"""
     if request.method != 'POST':
