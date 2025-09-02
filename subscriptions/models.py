@@ -49,6 +49,11 @@ class UserCredit(models.Model):
                 self.monthly_reset_date = timezone.now() + timezone.timedelta(days=30)
                 self.save()
             base_tokens = max(0, 300000 - self.monthly_tokens_used)
+            
+            # Add any unused free tier tokens when upgraded to pro
+            unused_free_tokens = max(0, 100000 - self.free_tokens_used)
+            base_tokens += unused_free_tokens
+            
         elif self.is_free_tier:
             # Free tier: 100K lifetime limit
             base_tokens = max(0, 100000 - self.total_tokens_used)
