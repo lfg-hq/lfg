@@ -19,8 +19,6 @@ class AnthropicProvider(BaseLLMProvider):
     
     MODEL_MAPPING = {
         "claude_4_sonnet": "claude-sonnet-4-20250514",
-        "claude_4_opus": "claude-opus-4-20250514",
-        "claude_3.5_sonnet": "claude-3-5-sonnet-20241022",
     }
     
     def __init__(self, selected_model: str, user=None, conversation=None, project=None):

@@ -26,8 +26,6 @@ class LLMProviderFactory:
     _model_to_provider = {
         # Anthropic models
         'claude_4_sonnet': 'anthropic',
-        'claude_4_opus': 'anthropic',
-        'claude_3.5_sonnet': 'anthropic',
         
         # OpenAI models
         'gpt-5': 'openai',

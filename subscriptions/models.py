@@ -64,6 +64,12 @@ class UserCredit(models.Model):
             # Free tier can only use gpt-5-mini
             return model_name == 'gpt-5-mini'
         return True  # Pro tier can use all models
+    
+    def can_use_platform_model(self, model_name):
+        """Check if user can use a model with platform-provided API key"""
+        # Platform only provides gpt-5-mini for all tiers (free and paid)
+        # All other models require user's own API keys
+        return model_name == 'gpt-5-mini'
 
 class PaymentPlan(models.Model):
     name = models.CharField(max_length=100)
