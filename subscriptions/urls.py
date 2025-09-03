@@ -18,5 +18,4 @@ urlpatterns = [
     path('fix-customer-ids/', views.fix_customer_ids, name='fix_customer_ids'),
     path('debug-account/', views.debug_account, name='debug_account'),
     path('fix-pro-subscription/', views.fix_pro_subscription, name='fix_pro_subscription'),
-    path('init-default-plans/', views.init_default_plans, name='init_default_plans'),
 ] 
