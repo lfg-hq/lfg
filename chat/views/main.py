@@ -143,6 +143,12 @@ def project_chat(request, project_id):
         }
     )
     context['sidebar_minimized'] = app_state.sidebar_minimized
+    
+    # Add subscription context for UI filtering
+    user_credit, created = UserCredit.objects.get_or_create(user=request.user)
+    context['is_free_tier'] = user_credit.is_free_tier
+    context['remaining_tokens'] = user_credit.get_remaining_tokens()
+    context['total_tokens_limit'] = 100000 if user_credit.is_free_tier else 300000
         
     return render(request, 'chat/main.html', context)
 
@@ -200,6 +206,12 @@ def show_conversation(request, conversation_id):
         }
     )
     context['sidebar_minimized'] = app_state.sidebar_minimized
+    
+    # Add subscription context for UI filtering
+    user_credit, created = UserCredit.objects.get_or_create(user=request.user)
+    context['is_free_tier'] = user_credit.is_free_tier
+    context['remaining_tokens'] = user_credit.get_remaining_tokens()
+    context['total_tokens_limit'] = 100000 if user_credit.is_free_tier else 300000
         
     return render(request, 'chat/main.html', context)
 

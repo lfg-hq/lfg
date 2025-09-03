@@ -539,25 +539,46 @@ def integrations(request):
         total_limit = 100000  # 100K for free tier
         tokens_used = user_credit.total_tokens_used
         usage_percentage = min((tokens_used / total_limit * 100), 100) if total_limit > 0 else 0
+        monthly_usage_percentage = 0
     else:
-        # Pro tier: Show monthly allocation + additional credits as total limit
+        # Pro tier calculations
         monthly_limit = 300000
         additional_credits = max(0, user_credit.credits)
         total_limit = monthly_limit + additional_credits
         
         # For "Used" display: Show actual tokens consumed (from paid_tokens_used)
-        # This represents actual token consumption regardless of source
         tokens_used = user_credit.paid_tokens_used
         
-        # For usage percentage: Only count usage against monthly allocation (not additional credits)  
-        monthly_usage_percent = min((user_credit.monthly_tokens_used / monthly_limit * 100), 100) if monthly_limit > 0 else 0
-        usage_percentage = monthly_usage_percent
+        # Calculate monthly usage percentage for progress bar
+        monthly_usage_percentage = min((user_credit.monthly_tokens_used / monthly_limit * 100), 100) if monthly_limit > 0 else 0
+        usage_percentage = monthly_usage_percentage
+        
+        # Calculate additional credits usage percentage
+        # Additional credits start being consumed after monthly 300K limit is reached
+        if user_credit.monthly_tokens_used > monthly_limit:
+            # User has exceeded monthly limit, so additional credits are being consumed
+            additional_credits_consumed = user_credit.monthly_tokens_used - monthly_limit
+            # Get original additional credits purchased (what they had before consumption)
+            original_additional_credits = user_credit.credits + additional_credits_consumed
+            additional_credits_usage_percentage = (additional_credits_consumed / original_additional_credits * 100) if original_additional_credits > 0 else 0
+            total_additional_credits_purchased = original_additional_credits
+        else:
+            # Monthly limit not yet exceeded, no additional credits consumed
+            additional_credits_usage_percentage = 0
+            total_additional_credits_purchased = user_credit.credits if user_credit.credits > 0 else 0
     
     # Calculate free tokens remaining for Pro tier display
     free_tokens_remaining = 0
     if not user_credit.is_free_tier:
         free_limit = 100000
         free_tokens_remaining = max(0, free_limit - user_credit.free_tokens_used)
+    
+    # Get subscription data for subscriptions section
+    from subscriptions.models import PaymentPlan, Transaction
+    import os
+    payment_plans = PaymentPlan.objects.filter(is_active=True)
+    transactions = Transaction.objects.filter(user=request.user).order_by('-created_at')[:5]
+    stripe_public_key = os.environ.get('STRIPE_PUBLIC_KEY', '')
     
     context = {
         'github_connected': github_connected,
@@ -584,6 +605,13 @@ def integrations(request):
         'free_tokens_used': user_credit.free_tokens_used,
         'paid_tokens_used': user_credit.paid_tokens_used,
         'free_tokens_remaining': free_tokens_remaining,
+        # Subscription data
+        'payment_plans': payment_plans,
+        'transactions': transactions,
+        'STRIPE_PUBLIC_KEY': stripe_public_key,
+        'monthly_usage_percentage': round(monthly_usage_percentage, 1),
+        'additional_credits_usage_percentage': round(additional_credits_usage_percentage, 1) if not user_credit.is_free_tier else 0,
+        'total_additional_credits_purchased': total_additional_credits_purchased if not user_credit.is_free_tier else 0,
     }
     
     return render(request, 'accounts/settings_new.html', context)

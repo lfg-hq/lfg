@@ -4,9 +4,11 @@ import asyncio
 import traceback
 import openai
 import tiktoken
+import os
 from typing import List, Dict, Any, Optional, AsyncGenerator
 
 from .base import BaseLLMProvider
+from channels.db import database_sync_to_async
 
 # Import functions from ai_common and streaming_handlers
 from factory.ai_common import execute_tool_call, get_notification_type_for_tool, track_token_usage
@@ -45,21 +47,51 @@ class OpenAIProvider(BaseLLMProvider):
             
         logger.info(f"OpenAI Provider initialized with model: {self.model}")
     
+    async def _can_use_platform_model(self):
+        """Check if user can use platform-provided API key for the current model"""
+        if not self.user:
+            return False
+        
+        try:
+            from subscriptions.models import UserCredit
+            user_credit, created = await database_sync_to_async(UserCredit.objects.get_or_create)(user=self.user)
+            
+            # Use the subscription model's platform access logic
+            return user_credit.can_use_platform_model(self.model)
+            
+        except Exception as e:
+            logger.error(f"Error checking platform model access: {e}")
+            return False
+    
     async def _ensure_client(self):
         """Ensure the client is initialized with API key"""
         # Try to fetch API key from user profile if available
         if self.user:
             try:
                 self.api_key = await self._get_api_key_from_db(self.user, 'openai_api_key')
-                logger.info(f"Fetched OpenAI API key from user {self.user.id} profile")
+                if self.api_key:
+                    logger.info(f"Using user-provided OpenAI API key for user {self.user.id}")
             except Exception as e:
                 logger.warning(f"Could not fetch OpenAI API key: {e}")
+        
+        # Fallback to platform API key if no user key found
+        if not self.api_key:
+            platform_openai_key = os.getenv('OPENAI_API_KEY')
+            if platform_openai_key:
+                # Check if user can use platform-provided models
+                if await self._can_use_platform_model():
+                    self.api_key = platform_openai_key
+                    logger.info(f"Using platform-provided OpenAI API key for model {self.model}")
+                else:
+                    logger.info(f"User cannot use platform key for model {self.model}, requires own API key")
+            else:
+                logger.warning("No platform OpenAI API key found in environment")
         
         # Initialize client
         if self.api_key:
             self.client = openai.OpenAI(api_key=self.api_key)
         else:
-            logger.warning("No OpenAI API key found")
+            logger.warning("No OpenAI API key available (neither user nor platform)")
     
     def _convert_messages_to_provider_format(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """OpenAI uses the standard format, so just return as-is"""
@@ -320,7 +352,10 @@ class OpenAIProvider(BaseLLMProvider):
         
         # Check if client is initialized
         if not self.client:
-            yield "Error: No OpenAI API key configured. Please add API key [here](/settings/)."
+            if self.model == 'gpt-5-mini':
+                yield "Error: Platform OpenAI API key not available. Please contact support."
+            else:
+                yield f"Error: {self.model} requires your own OpenAI API key. Please add API key [here](/settings/) to use advanced models."
             return
             
         current_messages = list(messages) # Work on a copy

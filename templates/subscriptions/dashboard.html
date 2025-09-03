@@ -85,6 +85,25 @@
         font-size: 1.125rem;
     }
     
+    .back-to-settings {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: #9ca3af;
+        text-decoration: none;
+        font-size: 0.875rem;
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        transition: all 0.2s;
+        border: 1px solid #374151;
+    }
+    
+    .back-to-settings:hover {
+        color: white;
+        background: #374151;
+        transform: translateX(-2px);
+    }
+    
     /* Current Plan Card */
     .plan-card {
         background: #1a1a1a;
@@ -761,6 +780,10 @@
             <i class="fas fa-credit-card"></i>
             Subscription & Billing
         </h1>
+        <a href="/settings/" class="back-to-settings">
+            <i class="fas fa-arrow-left"></i>
+            Back to Settings
+        </a>
     </div>
 
     <!-- Current Plan Card -->

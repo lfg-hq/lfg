@@ -49,6 +49,11 @@ class UserCredit(models.Model):
                 self.monthly_reset_date = timezone.now() + timezone.timedelta(days=30)
                 self.save()
             base_tokens = max(0, 300000 - self.monthly_tokens_used)
+            
+            # Add any unused free tier tokens when upgraded to pro
+            unused_free_tokens = max(0, 100000 - self.free_tokens_used)
+            base_tokens += unused_free_tokens
+            
         elif self.is_free_tier:
             # Free tier: 100K lifetime limit
             base_tokens = max(0, 100000 - self.total_tokens_used)
@@ -64,6 +69,12 @@ class UserCredit(models.Model):
             # Free tier can only use gpt-5-mini
             return model_name == 'gpt-5-mini'
         return True  # Pro tier can use all models
+    
+    def can_use_platform_model(self, model_name):
+        """Check if user can use a model with platform-provided API key"""
+        # Platform only provides gpt-5-mini for all tiers (free and paid)
+        # All other models require user's own API keys
+        return model_name == 'gpt-5-mini'
 
 class PaymentPlan(models.Model):
     name = models.CharField(max_length=100)

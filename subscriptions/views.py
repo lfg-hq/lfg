@@ -74,7 +74,7 @@ def checkout(request, plan_id):
     # Get domain for success and cancel URLs
     domain_url = request.build_absolute_uri('/').rstrip('/')
     success_url = domain_url + reverse('subscriptions:payment_success')
-    cancel_url = domain_url + reverse('subscriptions:payment_cancel')
+    cancel_url = domain_url + reverse('subscriptions:dashboard')
     
     # First, clean up any pending transactions for this plan
     Transaction.objects.filter(
@@ -389,6 +389,9 @@ def cancel_subscription(request):
     
     if not user_credit.is_subscribed or not user_credit.stripe_subscription_id:
         messages.warning(request, "You don't have an active subscription to cancel.")
+        redirect_to = request.POST.get('redirect_to', 'dashboard')
+        if redirect_to == 'settings':
+            return redirect('accounts:integrations')
         return redirect('subscriptions:dashboard')
     
     try:
@@ -406,6 +409,9 @@ def cancel_subscription(request):
     except Exception as e:
         messages.error(request, f"Error canceling subscription: {str(e)}")
     
+    redirect_to = request.POST.get('redirect_to', 'dashboard')
+    if redirect_to == 'settings':
+        return redirect('accounts:integrations')
     return redirect('subscriptions:dashboard')
 
 @csrf_exempt
@@ -1034,3 +1040,5 @@ def fix_pro_subscription(request):
             
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
+
+

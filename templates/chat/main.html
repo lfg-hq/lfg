@@ -474,11 +474,22 @@
         .project-header .artifacts-button.active {
             color: #ddd6fe;
         }
+        
+        /* Disabled model options styling */
+        .submenu-option.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+        
+        .submenu-option.disabled:hover {
+            background-color: transparent !important;
+        }
     </style>
 </head>
 <body data-user-authenticated="{% if user.is_authenticated %}true{% else %}false{% endif %}" 
       data-turbo-mode="{% if turbo_mode %}true{% else %}false{% endif %}"
-      data-model-key="{{ model_key|default:'gpt_5_mini' }}"
+      data-model-key="{{ model_key|default:'gpt-5-mini' }}"
       data-role-key="{{ role_key|default:'product_analyst' }}"
       data-sidebar-minimized="{% if sidebar_minimized %}true{% else %}false{% endif %}"
       >
@@ -554,38 +565,38 @@
                                         
                                         <div class="submenu" id="model-submenu">
                                             <div class="submenu-group">Claude</div>
-                                            <button type="button" class="submenu-option" data-value="claude_4_sonnet">
-                                                <span>Sonnet 4</span>
+                                            <button type="button" class="submenu-option{% if is_free_tier %} disabled{% endif %}" data-value="claude_4_sonnet" {% if is_free_tier %}disabled title="Upgrade to Pro to access Claude models"{% endif %}>
+                                                <span>Sonnet 4{% if is_free_tier %} <i class="fas fa-lock" style="color: #6b7280; font-size: 0.8em;"></i>{% endif %}</span>
                                                 <i class="fas fa-check"></i>
                                             </button>
                                             
                                             <div class="submenu-group">OpenAI</div>
-                                            <button type="button" class="submenu-option" data-value="gpt_5">
-                                                <span>GPT-5</span>
+                                            <button type="button" class="submenu-option{% if is_free_tier %} disabled{% endif %}" data-value="gpt-5" {% if is_free_tier %}disabled title="Upgrade to Pro to access GPT-5"{% endif %}>
+                                                <span>GPT-5{% if is_free_tier %} <i class="fas fa-lock" style="color: #6b7280; font-size: 0.8em;"></i>{% endif %}</span>
                                                 <i class="fas fa-check"></i>
                                             </button>
-                                            <button type="button" class="submenu-option selected" data-value="gpt_5_mini">
+                                            <button type="button" class="submenu-option selected" data-value="gpt-5-mini">
                                                 <span>GPT-5 mini</span>
                                                 <i class="fas fa-check"></i>
                                             </button>
                                             
                                             <div class="submenu-group">xAI</div>
-                                            <button type="button" class="submenu-option" data-value="grok_4">
-                                                <span>Grok 4</span>
+                                            <button type="button" class="submenu-option{% if is_free_tier %} disabled{% endif %}" data-value="grok_4" {% if is_free_tier %}disabled title="Upgrade to Pro to access Grok models"{% endif %}>
+                                                <span>Grok 4{% if is_free_tier %} <i class="fas fa-lock" style="color: #6b7280; font-size: 0.8em;"></i>{% endif %}</span>
                                                 <i class="fas fa-check"></i>
                                             </button>
                                             
                                             <div class="submenu-group">Google</div>
-                                            <button type="button" class="submenu-option" data-value="gemini_2.5_pro">
-                                                <span>Gemini 2.5 Pro</span>
+                                            <button type="button" class="submenu-option{% if is_free_tier %} disabled{% endif %}" data-value="gemini_2.5_pro" {% if is_free_tier %}disabled title="Upgrade to Pro to access Gemini models"{% endif %}>
+                                                <span>Gemini 2.5 Pro{% if is_free_tier %} <i class="fas fa-lock" style="color: #6b7280; font-size: 0.8em;"></i>{% endif %}</span>
                                                 <i class="fas fa-check"></i>
                                             </button>
-                                            <button type="button" class="submenu-option" data-value="gemini_2.5_flash">
-                                                <span>Gemini 2.5 Flash</span>
+                                            <button type="button" class="submenu-option{% if is_free_tier %} disabled{% endif %}" data-value="gemini_2.5_flash" {% if is_free_tier %}disabled title="Upgrade to Pro to access Gemini models"{% endif %}>
+                                                <span>Gemini 2.5 Flash{% if is_free_tier %} <i class="fas fa-lock" style="color: #6b7280; font-size: 0.8em;"></i>{% endif %}</span>
                                                 <i class="fas fa-check"></i>
                                             </button>
-                                            <button type="button" class="submenu-option" data-value="gemini_2.5_flash_lite">
-                                                <span>Gemini 2.5 Flash Lite</span>
+                                            <button type="button" class="submenu-option{% if is_free_tier %} disabled{% endif %}" data-value="gemini_2.5_flash_lite" {% if is_free_tier %}disabled title="Upgrade to Pro to access Gemini models"{% endif %}>
+                                                <span>Gemini 2.5 Flash Lite{% if is_free_tier %} <i class="fas fa-lock" style="color: #6b7280; font-size: 0.8em;"></i>{% endif %}</span>
                                                 <i class="fas fa-check"></i>
                                             </button>
                                         </div>

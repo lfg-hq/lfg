@@ -540,10 +540,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         if selected_model == "claude_4_sonnet":
             provider_name = "anthropic"
-        elif selected_model == "claude_4_opus":
-            provider_name = "anthropic"
-        elif selected_model == "claude_3.5_sonnet":
-            provider_name = "anthropic"
         elif selected_model == "grok_4":
             provider_name = "xai"
         elif selected_model in ["gemini_2.5_pro", "gemini_2.5_flash", "gemini_2.5_flash_lite"]:
@@ -1496,9 +1492,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
             selected_model = model_selection.selected_model
 
-        if selected_model in ["claude_4_sonnet", "claude_4_opus", "claude_3.5_sonnet"]:
+        if selected_model == "claude_4_sonnet":
             provider_name = "anthropic"
-        elif selected_model in ["grok_2", "grok_beta", "grok_4"]:
+        elif selected_model == "grok_4":
             provider_name = "xai"
         elif selected_model in ["gemini_2.5_pro", "gemini_2.5_flash", "gemini_2.5_flash_lite"]:
             provider_name = "google"

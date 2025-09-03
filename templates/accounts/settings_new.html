@@ -129,14 +129,40 @@
     }
     
     .settings-container {
-        width: 80%;
-        max-width: 1200px;
+        width: 100%;
+        max-width: 1400px;
         margin: 0 auto;
-        padding: 2rem 0 0;
+        padding: 2rem 1rem 0;
         display: flex;
         flex-direction: column;
         height: 100%;
         flex: 1;
+        transition: all 0.3s ease;
+    }
+    
+    /* When sidebar is minimized, center the content better */
+    .sidebar-minimized .settings-container {
+        max-width: 1200px;
+        padding: 2rem 4rem 0;
+    }
+    
+    .sidebar-minimized .settings-wrapper {
+        max-width: 1000px;
+        margin: 0 auto;
+        gap: 3rem;
+    }
+    
+    .sidebar-minimized .settings-sidebar {
+        width: 260px;
+    }
+    
+    /* Ensure consistent widths when sidebar is minimized - override any previous rules */
+    .sidebar-minimized .settings-section .integrations-list,
+    .sidebar-minimized .settings-section .usage-content-wrapper,
+    .sidebar-minimized .settings-section .subscription-cards-grid {
+        max-width: 800px !important;
+        width: 100% !important;
+        margin: 0 auto !important;
     }
 
     .settings-container .page-header {
@@ -256,6 +282,15 @@
         /* Allow visible scrollbar for better usability */
     }
     
+    /* Ensure all settings sections have consistent max width */
+    .settings-section .integrations-list,
+    .settings-section .usage-content-wrapper,
+    .settings-section .subscription-cards-grid {
+        max-width: 800px !important;
+        width: 100% !important;
+        margin: 0 auto !important;
+    }
+    
     /* Custom scrollbar styling for settings sections */
     .settings-section::-webkit-scrollbar {
         width: 6px;
@@ -294,7 +329,6 @@
         flex-direction: column;
         gap: 1.5rem;
         width: 100%;
-        max-width: 500px;
     }
     
     .integration-item {
@@ -383,7 +417,7 @@
     .api-key-input-wrapper {
         flex: 1;
         position: relative;
-        max-width: 500px;
+        max-width: 100%;
     }
     
     .api-input {
@@ -518,7 +552,6 @@
     /* Project Collaboration Settings */
     .collaboration-setting {
         width: 100%;
-        max-width: 500px;
     }
     
     .setting-toggle-wrapper {
@@ -617,6 +650,35 @@
     }
 
     /* Responsive */
+    @media (max-width: 1200px) {
+        .settings-sidebar {
+            width: 240px;
+        }
+        
+        .settings-wrapper {
+            gap: 1.5rem;
+        }
+    }
+    
+    @media (max-width: 1024px) {
+        .settings-container {
+            max-width: 100%;
+            padding: 2rem 0.5rem 0;
+        }
+        
+        .settings-sidebar {
+            width: 220px;
+        }
+        
+        .settings-wrapper {
+            gap: 1rem;
+        }
+        
+        .subscription-plans-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+    
     @media (max-width: 768px) {
         .settings-container {
             padding: 0 0.5rem;
@@ -638,6 +700,10 @@
         
         .integrations-list {
             max-width: 100%;
+        }
+        
+        .usage-content-wrapper {
+            max-width: 100% !important;
         }
         
         .setting-toggle-wrapper {
@@ -667,21 +733,17 @@
     <!-- Settings Sidebar -->
     <aside class="settings-sidebar">
         <nav class="settings-nav">
-            <a href="#llm-settings" class="settings-nav-item" data-section="llm-settings">
-                <i class="fas fa-robot"></i>
-                <span>LLM Settings</span>
+            <a href="#llm-keys" class="settings-nav-item active" data-section="llm-keys">
+                <i class="fas fa-key"></i>
+                <span>LLM Keys</span>
             </a>
-            <a href="#usage" class="settings-nav-item active" data-section="usage">
-                <i class="fas fa-chart-line"></i>
-                <span>Token Usage</span>
+            <a href="#subscriptions" class="settings-nav-item" data-section="subscriptions">
+                <i class="fas fa-credit-card"></i>
+                <span>Subscriptions</span>
             </a>
-            <a href="#project-management" class="settings-nav-item" data-section="project-management">
+            <a href="#project-management-new" class="settings-nav-item" data-section="project-management-new">
                 <i class="fas fa-tasks"></i>
-                <span>Project Management Tools</span>
-            </a>
-            <a href="#project-collaboration" class="settings-nav-item" data-section="project-collaboration">
-                <i class="fas fa-user-friends"></i>
-                <span>Project Collaboration</span>
+                <span>Project Management</span>
             </a>
             <!-- <a href="#organizations" class="settings-nav-item" data-section="organizations">
                 <i class="fas fa-users"></i>
@@ -700,418 +762,1620 @@
     
     <!-- Settings Content -->
     <div class="settings-content">
-        <!-- Token Usage Section -->
-        <div id="usage" class="settings-section active">
-            <h2 class="section-heading">Token Usage</h2>
+        
+        <!-- LLM Keys Section -->
+        <div id="llm-keys" class="settings-section active">
+            <h2 class="section-heading">AI Model API Keys</h2>
             
             <style>
-                .usage-content-wrapper {
+                .llm-integrations-grid {
+                    display: grid;
+                    grid-template-columns: 1fr;
+                    gap: 1.5rem;
                     max-width: 600px;
                     margin: 0 auto;
+                    width: 100%;
                 }
-                .usage-card {
+                
+                .llm-integration-card {
                     background: #1a1a1a;
                     border: 1px solid #2a2a2a;
                     border-radius: 12px;
                     padding: 24px;
+                    transition: all 0.3s ease;
+                }
+                
+                .llm-integration-card:hover:not(.disabled) {
+                    border-color: rgba(167, 139, 250, 0.3);
+                    background: rgba(167, 139, 250, 0.05);
+                }
+                
+                .llm-integration-card.connected {
+                    border-color: rgba(34, 197, 94, 0.3);
+                    background: rgba(34, 197, 94, 0.05);
+                }
+                
+                .llm-integration-header {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
                     margin-bottom: 16px;
                 }
                 
-                .usage-header {
+                .llm-integration-info {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                }
+                
+                .llm-integration-logo {
+                    width: 40px;
+                    height: 40px;
+                    border-radius: 8px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 20px;
+                    flex-shrink: 0;
+                }
+                
+                .llm-integration-logo {
+                    background: transparent !important;
+                    border: none;
+                }
+                
+                .llm-integration-logo.openai {
+                    color: #10a37f;
+                }
+                
+                .llm-integration-logo.anthropic {
+                    color: #d97706;
+                }
+                
+                .llm-integration-logo.gemini {
+                    color: #4285f4;
+                }
+                
+                .llm-integration-logo.grok {
+                    color: #ffffff;
+                }
+                
+                .llm-integration-details h3 {
+                    margin: 0 0 4px 0;
+                    font-size: 16px;
+                    font-weight: 600;
+                    color: #e5e7eb;
+                }
+                
+                .llm-integration-details p {
+                    margin: 0;
+                    font-size: 14px;
+                    color: #9ca3af;
+                }
+                
+                .llm-integration-status {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    font-size: 14px;
+                    font-weight: 500;
+                }
+                
+                .llm-integration-status.connected {
+                    color: #22c55e;
+                }
+                
+                .llm-integration-status.disconnected {
+                    color: #6b7280;
+                }
+                
+                .llm-integration-actions {
+                    margin-top: 16px;
+                    display: flex;
+                    gap: 12px;
+                    align-items: center;
+                }
+                
+                .llm-integration-button {
+                    padding: 8px 16px;
+                    border: none;
+                    border-radius: 8px;
+                    font-size: 14px;
+                    font-weight: 500;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                    text-decoration: none;
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                }
+                
+                .llm-integration-button.primary {
+                    background: linear-gradient(135deg, #8B5CF6, #A855F7);
+                    color: white;
+                }
+                
+                .llm-integration-button.primary:hover {
+                    transform: translateY(-1px);
+                    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);
+                }
+                
+                .llm-integration-button.secondary {
+                    background: transparent;
+                    color: #9ca3af;
+                    border: 1px solid #374151;
+                }
+                
+                .llm-integration-button.secondary:hover {
+                    background: rgba(255, 255, 255, 0.05);
+                    border-color: #4b5563;
+                }
+                
+                .llm-integration-button.danger {
+                    background: transparent;
+                    color: #ef4444;
+                    border: 1px solid rgba(239, 68, 68, 0.3);
+                }
+                
+                .llm-integration-button.danger:hover {
+                    background: rgba(239, 68, 68, 0.1);
+                    border-color: rgba(239, 68, 68, 0.5);
+                }
+                
+                .llm-api-key-input-section {
+                    margin-top: 16px;
+                    padding-top: 16px;
+                    border-top: 1px solid #2a2a2a;
+                }
+                
+                .llm-api-key-form {
+                    display: flex;
+                    gap: 12px;
+                    margin-top: 12px;
+                }
+                
+                .llm-api-key-form input {
+                    flex: 1;
+                    padding: 10px 14px;
+                    background: rgba(10, 10, 15, 0.6);
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    border-radius: 8px;
+                    color: #e5e7eb;
+                    font-size: 14px;
+                    font-family: monospace;
+                }
+                
+                .llm-api-key-form input:focus {
+                    outline: none;
+                    border-color: #8B5CF6;
+                }
+                
+                .llm-api-key-form button {
+                    padding: 10px 16px;
+                    background: linear-gradient(135deg, #8B5CF6, #A855F7);
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    font-weight: 500;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                    font-size: 14px;
+                }
+                
+                .llm-api-key-form button:hover {
+                    transform: translateY(-1px);
+                    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);
+                }
+            </style>
+            
+            <div class="llm-integrations-grid">
+                <!-- OpenAI Integration -->
+                <div class="llm-integration-card {% if openai_connected %}connected{% endif %}">
+                    <div class="llm-integration-header">
+                        <div class="llm-integration-info">
+                            <div class="llm-integration-logo openai">
+                                <svg fill="currentColor" width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142-.0852 4.783-2.7582a.7712.7712 0 0 0 .7806 0l5.8428 3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142.0852-4.7735 2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0593a4.4708 4.4708 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997L9.4041 13.5V10.4976z"/></svg>
+                            </div>
+                            <div class="llm-integration-details">
+                                <h3>OpenAI</h3>
+                                <p>GPT-4o, GPT-4o Mini, and other OpenAI models</p>
+                            </div>
+                        </div>
+                        <div class="llm-integration-status {% if openai_connected %}connected{% else %}disconnected{% endif %}">
+                            <i class="fas fa-{% if openai_connected %}check-circle{% else %}circle{% endif %}"></i>
+                            {% if openai_connected %}Connected{% else %}Not Connected{% endif %}
+                        </div>
+                    </div>
+                    
+                    <div class="llm-integration-actions">
+                        {% if not openai_connected %}
+                            <a href="https://platform.openai.com/api-keys" target="_blank" class="llm-integration-button secondary">
+                                <i class="fas fa-external-link-alt"></i>
+                                Get API Key
+                            </a>
+                        {% else %}
+                            <a href="https://platform.openai.com" target="_blank" class="llm-integration-button secondary">
+                                <i class="fas fa-external-link-alt"></i>
+                                OpenAI Dashboard
+                            </a>
+                            <form method="post" action="{% url 'accounts:disconnect_api_key' 'openai' %}" style="display: inline;">
+                                {% csrf_token %}
+                                <button type="submit" class="llm-integration-button danger" onclick="return confirm('Disconnect OpenAI integration?');">
+                                    <i class="fas fa-unlink"></i>
+                                    Disconnect
+                                </button>
+                            </form>
+                        {% endif %}
+                    </div>
+                    
+                    {% if not openai_connected %}
+                    <div class="llm-api-key-input-section">
+                        <form method="post" action="{% url 'accounts:save_api_key' 'openai' %}" class="llm-api-key-form">
+                            {% csrf_token %}
+                            <input type="password" name="api_key" placeholder="Enter your OpenAI API key (sk-...)" required>
+                            <button type="submit">
+                                <i class="fas fa-plug"></i>
+                                Connect
+                            </button>
+                        </form>
+                    </div>
+                    {% endif %}
+                </div>
+                
+                <!-- Anthropic Integration -->
+                <div class="llm-integration-card {% if anthropic_connected %}connected{% endif %}">
+                    <div class="llm-integration-header">
+                        <div class="llm-integration-info">
+                            <div class="llm-integration-logo anthropic">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L15.09 8.26L24 9L15.09 9.74L12 18L8.91 9.74L0 9L8.91 8.26L12 2Z"/></svg>
+                            </div>
+                            <div class="llm-integration-details">
+                                <h3>Anthropic</h3>
+                                <p>Claude 3.5 Sonnet, Claude 3 Haiku, and other Claude models</p>
+                            </div>
+                        </div>
+                        <div class="llm-integration-status {% if anthropic_connected %}connected{% else %}disconnected{% endif %}">
+                            <i class="fas fa-{% if anthropic_connected %}check-circle{% else %}circle{% endif %}"></i>
+                            {% if anthropic_connected %}Connected{% else %}Not Connected{% endif %}
+                        </div>
+                    </div>
+                    
+                    <div class="llm-integration-actions">
+                        {% if not anthropic_connected %}
+                            <a href="https://console.anthropic.com/settings/keys" target="_blank" class="llm-integration-button secondary">
+                                <i class="fas fa-external-link-alt"></i>
+                                Get API Key
+                            </a>
+                        {% else %}
+                            <a href="https://console.anthropic.com" target="_blank" class="llm-integration-button secondary">
+                                <i class="fas fa-external-link-alt"></i>
+                                Anthropic Console
+                            </a>
+                            <form method="post" action="{% url 'accounts:disconnect_api_key' 'anthropic' %}" style="display: inline;">
+                                {% csrf_token %}
+                                <button type="submit" class="llm-integration-button danger" onclick="return confirm('Disconnect Anthropic integration?');">
+                                    <i class="fas fa-unlink"></i>
+                                    Disconnect
+                                </button>
+                            </form>
+                        {% endif %}
+                    </div>
+                    
+                    {% if not anthropic_connected %}
+                    <div class="llm-api-key-input-section">
+                        <form method="post" action="{% url 'accounts:save_api_key' 'anthropic' %}" class="llm-api-key-form">
+                            {% csrf_token %}
+                            <input type="password" name="api_key" placeholder="Enter your Anthropic API key (sk-ant-...)" required>
+                            <button type="submit">
+                                <i class="fas fa-plug"></i>
+                                Connect
+                            </button>
+                        </form>
+                    </div>
+                    {% endif %}
+                </div>
+                
+                <!-- Gemini Integration -->
+                <div class="llm-integration-card {% if gemini_connected %}connected{% endif %}">
+                    <div class="llm-integration-header">
+                        <div class="llm-integration-info">
+                            <div class="llm-integration-logo gemini">
+                                <img src="{% static 'images/gemini-logo.png' %}" alt="Gemini" width="24" height="24" style="border-radius: 4px;">
+                            </div>
+                            <div class="llm-integration-details">
+                                <h3>Google Gemini</h3>
+                                <p>Gemini Pro, Gemini Flash, and other Google AI models</p>
+                            </div>
+                        </div>
+                        <div class="llm-integration-status {% if gemini_connected %}connected{% else %}disconnected{% endif %}">
+                            <i class="fas fa-{% if gemini_connected %}check-circle{% else %}circle{% endif %}"></i>
+                            {% if gemini_connected %}Connected{% else %}Not Connected{% endif %}
+                        </div>
+                    </div>
+                    
+                    <div class="llm-integration-actions">
+                        {% if not gemini_connected %}
+                            <a href="https://makersuite.google.com/app/apikey" target="_blank" class="llm-integration-button secondary">
+                                <i class="fas fa-external-link-alt"></i>
+                                Get API Key
+                            </a>
+                        {% else %}
+                            <a href="https://makersuite.google.com" target="_blank" class="llm-integration-button secondary">
+                                <i class="fas fa-external-link-alt"></i>
+                                Google AI Studio
+                            </a>
+                            <form method="post" action="{% url 'accounts:disconnect_api_key' 'gemini' %}" style="display: inline;">
+                                {% csrf_token %}
+                                <button type="submit" class="llm-integration-button danger" onclick="return confirm('Disconnect Gemini integration?');">
+                                    <i class="fas fa-unlink"></i>
+                                    Disconnect
+                                </button>
+                            </form>
+                        {% endif %}
+                    </div>
+                    
+                    {% if not gemini_connected %}
+                    <div class="llm-api-key-input-section">
+                        <form method="post" action="{% url 'accounts:save_api_key' 'gemini' %}" class="llm-api-key-form">
+                            {% csrf_token %}
+                            <input type="password" name="api_key" placeholder="Enter your Gemini API key" required>
+                            <button type="submit">
+                                <i class="fas fa-plug"></i>
+                                Connect
+                            </button>
+                        </form>
+                    </div>
+                    {% endif %}
+                </div>
+                
+                <!-- Grok Integration -->
+                <div class="llm-integration-card {% if grok_connected %}connected{% endif %}">
+                    <div class="llm-integration-header">
+                        <div class="llm-integration-info">
+                            <div class="llm-integration-logo grok">
+                                <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+                            </div>
+                            <div class="llm-integration-details">
+                                <h3>Grok (xAI)</h3>
+                                <p>Grok and other xAI models for advanced reasoning</p>
+                            </div>
+                        </div>
+                        <div class="llm-integration-status {% if grok_connected %}connected{% else %}disconnected{% endif %}">
+                            <i class="fas fa-{% if grok_connected %}check-circle{% else %}circle{% endif %}"></i>
+                            {% if grok_connected %}Connected{% else %}Not Connected{% endif %}
+                        </div>
+                    </div>
+                    
+                    <div class="llm-integration-actions">
+                        {% if not grok_connected %}
+                            <a href="https://console.x.ai" target="_blank" class="llm-integration-button secondary">
+                                <i class="fas fa-external-link-alt"></i>
+                                Get API Key
+                            </a>
+                        {% else %}
+                            <a href="https://console.x.ai" target="_blank" class="llm-integration-button secondary">
+                                <i class="fas fa-external-link-alt"></i>
+                                xAI Console
+                            </a>
+                            <form method="post" action="{% url 'accounts:disconnect_api_key' 'grok' %}" style="display: inline;">
+                                {% csrf_token %}
+                                <button type="submit" class="llm-integration-button danger" onclick="return confirm('Disconnect Grok integration?');">
+                                    <i class="fas fa-unlink"></i>
+                                    Disconnect
+                                </button>
+                            </form>
+                        {% endif %}
+                    </div>
+                    
+                    {% if not grok_connected %}
+                    <div class="llm-api-key-input-section">
+                        <form method="post" action="{% url 'accounts:save_api_key' 'grok' %}" class="llm-api-key-form">
+                            {% csrf_token %}
+                            <input type="password" name="api_key" placeholder="Enter your xAI API key" required>
+                            <button type="submit">
+                                <i class="fas fa-plug"></i>
+                                Connect
+                            </button>
+                        </form>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Project Management Section -->
+        <div id="project-management-new" class="settings-section">
+            <h2 class="section-heading">Project Management Integrations</h2>
+            
+            <style>
+                .integrations-grid {
+                    display: grid;
+                    grid-template-columns: 1fr;
+                    gap: 1.5rem;
+                    max-width: 600px;
+                    margin: 0 auto;
+                    width: 100%;
+                }
+                
+                .integration-card {
+                    background: #1a1a1a;
+                    border: 1px solid #2a2a2a;
+                    border-radius: 12px;
+                    padding: 24px;
+                    transition: all 0.3s ease;
+                }
+                
+                .integration-card:hover:not(.disabled) {
+                    border-color: rgba(167, 139, 250, 0.3);
+                    background: rgba(167, 139, 250, 0.05);
+                }
+                
+                .integration-card.disabled {
+                    opacity: 0.5;
+                    cursor: not-allowed;
+                    background: #141414;
+                }
+                
+                .integration-card.connected {
+                    border-color: rgba(34, 197, 94, 0.3);
+                    background: rgba(34, 197, 94, 0.05);
+                }
+                
+                .integration-header {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    margin-bottom: 16px;
+                }
+                
+                .integration-info {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                }
+                
+                .integration-logo {
+                    width: 40px;
+                    height: 40px;
+                    border-radius: 8px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 20px;
+                    flex-shrink: 0;
+                }
+                
+                .integration-logo.linear {
+                    background: linear-gradient(135deg, #5e6ad2, #4c63d2);
+                    color: white;
+                }
+                
+                .integration-logo.notion {
+                    background: #000;
+                    color: white;
+                }
+                
+                .integration-logo.jira {
+                    background: #ffffff;
+                    color: #2684FF;
+                }
+                
+                .integration-details h3 {
+                    margin: 0 0 4px 0;
+                    font-size: 16px;
+                    font-weight: 600;
+                    color: #e5e7eb;
+                }
+                
+                .integration-details p {
+                    margin: 0;
+                    font-size: 14px;
+                    color: #9ca3af;
+                }
+                
+                .integration-status {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    font-size: 14px;
+                    font-weight: 500;
+                }
+                
+                .integration-status.connected {
+                    color: #22c55e;
+                }
+                
+                .integration-status.disconnected {
+                    color: #6b7280;
+                }
+                
+                .integration-status.disabled {
+                    color: #4b5563;
+                }
+                
+                .integration-actions {
+                    margin-top: 16px;
+                    display: flex;
+                    gap: 12px;
+                    align-items: center;
+                }
+                
+                .integration-button {
+                    padding: 8px 16px;
+                    border: none;
+                    border-radius: 8px;
+                    font-size: 14px;
+                    font-weight: 500;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                    text-decoration: none;
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                }
+                
+                .integration-button.primary {
+                    background: linear-gradient(135deg, #8B5CF6, #A855F7);
+                    color: white;
+                }
+                
+                .integration-button.primary:hover {
+                    transform: translateY(-1px);
+                    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);
+                }
+                
+                .integration-button.secondary {
+                    background: transparent;
+                    color: #9ca3af;
+                    border: 1px solid #374151;
+                }
+                
+                .integration-button.secondary:hover {
+                    background: rgba(255, 255, 255, 0.05);
+                    border-color: #4b5563;
+                }
+                
+                .integration-button.danger {
+                    background: transparent;
+                    color: #ef4444;
+                    border: 1px solid rgba(239, 68, 68, 0.3);
+                }
+                
+                .integration-button.danger:hover {
+                    background: rgba(239, 68, 68, 0.1);
+                    border-color: rgba(239, 68, 68, 0.5);
+                }
+                
+                .integration-button:disabled {
+                    opacity: 0.5;
+                    cursor: not-allowed;
+                    transform: none !important;
+                }
+                
+                .api-key-input-section {
+                    margin-top: 16px;
+                    padding-top: 16px;
+                    border-top: 1px solid #2a2a2a;
+                }
+                
+                .api-key-form {
+                    display: flex;
+                    gap: 12px;
+                    margin-top: 12px;
+                }
+                
+                .api-key-form input {
+                    flex: 1;
+                    padding: 10px 14px;
+                    background: rgba(10, 10, 15, 0.6);
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    border-radius: 8px;
+                    color: #e5e7eb;
+                    font-size: 14px;
+                    font-family: monospace;
+                }
+                
+                .api-key-form input:focus {
+                    outline: none;
+                    border-color: #8B5CF6;
+                }
+                
+                .api-key-form button {
+                    padding: 10px 16px;
+                    background: linear-gradient(135deg, #8B5CF6, #A855F7);
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    font-weight: 500;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                    font-size: 14px;
+                }
+                
+                .api-key-form button:hover {
+                    transform: translateY(-1px);
+                    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);
+                }
+                
+                .coming-soon-badge {
+                    background: rgba(75, 85, 99, 0.3);
+                    color: #9ca3af;
+                    padding: 4px 8px;
+                    border-radius: 12px;
+                    font-size: 12px;
+                    font-weight: 500;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                }
+            </style>
+            
+            <div class="integrations-grid">
+                <!-- Linear Integration -->
+                <div class="integration-card {% if linear_connected %}connected{% endif %}">
+                    <div class="integration-header">
+                        <div class="integration-info">
+                            <div class="integration-logo linear">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" width="24" height="24" viewBox="0 0 100 100"><path fill="currentColor" d="M1.22541 61.5228c-.2225-.9485.90748-1.5459 1.59638-.857L39.3342 97.1782c.6889.6889.0915 1.8189-.857 1.5964C20.0515 94.4522 5.54779 79.9485 1.22541 61.5228ZM.00189135 46.8891c-.01764375.2833.08887215.5599.28957165.7606L52.3503 99.7085c.2007.2007.4773.3075.7606.2896 2.3692-.1476 4.6938-.46 6.9624-.9259.7645-.157 1.0301-1.0963.4782-1.6481L2.57595 39.4485c-.55186-.5519-1.49117-.2863-1.648174.4782-.465915 2.2686-.77832 4.5932-.92588465 6.9624ZM4.21093 29.7054c-.16649.3738-.08169.8106.20765 1.1l64.77602 64.776c.2894.2894.7262.3742 1.1.2077 1.7861-.7956 3.5171-1.6927 5.1855-2.684.5521-.328.6373-1.0867.1832-1.5407L8.43566 24.3367c-.45409-.4541-1.21271-.3689-1.54074.1832-.99132 1.6684-1.88843 3.3994-2.68399 5.1855ZM12.6587 18.074c-.3701-.3701-.393-.9637-.0443-1.3541C21.7795 6.45931 35.1114 0 49.9519 0 77.5927 0 100 22.4073 100 50.0481c0 14.8405-6.4593 28.1724-16.7199 37.3375-.3903.3487-.984.3258-1.3542-.0443L12.6587 18.074Z"/></svg>
+                            </div>
+                            <div class="integration-details">
+                                <h3>Linear</h3>
+                                <p>Issue tracking and project management</p>
+                            </div>
+                        </div>
+                        <div class="integration-status {% if linear_connected %}connected{% else %}disconnected{% endif %}">
+                            <i class="fas fa-{% if linear_connected %}check-circle{% else %}circle{% endif %}"></i>
+                            {% if linear_connected %}Connected{% else %}Not Connected{% endif %}
+                        </div>
+                    </div>
+                    
+                    <div class="integration-actions">
+                        {% if not linear_connected %}
+                            <a href="https://linear.app/settings/api" target="_blank" class="integration-button secondary">
+                                <i class="fas fa-external-link-alt"></i>
+                                Get API Key
+                            </a>
+                        {% else %}
+                            <a href="https://linear.app" target="_blank" class="integration-button secondary">
+                                <i class="fas fa-external-link-alt"></i>
+                                Open Linear
+                            </a>
+                            <form method="post" action="{% url 'accounts:disconnect_api_key' 'linear' %}" style="display: inline;">
+                                {% csrf_token %}
+                                <button type="submit" class="integration-button danger" onclick="return confirm('Disconnect Linear integration?');">
+                                    <i class="fas fa-unlink"></i>
+                                    Disconnect
+                                </button>
+                            </form>
+                        {% endif %}
+                    </div>
+                    
+                    {% if not linear_connected %}
+                    <div class="api-key-input-section">
+                        <form method="post" action="{% url 'accounts:save_api_key' 'linear' %}" class="api-key-form">
+                            {% csrf_token %}
+                            <input type="password" name="api_key" placeholder="Enter your Linear API key" required>
+                            <button type="submit">
+                                <i class="fas fa-plug"></i>
+                                Connect
+                            </button>
+                        </form>
+                    </div>
+                    {% endif %}
+                </div>
+                
+                <!-- Notion Integration (Coming Soon) -->
+                <div class="integration-card disabled">
+                    <div class="integration-header">
+                        <div class="integration-info">
+                            <div class="integration-logo notion">
+                                <svg width="24" height="24" viewBox="0 0 29 30" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1.81 1.294L18.446.068c2.043-.175 2.568-.057 3.852.875l5.311 3.733c.877.642 1.169.817 1.169 1.516v20.473c0 1.283-.468 2.042-2.102 2.158L7.357 29.99c-1.228.058-1.811-.117-2.454-.934l-3.91-5.074C.29 23.048 0 22.349 0 21.532V3.334c0-1.049.468-1.924 1.81-2.04z" fill="#fff"></path><path fill-rule="evenodd" clip-rule="evenodd" d="M18.447.068L1.808 1.294C.468 1.41 0 2.285 0 3.334v18.198c0 .817.291 1.516.992 2.45l3.911 5.074c.643.817 1.226.992 2.453.934l19.321-1.167c1.634-.116 2.102-.875 2.102-2.158V6.192c0-.663-.263-.854-1.037-1.42l-.132-.096L22.3.943c-1.285-.932-1.81-1.05-3.854-.875zM7.793 5.857c-1.577.106-1.936.13-2.831-.597L2.685 3.452c-.233-.234-.116-.526.467-.584l15.995-1.166c1.342-.117 2.043.35 2.568.758l2.744 1.983c.117.059.408.408.058.408l-16.52.992-.203.014zM5.954 26.49V9.11c0-.759.234-1.109.934-1.168l18.971-1.108c.643-.058.935.35.935 1.108v17.264c0 .759-.117 1.401-1.168 1.459l-18.154 1.05c-1.05.058-1.518-.291-1.518-1.225zm17.922-16.448c.116.525 0 1.05-.527 1.11l-.874.173v12.832c-.76.408-1.46.641-2.044.641-.934 0-1.168-.292-1.868-1.166l-5.721-8.982v8.69l1.81.409s0 1.05-1.46 1.05l-4.027.233c-.117-.234 0-.817.408-.933l1.051-.291v-11.49L9.165 12.2c-.117-.525.174-1.283.992-1.341l4.32-.292 5.954 9.1v-8.05l-1.518-.174c-.116-.643.35-1.109.934-1.167l4.029-.234z" fill="#000"></path></svg>
+                            </div>
+                            <div class="integration-details">
+                                <h3>Notion</h3>
+                                <p>Documentation and knowledge management</p>
+                            </div>
+                        </div>
+                        <div class="integration-status disabled">
+                            <span class="coming-soon-badge">Coming Soon</span>
+                        </div>
+                    </div>
+                    
+                    <div class="integration-actions">
+                        <button class="integration-button primary" disabled>
+                            <i class="fas fa-clock"></i>
+                            Coming Soon
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Jira Integration (Coming Soon) -->
+                <div class="integration-card disabled">
+                    <div class="integration-header">
+                        <div class="integration-info">
+                            <div class="integration-logo jira">
+                                <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M11.53 2c0 2.4 1.97 4.35 4.35 4.35h1.78c1.16 0 2.1.94 2.1 2.1v1.78c0 2.4 1.97 4.35 4.35 4.35V2H11.53z" fill="#2684FF"/><path d="M11.53 2H2v12.57c2.4 0 4.35 1.97 4.35 4.35v1.78c0 1.16.94 2.1 2.1 2.1h1.78c2.4 0 4.35 1.97 4.35 4.35V14.57c0-2.4-1.97-4.35-4.35-4.35H8.45c-1.16 0-2.1-.94-2.1-2.1V6.35C6.35 3.97 4.4 2 2 2h9.53z" fill="#2684FF"/></svg>
+                            </div>
+                            <div class="integration-details">
+                                <h3>Jira</h3>
+                                <p>Enterprise project management and issue tracking</p>
+                            </div>
+                        </div>
+                        <div class="integration-status disabled">
+                            <span class="coming-soon-badge">Coming Soon</span>
+                        </div>
+                    </div>
+                    
+                    <div class="integration-actions">
+                        <button class="integration-button primary" disabled>
+                            <i class="fas fa-clock"></i>
+                            Coming Soon
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Subscriptions Section -->
+        <div id="subscriptions" class="settings-section">
+            <h2 class="section-heading">Subscription & Billing</h2>
+            
+            <style>
+                /* Full subscriptions dashboard styles */
+                /* Main subscription cards grid */
+                .subscription-cards-grid {
+                    display: grid;
+                    grid-template-columns: 1fr;
+                    gap: 24px;
+                    margin-bottom: 24px;
+                }
+                
+                .subscription-plan-card {
+                    background: #1a1a1a;
+                    border: 1px solid #2a2a2a;
+                    border-radius: 12px;
+                    padding: 24px;
+                    display: flex;
+                    flex-direction: column;
+                    height: auto;
+                }
+                
+                .subscription-plan-header {
                     display: flex;
                     align-items: center;
                     justify-content: space-between;
                     margin-bottom: 24px;
                 }
                 
-                .plan-badge {
+                .subscription-plan-badge {
                     display: inline-flex;
                     align-items: center;
                     gap: 8px;
                     padding: 8px 16px;
-                    background: {% if is_free_tier %}#1f2937{% else %}linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%){% endif %};
+                    background: #1f2937;
                     border-radius: 20px;
                     font-size: 14px;
                     font-weight: 500;
-                    color: {% if is_free_tier %}#9ca3af{% else %}#e9d5ff{% endif %};
+                    color: #9ca3af;
                 }
                 
-                .plan-badge i {
-                    font-size: 16px;
+                .subscription-plan-badge.pro {
+                    background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+                    color: #e9d5ff;
                 }
                 
-                .plan-details {
-                    color: #6b7280;
-                    font-size: 14px;
+                .subscription-usage-progress {
+                    margin-bottom: 24px;
                 }
                 
-                .usage-progress {
-                    margin-bottom: 32px;
-                }
-                
-                .progress-header {
+                .subscription-progress-header {
                     display: flex;
                     justify-content: space-between;
                     align-items: baseline;
                     margin-bottom: 12px;
                 }
                 
-                .progress-title {
+                .subscription-progress-title {
                     color: #e5e7eb;
-                    font-size: 16px;
+                    font-size: 14px;
                     font-weight: 500;
                 }
                 
-                .progress-percentage {
-                    color: #9ca3af;
-                    font-size: 14px;
-                }
-                
-                .progress-bar-container {
+                .subscription-progress-bar-container {
                     background: #0f0f0f;
-                    height: 8px;
-                    border-radius: 4px;
+                    height: 6px;
+                    border-radius: 3px;
                     overflow: hidden;
                 }
                 
-                .progress-bar-fill {
+                .subscription-progress-bar-fill {
                     height: 100%;
-                    background: {% if usage_percentage > 80 %}#ef4444{% elif usage_percentage > 60 %}#f59e0b{% else %}#a78bfa{% endif %};
-                    width: {{ usage_percentage }}%;
+                    background: #a78bfa;
                     transition: width 0.3s ease;
                 }
                 
-                .usage-stats {
+                .subscription-progress-bar-fill.warning {
+                    background: #f59e0b;
+                }
+                
+                .subscription-progress-bar-fill.danger {
+                    background: #ef4444;
+                }
+                
+                .subscription-usage-stats {
                     display: grid;
-                    grid-template-columns: repeat(3, 1fr);
-                    gap: 24px;
+                    grid-template-columns: repeat(2, 1fr);
+                    gap: 20px;
                     margin-bottom: 24px;
                 }
                 
-                .stat-item {
+                .subscription-stat-item {
                     text-align: center;
                 }
                 
-                .stat-label {
+                .subscription-stat-label {
                     display: block;
                     color: #6b7280;
-                    font-size: 12px;
+                    font-size: 11px;
                     text-transform: uppercase;
                     letter-spacing: 0.05em;
-                    margin-bottom: 8px;
+                    margin-bottom: 6px;
                 }
                 
-                .stat-value {
+                .subscription-stat-value {
                     display: block;
                     font-size: 24px;
                     font-weight: 700;
                     line-height: 1;
                     font-variant-numeric: tabular-nums;
-                }
-                
-                .stat-value.used {
                     color: #e5e7eb;
                 }
                 
-                .stat-value.remaining {
-                    color: {% if tokens_remaining <= 0 %}#ef4444{% elif tokens_remaining < 10000 %}#f59e0b{% else %}#10b981{% endif %};
+                .subscription-stat-value.remaining {
+                    color: #10b981;
                 }
                 
-                .stat-value.limit {
+                .subscription-stat-value.remaining.low {
+                    color: #ef4444;
+                }
+                
+                .subscription-stat-value.limit {
                     color: #6b7280;
                 }
                 
-                .usage-breakdown {
+                .subscription-usage-breakdown {
                     display: grid;
                     grid-template-columns: repeat(2, 1fr);
                     gap: 16px;
-                    padding-top: 24px;
+                    padding-top: 20px;
                     border-top: 1px solid #2a2a2a;
                 }
                 
-                .breakdown-item {
+                .subscription-breakdown-item {
                     display: flex;
                     align-items: center;
                     justify-content: space-between;
+                    padding: 4px 0;
                 }
                 
-                .breakdown-label {
+                .subscription-breakdown-label {
                     display: flex;
                     align-items: center;
                     gap: 8px;
                     color: #9ca3af;
-                    font-size: 14px;
+                    font-size: 13px;
                 }
                 
-                .breakdown-value {
+                .subscription-breakdown-value {
                     color: #e5e7eb;
-                    font-size: 18px;
+                    font-size: 14px;
                     font-weight: 600;
                     font-variant-numeric: tabular-nums;
                 }
                 
-                .upgrade-card {
-                    background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
-                    border: 1px solid #4c1d95;
+                .subscription-payment-methods-card {
+                    background: #1a1a1a;
+                    border: 1px solid #2a2a2a;
                     border-radius: 12px;
                     padding: 24px;
-                    text-align: center;
+                    margin-bottom: 24px;
                 }
                 
-                .upgrade-title {
+                .subscription-payment-method-item {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding: 16px;
+                    background: rgba(255, 255, 255, 0.03);
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    border-radius: 8px;
+                    margin-bottom: 12px;
+                    transition: all 0.2s ease;
+                }
+                
+                .subscription-payment-method-item:hover {
+                    background: rgba(255, 255, 255, 0.05);
+                    border-color: rgba(167, 139, 250, 0.3);
+                }
+                
+                .subscription-payment-method-info {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                }
+                
+                .subscription-card-icon {
+                    width: 32px;
+                    height: 20px;
+                    background: #4b5563;
+                    border-radius: 4px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 12px;
+                    color: white;
+                    font-weight: 600;
+                }
+                
+                .subscription-card-icon.visa { background: #1e40af; }
+                .subscription-card-icon.mastercard { background: #dc2626; }
+                .subscription-card-icon.amex { background: #059669; }
+                .subscription-card-icon.discover { background: #ea580c; }
+                
+                .subscription-card-details {
+                    display: flex;
+                    flex-direction: column;
+                }
+                
+                .subscription-card-number {
+                    font-size: 14px;
+                    font-weight: 500;
                     color: #e5e7eb;
-                    font-size: 20px;
+                    font-family: monospace;
+                }
+                
+                .subscription-card-expiry {
+                    font-size: 12px;
+                    color: #9ca3af;
+                }
+                
+                .subscription-payment-method-actions {
+                    display: flex;
+                    gap: 8px;
+                }
+                
+                .subscription-method-action {
+                    padding: 6px 12px;
+                    border: none;
+                    border-radius: 6px;
+                    font-size: 12px;
+                    font-weight: 500;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                }
+                
+                .subscription-method-default {
+                    background: rgba(16, 185, 129, 0.1);
+                    color: #10b981;
+                    border: 1px solid rgba(16, 185, 129, 0.3);
+                }
+                
+                .subscription-method-make-default {
+                    background: transparent;
+                    color: #9ca3af;
+                    border: 1px solid #374151;
+                }
+                
+                .subscription-method-make-default:hover {
+                    background: rgba(255, 255, 255, 0.05);
+                    border-color: #4b5563;
+                }
+                
+                .subscription-method-remove {
+                    background: transparent;
+                    color: #ef4444;
+                    border: 1px solid rgba(239, 68, 68, 0.3);
+                }
+                
+                .subscription-method-remove:hover {
+                    background: rgba(239, 68, 68, 0.1);
+                    border-color: rgba(239, 68, 68, 0.5);
+                }
+                
+                .subscription-plans-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+                    gap: 16px;
+                    margin-bottom: 0;
+                    flex: 1;
+                }
+                
+                .subscription-pricing-card {
+                    background: rgba(30, 30, 35, 0.5);
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    border-radius: 12px;
+                    padding: 24px;
+                    transition: all 0.3s ease;
+                    position: relative;
+                    backdrop-filter: blur(10px);
+                }
+                
+                .subscription-pricing-card:hover {
+                    border-color: rgba(167, 139, 250, 0.5);
+                    background: rgba(167, 139, 250, 0.08);
+                    transform: translateY(-2px);
+                    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+                }
+                
+                .subscription-pricing-card.recommended {
+                    border-color: rgba(167, 139, 250, 0.3);
+                    background: rgba(167, 139, 250, 0.05);
+                }
+                
+                .subscription-recommended-badge {
+                    position: absolute;
+                    top: -10px;
+                    right: 16px;
+                    background: linear-gradient(135deg, #8B5CF6, #A855F7);
+                    color: white;
+                    padding: 4px 14px;
+                    border-radius: 999px;
+                    font-size: 10px;
+                    font-weight: 600;
+                    text-transform: uppercase;
+                    letter-spacing: 0.05em;
+                }
+                
+                .subscription-plan-name {
+                    font-size: 18px;
                     font-weight: 600;
                     margin-bottom: 8px;
+                    color: #e5e7eb;
                 }
                 
-                .upgrade-description {
-                    color: #c7d2fe;
+                .subscription-plan-price {
+                    font-size: 28px;
+                    font-weight: 700;
+                    margin-bottom: 6px;
+                    color: #e5e7eb;
+                }
+                
+                .subscription-plan-price span {
                     font-size: 14px;
-                    margin-bottom: 20px;
-                    line-height: 1.5;
+                    font-weight: 400;
+                    color: #9ca3af;
                 }
                 
-                .upgrade-button {
+                .subscription-plan-description {
+                    color: #9ca3af;
+                    font-size: 13px;
+                    margin-bottom: 20px;
+                    line-height: 1.4;
+                }
+                
+                .subscription-plan-features {
+                    list-style: none;
+                    padding: 0;
+                    margin: 0 0 24px 0;
+                }
+                
+                .subscription-plan-features li {
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    margin-bottom: 10px;
+                    color: #e5e7eb;
+                    font-size: 13px;
+                }
+                
+                .subscription-plan-features i {
+                    color: #10b981;
+                    font-size: 12px;
+                }
+                
+                .subscription-plan-button {
+                    width: 100%;
+                    padding: 12px 20px;
+                    border: none;
+                    border-radius: 8px;
+                    font-size: 14px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                    text-decoration: none;
+                    display: inline-block;
+                    text-align: center;
+                }
+                
+                .subscription-plan-button.primary {
+                    background: linear-gradient(135deg, #8B5CF6, #A855F7);
+                    color: white;
+                    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);
+                }
+                
+                .subscription-plan-button.primary:hover {
+                    transform: translateY(-1px);
+                    box-shadow: 0 6px 16px rgba(139, 92, 246, 0.35);
+                }
+                
+                .subscription-plan-button.secondary {
+                    background: #374151;
+                    color: #9ca3af;
+                }
+                
+                .subscription-plan-button:disabled {
+                    opacity: 0.5;
+                    cursor: not-allowed;
+                }
+                
+                .add-payment-button-settings {
+                    width: 100%;
+                    padding: 16px;
+                    background: rgba(139, 92, 246, 0.1);
+                    color: #a78bfa;
+                    border: 2px dashed rgba(139, 92, 246, 0.3);
+                    border-radius: 8px;
+                    font-size: 14px;
+                    font-weight: 500;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 8px;
+                }
+                
+                .add-payment-button-settings:hover {
+                    background: rgba(139, 92, 246, 0.15);
+                    border-color: rgba(139, 92, 246, 0.5);
+                }
+                
+                .subscription-transactions-card {
+                    background: #1a1a1a;
+                    border: 1px solid #2a2a2a;
+                    border-radius: 12px;
+                    padding: 24px;
+                    margin-bottom: 24px;
+                }
+                
+                .subscription-transactions-table {
+                    width: 100%;
+                    font-size: 13px;
+                }
+                
+                .subscription-transactions-table thead {
+                    border-bottom: 1px solid #2a2a2a;
+                }
+                
+                .subscription-transactions-table th {
+                    padding: 12px;
+                    text-align: left;
+                    font-weight: 500;
+                    color: #9ca3af;
+                    text-transform: uppercase;
+                    letter-spacing: 0.05em;
+                    font-size: 11px;
+                }
+                
+                .subscription-transactions-table td {
+                    padding: 12px;
+                    border-bottom: 1px solid #1f2937;
+                    color: #e5e7eb;
+                }
+                
+                .subscription-transactions-table tbody tr:last-child td {
+                    border-bottom: none;
+                }
+                
+                .subscription-status-badge {
                     display: inline-flex;
                     align-items: center;
-                    gap: 8px;
-                    background: #10b981;
-                    color: white;
-                    padding: 12px 24px;
-                    border-radius: 8px;
+                    gap: 4px;
+                    padding: 4px 10px;
+                    border-radius: 999px;
+                    font-size: 11px;
                     font-weight: 500;
-                    text-decoration: none;
-                    transition: transform 0.2s, box-shadow 0.2s;
                 }
                 
-                .upgrade-button:hover {
-                    transform: translateY(-1px);
-                    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+                .subscription-status-badge.completed {
+                    background: rgba(16, 185, 129, 0.1);
+                    color: #10b981;
                 }
                 
-                .reset-info {
-                    margin-top: 16px;
-                    padding-top: 16px;
-                    border-top: 1px solid #2a2a2a;
+                .subscription-status-badge.pending {
+                    background: rgba(245, 158, 11, 0.1);
+                    color: #f59e0b;
+                }
+                
+                .subscription-status-badge.failed {
+                    background: rgba(239, 68, 68, 0.1);
+                    color: #ef4444;
+                }
+                
+                .subscription-empty-state {
                     text-align: center;
+                    padding: 40px;
                     color: #6b7280;
+                }
+                
+                .subscription-empty-state i {
+                    font-size: 36px;
+                    opacity: 0.3;
+                    margin-bottom: 12px;
+                }
+                
+                /* Original payment method styles for compatibility */
+                .payment-method-item {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding: 16px;
+                    background: rgba(255, 255, 255, 0.03);
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    border-radius: 8px;
+                    margin-bottom: 12px;
+                    transition: all 0.2s ease;
+                }
+                
+                .payment-method-item:hover {
+                    background: rgba(255, 255, 255, 0.05);
+                    border-color: rgba(167, 139, 250, 0.3);
+                }
+                
+                .payment-method-info {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                }
+                
+                .card-icon {
+                    width: 32px;
+                    height: 20px;
+                    background: #4b5563;
+                    border-radius: 4px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 12px;
+                    color: white;
+                    font-weight: 600;
+                }
+                
+                .card-icon.visa { background: #1e40af; }
+                .card-icon.mastercard { background: #dc2626; }
+                .card-icon.amex { background: #059669; }
+                .card-icon.discover { background: #ea580c; }
+                
+                .card-details {
+                    display: flex;
+                    flex-direction: column;
+                }
+                
+                .card-number {
                     font-size: 14px;
+                    font-weight: 500;
+                    color: #e5e7eb;
+                    font-family: monospace;
+                }
+                
+                .card-expiry {
+                    font-size: 12px;
+                    color: #9ca3af;
+                }
+                
+                .payment-method-actions {
+                    display: flex;
+                    gap: 8px;
+                }
+                
+                .method-action {
+                    padding: 6px 12px;
+                    border: none;
+                    border-radius: 6px;
+                    font-size: 12px;
+                    font-weight: 500;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                }
+                
+                .method-default {
+                    background: rgba(16, 185, 129, 0.1);
+                    color: #10b981;
+                    border: 1px solid rgba(16, 185, 129, 0.3);
+                }
+                
+                .method-make-default {
+                    background: transparent;
+                    color: #9ca3af;
+                    border: 1px solid #374151;
+                }
+                
+                .method-make-default:hover {
+                    background: rgba(255, 255, 255, 0.05);
+                    border-color: #4b5563;
+                }
+                
+                .method-remove {
+                    background: transparent;
+                    color: #ef4444;
+                    border: 1px solid rgba(239, 68, 68, 0.3);
+                }
+                
+                .method-remove:hover {
+                    background: rgba(239, 68, 68, 0.1);
+                    border-color: rgba(239, 68, 68, 0.5);
+                }
+                
+                .no-payment-methods {
+                    text-align: center;
+                    padding: 32px;
+                    color: #6b7280;
+                }
+                
+                .no-payment-methods i {
+                    font-size: 36px;
+                    opacity: 0.3;
+                    margin-bottom: 12px;
+                    display: block;
+                }
+                
+                /* Responsive layout improvements */
+                @media (max-width: 768px) {
+                    .subscription-usage-stats {
+                        grid-template-columns: 1fr;
+                        gap: 16px;
+                    }
+                    
+                    .subscription-usage-breakdown {
+                        grid-template-columns: 1fr;
+                    }
+                    
+                    .subscription-plans-grid {
+                        grid-template-columns: 1fr;
+                    }
+                    
+                    .subscription-plan-card,
+                    .subscription-payment-methods-card,
+                    .subscription-transactions-card {
+                        padding: 20px;
+                        margin-bottom: 20px;
+                    }
+                    
+                    .subscription-transactions-table {
+                        font-size: 12px;
+                    }
+                    
+                    .subscription-transactions-table th,
+                    .subscription-transactions-table td {
+                        padding: 8px;
+                    }
+                    
+                    .subscription-payment-method-item {
+                        flex-direction: column;
+                        align-items: flex-start;
+                        gap: 12px;
+                    }
+                    
+                    .subscription-payment-method-actions {
+                        width: 100%;
+                        justify-content: space-between;
+                    }
                 }
             </style>
             
-            <div class="usage-content-wrapper">
-                <!-- Main Usage Card -->
-                <div class="usage-card">
-                <div class="usage-header">
+            <div class="subscription-cards-grid">
+            <!-- Current Plan Card -->
+            <div class="subscription-plan-card">
+                <div class="subscription-plan-header">
                     <div>
-                        <div class="plan-badge">
-                            <i class="fas fa-{% if is_free_tier %}user{% else %}crown{% endif %}"></i>
-                            {% if is_free_tier %}Free Tier{% else %}Pro Monthly{% endif %}
+                        <div class="subscription-plan-badge{% if not user_credit.is_free_tier %} pro{% endif %}">
+                            <i class="fas fa-{% if user_credit.is_free_tier %}user{% else %}crown{% endif %}"></i>
+                            {% if user_credit.is_free_tier %}Free Tier{% else %}Pro Monthly{% endif %}
                         </div>
-                        <div class="plan-details" style="margin-top: 8px;">
-                            {% if is_free_tier %}
+                        <div style="color: #6b7280; font-size: 12px; margin-top: 8px;">
+                            {% if user_credit.is_free_tier %}
                                 100,000 lifetime tokens • gpt-5-mini only
                             {% else %}
                                 300,000 tokens per month • All AI models
                             {% endif %}
                         </div>
                     </div>
-                    {% if is_free_tier %}
-                    <a href="{% url 'subscriptions:dashboard' %}" class="upgrade-button" style="padding: 8px 16px; font-size: 14px;">
-                        <i class="fas fa-rocket"></i> Upgrade
-                    </a>
+                    {% if user_credit.is_subscribed and user_credit.stripe_subscription_id %}
+                    <form method="post" action="{% url 'subscriptions:cancel_subscription' %}" onsubmit="return confirm('Are you sure you want to cancel your subscription?');">
+                        {% csrf_token %}
+                        <input type="hidden" name="redirect_to" value="settings">
+                        <button type="submit" class="cancel-button" style="padding: 8px 16px; background: transparent; color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.2s ease;">Cancel Subscription</button>
+                    </form>
                     {% endif %}
                 </div>
                 
-                <div class="usage-progress">
-                    <div class="progress-header">
-                        <span class="progress-title">{% if is_free_tier %}Lifetime Usage{% else %}Monthly Usage{% endif %}</span>
-                        <span class="progress-percentage">{{ usage_percentage }}%</span>
+                {% if user_credit.is_free_tier %}
+                <!-- Free Tier Usage -->
+                <div class="subscription-usage-progress">
+                    <div class="subscription-progress-header">
+                        <span class="subscription-progress-title">Lifetime Usage</span>
+                        <span style="color: #9ca3af; font-size: 12px;">{{ usage_percentage|floatformat:0 }}% used</span>
                     </div>
-                    <div class="progress-bar-container">
-                        <div class="progress-bar-fill"></div>
+                    <div class="subscription-progress-bar-container">
+                        <div class="subscription-progress-bar-fill{% if usage_percentage > 80 %} danger{% elif usage_percentage > 60 %} warning{% endif %}" style="width: {{ usage_percentage }}%"></div>
+                    </div>
+                </div>
+                {% else %}
+                <!-- Pro Tier - Monthly Usage -->
+                <div class="subscription-usage-progress">
+                    <div class="subscription-progress-header">
+                        <span class="subscription-progress-title">Monthly Usage</span>
+                        <span style="color: #9ca3af; font-size: 12px;">{{ monthly_usage_percentage|floatformat:0 }}% used</span>
+                    </div>
+                    <div class="subscription-progress-bar-container">
+                        <div class="subscription-progress-bar-fill{% if monthly_usage_percentage > 80 %} danger{% elif monthly_usage_percentage > 60 %} warning{% endif %}" style="width: {{ monthly_usage_percentage }}%"></div>
                     </div>
                 </div>
                 
-                <div class="usage-stats">
-                    <div class="stat-item">
-                        <span class="stat-label">Used</span>
-                        <span class="stat-value used">{{ tokens_used|intcomma }}</span>
+                <!-- Pro Tier - Additional Credits Usage -->
+                {% if user_credit.credits > 0 or additional_credits_usage_percentage > 0 %}
+                <div class="subscription-usage-progress" style="margin-top: 16px;">
+                    <div class="subscription-progress-header">
+                        <span class="subscription-progress-title">Additional Credits ({{ total_additional_credits_purchased|intcomma }})</span>
+                        <span style="color: #9ca3af; font-size: 12px;">{{ additional_credits_usage_percentage|floatformat:0 }}% used</span>
                     </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Remaining</span>
-                        <span class="stat-value remaining">{{ tokens_remaining|intcomma }}</span>
+                    <div class="subscription-progress-bar-container">
+                        <div class="subscription-progress-bar-fill{% if additional_credits_usage_percentage > 80 %} danger{% elif additional_credits_usage_percentage > 60 %} warning{% endif %}" style="width: {{ additional_credits_usage_percentage }}%; background: #10b981;"></div>
+                    </div>
+                </div>
+                {% endif %}
+                {% endif %}
+                
+                <div class="subscription-usage-stats">
+                    <div class="subscription-stat-item">
+                        <span class="subscription-stat-label">Used</span>
+                        <span class="subscription-stat-value">{{ user_credit.total_tokens_used|intcomma }}</span>
+                    </div>
+                    <div class="subscription-stat-item">
+                        <span class="subscription-stat-label">Remaining</span>
+                        <span class="subscription-stat-value remaining{% if user_credit.get_remaining_tokens < 10000 %} low{% endif %}">
+                            {{ user_credit.get_remaining_tokens|intcomma }}
+                        </span>
                     </div>
                 </div>
                 
-                <!-- Credit breakdown in smaller font -->
-                <div class="credit-breakdown" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.1);">
-                    {% if is_free_tier %}
-                    <div style="font-size: 12px; color: rgba(255, 255, 255, 0.6); text-align: center;">
-                        <span>Free (one time): {{ total_limit|intcomma }}</span>
+                <!-- Credit Breakdown -->
+                <div style="margin-top: 16px; text-align: center; font-size: 9px; color: #6b7280; line-height: 1.3;">
+                    Free: 100K (one-time){% if not user_credit.is_free_tier %} • Monthly: 300K{% if user_credit.credits > 0 %} • Additional: {{ user_credit.credits|intcomma }}{% endif %}{% endif %}
+                </div>
+                
+                {% if not user_credit.is_free_tier and user_credit.subscription_end_date %}
+                <div style="text-align: center; margin-top: 20px; padding-top: 20px; border-top: 1px solid #2a2a2a; color: #6b7280; font-size: 12px;">
+                    <i class="fas fa-sync-alt"></i>
+                    Your subscription renews on {{ user_credit.subscription_end_date|date:"F d, Y" }}
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Payment Methods -->
+            <div class="subscription-plan-card">
+                <h3 style="color: #e5e7eb; font-size: 18px; font-weight: 600; margin-bottom: 20px;">Payment Methods</h3>
+                <div id="payment-methods-list-settings" style="flex: 1;">
+                    <div class="loading-payment-methods" style="text-align: center; padding: 32px; color: #6b7280;">
+                        <i class="fas fa-spinner fa-spin"></i> Loading payment methods...
                     </div>
-                    {% else %}
-                    <div style="font-size: 12px; color: rgba(255, 255, 255, 0.6); display: flex; justify-content: space-between; gap: 16px;">
-                        <span>Free (one time): {{ free_tokens_remaining|intcomma }}</span>
-                        <span>Monthly Credits: 300,000</span>
-                        {% if user_credit.credits > 0 %}
-                        <span>Additional: {{ user_credit.credits|intcomma }}</span>
+                </div>
+                <button id="add-payment-method-settings" class="add-payment-button-settings" style="display: none; margin-top: auto;">
+                    <i class="fas fa-plus"></i> Add Payment Method
+                </button>
+            </div>
+
+            <!-- Available Plans -->
+            <div class="subscription-plan-card">
+                <h3 style="color: #e5e7eb; font-size: 18px; font-weight: 600; margin-bottom: 20px;">Available Plans</h3>
+                {% if not payment_plans %}
+                    <div style="text-align: center; padding: 2rem; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; color: #ef4444; margin-bottom: 24px;">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <p style="margin: 0.5rem 0 0 0;">No payment plans found in database</p>
+                        <p style="margin: 0.5rem 0 0 0; font-size: 12px;">Run: <code>python manage.py create_default_plans</code></p>
+                    </div>
+                {% endif %}
+                <div class="subscription-plans-grid">
+                    {% for plan in payment_plans %}
+                    <div class="subscription-pricing-card{% if plan.name == 'Pro Monthly' %} recommended{% endif %}">
+                        {% if plan.name == 'Pro Monthly' %}
+                        <span class="subscription-recommended-badge">Recommended</span>
+                        {% endif %}
+                        
+                        <h4 class="subscription-plan-name">{{ plan.name }}</h4>
+                        <div class="subscription-plan-price">
+                            {% if plan.price == 0 %}
+                                Free
+                            {% else %}
+                                ${{ plan.price|floatformat:0 }}
+                                {% if plan.is_subscription %}<span>/ month</span>{% endif %}
+                            {% endif %}
+                        </div>
+                        <p class="subscription-plan-description">{{ plan.description }}</p>
+                        
+                        <ul class="subscription-plan-features">
+                            {% if plan.name == 'Free Tier' %}
+                                <li><i class="fas fa-check"></i> 100,000 lifetime tokens</li>
+                                <li><i class="fas fa-check"></i> GPT-5-mini model only</li>
+                                <li><i class="fas fa-check"></i> Basic features</li>
+                                <li><i class="fas fa-check"></i> Community support</li>
+                            {% elif plan.name == 'Pro Monthly' %}
+                                <li><i class="fas fa-check"></i> 300,000 tokens per month</li>
+                                <li><i class="fas fa-check"></i> All AI models (GPT-4o, Claude, Gemini)</li>
+                                <li><i class="fas fa-check"></i> Priority support</li>
+                                <li><i class="fas fa-check"></i> Advanced features</li>
+                            {% else %}
+                                <li><i class="fas fa-check"></i> {{ plan.credits|intcomma }} additional tokens</li>
+                                <li><i class="fas fa-check"></i> One-time purchase</li>
+                                <li><i class="fas fa-check"></i> Never expires</li>
+                                <li><i class="fas fa-check"></i> Use with any plan</li>
+                            {% endif %}
+                        </ul>
+                        
+                        {% if plan.price > 0 %}
+                            {% if user_credit.has_active_subscription and plan.is_subscription %}
+                                <button class="subscription-plan-button secondary" disabled>Current Plan</button>
+                            {% else %}
+                                <a href="{% url 'subscriptions:checkout' plan.id %}" class="subscription-plan-button primary">
+                                    {% if plan.is_subscription %}Get Started{% else %}Purchase Credits{% endif %}
+                                </a>
+                            {% endif %}
+                        {% else %}
+                            {% if user_credit.is_free_tier %}
+                                <button class="subscription-plan-button secondary" disabled>Your Current Plan</button>
+                            {% else %}
+                                <button class="subscription-plan-button secondary" disabled>Free Tier</button>
+                            {% endif %}
                         {% endif %}
                     </div>
-                    {% endif %}
+                    {% endfor %}
                 </div>
-                
-                {% if tokens_remaining <= 0 %}
-                <!-- Token Exhausted Alert -->
-                <div class="token-exhausted-alert" style="
-                    background: transparent;
-                    border: 2px solid #ef4444;
-                    border-radius: 12px;
-                    padding: 24px;
-                    margin: 20px 0;
-                    text-align: center;
-                    position: relative;
-                    overflow: hidden;
-                ">
-                    <div style="position: relative; z-index: 1;">
-                        <div style="display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 16px;">
-                            <i class="fas fa-info-circle" style="font-size: 24px; color: #ef4444;"></i>
-                            <h3 style="color: #ef4444; font-size: 18px; font-weight: 600; margin: 0;">Tokens Used Up</h3>
-                        </div>
-                        <p style="color: #dc2626; margin: 0 0 20px 0; font-size: 14px; line-height: 1.5;">
-                            {% if is_free_tier %}
-                                You've used all {{ total_limit|intcomma }} tokens in your free tier account. Upgrade to Pro to get 300,000 tokens monthly and access to all AI models.
-                            {% else %}
-                                You've reached your monthly limit of {{ total_limit|intcomma }} tokens. Your tokens will reset on {{ user_credit.subscription_end_date|date:"M d, Y" }}.
-                            {% endif %}
-                        </p>
-                        <div style="display: flex; flex-direction: column; gap: 12px; align-items: center;">
-                            {% if is_free_tier %}
-                                <a href="{% url 'subscriptions:dashboard' %}" style="
-                                    display: inline-flex;
-                                    align-items: center;
-                                    gap: 8px;
-                                    background: linear-gradient(135deg, #16a34a, #15803d);
-                                    color: white;
-                                    padding: 12px 24px;
-                                    border-radius: 8px;
-                                    font-weight: 600;
-                                    text-decoration: none;
-                                    transition: all 0.2s;
-                                    box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3);
-                                " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 20px rgba(34, 197, 94, 0.4)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 12px rgba(34, 197, 94, 0.3)';">
-                                    <i class="fas fa-rocket"></i>
-                                    Upgrade to Pro - $9/month
-                                </a>
-                                <small style="color: #f87171; font-size: 12px;">Get 30x more tokens + access to all AI models</small>
-                            {% else %}
-                                <a href="{% url 'subscriptions:checkout' plan_id=3 %}" style="
-                                    display: inline-flex;
-                                    align-items: center;
-                                    gap: 8px;
-                                    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-                                    color: white;
-                                    padding: 12px 24px;
-                                    border-radius: 8px;
-                                    font-weight: 600;
-                                    text-decoration: none;
-                                    transition: all 0.2s;
-                                    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-                                " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 20px rgba(59, 130, 246, 0.4)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 12px rgba(59, 130, 246, 0.3)';">
-                                    <i class="fas fa-plus"></i>
-                                    Buy Additional Tokens
-                                </a>
-                                <small style="color: #f87171; font-size: 12px;">
-                                    Or wait {{ user_credit.days_until_reset|default:"N/A" }} days for your monthly reset
-                                </small>
-                            {% endif %}
-                        </div>
-                    </div>
-                </div>
-                {% elif tokens_remaining < 10000 %}
-                <!-- Low Tokens Warning -->
-                <div class="low-tokens-warning" style="
-                    background: linear-gradient(135deg, #92400e 0%, #b45309 100%);
-                    border: 1px solid #d97706;
-                    border-radius: 12px;
-                    padding: 20px;
-                    margin: 16px 0;
-                    text-align: center;
-                ">
-                    <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 12px;">
-                        <i class="fas fa-exclamation-circle" style="font-size: 20px; color: #fed7aa;"></i>
-                        <h4 style="color: #fed7aa; font-size: 16px; font-weight: 600; margin: 0;">Running Low on Tokens</h4>
-                    </div>
-                    <p style="color: #fdba74; margin: 0 0 16px 0; font-size: 14px;">
-                        You have {{ tokens_remaining|intcomma }} tokens remaining. Consider upgrading to avoid interruptions.
-                    </p>
-                    {% if is_free_tier %}
-                        <a href="{% url 'subscriptions:dashboard' %}" style="
-                            display: inline-flex;
-                            align-items: center;
-                            gap: 6px;
-                            background: linear-gradient(135deg, #f59e0b, #d97706);
-                            color: white;
-                            padding: 8px 16px;
-                            border-radius: 6px;
-                            font-weight: 500;
-                            text-decoration: none;
-                            font-size: 14px;
-                            transition: all 0.2s;
-                        " onmouseover="this.style.transform='translateY(-1px)';" onmouseout="this.style.transform='translateY(0)';">
-                            <i class="fas fa-arrow-up"></i>
-                            Upgrade Now
-                        </a>
-                    {% endif %}
-                </div>
-                {% endif %}
-                
-                <div class="usage-breakdown">
-                    <div class="breakdown-item">
-                        <span class="breakdown-label">
-                            <i class="fas fa-gift" style="color: #a78bfa;"></i>
-                            Free Tokens
-                        </span>
-                        <span class="breakdown-value">{{ free_tokens_used|intcomma }}</span>
-                    </div>
-                    <div class="breakdown-item">
-                        <span class="breakdown-label">
-                            <i class="fas fa-credit-card" style="color: #10b981;"></i>
-                            Paid Tokens
-                        </span>
-                        <span class="breakdown-value">{{ paid_tokens_used|intcomma }}</span>
-                    </div>
-                </div>
-                
-                {% if not is_free_tier and user_credit.subscription_end_date %}
-                <div class="reset-info">
-                    <i class="fas fa-sync-alt"></i>
-                    Resets {{ user_credit.subscription_end_date|date:"M d, Y" }}
+            </div>
+
+            <!-- Recent Transactions -->
+            <h3 style="color: #e5e7eb; font-size: 18px; font-weight: 600; margin: 32px 0 20px 0;">Recent Transactions</h3>
+            <div class="subscription-plan-card">
+                {% if transactions %}
+                <table class="subscription-transactions-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Plan</th>
+                            <th>Amount</th>
+                            <th>Credits</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for transaction in transactions %}
+                        <tr>
+                            <td>{{ transaction.created_at|date:"M d, Y" }}</td>
+                            <td>{{ transaction.payment_plan.name }}</td>
+                            <td>${{ transaction.amount|floatformat:2 }}</td>
+                            <td>{{ transaction.credits_added|intcomma }}</td>
+                            <td>
+                                <span class="subscription-status-badge {{ transaction.status }}">
+                                    <i class="fas fa-{% if transaction.status == 'completed' %}check-circle{% elif transaction.status == 'pending' %}clock{% else %}times-circle{% endif %}"></i>
+                                    {{ transaction.get_status_display }}
+                                </span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="subscription-empty-state">
+                    <i class="fas fa-receipt"></i>
+                    <p>No transactions yet</p>
                 </div>
                 {% endif %}
             </div>
-            
-            {% if is_free_tier %}
-            <!-- Upgrade Card -->
-            <div class="upgrade-card">
-                <i class="fas fa-rocket" style="font-size: 32px; color: #a78bfa; margin-bottom: 16px;"></i>
-                <h3 class="upgrade-title">Unlock Pro Features</h3>
-                <p class="upgrade-description">
-                    Get 300,000 tokens every month, access to GPT-4o, Claude, Gemini, and all premium AI models. Perfect for serious builders.
-                </p>
-                <a href="{% url 'subscriptions:dashboard' %}" class="upgrade-button">
-                    <i class="fas fa-credit-card"></i>
-                    View Plans - $9/month
-                </a>
-            </div>
-            {% endif %}
-            </div>
+            </div> <!-- Close subscription-cards-grid -->
         </div>
         
         <!-- LLM Settings Section -->
         <div id="llm-settings" class="settings-section">
             <h2 class="section-heading">Language Model API Keys</h2>
+            {% if not user_credit.is_free_tier %}
             <div class="integrations-list">
                 <!-- OpenAI Integration -->
                 <div class="integration-item">
@@ -1130,7 +2394,7 @@
                                     </span>
                                 {% endif %}
                             </h3>
-                            <p class="integration-description">GPT-5, GPT-5-mini</p>
+                            <p class="integration-description">GPT-5</p>
                         </div>
                     </div>
                     
@@ -1289,7 +2553,7 @@
                                     </span>
                                 {% endif %}
                             </h3>
-                            <p class="integration-description">Gemini 2.5 Pro, Flash, Flash Lite</p>
+                            <p class="integration-description">Gemini 2.5 Pro</p>
                         </div>
                     </div>
                     
@@ -1324,131 +2588,36 @@
                     </a>
                 </div>
             </div>
-        </div>
-        
-        <!-- Project Management Section -->
-        <div id="project-management" class="settings-section">
-            <h2 class="section-heading">Project Management Tools</h2>
-            <div class="integrations-list">
-                <!-- Linear Integration -->
-                <div class="integration-item">
-                    <div class="integration-header">
-                        <div class="integration-icon">
-                            <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path fill-rule="evenodd" clip-rule="evenodd" d="M12.9266 16.3713c-.5283.5806-.4933 1.4714.0617 2.0265l68.5946 68.5946c.5551.555 1.4459.59 2.0265.0617 10.0579-9.1522 16.3713-22.3478 16.3713-37.0179C99.9807 22.402 77.5788 0 49.9445 0 35.2744 0 22.0788 6.31337 12.9266 16.3713ZM4.35334 29.3894c-.25348.5589-.12567 1.2142.30824 1.6481L68.9432 95.3191c.4339.4339 1.0892.5617 1.6481.3083 1.485-.6736 2.9312-1.4176 4.3344-2.2277.8341-.4815.9618-1.6195.2808-2.3005L8.88146 24.7742c-.68097-.681-1.81894-.5532-2.30045.2808-.81013 1.4032-1.55411 2.8494-2.22767 4.3344ZM.453579 47.796c-.300979-.301-.46112014-.7158-.4327856-1.1405.1327026-1.9891.3816396-3.9463.7400796-5.865.214926-1.1505 1.620727-1.5497 2.448307-.7222L59.9124 96.7715c.8275.8276.4283 2.2334-.7222 2.4483-1.9187.3585-3.8759.6074-5.865.7401-.4247.0283-.8395-.1318-1.1405-.4328L.453579 47.796ZM3.93331 61.7589c-1.0331-1.0331-2.70028-.1429-2.32193 1.2683C6.22104 80.2203 19.7604 93.7597 36.9535 98.3693c1.4112.3784 2.3014-1.2888 1.2683-2.3219L3.93331 61.7589Z" fill="#a78bfa"/>
-                            </svg>
-                        </div>
-                        <div class="integration-info">
-                            <h3 class="integration-name">
-                                Linear
-                                {% if linear_connected %}
-                                    <span class="connected-check">
-                                        <i class="fas fa-check"></i>
-                                    </span>
-                                {% endif %}
-                            </h3>
-                            <p class="integration-description">Issue tracking and project management</p>
-                        </div>
-                    </div>
-                    
-                    {% if linear_connected %}
-                        <form method="post" action="{% url 'accounts:disconnect_api_key' 'linear' %}">
-                            {% csrf_token %}
-                            <div class="api-key-section">
-                                <div class="api-key-input-wrapper">
-                                    <input type="password" class="api-input connected" value="••••••••••••••••" readonly>
-                                    <span class="input-status" style="color: #22c55e;">
-                                        <i class="fas fa-check-circle"></i>
-                                    </span>
-                                </div>
-                                <button type="submit" class="disconnect-button">Disconnect</button>
-                            </div>
-                        </form>
-                    {% else %}
-                        <form method="post" action="{% url 'accounts:save_api_key' 'linear' %}">
-                            {% csrf_token %}
-                            <div class="api-key-section">
-                                <div class="api-key-input-wrapper">
-                                    <input type="password" name="api_key" class="api-input" placeholder="Enter your Linear API key" required>
-                                </div>
-                                <button type="submit" class="save-button">Connect</button>
-                            </div>
-                        </form>
-                    {% endif %}
-                    
-                    <a href="https://linear.app/settings/api" target="_blank" class="external-link">
-                        Get API Key
-                        <i class="fas fa-external-link-alt"></i>
+            {% else %}
+            <!-- Blocked message for free tier users -->
+            <div style="text-align: center; padding: 3rem; max-width: 800px; width: 100%;">
+                <div style="background: rgba(167, 139, 250, 0.1); border: 1px solid rgba(167, 139, 250, 0.3); border-radius: 16px; padding: 2rem;">
+                    <i class="fas fa-lock" style="font-size: 2rem; color: #a78bfa; margin-bottom: 1rem;"></i>
+                    <h3 style="color: #e5e7eb; font-size: 1.25rem; font-weight: 600; margin: 0 0 1rem 0;">Pro Feature</h3>
+                    <p style="color: rgba(255, 255, 255, 0.7); margin: 0 0 1.5rem 0; line-height: 1.5;">
+                        LLM API key management is available for Pro subscribers only. Upgrade to connect your own API keys and access advanced AI models.
+                    </p>
+                    <a href="{% url 'subscriptions:dashboard' %}" style="
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 8px;
+                        background: linear-gradient(135deg, #8B5CF6, #A855F7);
+                        color: white;
+                        padding: 12px 24px;
+                        border-radius: 8px;
+                        font-weight: 600;
+                        text-decoration: none;
+                        transition: all 0.2s;
+                        box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);
+                    " onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 6px 16px rgba(139, 92, 246, 0.35)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 12px rgba(139, 92, 246, 0.25)';">
+                        <i class="fas fa-rocket"></i>
+                        Upgrade to Pro
                     </a>
                 </div>
             </div>
+            {% endif %}
         </div>
         
-        <!-- Project Collaboration Section -->
-        <div id="project-collaboration" class="settings-section">
-            <h2 class="section-heading">Project Collaboration</h2>
-            <div class="integrations-list">
-                <div class="integration-item">
-                    <div class="integration-header">
-                        <div class="integration-icon">
-                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M16 4C18.2091 4 20 5.79086 20 8C20 10.2091 18.2091 12 16 12C13.7909 12 12 10.2091 12 8C12 5.79086 13.7909 4 16 4Z" fill="#a78bfa"/>
-                                <path d="M12 14C12 11.79 10.21 10 8 10C5.79 10 4 11.79 4 14V16C4 17.1 4.9 18 6 18H10C11.1 18 12 17.1 12 16V14Z" fill="#a78bfa" opacity="0.7"/>
-                                <path d="M15 13C15 12.45 14.55 12 14 12H10C9.45 12 9 12.45 9 13C9 13.55 9.45 14 10 14H14C14.55 14 15 13.55 15 13Z" fill="#a78bfa"/>
-                                <path d="M22 16V20C22 21.1 21.1 22 20 22H16C14.9 22 14 21.1 14 20V16C14 14.9 14.9 14 16 14H20C21.1 14 22 14.9 22 16Z" fill="#a78bfa" opacity="0.8"/>
-                            </svg>
-                        </div>
-                        <div class="integration-info">
-                            <h3 class="integration-name">
-                                Guest Invitations
-                                <span class="connected-check">
-                                    <i class="fas fa-check"></i>
-                                </span>
-                            </h3>
-                            <p class="integration-description">Allow inviting users to collaborate on projects</p>
-                        </div>
-                    </div>
-                    
-                    <div class="api-key-section" style="margin-top: 1rem;">
-                        <div class="collaboration-setting">
-                            <div class="setting-toggle-wrapper">
-                                <label class="toggle-switch">
-                                    <input type="checkbox" id="allow-guest-invitations" {% if allow_project_invitations %}checked{% endif %}>
-                                    <span class="toggle-slider"></span>
-                                </label>
-                                <div class="setting-info">
-                                    <h4 class="setting-title">Enable Guest Invitations</h4>
-                                    <p class="setting-description">
-                                        Allow project members to invite external users to collaborate on projects. 
-                                        Invited users will automatically be added to your organization with member access.
-                                    </p>
-                                </div>
-                            </div>
-                            
-                            <div class="setting-details" style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid rgba(255, 255, 255, 0.1);">
-                                <div class="detail-item">
-                                    <i class="fas fa-shield-alt" style="color: #10b981;"></i>
-                                    <span>Invited users get secure project access with role-based permissions</span>
-                                </div>
-                                <div class="detail-item">
-                                    <i class="fas fa-users" style="color: #3b82f6;"></i>
-                                    <span>Automatic organization membership for seamless collaboration</span>
-                                </div>
-                                <div class="detail-item">
-                                    <i class="fas fa-clock" style="color: #f59e0b;"></i>
-                                    <span>Invitation links expire after 7 days for security</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <a href="#" class="external-link" onclick="showProjectInvitationHelp(); return false;">
-                        Learn more about project invitations
-                        <i class="fas fa-question-circle"></i>
-                    </a>
-                </div>
-            </div>
-        </div>
         
         <!-- Organizations Section -->
         <div id="organizations" class="settings-section">
@@ -1670,6 +2839,12 @@
             const navItem = document.querySelector(`[data-section="${hash}"]`);
             if (navItem && !navItem.classList.contains('disabled')) {
                 navItem.click();
+                // If it's the subscriptions section, load payment methods immediately
+                if (hash === 'subscriptions') {
+                    setTimeout(() => {
+                        loadPaymentMethodsSettings();
+                    }, 100);
+                }
             }
         }
         
@@ -1868,5 +3043,229 @@
             }
         });
     }
+    
+    // Initialize Stripe for subscriptions functionality
+    let stripe = null;
+    const stripePublicKey = '{{ STRIPE_PUBLIC_KEY }}';
+    
+    // Initialize Stripe when DOM is ready and Stripe is available
+    function initializeStripe() {
+        if (typeof Stripe !== 'undefined' && stripePublicKey) {
+            stripe = Stripe(stripePublicKey);
+        } else {
+            console.warn('Stripe not available or public key missing');
+        }
+    }
+    
+    // Load payment methods when subscriptions section is shown
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize Stripe
+        initializeStripe();
+        // Watch for section changes
+        const observer = new MutationObserver(function(mutations) {
+            mutations.forEach(function(mutation) {
+                if (mutation.target.id === 'subscriptions' && mutation.target.classList.contains('active')) {
+                    loadPaymentMethodsSettings();
+                }
+            });
+        });
+        
+        // Observe the subscriptions section for class changes
+        const subscriptionsSection = document.getElementById('subscriptions');
+        if (subscriptionsSection) {
+            observer.observe(subscriptionsSection, { attributes: true, attributeFilter: ['class'] });
+        }
+        
+        // Load immediately if subscriptions section is already active
+        if (subscriptionsSection && subscriptionsSection.classList.contains('active')) {
+            loadPaymentMethodsSettings();
+        }
+        
+        // Add payment method button handler for settings
+        const addButton = document.getElementById('add-payment-method-settings');
+        if (addButton) {
+            addButton.addEventListener('click', addPaymentMethodSettings);
+        }
+    });
+    
+    async function loadPaymentMethodsSettings() {
+        try {
+            const response = await fetch('/subscriptions/payment-methods/');
+            const data = await response.json();
+            
+            const container = document.getElementById('payment-methods-list-settings');
+            const addButton = document.getElementById('add-payment-method-settings');
+            
+            if (data.payment_methods && data.payment_methods.length > 0) {
+                container.innerHTML = '';
+                data.payment_methods.forEach(method => {
+                    container.appendChild(createPaymentMethodElementSettings(method));
+                });
+            } else {
+                container.innerHTML = `
+                    <div class="no-payment-methods">
+                        <i class="fas fa-credit-card"></i>
+                        <p>No payment methods added yet</p>
+                        <p style="font-size: 12px; margin-top: 8px;">Add a payment method to upgrade your plan or purchase credits</p>
+                    </div>
+                `;
+            }
+            
+            addButton.style.display = 'flex';
+        } catch (error) {
+            console.error('Error loading payment methods:', error);
+            document.getElementById('payment-methods-list-settings').innerHTML = `
+                <div class="no-payment-methods">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <p>Unable to load payment methods</p>
+                </div>
+            `;
+            document.getElementById('add-payment-method-settings').style.display = 'flex';
+        }
+    }
+    
+    function createPaymentMethodElementSettings(method) {
+        const div = document.createElement('div');
+        div.className = 'payment-method-item';
+        
+        const brand = method.card.brand;
+        const last4 = method.card.last4;
+        const expMonth = method.card.exp_month.toString().padStart(2, '0');
+        const expYear = method.card.exp_year.toString().slice(-2);
+        const isDefault = method.is_default;
+        
+        div.innerHTML = `
+            <div class="payment-method-info">
+                <div class="card-icon ${brand}">
+                    ${brand.toUpperCase()}
+                </div>
+                <div class="card-details">
+                    <div class="card-number">•••• •••• •••• ${last4}</div>
+                    <div class="card-expiry">Expires ${expMonth}/${expYear}</div>
+                </div>
+            </div>
+            <div class="payment-method-actions">
+                ${isDefault ? 
+                    '<button class="method-action method-default" disabled><i class="fas fa-check"></i> Default</button>' :
+                    `<button class="method-action method-make-default" onclick="setDefaultPaymentMethodSettings('${method.id}')">Make Default</button>`
+                }
+                <button class="method-action method-remove" onclick="removePaymentMethodSettings('${method.id}')"><i class="fas fa-trash"></i></button>
+            </div>
+        `;
+        
+        return div;
+    }
+    
+    async function addPaymentMethodSettings() {
+        try {
+            if (!stripe) {
+                alert('Stripe is not configured. Please contact support.');
+                return;
+            }
+            
+            const response = await fetch('/subscriptions/create-setup-intent/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                }
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: 'Server error' }));
+                throw new Error(errorData.error || `HTTP ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            if (data.setup_url) {
+                window.location.href = data.setup_url;
+            } else {
+                throw new Error(data.error || 'No setup URL received');
+            }
+        } catch (error) {
+            console.error('Error adding payment method:', error);
+            alert('Error adding payment method: ' + error.message);
+        }
+    }
+    
+    async function setDefaultPaymentMethodSettings(paymentMethodId) {
+        try {
+            const response = await fetch('/subscriptions/set-default-payment-method/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                },
+                body: JSON.stringify({ payment_method_id: paymentMethodId })
+            });
+            
+            if (response.ok) {
+                loadPaymentMethodsSettings();
+                showMessageSettings('Default payment method updated!', 'success');
+            } else {
+                alert('Error setting default payment method');
+            }
+        } catch (error) {
+            console.error('Error setting default payment method:', error);
+            alert('Error setting default payment method');
+        }
+    }
+    
+    async function removePaymentMethodSettings(paymentMethodId) {
+        if (!confirm('Are you sure you want to remove this payment method?')) {
+            return;
+        }
+        
+        try {
+            const response = await fetch('/subscriptions/remove-payment-method/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                },
+                body: JSON.stringify({ payment_method_id: paymentMethodId })
+            });
+            
+            if (response.ok) {
+                loadPaymentMethodsSettings();
+                showMessageSettings('Payment method removed!', 'success');
+            } else {
+                alert('Error removing payment method');
+            }
+        } catch (error) {
+            console.error('Error removing payment method:', error);
+            alert('Error removing payment method');
+        }
+    }
+    
+    function getCsrfToken() {
+        return document.querySelector('[name=csrfmiddlewaretoken]').value;
+    }
+    
+    function showMessageSettings(message, type = 'info') {
+        // Create a temporary notification
+        const notification = document.createElement('div');
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: ${type === 'success' ? '#10b981' : '#ef4444'};
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            z-index: 1000;
+            font-weight: 500;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        `;
+        notification.textContent = message;
+        document.body.appendChild(notification);
+        
+        setTimeout(() => notification.remove(), 3000);
+    }
 </script>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://js.stripe.com/v3/"></script>
 {% endblock %}
