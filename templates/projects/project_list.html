@@ -40,6 +40,23 @@
                                     <span class="stat-value">{{ item.tickets_count }}</span>
                                     <span class="stat-label">Tickets</span>
                                 </div>
+                                {% if item.codebase_info %}
+                                <div class="stat-item codebase-stat" 
+                                     title="{{ item.codebase_info.github_repo_name }} - {{ item.codebase_info.indexed_files }}/{{ item.codebase_info.total_files }} files indexed">
+                                    <i class="fas fa-code-branch"></i>
+                                    <span class="stat-value">{{ item.codebase_info.total_chunks }}</span>
+                                    <span class="stat-label">Code Chunks</span>
+                                    <span class="codebase-status status-{{ item.codebase_info.status }}"
+                                          title="Status: {{ item.codebase_info.status|capfirst }}"></span>
+                                </div>
+                                {% else %}
+                                <div class="stat-item codebase-stat codebase-not-connected" 
+                                     title="No codebase connected - Click to connect a GitHub repository">
+                                    <i class="fas fa-code-branch"></i>
+                                    <span class="stat-value">—</span>
+                                    <span class="stat-label">Codebase</span>
+                                </div>
+                                {% endif %}
                             </div>
                         </div>
                     </a>
@@ -49,6 +66,21 @@
                                 <i class="fas fa-ellipsis-v"></i>
                             </button>
                             <div class="dropdown-menu">
+                                <a href="{% url 'projects:project_detail' item.project.project_id %}" 
+                                   class="dropdown-item" 
+                                   onclick="setTimeout(() => openCodebaseSidebar(), 100)">
+                                    <i class="fas fa-code-branch"></i> 
+                                    {% if item.codebase_info %}
+                                        Manage Codebase
+                                    {% else %}
+                                        Connect Codebase
+                                    {% endif %}
+                                </a>
+                                <button type="button" class="dropdown-item link-github-btn" 
+                                        data-project-id="{{ item.project.project_id }}"
+                                        data-project-name="{{ item.project.name }}">
+                                    <i class="fab fa-github"></i> Link GitHub
+                                </button>
                                 <button type="button" class="dropdown-item edit-project-btn" 
                                         data-project-id="{{ item.project.project_id }}"
                                         data-project-name="{{ item.project.name }}"
@@ -176,6 +208,85 @@
                     <button type="submit" class="btn btn-primary">Update Project</button>
                 </div>
             </form>
+        </div>
+    </div>
+</div>
+
+<!-- Link GitHub Modal -->
+<div class="modal-overlay" id="link-github-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <h2 class="modal-title">Link GitHub Repository</h2>
+            <button class="modal-close" id="close-github-modal">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div id="github-step-1" class="github-step">
+                <div class="github-connection-info">
+                    <div class="github-icon">
+                        <i class="fab fa-github"></i>
+                    </div>
+                    <h3>Connect to GitHub</h3>
+                    <p>To link your repository, we need to connect to your GitHub account first.</p>
+                    <div class="github-benefits">
+                        <div class="benefit-item">
+                            <i class="fas fa-check"></i>
+                            Access your repositories
+                        </div>
+                        <div class="benefit-item">
+                            <i class="fas fa-check"></i>
+                            Clone and analyze your code
+                        </div>
+                        <div class="benefit-item">
+                            <i class="fas fa-check"></i>
+                            Generate context-aware features
+                        </div>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-outline" id="cancel-github-modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="connect-github-btn">
+                        <i class="fab fa-github"></i> Connect GitHub
+                    </button>
+                </div>
+            </div>
+            
+            <div id="github-step-2" class="github-step" style="display: none;">
+                <form id="link-repository-form">
+                    <div class="form-group">
+                        <label for="github-url" class="form-label">GitHub Repository URL*</label>
+                        <input type="url" id="github-url" name="github_url" class="form-control" required 
+                               placeholder="https://github.com/username/repository">
+                        <div class="form-text">Make sure this repository is accessible with your connected GitHub account.</div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="github-branch" class="form-label">Branch to Index</label>
+                        <input type="text" id="github-branch" name="branch" class="form-control" value="main" required>
+                        <div class="form-text">Typically 'main' or 'master'</div>
+                    </div>
+                    
+                    <div class="indexing-info">
+                        <h4>What happens during indexing:</h4>
+                        <ul>
+                            <li>Repository is cloned and analyzed</li>
+                            <li>Code is parsed into semantic chunks (functions, classes, etc.)</li>
+                            <li>Vector embeddings are created for intelligent search</li>
+                            <li>AI tools gain context about your existing codebase</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-outline" id="back-to-step1">
+                            <i class="fas fa-arrow-left"></i> Back
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-link"></i> Start Indexing
+                        </button>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 </div>
@@ -318,6 +429,148 @@ document.addEventListener('DOMContentLoaded', function() {
             // Update hidden input
             editProjectIcon.value = this.getAttribute('data-emoji');
         });
+    });
+    
+    // GitHub Link Modal
+    const githubModal = document.getElementById('link-github-modal');
+    const closeGithubBtn = document.getElementById('close-github-modal');
+    const cancelGithubBtn = document.getElementById('cancel-github-modal');
+    const connectGithubBtn = document.getElementById('connect-github-btn');
+    const backToStep1Btn = document.getElementById('back-to-step1');
+    const linkRepoForm = document.getElementById('link-repository-form');
+    const githubStep1 = document.getElementById('github-step-1');
+    const githubStep2 = document.getElementById('github-step-2');
+    
+    let currentProjectData = null;
+    
+    function openGithubModal(projectData) {
+        currentProjectData = projectData;
+        githubModal.classList.add('active');
+        
+        // Check if GitHub is already connected
+        checkGitHubConnection().then(connected => {
+            if (connected) {
+                showStep2();
+            } else {
+                showStep1();
+            }
+        });
+    }
+    
+    function closeGithubModal() {
+        githubModal.classList.remove('active');
+        showStep1();
+        linkRepoForm.reset();
+        currentProjectData = null;
+    }
+    
+    function showStep1() {
+        githubStep1.style.display = 'block';
+        githubStep2.style.display = 'none';
+    }
+    
+    function showStep2() {
+        githubStep1.style.display = 'none';
+        githubStep2.style.display = 'block';
+    }
+    
+    async function checkGitHubConnection() {
+        try {
+            const response = await fetch('/accounts/api/github-status/');
+            const data = await response.json();
+            return data.connected || false;
+        } catch (error) {
+            return false;
+        }
+    }
+    
+    // Handle Link GitHub button clicks
+    document.querySelectorAll('.link-github-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const projectData = {
+                projectId: this.getAttribute('data-project-id'),
+                name: this.getAttribute('data-project-name')
+            };
+            openGithubModal(projectData);
+        });
+    });
+    
+    // Modal close events
+    closeGithubBtn.addEventListener('click', closeGithubModal);
+    cancelGithubBtn.addEventListener('click', closeGithubModal);
+    
+    // GitHub connection button
+    connectGithubBtn.addEventListener('click', async function() {
+        try {
+            const response = await fetch('/accounts/api/github-oauth-url/');
+            const data = await response.json();
+            
+            if (data.connected) {
+                // Already connected, show step 2
+                showStep2();
+            } else if (data.auth_url) {
+                // Redirect to GitHub OAuth
+                window.location.href = data.auth_url;
+            } else {
+                alert('Error: GitHub OAuth is not configured');
+            }
+        } catch (error) {
+            alert('Error connecting to GitHub: ' + error.message);
+        }
+    });
+    
+    // Back to step 1
+    backToStep1Btn.addEventListener('click', function() {
+        showStep1();
+    });
+    
+    // Repository linking form
+    linkRepoForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const githubUrl = document.getElementById('github-url').value;
+        const githubBranch = document.getElementById('github-branch').value;
+        
+        if (!githubUrl || !currentProjectData) {
+            alert('Please enter a GitHub repository URL');
+            return;
+        }
+        
+        try {
+            const response = await fetch('/codebase/api/repositories/add/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                },
+                body: JSON.stringify({
+                    project_id: currentProjectData.projectId,
+                    github_url: githubUrl,
+                    branch: githubBranch
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                alert(`Repository linked successfully! Indexing has started for ${currentProjectData.name}.`);
+                closeGithubModal();
+                // Optionally reload to show updated project status
+                location.reload();
+            } else {
+                alert('Error linking repository: ' + data.error);
+            }
+        } catch (error) {
+            alert('Error linking repository: ' + error.message);
+        }
+    });
+    
+    // Close modals when clicking outside
+    githubModal.addEventListener('click', function(e) {
+        if (e.target === githubModal) {
+            closeGithubModal();
+        }
     });
 });
 </script>

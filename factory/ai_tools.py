@@ -656,6 +656,101 @@ tools_product = [get_file_list, get_file_content, create_tickets, get_pending_ti
 
 tools_turbo = [get_prd, create_tickets, get_pending_tickets, update_ticket, execute_command]
 
+# Codebase indexing tools
+index_repository = {
+    "type": "function",
+    "function": {
+        "name": "index_repository",
+        "description": "Index a GitHub repository for the current project to enable context-aware feature development. This analyzes the codebase structure, extracts code patterns, and creates embeddings for intelligent code search.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "github_url": {
+                    "type": "string", 
+                    "description": "The GitHub repository URL to index (e.g., https://github.com/owner/repo)"
+                },
+                "branch": {
+                    "type": "string",
+                    "description": "Git branch to index (defaults to 'main')"
+                },
+                "force_reindex": {
+                    "type": "boolean",
+                    "description": "Whether to force a complete reindex even if already indexed"
+                }
+            },
+            "required": ["github_url"],
+            "additionalProperties": False,
+        }
+    }
+}
+
+get_codebase_context = {
+    "type": "function",
+    "function": {
+        "name": "get_codebase_context",
+        "description": "Get relevant codebase context for a feature request or question. This searches the indexed codebase to find similar implementations, patterns, and architectural guidance.",
+        "parameters": {
+            "type": "object", 
+            "properties": {
+                "feature_description": {
+                    "type": "string",
+                    "description": "Description of the feature or functionality you want context for"
+                },
+                "search_type": {
+                    "type": "string",
+                    "enum": ["implementation", "patterns", "files", "all"],
+                    "description": "Type of context to search for"
+                }
+            },
+            "required": ["feature_description"],
+            "additionalProperties": False,
+        }
+    }
+}
+
+search_existing_code = {
+    "type": "function", 
+    "function": {
+        "name": "search_existing_code",
+        "description": "Search for existing code implementations that are similar to what you want to build. Useful for finding patterns, reusable functions, and understanding current architecture.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "functionality": {
+                    "type": "string",
+                    "description": "Description of the functionality to search for"
+                },
+                "chunk_types": {
+                    "type": "array",
+                    "items": {
+                        "type": "string", 
+                        "enum": ["function", "class", "file", "import"]
+                    },
+                    "description": "Types of code chunks to search (optional)"
+                }
+            },
+            "required": ["functionality"],
+            "additionalProperties": False,
+        }
+    }
+}
+
+get_repository_insights = {
+    "type": "function",
+    "function": {
+        "name": "get_repository_insights", 
+        "description": "Get high-level insights about the indexed repository including languages used, architectural patterns, complexity distribution, and common dependencies.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        }
+    }
+}
+
 tools_ticket = [execute_command, get_prd, get_implementation, copy_boilerplate_code, start_server]
+
+# Add codebase tools to appropriate tool sets
+tools_codebase = [index_repository, get_codebase_context, search_existing_code, get_repository_insights]
 
 tools_design = [get_prd, execute_command, start_server, get_github_access_token]
