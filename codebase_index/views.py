@@ -489,6 +489,45 @@ def get_code_preview(request, repository_id):
 
 
 @login_required
+def get_repository_stats(request, repository_id):
+    """Get repository stats for dashboard display"""
+    try:
+        indexed_repo = get_object_or_404(
+            IndexedRepository,
+            id=repository_id,
+            project__owner=request.user
+        )
+
+        from .models import CodeChunk
+
+        # Count total chunks
+        total_chunks = CodeChunk.objects.filter(
+            file__repository=indexed_repo
+        ).count()
+
+        # Count functions
+        total_functions = CodeChunk.objects.filter(
+            file__repository=indexed_repo,
+            chunk_type__in=['function', 'method']
+        ).count()
+
+        return JsonResponse({
+            'success': True,
+            'stats': {
+                'total_chunks': total_chunks,
+                'total_functions': total_functions,
+                'indexed_files': indexed_repo.indexed_files_count,
+            }
+        })
+    except Exception as e:
+        logger.error(f"Error getting repository stats: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=400)
+
+
+@login_required
 def get_repository_insights(request, repository_id):
     """Get repository insights and statistics"""
     try:
@@ -497,9 +536,9 @@ def get_repository_insights(request, repository_id):
             id=repository_id,
             project__owner=request.user
         )
-        
+
         from .models import RepositoryMetadata
-        
+
         try:
             insights = indexed_repo.metadata
             insights_data = {
@@ -514,12 +553,12 @@ def get_repository_insights(request, repository_id):
             }
         except RepositoryMetadata.DoesNotExist:
             insights_data = None
-        
+
         return JsonResponse({
             'success': True,
             'insights': insights_data
         })
-        
+
     except Exception as e:
         logger.error(f"Error getting repository insights: {e}")
         return JsonResponse({

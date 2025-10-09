@@ -377,12 +377,13 @@ class RepositoryIndexer:
                 repository=self.indexed_repository,
                 file_path=file_info['relative_path']
             ).first()
-            
-            if existing_file and existing_file.content_hash == content_hash:
-                # File unchanged, skip
-                existing_file.status = 'indexed'
-                existing_file.save()
-                return True
+
+            # DISABLED: Always re-index files to ensure CodebaseIndexMap is populated
+            # if existing_file and existing_file.content_hash == content_hash:
+            #     # File unchanged, skip
+            #     existing_file.status = 'indexed'
+            #     existing_file.save()
+            #     return True
             
             # Parse file content
             parser = CodeParser()
@@ -425,14 +426,18 @@ class RepositoryIndexer:
             # Create new code chunks
             chroma_chunks = []
             for chunk_data in parse_result['chunks']:
+                # Truncate fields to fit database constraints
+                content_preview = chunk_data['content_preview'][:200] if chunk_data['content_preview'] else ''
+                function_name = chunk_data['function_name'][:255] if chunk_data['function_name'] else None
+
                 code_chunk = CodeChunk.objects.create(
                     file=indexed_file,
                     chunk_type=chunk_data['chunk_type'],
                     content=chunk_data['content'],
-                    content_preview=chunk_data['content_preview'],
+                    content_preview=content_preview,
                     start_line=chunk_data['start_line'],
                     end_line=chunk_data['end_line'],
-                    function_name=chunk_data['function_name'],
+                    function_name=function_name,
                     complexity=chunk_data['complexity'],
                     dependencies=chunk_data['dependencies'],
                     parameters=chunk_data['parameters'],
@@ -453,7 +458,13 @@ class RepositoryIndexer:
                 })
             
             # Build index map entries BEFORE storing embeddings (for fast lookup)
-            self._build_index_map(indexed_file, parse_result)
+            try:
+                self._build_index_map(indexed_file, parse_result)
+                logger.info(f"Successfully built index map for {indexed_file.file_path}")
+            except Exception as e:
+                logger.error(f"Failed to build index map for {indexed_file.file_path}: {e}")
+                import traceback
+                logger.error(f"Index map traceback: {traceback.format_exc()}")
 
             # Store embeddings in ChromaDB
             from .chroma_client import get_chroma_client
@@ -564,19 +575,26 @@ class RepositoryIndexer:
                 decorators = re.findall(r'@(\w+)\(', content)
 
             # Find matching code chunk object
+            # Truncate function_name to match what was saved in CodeChunk
+            truncated_function_name = chunk_data.get('function_name')[:255] if chunk_data.get('function_name') else None
+
             code_chunk = indexed_file.chunks.filter(
                 chunk_type=chunk_type,
-                function_name=chunk_data.get('function_name'),
+                function_name=truncated_function_name,
                 start_line=chunk_data.get('start_line')
             ).first()
+
+            # Truncate fields to fit database constraints
+            entity_name_truncated = entity_name[:500] if entity_name else ''
+            fqn_truncated = fqn[:1000] if fqn else ''
 
             # Create index map entry
             CodebaseIndexMap.objects.create(
                 repository=self.indexed_repository,
                 file_path=indexed_file.file_path,
                 entity_type=chunk_type,
-                entity_name=entity_name,
-                fully_qualified_name=fqn,
+                entity_name=entity_name_truncated,
+                fully_qualified_name=fqn_truncated,
                 language=language,
                 start_line=chunk_data.get('start_line', 0),
                 end_line=chunk_data.get('end_line', 0),

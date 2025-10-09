@@ -33,6 +33,11 @@ class CodeParser:
             'python': PythonParser(),
             'javascript': JavaScriptParser(),
             'typescript': JavaScriptParser(),  # TypeScript uses similar patterns
+            'go': GoParser(),
+            'java': JavaParser(),
+            'rust': RustParser(),
+            'cpp': CppParser(),
+            'c': CppParser(),  # C uses similar patterns to C++
         }
     
     def detect_language(self, file_path: str, content: str) -> str:
@@ -641,6 +646,506 @@ class JavaScriptParser:
     def _extract_js_dependencies(self, content: str) -> List[str]:
         """Extract dependencies from JavaScript/TypeScript code"""
         return self._extract_js_imports(content)
+
+
+class GoParser:
+    """Parser for Go language"""
+
+    def parse(self, file_path: str, content: str, language: str) -> Dict[str, Any]:
+        """Parse Go file and extract functions, methods, structs, interfaces"""
+        lines = content.split('\n')
+        chunks = []
+
+        # Extract functions (func name(...) {...})
+        func_pattern = r'func\s+(\w+)\s*\(([^)]*)\)\s*(\([^)]*\))?\s*\{'
+        for match in re.finditer(func_pattern, content):
+            func_name = match.group(1)
+            params = match.group(2)
+            start_pos = match.start()
+
+            # Find line numbers
+            start_line = content[:start_pos].count('\n') + 1
+            end_line = self._find_block_end(lines, start_line - 1)
+
+            func_content = '\n'.join(lines[start_line-1:end_line])
+
+            chunks.append({
+                'chunk_type': 'function',
+                'content': func_content,
+                'content_preview': f"func {func_name}({params})",
+                'start_line': start_line,
+                'end_line': end_line,
+                'function_name': func_name,
+                'complexity': self._estimate_complexity(func_content),
+                'dependencies': self._extract_go_imports(content),
+                'parameters': [p.strip().split()[-1] for p in params.split(',') if p.strip()],
+                'tags': ['go', 'function', func_name],
+                'description': self._extract_go_comment(lines, start_line - 1)
+            })
+
+        # Extract methods (func (receiver) name(...) {...})
+        method_pattern = r'func\s+\(([^)]+)\)\s+(\w+)\s*\(([^)]*)\)\s*(\([^)]*\))?\s*\{'
+        for match in re.finditer(method_pattern, content):
+            receiver = match.group(1)
+            method_name = match.group(2)
+            params = match.group(3)
+            start_pos = match.start()
+
+            start_line = content[:start_pos].count('\n') + 1
+            end_line = self._find_block_end(lines, start_line - 1)
+
+            method_content = '\n'.join(lines[start_line-1:end_line])
+
+            chunks.append({
+                'chunk_type': 'method',
+                'content': method_content,
+                'content_preview': f"func ({receiver}) {method_name}({params})",
+                'start_line': start_line,
+                'end_line': end_line,
+                'function_name': f"{receiver.strip().split()[0]}.{method_name}",
+                'complexity': self._estimate_complexity(method_content),
+                'dependencies': self._extract_go_imports(content),
+                'parameters': [p.strip().split()[-1] for p in params.split(',') if p.strip()],
+                'tags': ['go', 'method', method_name],
+                'description': self._extract_go_comment(lines, start_line - 1)
+            })
+
+        # Extract structs
+        struct_pattern = r'type\s+(\w+)\s+struct\s*\{'
+        for match in re.finditer(struct_pattern, content):
+            struct_name = match.group(1)
+            start_pos = match.start()
+
+            start_line = content[:start_pos].count('\n') + 1
+            end_line = self._find_block_end(lines, start_line - 1)
+
+            struct_content = '\n'.join(lines[start_line-1:end_line])
+
+            chunks.append({
+                'chunk_type': 'class',  # Using 'class' for consistency
+                'content': struct_content,
+                'content_preview': f"type {struct_name} struct",
+                'start_line': start_line,
+                'end_line': end_line,
+                'function_name': struct_name,
+                'complexity': 'low',
+                'dependencies': [],
+                'parameters': [],
+                'tags': ['go', 'struct', struct_name],
+                'description': self._extract_go_comment(lines, start_line - 1)
+            })
+
+        # Extract interfaces
+        interface_pattern = r'type\s+(\w+)\s+interface\s*\{'
+        for match in re.finditer(interface_pattern, content):
+            interface_name = match.group(1)
+            start_pos = match.start()
+
+            start_line = content[:start_pos].count('\n') + 1
+            end_line = self._find_block_end(lines, start_line - 1)
+
+            interface_content = '\n'.join(lines[start_line-1:end_line])
+
+            chunks.append({
+                'chunk_type': 'interface',
+                'content': interface_content,
+                'content_preview': f"type {interface_name} interface",
+                'start_line': start_line,
+                'end_line': end_line,
+                'function_name': interface_name,
+                'complexity': 'low',
+                'dependencies': [],
+                'parameters': [],
+                'tags': ['go', 'interface', interface_name],
+                'description': self._extract_go_comment(lines, start_line - 1)
+            })
+
+        return {
+            'language': language,
+            'total_lines': len(lines),
+            'chunks': chunks,
+            'functions_count': len([c for c in chunks if c['chunk_type'] in ['function', 'method']]),
+            'classes_count': len([c for c in chunks if c['chunk_type'] in ['class', 'interface']]),
+            'imports': self._extract_go_imports(content)
+        }
+
+    def _find_block_end(self, lines: List[str], start_idx: int) -> int:
+        """Find the end of a Go block by counting braces"""
+        brace_count = 0
+        for i in range(start_idx, len(lines)):
+            brace_count += lines[i].count('{') - lines[i].count('}')
+            if brace_count == 0 and i > start_idx:
+                return i + 1
+        return len(lines)
+
+    def _extract_go_comment(self, lines: List[str], line_idx: int) -> Optional[str]:
+        """Extract Go comment above a function/struct/interface"""
+        comments = []
+        i = line_idx - 1
+        while i >= 0 and (lines[i].strip().startswith('//') or lines[i].strip() == ''):
+            if lines[i].strip().startswith('//'):
+                comments.insert(0, lines[i].strip()[2:].strip())
+            i -= 1
+        return ' '.join(comments) if comments else None
+
+    def _extract_go_imports(self, content: str) -> List[str]:
+        """Extract Go imports"""
+        imports = []
+        # Single import
+        single_imports = re.findall(r'import\s+"([^"]+)"', content)
+        imports.extend(single_imports)
+
+        # Multi-line import
+        import_blocks = re.findall(r'import\s*\((.*?)\)', content, re.DOTALL)
+        for block in import_blocks:
+            block_imports = re.findall(r'"([^"]+)"', block)
+            imports.extend(block_imports)
+
+        return list(set(imports))
+
+    def _estimate_complexity(self, content: str) -> str:
+        """Estimate Go code complexity"""
+        complexity_keywords = ['if', 'else', 'for', 'switch', 'case', 'select', 'defer', 'go']
+        complexity_count = sum(content.count(keyword) for keyword in complexity_keywords)
+        lines = len(content.split('\n'))
+
+        if complexity_count < 3 and lines < 20:
+            return 'low'
+        elif complexity_count < 10 and lines < 100:
+            return 'medium'
+        else:
+            return 'high'
+
+
+class JavaParser:
+    """Parser for Java language"""
+
+    def parse(self, file_path: str, content: str, language: str) -> Dict[str, Any]:
+        """Parse Java file and extract classes, methods"""
+        lines = content.split('\n')
+        chunks = []
+
+        # Extract classes
+        class_pattern = r'(public\s+|private\s+|protected\s+)?(static\s+)?(final\s+)?class\s+(\w+)(\s+extends\s+\w+)?(\s+implements\s+[\w,\s]+)?\s*\{'
+        for match in re.finditer(class_pattern, content):
+            class_name = match.group(4)
+            start_pos = match.start()
+
+            start_line = content[:start_pos].count('\n') + 1
+            end_line = self._find_block_end(lines, start_line - 1)
+
+            class_content = '\n'.join(lines[start_line-1:end_line])
+
+            chunks.append({
+                'chunk_type': 'class',
+                'content': class_content,
+                'content_preview': f"class {class_name}",
+                'start_line': start_line,
+                'end_line': end_line,
+                'function_name': class_name,
+                'complexity': 'medium',
+                'dependencies': self._extract_java_imports(content),
+                'parameters': [],
+                'tags': ['java', 'class', class_name],
+                'description': self._extract_javadoc(lines, start_line - 1)
+            })
+
+        # Extract methods
+        method_pattern = r'(public\s+|private\s+|protected\s+)?(static\s+)?(final\s+)?(\w+(<[\w,\s]+>)?)\s+(\w+)\s*\(([^)]*)\)\s*(throws\s+[\w,\s]+)?\s*\{'
+        for match in re.finditer(method_pattern, content):
+            return_type = match.group(4)
+            method_name = match.group(6)
+            params = match.group(7)
+            start_pos = match.start()
+
+            start_line = content[:start_pos].count('\n') + 1
+            end_line = self._find_block_end(lines, start_line - 1)
+
+            method_content = '\n'.join(lines[start_line-1:end_line])
+
+            chunks.append({
+                'chunk_type': 'method',
+                'content': method_content,
+                'content_preview': f"{return_type} {method_name}({params})",
+                'start_line': start_line,
+                'end_line': end_line,
+                'function_name': method_name,
+                'complexity': self._estimate_complexity(method_content),
+                'dependencies': [],
+                'parameters': [p.strip().split()[-1] for p in params.split(',') if p.strip()],
+                'tags': ['java', 'method', method_name],
+                'description': self._extract_javadoc(lines, start_line - 1)
+            })
+
+        return {
+            'language': language,
+            'total_lines': len(lines),
+            'chunks': chunks,
+            'functions_count': len([c for c in chunks if c['chunk_type'] == 'method']),
+            'classes_count': len([c for c in chunks if c['chunk_type'] == 'class']),
+            'imports': self._extract_java_imports(content)
+        }
+
+    def _find_block_end(self, lines: List[str], start_idx: int) -> int:
+        """Find the end of a Java block by counting braces"""
+        brace_count = 0
+        for i in range(start_idx, len(lines)):
+            brace_count += lines[i].count('{') - lines[i].count('}')
+            if brace_count == 0 and i > start_idx:
+                return i + 1
+        return len(lines)
+
+    def _extract_javadoc(self, lines: List[str], line_idx: int) -> Optional[str]:
+        """Extract Javadoc comment above a method/class"""
+        comments = []
+        i = line_idx - 1
+        while i >= 0:
+            line = lines[i].strip()
+            if line.startswith('*/'):
+                # Start collecting javadoc
+                while i >= 0 and not lines[i].strip().startswith('/**'):
+                    if lines[i].strip().startswith('*'):
+                        comments.insert(0, lines[i].strip()[1:].strip())
+                    i -= 1
+                break
+            elif line == '' or line.startswith('//'):
+                i -= 1
+                continue
+            else:
+                break
+        return ' '.join(comments) if comments else None
+
+    def _extract_java_imports(self, content: str) -> List[str]:
+        """Extract Java imports"""
+        return re.findall(r'import\s+([\w.]+);', content)
+
+    def _estimate_complexity(self, content: str) -> str:
+        """Estimate Java code complexity"""
+        complexity_keywords = ['if', 'else', 'for', 'while', 'switch', 'case', 'try', 'catch']
+        complexity_count = sum(content.count(keyword) for keyword in complexity_keywords)
+        lines = len(content.split('\n'))
+
+        if complexity_count < 3 and lines < 20:
+            return 'low'
+        elif complexity_count < 10 and lines < 100:
+            return 'medium'
+        else:
+            return 'high'
+
+
+class RustParser:
+    """Parser for Rust language"""
+
+    def parse(self, file_path: str, content: str, language: str) -> Dict[str, Any]:
+        """Parse Rust file and extract functions, structs, traits, impls"""
+        lines = content.split('\n')
+        chunks = []
+
+        # Extract functions
+        func_pattern = r'(pub\s+)?fn\s+(\w+)(<[^>]+>)?\s*\(([^)]*)\)(\s*->\s*[^{]+)?\s*\{'
+        for match in re.finditer(func_pattern, content):
+            func_name = match.group(2)
+            params = match.group(4)
+            start_pos = match.start()
+
+            start_line = content[:start_pos].count('\n') + 1
+            end_line = self._find_block_end(lines, start_line - 1)
+
+            func_content = '\n'.join(lines[start_line-1:end_line])
+
+            chunks.append({
+                'chunk_type': 'function',
+                'content': func_content,
+                'content_preview': f"fn {func_name}({params})",
+                'start_line': start_line,
+                'end_line': end_line,
+                'function_name': func_name,
+                'complexity': self._estimate_complexity(func_content),
+                'dependencies': self._extract_rust_uses(content),
+                'parameters': [p.strip().split(':')[0] for p in params.split(',') if p.strip()],
+                'tags': ['rust', 'function', func_name],
+                'description': self._extract_rust_comment(lines, start_line - 1)
+            })
+
+        # Extract structs
+        struct_pattern = r'(pub\s+)?struct\s+(\w+)(<[^>]+>)?\s*\{'
+        for match in re.finditer(struct_pattern, content):
+            struct_name = match.group(2)
+            start_pos = match.start()
+
+            start_line = content[:start_pos].count('\n') + 1
+            end_line = self._find_block_end(lines, start_line - 1)
+
+            struct_content = '\n'.join(lines[start_line-1:end_line])
+
+            chunks.append({
+                'chunk_type': 'class',
+                'content': struct_content,
+                'content_preview': f"struct {struct_name}",
+                'start_line': start_line,
+                'end_line': end_line,
+                'function_name': struct_name,
+                'complexity': 'low',
+                'dependencies': [],
+                'parameters': [],
+                'tags': ['rust', 'struct', struct_name],
+                'description': self._extract_rust_comment(lines, start_line - 1)
+            })
+
+        return {
+            'language': language,
+            'total_lines': len(lines),
+            'chunks': chunks,
+            'functions_count': len([c for c in chunks if c['chunk_type'] == 'function']),
+            'classes_count': len([c for c in chunks if c['chunk_type'] == 'class']),
+            'imports': self._extract_rust_uses(content)
+        }
+
+    def _find_block_end(self, lines: List[str], start_idx: int) -> int:
+        """Find the end of a Rust block by counting braces"""
+        brace_count = 0
+        for i in range(start_idx, len(lines)):
+            brace_count += lines[i].count('{') - lines[i].count('}')
+            if brace_count == 0 and i > start_idx:
+                return i + 1
+        return len(lines)
+
+    def _extract_rust_comment(self, lines: List[str], line_idx: int) -> Optional[str]:
+        """Extract Rust comment above a function/struct"""
+        comments = []
+        i = line_idx - 1
+        while i >= 0 and (lines[i].strip().startswith('//') or lines[i].strip() == ''):
+            if lines[i].strip().startswith('///'):
+                comments.insert(0, lines[i].strip()[3:].strip())
+            i -= 1
+        return ' '.join(comments) if comments else None
+
+    def _extract_rust_uses(self, content: str) -> List[str]:
+        """Extract Rust use statements"""
+        return re.findall(r'use\s+([\w:]+)', content)
+
+    def _estimate_complexity(self, content: str) -> str:
+        """Estimate Rust code complexity"""
+        complexity_keywords = ['if', 'else', 'match', 'for', 'while', 'loop']
+        complexity_count = sum(content.count(keyword) for keyword in complexity_keywords)
+        lines = len(content.split('\n'))
+
+        if complexity_count < 3 and lines < 20:
+            return 'low'
+        elif complexity_count < 10 and lines < 100:
+            return 'medium'
+        else:
+            return 'high'
+
+
+class CppParser:
+    """Parser for C++ and C languages"""
+
+    def parse(self, file_path: str, content: str, language: str) -> Dict[str, Any]:
+        """Parse C/C++ file and extract functions, classes"""
+        lines = content.split('\n')
+        chunks = []
+
+        # Extract functions (basic pattern)
+        func_pattern = r'(\w+[\w\s\*&<>:,]*?)\s+(\w+)\s*\(([^)]*)\)\s*\{'
+        for match in re.finditer(func_pattern, content):
+            return_type = match.group(1)
+            func_name = match.group(2)
+            params = match.group(3)
+            start_pos = match.start()
+
+            # Skip class/struct declarations
+            if func_name in ['class', 'struct', 'namespace']:
+                continue
+
+            start_line = content[:start_pos].count('\n') + 1
+            end_line = self._find_block_end(lines, start_line - 1)
+
+            func_content = '\n'.join(lines[start_line-1:end_line])
+
+            chunks.append({
+                'chunk_type': 'function',
+                'content': func_content,
+                'content_preview': f"{return_type} {func_name}({params})",
+                'start_line': start_line,
+                'end_line': end_line,
+                'function_name': func_name,
+                'complexity': self._estimate_complexity(func_content),
+                'dependencies': self._extract_cpp_includes(content),
+                'parameters': [p.strip() for p in params.split(',') if p.strip()],
+                'tags': [language, 'function', func_name],
+                'description': self._extract_cpp_comment(lines, start_line - 1)
+            })
+
+        # Extract classes
+        class_pattern = r'class\s+(\w+)(\s*:\s*[^{]+)?\s*\{'
+        for match in re.finditer(class_pattern, content):
+            class_name = match.group(1)
+            start_pos = match.start()
+
+            start_line = content[:start_pos].count('\n') + 1
+            end_line = self._find_block_end(lines, start_line - 1)
+
+            class_content = '\n'.join(lines[start_line-1:end_line])
+
+            chunks.append({
+                'chunk_type': 'class',
+                'content': class_content,
+                'content_preview': f"class {class_name}",
+                'start_line': start_line,
+                'end_line': end_line,
+                'function_name': class_name,
+                'complexity': 'medium',
+                'dependencies': [],
+                'parameters': [],
+                'tags': [language, 'class', class_name],
+                'description': self._extract_cpp_comment(lines, start_line - 1)
+            })
+
+        return {
+            'language': language,
+            'total_lines': len(lines),
+            'chunks': chunks,
+            'functions_count': len([c for c in chunks if c['chunk_type'] == 'function']),
+            'classes_count': len([c for c in chunks if c['chunk_type'] == 'class']),
+            'imports': self._extract_cpp_includes(content)
+        }
+
+    def _find_block_end(self, lines: List[str], start_idx: int) -> int:
+        """Find the end of a C/C++ block by counting braces"""
+        brace_count = 0
+        for i in range(start_idx, len(lines)):
+            brace_count += lines[i].count('{') - lines[i].count('}')
+            if brace_count == 0 and i > start_idx:
+                return i + 1
+        return len(lines)
+
+    def _extract_cpp_comment(self, lines: List[str], line_idx: int) -> Optional[str]:
+        """Extract C/C++ comment above a function/class"""
+        comments = []
+        i = line_idx - 1
+        while i >= 0 and (lines[i].strip().startswith('//') or lines[i].strip() == ''):
+            if lines[i].strip().startswith('//'):
+                comments.insert(0, lines[i].strip()[2:].strip())
+            i -= 1
+        return ' '.join(comments) if comments else None
+
+    def _extract_cpp_includes(self, content: str) -> List[str]:
+        """Extract C/C++ includes"""
+        return re.findall(r'#include\s+[<"]([^>"]+)[>"]', content)
+
+    def _estimate_complexity(self, content: str) -> str:
+        """Estimate C/C++ code complexity"""
+        complexity_keywords = ['if', 'else', 'for', 'while', 'switch', 'case']
+        complexity_count = sum(content.count(keyword) for keyword in complexity_keywords)
+        lines = len(content.split('\n'))
+
+        if complexity_count < 3 and lines < 20:
+            return 'low'
+        elif complexity_count < 10 and lines < 100:
+            return 'medium'
+        else:
+            return 'high'
 
 
 def calculate_content_hash(content: str) -> str:

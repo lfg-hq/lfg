@@ -257,6 +257,61 @@
                         </button>
                     </div>
                 </div>
+
+                <!-- Codebase Map Section -->
+                <!-- DEBUG: codebase_map has {{ codebase_map|length }} files -->
+                {% if codebase_map %}
+                <div class="codebase-map-container">
+                    <div class="codebase-map-header">
+                        <h3><i class="fas fa-sitemap"></i> Codebase Map</h3>
+                        <div class="map-controls">
+                            <button class="btn btn-sm btn-outline" onclick="expandAllFiles()">
+                                <i class="fas fa-expand-alt"></i> Expand All
+                            </button>
+                            <button class="btn btn-sm btn-outline" onclick="collapseAllFiles()">
+                                <i class="fas fa-compress-alt"></i> Collapse All
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="codebase-tree">
+                        {% for file_path, entities in codebase_map.items %}
+                        <div class="file-node">
+                            <div class="file-header" onclick="toggleFile(this)">
+                                <i class="fas fa-chevron-right file-chevron"></i>
+                                <i class="fas fa-file-code file-icon"></i>
+                                <span class="file-path">{{ file_path }}</span>
+                                <span class="entity-count">{{ entities|length }} items</span>
+                            </div>
+                            <div class="file-contents" style="display: none;">
+                                {% for entity in entities %}
+                                <div class="entity-node entity-{{ entity.entity_type }}">
+                                    <div class="entity-header">
+                                        <i class="fas fa-{% if entity.entity_type == 'function' %}function{% elif entity.entity_type == 'class' %}cube{% elif entity.entity_type == 'method' %}cog{% else %}code{% endif %} entity-icon"></i>
+                                        <span class="entity-name">{{ entity.entity_name }}</span>
+                                        <span class="entity-type-badge">{{ entity.entity_type }}</span>
+                                        <span class="entity-lines">L{{ entity.start_line }}-{{ entity.end_line }}</span>
+                                        {% if entity.complexity %}
+                                        <span class="complexity-badge complexity-{{ entity.complexity }}">{{ entity.complexity }}</span>
+                                        {% endif %}
+                                    </div>
+                                    {% if entity.description %}
+                                    <div class="entity-description">{{ entity.description }}</div>
+                                    {% endif %}
+                                    {% if entity.parameters %}
+                                    <div class="entity-params">
+                                        <i class="fas fa-brackets-curly"></i>
+                                        Parameters: {{ entity.parameters|join:", " }}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
             </div>
         {% else %}
             <div class="codebase-empty">
@@ -558,16 +613,16 @@ async function reindexRepository(repositoryId) {
 
 async function disconnectRepository() {
     const repositoryId = document.querySelector('[data-repository-id]')?.getAttribute('data-repository-id');
-    
+
     if (!repositoryId) {
         alert('Repository ID not found');
         return;
     }
-    
+
     if (!confirm('This will disconnect the repository and remove all indexed data. Are you sure?')) {
         return;
     }
-    
+
     try {
         const response = await fetch(`/codebase/api/repositories/${repositoryId}/delete/`, {
             method: 'POST',
@@ -575,9 +630,9 @@ async function disconnectRepository() {
                 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
             }
         });
-        
+
         const data = await response.json();
-        
+
         if (data.success) {
             alert('Repository disconnected successfully!');
             location.reload();
@@ -587,6 +642,42 @@ async function disconnectRepository() {
     } catch (error) {
         alert('Error disconnecting repository: ' + error.message);
     }
+}
+
+// Codebase map tree functions
+function toggleFile(fileHeader) {
+    const fileContents = fileHeader.nextElementSibling;
+    const chevron = fileHeader.querySelector('.file-chevron');
+
+    if (fileContents.style.display === 'none') {
+        fileContents.style.display = 'block';
+        chevron.classList.remove('fa-chevron-right');
+        chevron.classList.add('fa-chevron-down');
+    } else {
+        fileContents.style.display = 'none';
+        chevron.classList.remove('fa-chevron-down');
+        chevron.classList.add('fa-chevron-right');
+    }
+}
+
+function expandAllFiles() {
+    document.querySelectorAll('.file-contents').forEach(contents => {
+        contents.style.display = 'block';
+    });
+    document.querySelectorAll('.file-chevron').forEach(chevron => {
+        chevron.classList.remove('fa-chevron-right');
+        chevron.classList.add('fa-chevron-down');
+    });
+}
+
+function collapseAllFiles() {
+    document.querySelectorAll('.file-contents').forEach(contents => {
+        contents.style.display = 'none';
+    });
+    document.querySelectorAll('.file-chevron').forEach(chevron => {
+        chevron.classList.remove('fa-chevron-down');
+        chevron.classList.add('fa-chevron-right');
+    });
 }
 </script>
 

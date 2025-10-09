@@ -474,4 +474,4 @@ LOGGING = {
 
 # ChromaDB Configuration
 CHROMA_HOST = os.environ.get('CHROMA_HOST', 'localhost')
-CHROMA_PORT = int(os.environ.get('CHROMA_PORT', 5000))
+CHROMA_PORT = int(os.environ.get('CHROMA_PORT', 6000))
