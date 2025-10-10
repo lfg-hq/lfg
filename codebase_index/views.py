@@ -565,3 +565,34 @@ def get_repository_insights(request, repository_id):
             'success': False,
             'error': str(e)
         }, status=500)
+
+
+@login_required
+def get_codebase_summary(request, repository_id):
+    """Get the stored AI-generated codebase summary"""
+    try:
+        indexed_repo = get_object_or_404(
+            IndexedRepository,
+            id=repository_id,
+            project__owner=request.user
+        )
+
+        if not indexed_repo.codebase_summary:
+            return JsonResponse({
+                'success': False,
+                'error': 'Summary not yet generated. Please wait for indexing to complete.'
+            })
+
+        return JsonResponse({
+            'success': True,
+            'summary': indexed_repo.codebase_summary,
+            'generated_at': indexed_repo.summary_generated_at.isoformat() if indexed_repo.summary_generated_at else None,
+            'repository_name': indexed_repo.github_repo_name
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting codebase summary: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)

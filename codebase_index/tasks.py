@@ -80,7 +80,22 @@ def index_repository_task(repository_id: int, force_full_reindex: bool = False, 
             except Exception as e:
                 logger.warning(f"Failed to generate insights: {e}")
                 job.result_summary['insights_error'] = str(e)
-            
+
+            # Generate AI-powered codebase summary
+            try:
+                from .embeddings import generate_and_store_codebase_summary
+                logger.info("Generating AI-powered codebase summary...")
+                summary_result = generate_and_store_codebase_summary(repository)
+                if summary_result.get('success'):
+                    logger.info("Codebase summary generated successfully")
+                    job.result_summary['summary_generated'] = True
+                else:
+                    logger.warning(f"Failed to generate codebase summary: {summary_result.get('error')}")
+                    job.result_summary['summary_error'] = summary_result.get('error')
+            except Exception as e:
+                logger.warning(f"Failed to generate codebase summary: {e}")
+                job.result_summary['summary_error'] = str(e)
+
             logger.info(f"Repository indexing completed successfully: {message}")
             
         else:

@@ -33,7 +33,11 @@ class IndexedRepository(models.Model):
     total_files = models.IntegerField(default=0, help_text="Total number of files in repository")
     indexed_files_count = models.IntegerField(default=0, help_text="Number of files successfully indexed")
     total_chunks = models.IntegerField(default=0, help_text="Total number of code chunks created")
-    
+
+    # AI-generated summary
+    codebase_summary = models.TextField(blank=True, null=True, help_text="AI-generated comprehensive summary of the codebase")
+    summary_generated_at = models.DateTimeField(null=True, blank=True, help_text="When the summary was generated")
+
     # Configuration
     file_extensions = models.JSONField(
         default=list,

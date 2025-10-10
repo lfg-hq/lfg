@@ -258,6 +258,19 @@
                     </div>
                 </div>
 
+                <!-- Codebase Summary Section -->
+                <div class="codebase-summary-container" style="margin-top: 2rem;" data-repository-id="{{ project.indexed_repository.id }}">
+                    <div class="codebase-summary-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
+                        <h3 style="margin: 0;"><i class="fas fa-book-open"></i> AI-Generated Codebase Summary</h3>
+                        <button class="btn btn-sm btn-outline" id="refreshSummaryBtn" onclick="loadCodebaseSummary()">
+                            <i class="fas fa-sync"></i> Refresh
+                        </button>
+                    </div>
+                    <div id="codebaseSummaryContent" class="codebase-summary-content" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 0.5rem; padding: 1.5rem; min-height: 200px;">
+                        <p style="color: rgba(255, 255, 255, 0.5); text-align: center;"><i class="fas fa-spinner fa-spin"></i> Loading summary...</p>
+                    </div>
+                </div>
+
                 <!-- Codebase Map Section -->
                 <!-- DEBUG: codebase_map has {{ codebase_map|length }} files -->
                 {% if codebase_map %}
@@ -679,6 +692,78 @@ function collapseAllFiles() {
         chevron.classList.add('fa-chevron-right');
     });
 }
+
+// Load codebase summary
+async function loadCodebaseSummary() {
+    const summaryContainer = document.getElementById('codebaseSummaryContent');
+    const summarySection = document.querySelector('.codebase-summary-container');
+    const repositoryId = summarySection?.getAttribute('data-repository-id');
+
+    if (!repositoryId) {
+        summaryContainer.innerHTML = '<p style="color: rgba(255, 68, 68, 0.8);"><i class="fas fa-exclamation-circle"></i> Repository ID not found</p>';
+        return;
+    }
+
+    // Show loading state
+    summaryContainer.innerHTML = '<p style="color: rgba(255, 255, 255, 0.5); text-align: center;"><i class="fas fa-spinner fa-spin"></i> Loading summary...</p>';
+
+    try {
+        const response = await fetch(`/codebase/api/repositories/${repositoryId}/summary/`);
+        const data = await response.json();
+
+        if (data.success) {
+            // Render markdown summary
+            const markdownHtml = renderMarkdown(data.summary);
+            const generatedAt = data.generated_at ? new Date(data.generated_at).toLocaleString() : 'Unknown';
+
+            summaryContainer.innerHTML = `
+                <div class="summary-metadata" style="margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid rgba(255, 255, 255, 0.05);">
+                    <small style="color: rgba(255, 255, 255, 0.5);">
+                        <i class="fas fa-clock"></i> Generated: ${generatedAt}
+                    </small>
+                </div>
+                <div class="markdown-content">
+                    ${markdownHtml}
+                </div>
+            `;
+        } else {
+            summaryContainer.innerHTML = `<p style="color: rgba(255, 191, 0, 0.8);"><i class="fas fa-info-circle"></i> ${data.error || 'Summary not available yet. It will be generated after indexing completes.'}</p>`;
+        }
+    } catch (error) {
+        console.error('Error loading summary:', error);
+        summaryContainer.innerHTML = '<p style="color: rgba(255, 68, 68, 0.8);"><i class="fas fa-exclamation-circle"></i> Error loading summary. Please try again.</p>';
+    }
+}
+
+// Simple markdown renderer for basic formatting
+function renderMarkdown(markdown) {
+    if (!markdown) return '';
+
+    let html = markdown
+        // Headers
+        .replace(/^### (.*$)/gim, '<h3 style="color: #fff; margin-top: 1.5rem; margin-bottom: 0.75rem;">$1</h3>')
+        .replace(/^## (.*$)/gim, '<h2 style="color: #fff; margin-top: 2rem; margin-bottom: 1rem;">$1</h2>')
+        .replace(/^# (.*$)/gim, '<h1 style="color: #fff; margin-top: 2rem; margin-bottom: 1rem;">$1</h1>')
+        // Bold
+        .replace(/\*\*(.*?)\*\*/gim, '<strong style="color: var(--primary-color);">$1</strong>')
+        // Lists
+        .replace(/^\- (.*$)/gim, '<li style="margin-left: 1.5rem; color: rgba(255, 255, 255, 0.9);">$1</li>')
+        // Code blocks
+        .replace(/```(.*?)```/gis, '<pre style="background: rgba(0, 0, 0, 0.3); padding: 1rem; border-radius: 0.375rem; overflow-x: auto; margin: 1rem 0;"><code>$1</code></pre>')
+        // Inline code
+        .replace(/`([^`]+)`/gim, '<code style="background: rgba(255, 255, 255, 0.1); padding: 0.125rem 0.375rem; border-radius: 0.25rem; font-family: monospace;">$1</code>')
+        // Line breaks
+        .replace(/\n/gim, '<br>');
+
+    return html;
+}
+
+// Load summary on page load
+document.addEventListener('DOMContentLoaded', function() {
+    if (document.querySelector('.codebase-summary-container')) {
+        loadCodebaseSummary();
+    }
+});
 </script>
 
 <!-- Include CSRF Token -->

@@ -102,14 +102,15 @@ class ChromaDBClient:
 
                 # Validate content isn't too long - use token estimation
                 # OpenAI's text-embedding-3-small has 8192 token limit
-                # Rough estimate: 1 token ≈ 4 characters for code
-                estimated_tokens = len(content) // 4
-                max_tokens = 8000  # Leave some buffer below 8192
+                # Conservative estimate: 1 token ≈ 2.5 characters for code
+                # (actual ratio varies, but being conservative prevents errors)
+                estimated_tokens = len(content) // 2.5
+                max_tokens = 6000  # Leave significant buffer below 8192
 
                 if estimated_tokens > max_tokens:
                     # Truncate to fit within token limit
-                    max_chars = max_tokens * 4
-                    logger.warning(f"Truncating large chunk {chunk['id']} from ~{estimated_tokens} tokens to ~{max_tokens} tokens")
+                    max_chars = int(max_tokens * 2.5)
+                    logger.warning(f"Truncating large chunk {chunk['id']} from ~{int(estimated_tokens)} tokens to ~{max_tokens} tokens")
                     content = content[:max_chars] + "\n\n# [Content truncated due to token limit]"
 
                 if not content.strip():

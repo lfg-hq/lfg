@@ -738,7 +738,7 @@ search_existing_code = {
 get_repository_insights = {
     "type": "function",
     "function": {
-        "name": "get_repository_insights", 
+        "name": "get_repository_insights",
         "description": "Get high-level insights about the indexed repository including languages used, architectural patterns, complexity distribution, and common dependencies.",
         "parameters": {
             "type": "object",
@@ -748,9 +748,27 @@ get_repository_insights = {
     }
 }
 
+generate_codebase_summary = {
+    "type": "function",
+    "function": {
+        "name": "generate_codebase_summary",
+        "description": "Generate a comprehensive AI-powered summary of the entire codebase. This analyzes the complete AST structure and provides detailed information about: overall purpose and architecture, file organization, all functions/methods mapped by file, data models and structures, API endpoints, key dependencies, code flow, and entry points. Use this when you need a thorough understanding of what the codebase does and how it's organized.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "model": {
+                    "type": "string",
+                    "description": "Optional: AI model to use for summary generation (defaults to claude-3-5-sonnet)",
+                }
+            },
+            "additionalProperties": False,
+        }
+    }
+}
+
 tools_ticket = [execute_command, get_prd, get_implementation, copy_boilerplate_code, start_server]
 
 # Add codebase tools to appropriate tool sets
-tools_codebase = [index_repository, get_codebase_context, search_existing_code, get_repository_insights]
+tools_codebase = [index_repository, get_codebase_context, search_existing_code, get_repository_insights, generate_codebase_summary]
 
 tools_design = [get_prd, execute_command, start_server, get_github_access_token]
