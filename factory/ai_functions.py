@@ -24,6 +24,22 @@ from chat.models import Conversation
 # Configure logger
 logger = logging.getLogger(__name__)
 
+# Import codebase indexing functions
+try:
+    from codebase_index.ai_integration import (
+        get_codebase_context_for_feature,
+        search_similar_implementations,
+        get_codebase_context_for_prd,
+        enhance_ticket_with_codebase_context
+    )
+    from codebase_index.tasks import start_repository_indexing
+    from codebase_index.models import IndexedRepository
+    from codebase_index.embeddings import generate_repository_insights
+    CODEBASE_INDEX_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Codebase indexing not available: {e}")
+    CODEBASE_INDEX_AVAILABLE = False
+
 
 # ============================================================================
 # UTILITY FUNCTIONS
@@ -248,14 +264,37 @@ async def app_functions(function_name, function_args, project_id, conversation_i
             file_ids = function_args.get('file_ids') or function_args.get('file_id')  # Support both for backwards compatibility
             return await get_file_content(project_id, file_ids)
 
+        # Codebase indexing functions
+        case "index_repository":
+            github_url = function_args.get('github_url')
+            branch = function_args.get('branch', 'main')
+            force_reindex = function_args.get('force_reindex', False)
+            return await index_repository(project_id, github_url, branch, force_reindex, conversation_id)
+
+        case "get_codebase_context":
+            feature_description = function_args.get('feature_description')
+            search_type = function_args.get('search_type', 'all')
+            return await get_codebase_context(project_id, feature_description, search_type)
+
+        case "search_existing_code":
+            functionality = function_args.get('functionality')
+            chunk_types = function_args.get('chunk_types', [])
+            return await search_existing_code(project_id, functionality, chunk_types)
+
+        case "get_repository_insights":
+            return await get_repository_insights(project_id)
+
+        case "get_codebase_summary":
+            return await get_codebase_summary(project_id)
+
         # case "implement_ticket_async":
         #     ticket_id = function_args.get('ticket_id')
         #     return await implement_ticket_async(ticket_id, project_id, conversation_id)
-        
+
         # case "execute_tickets_in_parallel":
         #     max_workers = function_args.get('max_workers', 3)
         #     return await execute_tickets_in_parallel(project_id, conversation_id, max_workers)
-        
+
         # case "get_ticket_execution_status":
         #     task_id = function_args.get('task_id')
         #     return await get_ticket_execution_status(project_id, task_id)
@@ -3126,4 +3165,422 @@ async def update_file_content(file_id, updated_content, project_id):
         return {
             "is_notification": False,
             "message_to_agent": f"Error updating file: {str(e)}"
+        }
+
+
+# ============================================================================
+# CODEBASE INDEXING FUNCTIONS
+# ============================================================================
+
+async def index_repository(project_id, github_url, branch='main', force_reindex=False, conversation_id=None):
+    """Index a GitHub repository for context-aware development"""
+    if not CODEBASE_INDEX_AVAILABLE:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Codebase indexing is not available. Please install required dependencies."
+        }
+
+    logger.info(f"Repository indexing function called for URL: {github_url}")
+
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+
+    if not github_url:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: github_url is required"
+        }
+
+    project = await get_project(project_id)
+    if not project:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Project with ID {project_id} does not exist"
+        }
+    
+    try:
+        from codebase_index.github_sync import validate_github_access
+        from codebase_index.models import IndexedRepository
+        
+        # Validate GitHub access
+        valid, message, repo_info = validate_github_access(project.owner, github_url)
+        if not valid:
+            return {
+                "is_notification": False,
+                "message_to_agent": f"GitHub access validation failed: {message}"
+            }
+        
+        # Create or get indexed repository
+        indexed_repo, created = await sync_to_async(
+            IndexedRepository.objects.get_or_create
+        )(
+            project=project,
+            defaults={
+                'github_url': github_url,
+                'github_owner': repo_info['owner'],
+                'github_repo_name': repo_info['repo'],
+                'github_branch': branch,
+                'status': 'pending'
+            }
+        )
+        
+        if not created and not force_reindex:
+            # Update repository info if needed
+            updated = False
+            if indexed_repo.github_url != github_url:
+                indexed_repo.github_url = github_url
+                updated = True
+            if indexed_repo.github_branch != branch:
+                indexed_repo.github_branch = branch
+                updated = True
+            
+            if updated:
+                await sync_to_async(indexed_repo.save)()
+        
+        # Start indexing task
+        task_id = start_repository_indexing(indexed_repo.id, force_reindex, project.owner.id)
+        
+        # Update repository with task ID
+        indexed_repo.status = 'indexing'
+        await sync_to_async(indexed_repo.save)()
+        
+        return {
+            "is_notification": True,
+            "notification_type": "repository_indexing",
+            "message_to_agent": f"Repository indexing started for {repo_info['owner']}/{repo_info['repo']}. "
+                               f"Task ID: {task_id}. This may take a few minutes depending on repository size."
+        }
+        
+    except Exception as e:
+        logger.error(f"Error starting repository indexing: {e}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error starting repository indexing: {str(e)}"
+        }
+
+
+async def get_codebase_context(project_id, feature_description, search_type='all'):
+    """Get relevant codebase context for a feature or question"""
+    if not CODEBASE_INDEX_AVAILABLE:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Codebase indexing is not available."
+        }
+
+    logger.info(f"Codebase context function called for: {feature_description}")
+    
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+
+    if not feature_description:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: feature_description is required"
+        }
+
+    project = await get_project(project_id)
+    if not project:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Project with ID {project_id} does not exist"
+        }
+    
+    try:
+        # Check if repository is indexed
+        if not hasattr(project, 'indexed_repository'):
+            return {
+                "is_notification": False,
+                "message_to_agent": "No repository has been indexed for this project yet. Please index a repository first using the index_repository function."
+            }
+
+        indexed_repo = project.indexed_repository
+        if indexed_repo.status != 'completed':
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Repository indexing is not complete (status: {indexed_repo.status}). Please wait for indexing to finish."
+            }
+
+        # Get codebase context
+        context_result = await sync_to_async(get_codebase_context_for_feature)(
+            str(project_id), feature_description, project.owner
+        )
+        
+        if context_result.get('error'):
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Error getting codebase context: {context_result['error']}"
+            }
+        
+        # Format response based on search type
+        if search_type == 'implementation':
+            message = f"Found {len(context_result['relevant_files'])} relevant files with similar implementations:\n"
+            message += context_result['context']
+        elif search_type == 'patterns':
+            patterns = [s for s in context_result['suggestions'] if s['type'] == 'patterns']
+            message = f"Architectural patterns detected:\n"
+            for pattern in patterns:
+                message += f"- {pattern['description']}\n"
+        elif search_type == 'files':
+            message = f"Relevant files to consider:\n"
+            for file_info in context_result['relevant_files'][:10]:
+                message += f"- {file_info['path']} ({file_info['language']})\n"
+        else:
+            message = context_result['context']
+        
+        return {
+            "is_notification": True,
+            "notification_type": "codebase_context",
+            "message_to_agent": f"Codebase context for '{feature_description}':\n\n{message}"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting codebase context: {e}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error getting codebase context: {str(e)}"
+        }
+
+
+async def search_existing_code(project_id, functionality, chunk_types=[]):
+    """Search for existing implementations of similar functionality"""
+    if not CODEBASE_INDEX_AVAILABLE:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Codebase indexing is not available."
+        }
+
+    logger.info(f"Code search function called for: {functionality}")
+
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+
+    if not functionality:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: functionality is required"
+        }
+
+    project = await get_project(project_id)
+    if not project:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Project with ID {project_id} does not exist"
+        }
+    
+    try:
+        # Check if repository is indexed
+        if not hasattr(project, 'indexed_repository'):
+            return {
+                "is_notification": False,
+                "message_to_agent": "No repository has been indexed for this project yet. Please index a repository first."
+            }
+
+        indexed_repo = project.indexed_repository
+        if indexed_repo.status != 'completed':
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Repository indexing is not complete (status: {indexed_repo.status})."
+            }
+
+        # Search for similar implementations
+        implementations = await sync_to_async(search_similar_implementations)(
+            str(project_id), functionality, project.owner
+        )
+        
+        if not implementations:
+            return {
+                "is_notification": True,
+                "notification_type": "code_search",
+                "message_to_agent": f"No existing implementations found for '{functionality}'. "
+                                   "This appears to be a new feature that will need to be built from scratch."
+            }
+        
+        # Format implementations for response
+        message_parts = [f"Found {len(implementations)} similar implementations for '{functionality}':\n"]
+        
+        for impl in implementations[:5]:  # Show top 5
+            message_parts.append(
+                f"- **{impl['function_name']}** in `{impl['file_path']}` "
+                f"(relevance: {impl['relevance_score']:.1%})\n"
+                f"  Type: {impl['chunk_type']}, Complexity: {impl['complexity']}\n"
+            )
+        
+        return {
+            "is_notification": True,
+            "notification_type": "code_search",
+            "message_to_agent": ''.join(message_parts)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error searching existing code: {e}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error searching existing code: {str(e)}"
+        }
+
+
+async def get_repository_insights(project_id):
+    """Get high-level insights about the indexed repository"""
+    if not CODEBASE_INDEX_AVAILABLE:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Codebase indexing is not available."
+        }
+
+    logger.info("Repository insights function called")
+
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+    
+    project = await get_project(project_id)
+    if not project:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Project with ID {project_id} does not exist"
+        }
+    
+    try:
+        # Check if repository is indexed
+        if not hasattr(project, 'indexed_repository'):
+            return {
+                "is_notification": False,
+                "message_to_agent": "No repository has been indexed for this project yet."
+            }
+        
+        indexed_repo = project.indexed_repository
+        if indexed_repo.status != 'completed':
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Repository indexing is not complete (status: {indexed_repo.status})"
+            }
+        
+        # Generate insights
+        insights = await sync_to_async(generate_repository_insights)(indexed_repo)
+        
+        if insights.get('error'):
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Error generating insights: {insights['error']}"
+            }
+        
+        # Format insights message
+        message_parts = [
+            f"## Repository Insights for {indexed_repo.github_repo_name}\n",
+            f"**Primary Language**: {insights.get('primary_language', 'Unknown')}\n",
+            f"**Total Files Indexed**: {indexed_repo.indexed_files_count}\n",
+            f"**Total Code Chunks**: {indexed_repo.total_chunks}\n",
+            f"**Functions**: {insights.get('functions_count', 0)}\n",
+            f"**Classes**: {insights.get('classes_count', 0)}\n",
+        ]
+        
+        if insights.get('languages_distribution'):
+            message_parts.append("**Languages Used**:\n")
+            for lang, count in insights['languages_distribution'].items():
+                message_parts.append(f"  - {lang}: {count} chunks\n")
+        
+        if insights.get('top_dependencies'):
+            message_parts.append("**Top Dependencies**:\n")
+            for dep, count in insights['top_dependencies'][:5]:
+                message_parts.append(f"  - {dep} (used {count} times)\n")
+        
+        if insights.get('documentation_coverage'):
+            coverage = insights['documentation_coverage']
+            message_parts.append(f"**Documentation Coverage**: {coverage:.1f}%\n")
+        
+        return {
+            "is_notification": True,
+            "notification_type": "repository_insights",
+            "message_to_agent": ''.join(message_parts)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting repository insights: {e}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error getting repository insights: {str(e)}"
+        }
+
+
+async def get_codebase_summary(project_id):
+    """
+    Retrieve the comprehensive AI-generated codebase summary.
+
+    This function retrieves the pre-generated summary that was created during
+    repository indexing. The summary includes:
+    - Overall purpose and architecture
+    - File organization structure
+    - All functions/methods mapped by file
+    - Data models and structures
+    - API endpoints (if detected)
+    - Key dependencies and integrations
+
+    Args:
+        project_id: Project UUID
+
+    Returns:
+        dict with is_notification and message_to_agent
+    """
+    try:
+        if not CODEBASE_INDEX_AVAILABLE:
+            return {
+                "is_notification": False,
+                "message_to_agent": "Codebase indexing is not available in this environment"
+            }
+
+        # Get project
+        project = await sync_to_async(Project.objects.select_related('indexed_repository').get)(project_id=project_id)
+
+        if not hasattr(project, 'indexed_repository'):
+            return {
+                "is_notification": False,
+                "message_to_agent": "No repository is linked to this project. Please link a repository first using the Codebase tab."
+            }
+
+        indexed_repo = project.indexed_repository
+
+        if indexed_repo.status != 'completed':
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Repository indexing is not complete (status: {indexed_repo.status}). Please wait for indexing to finish."
+            }
+
+        # Check if summary exists
+        if not indexed_repo.codebase_summary:
+            return {
+                "is_notification": False,
+                "message_to_agent": "Codebase summary has not been generated yet. The summary is automatically created during indexing. Please try re-indexing the repository from the Codebase tab."
+            }
+
+        # Get summary metadata
+        summary_date = indexed_repo.summary_generated_at
+        date_str = summary_date.strftime('%Y-%m-%d %H:%M:%S UTC') if summary_date else 'Unknown'
+
+        # Format final response
+        final_message = f"""# Codebase Summary for {indexed_repo.github_repo_name}
+
+{indexed_repo.codebase_summary}
+
+---
+*Summary generated on {date_str}*
+
+**Next Steps**: Use `search_existing_code` to find specific implementations, patterns, or code details within this codebase.
+"""
+
+        return {
+            "is_notification": True,
+            "notification_type": "codebase_summary",
+            "message_to_agent": final_message
+        }
+
+    except Exception as e:
+        logger.error(f"Error retrieving codebase summary: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error retrieving codebase summary: {str(e)}"
         }

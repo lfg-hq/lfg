@@ -18,10 +18,12 @@ DEBUG = False if ENVIRONMENT == 'production' else True
 
 CSRF_TRUSTED_ORIGINS = [
     'https://lfg.run',
-    'https://www.lfg.run', 
+    'https://www.lfg.run',
     'http://localhost:8000',
     'http://127.0.0.1:8000',
     'http://localhost:3000',
+    'http://localhost:5173',
+    'http://localhost:5174',
     'https://dev-rocks.lfg.run'
 ]
 ALLOWED_HOSTS = [
@@ -55,9 +57,11 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'django.contrib.humanize',
     'rest_framework',
+    'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     'channels',
     'django_q',
+    'api',
     'chat',
     'accounts',
     'marketing',
@@ -66,6 +70,7 @@ INSTALLED_APPS = [
     'development',
     'tasks',
     'administrator',
+    'codebase_index',
 ]
 
 MIDDLEWARE = [
@@ -232,10 +237,43 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGINS = [
     'https://lfg.run',
-    'https://www.lfg.run', 
+    'https://www.lfg.run',
     'http://localhost:8000',
     'http://localhost:3000',
+    'http://localhost:5173',
+    'http://localhost:5174',
 ]
+CORS_ALLOW_CREDENTIALS = True
+
+# Django REST Framework settings
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.IsAuthenticated',
+    ),
+    'DEFAULT_RENDERER_CLASSES': (
+        'rest_framework.renderers.JSONRenderer',
+    ),
+    'DEFAULT_PARSER_CLASSES': (
+        'rest_framework.parsers.JSONParser',
+        'rest_framework.parsers.FormParser',
+        'rest_framework.parsers.MultiPartParser',
+    ),
+}
+
+# Simple JWT settings
+from datetime import timedelta
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=1),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'AUTH_HEADER_TYPES': ('Bearer',),
+    'USER_ID_FIELD': 'id',
+    'USER_ID_CLAIM': 'user_id',
+}
 
 # Security settings
 X_FRAME_OPTIONS = 'SAMEORIGIN'  # Allow pages to be displayed in frames on the same origin
@@ -433,3 +471,7 @@ LOGGING = {
         },
     },
 }
+
+# ChromaDB Configuration
+CHROMA_HOST = os.environ.get('CHROMA_HOST', 'localhost')
+CHROMA_PORT = int(os.environ.get('CHROMA_PORT', 6000))

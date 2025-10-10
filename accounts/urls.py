@@ -49,6 +49,8 @@ urlpatterns = [
     
     # API endpoints
     path('api/auth/status/', views.auth_status, name='api_auth_status'),
+    path('api/github-status/', views.github_status, name='api_github_status'),
+    path('api/github-oauth-url/', views.github_oauth_url, name='api_github_oauth_url'),
     path('api/user/api-keys/', views.api_keys_status, name='api_keys_status'),
     path('profile/api-keys/', views.save_api_keys, name='api_save_keys'),
     path('verify-email-code/', views.verify_email_code, name='verify_email_code'),

@@ -6,6 +6,7 @@ from accounts import views as accounts_views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('api/v1/', include('api.urls')),  # REST API endpoints
     path('', include('marketing.urls')),  # Marketing URLs (including landing page)
     path('', include('chat.urls')),
     path('accounts/', include('accounts.urls')),
@@ -14,6 +15,7 @@ urlpatterns = [
     path('subscriptions/', include('subscriptions.urls')),  # Subscription URLs
     path('development/', include('development.urls')),  # Development URLs
     path('api/tasks/', include('tasks.urls')),  # Task management APIs
+    path('codebase/', include('codebase_index.urls')),  # Codebase indexing URLs
     path('administrator-rocks/', include('administrator.urls')),  # Administrator URLs
 ]
 

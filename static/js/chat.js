@@ -1870,7 +1870,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Load the appropriate content based on notification type
                 if (window.ArtifactsLoader && currentProjectId) {
                     // Special handling for file streaming
-                    if (data.notification_type === 'file_stream') {
+                    if (data.notification_type === 'file_stream' && data.file_type === 'prd') {
                         console.log('File stream notification detected');
                         console.log('Full notification data:', data);
                         console.log('Content chunk exists:', data.content_chunk !== undefined);

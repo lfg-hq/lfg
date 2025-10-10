@@ -645,17 +645,127 @@ get_file_content = {
     }
 }
 
+# Codebase indexing tools
+index_repository = {
+    "type": "function",
+    "function": {
+        "name": "index_repository",
+        "description": "Index a GitHub repository for the current project to enable context-aware feature development. This analyzes the codebase structure, extracts code patterns, and creates embeddings for intelligent code search.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "github_url": {
+                    "type": "string", 
+                    "description": "The GitHub repository URL to index (e.g., https://github.com/owner/repo)"
+                },
+                "branch": {
+                    "type": "string",
+                    "description": "Git branch to index (defaults to 'main')"
+                },
+                "force_reindex": {
+                    "type": "boolean",
+                    "description": "Whether to force a complete reindex even if already indexed"
+                }
+            },
+            "required": ["github_url"],
+            "additionalProperties": False,
+        }
+    }
+}
+
+get_codebase_context = {
+    "type": "function",
+    "function": {
+        "name": "get_codebase_context",
+        "description": "Get relevant codebase context for a feature request or question. This searches the indexed codebase to find similar implementations, patterns, and architectural guidance.",
+        "parameters": {
+            "type": "object", 
+            "properties": {
+                "feature_description": {
+                    "type": "string",
+                    "description": "Description of the feature or functionality you want context for"
+                },
+                "search_type": {
+                    "type": "string",
+                    "enum": ["implementation", "patterns", "files", "all"],
+                    "description": "Type of context to search for"
+                }
+            },
+            "required": ["feature_description"],
+            "additionalProperties": False,
+        }
+    }
+}
+
+search_existing_code = {
+    "type": "function",
+    "function": {
+        "name": "search_existing_code",
+        "description": "Search the codebase vector store for specific code implementations using semantic search. Use this AFTER get_codebase_summary to find detailed implementations, patterns, similar functions, and specific code examples. This performs semantic search on the indexed code chunks to find relevant implementations based on functionality description.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "functionality": {
+                    "type": "string",
+                    "description": "Description of the functionality or code pattern to search for (e.g., 'authentication middleware', 'database connection', 'API endpoint handlers')"
+                },
+                "chunk_types": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": ["function", "class", "file", "import"]
+                    },
+                    "description": "Types of code chunks to search (optional, filters results by entity type)"
+                }
+            },
+            "required": ["functionality"],
+            "additionalProperties": False,
+        }
+    }
+}
+
+get_repository_insights = {
+    "type": "function",
+    "function": {
+        "name": "get_repository_insights",
+        "description": "Get high-level insights about the indexed repository including languages used, architectural patterns, complexity distribution, and common dependencies.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        }
+    }
+}
+
+get_codebase_summary = {
+    "type": "function",
+    "function": {
+        "name": "get_codebase_summary",
+        "description": "Retrieve the comprehensive AI-generated summary of the entire codebase. This summary was created during indexing and includes: overall purpose and architecture, file organization, all functions/methods mapped by file, data models and structures, API endpoints, key dependencies, code flow, and entry points. Use this FIRST when you need to understand what the codebase does and how it's organized, then follow up with search_existing_code for specific implementation details.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        }
+    }
+}
+
+tools_ticket = [execute_command, get_prd, get_implementation, copy_boilerplate_code, start_server]
+
+# Add codebase tools to appropriate tool sets
+tools_codebase = [index_repository, get_codebase_context, search_existing_code, get_repository_insights, get_codebase_summary]
+
+# Main tool lists
 tools_code = [get_prd, start_server, \
               get_github_access_token, \
               create_tickets, update_ticket, \
               get_next_ticket, get_pending_tickets, \
               create_implementation, get_implementation, update_implementation, stream_implementation_content, \
-              stream_document_content, copy_boilerplate_code, capture_name]
+              stream_document_content, copy_boilerplate_code, capture_name, \
+              index_repository, get_codebase_context, search_existing_code, get_repository_insights, get_codebase_summary]
 
-tools_product = [get_file_list, get_file_content, create_tickets, get_pending_tickets]
+tools_product = [get_file_list, get_codebase_summary, search_existing_code, get_file_content, create_tickets, get_pending_tickets]
 
-tools_turbo = [get_prd, create_tickets, get_pending_tickets, update_ticket, execute_command]
-
-tools_ticket = [execute_command, get_prd, get_implementation, copy_boilerplate_code, start_server]
+tools_turbo = [get_prd, create_tickets, search_existing_code, get_pending_tickets, update_ticket, execute_command]
 
 tools_design = [get_prd, execute_command, start_server, get_github_access_token]

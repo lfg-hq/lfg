@@ -1,0 +1,48 @@
+<!-- Code Preview Content -->
+{% if code_chunks %}
+    <div class="code-chunks-list">
+        {% for chunk in code_chunks %}
+        <div class="code-chunk-item">
+            <div class="chunk-header">
+                <div class="chunk-info">
+                    <span class="chunk-type chunk-type-{{ chunk.chunk_type }}">{{ chunk.chunk_type }}</span>
+                    {% if chunk.function_name %}
+                        <span class="function-name">{{ chunk.function_name }}</span>
+                    {% endif %}
+                </div>
+                <div class="chunk-meta">
+                    <span class="file-path">{{ chunk.file.file_path }}</span>
+                    <span class="line-numbers">{{ chunk.start_line }}-{{ chunk.end_line }}</span>
+                </div>
+            </div>
+            
+            <div class="chunk-preview">
+                <pre><code class="language-{{ chunk.file.language|lower }}">{{ chunk.content_preview }}</code></pre>
+            </div>
+            
+            <div class="chunk-footer">
+                <span class="complexity complexity-{{ chunk.complexity }}">{{ chunk.complexity }} complexity</span>
+                {% if chunk.tags %}
+                    <div class="chunk-tags">
+                        {% for tag in chunk.tags|slice:":3" %}
+                            <span class="tag">{{ tag }}</span>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    
+    {% if code_chunks|length >= 5 %}
+    <div class="preview-footer">
+        <button type="button" class="btn btn-sm btn-outline" onclick="viewAllChunks()">
+            View All {{ total_chunks }} Chunks
+        </button>
+    </div>
+    {% endif %}
+{% else %}
+    <div class="no-chunks">
+        <p class="text-muted">No code chunks available</p>
+    </div>
+{% endif %}

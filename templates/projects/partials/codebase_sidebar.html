@@ -1,0 +1,194 @@
+<!-- Codebase Management Sidebar -->
+<div id="codebaseSidebar" class="codebase-sidebar">
+    <div class="sidebar-header">
+        <h3><i class="fas fa-code-branch"></i> Codebase Index</h3>
+        <button type="button" class="close-sidebar" onclick="closeSidebar()">
+            <i class="fas fa-times"></i>
+        </button>
+    </div>
+    
+    <div class="sidebar-content">
+        {% if indexed_repository %}
+            <!-- Repository Status -->
+            <div class="repository-status">
+                <div class="status-header">
+                    <h4>Repository Status</h4>
+                    <span class="status-badge status-{{ indexed_repository.status }}">
+                        {{ indexed_repository.status|title }}
+                    </span>
+                </div>
+                
+                <div class="repository-info">
+                    <div class="repo-url">
+                        <label>GitHub Repository:</label>
+                        <div class="url-display">
+                            <a href="{{ indexed_repository.github_url }}" target="_blank" class="repo-link">
+                                <i class="fab fa-github"></i>
+                                {{ indexed_repository.github_owner }}/{{ indexed_repository.github_repo_name }}
+                            </a>
+                            <button type="button" class="btn-edit-url" onclick="editRepositoryUrl()">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Edit URL Form (Hidden by default) -->
+                    <form id="editUrlForm" class="edit-url-form" style="display: none;">
+                        <div class="form-group">
+                            <label>GitHub URL:</label>
+                            <input type="url" id="newGithubUrl" value="{{ indexed_repository.github_url }}" class="form-control">
+                        </div>
+                        <div class="form-actions">
+                            <button type="button" class="btn btn-primary" onclick="updateRepositoryUrl()">
+                                Update
+                            </button>
+                            <button type="button" class="btn btn-secondary" onclick="cancelEditUrl()">
+                                Cancel
+                            </button>
+                        </div>
+                    </form>
+                    
+                    <div class="branch-info">
+                        <label>Branch:</label>
+                        <span class="branch-name">{{ indexed_repository.github_branch|default:"main" }}</span>
+                    </div>
+                    
+                    {% if indexed_repository.last_indexed_at %}
+                    <div class="last-indexed">
+                        <label>Last Indexed:</label>
+                        <span class="timestamp">{{ indexed_repository.last_indexed_at|date:"M d, Y H:i" }}</span>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Indexing Statistics -->
+            <div class="indexing-stats">
+                <h4>Indexing Statistics</h4>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <span class="stat-number">{{ indexed_repository.total_files }}</span>
+                        <span class="stat-label">Total Files</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-number">{{ indexed_repository.indexed_files_count }}</span>
+                        <span class="stat-label">Indexed Files</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-number">{{ indexed_repository.total_chunks }}</span>
+                        <span class="stat-label">Code Chunks</span>
+                    </div>
+                </div>
+                
+                {% if indexed_repository.error_count > 0 %}
+                <div class="error-summary">
+                    <i class="fas fa-exclamation-triangle text-warning"></i>
+                    {{ indexed_repository.error_count }} files failed to index
+                    {% if indexed_repository.error_message %}
+                    <details class="error-details">
+                        <summary>Error Details</summary>
+                        <pre>{{ indexed_repository.error_message }}</pre>
+                    </details>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+            
+            <!-- Repository Insights -->
+            {% if repository_insights %}
+            <div class="repository-insights">
+                <h4>Code Insights</h4>
+                <div class="insights-content">
+                    <div class="insight-item">
+                        <label>Primary Language:</label>
+                        <span class="language-tag">{{ repository_insights.primary_language|title }}</span>
+                    </div>
+                    
+                    <div class="insight-item">
+                        <label>Functions:</label>
+                        <span>{{ repository_insights.functions_count }}</span>
+                    </div>
+                    
+                    <div class="insight-item">
+                        <label>Classes:</label>
+                        <span>{{ repository_insights.classes_count }}</span>
+                    </div>
+                    
+                    {% if repository_insights.average_complexity %}
+                    <div class="insight-item">
+                        <label>Avg. Complexity:</label>
+                        <span class="complexity-score">{{ repository_insights.average_complexity|floatformat:1 }}</span>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- Code Preview -->
+            <div class="code-preview">
+                <div class="preview-header">
+                    <h4>Recent Code Chunks</h4>
+                    <button type="button" class="btn btn-sm btn-outline" onclick="refreshPreview()">
+                        <i class="fas fa-refresh"></i>
+                    </button>
+                </div>
+                
+                <div id="codePreviewContent" class="preview-content">
+                    {% include 'projects/partials/code_preview.html' %}
+                </div>
+            </div>
+            
+            <!-- Actions -->
+            <div class="sidebar-actions">
+                <button type="button" class="btn btn-primary btn-block" onclick="reindexRepository()" 
+                        {% if indexed_repository.status == 'indexing' %}disabled{% endif %}>
+                    <i class="fas fa-sync-alt"></i>
+                    {% if indexed_repository.status == 'indexing' %}
+                        Indexing...
+                    {% else %}
+                        Re-index Repository
+                    {% endif %}
+                </button>
+                
+                <button type="button" class="btn btn-outline-primary btn-block" onclick="searchCodebase()">
+                    <i class="fas fa-search"></i>
+                    Search Codebase
+                </button>
+                
+                <button type="button" class="btn btn-outline-danger btn-block" onclick="deleteIndex()">
+                    <i class="fas fa-trash"></i>
+                    Delete Index
+                </button>
+            </div>
+            
+        {% else %}
+            <!-- No Repository Connected -->
+            <div class="no-repository">
+                <div class="empty-state">
+                    <i class="fas fa-code-branch empty-icon"></i>
+                    <h4>No Repository Connected</h4>
+                    <p>Connect a GitHub repository to enable AI-powered code analysis and context-aware development.</p>
+                    
+                    <form id="connectRepoForm" class="connect-repo-form">
+                        <div class="form-group">
+                            <label>GitHub Repository URL:</label>
+                            <input type="url" id="githubUrl" placeholder="https://github.com/username/repository" 
+                                   class="form-control" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Branch (optional):</label>
+                            <input type="text" id="githubBranch" placeholder="main" class="form-control" value="main">
+                        </div>
+                        <button type="button" class="btn btn-primary btn-block" onclick="connectRepository()">
+                            <i class="fas fa-plug"></i>
+                            Connect Repository
+                        </button>
+                    </form>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Backdrop -->
+<div id="sidebarBackdrop" class="sidebar-backdrop" onclick="closeSidebar()"></div>

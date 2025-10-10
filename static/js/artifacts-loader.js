@@ -936,7 +936,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Auto-scroll to show new content
                 if (viewerMarkdown) {
-                    viewerMarkdown.scrollTop = viewerMarkdown.scrollHeight;
+                    // Use requestAnimationFrame to ensure DOM has updated before scrolling
+                    // Use instant scroll (not smooth) during streaming for better UX
+                    requestAnimationFrame(() => {
+                        requestAnimationFrame(() => {
+                            const before = viewerMarkdown.scrollTop;
+                            const scrollHeight = viewerMarkdown.scrollHeight;
+                            viewerMarkdown.scrollTop = scrollHeight;
+                            console.log(`[Stream Scroll] Before: ${before}, Height: ${scrollHeight}, After: ${viewerMarkdown.scrollTop}`);
+                        });
+                    });
                 }
             }
             

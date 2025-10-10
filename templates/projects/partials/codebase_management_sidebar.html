@@ -1,0 +1,203 @@
+<!-- Codebase Management Sidebar -->
+<div id="codebaseSidebar" class="settings-sidebar-overlay">
+    <div class="settings-sidebar">
+        <div class="settings-sidebar-header">
+            <h3>
+                <i class="fas fa-code-branch"></i>
+                Codebase Management
+            </h3>
+            <button type="button" class="btn-close" onclick="closeCodebaseSidebar()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+
+        <div class="settings-sidebar-content">
+            {% if project.indexed_repository %}
+                <!-- Connected Repository Section -->
+                <div class="settings-section">
+                    <div class="settings-section-header">
+                        <h4>Connected Repository</h4>
+                        <span class="status-badge status-{{ project.indexed_repository.status }}">
+                            {{ project.indexed_repository.get_status_display }}
+                        </span>
+                    </div>
+                    
+                    <div class="repository-info-card">
+                        <div class="repo-header">
+                            <div class="repo-icon">
+                                <i class="fab fa-github"></i>
+                            </div>
+                            <div class="repo-details">
+                                <h5>{{ project.indexed_repository.github_owner }}/{{ project.indexed_repository.github_repo_name }}</h5>
+                                <p class="text-muted">Branch: {{ project.indexed_repository.branch }}</p>
+                            </div>
+                        </div>
+                        
+                        <div class="indexing-progress">
+                            <div class="progress-header">
+                                <span>Indexing Progress</span>
+                                <span class="progress-percentage">{{ project.indexed_repository.indexing_progress|floatformat:1 }}%</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: {{ project.indexed_repository.indexing_progress|floatformat:1 }}%"></div>
+                            </div>
+                        </div>
+
+                        <div class="repository-stats">
+                            <div class="stat-grid">
+                                <div class="stat-item">
+                                    <span class="stat-value">{{ project.indexed_repository.indexed_files.count }}</span>
+                                    <span class="stat-label">Files Indexed</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-value" id="totalChunks">-</span>
+                                    <span class="stat-label">Code Chunks</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-value" id="totalFunctions">-</span>
+                                    <span class="stat-label">Functions</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-value" id="totalClasses">-</span>
+                                    <span class="stat-label">Classes</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Repository Actions Section -->
+                <div class="settings-section">
+                    <div class="settings-section-header">
+                        <h4>Repository Actions</h4>
+                    </div>
+                    
+                    <div class="action-buttons">
+                        <button class="btn btn-outline-primary" onclick="reindexRepository({{ project.indexed_repository.id }})">
+                            <i class="fas fa-sync"></i>
+                            Re-index Repository
+                        </button>
+                        <a href="{% url 'codebase_index:repository_detail' project.indexed_repository.id %}" class="btn btn-outline-secondary">
+                            <i class="fas fa-chart-bar"></i>
+                            View Analytics
+                        </a>
+                        <button class="btn btn-outline-danger" onclick="disconnectRepository()">
+                            <i class="fas fa-unlink"></i>
+                            Disconnect Repository
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Code Insights Section -->
+                <div class="settings-section">
+                    <div class="settings-section-header">
+                        <h4>Code Insights</h4>
+                    </div>
+                    
+                    <div class="insights-content" id="codeInsights">
+                        <div class="loading-placeholder">
+                            <i class="fas fa-spinner fa-spin"></i>
+                            Loading insights...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Files Section -->
+                <div class="settings-section">
+                    <div class="settings-section-header">
+                        <h4>Recently Indexed Files</h4>
+                    </div>
+                    
+                    <div class="recent-files-list" id="recentFiles">
+                        <div class="loading-placeholder">
+                            <i class="fas fa-spinner fa-spin"></i>
+                            Loading files...
+                        </div>
+                    </div>
+                </div>
+
+            {% else %}
+                <!-- Connect Repository Section -->
+                <div class="settings-section">
+                    <div class="settings-section-header">
+                        <h4>Connect GitHub Repository</h4>
+                    </div>
+                    
+                    <div class="connect-repo-content">
+                        <div class="connect-repo-illustration">
+                            <i class="fab fa-github"></i>
+                        </div>
+                        
+                        <h5>No repository connected</h5>
+                        <p class="text-muted">
+                            Connect your GitHub repository to enable AI-powered code analysis, 
+                            intelligent code search, and context-aware feature generation.
+                        </p>
+                        
+                        <div class="benefits-list">
+                            <div class="benefit-item">
+                                <i class="fas fa-search"></i>
+                                <span>Semantic code search</span>
+                            </div>
+                            <div class="benefit-item">
+                                <i class="fas fa-brain"></i>
+                                <span>AI-powered code understanding</span>
+                            </div>
+                            <div class="benefit-item">
+                                <i class="fas fa-magic"></i>
+                                <span>Context-aware feature generation</span>
+                            </div>
+                            <div class="benefit-item">
+                                <i class="fas fa-chart-line"></i>
+                                <span>Code quality insights</span>
+                            </div>
+                        </div>
+                        
+                        <button class="btn btn-primary btn-lg" onclick="showCodebaseModal()">
+                            <i class="fas fa-plus"></i>
+                            Connect Repository
+                        </button>
+                    </div>
+                </div>
+
+                <!-- How it Works Section -->
+                <div class="settings-section">
+                    <div class="settings-section-header">
+                        <h4>How it Works</h4>
+                    </div>
+                    
+                    <div class="how-it-works">
+                        <div class="step-item">
+                            <div class="step-number">1</div>
+                            <div class="step-content">
+                                <h6>Repository Analysis</h6>
+                                <p>We clone and analyze your repository structure</p>
+                            </div>
+                        </div>
+                        <div class="step-item">
+                            <div class="step-number">2</div>
+                            <div class="step-content">
+                                <h6>Code Parsing</h6>
+                                <p>Parse code into semantic chunks (functions, classes, etc.)</p>
+                            </div>
+                        </div>
+                        <div class="step-item">
+                            <div class="step-number">3</div>
+                            <div class="step-content">
+                                <h6>Vector Embeddings</h6>
+                                <p>Create intelligent embeddings for code similarity</p>
+                            </div>
+                        </div>
+                        <div class="step-item">
+                            <div class="step-number">4</div>
+                            <div class="step-content">
+                                <h6>AI Integration</h6>
+                                <p>AI tools use this context for better code generation</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>

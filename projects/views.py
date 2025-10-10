@@ -60,11 +60,29 @@ def project_list(request):
         # Count tickets (checklist items)
         tickets_count = project.checklist.count()
         
+        # Get codebase information if available
+        codebase_info = None
+        try:
+            from codebase_index.models import IndexedRepository
+            indexed_repo = project.indexed_repository
+            codebase_info = {
+                'status': indexed_repo.status,
+                'total_files': indexed_repo.total_files,
+                'indexed_files': indexed_repo.indexed_files_count,
+                'total_chunks': indexed_repo.total_chunks,
+                'github_url': indexed_repo.github_url,
+                'github_repo_name': indexed_repo.github_repo_name
+            }
+        except Exception:
+            # No codebase indexed
+            codebase_info = None
+        
         projects_with_stats.append({
             'project': project,
             'conversations_count': conversations_count,
             'documents_count': documents_count,
-            'tickets_count': tickets_count
+            'tickets_count': tickets_count,
+            'codebase_info': codebase_info
         })
     
     return render(request, 'projects/project_list.html', {
@@ -91,9 +109,72 @@ def project_detail(request, project_id):
             'linear_project_id': project.linear_project_id,
         })
     
+    # Get codebase information if available
+    indexed_repository = None
+    repository_insights = None
+    code_chunks = []
+    codebase_map = {}
+
+    try:
+        from codebase_index.models import IndexedRepository, CodeChunk, RepositoryMetadata, CodebaseIndexMap
+        from collections import defaultdict
+        indexed_repository = project.indexed_repository
+
+        # Get repository insights
+        try:
+            repository_insights = indexed_repository.metadata
+        except RepositoryMetadata.DoesNotExist:
+            repository_insights = None
+
+        # Get sample code chunks for preview
+        if indexed_repository:
+            chunks_query = CodeChunk.objects.filter(
+                file__repository=indexed_repository
+            ).select_related('file').order_by('-created_at')
+
+            # Get diverse chunk types for preview
+            function_chunks = list(chunks_query.filter(chunk_type='function')[:2])
+            class_chunks = list(chunks_query.filter(chunk_type='class')[:1])
+            other_chunks = list(chunks_query.exclude(chunk_type__in=['function', 'class'])[:2])
+
+            code_chunks = (function_chunks + class_chunks + other_chunks)[:5]
+
+            # Build codebase map from CodebaseIndexMap
+            index_entries = CodebaseIndexMap.objects.filter(
+                repository=indexed_repository
+            ).select_related('code_chunk__file').order_by('file_path', 'start_line')
+
+            logger.info(f"Found {index_entries.count()} CodebaseIndexMap entries for repository {indexed_repository.id}")
+
+            # Group by file path
+            files_map = defaultdict(list)
+            for entry in index_entries:
+                files_map[entry.file_path].append({
+                    'entity_type': entry.entity_type,
+                    'entity_name': entry.entity_name,
+                    'fully_qualified_name': entry.fully_qualified_name,
+                    'start_line': entry.start_line,
+                    'end_line': entry.end_line,
+                    'language': entry.language,
+                    'complexity': entry.complexity,
+                    'parameters': entry.parameters,
+                    'description': entry.description[:100] if entry.description else None,
+                })
+
+            codebase_map = dict(files_map)
+            logger.info(f"Built codebase_map with {len(codebase_map)} files")
+
+    except Exception as e:
+        logger.debug(f"No codebase index found for project {project.id}: {e}")
+    
     logger.info(f"Project direct conversations: {project.direct_conversations.all()}", extra={'easylogs_metadata': {'project_id': project.id, 'project_name': project.name}})
     return render(request, 'projects/project_detail.html', {
-        'project': project
+        'project': project,
+        'indexed_repository': indexed_repository,
+        'repository_insights': repository_insights,
+        'code_chunks': code_chunks,
+        'total_chunks': code_chunks.__len__() if code_chunks else 0,
+        'codebase_map': codebase_map
     })
 
 @login_required

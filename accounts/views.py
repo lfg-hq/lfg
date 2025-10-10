@@ -1580,6 +1580,92 @@ The LFG Team
 
 
 @login_required
+def github_status(request):
+    """Check if user has GitHub connected"""
+    if request.method != 'GET':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    try:
+        github_token = GitHubToken.objects.get(user=request.user)
+        
+        # Test token by making a simple API call
+        test_response = requests.get(
+            'https://api.github.com/user',
+            headers={
+                'Authorization': f'token {github_token.access_token}',
+                'Accept': 'application/vnd.github.v3+json'
+            },
+            timeout=5
+        )
+        
+        token_valid = test_response.status_code == 200
+        token_scopes = test_response.headers.get('X-OAuth-Scopes', '') if token_valid else ''
+        
+        return JsonResponse({
+            'connected': True,
+            'username': github_token.github_username,
+            'avatar': github_token.github_avatar_url,
+            'token_valid': token_valid,
+            'scopes': token_scopes,
+            'scope_list': token_scopes.split(', ') if token_scopes else []
+        })
+    except GitHubToken.DoesNotExist:
+        return JsonResponse({
+            'connected': False
+        })
+    except Exception as e:
+        return JsonResponse({
+            'connected': True,
+            'error': f'Error checking token: {str(e)}'
+        })
+
+
+@login_required
+def github_oauth_url(request):
+    """Get GitHub OAuth URL for linking projects"""
+    if request.method != 'GET':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    # Check if already connected
+    try:
+        github_token = GitHubToken.objects.get(user=request.user)
+        return JsonResponse({
+            'connected': True,
+            'username': github_token.github_username
+        })
+    except GitHubToken.DoesNotExist:
+        pass
+    
+    if not GITHUB_CLIENT_ID or not GITHUB_CLIENT_SECRET:
+        return JsonResponse({
+            'error': 'GitHub OAuth is not configured'
+        }, status=500)
+    
+    # Build redirect URI
+    global GITHUB_REDIRECT_URI
+    GITHUB_REDIRECT_URI = build_secure_absolute_uri(request, reverse('accounts:github_callback'))
+    
+    # Generate state for CSRF protection
+    state = str(uuid.uuid4())
+    request.session['github_oauth_state'] = state
+    
+    # Build GitHub OAuth URL
+    params = {
+        'client_id': GITHUB_CLIENT_ID,
+        'redirect_uri': GITHUB_REDIRECT_URI,
+        'scope': 'repo user',
+        'state': state,
+    }
+    
+    github_auth_url = f"https://github.com/login/oauth/authorize?{urlencode(params)}"
+    
+    return JsonResponse({
+        'connected': False,
+        'auth_url': github_auth_url
+    })
+
+
+@login_required
 def update_project_collaboration_setting(request):
     """Update user's project collaboration setting"""
     if request.method != 'POST':

@@ -1,154 +1,771 @@
-{% extends 'projects/base_projects.html' %}
+{% extends 'projects/base_with_sidebar.html' %}
+{% load static %}
 
 {% block title %}{{ project.name }} - LFG 🚀🚀{% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/project_detail.css' %}">
+{% endblock %}
+
 {% block content %}
-<div class="projects-container">
-    <div class="project-header">
-        <div class="large-project-icon">{{ project.icon }}</div>
-        <div class="project-header-content">
-            <h1 class="project-header-name">{{ project.name }}</h1>
-            <div class="project-header-meta">
-                <span><i class="fas fa-calendar"></i> Created {{ project.created_at|date:"M d, Y" }}</span>
-                <span><i class="fas fa-clock"></i> Last updated {{ project.updated_at|date:"M d, Y" }}</span>
-                <span class="project-status project-status-{{ project.status }}">{{ project.status }}</span>
+<div class="projects-container" {% if indexed_repository %}data-repository-id="{{ indexed_repository.id }}"{% endif %}>
+    <div class="page-header">
+        <div class="project-header-main">
+            <a href="{% url 'projects:project_list' %}" class="back-nav-btn">
+                <i class="fas fa-arrow-left"></i>
+                <span>Projects</span>
+            </a>
+            <div class="project-icon-large">{{ project.icon }}</div>
+            <div class="project-header-content">
+                <h1 class="page-title">{{ project.name }}</h1>
+                <div class="project-meta">
+                    <span class="project-status project-status-{{ project.status }}">{{ project.status }}</span>
+                    <span class="project-date">Updated {{ project.updated_at|date:"M d, Y" }}</span>
+                </div>
             </div>
         </div>
         <div class="project-header-actions">
             <a href="{% url 'create_conversation' project.project_id %}" class="btn btn-primary">
-                <i class="fas fa-comment"></i> New Chat
+                <i class="fas fa-plus"></i> New Chat
             </a>
-            <a href="{% url 'projects:project_terminal' project.project_id %}" class="btn btn-outline-secondary">
+            <a href="{% url 'projects:project_terminal' project.project_id %}" class="btn btn-outline">
                 <i class="fas fa-terminal"></i> Terminal
             </a>
-            <a href="{% url 'projects:update_project' project.project_id %}" class="btn btn-outline" title="Edit">
-                <i class="fas fa-edit"></i>
-            </a>
-            <form action="{% url 'projects:delete_project' project.project_id %}" method="post" class="d-inline">
-                {% csrf_token %}
-                <button type="submit" class="btn btn-danger delete-project-btn" data-project-name="{{ project.name }}">
-                    <i class="fas fa-trash-alt"></i> Delete
-                </button>
-            </form>
+            <button type="button" class="btn btn-outline" onclick="openCodebaseSidebar()">
+                <i class="fas fa-code-branch"></i> Codebase
+            </button>
         </div>
     </div>
 
-    <div class="project-description-section">
-        <div class="card">
-            <h2 class="section-title">About this project</h2>
-            <div class="project-description-content">
-                {% if project.description %}
-                    {{ project.description }}
-                {% else %}
-                    <p class="text-muted">No description provided</p>
-                {% endif %}
-            </div>
-            
-            {% if project.linear_sync_enabled %}
-            <div class="linear-integration-status">
-                <div class="integration-badge">
-                    <i class="fas fa-link"></i>
-                    Linear Integration Active
-                </div>
-                <div class="integration-details">
-                    {% if project.linear_team_id %}
-                        <span>Team: {{ project.linear_team_id }}</span>
-                    {% endif %}
-                    {% if project.linear_project_id %}
-                        <span>Project: {{ project.linear_project_id }}</span>
-                    {% endif %}
-                </div>
-            </div>
+    <div class="project-tabs">
+        <a href="#overview" class="tab-item active" data-section="overview">
+            <i class="fas fa-home"></i>
+            Overview
+        </a>
+        <a href="#conversations" class="tab-item" data-section="conversations">
+            <i class="fas fa-comments"></i>
+            Conversations
+            {% if project.direct_conversations.all.count %}
+                <span class="tab-count">{{ project.direct_conversations.all.count }}</span>
             {% endif %}
-        </div>
+        </a>
+        <a href="#codebase" class="tab-item" data-section="codebase">
+            <i class="fas fa-code-branch"></i>
+            Codebase
+            {% if project.indexed_repository %}
+                <span class="tab-status tab-status-{{ project.indexed_repository.status }}"></span>
+            {% endif %}
+        </a>
+        <a href="#integrations" class="tab-item" data-section="integrations">
+            <i class="fas fa-puzzle-piece"></i>
+            Integrations
+            {% if project.linear_sync_enabled %}
+                <span class="tab-status tab-status-active"></span>
+            {% endif %}
+        </a>
+        <a href="#settings" class="tab-item" data-section="settings">
+            <i class="fas fa-cog"></i>
+            Settings
+        </a>
     </div>
 
-    <div class="project-content">
-        <div class="page-section">
-            <h2 class="section-title">Project Conversations</h2>
+    <!-- Overview Section -->
+    <div class="project-section active" id="overview-section">
+        <div class="section-grid">
+            <div class="section-card">
+                <div class="card-header">
+                    <h3 class="card-title">About this project</h3>
+                    <a href="{% url 'projects:update_project' project.project_id %}" class="btn btn-sm btn-outline">
+                        <i class="fas fa-edit"></i> Edit
+                    </a>
+                </div>
+                <div class="card-content">
+                    {% if project.description %}
+                        <p>{{ project.description }}</p>
+                    {% else %}
+                        <p class="text-muted">No description provided</p>
+                    {% endif %}
+                </div>
+            </div>
             
-            {% if project.direct_conversations.all %}
-                <div class="conversations-list">
-                    {% for conversation in project.direct_conversations.all|dictsortreversed:"updated_at"|slice:":4" %}
-                        <div class="conversation-list-item" data-conversation-id="{{ conversation.id }}">
-                            <div class="conversation-list-icon">
-                                <i class="fas fa-comments"></i>
+            <div class="section-card">
+                <h3 class="card-title">Quick Actions</h3>
+                <div class="card-content">
+                    <div class="action-grid">
+                        <a href="{% url 'create_conversation' project.project_id %}" class="action-item">
+                            <i class="fas fa-comment"></i>
+                            <div>
+                                <span>Start Conversation</span>
+                                <small>Chat with AI about your project</small>
                             </div>
-                            <div class="conversation-list-content">
-                                <h3 class="conversation-list-title">{{ conversation.title }}</h3>
-                                <div class="conversation-list-meta">
-                                    <span><i class="fas fa-calendar"></i> {{ conversation.created_at|date:"M d, Y" }}</span>
-                                    <span><i class="fas fa-message"></i> {{ conversation.messages.count }} messages</span>
-                                </div>
-                            </div>
-                            <div class="conversation-list-actions">
-                                <a href="{% url 'conversation_detail' conversation.id %}" class="btn btn-sm btn-outline">
-                                    <i class="fas fa-external-link-alt"></i>&nbsp; Open
-                                </a>
-                            </div>
-                        </div>
-                    {% endfor %}
-                    
-                    <div class="conversation-list-footer">
-                        <a href="{% url 'create_conversation' project.project_id %}" class="btn btn-outline">
-                            <i class="fas fa-plus"></i> New Conversation
                         </a>
-                        
-                        {% if project.direct_conversations.all.count > 4 %}
-                        <a href="{% url 'projects:project_detail' project.project_id %}" class="btn btn-link">
-                            View All ({{ project.direct_conversations.all.count }})
+                        <a href="{% url 'projects:project_terminal' project.project_id %}" class="action-item">
+                            <i class="fas fa-terminal"></i>
+                            <div>
+                                <span>Open Terminal</span>
+                                <small>Run commands and scripts</small>
+                            </div>
+                        </a>
+                        {% if project.indexed_repository %}
+                        <a href="#codebase" class="action-item" onclick="showSection('codebase')">
+                            <i class="fas fa-code"></i>
+                            <div>
+                                <span>Browse Code</span>
+                                <small>Explore your repository</small>
+                            </div>
                         </a>
                         {% endif %}
                     </div>
                 </div>
-            {% else %}
-                <div class="empty-state">
-                    <div class="empty-state-icon">
-                        <i class="fas fa-comments"></i>
+            </div>
+            
+            <div class="section-card">
+                <h3 class="card-title">Project Stats</h3>
+                <div class="card-content">
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <span class="stat-value">{{ project.direct_conversations.all.count }}</span>
+                            <span class="stat-label">Conversations</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-value">{{ project.created_at|timesince }}</span>
+                            <span class="stat-label">Age</span>
+                        </div>
+                        {% if project.indexed_repository %}
+                        <div class="stat-item">
+                            <span class="stat-value">{{ project.indexed_repository.indexed_files.count }}</span>
+                            <span class="stat-label">Files Indexed</span>
+                        </div>
+                        {% endif %}
                     </div>
-                    <h3 class="empty-state-title">No conversations yet</h3>
-                    <div class="empty-state-text">
-                        Start a conversation to interact with AI about this project.
-                    </div>
-                    <a href="{% url 'create_conversation' project.project_id %}" class="btn btn-primary">
-                        <i class="fas fa-comment"></i> Start First Conversation
-                    </a>
                 </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Conversations Section -->
+    <div class="project-section" id="conversations-section">
+        <div class="section-header">
+            <h2 class="section-title">Conversations</h2>
+            <a href="{% url 'create_conversation' project.project_id %}" class="btn btn-primary btn-sm">
+                <i class="fas fa-plus"></i> New Conversation
+            </a>
+        </div>
+        
+        {% if project.direct_conversations.all %}
+            <div class="conversation-list">
+                {% for conversation in project.direct_conversations.all|dictsortreversed:"updated_at" %}
+                    <div class="conversation-list-item">
+                        <div class="conversation-list-main">
+                            <div class="conversation-icon">
+                                <i class="fas fa-comments"></i>
+                            </div>
+                            <div class="conversation-content">
+                                <h4 class="conversation-title">{{ conversation.title }}</h4>
+                                <div class="conversation-meta">
+                                    <span><i class="fas fa-calendar"></i> {{ conversation.created_at|date:"M d, Y" }}</span>
+                                    <span><i class="fas fa-message"></i> {{ conversation.messages.count }} messages</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="conversation-actions">
+                            <a href="{% url 'conversation_detail' conversation.id %}" class="btn btn-sm btn-outline">
+                                <i class="fas fa-external-link-alt"></i> Open
+                            </a>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="empty-state">
+                <div class="empty-state-icon">
+                    <i class="fas fa-comments"></i>
+                </div>
+                <h3 class="empty-state-title">No conversations yet</h3>
+                <div class="empty-state-text">
+                    Start a conversation to interact with AI about this project.
+                </div>
+                <a href="{% url 'create_conversation' project.project_id %}" class="btn btn-primary">
+                    <i class="fas fa-comment"></i> Start First Conversation
+                </a>
+            </div>
+        {% endif %}
+    </div>
+    
+    <!-- Codebase Section -->
+    <div class="project-section" id="codebase-section">
+        <div class="section-header">
+            <h2 class="section-title">Codebase Management</h2>
+            {% if project.indexed_repository %}
+            <button class="btn btn-outline btn-sm" onclick="reindexRepository({{ project.indexed_repository.id }})">
+                <i class="fas fa-sync"></i> Re-index
+            </button>
             {% endif %}
         </div>
         
-        <!-- Conversation Message History Section -->
-        <div class="page-section conversation-history-section" style="display: none;" id="conversation-history-section">
-            <div class="section-header">
-                <h2 class="section-title" id="conversation-history-title">Conversation Messages</h2>
-                <button class="btn btn-sm btn-outline close-conversation-btn">
-                    <i class="fas fa-times"></i> Close
-                </button>
-            </div>
-            <div class="card">
-                <div class="conversation-messages" id="conversation-messages">
-                    <!-- Messages will be loaded here -->
-                    <div class="loading-spinner">
-                        <i class="fas fa-spinner fa-spin"></i> Loading conversation...
+        {% if project.indexed_repository %}
+            <div class="codebase-connected">
+                <div class="codebase-card">
+                    <div class="codebase-header">
+                        <div class="codebase-icon">
+                            <i class="fab fa-github"></i>
+                        </div>
+                        <div class="codebase-info">
+                            <h3>{{ project.indexed_repository.github_owner }}/{{ project.indexed_repository.github_repo_name }}</h3>
+                            <p>Branch: {{ project.indexed_repository.branch }}</p>
+                            <span class="status-badge status-{{ project.indexed_repository.status }}" 
+                                  {% if project.indexed_repository.error_message %}title="{{ project.indexed_repository.error_message }}"{% endif %}>
+                                {{ project.indexed_repository.get_status_display }}
+                                {% if project.indexed_repository.error_count > 0 and project.indexed_repository.status == 'completed' %}
+                                    <i class="fas fa-exclamation-triangle" style="margin-left: 0.25rem; color: #fbbf24;" title="{{ project.indexed_repository.error_message }}"></i>
+                                {% endif %}
+                            </span>
+                        </div>
                     </div>
+                    
+                    <div class="indexing-progress">
+                        <div class="progress-info">
+                            <span>Indexing Progress</span>
+                            <span>{{ project.indexed_repository.indexing_progress|floatformat:1 }}%</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: {{ project.indexed_repository.indexing_progress|floatformat:1 }}%"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="codebase-stats">
+                        <div class="stat-item">
+                            <span class="stat-value">{{ project.indexed_repository.indexed_files.count }}</span>
+                            <span class="stat-label">Files Indexed</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-value" id="totalChunks">-</span>
+                            <span class="stat-label">Code Chunks</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-value" id="totalFunctions">-</span>
+                            <span class="stat-label">Functions</span>
+                        </div>
+                    </div>
+                    
+                    <div class="codebase-actions">
+                        <a href="{% url 'codebase_index:repository_detail' project.indexed_repository.id %}" class="btn btn-outline">
+                            <i class="fas fa-chart-bar"></i> View Analytics
+                        </a>
+                        <button class="btn btn-outline-danger" onclick="disconnectRepository()">
+                            <i class="fas fa-unlink"></i> Disconnect
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Codebase Summary Section -->
+                <div class="codebase-summary-container" style="margin-top: 2rem;" data-repository-id="{{ project.indexed_repository.id }}">
+                    <div class="codebase-summary-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
+                        <h3 style="margin: 0;"><i class="fas fa-book-open"></i> AI-Generated Codebase Summary</h3>
+                        <button class="btn btn-sm btn-outline" id="refreshSummaryBtn" onclick="loadCodebaseSummary()">
+                            <i class="fas fa-sync"></i> Refresh
+                        </button>
+                    </div>
+                    <div id="codebaseSummaryContent" class="codebase-summary-content" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 0.5rem; padding: 1.5rem; min-height: 200px;">
+                        <p style="color: rgba(255, 255, 255, 0.5); text-align: center;"><i class="fas fa-spinner fa-spin"></i> Loading summary...</p>
+                    </div>
+                </div>
+
+                <!-- Codebase Map Section -->
+                <!-- DEBUG: codebase_map has {{ codebase_map|length }} files -->
+                {% if codebase_map %}
+                <div class="codebase-map-container">
+                    <div class="codebase-map-header">
+                        <h3><i class="fas fa-sitemap"></i> Codebase Map</h3>
+                        <div class="map-controls">
+                            <button class="btn btn-sm btn-outline" onclick="expandAllFiles()">
+                                <i class="fas fa-expand-alt"></i> Expand All
+                            </button>
+                            <button class="btn btn-sm btn-outline" onclick="collapseAllFiles()">
+                                <i class="fas fa-compress-alt"></i> Collapse All
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="codebase-tree">
+                        {% for file_path, entities in codebase_map.items %}
+                        <div class="file-node">
+                            <div class="file-header" onclick="toggleFile(this)">
+                                <i class="fas fa-chevron-right file-chevron"></i>
+                                <i class="fas fa-file-code file-icon"></i>
+                                <span class="file-path">{{ file_path }}</span>
+                                <span class="entity-count">{{ entities|length }} items</span>
+                            </div>
+                            <div class="file-contents" style="display: none;">
+                                {% for entity in entities %}
+                                <div class="entity-node entity-{{ entity.entity_type }}">
+                                    <div class="entity-header">
+                                        <i class="fas fa-{% if entity.entity_type == 'function' %}function{% elif entity.entity_type == 'class' %}cube{% elif entity.entity_type == 'method' %}cog{% else %}code{% endif %} entity-icon"></i>
+                                        <span class="entity-name">{{ entity.entity_name }}</span>
+                                        <span class="entity-type-badge">{{ entity.entity_type }}</span>
+                                        <span class="entity-lines">L{{ entity.start_line }}-{{ entity.end_line }}</span>
+                                        {% if entity.complexity %}
+                                        <span class="complexity-badge complexity-{{ entity.complexity }}">{{ entity.complexity }}</span>
+                                        {% endif %}
+                                    </div>
+                                    {% if entity.description %}
+                                    <div class="entity-description">{{ entity.description }}</div>
+                                    {% endif %}
+                                    {% if entity.parameters %}
+                                    <div class="entity-params">
+                                        <i class="fas fa-brackets-curly"></i>
+                                        Parameters: {{ entity.parameters|join:", " }}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        {% else %}
+            <div class="codebase-empty">
+                <div class="empty-codebase">
+                    <div class="empty-icon">
+                        <i class="fab fa-github"></i>
+                    </div>
+                    <h3>Connect Your Repository</h3>
+                    <p>Link your GitHub repository to enable AI-powered code analysis and intelligent feature generation.</p>
+                    
+                    <div class="benefits-list">
+                        <div class="benefit-item">
+                            <i class="fas fa-search"></i>
+                            <span>Semantic Search</span>
+                        </div>
+                        <div class="benefit-item">
+                            <i class="fas fa-brain"></i>
+                            <span>AI Code Analysis</span>
+                        </div>
+                        <div class="benefit-item">
+                            <i class="fas fa-magic"></i>
+                            <span>Smart Generation</span>
+                        </div>
+                        <div class="benefit-item">
+                            <i class="fas fa-chart-line"></i>
+                            <span>Code Insights</span>
+                        </div>
+                    </div>
+                    
+                    <button class="btn btn-primary" onclick="showCodebaseModal()">
+                        <i class="fas fa-plus"></i> Connect Repository
+                    </button>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+    
+    <!-- Integrations Section -->
+    <div class="project-section" id="integrations-section">
+        <div class="section-header">
+            <h2 class="section-title">Integrations</h2>
+        </div>
+        
+        <div class="integration-list">
+            <div class="integration-item">
+                <div class="integration-main">
+                    <div class="integration-icon">
+                        <i class="fas fa-link"></i>
+                    </div>
+                    <div class="integration-content">
+                        <h4>Linear</h4>
+                        <p>Project management and issue tracking</p>
+                        {% if project.linear_sync_enabled %}
+                            <div class="integration-details">
+                                {% if project.linear_team_id %}
+                                    <span>Team: {{ project.linear_team_id }}</span>
+                                {% endif %}
+                                {% if project.linear_project_id %}
+                                    <span>Project: {{ project.linear_project_id }}</span>
+                                {% endif %}
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="integration-status">
+                    {% if project.linear_sync_enabled %}
+                        <span class="status-connected">Connected</span>
+                    {% else %}
+                        <span class="status-disconnected">Not Connected</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Settings Section -->
+    <div class="project-section" id="settings-section">
+        <div class="section-header">
+            <h2 class="section-title">Project Settings</h2>
+        </div>
+        
+        <div class="settings-list">
+            <div class="settings-group">
+                <h3>General Settings</h3>
+                <div class="settings-item">
+                    <div class="setting-info">
+                        <label>Project Name</label>
+                        <span>{{ project.name }}</span>
+                    </div>
+                    <a href="{% url 'projects:update_project' project.project_id %}" class="btn btn-sm btn-outline">Edit</a>
+                </div>
+                <div class="settings-item">
+                    <div class="setting-info">
+                        <label>Description</label>
+                        <span>{% if project.description %}{{ project.description }}{% else %}No description{% endif %}</span>
+                    </div>
+                    <a href="{% url 'projects:update_project' project.project_id %}" class="btn btn-sm btn-outline">Edit</a>
+                </div>
+                <div class="settings-item">
+                    <div class="setting-info">
+                        <label>Status</label>
+                        <span>{{ project.status|capfirst }}</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="settings-group danger-zone">
+                <h3>Danger Zone</h3>
+                <div class="settings-item">
+                    <div class="setting-info">
+                        <label>Delete Project</label>
+                        <span>Permanently delete this project and all its data. This action cannot be undone.</span>
+                    </div>
+                    <form action="{% url 'projects:delete_project' project.project_id %}" method="post" class="d-inline">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-danger btn-sm delete-project-btn" data-project-name="{{ project.name }}">
+                            <i class="fas fa-trash-alt"></i> Delete Project
+                        </button>
+                    </form>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- CSS and JavaScript moved to external files -->
-{% endblock %}
+<!-- Codebase Link Modal -->
+<div class="modal-overlay" id="codebaseModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 class="modal-title">
+                <i class="fas fa-code"></i> Link GitHub Repository
+            </h3>
+            <button type="button" class="modal-close" onclick="closeCodebaseModal()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <form id="codebaseForm">
+                <div class="form-group">
+                    <label for="githubUrl" class="form-label">GitHub Repository URL</label>
+                    <input type="url" class="form-control" id="githubUrl" required 
+                           placeholder="https://github.com/username/repository">
+                    <small class="form-text">Public repositories only. Make sure you have access to this repository.</small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="githubBranch" class="form-label">Branch to Index</label>
+                    <input type="text" class="form-control" id="githubBranch" value="main" required>
+                    <small class="form-text">Typically 'main' or 'master'</small>
+                </div>
+                
+                <div class="alert alert-info">
+                    <div class="alert-header">
+                        <i class="fas fa-info-circle"></i>
+                        <strong>What happens next:</strong>
+                    </div>
+                    <ul class="alert-list">
+                        <li>We'll clone your repository and analyze the code structure</li>
+                        <li>Code will be parsed into semantic chunks (functions, classes, etc.)</li>
+                        <li>Vector embeddings will be created for intelligent code search</li>
+                        <li>AI tools will use this context to generate better features</li>
+                    </ul>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-outline" onclick="closeCodebaseModal()">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="linkRepository()">
+                <i class="fas fa-link"></i> Link Repository
+            </button>
+        </div>
+    </div>
+</div>
 
-{% block extra_js %}
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
-<script src="/static/js/project_detail.js"></script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css">
-<link rel="stylesheet" href="/static/css/project_detail.css">
-{% endblock %}
+<script>
+function showCodebaseModal() {
+    document.getElementById('codebaseModal').classList.add('active');
+}
+
+function closeCodebaseModal() {
+    document.getElementById('codebaseModal').classList.remove('active');
+}
+
+// Close modal when clicking outside
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('codebaseModal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            closeCodebaseModal();
+        }
+    });
+});
+
+async function linkRepository() {
+    const githubUrl = document.getElementById('githubUrl').value;
+    const githubBranch = document.getElementById('githubBranch').value;
+    
+    if (!githubUrl) {
+        alert('Please enter a GitHub repository URL');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/codebase/api/repositories/add/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify({
+                project_id: '{{ project.project_id }}',
+                github_url: githubUrl,
+                branch: githubBranch
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            closeCodebaseModal();
+            location.reload();
+        } else {
+            alert('Error linking repository: ' + data.error);
+        }
+    } catch (error) {
+        alert('Error linking repository: ' + error.message);
+    }
+}
+
+// Tab navigation
+function showSection(sectionName) {
+    // Remove active class from all tab items and sections
+    document.querySelectorAll('.tab-item').forEach(item => item.classList.remove('active'));
+    document.querySelectorAll('.project-section').forEach(section => section.classList.remove('active'));
+    
+    // Add active class to selected tab item and section
+    document.querySelector(`[data-section="${sectionName}"]`).classList.add('active');
+    document.getElementById(`${sectionName}-section`).classList.add('active');
+}
+
+// Initialize tab navigation
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.tab-item').forEach(item => {
+        item.addEventListener('click', function(e) {
+            e.preventDefault();
+            const section = this.getAttribute('data-section');
+            showSection(section);
+        });
+    });
+    
+    // Load codebase stats if codebase section exists
+    if (document.getElementById('codebase-section') && document.querySelector('[data-repository-id]')) {
+        loadCodebaseStats();
+    }
+});
+
+// Load codebase statistics
+async function loadCodebaseStats() {
+    const repositoryId = document.querySelector('[data-repository-id]')?.getAttribute('data-repository-id');
+    if (!repositoryId) return;
+    
+    try {
+        const response = await fetch(`/codebase/api/repositories/${repositoryId}/stats/`);
+        const data = await response.json();
+        
+        if (data.success) {
+            document.getElementById('totalChunks').textContent = data.stats.total_chunks;
+            document.getElementById('totalFunctions').textContent = data.stats.total_functions;
+        }
+    } catch (error) {
+        console.error('Error loading codebase stats:', error);
+    }
+}
+
+async function reindexRepository(repositoryId) {
+    if (!confirm('This will re-index the entire repository. Continue?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/codebase/api/repositories/${repositoryId}/reindex/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            alert('Re-indexing started. Check back in a few minutes for progress.');
+            location.reload();
+        } else {
+            alert('Error starting re-index: ' + data.error);
+        }
+    } catch (error) {
+        alert('Error starting re-index: ' + error.message);
+    }
+}
+
+async function disconnectRepository() {
+    const repositoryId = document.querySelector('[data-repository-id]')?.getAttribute('data-repository-id');
+
+    if (!repositoryId) {
+        alert('Repository ID not found');
+        return;
+    }
+
+    if (!confirm('This will disconnect the repository and remove all indexed data. Are you sure?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/codebase/api/repositories/${repositoryId}/delete/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            }
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            alert('Repository disconnected successfully!');
+            location.reload();
+        } else {
+            alert('Error disconnecting repository: ' + data.error);
+        }
+    } catch (error) {
+        alert('Error disconnecting repository: ' + error.message);
+    }
+}
+
+// Codebase map tree functions
+function toggleFile(fileHeader) {
+    const fileContents = fileHeader.nextElementSibling;
+    const chevron = fileHeader.querySelector('.file-chevron');
+
+    if (fileContents.style.display === 'none') {
+        fileContents.style.display = 'block';
+        chevron.classList.remove('fa-chevron-right');
+        chevron.classList.add('fa-chevron-down');
+    } else {
+        fileContents.style.display = 'none';
+        chevron.classList.remove('fa-chevron-down');
+        chevron.classList.add('fa-chevron-right');
+    }
+}
+
+function expandAllFiles() {
+    document.querySelectorAll('.file-contents').forEach(contents => {
+        contents.style.display = 'block';
+    });
+    document.querySelectorAll('.file-chevron').forEach(chevron => {
+        chevron.classList.remove('fa-chevron-right');
+        chevron.classList.add('fa-chevron-down');
+    });
+}
+
+function collapseAllFiles() {
+    document.querySelectorAll('.file-contents').forEach(contents => {
+        contents.style.display = 'none';
+    });
+    document.querySelectorAll('.file-chevron').forEach(chevron => {
+        chevron.classList.remove('fa-chevron-down');
+        chevron.classList.add('fa-chevron-right');
+    });
+}
+
+// Load codebase summary
+async function loadCodebaseSummary() {
+    const summaryContainer = document.getElementById('codebaseSummaryContent');
+    const summarySection = document.querySelector('.codebase-summary-container');
+    const repositoryId = summarySection?.getAttribute('data-repository-id');
+
+    if (!repositoryId) {
+        summaryContainer.innerHTML = '<p style="color: rgba(255, 68, 68, 0.8);"><i class="fas fa-exclamation-circle"></i> Repository ID not found</p>';
+        return;
+    }
+
+    // Show loading state
+    summaryContainer.innerHTML = '<p style="color: rgba(255, 255, 255, 0.5); text-align: center;"><i class="fas fa-spinner fa-spin"></i> Loading summary...</p>';
+
+    try {
+        const response = await fetch(`/codebase/api/repositories/${repositoryId}/summary/`);
+        const data = await response.json();
+
+        if (data.success) {
+            // Render markdown summary
+            const markdownHtml = renderMarkdown(data.summary);
+            const generatedAt = data.generated_at ? new Date(data.generated_at).toLocaleString() : 'Unknown';
+
+            summaryContainer.innerHTML = `
+                <div class="summary-metadata" style="margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid rgba(255, 255, 255, 0.05);">
+                    <small style="color: rgba(255, 255, 255, 0.5);">
+                        <i class="fas fa-clock"></i> Generated: ${generatedAt}
+                    </small>
+                </div>
+                <div class="markdown-content">
+                    ${markdownHtml}
+                </div>
+            `;
+        } else {
+            summaryContainer.innerHTML = `<p style="color: rgba(255, 191, 0, 0.8);"><i class="fas fa-info-circle"></i> ${data.error || 'Summary not available yet. It will be generated after indexing completes.'}</p>`;
+        }
+    } catch (error) {
+        console.error('Error loading summary:', error);
+        summaryContainer.innerHTML = '<p style="color: rgba(255, 68, 68, 0.8);"><i class="fas fa-exclamation-circle"></i> Error loading summary. Please try again.</p>';
+    }
+}
+
+// Simple markdown renderer for basic formatting
+function renderMarkdown(markdown) {
+    if (!markdown) return '';
+
+    let html = markdown
+        // Headers
+        .replace(/^### (.*$)/gim, '<h3 style="color: #fff; margin-top: 1.5rem; margin-bottom: 0.75rem;">$1</h3>')
+        .replace(/^## (.*$)/gim, '<h2 style="color: #fff; margin-top: 2rem; margin-bottom: 1rem;">$1</h2>')
+        .replace(/^# (.*$)/gim, '<h1 style="color: #fff; margin-top: 2rem; margin-bottom: 1rem;">$1</h1>')
+        // Bold
+        .replace(/\*\*(.*?)\*\*/gim, '<strong style="color: var(--primary-color);">$1</strong>')
+        // Lists
+        .replace(/^\- (.*$)/gim, '<li style="margin-left: 1.5rem; color: rgba(255, 255, 255, 0.9);">$1</li>')
+        // Code blocks
+        .replace(/```(.*?)```/gis, '<pre style="background: rgba(0, 0, 0, 0.3); padding: 1rem; border-radius: 0.375rem; overflow-x: auto; margin: 1rem 0;"><code>$1</code></pre>')
+        // Inline code
+        .replace(/`([^`]+)`/gim, '<code style="background: rgba(255, 255, 255, 0.1); padding: 0.125rem 0.375rem; border-radius: 0.25rem; font-family: monospace;">$1</code>')
+        // Line breaks
+        .replace(/\n/gim, '<br>');
+
+    return html;
+}
+
+// Load summary on page load
+document.addEventListener('DOMContentLoaded', function() {
+    if (document.querySelector('.codebase-summary-container')) {
+        loadCodebaseSummary();
+    }
+});
+</script>
 
 <!-- Include CSRF Token -->
 {% csrf_token %} 
+{% endblock %}

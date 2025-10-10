@@ -1,0 +1,639 @@
+{% extends 'projects/base_projects.html' %}
+{% load static %}
+
+{% block title %}{{ project.name }} - LFG 🚀🚀{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/project_detail_sidebar.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="project-detail-container" {% if indexed_repository %}data-repository-id="{{ indexed_repository.id }}"{% endif %}>
+    <!-- Project Detail Sidebar -->
+    <div class="project-sidebar">
+        <div class="project-sidebar-header">
+            <div class="project-icon">{{ project.icon }}</div>
+            <div class="project-info">
+                <h1 class="project-name">{{ project.name }}</h1>
+                <div class="project-meta">
+                    <span class="project-status project-status-{{ project.status }}">{{ project.status }}</span>
+                    <span class="project-date">{{ project.updated_at|date:"M d, Y" }}</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="project-sidebar-nav">
+            <a href="#overview" class="sidebar-nav-item active" data-section="overview">
+                <i class="fas fa-home"></i>
+                <span>Overview</span>
+            </a>
+            <a href="#conversations" class="sidebar-nav-item" data-section="conversations">
+                <i class="fas fa-comments"></i>
+                <span>Conversations</span>
+                {% if project.direct_conversations.all.count %}
+                    <span class="nav-count">{{ project.direct_conversations.all.count }}</span>
+                {% endif %}
+            </a>
+            <a href="#codebase" class="sidebar-nav-item" data-section="codebase">
+                <i class="fas fa-code-branch"></i>
+                <span>Codebase</span>
+                {% if project.indexed_repository %}
+                    <span class="nav-status nav-status-{{ project.indexed_repository.status }}"></span>
+                {% endif %}
+            </a>
+            <a href="#integrations" class="sidebar-nav-item" data-section="integrations">
+                <i class="fas fa-puzzle-piece"></i>
+                <span>Integrations</span>
+                {% if project.linear_sync_enabled %}
+                    <span class="nav-status nav-status-active"></span>
+                {% endif %}
+            </a>
+            <a href="#settings" class="sidebar-nav-item" data-section="settings">
+                <i class="fas fa-cog"></i>
+                <span>Settings</span>
+            </a>
+        </div>
+        
+        <div class="project-sidebar-actions">
+            <a href="{% url 'create_conversation' project.project_id %}" class="btn btn-primary btn-block">
+                <i class="fas fa-plus"></i> New Chat
+            </a>
+            <a href="{% url 'projects:project_terminal' project.project_id %}" class="btn btn-outline btn-block">
+                <i class="fas fa-terminal"></i> Terminal
+            </a>
+        </div>
+    </div>
+    
+    <!-- Project Detail Main Content -->
+    <div class="project-main">
+        <!-- Overview Section -->
+        <div class="project-section active" id="overview-section">
+            <div class="section-header">
+                <h2 class="section-title">Project Overview</h2>
+                <div class="section-actions">
+                    <a href="{% url 'projects:update_project' project.project_id %}" class="btn btn-outline btn-sm">
+                        <i class="fas fa-edit"></i> Edit Project
+                    </a>
+                </div>
+            </div>
+            
+            <div class="overview-cards">
+                <div class="overview-card">
+                    <h3>About this project</h3>
+                    <div class="card-content">
+                        {% if project.description %}
+                            <p>{{ project.description }}</p>
+                        {% else %}
+                            <p class="text-muted">No description provided</p>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <div class="overview-card">
+                    <h3>Quick Actions</h3>
+                    <div class="card-content">
+                        <div class="quick-actions">
+                            <a href="{% url 'create_conversation' project.project_id %}" class="quick-action">
+                                <i class="fas fa-comment"></i>
+                                <div>
+                                    <span>Start Conversation</span>
+                                    <small>Chat with AI about your project</small>
+                                </div>
+                            </a>
+                            <a href="{% url 'projects:project_terminal' project.project_id %}" class="quick-action">
+                                <i class="fas fa-terminal"></i>
+                                <div>
+                                    <span>Open Terminal</span>
+                                    <small>Run commands and scripts</small>
+                                </div>
+                            </a>
+                            {% if project.indexed_repository %}
+                            <a href="#codebase" class="quick-action" onclick="showSection('codebase')">
+                                <i class="fas fa-code"></i>
+                                <div>
+                                    <span>Browse Code</span>
+                                    <small>Explore your repository</small>
+                                </div>
+                            </a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="overview-card">
+                    <h3>Project Stats</h3>
+                    <div class="card-content">
+                        <div class="stats-grid">
+                            <div class="stat-item">
+                                <span class="stat-value">{{ project.direct_conversations.all.count }}</span>
+                                <span class="stat-label">Conversations</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-value">{{ project.created_at|timesince }}</span>
+                                <span class="stat-label">Age</span>
+                            </div>
+                            {% if project.indexed_repository %}
+                            <div class="stat-item">
+                                <span class="stat-value">{{ project.indexed_repository.indexed_files.count }}</span>
+                                <span class="stat-label">Files Indexed</span>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Conversations Section -->
+        <div class="project-section" id="conversations-section">
+            <div class="section-header">
+                <h2 class="section-title">Conversations</h2>
+                <div class="section-actions">
+                    <a href="{% url 'create_conversation' project.project_id %}" class="btn btn-primary btn-sm">
+                        <i class="fas fa-plus"></i> New Conversation
+                    </a>
+                </div>
+            </div>
+            
+            {% if project.direct_conversations.all %}
+                <div class="conversations-grid">
+                    {% for conversation in project.direct_conversations.all|dictsortreversed:"updated_at" %}
+                        <div class="conversation-card">
+                            <div class="conversation-header">
+                                <div class="conversation-icon">
+                                    <i class="fas fa-comments"></i>
+                                </div>
+                                <div class="conversation-info">
+                                    <h4>{{ conversation.title }}</h4>
+                                    <div class="conversation-meta">
+                                        <span><i class="fas fa-calendar"></i> {{ conversation.created_at|date:"M d, Y" }}</span>
+                                        <span><i class="fas fa-message"></i> {{ conversation.messages.count }} messages</span>
+                                    </div>
+                                </div>
+                                <div class="conversation-actions">
+                                    <a href="{% url 'conversation_detail' conversation.id %}" class="btn btn-sm btn-outline">
+                                        <i class="fas fa-external-link-alt"></i>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="empty-state">
+                    <div class="empty-state-icon">
+                        <i class="fas fa-comments"></i>
+                    </div>
+                    <h3 class="empty-state-title">No conversations yet</h3>
+                    <div class="empty-state-text">
+                        Start a conversation to interact with AI about this project.
+                    </div>
+                    <a href="{% url 'create_conversation' project.project_id %}" class="btn btn-primary">
+                        <i class="fas fa-comment"></i> Start First Conversation
+                    </a>
+                </div>
+            {% endif %}
+        </div>
+        
+        <!-- Codebase Section -->
+        <div class="project-section" id="codebase-section">
+            <div class="section-header">
+                <h2 class="section-title">Codebase Management</h2>
+                {% if project.indexed_repository %}
+                <div class="section-actions">
+                    <button class="btn btn-outline btn-sm" onclick="reindexRepository({{ project.indexed_repository.id }})">
+                        <i class="fas fa-sync"></i> Re-index
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+            
+            {% if project.indexed_repository %}
+                <div class="codebase-connected">
+                    <div class="repository-card">
+                        <div class="repo-header">
+                            <div class="repo-icon">
+                                <i class="fab fa-github"></i>
+                            </div>
+                            <div class="repo-info">
+                                <h3>{{ project.indexed_repository.github_owner }}/{{ project.indexed_repository.github_repo_name }}</h3>
+                                <p>Branch: {{ project.indexed_repository.branch }}</p>
+                            </div>
+                            <div class="repo-status">
+                                <span class="status-badge status-{{ project.indexed_repository.status }}">
+                                    {{ project.indexed_repository.get_status_display }}
+                                </span>
+                            </div>
+                        </div>
+                        
+                        <div class="indexing-progress">
+                            <div class="progress-info">
+                                <span>Indexing Progress</span>
+                                <span>{{ project.indexed_repository.indexing_progress|floatformat:1 }}%</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: {{ project.indexed_repository.indexing_progress|floatformat:1 }}%"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="repository-stats">
+                            <div class="stat-row">
+                                <div class="stat-item">
+                                    <span class="stat-value">{{ project.indexed_repository.indexed_files.count }}</span>
+                                    <span class="stat-label">Files Indexed</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-value" id="totalChunks">-</span>
+                                    <span class="stat-label">Code Chunks</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-value" id="totalFunctions">-</span>
+                                    <span class="stat-label">Functions</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="repository-actions">
+                            <a href="{% url 'codebase_index:repository_detail' project.indexed_repository.id %}" class="btn btn-outline">
+                                <i class="fas fa-chart-bar"></i> View Analytics
+                            </a>
+                            <button class="btn btn-outline-danger" onclick="disconnectRepository()">
+                                <i class="fas fa-unlink"></i> Disconnect
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Codebase Map Section -->
+                    {% if codebase_map %}
+                    <div class="codebase-map-container">
+                        <div class="codebase-map-header">
+                            <h3><i class="fas fa-sitemap"></i> Codebase Map</h3>
+                            <div class="map-controls">
+                                <button class="btn btn-sm btn-outline" onclick="expandAllFiles()">
+                                    <i class="fas fa-expand-alt"></i> Expand All
+                                </button>
+                                <button class="btn btn-sm btn-outline" onclick="collapseAllFiles()">
+                                    <i class="fas fa-compress-alt"></i> Collapse All
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="codebase-tree">
+                            {% for file_path, entities in codebase_map.items %}
+                            <div class="file-node">
+                                <div class="file-header" onclick="toggleFile(this)">
+                                    <i class="fas fa-chevron-right file-chevron"></i>
+                                    <i class="fas fa-file-code file-icon"></i>
+                                    <span class="file-path">{{ file_path }}</span>
+                                    <span class="entity-count">{{ entities|length }} items</span>
+                                </div>
+                                <div class="file-contents" style="display: none;">
+                                    {% for entity in entities %}
+                                    <div class="entity-node entity-{{ entity.entity_type }}">
+                                        <div class="entity-header">
+                                            <i class="fas fa-{% if entity.entity_type == 'function' %}function{% elif entity.entity_type == 'class' %}cube{% elif entity.entity_type == 'method' %}cog{% else %}code{% endif %} entity-icon"></i>
+                                            <span class="entity-name">{{ entity.entity_name }}</span>
+                                            <span class="entity-type-badge">{{ entity.entity_type }}</span>
+                                            <span class="entity-lines">L{{ entity.start_line }}-{{ entity.end_line }}</span>
+                                            {% if entity.complexity %}
+                                            <span class="complexity-badge complexity-{{ entity.complexity }}">{{ entity.complexity }}</span>
+                                            {% endif %}
+                                        </div>
+                                        {% if entity.description %}
+                                        <div class="entity-description">{{ entity.description }}</div>
+                                        {% endif %}
+                                        {% if entity.parameters %}
+                                        <div class="entity-params">
+                                            <i class="fas fa-brackets-curly"></i>
+                                            Parameters: {{ entity.parameters|join:", " }}
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            {% else %}
+                <div class="codebase-empty">
+                    <div class="empty-codebase">
+                        <div class="empty-icon">
+                            <i class="fab fa-github"></i>
+                        </div>
+                        <h3>Connect Your Repository</h3>
+                        <p>Link your GitHub repository to enable AI-powered code analysis and intelligent feature generation.</p>
+                        
+                        <div class="benefits-grid">
+                            <div class="benefit">
+                                <i class="fas fa-search"></i>
+                                <span>Semantic Search</span>
+                            </div>
+                            <div class="benefit">
+                                <i class="fas fa-brain"></i>
+                                <span>AI Code Analysis</span>
+                            </div>
+                            <div class="benefit">
+                                <i class="fas fa-magic"></i>
+                                <span>Smart Generation</span>
+                            </div>
+                            <div class="benefit">
+                                <i class="fas fa-chart-line"></i>
+                                <span>Code Insights</span>
+                            </div>
+                        </div>
+                        
+                        <button class="btn btn-primary" onclick="showCodebaseModal()">
+                            <i class="fas fa-plus"></i> Connect Repository
+                        </button>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+        
+        <!-- Integrations Section -->
+        <div class="project-section" id="integrations-section">
+            <div class="section-header">
+                <h2 class="section-title">Integrations</h2>
+            </div>
+            
+            <div class="integrations-grid">
+                <div class="integration-card">
+                    <div class="integration-header">
+                        <div class="integration-icon">
+                            <i class="fas fa-link"></i>
+                        </div>
+                        <div class="integration-info">
+                            <h4>Linear</h4>
+                            <p>Project management and issue tracking</p>
+                        </div>
+                        <div class="integration-status">
+                            {% if project.linear_sync_enabled %}
+                                <span class="status-active">Connected</span>
+                            {% else %}
+                                <span class="status-inactive">Not Connected</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    {% if project.linear_sync_enabled %}
+                        <div class="integration-details">
+                            {% if project.linear_team_id %}
+                                <p><strong>Team:</strong> {{ project.linear_team_id }}</p>
+                            {% endif %}
+                            {% if project.linear_project_id %}
+                                <p><strong>Project:</strong> {{ project.linear_project_id }}</p>
+                            {% endif %}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Settings Section -->
+        <div class="project-section" id="settings-section">
+            <div class="section-header">
+                <h2 class="section-title">Project Settings</h2>
+            </div>
+            
+            <div class="settings-groups">
+                <div class="settings-group">
+                    <h3>General Settings</h3>
+                    <div class="settings-item">
+                        <label>Project Name</label>
+                        <p>{{ project.name }}</p>
+                        <a href="{% url 'projects:update_project' project.project_id %}" class="btn btn-sm btn-outline">Edit</a>
+                    </div>
+                    <div class="settings-item">
+                        <label>Description</label>
+                        <p>{% if project.description %}{{ project.description }}{% else %}No description{% endif %}</p>
+                        <a href="{% url 'projects:update_project' project.project_id %}" class="btn btn-sm btn-outline">Edit</a>
+                    </div>
+                    <div class="settings-item">
+                        <label>Status</label>
+                        <p>{{ project.status|capfirst }}</p>
+                    </div>
+                </div>
+                
+                <div class="settings-group danger-zone">
+                    <h3>Danger Zone</h3>
+                    <div class="settings-item">
+                        <label>Delete Project</label>
+                        <p>Permanently delete this project and all its data. This action cannot be undone.</p>
+                        <form action="{% url 'projects:delete_project' project.project_id %}" method="post" class="d-inline">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-danger btn-sm delete-project-btn" data-project-name="{{ project.name }}">
+                                <i class="fas fa-trash-alt"></i> Delete Project
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Codebase Link Modal -->
+<div class="modal fade" id="codebaseModal" tabindex="-1" aria-labelledby="codebaseModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="codebaseModalLabel">
+                    <i class="fas fa-code"></i> Link GitHub Repository
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="codebaseForm">
+                    <div class="mb-3">
+                        <label for="githubUrl" class="form-label">GitHub Repository URL</label>
+                        <input type="url" class="form-control" id="githubUrl" required 
+                               placeholder="https://github.com/username/repository">
+                        <div class="form-text">Public repositories only. Make sure you have access to this repository.</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="githubBranch" class="form-label">Branch to Index</label>
+                        <input type="text" class="form-control" id="githubBranch" value="main" required>
+                        <div class="form-text">Typically 'main' or 'master'</div>
+                    </div>
+                    
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i>
+                        <strong>What happens next:</strong>
+                        <ul class="mb-0">
+                            <li>We'll clone your repository and analyze the code structure</li>
+                            <li>Code will be parsed into semantic chunks (functions, classes, etc.)</li>
+                            <li>Vector embeddings will be created for intelligent code search</li>
+                            <li>AI tools will use this context to generate better features</li>
+                        </ul>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="linkRepository()">
+                    <i class="fas fa-link"></i> Link Repository
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function showCodebaseModal() {
+    new bootstrap.Modal(document.getElementById('codebaseModal')).show();
+}
+
+async function linkRepository() {
+    const githubUrl = document.getElementById('githubUrl').value;
+    const githubBranch = document.getElementById('githubBranch').value;
+    
+    if (!githubUrl) {
+        alert('Please enter a GitHub repository URL');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/codebase/api/repositories/add/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify({
+                project_id: '{{ project.project_id }}',
+                github_url: githubUrl,
+                branch: githubBranch
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('codebaseModal')).hide();
+            location.reload();
+        } else {
+            alert('Error linking repository: ' + data.error);
+        }
+    } catch (error) {
+        alert('Error linking repository: ' + error.message);
+    }
+}
+
+// Sidebar navigation
+function showSection(sectionName) {
+    // Remove active class from all nav items and sections
+    document.querySelectorAll('.sidebar-nav-item').forEach(item => item.classList.remove('active'));
+    document.querySelectorAll('.project-section').forEach(section => section.classList.remove('active'));
+    
+    // Add active class to selected nav item and section
+    document.querySelector(`[data-section="${sectionName}"]`).classList.add('active');
+    document.getElementById(`${sectionName}-section`).classList.add('active');
+}
+
+// Initialize sidebar navigation
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.sidebar-nav-item').forEach(item => {
+        item.addEventListener('click', function(e) {
+            e.preventDefault();
+            const section = this.getAttribute('data-section');
+            showSection(section);
+        });
+    });
+});
+
+async function reindexRepository(repositoryId) {
+    if (!confirm('This will re-index the entire repository. Continue?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/codebase/api/repositories/${repositoryId}/reindex/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            alert('Re-indexing started. Check back in a few minutes for progress.');
+            location.reload();
+        } else {
+            alert('Error starting re-index: ' + data.error);
+        }
+    } catch (error) {
+        alert('Error starting re-index: ' + error.message);
+    }
+}
+
+async function disconnectRepository() {
+    if (!confirm('This will disconnect the repository and remove all indexed data. Are you sure?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/codebase/api/repositories/${repositoryId}/delete/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            }
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            alert('Repository disconnected successfully!');
+            location.reload();
+        } else {
+            alert('Error disconnecting repository: ' + data.error);
+        }
+    } catch (error) {
+        alert('Error disconnecting repository: ' + error.message);
+    }
+}
+
+// Codebase map tree functions
+function toggleFile(fileHeader) {
+    const fileContents = fileHeader.nextElementSibling;
+    const chevron = fileHeader.querySelector('.file-chevron');
+
+    if (fileContents.style.display === 'none') {
+        fileContents.style.display = 'block';
+        chevron.classList.remove('fa-chevron-right');
+        chevron.classList.add('fa-chevron-down');
+    } else {
+        fileContents.style.display = 'none';
+        chevron.classList.remove('fa-chevron-down');
+        chevron.classList.add('fa-chevron-right');
+    }
+}
+
+function expandAllFiles() {
+    document.querySelectorAll('.file-contents').forEach(contents => {
+        contents.style.display = 'block';
+    });
+    document.querySelectorAll('.file-chevron').forEach(chevron => {
+        chevron.classList.remove('fa-chevron-right');
+        chevron.classList.add('fa-chevron-down');
+    });
+}
+
+function collapseAllFiles() {
+    document.querySelectorAll('.file-contents').forEach(contents => {
+        contents.style.display = 'none';
+    });
+    document.querySelectorAll('.file-chevron').forEach(chevron => {
+        chevron.classList.remove('fa-chevron-down');
+        chevron.classList.add('fa-chevron-right');
+    });
+}
+</script>
+
+<!-- Include CSRF Token -->
+{% csrf_token %} 
+{% endblock %}
