@@ -645,17 +645,6 @@ get_file_content = {
     }
 }
 
-tools_code = [get_prd, start_server, \
-              get_github_access_token, \
-              create_tickets, update_ticket, \
-              get_next_ticket, get_pending_tickets, \
-              create_implementation, get_implementation, update_implementation, stream_implementation_content, \
-              stream_document_content, copy_boilerplate_code, capture_name]
-
-tools_product = [get_file_list, get_file_content, create_tickets, get_pending_tickets]
-
-tools_turbo = [get_prd, create_tickets, get_pending_tickets, update_ticket, execute_command]
-
 # Codebase indexing tools
 index_repository = {
     "type": "function",
@@ -709,24 +698,24 @@ get_codebase_context = {
 }
 
 search_existing_code = {
-    "type": "function", 
+    "type": "function",
     "function": {
         "name": "search_existing_code",
-        "description": "Search for existing code implementations that are similar to what you want to build. Useful for finding patterns, reusable functions, and understanding current architecture.",
+        "description": "Search the codebase vector store for specific code implementations using semantic search. Use this AFTER get_codebase_summary to find detailed implementations, patterns, similar functions, and specific code examples. This performs semantic search on the indexed code chunks to find relevant implementations based on functionality description.",
         "parameters": {
             "type": "object",
             "properties": {
                 "functionality": {
                     "type": "string",
-                    "description": "Description of the functionality to search for"
+                    "description": "Description of the functionality or code pattern to search for (e.g., 'authentication middleware', 'database connection', 'API endpoint handlers')"
                 },
                 "chunk_types": {
                     "type": "array",
                     "items": {
-                        "type": "string", 
+                        "type": "string",
                         "enum": ["function", "class", "file", "import"]
                     },
-                    "description": "Types of code chunks to search (optional)"
+                    "description": "Types of code chunks to search (optional, filters results by entity type)"
                 }
             },
             "required": ["functionality"],
@@ -748,19 +737,14 @@ get_repository_insights = {
     }
 }
 
-generate_codebase_summary = {
+get_codebase_summary = {
     "type": "function",
     "function": {
-        "name": "generate_codebase_summary",
-        "description": "Generate a comprehensive AI-powered summary of the entire codebase. This analyzes the complete AST structure and provides detailed information about: overall purpose and architecture, file organization, all functions/methods mapped by file, data models and structures, API endpoints, key dependencies, code flow, and entry points. Use this when you need a thorough understanding of what the codebase does and how it's organized.",
+        "name": "get_codebase_summary",
+        "description": "Retrieve the comprehensive AI-generated summary of the entire codebase. This summary was created during indexing and includes: overall purpose and architecture, file organization, all functions/methods mapped by file, data models and structures, API endpoints, key dependencies, code flow, and entry points. Use this FIRST when you need to understand what the codebase does and how it's organized, then follow up with search_existing_code for specific implementation details.",
         "parameters": {
             "type": "object",
-            "properties": {
-                "model": {
-                    "type": "string",
-                    "description": "Optional: AI model to use for summary generation (defaults to claude-3-5-sonnet)",
-                }
-            },
+            "properties": {},
             "additionalProperties": False,
         }
     }
@@ -769,6 +753,19 @@ generate_codebase_summary = {
 tools_ticket = [execute_command, get_prd, get_implementation, copy_boilerplate_code, start_server]
 
 # Add codebase tools to appropriate tool sets
-tools_codebase = [index_repository, get_codebase_context, search_existing_code, get_repository_insights, generate_codebase_summary]
+tools_codebase = [index_repository, get_codebase_context, search_existing_code, get_repository_insights, get_codebase_summary]
+
+# Main tool lists
+tools_code = [get_prd, start_server, \
+              get_github_access_token, \
+              create_tickets, update_ticket, \
+              get_next_ticket, get_pending_tickets, \
+              create_implementation, get_implementation, update_implementation, stream_implementation_content, \
+              stream_document_content, copy_boilerplate_code, capture_name, \
+              index_repository, get_codebase_context, search_existing_code, get_repository_insights, get_codebase_summary]
+
+tools_product = [get_file_list, get_codebase_summary, search_existing_code, get_file_content, create_tickets, get_pending_tickets]
+
+tools_turbo = [get_prd, create_tickets, search_existing_code, get_pending_tickets, update_ticket, execute_command]
 
 tools_design = [get_prd, execute_command, start_server, get_github_access_token]

@@ -284,9 +284,8 @@ async def app_functions(function_name, function_args, project_id, conversation_i
         case "get_repository_insights":
             return await get_repository_insights(project_id)
 
-        case "generate_codebase_summary":
-            model = function_args.get('model')
-            return await generate_codebase_summary(project_id, model)
+        case "get_codebase_summary":
+            return await get_codebase_summary(project_id)
 
         # case "implement_ticket_async":
         #     ticket_id = function_args.get('ticket_id')
@@ -3506,16 +3505,12 @@ async def get_repository_insights(project_id):
         }
 
 
-async def generate_codebase_summary(project_id, model=None, user=None):
+async def get_codebase_summary(project_id):
     """
-    Generate a comprehensive AI-powered summary of the entire codebase.
+    Retrieve the comprehensive AI-generated codebase summary.
 
-    This function:
-    1. Fetches all parsed code from CodebaseIndexMap
-    2. Organizes it by file structure and type
-    3. Uses AI to analyze and generate a detailed summary
-
-    Returns a detailed summary including:
+    This function retrieves the pre-generated summary that was created during
+    repository indexing. The summary includes:
     - Overall purpose and architecture
     - File organization structure
     - All functions/methods mapped by file
@@ -3525,8 +3520,6 @@ async def generate_codebase_summary(project_id, model=None, user=None):
 
     Args:
         project_id: Project UUID
-        model: Optional model name to use for generation
-        user: Optional user object
 
     Returns:
         dict with is_notification and message_to_agent
@@ -3539,7 +3532,7 @@ async def generate_codebase_summary(project_id, model=None, user=None):
             }
 
         # Get project
-        project = await sync_to_async(Project.objects.select_related('indexed_repository').get)(id=project_id)
+        project = await sync_to_async(Project.objects.select_related('indexed_repository').get)(project_id=project_id)
 
         if not hasattr(project, 'indexed_repository'):
             return {
@@ -3548,186 +3541,33 @@ async def generate_codebase_summary(project_id, model=None, user=None):
             }
 
         indexed_repo = project.indexed_repository
+
         if indexed_repo.status != 'completed':
             return {
                 "is_notification": False,
                 "message_to_agent": f"Repository indexing is not complete (status: {indexed_repo.status}). Please wait for indexing to finish."
             }
 
-        # Import models
-        from codebase_index.models import CodebaseIndexMap, RepositoryMetadata
-        from collections import defaultdict
-
-        # Fetch all codebase index entries
-        index_entries = await sync_to_async(list)(
-            CodebaseIndexMap.objects.filter(
-                repository=indexed_repo
-            ).select_related('code_chunk__file').order_by('file_path', 'start_line')
-        )
-
-        if not index_entries:
+        # Check if summary exists
+        if not indexed_repo.codebase_summary:
             return {
                 "is_notification": False,
-                "message_to_agent": "No codebase index entries found. The repository might not have been fully indexed yet."
+                "message_to_agent": "Codebase summary has not been generated yet. The summary is automatically created during indexing. Please try re-indexing the repository from the Codebase tab."
             }
 
-        # Organize data by file and type
-        files_structure = defaultdict(lambda: {
-            'functions': [],
-            'methods': [],
-            'classes': [],
-            'interfaces': [],
-            'total_lines': 0,
-            'language': None,
-            'imports': []
-        })
-
-        api_endpoints = []
-        models = []
-
-        for entry in index_entries:
-            file_path = entry.file_path
-            files_structure[file_path]['language'] = entry.language
-
-            entity_data = {
-                'name': entry.entity_name,
-                'type': entry.entity_type,
-                'lines': f"L{entry.start_line}-{entry.end_line}",
-                'complexity': entry.complexity,
-                'parameters': entry.parameters,
-                'description': entry.description
-            }
-
-            # Categorize by entity type
-            if entry.entity_type == 'function':
-                files_structure[file_path]['functions'].append(entity_data)
-            elif entry.entity_type == 'method':
-                files_structure[file_path]['methods'].append(entity_data)
-            elif entry.entity_type == 'class':
-                files_structure[file_path]['classes'].append(entity_data)
-                # Check if it's a model (common patterns)
-                if any(keyword in entry.entity_name.lower() for keyword in ['model', 'schema', 'entity']):
-                    models.append({
-                        'file': file_path,
-                        'name': entry.entity_name,
-                        'description': entry.description
-                    })
-            elif entry.entity_type == 'interface':
-                files_structure[file_path]['interfaces'].append(entity_data)
-
-            # Detect API endpoints (common patterns)
-            if entry.entity_name and any(keyword in entry.entity_name.lower() for keyword in
-                ['handler', 'endpoint', 'route', 'controller', 'api']):
-                api_endpoints.append({
-                    'file': file_path,
-                    'name': entry.entity_name,
-                    'type': entry.entity_type,
-                    'description': entry.description
-                })
-
-        # Get repository metadata
-        try:
-            metadata = await sync_to_async(lambda: indexed_repo.metadata)()
-            language_dist = metadata.languages_distribution
-            primary_language = metadata.primary_language
-            total_functions = metadata.functions_count
-            total_classes = metadata.classes_count
-            dependencies = metadata.top_dependencies[:10] if metadata.top_dependencies else []
-        except:
-            language_dist = {}
-            primary_language = 'Unknown'
-            total_functions = sum(len(f['functions']) + len(f['methods']) for f in files_structure.values())
-            total_classes = sum(len(f['classes']) for f in files_structure.values())
-            dependencies = []
-
-        # Build detailed structure for AI analysis
-        analysis_data = {
-            'repository_name': indexed_repo.github_repo_name,
-            'primary_language': primary_language,
-            'total_files': len(files_structure),
-            'total_functions': total_functions,
-            'total_classes': total_classes,
-            'language_distribution': language_dist,
-            'dependencies': dependencies,
-            'files': {}
-        }
-
-        # Add file-level details (limit to prevent token overflow)
-        for file_path, data in sorted(files_structure.items())[:50]:  # Top 50 files
-            analysis_data['files'][file_path] = {
-                'language': data['language'],
-                'functions': [{'name': f['name'], 'complexity': f['complexity'], 'description': f.get('description')}
-                             for f in data['functions'][:10]],  # Top 10 per file
-                'classes': [{'name': c['name'], 'description': c.get('description')}
-                           for c in data['classes']],
-                'methods': [{'name': m['name'], 'complexity': m['complexity']}
-                           for m in data['methods'][:10]],
-            }
-
-        # Add detected models and API endpoints
-        analysis_data['detected_models'] = models[:20]
-        analysis_data['detected_api_endpoints'] = api_endpoints[:30]
-
-        # Prepare prompt for AI summarization
-        prompt = f"""You are analyzing a codebase to generate a comprehensive summary. Here is the structured data from AST parsing:
-
-Repository: {analysis_data['repository_name']}
-Primary Language: {analysis_data['primary_language']}
-Total Files Indexed: {analysis_data['total_files']}
-Total Functions/Methods: {analysis_data['total_functions']}
-Total Classes/Structs: {analysis_data['total_classes']}
-
-Language Distribution:
-{json.dumps(analysis_data['language_distribution'], indent=2)}
-
-Top Dependencies:
-{json.dumps(analysis_data['dependencies'], indent=2)}
-
-File Structure (showing top files):
-{json.dumps(analysis_data['files'], indent=2, default=str)}
-
-Detected Models/Entities:
-{json.dumps(analysis_data['detected_models'], indent=2, default=str)}
-
-Detected API Endpoints/Handlers:
-{json.dumps(analysis_data['detected_api_endpoints'], indent=2, default=str)}
-
-Based on this data, please generate a comprehensive codebase summary in markdown format that includes:
-
-1. **Overview**: What is the overall purpose of this codebase? What type of application is it?
-2. **Architecture**: Describe the high-level architecture and design patterns used
-3. **File Organization**: How are files organized? What are the main directories/modules?
-4. **Key Components**:
-   - Main functions and their purposes
-   - Important classes/models and what they represent
-   - API endpoints and their functions (if applicable)
-5. **Technology Stack**: Languages, frameworks, and key dependencies
-6. **Code Characteristics**: Complexity distribution, code quality observations
-7. **Entry Points**: Main entry points and how the code flows
-
-Be specific and use the actual file names, function names, and class names from the data provided. Make it actionable for a developer who needs to understand this codebase quickly."""
-
-        # Use AI to generate summary
-        from development.utils.ai_providers import AnthropicProvider
-
-        ai_provider = AnthropicProvider(api_key=os.getenv('ANTHROPIC_API_KEY'))
-
-        # Use a larger model for better analysis
-        summary_response = await sync_to_async(ai_provider.generate_response)(
-            messages=[{'role': 'user', 'content': prompt}],
-            model=model or 'claude-3-5-sonnet-20241022',
-            max_tokens=4000
-        )
-
-        summary = summary_response.get('content', 'Unable to generate summary')
+        # Get summary metadata
+        summary_date = indexed_repo.summary_generated_at
+        date_str = summary_date.strftime('%Y-%m-%d %H:%M:%S UTC') if summary_date else 'Unknown'
 
         # Format final response
         final_message = f"""# Codebase Summary for {indexed_repo.github_repo_name}
 
-{summary}
+{indexed_repo.codebase_summary}
 
 ---
-*Generated by AI analysis of {len(index_entries)} code entities across {len(files_structure)} files*
+*Summary generated on {date_str}*
+
+**Next Steps**: Use `search_existing_code` to find specific implementations, patterns, or code details within this codebase.
 """
 
         return {
@@ -3737,10 +3577,10 @@ Be specific and use the actual file names, function names, and class names from 
         }
 
     except Exception as e:
-        logger.error(f"Error generating codebase summary: {e}")
+        logger.error(f"Error retrieving codebase summary: {e}")
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
         return {
             "is_notification": False,
-            "message_to_agent": f"Error generating codebase summary: {str(e)}"
+            "message_to_agent": f"Error retrieving codebase summary: {str(e)}"
         }
