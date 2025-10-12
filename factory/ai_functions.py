@@ -18,8 +18,10 @@ from development.k8s_manager.manage_pods import execute_command_in_pod
 
 from development.models import KubernetesPod
 from development.models import CommandExecution
-from accounts.models import GitHubToken
+from accounts.models import GitHubToken, ExternalServicesAPIKeys
 from chat.models import Conversation
+from factory.notion_connector import NotionConnector
+from projects.linear_sync import LinearSyncService
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -286,6 +288,38 @@ async def app_functions(function_name, function_args, project_id, conversation_i
 
         case "get_codebase_summary":
             return await get_codebase_summary(project_id)
+
+        # Notion integration functions
+        case "connect_notion":
+            return await connect_notion(project_id, conversation_id)
+
+        case "search_notion":
+            query = function_args.get('query', '')  # Default to empty string for listing all pages
+            page_size = function_args.get('page_size', 10)
+            return await search_notion(project_id, conversation_id, query, page_size)
+
+        case "get_notion_page":
+            page_id = function_args.get('page_id')
+            return await get_notion_page(project_id, conversation_id, page_id)
+
+        case "list_notion_databases":
+            page_size = function_args.get('page_size', 10)
+            return await list_notion_databases(project_id, conversation_id, page_size)
+
+        case "query_notion_database":
+            database_id = function_args.get('database_id')
+            page_size = function_args.get('page_size', 10)
+            return await query_notion_database(project_id, conversation_id, database_id, page_size)
+
+        # Linear integration functions
+        case "get_linear_issues":
+            limit = function_args.get('limit', 50)
+            team_id = function_args.get('team_id')
+            return await get_linear_issues(project_id, conversation_id, limit, team_id)
+
+        case "get_linear_issue_details":
+            issue_id = function_args.get('issue_id')
+            return await get_linear_issue_details(project_id, conversation_id, issue_id)
 
         # case "implement_ticket_async":
         #     ticket_id = function_args.get('ticket_id')
@@ -3583,4 +3617,621 @@ async def get_codebase_summary(project_id):
         return {
             "is_notification": False,
             "message_to_agent": f"Error retrieving codebase summary: {str(e)}"
+        }
+
+
+# ============================================================================
+# NOTION INTEGRATION FUNCTIONS
+# ============================================================================
+
+async def connect_notion(project_id, conversation_id=None):
+    """
+    Test connection to Notion workspace using the user's API key
+
+    Returns:
+        Dict with connection status and user info
+    """
+    try:
+        # Get conversation to access user
+        conversation = await sync_to_async(Conversation.objects.select_related('user').get)(id=conversation_id)
+        user = conversation.user
+
+        # Get Notion API key from user's external services
+        external_keys = await sync_to_async(
+            lambda: ExternalServicesAPIKeys.objects.filter(user=user).first()
+        )()
+
+        if not external_keys or not external_keys.notion_api_key:
+            return {
+                "is_notification": False,
+                "message_to_agent": "Notion API key not configured. Please add your Notion integration token in Settings > Integrations."
+            }
+
+        # Test the connection
+        connector = NotionConnector(external_keys.notion_api_key)
+        success, result = await sync_to_async(connector.test_connection)()
+
+        if success:
+            user_name = result.get('name', 'Unknown')
+            user_type = result.get('type', 'user')
+
+            return {
+                "is_notification": True,
+                "notification_type": "notion_connection",
+                "message_to_agent": f"✅ Successfully connected to Notion!\n\nUser: {user_name}\nType: {user_type}\n\nYou can now search and retrieve Notion pages and databases."
+            }
+        else:
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Failed to connect to Notion: {result}\n\nPlease check your API key in Settings > Integrations."
+            }
+
+    except Conversation.DoesNotExist:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Conversation not found"
+        }
+    except Exception as e:
+        logger.error(f"Error connecting to Notion: {e}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error connecting to Notion: {str(e)}"
+        }
+
+
+async def search_notion(project_id, conversation_id, query="", page_size=10):
+    """
+    Search for pages and databases in Notion workspace
+
+    Args:
+        project_id: Project ID
+        conversation_id: Conversation ID to get user
+        query: Search query string (empty returns all accessible pages)
+        page_size: Number of results to return
+
+    Returns:
+        Dict with search results
+    """
+    try:
+        # Get conversation to access user
+        conversation = await sync_to_async(Conversation.objects.select_related('user').get)(id=conversation_id)
+        user = conversation.user
+
+        # Get Notion API key
+        external_keys = await sync_to_async(
+            lambda: ExternalServicesAPIKeys.objects.filter(user=user).first()
+        )()
+
+        if not external_keys or not external_keys.notion_api_key:
+            return {
+                "is_notification": False,
+                "message_to_agent": "Notion API key not configured. Please add your Notion integration token in Settings > Integrations."
+            }
+
+        # Perform search
+        connector = NotionConnector(external_keys.notion_api_key)
+        success, results = await sync_to_async(connector.search_pages)(query, page_size)
+
+        if success:
+            if not results:
+                search_desc = f"query: '{query}'" if query else "your workspace"
+                return {
+                    "is_notification": True,
+                    "notification_type": "notion_search",
+                    "message_to_agent": f"No results found for {search_desc}. Make sure pages are shared with your integration in Notion."
+                }
+
+            # Format results for display
+            if query:
+                results_text = f"# Notion Search Results for '{query}'\n\nFound {len(results)} page(s):\n\n"
+            else:
+                results_text = f"# All Accessible Notion Pages\n\nFound {len(results)} page(s):\n\n"
+
+            for i, page in enumerate(results, 1):
+                results_text += f"{i}. **{page['title']}**\n"
+                results_text += f"   - ID: `{page['id']}`\n"
+                results_text += f"   - URL: {page['url']}\n"
+                results_text += f"   - Last edited: {page['last_edited_time']}\n\n"
+
+            results_text += "\n**Next Steps**: Use `get_notion_page` with a page ID to retrieve full content."
+
+            return {
+                "is_notification": True,
+                "notification_type": "notion_search",
+                "message_to_agent": results_text
+            }
+        else:
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Search failed: {results}"
+            }
+
+    except Exception as e:
+        logger.error(f"Error searching Notion: {e}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error searching Notion: {str(e)}"
+        }
+
+
+async def get_notion_page(project_id, conversation_id, page_id):
+    """
+    Retrieve full content of a Notion page
+
+    Args:
+        project_id: Project ID
+        conversation_id: Conversation ID to get user
+        page_id: Notion page ID
+
+    Returns:
+        Dict with page content
+    """
+    try:
+        # Get conversation to access user
+        conversation = await sync_to_async(Conversation.objects.select_related('user').get)(id=conversation_id)
+        user = conversation.user
+
+        # Get Notion API key
+        external_keys = await sync_to_async(
+            lambda: ExternalServicesAPIKeys.objects.filter(user=user).first()
+        )()
+
+        if not external_keys or not external_keys.notion_api_key:
+            return {
+                "is_notification": False,
+                "message_to_agent": "Notion API key not configured. Please add your Notion integration token in Settings > Integrations."
+            }
+
+        # Get page content
+        connector = NotionConnector(external_keys.notion_api_key)
+        success, page_data = await sync_to_async(connector.get_page_content)(page_id)
+
+        if success:
+            # Format page content for display
+            content_text = f"# {page_data['title']}\n\n"
+            content_text += f"**URL**: {page_data['url']}\n"
+            content_text += f"**Last edited**: {page_data['last_edited_time']}\n\n"
+
+            if page_data.get('properties'):
+                content_text += "## Properties\n"
+                for key, value in page_data['properties'].items():
+                    content_text += f"- **{key}**: {value}\n"
+                content_text += "\n"
+
+            if page_data.get('content'):
+                content_text += "## Content\n\n"
+                content_text += page_data['content']
+
+            return {
+                "is_notification": True,
+                "notification_type": "notion_page",
+                "message_to_agent": content_text
+            }
+        else:
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Failed to retrieve page: {page_data}"
+            }
+
+    except Exception as e:
+        logger.error(f"Error retrieving Notion page: {e}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error retrieving Notion page: {str(e)}"
+        }
+
+
+async def list_notion_databases(project_id, conversation_id, page_size=10):
+    """
+    List all accessible databases in Notion workspace
+
+    Args:
+        project_id: Project ID
+        conversation_id: Conversation ID to get user
+        page_size: Number of results to return
+
+    Returns:
+        Dict with database list
+    """
+    try:
+        # Get conversation to access user
+        conversation = await sync_to_async(Conversation.objects.select_related('user').get)(id=conversation_id)
+        user = conversation.user
+
+        # Get Notion API key
+        external_keys = await sync_to_async(
+            lambda: ExternalServicesAPIKeys.objects.filter(user=user).first()
+        )()
+
+        if not external_keys or not external_keys.notion_api_key:
+            return {
+                "is_notification": False,
+                "message_to_agent": "Notion API key not configured. Please add your Notion integration token in Settings > Integrations."
+            }
+
+        # List databases
+        connector = NotionConnector(external_keys.notion_api_key)
+        success, databases = await sync_to_async(connector.list_databases)(page_size)
+
+        if success:
+            if not databases:
+                return {
+                    "is_notification": True,
+                    "notification_type": "notion_databases",
+                    "message_to_agent": "No databases found in your Notion workspace."
+                }
+
+            # Format database list
+            db_text = f"# Notion Databases\n\nFound {len(databases)} database(s):\n\n"
+            for i, db in enumerate(databases, 1):
+                db_text += f"{i}. **{db['title']}**\n"
+                db_text += f"   - ID: `{db['id']}`\n"
+                db_text += f"   - URL: {db['url']}\n"
+                db_text += f"   - Properties: {', '.join(db['properties'])}\n\n"
+
+            db_text += "\n**Next Steps**: Use `query_notion_database` with a database ID to retrieve entries."
+
+            return {
+                "is_notification": True,
+                "notification_type": "notion_databases",
+                "message_to_agent": db_text
+            }
+        else:
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Failed to list databases: {databases}"
+            }
+
+    except Exception as e:
+        logger.error(f"Error listing Notion databases: {e}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error listing Notion databases: {str(e)}"
+        }
+
+
+async def query_notion_database(project_id, conversation_id, database_id, page_size=10):
+    """
+    Query a specific Notion database and retrieve entries
+
+    Args:
+        project_id: Project ID
+        conversation_id: Conversation ID to get user
+        database_id: Notion database ID
+        page_size: Number of entries to return
+
+    Returns:
+        Dict with database entries
+    """
+    try:
+        # Get conversation to access user
+        conversation = await sync_to_async(Conversation.objects.select_related('user').get)(id=conversation_id)
+        user = conversation.user
+
+        # Get Notion API key
+        external_keys = await sync_to_async(
+            lambda: ExternalServicesAPIKeys.objects.filter(user=user).first()
+        )()
+
+        if not external_keys or not external_keys.notion_api_key:
+            return {
+                "is_notification": False,
+                "message_to_agent": "Notion API key not configured. Please add your Notion integration token in Settings > Integrations."
+            }
+
+        # Query database
+        connector = NotionConnector(external_keys.notion_api_key)
+        success, entries = await sync_to_async(connector.query_database)(database_id, page_size)
+
+        if success:
+            if not entries:
+                return {
+                    "is_notification": True,
+                    "notification_type": "notion_database_query",
+                    "message_to_agent": "No entries found in this database."
+                }
+
+            # Format entries
+            entries_text = f"# Database Entries\n\nFound {len(entries)} entry/entries:\n\n"
+            for i, entry in enumerate(entries, 1):
+                entries_text += f"{i}. **{entry['title']}**\n"
+                entries_text += f"   - ID: `{entry['id']}`\n"
+                entries_text += f"   - URL: {entry['url']}\n"
+
+                if entry.get('properties'):
+                    entries_text += "   - Properties:\n"
+                    for key, value in entry['properties'].items():
+                        entries_text += f"     - {key}: {value}\n"
+
+                entries_text += "\n"
+
+            return {
+                "is_notification": True,
+                "notification_type": "notion_database_query",
+                "message_to_agent": entries_text
+            }
+        else:
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Failed to query database: {entries}"
+            }
+
+    except Exception as e:
+        logger.error(f"Error querying Notion database: {e}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error querying Notion database: {str(e)}"
+        }
+
+
+# ============================================================================
+# LINEAR INTEGRATION FUNCTIONS
+# ============================================================================
+
+async def get_linear_issues(project_id, conversation_id, limit=50, team_id=None):
+    """
+    Fetch all Linear issues/tickets accessible to the user
+
+    Args:
+        project_id: Project ID
+        conversation_id: Conversation ID to get user
+        limit: Maximum number of issues to return
+        team_id: Optional team ID to filter by team
+
+    Returns:
+        Dict with Linear issues
+    """
+    try:
+        # Get conversation to access user
+        conversation = await sync_to_async(Conversation.objects.select_related('user').get)(id=conversation_id)
+        user = conversation.user
+
+        # Get Linear API key
+        external_keys = await sync_to_async(
+            lambda: ExternalServicesAPIKeys.objects.filter(user=user).first()
+        )()
+
+        if not external_keys or not external_keys.linear_api_key:
+            return {
+                "is_notification": False,
+                "message_to_agent": "Linear API key not configured. Please add your Linear API key in Settings > Integrations."
+            }
+
+        # Fetch issues from Linear
+        linear_service = LinearSyncService(external_keys.linear_api_key)
+        success, result = await sync_to_async(linear_service.get_all_issues)(limit, team_id)
+
+        if success:
+            issues = result
+            if not issues:
+                return {
+                    "is_notification": True,
+                    "notification_type": "linear_issues",
+                    "message_to_agent": "No Linear issues found. This could mean you have no issues or the API key doesn't have access to any teams."
+                }
+
+            # Format issues for display
+            issues_text = f"# Linear Issues\n\nFound {len(issues)} issue(s):\n\n"
+
+            for issue in issues:
+                # Format issue details
+                identifier = issue.get('identifier', 'N/A')
+                title = issue.get('title', 'Untitled')
+                state = issue.get('state', {}).get('name', 'Unknown')
+                priority = issue.get('priority', 0)
+                url = issue.get('url', '')
+
+                # Priority mapping
+                priority_labels = {0: "None", 1: "Urgent", 2: "High", 3: "Medium", 4: "Low"}
+                priority_label = priority_labels.get(priority, "Unknown")
+
+                # Team and project info
+                team = issue.get('team', {})
+                team_name = team.get('name', 'No team') if team else 'No team'
+
+                project = issue.get('project', {})
+                project_name = project.get('name', 'No project') if project else 'No project'
+
+                # Assignee
+                assignee = issue.get('assignee', {})
+                assignee_name = assignee.get('name', 'Unassigned') if assignee else 'Unassigned'
+
+                # Full description (not preview)
+                description = issue.get('description', '')
+                if description:
+                    # Limit to 500 chars for list view, can get full details with get_linear_issue_details
+                    desc_text = (description[:500] + '...') if len(description) > 500 else description
+                else:
+                    desc_text = 'No description'
+
+                # Build issue entry
+                issues_text += f"### [{identifier}] {title}\n"
+                issues_text += f"- **Status:** {state}\n"
+                issues_text += f"- **Priority:** {priority_label}\n"
+                issues_text += f"- **Team:** {team_name}\n"
+                issues_text += f"- **Project:** {project_name}\n"
+                issues_text += f"- **Assignee:** {assignee_name}\n"
+                issues_text += f"- **Description:** {desc_text}\n"
+                issues_text += f"- **URL:** {url}\n\n"
+
+            issues_text += f"\n**Total:** {len(issues)} issue(s)"
+            if limit < 250:
+                issues_text += f" (limited to {limit}, use higher limit to see more)"
+
+            return {
+                "is_notification": True,
+                "notification_type": "linear_issues",
+                "message_to_agent": issues_text
+            }
+        else:
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Failed to fetch Linear issues: {result}"
+            }
+
+    except Exception as e:
+        logger.error(f"Error fetching Linear issues: {e}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error fetching Linear issues: {str(e)}"
+        }
+
+
+async def get_linear_issue_details(project_id, conversation_id, issue_id):
+    """
+    Get detailed information for a specific Linear issue
+
+    Args:
+        project_id: Project ID
+        conversation_id: Conversation ID to get user
+        issue_id: Linear issue ID or identifier (e.g., 'PED-8')
+
+    Returns:
+        Dict with detailed issue information
+    """
+    try:
+        # Get conversation to access user
+        conversation = await sync_to_async(Conversation.objects.select_related('user').get)(id=conversation_id)
+        user = conversation.user
+
+        # Get Linear API key
+        external_keys = await sync_to_async(
+            lambda: ExternalServicesAPIKeys.objects.filter(user=user).first()
+        )()
+
+        if not external_keys or not external_keys.linear_api_key:
+            return {
+                "is_notification": False,
+                "message_to_agent": "Linear API key not configured. Please add your Linear API key in Settings > Integrations."
+            }
+
+        # Fetch issue details from Linear
+        linear_service = LinearSyncService(external_keys.linear_api_key)
+        success, result = await sync_to_async(linear_service.get_issue_by_identifier)(issue_id)
+
+        if success:
+            issue = result
+
+            # Format detailed issue information
+            identifier = issue.get('identifier', 'N/A')
+            title = issue.get('title', 'Untitled')
+            description = issue.get('description', 'No description provided')
+
+            # State and priority
+            state = issue.get('state', {}).get('name', 'Unknown')
+            state_type = issue.get('state', {}).get('type', 'unknown')
+            priority = issue.get('priority', 0)
+            priority_label = issue.get('priorityLabel', 'None')
+            estimate = issue.get('estimate', 'Not estimated')
+
+            # People
+            assignee = issue.get('assignee', {})
+            assignee_name = assignee.get('name', 'Unassigned') if assignee else 'Unassigned'
+            assignee_email = assignee.get('email', '') if assignee else ''
+
+            creator = issue.get('creator', {})
+            creator_name = creator.get('name', 'Unknown') if creator else 'Unknown'
+
+            # Team and project
+            team = issue.get('team', {})
+            team_name = team.get('name', 'No team') if team else 'No team'
+
+            project = issue.get('project', {})
+            project_name = project.get('name', 'No project') if project else 'No project'
+
+            # Labels
+            labels = issue.get('labels', {}).get('nodes', [])
+            label_names = [label.get('name') for label in labels] if labels else []
+
+            # Comments
+            comments = issue.get('comments', {}).get('nodes', [])
+            comments_count = len(comments) if comments else 0
+
+            # Relationships
+            parent = issue.get('parent')
+            children = issue.get('children', {}).get('nodes', [])
+
+            # Dates
+            created_at = issue.get('createdAt', '')
+            updated_at = issue.get('updatedAt', '')
+            completed_at = issue.get('completedAt', '')
+            due_date = issue.get('dueDate', '')
+
+            url = issue.get('url', '')
+
+            # Build detailed response
+            details_text = f"# Linear Issue: [{identifier}] {title}\n\n"
+
+            details_text += f"## Overview\n"
+            details_text += f"- **Status:** {state} ({state_type})\n"
+            details_text += f"- **Priority:** {priority_label}\n"
+            details_text += f"- **Estimate:** {estimate}\n"
+            details_text += f"- **Team:** {team_name}\n"
+            details_text += f"- **Project:** {project_name}\n"
+            details_text += f"- **URL:** {url}\n\n"
+
+            details_text += f"## People\n"
+            details_text += f"- **Assignee:** {assignee_name}"
+            if assignee_email:
+                details_text += f" ({assignee_email})"
+            details_text += f"\n"
+            details_text += f"- **Created by:** {creator_name}\n\n"
+
+            if label_names:
+                details_text += f"## Labels\n"
+                details_text += ", ".join([f"`{label}`" for label in label_names]) + "\n\n"
+
+            details_text += f"## Description\n{description}\n\n"
+
+            if parent:
+                details_text += f"## Parent Issue\n"
+                details_text += f"[{parent.get('identifier')}] {parent.get('title')}\n\n"
+
+            if children:
+                details_text += f"## Sub-issues ({len(children)})\n"
+                for child in children:
+                    details_text += f"- [{child.get('identifier')}] {child.get('title')}\n"
+                details_text += "\n"
+
+            if comments:
+                details_text += f"## Comments ({comments_count})\n"
+                for i, comment in enumerate(comments[:5], 1):  # Show first 5 comments
+                    user_name = comment.get('user', {}).get('name', 'Unknown')
+                    comment_body = comment.get('body', '')
+                    created = comment.get('createdAt', '')
+                    details_text += f"\n**{user_name}** ({created}):\n"
+                    # Limit comment length
+                    if len(comment_body) > 200:
+                        details_text += f"{comment_body[:200]}...\n"
+                    else:
+                        details_text += f"{comment_body}\n"
+
+                if comments_count > 5:
+                    details_text += f"\n_...and {comments_count - 5} more comments_\n"
+                details_text += "\n"
+
+            details_text += f"## Timeline\n"
+            details_text += f"- **Created:** {created_at}\n"
+            details_text += f"- **Last updated:** {updated_at}\n"
+            if completed_at:
+                details_text += f"- **Completed:** {completed_at}\n"
+            if due_date:
+                details_text += f"- **Due date:** {due_date}\n"
+
+            return {
+                "is_notification": True,
+                "notification_type": "linear_issue_details",
+                "message_to_agent": details_text
+            }
+        else:
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Failed to fetch Linear issue details: {result}"
+            }
+
+    except Exception as e:
+        logger.error(f"Error fetching Linear issue details: {e}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error fetching Linear issue details: {str(e)}"
         }

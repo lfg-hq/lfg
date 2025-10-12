@@ -246,10 +246,15 @@ def save_api_key(request, provider):
         messages.error(request, 'API key cannot be empty')
         return redirect('accounts:integrations')
     
-    # Handle Linear separately as it's in ExternalServicesAPIKeys
-    if provider == 'linear':
+    # Handle external services (Linear, Notion, etc.) separately as they're in ExternalServicesAPIKeys
+    if provider in ['linear', 'notion', 'jira']:
         external_keys, created = ExternalServicesAPIKeys.objects.get_or_create(user=request.user)
-        external_keys.linear_api_key = api_key
+        if provider == 'linear':
+            external_keys.linear_api_key = api_key
+        elif provider == 'notion':
+            external_keys.notion_api_key = api_key
+        elif provider == 'jira':
+            external_keys.jira_api_key = api_key
         external_keys.save()
     else:
         # Get or create LLMApiKeys for user
@@ -281,14 +286,19 @@ def disconnect_api_key(request, provider):
         messages.error(request, 'Invalid request')
         return redirect('accounts:integrations')
     
-    # Handle Linear separately as it's in ExternalServicesAPIKeys
-    if provider == 'linear':
+    # Handle external services (Linear, Notion, etc.) separately as they're in ExternalServicesAPIKeys
+    if provider in ['linear', 'notion', 'jira']:
         try:
             external_keys = ExternalServicesAPIKeys.objects.get(user=request.user)
-            external_keys.linear_api_key = ''
+            if provider == 'linear':
+                external_keys.linear_api_key = ''
+            elif provider == 'notion':
+                external_keys.notion_api_key = ''
+            elif provider == 'jira':
+                external_keys.jira_api_key = ''
             external_keys.save()
         except ExternalServicesAPIKeys.DoesNotExist:
-            messages.error(request, 'No Linear API key found')
+            messages.error(request, f'No {provider.capitalize()} API key found')
             return redirect('accounts:integrations')
     else:
         # Get LLMApiKeys for user
@@ -519,12 +529,14 @@ def integrations(request):
         xai_connected = False
         google_connected = False
     
-    # Check Linear API key
+    # Check external service API keys (Linear, Notion, etc.)
     try:
         external_keys = ExternalServicesAPIKeys.objects.get(user=request.user)
         linear_connected = bool(external_keys.linear_api_key)
+        notion_connected = bool(external_keys.notion_api_key)
     except ExternalServicesAPIKeys.DoesNotExist:
         linear_connected = False
+        notion_connected = False
     
     # Get user's organization role if in an organization
     current_org_role = None
@@ -591,6 +603,7 @@ def integrations(request):
         'xai_connected': xai_connected,
         'google_connected': google_connected,
         'linear_connected': linear_connected,
+        'notion_connected': notion_connected,
         'current_org_role': current_org_role,
         # Project collaboration setting
         'allow_project_invitations': request.user.profile.allow_project_invitations,
