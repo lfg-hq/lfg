@@ -857,18 +857,19 @@ def check_server_status_api(request, project_id):
 @login_required
 @require_POST
 def update_checklist_item_api(request, project_id):
-    """API endpoint to update status or role of a checklist item"""
+    """API endpoint to update a checklist item (supports all fields)"""
     import json
     try:
         data = json.loads(request.body.decode('utf-8'))
         item_id = data.get('item_id')
-        new_status = data.get('status')
-        new_role = data.get('role')
     except Exception as e:
         return JsonResponse({'success': False, 'error': 'Invalid request data', 'details': str(e)}, status=400)
 
+    if not item_id:
+        return JsonResponse({'success': False, 'error': 'item_id is required'}, status=400)
+
     project = get_object_or_404(Project, project_id=project_id)
-    
+
     # Check if user can manage tickets
     if not project.can_user_manage_tickets(request.user):
         return JsonResponse({
@@ -881,16 +882,41 @@ def update_checklist_item_api(request, project_id):
         return JsonResponse({'success': False, 'error': 'Checklist item not found'}, status=404)
 
     changed = False
-    if new_status and new_status != item.status:
-        item.status = new_status
+
+    # Update simple fields
+    simple_fields = ['status', 'role', 'name', 'description', 'priority', 'complexity']
+    for field in simple_fields:
+        if field in data and data[field] != getattr(item, field):
+            setattr(item, field, data[field])
+            changed = True
+
+    # Update boolean fields
+    if 'requires_worktree' in data and data['requires_worktree'] != item.requires_worktree:
+        item.requires_worktree = data['requires_worktree']
         changed = True
-    if new_role and new_role != item.role:
-        item.role = new_role
-        changed = True
+
+    # Update JSON fields
+    json_fields = ['details', 'ui_requirements', 'component_specs', 'acceptance_criteria', 'dependencies']
+    for field in json_fields:
+        if field in data and data[field] != getattr(item, field):
+            setattr(item, field, data[field])
+            changed = True
+
     if changed:
         item.updated_at = timezone.now()
         item.save()
-        return JsonResponse({'success': True, 'id': item.id, 'status': item.status, 'role': item.role, 'updated_at': item.updated_at})
+        return JsonResponse({
+            'success': True,
+            'id': item.id,
+            'name': item.name,
+            'status': item.status,
+            'description': item.description,
+            'priority': item.priority,
+            'role': item.role,
+            'complexity': item.complexity,
+            'requires_worktree': item.requires_worktree,
+            'updated_at': item.updated_at.isoformat()
+        })
     else:
         return JsonResponse({'success': False, 'error': 'No changes made'})
 

@@ -318,7 +318,8 @@ create_tickets = {
     "type": "function",
     "function": {
         "name": "create_tickets",
-        "description": "Call this function to generate the checklist tickets for the project. You will review the implementation plan for this.",
+        "description": "Call this function to generate the tickets for the project. This is based of the referred PRD or technical analysis or provided contenxt in markedown format \
+                        This will include UI Requirements, Component Specs, and Acceptance Criteria",
         "parameters": {
             "type": "object",
             "properties": {
@@ -330,13 +331,10 @@ create_tickets = {
                             "name": {"type": "string"},
                             "description": {"type": "string", "description": "Detailed description as to all the details that needs to be implemented"},
                             "role": {"type": "string", "enum": ["agent", "user"]},
-                            "ui_requirements": {"type": "object", "description": "UI requirements for this ticket if applicable"},
-                            "component_specs": {"type": "object", "description": "Component specifications for this ticket if applicable"},
-                            "acceptance_criteria": {"type": "array", "items": {"type": "string"}, "description": "Acceptance criteria for this ticket"},
                             "dependencies": {"type": "array", "items": {"type": "string"}, "description": "Is this ticket dependent on any other ticket? If yes, pass the ticket id"},
                             "priority": {"type": "string", "enum": ["High", "Medium", "Low"]}
                         },
-                        "required": ["name", "description", "role", "ui_requirements", "component_specs", "acceptance_criteria", "dependencies", "priority"]
+                        "required": ["name", "description", "role", "dependencies", "priority"]
                     }
                 }
             },

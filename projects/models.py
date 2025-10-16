@@ -75,7 +75,7 @@ class Project(models.Model):
                 'can_invite_members': True,
                 'can_manage_project': True,
                 'can_delete_project': True,
-                'get_permissions': lambda: {
+                'get_permissions': lambda self: {
                     'can_edit_files': True,
                     'can_manage_tickets': True,
                     'can_chat': True,

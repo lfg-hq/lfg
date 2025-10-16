@@ -292,6 +292,7 @@
 
 .markdown-content {
     color: #e2e8f0;
+    line-height: 1.7;
 }
 
 .markdown-content a {
@@ -299,46 +300,66 @@
     text-decoration: underline;
 }
 
-.markdown-content h1, 
-.markdown-content h2, 
-.markdown-content h3, 
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
 .markdown-content h4 {
     color: var(--primary-color);
-    margin-top: 1.5em;
-    margin-bottom: 0.5em;
+    margin-top: 1.8em;
+    margin-bottom: 0.8em;
     font-weight: 600;
+    line-height: 1.3;
+}
+
+.markdown-content h1:first-child,
+.markdown-content h2:first-child,
+.markdown-content h3:first-child,
+.markdown-content h4:first-child {
+    margin-top: 0;
 }
 
 .markdown-content h1 {
     font-size: 1.5rem;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    padding-bottom: 0.3em;
+    padding-bottom: 0.4em;
+    margin-bottom: 1em;
 }
 
 .markdown-content h2 {
     font-size: 1.3rem;
+    margin-top: 2.5em;
+    margin-bottom: 1em;
+    padding-top: 0.5em;
 }
 
 .markdown-content h3 {
     font-size: 1.1rem;
+    margin-top: 2em;
+    margin-bottom: 0.8em;
+    padding-top: 0.3em;
 }
 
 .markdown-content h4 {
     font-size: 1rem;
+    margin-top: 1.2em;
+    margin-bottom: 0.5em;
 }
 
 .markdown-content p {
-    margin-bottom: 1em;
+    margin-bottom: 1.2em;
+    line-height: 1.7;
 }
 
-.markdown-content ul, 
+.markdown-content ul,
 .markdown-content ol {
-    padding-left: 1.5em;
-    margin-bottom: 1em;
+    padding-left: 1.8em;
+    margin-bottom: 1.2em;
+    margin-top: 0.5em;
 }
 
 .markdown-content li {
-    margin-bottom: 0.3em;
+    margin-bottom: 0.5em;
+    line-height: 1.6;
 }
 
 .markdown-content code {
@@ -1437,10 +1458,44 @@
 }
 
 .checklist-details-drawer .description-content {
-    padding: 15px;
-    background-color: rgba(0, 0, 0, 0.1);
+    padding: 20px;
+    background-color: rgba(0, 0, 0, 0.15);
     border-radius: 8px;
     border-left: 3px solid var(--status-color, #6b7280);
+    line-height: 1.7;
+}
+
+.checklist-details-drawer .description-content.markdown-content h2 {
+    margin-top: 1.5em;
+    margin-bottom: 0.5em;
+    padding-top: 0.3em;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.checklist-details-drawer .description-content.markdown-content h2:first-child {
+    margin-top: 0;
+    border-top: none;
+    padding-top: 0;
+}
+
+.checklist-details-drawer .description-content.markdown-content h3 {
+    margin-top: 1.2em;
+    margin-bottom: 0.4em;
+    padding-top: 0;
+}
+
+.checklist-details-drawer .description-content.markdown-content p {
+    margin-bottom: 0.8em;
+}
+
+.checklist-details-drawer .description-content.markdown-content ul,
+.checklist-details-drawer .description-content.markdown-content ol {
+    margin-top: 0.4em;
+    margin-bottom: 0.8em;
+}
+
+.checklist-details-drawer .description-content.markdown-content li {
+    margin-bottom: 0.3em;
 }
 
 .checklist-detail-info {
@@ -2331,10 +2386,18 @@
 /* Specifications section styles */
 .specifications-content {
     margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
 }
 
 .spec-subsection {
-    margin-bottom: 16px;
+    margin-bottom: 0;
+    background: rgba(30, 30, 30, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 14px 16px;
+    overflow: hidden;
 }
 
 .spec-subsection:last-child {
@@ -2342,23 +2405,52 @@
 }
 
 .spec-heading {
-    color: rgba(255, 255, 255, 0.95);
-    font-size: 0.9rem;
+    color: #a78bfa;
+    font-size: 0.85rem;
     font-weight: 600;
-    margin: 0 0 8px 0;
+    margin: 0 0 10px 0;
     padding: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.spec-heading::before {
+    content: '';
+    display: inline-block;
+    width: 3px;
+    height: 14px;
+    background: linear-gradient(180deg, #8b5cf6, #a78bfa);
+    border-radius: 2px;
 }
 
 .spec-list {
-    list-style-type: disc;
-    padding-left: 20px;
+    list-style-type: none;
+    padding-left: 0;
     margin: 0;
-    color: rgba(255, 255, 255, 0.9);
+    color: rgba(255, 255, 255, 0.85);
 }
 
 .spec-list li {
-    margin-bottom: 4px;
-    line-height: 1.4;
+    margin-bottom: 8px;
+    line-height: 1.6;
+    padding-left: 20px;
+    position: relative;
+    font-size: 0.9rem;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.spec-list li::before {
+    content: '•';
+    position: absolute;
+    left: 6px;
+    top: 2px;
+    color: #8b5cf6;
+    font-weight: bold;
+    font-size: 1.1em;
 }
 
 .spec-list li:last-child {
@@ -2367,6 +2459,20 @@
 
 .spec-list li strong {
     color: rgba(255, 255, 255, 0.95);
+}
+
+.spec-key {
+    color: #c4b5fd;
+    font-weight: 600;
+    margin-right: 6px;
+    display: inline-block;
+}
+
+.spec-value {
+    color: rgba(255, 255, 255, 0.85);
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    white-space: normal;
 }
 
 /* View Details Button for Checklist */

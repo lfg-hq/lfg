@@ -515,25 +515,31 @@ User request
   "tickets": [
     {
       "name": "Clear, concise ticket title",
-      "description": "Comprehensive implementation details including all technical specifications",
+      "description": "Comprehensive implementation details in well-formatted Markdown.
+
+## Goal
+[What this ticket aims to achieve - 2-3 sentences]
+
+## Implementation Details
+[Detailed technical description of what needs to be built]
+
+### Key Requirements
+- [Requirement 1]
+- [Requirement 2]
+- [Requirement 3]
+
+### Technical Approach
+- [Approach detail 1]
+- [Approach detail 2]
+- [Approach detail 3]
+
+### API Endpoints / Data Flow
+- [Endpoint/flow detail 1]
+- [Endpoint/flow detail 2]
+
+Use proper Markdown formatting with headers, lists, and spacing for readability.",
+
       "role": "agent", // or "user" for human tasks only
-      "ui_requirements": {
-        "components": ["List of UI components"],
-        "layout": "Layout specifications",
-        "styling": "Styling requirements",
-        "responsive": "Responsive behavior"
-      },
-      "component_specs": {
-        "architecture": "Component architecture details",
-        "data_flow": "How data flows",
-        "api_integration": "API endpoints used",
-        "state_management": "State handling approach"
-      },
-      "acceptance_criteria": [
-        "Measurable criteria 1",
-        "Measurable criteria 2",
-        "Measurable criteria 3"
-      ],
       "dependencies": ["ticket-id-1", "ticket-id-2"], // or empty array
       "priority": "High" // or "Medium" or "Low"
     }

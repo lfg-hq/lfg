@@ -2086,7 +2086,13 @@ document.addEventListener('DOMContentLoaded', function() {
                         <!-- Checklist Details Drawer -->
                         <div class="checklist-details-drawer" id="checklist-details-drawer">
                             <div class="drawer-header">
-                                <h3 class="drawer-title">Checklist Item Details</h3>
+                                <div style="display: flex; align-items: center; gap: 12px; flex: 1;">
+                                    <h3 class="drawer-title">Checklist Item Details</h3>
+                                    <button class="drawer-edit-btn" id="drawer-edit-btn" title="Edit" style="padding: 6px 12px; background: #8b5cf6; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 6px;">
+                                        <i class="fas fa-edit"></i>
+                                        <span>Edit</span>
+                                    </button>
+                                </div>
                                 <button class="close-drawer-btn" id="close-checklist-drawer-btn">
                                     <i class="fas fa-times"></i>
                                 </button>
@@ -2322,67 +2328,15 @@ document.addEventListener('DOMContentLoaded', function() {
                                         `;
                                     }
                                     
-                                    // Build combined specifications section
+                                    // Build combined specifications section - REMOVED per user request
                                     let specificationsSection = '';
-                                    let hasSpecs = false;
-                                    
-                                    let specsContent = '';
-                                    
-                                    // Add component specs section
-                                    if (item.component_specs && Object.keys(item.component_specs).length > 0) {
-                                        specsContent += `
-                                            <div class="spec-subsection">
-                                                <h5 class="spec-heading">Component Specifications:</h5>
-                                                <ul class="spec-list">
-                                                    ${Object.entries(item.component_specs).map(([key, value]) => `
-                                                        <li>${key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}: ${value}</li>
-                                                    `).join('')}
-                                                </ul>
-                                            </div>
-                                        `;
-                                        hasSpecs = true;
-                                    }
-                                    
-                                    // Add acceptance criteria section
-                                    if (item.acceptance_criteria && item.acceptance_criteria.length > 0) {
-                                        specsContent += `
-                                            <div class="spec-subsection">
-                                                <h5 class="spec-heading">Acceptance Criteria:</h5>
-                                                <ul class="spec-list">
-                                                    ${item.acceptance_criteria.map(criteria => `
-                                                        <li>${criteria}</li>
-                                                    `).join('')}
-                                                </ul>
-                                            </div>
-                                        `;
-                                        hasSpecs = true;
-                                    }
-                                    
-                                    // Add UI requirements section
-                                    if (item.ui_requirements && Object.keys(item.ui_requirements).length > 0) {
-                                        specsContent += `
-                                            <div class="spec-subsection">
-                                                <h5 class="spec-heading">UI Requirements:</h5>
-                                                <ul class="spec-list">
-                                                    ${Object.entries(item.ui_requirements).map(([key, value]) => `
-                                                        <li>${key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}: ${value}</li>
-                                                    `).join('')}
-                                                </ul>
-                                            </div>
-                                        `;
-                                        hasSpecs = true;
-                                    }
-                                    
-                                    if (hasSpecs) {
-                                        specificationsSection = `
-                                            <div class="drawer-section">
-                                                <h4 class="section-title">Specifications</h4>
-                                                <div class="specifications-content">
-                                                    ${specsContent}
-                                                </div>
-                                            </div>
-                                        `;
-                                    }
+
+                                    // Helper function to escape HTML
+                                    const escapeHtml = (text) => {
+                                        const div = document.createElement('div');
+                                        div.textContent = text;
+                                        return div.innerHTML;
+                                    };
                                     
                                     // Build details section
                                     let detailsSection = '';
@@ -2452,8 +2406,8 @@ document.addEventListener('DOMContentLoaded', function() {
                                         
                                         <div class="drawer-section">
                                             <h4 class="section-title">Description</h4>
-                                            <div class="section-content description-content">
-                                                ${item.description ? item.description.replace(/\n/g, '<br>') : 'No description provided.'}
+                                            <div class="section-content description-content markdown-content">
+                                                ${item.description ? (typeof marked !== 'undefined' ? marked.parse(item.description) : item.description.replace(/\n/g, '<br>')) : 'No description provided.'}
                                             </div>
                                         </div>
                                         
@@ -2468,29 +2422,26 @@ document.addEventListener('DOMContentLoaded', function() {
                                                 <p class="detail-row"><strong>Last Updated:</strong> ${new Date(item.updated_at).toLocaleDateString()} at ${new Date(item.updated_at).toLocaleTimeString()}</p>
                                             </div>
                                         </div>
-                                        
+
                                         <div class="drawer-section">
                                             <h4 class="section-title">Actions</h4>
                                             <div class="drawer-actions">
-                                                <button class="drawer-action-btn edit-btn" onclick="editChecklistItem(${item.id})" title="Edit Item" style="padding: 8px 10px;">
-                                                    <i class="fas fa-edit"></i>
-                                                </button>
-                                                <button class="drawer-action-btn toggle-btn" onclick="toggleChecklistStatus(${item.id}, '${item.status}')" title="Toggle Status" style="padding: 8px 10px;">
-                                                    <i class="fas fa-sync-alt"></i>
-                                                </button>
                                                 <button class="drawer-action-btn delete-btn" data-item-id="${item.id}" title="Delete Item" style="padding: 8px 10px; background: rgba(239, 68, 68, 0.2); color: #f87171;">
-                                                    <i class="fas fa-trash"></i>
+                                                    <i class="fas fa-trash"></i> Delete
                                                 </button>
                                             </div>
                                         </div>
                                     `;
-                                    
+
                                     // Show the drawer
                                     checklistDrawer.classList.add('open');
                                     checklistDrawerOverlay.classList.add('active');
-                                    
+
                                     // Add event listeners for the dropdowns
                                     attachDropdownListeners();
+
+                                    // Add edit button listener
+                                    attachDrawerEditListener(item);
                                 }
                             });
                         });
@@ -2618,7 +2569,197 @@ document.addEventListener('DOMContentLoaded', function() {
                                 }
                             });
                         });
-                        
+
+                        // Function to attach drawer edit button listener
+                        const attachDrawerEditListener = (item) => {
+                            const drawerEditBtn = document.getElementById('drawer-edit-btn');
+                            if (!drawerEditBtn) return;
+
+                            drawerEditBtn.onclick = function() {
+                                enableInlineEdit(item);
+                            };
+                        };
+
+                        // Function to enable inline editing in the drawer
+                        const enableInlineEdit = (item) => {
+                            const drawerContent = document.getElementById('checklist-drawer-content');
+                            const drawerEditBtn = document.getElementById('drawer-edit-btn');
+
+                            // Switch edit button to save/cancel buttons
+                            drawerEditBtn.outerHTML = `
+                                <div style="display: flex; gap: 8px;">
+                                    <button id="drawer-save-btn" title="Save" style="padding: 6px 12px; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 6px;">
+                                        <i class="fas fa-check"></i>
+                                        <span>Save</span>
+                                    </button>
+                                    <button id="drawer-cancel-btn" title="Cancel" style="padding: 6px 12px; background: #6b7280; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 6px;">
+                                        <i class="fas fa-times"></i>
+                                        <span>Cancel</span>
+                                    </button>
+                                </div>
+                            `;
+
+                            // Build editable content
+                            const editableContent = `
+                                <div class="drawer-section">
+                                    <h4 class="section-title">Item Information</h4>
+                                    <div class="checklist-detail-info">
+                                        <div class="detail-row" style="margin-bottom: 12px;">
+                                            <strong>Name:</strong>
+                                            <input type="text" id="edit-drawer-name" value="${(item.name || '').replace(/"/g, '&quot;')}"
+                                                style="width: 100%; margin-top: 6px; padding: 8px; background: #1a1a1a; border: 1px solid #444; color: #fff; border-radius: 4px; font-size: 14px;">
+                                        </div>
+
+                                        <div class="detail-row" style="margin-bottom: 12px;">
+                                            <strong>Status:</strong>
+                                            <select id="edit-drawer-status" style="width: 100%; margin-top: 6px; padding: 8px; background: #1a1a1a; border: 1px solid #444; color: #fff; border-radius: 4px; font-size: 14px;">
+                                                <option value="open" ${(item.status || 'open') === 'open' ? 'selected' : ''}>Open</option>
+                                                <option value="in_progress" ${item.status === 'in_progress' ? 'selected' : ''}>In Progress</option>
+                                                <option value="done" ${item.status === 'done' ? 'selected' : ''}>Done</option>
+                                                <option value="failed" ${item.status === 'failed' ? 'selected' : ''}>Failed</option>
+                                                <option value="blocked" ${item.status === 'blocked' ? 'selected' : ''}>Blocked</option>
+                                            </select>
+                                        </div>
+
+                                        <div class="detail-row" style="margin-bottom: 12px;">
+                                            <strong>Priority:</strong>
+                                            <select id="edit-drawer-priority" style="width: 100%; margin-top: 6px; padding: 8px; background: #1a1a1a; border: 1px solid #444; color: #fff; border-radius: 4px; font-size: 14px;">
+                                                <option value="High" ${(item.priority || 'Medium') === 'High' ? 'selected' : ''}>High</option>
+                                                <option value="Medium" ${(item.priority || 'Medium') === 'Medium' ? 'selected' : ''}>Medium</option>
+                                                <option value="Low" ${(item.priority || 'Medium') === 'Low' ? 'selected' : ''}>Low</option>
+                                            </select>
+                                        </div>
+
+                                        <div class="detail-row" style="margin-bottom: 12px;">
+                                            <strong>Assigned to:</strong>
+                                            <select id="edit-drawer-role" style="width: 100%; margin-top: 6px; padding: 8px; background: #1a1a1a; border: 1px solid #444; color: #fff; border-radius: 4px; font-size: 14px;">
+                                                <option value="user" ${(item.role || 'user') === 'user' ? 'selected' : ''}>User</option>
+                                                <option value="agent" ${item.role === 'agent' ? 'selected' : ''}>Agent</option>
+                                            </select>
+                                        </div>
+
+                                        <div class="detail-row" style="margin-bottom: 12px;">
+                                            <strong>Complexity:</strong>
+                                            <select id="edit-drawer-complexity" style="width: 100%; margin-top: 6px; padding: 8px; background: #1a1a1a; border: 1px solid #444; color: #fff; border-radius: 4px; font-size: 14px;">
+                                                <option value="simple" ${(item.complexity || 'medium') === 'simple' ? 'selected' : ''}>Simple</option>
+                                                <option value="medium" ${(item.complexity || 'medium') === 'medium' ? 'selected' : ''}>Medium</option>
+                                                <option value="complex" ${(item.complexity || 'medium') === 'complex' ? 'selected' : ''}>Complex</option>
+                                            </select>
+                                        </div>
+
+                                        <div class="detail-row" style="margin-bottom: 12px;">
+                                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                                <input type="checkbox" id="edit-drawer-worktree" ${item.requires_worktree ? 'checked' : ''}
+                                                    style="margin-right: 8px; width: 16px; height: 16px; cursor: pointer;">
+                                                <strong>Requires Worktree</strong>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="drawer-section">
+                                    <h4 class="section-title">Description</h4>
+                                    <textarea id="edit-drawer-description" rows="12"
+                                        style="width: 100%; padding: 10px; background: #1a1a1a; border: 1px solid #444; color: #fff; border-radius: 4px; font-size: 14px; resize: vertical; font-family: inherit;">${(item.description || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                                </div>
+
+                                <div class="drawer-section">
+                                    <h4 class="section-title">Timeline</h4>
+                                    <div class="section-content">
+                                        <p class="detail-row"><strong>Created:</strong> ${new Date(item.created_at).toLocaleDateString()} at ${new Date(item.created_at).toLocaleTimeString()}</p>
+                                        <p class="detail-row"><strong>Last Updated:</strong> ${new Date(item.updated_at).toLocaleDateString()} at ${new Date(item.updated_at).toLocaleTimeString()}</p>
+                                    </div>
+                                </div>
+                            `;
+
+                            drawerContent.innerHTML = editableContent;
+
+                            // Add save button listener
+                            const saveBtn = document.getElementById('drawer-save-btn');
+                            const cancelBtn = document.getElementById('drawer-cancel-btn');
+
+                            saveBtn.onclick = async function() {
+                                const updatedData = {
+                                    item_id: item.id,
+                                    name: document.getElementById('edit-drawer-name').value,
+                                    description: document.getElementById('edit-drawer-description').value,
+                                    status: document.getElementById('edit-drawer-status').value,
+                                    priority: document.getElementById('edit-drawer-priority').value,
+                                    role: document.getElementById('edit-drawer-role').value,
+                                    complexity: document.getElementById('edit-drawer-complexity').value,
+                                    requires_worktree: document.getElementById('edit-drawer-worktree').checked
+                                };
+
+                                // Show loading state
+                                saveBtn.disabled = true;
+                                saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>Saving...</span>';
+
+                                try {
+                                    const response = await fetch(`/projects/${projectId}/api/checklist/update/`, {
+                                        method: 'POST',
+                                        headers: {
+                                            'Content-Type': 'application/json',
+                                            'X-CSRFToken': getCsrfToken()
+                                        },
+                                        body: JSON.stringify(updatedData)
+                                    });
+
+                                    const result = await response.json();
+
+                                    if (result.success) {
+                                        showToast('Item updated successfully', 'success');
+
+                                        // Reload the checklist
+                                        ArtifactsLoader.loadChecklist(projectId);
+
+                                        // Close the drawer
+                                        checklistDrawer.classList.remove('open');
+                                        checklistDrawerOverlay.classList.remove('active');
+                                    } else {
+                                        throw new Error(result.error || 'Failed to update item');
+                                    }
+                                } catch (error) {
+                                    console.error('Error updating item:', error);
+                                    showToast('Error updating item: ' + error.message, 'error');
+                                    saveBtn.disabled = false;
+                                    saveBtn.innerHTML = '<i class="fas fa-check"></i> <span>Save</span>';
+                                }
+                            };
+
+                            cancelBtn.onclick = function() {
+                                // Restore the Edit button
+                                const saveCancelContainer = document.querySelector('#drawer-save-btn').parentElement;
+                                saveCancelContainer.outerHTML = `
+                                    <button class="drawer-edit-btn" id="drawer-edit-btn" title="Edit" style="padding: 6px 12px; background: #8b5cf6; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 6px;">
+                                        <i class="fas fa-edit"></i>
+                                        <span>Edit</span>
+                                    </button>
+                                `;
+
+                                // Re-fetch and display the item in view mode
+                                fetch(`/projects/${projectId}/api/checklist/`)
+                                    .then(response => response.json())
+                                    .then(data => {
+                                        const checklist = data.checklist || [];
+                                        const currentItem = checklist.find(i => i.id == item.id);
+
+                                        if (currentItem) {
+                                            // Trigger the card click to reload view mode
+                                            const card = document.querySelector(`.checklist-card[data-id="${item.id}"]`);
+                                            if (card) {
+                                                card.click();
+                                            }
+                                        }
+                                    })
+                                    .catch(error => {
+                                        console.error('Error fetching checklist:', error);
+                                        // Fallback: just close the drawer
+                                        checklistDrawer.classList.remove('open');
+                                        checklistDrawerOverlay.classList.remove('active');
+                                    });
+                            };
+                        };
+
                         // Close drawer event handlers
                         if (closeChecklistDrawerBtn) {
                             closeChecklistDrawerBtn.addEventListener('click', function() {
@@ -3331,12 +3472,12 @@ document.addEventListener('DOMContentLoaded', function() {
          */
         loadAppPreview: function(projectId, conversationId) {
             console.log(`[ArtifactsLoader] loadAppPreview called with project ID: ${projectId}, conversation ID: ${conversationId}`);
-            
+
             if (!projectId) {
                 console.warn('[ArtifactsLoader] No project ID provided for loading app preview');
                 return;
             }
-            
+
             // Get app tab elements
             const appTab = document.getElementById('apps');
             const appLoading = document.getElementById('app-loading');
@@ -7685,5 +7826,260 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
     }, 500); // Small delay to ensure elements are loaded
-    
+
 }); // End of DOMContentLoaded
+
+// Global functions for checklist item editing (accessible from inline onclick handlers)
+window.editChecklistItem = function(itemId) {
+    const projectId = window.getCurrentProjectId ? window.getCurrentProjectId() : window.ArtifactsLoader?.getCurrentProjectId();
+    if (!projectId) {
+        console.error('[EditChecklistItem] No project ID available');
+        alert('Unable to edit item: No project ID found');
+        return;
+    }
+
+    // Fetch current checklist data
+    fetch(`/projects/${projectId}/api/checklist/`)
+        .then(response => response.json())
+        .then(data => {
+            const checklist = data.checklist || [];
+            const item = checklist.find(i => i.id == itemId);
+
+            if (!item) {
+                alert('Checklist item not found');
+                return;
+            }
+
+            // Create modal overlay
+            const overlay = document.createElement('div');
+            overlay.className = 'edit-checklist-overlay';
+            overlay.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 20px;';
+
+            // Create modal container
+            const modal = document.createElement('div');
+            modal.className = 'edit-checklist-modal';
+            modal.style.cssText = 'background: #2a2a2a; padding: 30px; border-radius: 12px; max-width: 600px; width: 100%; max-height: 90vh; overflow-y: auto; box-shadow: 0 4px 20px rgba(0,0,0,0.5);';
+
+            modal.innerHTML = `
+                <h3 style="color: #fff; margin: 0 0 24px 0; font-size: 20px; font-weight: 600;">Edit Checklist Item</h3>
+                <form id="edit-checklist-form">
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; color: #ccc; margin-bottom: 8px; font-size: 14px; font-weight: 500;">Name *</label>
+                        <input type="text" id="edit-name" value="${(item.name || '').replace(/"/g, '&quot;')}"
+                            style="width: 100%; padding: 10px 12px; background: #1a1a1a; border: 1px solid #444; color: #fff; border-radius: 6px; font-size: 14px;" required>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; color: #ccc; margin-bottom: 8px; font-size: 14px; font-weight: 500;">Description</label>
+                        <textarea id="edit-description" rows="4"
+                            style="width: 100%; padding: 10px 12px; background: #1a1a1a; border: 1px solid #444; color: #fff; border-radius: 6px; font-size: 14px; resize: vertical;">${(item.description || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
+                        <div>
+                            <label style="display: block; color: #ccc; margin-bottom: 8px; font-size: 14px; font-weight: 500;">Status</label>
+                            <select id="edit-status" style="width: 100%; padding: 10px 12px; background: #1a1a1a; border: 1px solid #444; color: #fff; border-radius: 6px; font-size: 14px;">
+                                <option value="open" ${item.status === 'open' ? 'selected' : ''}>Open</option>
+                                <option value="in_progress" ${item.status === 'in_progress' ? 'selected' : ''}>In Progress</option>
+                                <option value="done" ${item.status === 'done' ? 'selected' : ''}>Done</option>
+                                <option value="failed" ${item.status === 'failed' ? 'selected' : ''}>Failed</option>
+                                <option value="blocked" ${item.status === 'blocked' ? 'selected' : ''}>Blocked</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label style="display: block; color: #ccc; margin-bottom: 8px; font-size: 14px; font-weight: 500;">Priority</label>
+                            <select id="edit-priority" style="width: 100%; padding: 10px 12px; background: #1a1a1a; border: 1px solid #444; color: #fff; border-radius: 6px; font-size: 14px;">
+                                <option value="High" ${item.priority === 'High' ? 'selected' : ''}>High</option>
+                                <option value="Medium" ${item.priority === 'Medium' ? 'selected' : ''}>Medium</option>
+                                <option value="Low" ${item.priority === 'Low' ? 'selected' : ''}>Low</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
+                        <div>
+                            <label style="display: block; color: #ccc; margin-bottom: 8px; font-size: 14px; font-weight: 500;">Role</label>
+                            <select id="edit-role" style="width: 100%; padding: 10px 12px; background: #1a1a1a; border: 1px solid #444; color: #fff; border-radius: 6px; font-size: 14px;">
+                                <option value="agent" ${item.role === 'agent' ? 'selected' : ''}>Agent</option>
+                                <option value="user" ${item.role === 'user' ? 'selected' : ''}>User</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label style="display: block; color: #ccc; margin-bottom: 8px; font-size: 14px; font-weight: 500;">Complexity</label>
+                            <select id="edit-complexity" style="width: 100%; padding: 10px 12px; background: #1a1a1a; border: 1px solid #444; color: #fff; border-radius: 6px; font-size: 14px;">
+                                <option value="simple" ${item.complexity === 'simple' ? 'selected' : ''}>Simple</option>
+                                <option value="medium" ${item.complexity === 'medium' ? 'selected' : ''}>Medium</option>
+                                <option value="complex" ${item.complexity === 'complex' ? 'selected' : ''}>Complex</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom: 24px;">
+                        <label style="display: flex; align-items: center; color: #ccc; font-size: 14px; cursor: pointer;">
+                            <input type="checkbox" id="edit-requires-worktree" ${item.requires_worktree ? 'checked' : ''}
+                                style="margin-right: 8px; width: 18px; height: 18px; cursor: pointer;">
+                            <span>Requires git worktree for code changes</span>
+                        </label>
+                    </div>
+
+                    <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px;">
+                        <button type="button" id="cancel-edit-btn"
+                            style="padding: 10px 20px; background: #444; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; transition: background 0.2s;">
+                            Cancel
+                        </button>
+                        <button type="submit" id="save-edit-btn"
+                            style="padding: 10px 20px; background: #8b5cf6; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; transition: background 0.2s;">
+                            Save Changes
+                        </button>
+                    </div>
+                </form>
+            `;
+
+            overlay.appendChild(modal);
+            document.body.appendChild(overlay);
+
+            // Add hover effects
+            const cancelBtn = modal.querySelector('#cancel-edit-btn');
+            const saveBtn = modal.querySelector('#save-edit-btn');
+
+            cancelBtn.addEventListener('mouseenter', () => cancelBtn.style.background = '#555');
+            cancelBtn.addEventListener('mouseleave', () => cancelBtn.style.background = '#444');
+            saveBtn.addEventListener('mouseenter', () => saveBtn.style.background = '#7c3aed');
+            saveBtn.addEventListener('mouseleave', () => saveBtn.style.background = '#8b5cf6');
+
+            // Close modal on cancel or overlay click
+            cancelBtn.addEventListener('click', () => overlay.remove());
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) overlay.remove();
+            });
+
+            // Handle form submission
+            const form = modal.querySelector('#edit-checklist-form');
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+
+                const updatedData = {
+                    item_id: itemId,
+                    name: document.getElementById('edit-name').value,
+                    description: document.getElementById('edit-description').value,
+                    status: document.getElementById('edit-status').value,
+                    priority: document.getElementById('edit-priority').value,
+                    role: document.getElementById('edit-role').value,
+                    complexity: document.getElementById('edit-complexity').value,
+                    requires_worktree: document.getElementById('edit-requires-worktree').checked
+                };
+
+                // Disable submit button and show loading state
+                saveBtn.disabled = true;
+                saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+
+                try {
+                    const getCsrfToken = () => {
+                        return document.querySelector('[name=csrfmiddlewaretoken]')?.value
+                            || document.cookie.split('; ').find(row => row.startsWith('csrftoken='))?.split('=')[1]
+                            || '';
+                    };
+
+                    const response = await fetch(`/projects/${projectId}/api/checklist/update/`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCsrfToken()
+                        },
+                        body: JSON.stringify(updatedData)
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        if (window.showToast) {
+                            window.showToast('Checklist item updated successfully', 'success');
+                        }
+                        overlay.remove();
+
+                        // Reload checklist to show updated data
+                        if (window.ArtifactsLoader && window.ArtifactsLoader.loadChecklist) {
+                            window.ArtifactsLoader.loadChecklist(projectId);
+                        }
+                    } else {
+                        throw new Error(result.error || 'Failed to update item');
+                    }
+                } catch (error) {
+                    console.error('Error updating checklist item:', error);
+                    if (window.showToast) {
+                        window.showToast('Error updating item: ' + error.message, 'error');
+                    } else {
+                        alert('Error updating item: ' + error.message);
+                    }
+                    // Re-enable button
+                    saveBtn.disabled = false;
+                    saveBtn.innerHTML = 'Save Changes';
+                }
+            });
+        })
+        .catch(error => {
+            console.error('Error fetching checklist data:', error);
+            alert('Error loading checklist data: ' + error.message);
+        });
+};
+
+window.toggleChecklistStatus = function(itemId, currentStatus) {
+    const projectId = window.getCurrentProjectId ? window.getCurrentProjectId() : window.ArtifactsLoader?.getCurrentProjectId();
+    if (!projectId) {
+        console.error('[ToggleChecklistStatus] No project ID available');
+        alert('Unable to toggle status: No project ID found');
+        return;
+    }
+
+    // Define status cycle: open -> in_progress -> done -> open
+    const statusCycle = {
+        'open': 'in_progress',
+        'in_progress': 'done',
+        'done': 'open',
+        'failed': 'open',
+        'blocked': 'open'
+    };
+
+    const newStatus = statusCycle[currentStatus] || 'in_progress';
+
+    const getCsrfToken = () => {
+        return document.querySelector('[name=csrfmiddlewaretoken]')?.value
+            || document.cookie.split('; ').find(row => row.startsWith('csrftoken='))?.split('=')[1]
+            || '';
+    };
+
+    // Update status via API
+    fetch(`/projects/${projectId}/api/checklist/update/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrfToken()
+        },
+        body: JSON.stringify({ item_id: itemId, status: newStatus })
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.success) {
+            if (window.showToast) {
+                window.showToast(`Status updated to ${newStatus.replace('_', ' ')}`, 'success');
+            }
+
+            // Reload checklist to show updated data
+            if (window.ArtifactsLoader && window.ArtifactsLoader.loadChecklist) {
+                window.ArtifactsLoader.loadChecklist(projectId);
+            }
+        } else {
+            throw new Error(result.error || 'Failed to update status');
+        }
+    })
+    .catch(error => {
+        console.error('Error toggling status:', error);
+        if (window.showToast) {
+            window.showToast('Error updating status: ' + error.message, 'error');
+        } else {
+            alert('Error updating status: ' + error.message);
+        }
+    });
+};
