@@ -469,6 +469,23 @@ document.addEventListener('DOMContentLoaded', function() {
     const tabButtons = document.querySelectorAll('.tab-button');
     const tabPanes = document.querySelectorAll('.tab-pane');
 
+    function saveActiveTab(tabId) {
+        try {
+            localStorage.setItem('artifactsActiveTab', tabId);
+        } catch (error) {
+            console.warn('[ArtifactsPanel] Unable to persist active tab:', error);
+        }
+    }
+
+    function getSavedActiveTab() {
+        try {
+            return localStorage.getItem('artifactsActiveTab');
+        } catch (error) {
+            console.warn('[ArtifactsPanel] Unable to read persisted tab:', error);
+            return null;
+        }
+    }
+
     function switchTab(tabId) {
         console.log(`[ArtifactsPanel] Switching to tab: ${tabId}`);
         console.log(`[ArtifactsPanel] Tab switching called at:`, new Date().toISOString());
@@ -487,6 +504,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (activeButton && activePane) {
             activeButton.classList.add('active');
             activePane.classList.add('active');
+            saveActiveTab(tabId);
             
             console.log(`[ArtifactsPanel] About to call loadTabData for tab: ${tabId}`);
             // Automatically load data when switching to certain tabs
@@ -664,6 +682,16 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Load data for the initially active tab when ArtifactsLoader is ready
     function loadInitialTab() {
+        const savedTabId = getSavedActiveTab();
+        if (savedTabId) {
+            const savedButton = document.querySelector(`.tab-button[data-tab="${savedTabId}"]`);
+            if (savedButton) {
+                console.log(`[ArtifactsPanel] Restoring saved tab: ${savedTabId}`);
+                switchTab(savedTabId);
+                return;
+            }
+        }
+
         const activeTab = document.querySelector('.tab-button.active');
         if (activeTab) {
             const tabId = activeTab.getAttribute('data-tab');
