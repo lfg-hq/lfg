@@ -409,22 +409,9 @@ class RepositoryIndexer:
             
             # Delete existing chunks if updating
             if not created:
-                # Delete old chunks from ChromaDB
-                old_chunks = list(indexed_file.chunks.all())
-                if old_chunks:
-                    from .chroma_client import get_chroma_client
-                    chroma_client = get_chroma_client()
-                    chunk_ids = [str(chunk.chunk_id) for chunk in old_chunks]
-                    chroma_client.delete_chunks(
-                        self.indexed_repository.get_chroma_collection_name(),
-                        chunk_ids
-                    )
-                
-                # Delete from database
                 indexed_file.chunks.all().delete()
             
             # Create new code chunks
-            chroma_chunks = []
             for chunk_data in parse_result['chunks']:
                 # Truncate fields to fit database constraints
                 content_preview = chunk_data['content_preview'][:200] if chunk_data['content_preview'] else ''
@@ -449,14 +436,7 @@ class RepositoryIndexer:
                 # Set embedding_id after object creation
                 code_chunk.embedding_id = str(code_chunk.chunk_id)
                 code_chunk.save()
-                
-                # Prepare for ChromaDB storage
-                chroma_chunks.append({
-                    'id': str(code_chunk.chunk_id),
-                    'content': chunk_data['content'],
-                    'metadata': code_chunk.get_metadata_dict()
-                })
-            
+
             # Build index map entries BEFORE storing embeddings (for fast lookup)
             try:
                 self._build_index_map(indexed_file, parse_result)
@@ -466,32 +446,12 @@ class RepositoryIndexer:
                 import traceback
                 logger.error(f"Index map traceback: {traceback.format_exc()}")
 
-            # Store embeddings in ChromaDB
-            from .chroma_client import get_chroma_client
-            chroma_client = get_chroma_client()
-
-            # Log chunk preparation for debugging
-            logger.info(f"Preparing to store {len(chroma_chunks)} chunks for file {file_info['relative_path']}")
-            
-            embedding_success = chroma_client.add_code_chunks(
-                self.indexed_repository.get_chroma_collection_name(),
-                chroma_chunks
-            )
-            
-            if embedding_success:
-                # Mark chunks as having embeddings stored
-                chunks_updated = indexed_file.chunks.update(embedding_stored=True)
-                indexed_file.status = 'indexed'
-                indexed_file.indexed_at = timezone.now()
-                logger.info(f"Successfully stored embeddings for {chunks_updated} chunks in file {file_info['relative_path']}")
-            else:
-                indexed_file.status = 'error'
-                indexed_file.error_message = "Failed to store embeddings in ChromaDB"
-                logger.error(f"Failed to store embeddings for file {file_info['relative_path']} - ChromaDB operation failed")
-            
+            indexed_file.status = 'indexed'
+            indexed_file.indexed_at = timezone.now()
+            indexed_file.error_message = ''
             indexed_file.save()
-            
-            return embedding_success
+
+            return True
             
         except Exception as e:
             logger.error(f"Error indexing file {file_info['relative_path']}: {e}")

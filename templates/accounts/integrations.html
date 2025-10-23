@@ -153,9 +153,9 @@
           {% if linear_connected %}Connected{% else %}Not Connected{% endif %}
         </span>
       </div>
-      
+
       <p class="integration-description">Sync your project tickets with Linear for seamless issue tracking.</p>
-      
+
       {% if linear_connected %}
         <form method="post" action="{% url 'accounts:disconnect_api_key' 'linear' %}">
           {% csrf_token %}
@@ -171,12 +171,53 @@
           </form>
         </div>
       {% endif %}
-      
+
       <a href="https://linear.app/settings/api" target="_blank" class="external-link">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M10 6H6C4.89543 6 4 6.89543 4 8V18C4 19.1046 4.89543 20 6 20H16C17.1046 20 18 19.1046 18 18V14M14 4H20M20 4V10M20 4L10 14" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
         Get Linear API Key
+      </a>
+    </div>
+
+    <!-- Notion Integration -->
+    <div class="integration-card">
+      <div class="integration-header">
+        <div class="integration-title">
+          <svg class="integration-icon" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M6.017 4.313l55.333 -4.087c6.797 -0.583 8.543 -0.19 12.817 2.917l17.663 12.443c2.913 2.14 3.883 2.723 3.883 5.053v68.243c0 4.277 -1.553 6.807 -6.99 7.193L24.467 99.967c-4.08 0.193 -6.023 -0.39 -8.16 -3.113L3.3 79.94c-2.333 -3.113 -3.3 -5.443 -3.3 -8.167V11.113c0 -3.497 1.553 -6.413 6.017 -6.8z" fill="#a78bfa"/>
+            <path d="M61.35 0.227l-55.333 4.087C1.553 4.7 0 7.617 0 11.113v60.66c0 2.723 0.967 5.053 3.3 8.167l13.007 16.913c2.137 2.723 4.08 3.307 8.16 3.113l64.257 -3.89c5.433 -0.387 6.99 -2.917 6.99 -7.193V20.64c0 -2.21 -0.873 -2.847 -3.443 -4.733L74.167 3.143c-4.273 -3.107 -6.02 -3.5 -12.817 -2.917zM25.92 19.523c-5.247 0.353 -6.437 0.433 -9.417 -1.99L8.927 11.507c-0.77 -0.78 -0.383 -1.753 0.793 -1.82l54.92 -3.89c4.78 -0.31 7.453 0.39 10.03 2.53l8.353 5.86c0.58 0.58 1.143 1.335 0.193 1.335l-57.166 4.077z" fill="#fff"/>
+          </svg>
+          <h3 class="integration-name">Notion</h3>
+        </div>
+        <span class="connection-status {% if notion_connected %}connected{% endif %}">
+          {% if notion_connected %}Connected{% else %}Not Connected{% endif %}
+        </span>
+      </div>
+
+      <p class="integration-description">Connect Notion to fetch documentation and knowledge base content into your projects.</p>
+
+      {% if notion_connected %}
+        <form method="post" action="{% url 'accounts:disconnect_api_key' 'notion' %}">
+          {% csrf_token %}
+          <button type="submit" class="disconnect-button">Disconnect Notion</button>
+        </form>
+      {% else %}
+        <button class="connect-button" id="notion-toggle">Connect Notion</button>
+        <div class="api-form" id="notion-form">
+          <form method="post" action="{% url 'accounts:save_api_key' 'notion' %}">
+            {% csrf_token %}
+            <input type="password" name="api_key" class="api-input" placeholder="Enter your Notion integration token" required>
+            <button type="submit" class="api-button">Save API Key</button>
+          </form>
+        </div>
+      {% endif %}
+
+      <a href="https://www.notion.so/my-integrations" target="_blank" class="external-link">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M10 6H6C4.89543 6 4 6.89543 4 8V18C4 19.1046 4.89543 20 6 20H16C17.1046 20 18 19.1046 18 18V14M14 4H20M20 4V10M20 4L10 14" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Create Notion Integration
       </a>
     </div>
   </div>

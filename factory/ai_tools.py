@@ -318,7 +318,8 @@ create_tickets = {
     "type": "function",
     "function": {
         "name": "create_tickets",
-        "description": "Call this function to generate the checklist tickets for the project. You will review the implementation plan for this.",
+        "description": "Call this function to generate the tickets for the project. This is based of the referred PRD or technical analysis or provided contenxt in markedown format \
+                        This will include UI Requirements, Component Specs, and Acceptance Criteria",
         "parameters": {
             "type": "object",
             "properties": {
@@ -330,13 +331,10 @@ create_tickets = {
                             "name": {"type": "string"},
                             "description": {"type": "string", "description": "Detailed description as to all the details that needs to be implemented"},
                             "role": {"type": "string", "enum": ["agent", "user"]},
-                            "ui_requirements": {"type": "object", "description": "UI requirements for this ticket if applicable"},
-                            "component_specs": {"type": "object", "description": "Component specifications for this ticket if applicable"},
-                            "acceptance_criteria": {"type": "array", "items": {"type": "string"}, "description": "Acceptance criteria for this ticket"},
                             "dependencies": {"type": "array", "items": {"type": "string"}, "description": "Is this ticket dependent on any other ticket? If yes, pass the ticket id"},
                             "priority": {"type": "string", "enum": ["High", "Medium", "Low"]}
                         },
-                        "required": ["name", "description", "role", "ui_requirements", "component_specs", "acceptance_criteria", "dependencies", "priority"]
+                        "required": ["name", "description", "role", "dependencies", "priority"]
                     }
                 }
             },
@@ -755,6 +753,149 @@ tools_ticket = [execute_command, get_prd, get_implementation, copy_boilerplate_c
 # Add codebase tools to appropriate tool sets
 tools_codebase = [index_repository, get_codebase_context, search_existing_code, get_repository_insights, get_codebase_summary]
 
+# Notion integration tools
+connect_notion = {
+    "type": "function",
+    "function": {
+        "name": "connect_notion",
+        "description": "Test connection to Notion workspace using the configured API key",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        }
+    }
+}
+
+search_notion = {
+    "type": "function",
+    "function": {
+        "name": "search_notion",
+        "description": "Search for pages and databases in Notion workspace. Use empty string or omit query to list ALL accessible pages. Returns a list of matching pages with their titles, IDs, and URLs.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search query string to find pages and databases. Use empty string \"\" to list all accessible pages.",
+                    "default": ""
+                },
+                "page_size": {
+                    "type": "integer",
+                    "description": "Number of results to return (default: 10, max: 100)",
+                    "default": 10
+                }
+            },
+            "additionalProperties": False,
+        }
+    }
+}
+
+get_notion_page = {
+    "type": "function",
+    "function": {
+        "name": "get_notion_page",
+        "description": "Retrieve the full content of a specific Notion page including all blocks and text. Use this to fetch Notion documentation, specs, or notes to use as context in your responses.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "page_id": {
+                    "type": "string",
+                    "description": "The Notion page ID (can be obtained from search_notion results)"
+                }
+            },
+            "required": ["page_id"],
+            "additionalProperties": False,
+        }
+    }
+}
+
+list_notion_databases = {
+    "type": "function",
+    "function": {
+        "name": "list_notion_databases",
+        "description": "List all accessible databases in the Notion workspace",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "page_size": {
+                    "type": "integer",
+                    "description": "Number of results to return (default: 10, max: 100)",
+                    "default": 10
+                }
+            },
+            "additionalProperties": False,
+        }
+    }
+}
+
+query_notion_database = {
+    "type": "function",
+    "function": {
+        "name": "query_notion_database",
+        "description": "Query a specific Notion database and retrieve its entries/rows",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "database_id": {
+                    "type": "string",
+                    "description": "The Notion database ID (can be obtained from list_notion_databases)"
+                },
+                "page_size": {
+                    "type": "integer",
+                    "description": "Number of entries to return (default: 10, max: 100)",
+                    "default": 10
+                }
+            },
+            "required": ["database_id"],
+            "additionalProperties": False,
+        }
+    }
+}
+
+# Linear integration tools
+get_linear_issues = {
+    "type": "function",
+    "function": {
+        "name": "get_linear_issues",
+        "description": "Fetch all Linear issues/tickets accessible to the user. Returns issue details including title, description, status, assignee, priority, and links.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of issues to return (default: 50, max: 250)",
+                    "default": 50
+                },
+                "team_id": {
+                    "type": "string",
+                    "description": "Optional team ID to filter issues by specific team"
+                }
+            },
+            "additionalProperties": False,
+        }
+    }
+}
+
+get_linear_issue_details = {
+    "type": "function",
+    "function": {
+        "name": "get_linear_issue_details",
+        "description": "Get detailed information for a specific Linear issue including full description, comments, labels, subtasks, and relationships. Use this to get complete context about a ticket.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "issue_id": {
+                    "type": "string",
+                    "description": "Linear issue ID or identifier (e.g., 'PED-8', 'ENG-123')"
+                }
+            },
+            "required": ["issue_id"],
+            "additionalProperties": False,
+        }
+    }
+}
+
 # Main tool lists
 tools_code = [get_prd, start_server, \
               get_github_access_token, \
@@ -762,9 +903,13 @@ tools_code = [get_prd, start_server, \
               get_next_ticket, get_pending_tickets, \
               create_implementation, get_implementation, update_implementation, stream_implementation_content, \
               stream_document_content, copy_boilerplate_code, capture_name, \
-              index_repository, get_codebase_context, search_existing_code, get_repository_insights, get_codebase_summary]
+              index_repository, get_codebase_context, search_existing_code, get_repository_insights, get_codebase_summary, \
+              connect_notion, search_notion, get_notion_page, list_notion_databases, query_notion_database, \
+              get_linear_issues, get_linear_issue_details]
 
-tools_product = [get_file_list, get_codebase_summary, search_existing_code, get_file_content, create_tickets, get_pending_tickets]
+tools_product = [get_file_list, get_codebase_summary, search_existing_code, get_file_content, create_tickets, get_pending_tickets, \
+                 connect_notion, search_notion, get_notion_page, list_notion_databases, query_notion_database, \
+                 get_linear_issues, get_linear_issue_details]
 
 tools_turbo = [get_prd, create_tickets, search_existing_code, get_pending_tickets, update_ticket, execute_command]
 

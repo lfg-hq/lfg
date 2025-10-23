@@ -78,68 +78,74 @@
             </div>
             
             <div class="overview-cards">
-                <div class="overview-card">
-                    <h3>About this project</h3>
-                    <div class="card-content">
-                        {% if project.description %}
-                            <p>{{ project.description }}</p>
-                        {% else %}
-                            <p class="text-muted">No description provided</p>
-                        {% endif %}
+                <div class="overview-card about-card">
+                    <div class="card-header">
+                        <h3>About this project</h3>
+                        <button type="button" class="btn btn-outline btn-sm" onclick="openAboutModal()">
+                            <i class="fas fa-pen"></i> Edit
+                        </button>
                     </div>
-                </div>
-                
-                <div class="overview-card">
-                    <h3>Quick Actions</h3>
                     <div class="card-content">
-                        <div class="quick-actions">
-                            <a href="{% url 'create_conversation' project.project_id %}" class="quick-action">
-                                <i class="fas fa-comment"></i>
-                                <div>
-                                    <span>Start Conversation</span>
-                                    <small>Chat with AI about your project</small>
-                                </div>
-                            </a>
-                            <a href="{% url 'projects:project_terminal' project.project_id %}" class="quick-action">
-                                <i class="fas fa-terminal"></i>
-                                <div>
-                                    <span>Open Terminal</span>
-                                    <small>Run commands and scripts</small>
-                                </div>
-                            </a>
-                            {% if project.indexed_repository %}
-                            <a href="#codebase" class="quick-action" onclick="showSection('codebase')">
-                                <i class="fas fa-code"></i>
-                                <div>
-                                    <span>Browse Code</span>
-                                    <small>Explore your repository</small>
-                                </div>
-                            </a>
+                        <p id="project-description-text" data-empty="{% if project.description %}false{% else %}true{% endif %}">
+                            {% if project.description %}
+                                {{ project.description }}
+                            {% else %}
+                                <span class="text-muted">No description provided</span>
                             {% endif %}
-                        </div>
+                        </p>
                     </div>
                 </div>
                 
-                <div class="overview-card">
+                <div class="overview-card project-stats-card">
                     <h3>Project Stats</h3>
                     <div class="card-content">
-                        <div class="stats-grid">
-                            <div class="stat-item">
-                                <span class="stat-value">{{ project.direct_conversations.all.count }}</span>
+                        <div class="stats-list">
+                            <div class="stat-row">
                                 <span class="stat-label">Conversations</span>
+                                <span class="stat-value">{{ project.direct_conversations.all.count }}</span>
                             </div>
-                            <div class="stat-item">
-                                <span class="stat-value">{{ project.created_at|timesince }}</span>
+                            <div class="stat-row">
                                 <span class="stat-label">Age</span>
+                                <span class="stat-value">{{ project.created_at|timesince }}</span>
                             </div>
                             {% if project.indexed_repository %}
-                            <div class="stat-item">
-                                <span class="stat-value">{{ project.indexed_repository.indexed_files.count }}</span>
+                            <div class="stat-row">
                                 <span class="stat-label">Files Indexed</span>
+                                <span class="stat-value">{{ project.indexed_repository.indexed_files_count }}</span>
+                            </div>
+                            <div class="stat-row">
+                                <span class="stat-label">Entities Mapped</span>
+                                <span class="stat-value">{{ project.indexed_repository.total_entities }}</span>
                             </div>
                             {% endif %}
                         </div>
                     </div>
+                </div>
+            </div>
+
+            <div id="about-project-overlay" class="about-modal-overlay">
+                <div class="about-modal" id="about-project-modal">
+                    <div class="modal-header">
+                        <div>
+                            <span class="modal-context">Update Project Overview</span>
+                            <h3 class="modal-title">Edit project description</h3>
+                            <p class="modal-subtitle">Keep teammates aligned with a clear summary.</p>
+                        </div>
+                        <button type="button" class="modal-close" onclick="closeAboutModal()" aria-label="Close">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <form method="post" action="{% url 'projects:update_project_description' project.project_id %}" class="modal-form">
+                        {% csrf_token %}
+                        <div class="form-group">
+                            <label for="about-project-input">Project description</label>
+                            <textarea id="about-project-input" name="description" rows="6" placeholder="Describe the project goals, scope, and milestones">{{ project.description|default_if_none:''|escape }}</textarea>
+                        </div>
+                        <div class="modal-actions">
+                            <button type="button" class="btn btn-outline" onclick="closeAboutModal()">Cancel</button>
+                            <button type="submit" class="btn btn-primary">Save</button>
+                        </div>
+                    </form>
                 </div>
             </div>
         </div>
@@ -228,7 +234,7 @@
                         
                         <div class="indexing-progress">
                             <div class="progress-info">
-                                <span>Indexing Progress</span>
+                                <span>Index Map Progress</span>
                                 <span>{{ project.indexed_repository.indexing_progress|floatformat:1 }}%</span>
                             </div>
                             <div class="progress-bar">
@@ -236,19 +242,15 @@
                             </div>
                         </div>
                         
-                        <div class="repository-stats">
-                            <div class="stat-row">
+                       <div class="repository-stats">
+                           <div class="stat-row">
+                               <div class="stat-item">
+                                    <span class="stat-value">{{ project.indexed_repository.indexed_files_count }}</span>
+                                   <span class="stat-label">Files Indexed</span>
+                               </div>
                                 <div class="stat-item">
-                                    <span class="stat-value">{{ project.indexed_repository.indexed_files.count }}</span>
-                                    <span class="stat-label">Files Indexed</span>
-                                </div>
-                                <div class="stat-item">
-                                    <span class="stat-value" id="totalChunks">-</span>
-                                    <span class="stat-label">Code Chunks</span>
-                                </div>
-                                <div class="stat-item">
-                                    <span class="stat-value" id="totalFunctions">-</span>
-                                    <span class="stat-label">Functions</span>
+                                    <span class="stat-value">{{ project.indexed_repository.total_entities }}</span>
+                                    <span class="stat-label">Entities Mapped</span>
                                 </div>
                             </div>
                         </div>
@@ -290,14 +292,11 @@
                                 <div class="file-contents" style="display: none;">
                                     {% for entity in entities %}
                                     <div class="entity-node entity-{{ entity.entity_type }}">
-                                        <div class="entity-header">
-                                            <i class="fas fa-{% if entity.entity_type == 'function' %}function{% elif entity.entity_type == 'class' %}cube{% elif entity.entity_type == 'method' %}cog{% else %}code{% endif %} entity-icon"></i>
+                                       <div class="entity-header">
+                                            <i class="fas fa-{% if entity.entity_type == 'class' %}cube{% elif entity.entity_type == 'method' %}cog{% else %}code{% endif %} entity-icon"></i>
                                             <span class="entity-name">{{ entity.entity_name }}</span>
                                             <span class="entity-type-badge">{{ entity.entity_type }}</span>
                                             <span class="entity-lines">L{{ entity.start_line }}-{{ entity.end_line }}</span>
-                                            {% if entity.complexity %}
-                                            <span class="complexity-badge complexity-{{ entity.complexity }}">{{ entity.complexity }}</span>
-                                            {% endif %}
                                         </div>
                                         {% if entity.description %}
                                         <div class="entity-description">{{ entity.description }}</div>
@@ -346,7 +345,7 @@
                         </div>
                         
                         <button class="btn btn-primary" onclick="showCodebaseModal()">
-                            <i class="fas fa-plus"></i> Connect Repository
+                            <i class="fas fa-plus" style="margin-right: 10px;"></i>&nbsp; Connect Repository
                         </button>
                     </div>
                 </div>
@@ -466,7 +465,7 @@
                         <ul class="mb-0">
                             <li>We'll clone your repository and analyze the code structure</li>
                             <li>Code will be parsed into semantic chunks (functions, classes, etc.)</li>
-                            <li>Vector embeddings will be created for intelligent code search</li>
+                            <li>A structured index map is created for functions and components</li>
                             <li>AI tools will use this context to generate better features</li>
                         </ul>
                     </div>
@@ -536,6 +535,9 @@ function showSection(sectionName) {
 
 // Initialize sidebar navigation
 document.addEventListener('DOMContentLoaded', function() {
+    const aboutOverlay = document.getElementById('about-project-overlay');
+    const aboutModal = document.getElementById('about-project-modal');
+
     document.querySelectorAll('.sidebar-nav-item').forEach(item => {
         item.addEventListener('click', function(e) {
             e.preventDefault();
@@ -543,7 +545,64 @@ document.addEventListener('DOMContentLoaded', function() {
             showSection(section);
         });
     });
+
+    if (aboutOverlay) {
+        aboutOverlay.addEventListener('click', function(event) {
+            if (event.target === aboutOverlay) {
+                closeAboutModal();
+            }
+        });
+    }
+
+    document.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape' && aboutOverlay && aboutOverlay.classList.contains('active')) {
+            closeAboutModal();
+        }
+    });
+
+    if (aboutModal) {
+        const textarea = aboutModal.querySelector('textarea');
+        if (textarea) {
+            textarea.addEventListener('input', function() {
+                this.style.height = 'auto';
+                this.style.height = Math.min(this.scrollHeight, 320) + 'px';
+            });
+        }
+    }
 });
+
+function openAboutModal() {
+    const overlay = document.getElementById('about-project-overlay');
+    if (!overlay) return;
+    const modal = document.getElementById('about-project-modal');
+    if (!modal) return;
+
+    overlay.classList.add('active');
+    modal.classList.add('open');
+
+    const textarea = modal.querySelector('textarea');
+    const descriptionText = document.getElementById('project-description-text');
+    if (textarea) {
+        if (descriptionText) {
+            if (descriptionText.dataset.empty === 'true') {
+                textarea.value = '';
+            } else {
+                textarea.value = descriptionText.innerText.trim();
+            }
+        }
+        textarea.focus();
+        textarea.dispatchEvent(new Event('input'));
+    }
+}
+
+function closeAboutModal() {
+    const overlay = document.getElementById('about-project-overlay');
+    const modal = document.getElementById('about-project-modal');
+    if (!overlay || !modal) return;
+
+    overlay.classList.remove('active');
+    modal.classList.remove('open');
+}
 
 async function reindexRepository(repositoryId) {
     if (!confirm('This will re-index the entire repository. Continue?')) {

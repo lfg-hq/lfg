@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import Sum
 from django.contrib.auth.models import User
 from projects.models import Project
 import uuid
@@ -74,6 +75,13 @@ class IndexedRepository(models.Model):
         if self.total_files == 0:
             return 0
         return (self.indexed_files_count / self.total_files) * 100
+
+    @property
+    def total_entities(self):
+        total = self.files.aggregate(total=Sum('code_chunks_count'))['total']
+        if total is None:
+            total = self.total_chunks
+        return total or 0
     
     def get_chroma_collection_name(self):
         """Generate ChromaDB collection name for this repository"""

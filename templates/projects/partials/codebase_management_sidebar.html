@@ -35,7 +35,7 @@
                         
                         <div class="indexing-progress">
                             <div class="progress-header">
-                                <span>Indexing Progress</span>
+                                <span>Index Map Progress</span>
                                 <span class="progress-percentage">{{ project.indexed_repository.indexing_progress|floatformat:1 }}%</span>
                             </div>
                             <div class="progress-bar">
@@ -46,20 +46,12 @@
                         <div class="repository-stats">
                             <div class="stat-grid">
                                 <div class="stat-item">
-                                    <span class="stat-value">{{ project.indexed_repository.indexed_files.count }}</span>
+                                    <span class="stat-value" id="filesIndexed">{{ project.indexed_repository.indexed_files_count }}</span>
                                     <span class="stat-label">Files Indexed</span>
                                 </div>
                                 <div class="stat-item">
-                                    <span class="stat-value" id="totalChunks">-</span>
-                                    <span class="stat-label">Code Chunks</span>
-                                </div>
-                                <div class="stat-item">
-                                    <span class="stat-value" id="totalFunctions">-</span>
-                                    <span class="stat-label">Functions</span>
-                                </div>
-                                <div class="stat-item">
-                                    <span class="stat-value" id="totalClasses">-</span>
-                                    <span class="stat-label">Classes</span>
+                                    <span class="stat-value" id="entitiesMapped">{{ project.indexed_repository.total_entities }}</span>
+                                    <span class="stat-label">Entities Mapped</span>
                                 </div>
                             </div>
                         </div>
@@ -154,8 +146,7 @@
                         </div>
                         
                         <button class="btn btn-primary btn-lg" onclick="showCodebaseModal()">
-                            <i class="fas fa-plus"></i>
-                            Connect Repository
+                            <i class="fas fa-plus" style="margin-right: 10px;"></i>Connect Repository
                         </button>
                     </div>
                 </div>

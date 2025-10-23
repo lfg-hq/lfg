@@ -83,7 +83,7 @@ class LinearSyncService:
             }
         }
         """
-        
+
         response = requests.post(
             self.BASE_URL,
             json={
@@ -92,13 +92,288 @@ class LinearSyncService:
             },
             headers=self.headers
         )
-        
+
         if response.status_code == 200:
             data = response.json()
             if "data" in data and data["data"]["team"]:
                 return data["data"]["team"]["projects"]["nodes"]
         return []
-    
+
+    def get_all_issues(self, limit=50, team_id=None):
+        """
+        Get all issues accessible to the user
+
+        Args:
+            limit: Maximum number of issues to return (default 50, max 250)
+            team_id: Optional team ID to filter issues by team
+
+        Returns:
+            Tuple of (success: bool, issues: List[Dict] or error: str)
+        """
+        query = """
+        query Issues($first: Int!, $teamId: ID) {
+            issues(first: $first, filter: { team: { id: { eq: $teamId } } }) {
+                nodes {
+                    id
+                    identifier
+                    title
+                    description
+                    priority
+                    state {
+                        name
+                        type
+                    }
+                    assignee {
+                        id
+                        name
+                        email
+                    }
+                    project {
+                        id
+                        name
+                    }
+                    team {
+                        id
+                        name
+                        key
+                    }
+                    createdAt
+                    updatedAt
+                    dueDate
+                    url
+                }
+            }
+        }
+        """
+
+        # If no team_id, use a simpler query without team filter
+        if not team_id:
+            query = """
+            query Issues($first: Int!) {
+                issues(first: $first) {
+                    nodes {
+                        id
+                        identifier
+                        title
+                        description
+                        priority
+                        state {
+                            name
+                            type
+                        }
+                        assignee {
+                            id
+                            name
+                            email
+                        }
+                        project {
+                            id
+                            name
+                        }
+                        team {
+                            id
+                            name
+                            key
+                        }
+                        createdAt
+                        updatedAt
+                        dueDate
+                        url
+                    }
+                }
+            }
+            """
+
+        variables = {"first": min(limit, 250)}
+        if team_id:
+            variables["teamId"] = team_id
+
+        try:
+            response = requests.post(
+                self.BASE_URL,
+                json={
+                    "query": query,
+                    "variables": variables
+                },
+                headers=self.headers,
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                if "errors" in data:
+                    return False, data["errors"][0].get("message", "Unknown error")
+
+                if "data" in data and "issues" in data["data"]:
+                    issues = data["data"]["issues"]["nodes"]
+                    return True, issues
+                return False, "No issues data in response"
+            else:
+                return False, f"HTTP Error: {response.status_code}"
+
+        except requests.exceptions.RequestException as e:
+            return False, f"Request error: {str(e)}"
+
+    def get_issue_by_identifier(self, identifier):
+        """
+        Get detailed information for a specific Linear issue by identifier
+
+        Args:
+            identifier: Linear issue identifier (e.g., "PED-8")
+
+        Returns:
+            Tuple of (success: bool, issue: Dict or error: str)
+        """
+        # First, search for the issue to get its UUID
+        search_query = """
+        query SearchIssue($filter: String!) {
+            issues(filter: { searchableContent: { contains: $filter } }, first: 1) {
+                nodes {
+                    id
+                    identifier
+                }
+            }
+        }
+        """
+
+        # If the identifier looks like a UUID, query directly
+        # Otherwise, search for it first
+        if len(identifier) > 30:  # UUID is longer than identifier
+            issue_uuid = identifier
+        else:
+            # Search for the issue by identifier
+            try:
+                response = requests.post(
+                    self.BASE_URL,
+                    json={
+                        "query": search_query,
+                        "variables": {"filter": identifier}
+                    },
+                    headers=self.headers,
+                    timeout=10
+                )
+
+                if response.status_code == 200:
+                    data = response.json()
+                    if "errors" in data:
+                        return False, data["errors"][0].get("message", "Unknown error")
+
+                    issues = data.get("data", {}).get("issues", {}).get("nodes", [])
+                    # Find exact match
+                    matching_issue = None
+                    for issue in issues:
+                        if issue.get("identifier") == identifier.upper():
+                            matching_issue = issue
+                            break
+
+                    if not matching_issue:
+                        return False, f"Issue with identifier '{identifier}' not found"
+
+                    issue_uuid = matching_issue.get("id")
+                else:
+                    return False, f"Search failed: HTTP {response.status_code}"
+            except requests.exceptions.RequestException as e:
+                return False, f"Search error: {str(e)}"
+
+        # Now get the detailed issue information
+        query = """
+        query Issue($id: String!) {
+            issue(id: $id) {
+                id
+                identifier
+                title
+                description
+                priority
+                priorityLabel
+                estimate
+                state {
+                    name
+                    type
+                    color
+                }
+                assignee {
+                    id
+                    name
+                    email
+                }
+                creator {
+                    id
+                    name
+                    email
+                }
+                project {
+                    id
+                    name
+                }
+                team {
+                    id
+                    name
+                    key
+                }
+                labels {
+                    nodes {
+                        id
+                        name
+                        color
+                    }
+                }
+                comments {
+                    nodes {
+                        id
+                        body
+                        user {
+                            name
+                        }
+                        createdAt
+                    }
+                }
+                createdAt
+                updatedAt
+                completedAt
+                dueDate
+                url
+                parent {
+                    id
+                    identifier
+                    title
+                }
+                children {
+                    nodes {
+                        id
+                        identifier
+                        title
+                    }
+                }
+            }
+        }
+        """
+
+        try:
+            response = requests.post(
+                self.BASE_URL,
+                json={
+                    "query": query,
+                    "variables": {"id": issue_uuid}
+                },
+                headers=self.headers,
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                if "errors" in data:
+                    return False, data["errors"][0].get("message", "Unknown error")
+
+                if "data" in data and "issue" in data["data"]:
+                    issue = data["data"]["issue"]
+                    return True, issue
+                return False, "No issue data in response"
+            else:
+                return False, f"HTTP Error: {response.status_code}"
+
+        except requests.exceptions.RequestException as e:
+            return False, f"Request error: {str(e)}"
+
     def create_project(self, team_id, name, description=""):
         """Create a new Linear project"""
         mutation = """

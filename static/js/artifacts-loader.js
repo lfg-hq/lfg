@@ -326,6 +326,571 @@ document.addEventListener('DOMContentLoaded', function() {
          * @returns {number|null} The current project ID or null if not found
          */
         getCurrentProjectId: getCurrentProjectId,
+        ticketModalState: {
+            list: [],
+            index: -1,
+            projectId: null,
+            onEdit: null,
+            onDelete: null,
+            onExecute: null
+        },
+        _ticketModalElements: null,
+        _ticketModalHelpers: null,
+        getTicketModalHelpers: function() {
+            if (this._ticketModalHelpers) {
+                return this._ticketModalHelpers;
+            }
+
+            const self = this;
+            const modalState = this.ticketModalState;
+            let modalElements = this._ticketModalElements || {};
+            let eventsBound = false;
+
+            function escapeHtml(value) {
+                if (value === null || value === undefined) {
+                    return '';
+                }
+                return String(value)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            }
+
+            function renderMarkdownContent(content) {
+                if (!content) {
+                    return '<p class="ticket-modal-empty">No description provided.</p>';
+                }
+                try {
+                    if (typeof marked !== 'undefined') {
+                        return marked.parse(content);
+                    }
+                } catch (error) {
+                    console.error('[ArtifactsLoader] Error parsing markdown content:', error);
+                }
+                return escapeHtml(content).replace(/\n/g, '<br>');
+            }
+
+            function renderValueBlock(value) {
+                if (value === null || value === undefined) {
+                    return '';
+                }
+                if (Array.isArray(value)) {
+                    if (value.length === 0) {
+                        return '';
+                    }
+                    return `<ul>${value.map(item => `<li>${escapeHtml(typeof item === 'string' ? item : JSON.stringify(item))}</li>`).join('')}</ul>`;
+                }
+                if (typeof value === 'object') {
+                    if (Object.keys(value).length === 0) {
+                        return '';
+                    }
+                    return `<pre>${escapeHtml(JSON.stringify(value, null, 2))}</pre>`;
+                }
+                if (typeof value === 'string') {
+                    const trimmed = value.trim();
+                    if (!trimmed || trimmed === '{}' || trimmed === '[]' || trimmed === 'null' || trimmed === 'undefined') {
+                        return '';
+                    }
+                    return renderMarkdownContent(value);
+                }
+                return escapeHtml(String(value));
+            }
+
+            function formatStatus(value) {
+                if (!value) {
+                    return 'Open';
+                }
+                return value.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+            }
+
+            function formatTitleCase(value, fallback = '') {
+                const source = value || fallback;
+                if (!source) {
+                    return '';
+                }
+                return String(source)
+                    .toLowerCase()
+                    .replace(/(^|\s|[_-])(\w)/g, (_, sep, char) => `${sep === '_' || sep === '-' ? ' ' : sep}${char.toUpperCase()}`)
+                    .trim();
+            }
+
+            function slugify(value) {
+                return String(value || '')
+                    .toLowerCase()
+                    .replace(/[^a-z0-9]+/g, '-')
+                    .replace(/^-+|-+$/g, '') || 'default';
+            }
+
+            function applyPill(element, value, formatter, datasetKey) {
+                if (!element) {
+                    return;
+                }
+                if (!value) {
+                    element.style.display = 'none';
+                    element.textContent = '';
+                    if (datasetKey) {
+                        element.dataset[datasetKey] = '';
+                    }
+                    return;
+                }
+                const formatted = formatter ? formatter(value) : value;
+                element.style.display = '';
+                element.textContent = formatted;
+                if (datasetKey) {
+                    element.dataset[datasetKey] = slugify(value);
+                }
+            }
+
+            function cacheModalElements() {
+                const priorityElement = document.getElementById('ticket-modal-priority-text');
+
+                modalElements = {
+                    overlay: document.getElementById('ticket-modal-overlay'),
+                    container: document.getElementById('ticket-modal'),
+                    closeBtn: document.getElementById('ticket-modal-close'),
+                    prevBtn: document.getElementById('ticket-modal-prev'),
+                    nextBtn: document.getElementById('ticket-modal-next'),
+                    editBtn: document.getElementById('ticket-modal-edit'),
+                    deleteBtn: document.getElementById('ticket-modal-delete'),
+                    executeBtn: document.getElementById('ticket-modal-execute'),
+                    name: document.getElementById('ticket-modal-name'),
+                    subtitle: document.getElementById('ticket-modal-subtitle'),
+                    status: document.getElementById('ticket-modal-status-chip'),
+                    complexityChip: document.getElementById('ticket-modal-complexity-chip'),
+                    priorityText: priorityElement,
+                    priorityWrapper: priorityElement ? priorityElement.closest('.ticket-meta-inline-item') : null,
+                    assigned: document.getElementById('ticket-modal-assigned'),
+                    worktree: document.getElementById('ticket-modal-worktree'),
+                    description: document.getElementById('ticket-modal-description'),
+                    acceptanceSection: document.getElementById('ticket-modal-acceptance-section'),
+                    acceptance: document.getElementById('ticket-modal-acceptance'),
+                    detailsSection: document.getElementById('ticket-modal-details-section'),
+                    details: document.getElementById('ticket-modal-details'),
+                    uiSection: document.getElementById('ticket-modal-ui-section'),
+                    ui: document.getElementById('ticket-modal-ui'),
+                    specSection: document.getElementById('ticket-modal-spec-section'),
+                    spec: document.getElementById('ticket-modal-spec'),
+                    dependenciesSection: document.getElementById('ticket-modal-dependencies-section'),
+                    dependencies: document.getElementById('ticket-modal-dependencies'),
+                    linearSection: document.getElementById('ticket-modal-linear-section'),
+                    linear: document.getElementById('ticket-modal-linear')
+                };
+                self._ticketModalElements = modalElements;
+            }
+
+            function updateNavigationControls() {
+                if (!modalElements.prevBtn || !modalElements.nextBtn) {
+                    return;
+                }
+                modalElements.prevBtn.disabled = modalState.index <= 0;
+                modalElements.nextBtn.disabled = modalState.index >= modalState.list.length - 1 || modalState.list.length === 0;
+            }
+
+            function updateActionVisibility() {
+                if (modalElements.editBtn) {
+                    modalElements.editBtn.style.display = modalState.onEdit ? '' : 'none';
+                }
+                if (modalElements.deleteBtn) {
+                    modalElements.deleteBtn.style.display = modalState.onDelete ? '' : 'none';
+                }
+                if (modalElements.executeBtn) {
+                    modalElements.executeBtn.style.display = modalState.onExecute ? '' : 'none';
+                }
+            }
+
+            function populateModal(ticket) {
+                if (!ticket || !modalElements.container) {
+                    return;
+                }
+
+                if (modalElements.name) {
+                    modalElements.name.textContent = ticket.name || 'Untitled Ticket';
+                }
+                if (modalElements.subtitle) {
+                    modalElements.subtitle.textContent = ticket.id ? `Ticket #${ticket.id}` : '';
+                }
+                if (modalElements.status) {
+                    applyPill(modalElements.status, ticket.status || 'open', value => formatStatus(value).toUpperCase(), 'state');
+                }
+                if (modalElements.complexityChip) {
+                    const complexityLabel = ticket.complexity || 'medium';
+                    applyPill(modalElements.complexityChip, complexityLabel, value => formatTitleCase(value, 'Medium').toUpperCase(), 'level');
+                }
+                if (modalElements.priorityText) {
+                    const priorityValue = formatTitleCase(ticket.priority, '');
+                    if (priorityValue) {
+                        modalElements.priorityText.textContent = priorityValue;
+                        if (modalElements.priorityWrapper) {
+                            modalElements.priorityWrapper.style.display = 'inline-flex';
+                        }
+                    } else {
+                        modalElements.priorityText.textContent = '';
+                        if (modalElements.priorityWrapper) {
+                            modalElements.priorityWrapper.style.display = 'none';
+                        }
+                    }
+                }
+                if (modalElements.assigned) {
+                    modalElements.assigned.textContent = formatTitleCase(ticket.role, 'Agent');
+                }
+                if (modalElements.worktree) {
+                    modalElements.worktree.textContent = ticket.requires_worktree ? 'Required' : 'Not Required';
+                }
+                if (modalElements.description) {
+                    modalElements.description.innerHTML = renderMarkdownContent(ticket.description || '');
+                }
+
+                if (modalElements.acceptanceSection) {
+                    if (ticket.acceptance_criteria && ticket.acceptance_criteria.length > 0) {
+                        modalElements.acceptanceSection.style.display = '';
+                        modalElements.acceptance.innerHTML = `<ul>${ticket.acceptance_criteria.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
+                    } else {
+                        modalElements.acceptanceSection.style.display = 'none';
+                        modalElements.acceptance.innerHTML = '';
+                    }
+                }
+
+                if (modalElements.detailsSection) {
+                    if (ticket.details && Object.keys(ticket.details || {}).length > 0) {
+                        modalElements.detailsSection.style.display = '';
+                        modalElements.details.innerHTML = `<pre>${escapeHtml(JSON.stringify(ticket.details, null, 2))}</pre>`;
+                    } else {
+                        modalElements.detailsSection.style.display = 'none';
+                        modalElements.details.innerHTML = '';
+                    }
+                }
+
+                if (modalElements.uiSection) {
+                    const uiContent = renderValueBlock(ticket.ui_requirements);
+                    if (uiContent) {
+                        modalElements.uiSection.style.display = '';
+                        modalElements.ui.innerHTML = uiContent;
+                    } else {
+                        modalElements.uiSection.style.display = 'none';
+                        modalElements.ui.innerHTML = '';
+                    }
+                }
+
+                if (modalElements.specSection) {
+                    const specContent = renderValueBlock(ticket.component_specs);
+                    if (specContent) {
+                        modalElements.specSection.style.display = '';
+                        modalElements.spec.innerHTML = specContent;
+                    } else {
+                        modalElements.specSection.style.display = 'none';
+                        modalElements.spec.innerHTML = '';
+                    }
+                }
+
+                if (modalElements.dependenciesSection) {
+                    if (ticket.dependencies && ticket.dependencies.length > 0) {
+                        modalElements.dependenciesSection.style.display = '';
+                        modalElements.dependencies.innerHTML = `<ul>${ticket.dependencies.map(dep => `<li>${escapeHtml(dep)}</li>`).join('')}</ul>`;
+                    } else {
+                        modalElements.dependenciesSection.style.display = 'none';
+                        modalElements.dependencies.innerHTML = '';
+                    }
+                }
+
+                if (modalElements.linearSection) {
+                    if (ticket.linear_issue_id) {
+                        modalElements.linearSection.style.display = '';
+                        const parts = [];
+                        if (ticket.linear_state) {
+                            parts.push(`<p><strong>State:</strong> ${escapeHtml(ticket.linear_state)}</p>`);
+                        }
+                        if (ticket.linear_issue_url) {
+                            parts.push(`<p><a href="${escapeHtml(ticket.linear_issue_url)}" target="_blank" rel="noopener" class="ticket-modal-link">View in Linear</a></p>`);
+                        }
+                        if (ticket.linear_synced_at) {
+                            parts.push(`<p class="ticket-modal-subtext">Last synced: ${new Date(ticket.linear_synced_at).toLocaleString()}</p>`);
+                        }
+                        modalElements.linear.innerHTML = parts.join('') || '<p>No Linear metadata available.</p>';
+                    } else {
+                        modalElements.linearSection.style.display = 'none';
+                        modalElements.linear.innerHTML = '';
+                    }
+                }
+
+                modalElements.container.scrollTop = 0;
+                if (modalElements.description && modalElements.description.classList.contains('markdown-content')) {
+                    modalElements.description.setAttribute('data-raw-content', ticket.description || '');
+                }
+            }
+
+            function ensureModal() {
+                if (!document.getElementById('ticket-modal-overlay')) {
+                    const overlay = document.createElement('div');
+                    overlay.id = 'ticket-modal-overlay';
+                    overlay.className = 'ticket-modal-overlay';
+                    overlay.setAttribute('aria-hidden', 'true');
+                    overlay.innerHTML = `
+                        <div class="ticket-modal" id="ticket-modal" role="dialog" aria-modal="true" aria-labelledby="ticket-modal-name" tabindex="-1">
+                            <div class="ticket-modal-header">
+                                <div class="ticket-modal-nav">
+                                    <button type="button" class="ticket-modal-nav-btn" id="ticket-modal-prev" title="Previous ticket">
+                                        <i class="fas fa-chevron-left"></i>
+                                    </button>
+                                    <button type="button" class="ticket-modal-nav-btn" id="ticket-modal-next" title="Next ticket">
+                                        <i class="fas fa-chevron-right"></i>
+                                    </button>
+                                </div>
+                                <div class="ticket-modal-header-actions">
+                                    <div class="ticket-chip-group">
+                                        <span class="ticket-chip ticket-status-chip" id="ticket-modal-status-chip"></span>
+                                        <span class="ticket-chip ticket-complexity-chip" id="ticket-modal-complexity-chip"></span>
+                                    </div>
+                                    <button type="button" class="ticket-modal-close" id="ticket-modal-close" title="Close ticket details">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="ticket-modal-header-content">
+                                <div class="ticket-modal-title-group">
+                                    <p class="ticket-modal-context">Ticket overview</p>
+                                    <h2 class="ticket-modal-name" id="ticket-modal-name"></h2>
+                                    <p class="ticket-modal-subtitle" id="ticket-modal-subtitle"></p>
+                                </div>
+                                <div class="ticket-meta-inline" id="ticket-modal-summary">
+                                    <div class="ticket-meta-inline-item">
+                                        <span class="ticket-meta-inline-label">Assignee</span>
+                                        <span class="ticket-meta-inline-value" id="ticket-modal-assigned"></span>
+                                    </div>
+                                    <div class="ticket-meta-inline-item">
+                                        <span class="ticket-meta-inline-label">Worktree</span>
+                                        <span class="ticket-meta-inline-value" id="ticket-modal-worktree"></span>
+                                    </div>
+                                    <div class="ticket-meta-inline-item">
+                                        <span class="ticket-meta-inline-label">Priority</span>
+                                        <span class="ticket-meta-inline-value" id="ticket-modal-priority-text"></span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="ticket-modal-body">
+                                <section class="ticket-modal-section">
+                                    <header class="ticket-section-header">
+                                        <div class="ticket-section-title">
+                                            <i class="fas fa-align-left"></i>
+                                            <h4>Description</h4>
+                                        </div>
+                                        <span class="ticket-section-label">Rich markdown</span>
+                                    </header>
+                                    <div id="ticket-modal-description" class="ticket-modal-description markdown-content"></div>
+                                </section>
+                                <section class="ticket-modal-section" id="ticket-modal-acceptance-section">
+                                    <header class="ticket-section-header">
+                                        <div class="ticket-section-title">
+                                            <i class="fas fa-clipboard-check"></i>
+                                            <h4>Acceptance Criteria</h4>
+                                        </div>
+                                        <span class="ticket-section-label">Delivery checklist</span>
+                                    </header>
+                                    <div id="ticket-modal-acceptance"></div>
+                                </section>
+                                <section class="ticket-modal-section" id="ticket-modal-details-section">
+                                    <header class="ticket-section-header">
+                                        <div class="ticket-section-title">
+                                            <i class="fas fa-microchip"></i>
+                                            <h4>Technical Details</h4>
+                                        </div>
+                                        <span class="ticket-section-label">Implementation notes</span>
+                                    </header>
+                                    <div id="ticket-modal-details"></div>
+                                </section>
+                                <section class="ticket-modal-section" id="ticket-modal-ui-section">
+                                    <header class="ticket-section-header">
+                                        <div class="ticket-section-title">
+                                            <i class="fas fa-layer-group"></i>
+                                            <h4>UI Requirements</h4>
+                                        </div>
+                                        <span class="ticket-section-label">Screens & flows</span>
+                                    </header>
+                                    <div id="ticket-modal-ui"></div>
+                                </section>
+                                <section class="ticket-modal-section" id="ticket-modal-spec-section">
+                                    <header class="ticket-section-header">
+                                        <div class="ticket-section-title">
+                                            <i class="fas fa-project-diagram"></i>
+                                            <h4>Component Specs</h4>
+                                        </div>
+                                        <span class="ticket-section-label">Interfaces & contracts</span>
+                                    </header>
+                                    <div id="ticket-modal-spec"></div>
+                                </section>
+                                <section class="ticket-modal-section" id="ticket-modal-dependencies-section">
+                                    <header class="ticket-section-header">
+                                        <div class="ticket-section-title">
+                                            <i class="fas fa-link"></i>
+                                            <h4>Dependencies</h4>
+                                        </div>
+                                        <span class="ticket-section-label">Prerequisites</span>
+                                    </header>
+                                    <div id="ticket-modal-dependencies"></div>
+                                </section>
+                                <section class="ticket-modal-section" id="ticket-modal-linear-section">
+                                    <header class="ticket-section-header">
+                                        <div class="ticket-section-title">
+                                            <i class="fas fa-plug"></i>
+                                            <h4>Linear Integration</h4>
+                                        </div>
+                                        <span class="ticket-section-label">Sync state</span>
+                                    </header>
+                                    <div id="ticket-modal-linear"></div>
+                                </section>
+                            </div>
+                            <div class="ticket-modal-footer">
+                                <button type="button" class="ticket-modal-secondary" id="ticket-modal-edit">
+                                    <i class="fas fa-pen"></i> Edit ticket
+                                </button>
+                                <button type="button" class="ticket-modal-danger" id="ticket-modal-delete">
+                                    <i class="fas fa-trash"></i> Delete
+                                </button>
+                                <button type="button" class="ticket-modal-primary" id="ticket-modal-execute">
+                                    <i class="fas fa-play"></i> Execute (Build Now)
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                    document.body.appendChild(overlay);
+                }
+
+                cacheModalElements();
+
+                if (!eventsBound && modalElements.overlay) {
+                    eventsBound = true;
+
+                    modalElements.overlay.addEventListener('click', function(event) {
+                        if (event.target === modalElements.overlay) {
+                            helpers.close();
+                        }
+                    });
+
+                    if (modalElements.closeBtn) {
+                        modalElements.closeBtn.addEventListener('click', function() {
+                            helpers.close();
+                        });
+                    }
+
+                    if (modalElements.prevBtn) {
+                        modalElements.prevBtn.addEventListener('click', function() {
+                            helpers.openAtIndex(modalState.index - 1);
+                        });
+                    }
+
+                    if (modalElements.nextBtn) {
+                        modalElements.nextBtn.addEventListener('click', function() {
+                            helpers.openAtIndex(modalState.index + 1);
+                        });
+                    }
+
+                    if (modalElements.editBtn) {
+                        modalElements.editBtn.addEventListener('click', function() {
+                            if (modalState.onEdit) {
+                                modalState.onEdit(helpers.getCurrentTicket(), helpers);
+                            }
+                        });
+                    }
+
+                    if (modalElements.deleteBtn) {
+                        modalElements.deleteBtn.addEventListener('click', function() {
+                            if (!modalState.onDelete) {
+                                return;
+                            }
+                            const result = modalState.onDelete(helpers.getCurrentTicket(), helpers);
+                            if (result && typeof result.then === 'function') {
+                                modalElements.deleteBtn.disabled = true;
+                                result.finally(() => {
+                                    modalElements.deleteBtn.disabled = false;
+                                });
+                            }
+                        });
+                    }
+
+                    if (modalElements.executeBtn) {
+                        modalElements.executeBtn.addEventListener('click', function() {
+                            if (modalState.onExecute) {
+                                modalState.onExecute(helpers.getCurrentTicket(), helpers);
+                            }
+                        });
+                    }
+
+                    document.addEventListener('keydown', function(event) {
+                        if (!modalElements.overlay || !modalElements.overlay.classList.contains('active')) {
+                            return;
+                        }
+                        if (event.key === 'Escape') {
+                            helpers.close();
+                        } else if (event.key === 'ArrowRight') {
+                            helpers.openAtIndex(modalState.index + 1);
+                        } else if (event.key === 'ArrowLeft') {
+                            helpers.openAtIndex(modalState.index - 1);
+                        }
+                    });
+                }
+
+                updateActionVisibility();
+                return modalElements;
+            }
+
+            const helpers = {
+                escapeHtml,
+                renderMarkdownContent,
+                setProjectId(projectId) {
+                    modalState.projectId = projectId;
+                },
+                setHandlers(handlers = {}) {
+                    modalState.onEdit = handlers.onEdit || null;
+                    modalState.onDelete = handlers.onDelete || null;
+                    modalState.onExecute = handlers.onExecute || null;
+                    ensureModal();
+                    updateActionVisibility();
+                },
+                ensure: ensureModal,
+                getCurrentTicket() {
+                    if (modalState.index < 0 || modalState.index >= modalState.list.length) {
+                        return null;
+                    }
+                    return modalState.list[modalState.index];
+                },
+                open(list, index) {
+                    ensureModal();
+                    modalState.list = Array.isArray(list) ? list.slice() : [];
+                    this.openAtIndex(index);
+                },
+                openAtIndex(index) {
+                    ensureModal();
+                    if (index < 0 || index >= modalState.list.length) {
+                        return;
+                    }
+                    modalState.index = index;
+                    populateModal(this.getCurrentTicket());
+                    updateNavigationControls();
+                    if (modalElements.overlay) {
+                        modalElements.overlay.classList.add('active');
+                        modalElements.overlay.setAttribute('aria-hidden', 'false');
+                    }
+                    if (modalElements.container) {
+                        modalElements.container.focus({ preventScroll: true });
+                    }
+                    document.body.classList.add('ticket-modal-open');
+                },
+                close() {
+                    ensureModal();
+                    if (modalElements.overlay) {
+                        modalElements.overlay.classList.remove('active');
+                        modalElements.overlay.setAttribute('aria-hidden', 'true');
+                    }
+                    document.body.classList.remove('ticket-modal-open');
+                    modalState.index = -1;
+                }
+            };
+
+            this._ticketModalElements = modalElements;
+            this._ticketModalHelpers = helpers;
+            return helpers;
+        },
         
         /**
          * Load features from the API for the current project
@@ -1270,27 +1835,71 @@ document.addEventListener('DOMContentLoaded', function() {
          */
         loadTickets: function(projectId) {
             console.log(`[ArtifactsLoader] loadTickets called with project ID: ${projectId}`);
-            
+
             if (!projectId) {
                 console.warn('[ArtifactsLoader] No project ID provided for loading tickets');
                 return;
             }
-            
-            // Get tickets tab content element
+
             const ticketsTab = document.getElementById('tickets');
             if (!ticketsTab) {
                 console.warn('[ArtifactsLoader] Tickets tab element not found');
                 return;
             }
-            
-            // Show loading state
+
+            const modalHelpers = this.getTicketModalHelpers();
+            modalHelpers.setProjectId(projectId);
+
+            const getCsrfToken = () => {
+                if (typeof getCookie === 'function') {
+                    return getCookie('csrftoken');
+                }
+                if (typeof window.getCookie === 'function') {
+                    return window.getCookie('csrftoken');
+                }
+                return '';
+            };
+
+            const deleteTicket = (ticket) => {
+                if (!ticket) {
+                    console.warn('[ArtifactsLoader] Attempted to delete an unknown ticket');
+                    return Promise.resolve(false);
+                }
+
+                if (!confirm(`Are you sure you want to delete the ticket "${ticket.name}"?`)) {
+                    return Promise.resolve(false);
+                }
+
+                return fetch(`/projects/${projectId}/api/checklist/${ticket.id}/delete/`, {
+                    method: 'DELETE',
+                    headers: {
+                        'X-CSRFToken': getCsrfToken()
+                    }
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Failed to delete ticket');
+                    }
+                    return response.json().catch(() => ({}));
+                })
+                .then(() => {
+                    window.showToast('Ticket deleted successfully', 'success');
+                    ArtifactsLoader.loadTickets(projectId);
+                    return true;
+                })
+                .catch(error => {
+                    console.error('Error deleting ticket:', error);
+                    window.showToast('Error deleting ticket', 'error');
+                    return false;
+                });
+            };
+
             console.log('[ArtifactsLoader] Showing loading state for tickets');
             ticketsTab.innerHTML = '<div class="loading-state"><div class="spinner"></div><div>Loading tickets...</div></div>';
-            
-            // Fetch tickets from API - updated to new endpoint in projects app
+
             const url = `/projects/${projectId}/api/checklist/`;
             console.log(`[ArtifactsLoader] Fetching tickets from API: ${url}`);
-            
+
             fetch(url)
                 .then(response => {
                     console.log(`[ArtifactsLoader] Tickets API response received, status: ${response.status}`);
@@ -1301,13 +1910,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 })
                 .then(data => {
                     console.log('[ArtifactsLoader] Tickets API data received:', data);
-                    // Process tickets data - checklist items are returned as 'checklist'
                     const tickets = data.checklist || [];
                     console.log(`[ArtifactsLoader] Found ${tickets.length} tickets`);
-                    
+
                     if (tickets.length === 0) {
-                        // Show empty state if no tickets found
-                        console.log('[ArtifactsLoader] No tickets found, showing empty state');
                         ticketsTab.innerHTML = `
                             <div class="empty-state">
                                 <div class="empty-state-icon">
@@ -1318,15 +1924,12 @@ document.addEventListener('DOMContentLoaded', function() {
                                 </div>
                             </div>
                         `;
+                        modalHelpers.setHandlers();
                         return;
                     }
-                    
-                    // Extract unique priorities for filter dropdown
-                    const priorities = [...new Set(tickets.map(ticket => 
-                        ticket.priority || 'Medium'
-                    ))].sort();
-                    
-                    // Create container for tickets with filter
+
+                    const priorities = [...new Set(tickets.map(ticket => ticket.priority || 'Medium'))].sort();
+
                     ticketsTab.innerHTML = `
                         <div class="tickets-container">
                             <div class="ticket-filters">
@@ -1345,65 +1948,47 @@ document.addEventListener('DOMContentLoaded', function() {
                                     </div>
                                 </div>
                             </div>
-                            <div class="tickets-content" id="tickets-content">
-                                <!-- Tickets will be loaded here -->
-                            </div>
+                            <div class="tickets-content" id="tickets-content"></div>
                         </div>
-                        
-                        <!-- Right Drawer for Ticket Details -->
-                        <div class="ticket-details-drawer" id="ticket-details-drawer">
-                            <div class="drawer-header">
-                                <h3 class="drawer-title">Ticket Details</h3>
-                                <button class="close-drawer-btn" id="close-drawer-btn">
-                                    <i class="fas fa-times"></i>
-                                </button>
-                            </div>
-                            <div class="drawer-content" id="drawer-content">
-                                <!-- Ticket details will be loaded here -->
-                            </div>
-                        </div>
-                        
-                        <!-- Overlay for drawer -->
-                        <div class="drawer-overlay" id="drawer-overlay"></div>
                     `;
-                    
+
                     const ticketsContent = document.getElementById('tickets-content');
                     const priorityFilter = document.getElementById('priority-filter');
                     const clearFiltersBtn = document.getElementById('clear-filters');
-                    
-                    // Group tickets by status for potential future use
-                    const ticketsByStatus = {
-                        open: [],
-                        in_progress: [],
-                        agent: [],
-                        closed: []
-                    };
-                    
-                    tickets.forEach(ticket => {
-                        const status = ticket.status || 'open';
-                        if (ticketsByStatus[status]) {
-                            ticketsByStatus[status].push(ticket);
-                        } else {
-                            ticketsByStatus.open.push(ticket);
+                    const syncLinearBtn = document.getElementById('sync-linear');
+
+                    modalHelpers.ensure();
+                    modalHelpers.setHandlers({
+                        onEdit: (ticket) => {
+                            modalHelpers.close();
+                            if (typeof window.editChecklistItem === 'function' && ticket) {
+                                window.editChecklistItem(ticket.id);
+                            }
+                        },
+                        onDelete: (ticket) => deleteTicket(ticket).then((removed) => {
+                            if (removed) {
+                                modalHelpers.close();
+                            }
+                            return removed;
+                        }),
+                        onExecute: (ticket) => {
+                            if (ticket) {
+                                modalHelpers.close();
+                                ArtifactsLoader.executeTicket(ticket.id);
+                            }
                         }
                     });
-                    
-                    // Function to render tickets based on filter
+
                     const renderTickets = (filterPriority = 'all') => {
                         let filteredTickets = [...tickets];
-                        
-                        // Apply priority filter if not 'all'
                         if (filterPriority !== 'all') {
-                            filteredTickets = filteredTickets.filter(ticket => 
-                                (ticket.priority || 'Medium') === filterPriority
-                            );
+                            filteredTickets = filteredTickets.filter(ticket => (ticket.priority || 'Medium') === filterPriority);
                         }
-                        
-                        // Create HTML for filtered tickets
-                        let ticketsHTML = `<div class="tickets-by-status">`;
-                        
+
+                        let html = '<div class="tickets-by-status">';
+
                         if (filteredTickets.length === 0) {
-                            ticketsHTML += `
+                            html += `
                                 <div class="no-results">
                                     <div class="empty-state-icon">
                                         <i class="fas fa-filter"></i>
@@ -1418,35 +2003,28 @@ document.addEventListener('DOMContentLoaded', function() {
                                 const priorityLevel = (ticket.priority || 'Medium').toLowerCase();
                                 const priorityClass = `${priorityLevel}-priority`;
                                 const status = ticket.status || 'open';
-                                const isHighlighted = filterPriority !== 'all' && ticket.priority === filterPriority;
-                                
-                                // Process description for better display
-                                let displayDescription = ticket.description || '';
-                                const descriptionLimit = 300; // Increased character limit
-                                const isTruncated = displayDescription.length > descriptionLimit;
-                                
-                                if (isTruncated) {
-                                    // Find the last space before the limit to avoid cutting words
-                                    const lastSpaceIndex = displayDescription.lastIndexOf(' ', descriptionLimit);
+                                const isHighlighted = filterPriority !== 'all' && (ticket.priority || 'Medium') === filterPriority;
+
+                                let summary = ticket.description || '';
+                                const descriptionLimit = 300;
+                                if (summary.length > descriptionLimit) {
+                                    const lastSpaceIndex = summary.lastIndexOf(' ', descriptionLimit);
                                     const truncateIndex = lastSpaceIndex > 0 ? lastSpaceIndex : descriptionLimit;
-                                    displayDescription = displayDescription.substring(0, truncateIndex) + '...';
+                                    summary = `${summary.substring(0, truncateIndex)}...`;
                                 }
-                                
-                                // Replace newlines with <br> tags for proper formatting
-                                displayDescription = displayDescription.replace(/\n/g, '<br>');
-                                
-                                ticketsHTML += `
+                                summary = modalHelpers.escapeHtml(summary).replace(/\n/g, '<br>');
+
+                                html += `
                                     <div class="ticket-card" data-ticket-id="${ticket.id}" data-priority="${ticket.priority || 'Medium'}">
                                         <div class="card-header ${status}">
-                                            <h4 class="card-title">${ticket.name}</h4>
+                                            <h4 class="card-title">${modalHelpers.escapeHtml(ticket.name || 'Untitled Ticket')}</h4>
                                         </div>
                                         <div class="card-body">
-                                            <div class="card-description">${displayDescription}</div>
-                                            
+                                            <div class="card-description">${summary}</div>
                                             <div class="card-meta">
                                                 <div class="card-tags">
                                                     <span class="priority-tag ${priorityClass} ${isHighlighted ? 'filter-active' : ''}">
-                                                        <i class="fas fa-flag"></i> ${ticket.priority || 'Medium'} Priority
+                                                        <i class="fas fa-flag"></i> ${modalHelpers.escapeHtml(ticket.priority || 'Medium')} Priority
                                                     </span>
                                                     <span class="status-tag status-${status}">
                                                         ${status.replace('_', ' ').charAt(0).toUpperCase() + status.replace('_', ' ').slice(1)}
@@ -1463,7 +2041,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                                     </span>
                                                     ` : ''}
                                                 </div>
-                                                <button class="view-details-btn" data-ticket-id="${ticket.id}" title="View details">
+                                                <button class="view-details-btn" data-index="${filteredTickets.indexOf(ticket)}" title="View details">
                                                     <i class="fas fa-info-circle"></i>
                                                 </button>
                                                 <button class="delete-ticket-btn" data-ticket-id="${ticket.id}" title="Delete ticket">
@@ -1475,279 +2053,88 @@ document.addEventListener('DOMContentLoaded', function() {
                                 `;
                             });
                         }
-                        
-                        ticketsHTML += `</div>`;
-                        ticketsContent.innerHTML = ticketsHTML;
-                        
-                        // Reattach event listeners after rendering
-                        attachDetailViewListeners();
-                    };
-                    
-                    // Function to attach event listeners for detail view buttons
-                    const attachDetailViewListeners = () => {
-                        // Add event listeners for the details buttons
-                        const detailsButtons = document.querySelectorAll('.view-details-btn');
-                        const detailsDrawer = document.getElementById('ticket-details-drawer');
-                        const drawerOverlay = document.getElementById('drawer-overlay');
-                        const closeDrawerBtn = document.getElementById('close-drawer-btn');
-                        
-                        detailsButtons.forEach(button => {
-                            button.addEventListener('click', function(e) {
-                                const ticketId = this.getAttribute('data-ticket-id');
-                                const ticket = tickets.find(t => t.id == ticketId);
-                                
-                                if (ticket) {
-                                    // Populate drawer with ticket details
-                                    const drawerContent = document.getElementById('drawer-content');
-                                    drawerContent.innerHTML = `
-                                        <div class="drawer-section">
-                                            <h4 class="section-title">Ticket Information</h4>
-                                            <p class="ticket-id"><strong>ID:</strong> ${ticket.id}</p>
-                                            <p class="ticket-title"><strong>Title:</strong> ${ticket.name}</p>
-                                            <p class="ticket-status"><strong>Status:</strong> ${ticket.status.replace('_', ' ').charAt(0).toUpperCase() + ticket.status.replace('_', ' ').slice(1)}</p>
-                                            <p class="ticket-priority"><strong>Priority:</strong> ${ticket.priority || 'Medium'}</p>
-                                        </div>
-                                        
-                                        ${ticket.linear_issue_id ? `
-                                        <div class="drawer-section">
-                                            <h4 class="section-title">Linear Integration</h4>
-                                            <p class="linear-info"><strong>Linear State:</strong> ${ticket.linear_state || 'Unknown'}</p>
-                                            ${ticket.linear_issue_url ? `
-                                            <p class="linear-link">
-                                                <a href="${ticket.linear_issue_url}" target="_blank" class="linear-issue-link">
-                                                    <svg viewBox="0 0 32 32" width="16" height="16" fill="currentColor">
-                                                        <path d="M2.66675 2.66699H29.3334V7.46732H2.66675V2.66699Z"/>
-                                                        <path d="M2.66675 9.86719H29.3334V14.6675H2.66675V9.86719Z"/>
-                                                        <path d="M2.66675 17.0674H29.3334V21.8677H2.66675V17.0674Z"/>
-                                                        <path d="M2.66675 24.2676H17.0668V29.0679H2.66675V24.2676Z"/>
-                                                    </svg>
-                                                    View in Linear
-                                                </a>
-                                            </p>
-                                            ` : ''}
-                                            ${ticket.linear_synced_at ? `<p class="linear-sync-info"><small>Last synced: ${new Date(ticket.linear_synced_at).toLocaleString()}</small></p>` : ''}
-                                        </div>
-                                        ` : ''}
-                                        
-                                        <div class="drawer-section">
-                                            <h4 class="section-title">Description</h4>
-                                            <div class="section-content description-content">
-                                                ${ticket.description.replace(/\n/g, '<br>')}
-                                            </div>
-                                        </div>
-                                        
-                                        ${ticket.details && Object.keys(ticket.details).length > 0 ? `
-                                        <div class="drawer-section">
-                                            <h4 class="section-title">Technical Details</h4>
-                                            <div class="section-content">
-                                                <pre style="background: #1a1a1a; padding: 10px; border-radius: 4px; overflow-x: auto;">${JSON.stringify(ticket.details, null, 2)}</pre>
-                                            </div>
-                                        </div>
-                                        ` : ''}
-                                        
-                                        ${ticket.acceptance_criteria && ticket.acceptance_criteria.length > 0 ? `
-                                        <div class="drawer-section">
-                                            <h4 class="section-title">Acceptance Criteria</h4>
-                                            <div class="section-content">
-                                                <ul>
-                                                    ${ticket.acceptance_criteria.map(criteria => `<li>${criteria}</li>`).join('')}
-                                                </ul>
-                                            </div>
-                                        </div>
-                                        ` : ''}
-                                        
-                                        <div class="drawer-section">
-                                            <h4 class="section-title">Metadata</h4>
-                                            <div class="section-content">
-                                                <p><strong>Complexity:</strong> ${ticket.complexity || 'medium'}</p>
-                                                <p><strong>Role:</strong> ${ticket.role || 'user'}</p>
-                                                <p><strong>Requires Worktree:</strong> ${ticket.requires_worktree ? 'Yes' : 'No'}</p>
-                                            </div>
-                                        </div>
-                                        
-                                        <div class="drawer-section" style="margin-top: 20px;">
-                                            <button class="execute-ticket-btn" onclick="ArtifactsLoader.executeTicket(${ticket.id})" style="width: 100%; padding: 12px; background: #8b5cf6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; gap: 8px;">
-                                                <i class="fas fa-play"></i> Execute (Build Now)
-                                            </button>
-                                        </div>
-                                    `;
-                                    
-                                    // Show the drawer
-                                    detailsDrawer.classList.add('open');
-                                    drawerOverlay.classList.add('active');
-                                }
+
+                        html += '</div>';
+                        ticketsContent.innerHTML = html;
+
+                        const detailButtons = ticketsContent.querySelectorAll('.view-details-btn');
+                        detailButtons.forEach((button, index) => {
+                            button.addEventListener('click', function(event) {
+                                event.stopPropagation();
+                                modalHelpers.open(filteredTickets, index);
                             });
                         });
-                        
-                        // Add event listeners for delete buttons
-                        const deleteButtons = document.querySelectorAll('.delete-ticket-btn');
+
+                        const deleteButtons = ticketsContent.querySelectorAll('.delete-ticket-btn');
                         deleteButtons.forEach(button => {
-                            button.addEventListener('click', function(e) {
-                                e.stopPropagation(); // Prevent any parent click handlers
-                                const ticketId = this.getAttribute('data-ticket-id');
-                                const ticket = tickets.find(t => t.id == ticketId);
-                                
-                                if (ticket && confirm(`Are you sure you want to delete the ticket "${ticket.name}"?`)) {
-                                    // Call delete API
-                                    fetch(`/projects/${projectId}/api/checklist/${ticketId}/delete/`, {
-                                        method: 'DELETE',
-                                        headers: {
-                                            'X-CSRFToken': getCookie('csrftoken')
-                                        }
-                                    })
-                                    .then(response => {
-                                        if (!response.ok) {
-                                            throw new Error('Failed to delete ticket');
-                                        }
-                                        return response.json();
-                                    })
-                                    .then(data => {
-                                        if (data.success) {
-                                            showToast('Ticket deleted successfully', 'success');
-                                            // Reload tickets to reflect the deletion
-                                            ArtifactsLoader.loadTickets(projectId);
-                                        } else {
-                                            showToast(data.error || 'Failed to delete ticket', 'error');
-                                        }
-                                    })
-                                    .catch(error => {
-                                        console.error('Error deleting ticket:', error);
-                                        showToast('Error deleting ticket', 'error');
-                                    });
-                                }
+                            button.addEventListener('click', function(event) {
+                                event.stopPropagation();
+                                const ticketId = parseInt(this.getAttribute('data-ticket-id'), 10);
+                                const ticket = tickets.find(t => t.id === ticketId);
+                                deleteTicket(ticket);
                             });
                         });
-                        
-                        // Close drawer when clicking close button or overlay
-                        if (closeDrawerBtn) {
-                            closeDrawerBtn.addEventListener('click', function() {
-                                detailsDrawer.classList.remove('open');
-                                drawerOverlay.classList.remove('active');
-                            });
-                        }
-                        
-                        if (drawerOverlay) {
-                            drawerOverlay.addEventListener('click', function() {
-                                detailsDrawer.classList.remove('open');
-                                drawerOverlay.classList.remove('active');
-                            });
-                        }
                     };
-                    
-                    // Add event listeners for filters
+
                     if (priorityFilter) {
                         priorityFilter.addEventListener('change', function() {
                             renderTickets(this.value);
                         });
                     }
-                    
+
                     if (clearFiltersBtn) {
                         clearFiltersBtn.addEventListener('click', function() {
-                            priorityFilter.value = 'all';
+                            if (priorityFilter) {
+                                priorityFilter.value = 'all';
+                            }
                             renderTickets('all');
                         });
                     }
-                    
-                    // Add Linear sync button event listener
-                    const syncLinearBtn = document.getElementById('sync-linear');
+
                     if (syncLinearBtn) {
                         syncLinearBtn.addEventListener('click', function() {
-                            // Show confirmation or instructions if not configured
                             if (!data.linear_sync_enabled) {
-                                showToast('Linear sync is not enabled for this project. Please go to project settings to configure Linear integration.', 'error');
+                                window.showToast('Linear sync is not enabled for this project. Please go to project settings to configure Linear integration.', 'error');
                                 return;
                             }
-                            
-                            this.disabled = true;
-                            this.innerHTML = '<i class="fas fa-sync fa-spin"></i> Syncing...';
-                            
-                            // Call Linear sync API
+
+                            const button = this;
+                            button.disabled = true;
+                            button.innerHTML = '<i class="fas fa-sync fa-spin"></i> Syncing...';
+
                             fetch(`/projects/${projectId}/api/linear/sync/`, {
                                 method: 'POST',
                                 headers: {
                                     'Content-Type': 'application/json',
-                                    'X-CSRFToken': getCookie('csrftoken')
-                                },
+                                    'X-CSRFToken': getCsrfToken()
+                                }
                             })
                             .then(response => response.json())
-                            .then(data => {
-                                if (data.success) {
-                                    // Show success message
-                                    showToast(data.message || 'Tickets synced successfully!', 'success');
-                                    // Reload tickets to show updated sync status
+                            .then(syncData => {
+                                if (syncData.success) {
+                                    window.showToast(syncData.message || 'Tickets synced successfully!', 'success');
                                     ArtifactsLoader.loadTickets(projectId);
                                 } else {
-                                    // Check if it's a configuration error
-                                    if (data.error && data.error.includes('API key not configured')) {
-                                        showToast('Linear API key not configured. Please go to Integrations to add your Linear API key.', 'error');
-                                    } else if (data.error && data.error.includes('team ID not set')) {
-                                        showToast('Linear team ID not set. Please go to project settings to configure Linear integration.', 'error');
+                                    if (syncData.error && syncData.error.includes('API key not configured')) {
+                                        window.showToast('Linear API key not configured. Please go to Integrations to add your Linear API key.', 'error');
+                                    } else if (syncData.error && syncData.error.includes('team ID not set')) {
+                                        window.showToast('Linear team ID not set. Please go to project settings to configure Linear integration.', 'error');
                                     } else {
-                                        showToast(data.error || 'Failed to sync tickets', 'error');
+                                        window.showToast(syncData.error || 'Failed to sync tickets', 'error');
                                     }
-                                    // Re-enable button
-                                    this.disabled = false;
-                                    this.innerHTML = '<i class="fas fa-sync"></i> Sync with Linear';
+                                    button.disabled = false;
+                                    button.innerHTML = '<i class="fas fa-sync"></i> Sync with Linear';
                                 }
                             })
                             .catch(error => {
                                 console.error('Error syncing with Linear:', error);
-                                showToast('Error syncing with Linear', 'error');
-                                // Re-enable button
-                                this.disabled = false;
-                                this.innerHTML = '<i class="fas fa-sync"></i> Sync with Linear';
+                                window.showToast('Error syncing with Linear', 'error');
+                                button.disabled = false;
+                                button.innerHTML = '<i class="fas fa-sync"></i> Sync with Linear';
                             });
                         });
                     }
-                    
-                    // Helper function to show toast notifications
-                    function showToast(message, type = 'info') {
-                        // Create toast element if it doesn't exist
-                        let toastContainer = document.getElementById('toast-container');
-                        if (!toastContainer) {
-                            toastContainer = document.createElement('div');
-                            toastContainer.id = 'toast-container';
-                            toastContainer.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 9999;';
-                            document.body.appendChild(toastContainer);
-                        }
-                        
-                        const toast = document.createElement('div');
-                        toast.className = `toast toast-${type}`;
-                        toast.style.cssText = 'background: #333; color: white; padding: 12px 24px; border-radius: 4px; margin-bottom: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); animation: slideIn 0.3s ease;';
-                        
-                        if (type === 'success') {
-                            toast.style.background = '#4CAF50';
-                        } else if (type === 'error') {
-                            toast.style.background = '#f44336';
-                        }
-                        
-                        toast.textContent = message;
-                        toastContainer.appendChild(toast);
-                        
-                        // Remove toast after 5 seconds
-                        setTimeout(() => {
-                            toast.style.animation = 'slideOut 0.3s ease';
-                            setTimeout(() => toast.remove(), 300);
-                        }, 5000);
-                    }
-                    
-                    // Helper function to get CSRF token
-                    function getCookie(name) {
-                        let cookieValue = null;
-                        if (document.cookie && document.cookie !== '') {
-                            const cookies = document.cookie.split(';');
-                            for (let i = 0; i < cookies.length; i++) {
-                                const cookie = cookies[i].trim();
-                                if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                                    break;
-                                }
-                            }
-                        }
-                        return cookieValue;
-                    }
-                    
-                    // Initial render with all tickets
+
                     renderTickets();
                 })
                 .catch(error => {
@@ -1763,6 +2150,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         </div>
                     `;
                 });
+        },
+        
+        closeTicketModal: function() {
+            const helpers = this.getTicketModalHelpers();
+            helpers.close();
         },
         
         /**
@@ -2014,6 +2406,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Process checklist data
                     const checklist = data.checklist || [];
                     console.log(`[ArtifactsLoader] Found ${checklist.length} checklist items`);
+
+                    const modalHelpers = this.getTicketModalHelpers();
+                    modalHelpers.setProjectId(projectId);
                     
                     if (checklist.length === 0) {
                         // Show empty state if no checklist items found
@@ -2081,25 +2476,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         </div>
                     `;
 
-                    // Add drawer HTML for checklist details
-                    checklistHTML += `
-                        <!-- Checklist Details Drawer -->
-                        <div class="checklist-details-drawer" id="checklist-details-drawer">
-                            <div class="drawer-header">
-                                <h3 class="drawer-title">Checklist Item Details</h3>
-                                <button class="close-drawer-btn" id="close-checklist-drawer-btn">
-                                    <i class="fas fa-times"></i>
-                                </button>
-                            </div>
-                            <div class="drawer-content" id="checklist-drawer-content">
-                                <!-- Checklist details will be loaded here -->
-                            </div>
-                        </div>
-                        
-                        <!-- Overlay for drawer -->
-                        <div class="drawer-overlay" id="checklist-drawer-overlay"></div>
-                    `;
-                    
                     checklistTab.innerHTML = checklistHTML;
 
                     // Get filter elements and content container
@@ -2107,6 +2483,65 @@ document.addEventListener('DOMContentLoaded', function() {
                     const statusFilter = document.getElementById('status-filter');
                     const roleFilter = document.getElementById('role-filter');
                     const clearFiltersBtn = document.getElementById('clear-checklist-filters');
+
+                    const deleteChecklistItem = (item) => {
+                        if (!item) {
+                            console.warn('[ArtifactsLoader] Attempted to delete an unknown checklist item');
+                            return Promise.resolve(false);
+                        }
+
+                        if (!confirm(`Are you sure you want to delete "${item.name}"?`)) {
+                            return Promise.resolve(false);
+                        }
+
+                        return fetch(`/projects/${projectId}/api/checklist/${item.id}/delete/`, {
+                            method: 'DELETE',
+                            headers: {
+                                'X-CSRFToken': getCsrfToken()
+                            }
+                        })
+                        .then(response => {
+                            if (!response.ok) {
+                                throw new Error('Failed to delete item');
+                            }
+                            return response.json();
+                        })
+                        .then(data => {
+                            if (data.success) {
+                                window.showToast('Item deleted successfully', 'success');
+                                ArtifactsLoader.loadChecklist(projectId);
+                                return true;
+                            }
+                            window.showToast(data.error || 'Failed to delete item', 'error');
+                            return false;
+                        })
+                        .catch(error => {
+                            console.error('Error deleting item:', error);
+                            window.showToast('Error deleting item', 'error');
+                            return false;
+                        });
+                    };
+
+                    modalHelpers.setHandlers({
+                        onEdit: (item) => {
+                            modalHelpers.close();
+                            if (item && typeof window.editChecklistItem === 'function') {
+                                window.editChecklistItem(item.id);
+                            }
+                        },
+                        onDelete: (item) => deleteChecklistItem(item).then(removed => {
+                            if (removed) {
+                                modalHelpers.close();
+                            }
+                            return removed;
+                        }),
+                        onExecute: (item) => {
+                            if (item) {
+                                modalHelpers.close();
+                                ArtifactsLoader.executeTicket(item.id);
+                            }
+                        }
+                    });
 
                     // Function to render checklist items based on filters
                     const renderChecklist = (filterStatus = 'all', filterRole = 'all') => {
@@ -2184,7 +2619,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 dependenciesHtml = `
                                     <div class="card-dependencies">
                                         <span class="dependencies-label"><i class="fas fa-link"></i> Dependencies:</span>
-                                        ${item.dependencies.map(dep => `<span class="dependency-tag">${dep}</span>`).join('')}
+                                        ${item.dependencies.map(dep => `<span class="dependency-tag">${modalHelpers.escapeHtml(dep)}</span>`).join('')}
                                     </div>
                                 `;
                             }
@@ -2199,12 +2634,13 @@ document.addEventListener('DOMContentLoaded', function() {
                                     <div class="card-details-preview">
                                         ${previewKeys.map(key => {
                                             const value = item.details[key];
+                                            const safeKey = modalHelpers.escapeHtml(key);
                                             if (Array.isArray(value) && value.length > 0) {
-                                                return `<span class="detail-item"><i class="fas fa-info-circle"></i> ${key}: ${value.length} items</span>`;
+                                                return `<span class="detail-item"><i class="fas fa-info-circle"></i> ${safeKey}: ${value.length} items</span>`;
                                             } else if (typeof value === 'object' && value !== null) {
-                                                return `<span class="detail-item"><i class="fas fa-info-circle"></i> ${key}: ${Object.keys(value).length} properties</span>`;
+                                                return `<span class="detail-item"><i class="fas fa-info-circle"></i> ${safeKey}: ${Object.keys(value).length} properties</span>`;
                                             } else if (value) {
-                                                return `<span class="detail-item"><i class="fas fa-info-circle"></i> ${key}</span>`;
+                                                return `<span class="detail-item"><i class="fas fa-info-circle"></i> ${safeKey}</span>`;
                                             }
                                             return '';
                                         }).filter(Boolean).join('')}
@@ -2218,17 +2654,23 @@ document.addEventListener('DOMContentLoaded', function() {
                                     <div class="card-header">
                                         <div class="card-status">
                                             <i class="${statusIcon} status-icon"></i>
-                                            <h3 class="card-title">${item.name}</h3>
+                                            <h3 class="card-title">${modalHelpers.escapeHtml(item.name || 'Untitled Item')}</h3>
                                         </div>
                                         <div class="card-badges">
-                                            <span class="priority-badge ${priorityClass} ${isStatusHighlighted ? 'filter-active' : ''}">${item.priority || 'Medium'}</span>
-                                            <span class="role-badge ${roleClass} ${isRoleHighlighted ? 'filter-active' : ''}">${item.role || 'User'}</span>
+                                            <span class="priority-badge ${priorityClass} ${isStatusHighlighted ? 'filter-active' : ''}">${modalHelpers.escapeHtml(item.priority || 'Medium')}</span>
+                                            <span class="role-badge ${roleClass} ${isRoleHighlighted ? 'filter-active' : ''}">${modalHelpers.escapeHtml(item.role || 'User')}</span>
                                         </div>
                                     </div>
                                     
                                     <div class="card-body">
                                         <div class="card-description">
-                                            ${item.description || 'No description provided.'}
+                                            ${(() => {
+                                                const summaryText = (item.description || '').trim();
+                                                if (!summaryText) {
+                                                    return 'No description provided.';
+                                                }
+                                                return modalHelpers.escapeHtml(summaryText).replace(/\n/g, '<br>');
+                                            })()}
                                         </div>
                                         ${dependenciesHtml}
                                         ${detailsPreview}
@@ -2265,374 +2707,49 @@ document.addEventListener('DOMContentLoaded', function() {
                         });
                         
                         checklistContent.innerHTML = itemsHTML;
-                        
+
                         // Reattach event listeners after rendering
-                        attachChecklistDetailListeners();
+                        attachChecklistDetailListeners(filteredChecklist);
+
+                        const deleteButtons = checklistContent.querySelectorAll('.delete-checklist-btn');
+                        deleteButtons.forEach(button => {
+                            button.addEventListener('click', function(e) {
+                                e.stopPropagation();
+                                const itemId = parseInt(this.getAttribute('data-item-id'), 10);
+                                const item = checklist.find(i => i.id === itemId);
+                                deleteChecklistItem(item);
+                            });
+                        });
                     };
 
                     // Function to attach event listeners for checklist detail view
-                    const attachChecklistDetailListeners = () => {
-                        // Add click handlers for opening drawer
-                        console.log('[ArtifactsLoader] Adding click handlers to checklist items for drawer');
+                    const attachChecklistDetailListeners = (currentItems) => {
                         const checklistCards = checklistContent.querySelectorAll('.checklist-card');
                         const viewDetailsButtons = checklistContent.querySelectorAll('.view-details-btn');
-                        const checklistDrawer = document.getElementById('checklist-details-drawer');
-                        const checklistDrawerOverlay = document.getElementById('checklist-drawer-overlay');
-                        const closeChecklistDrawerBtn = document.getElementById('close-checklist-drawer-btn');
-                        const checklistDrawerContent = document.getElementById('checklist-drawer-content');
-                        
-                        console.log(`[ArtifactsLoader] Found ${checklistCards.length} checklist cards`);
-                        
+
                         checklistCards.forEach((card, index) => {
-                            console.log(`[ArtifactsLoader] Adding click handler to card ${index}`);
-                            
                             card.addEventListener('click', function(e) {
-                                console.log('[ArtifactsLoader] Card clicked', e.target);
-                                
-                                // Don't open drawer if clicking on action buttons
                                 if (e.target.closest('.action-btn')) {
-                                    console.log('[ArtifactsLoader] Action button clicked, not opening drawer');
                                     return;
                                 }
-                                
-                                // Get the item data
-                                const itemId = card.getAttribute('data-id');
-                                const item = checklist.find(i => i.id == itemId);
-                                
-                                if (item) {
-                                    console.log('[ArtifactsLoader] Opening drawer for item:', item);
-                                    
-                                    // Get status display text
-                                    const statusText = item.status ? item.status.replace('_', ' ').charAt(0).toUpperCase() + item.status.replace('_', ' ').slice(1) : 'Open';
-                                    
-                                    // Build dependencies section
-                                    let dependenciesSection = '';
-                                    if (item.dependencies && item.dependencies.length > 0) {
-                                        dependenciesSection = `
-                                            <div class="drawer-section">
-                                                <h4 class="section-title">Dependencies</h4>
-                                                <div class="dependencies-list">
-                                                    ${item.dependencies.map(dep => `
-                                                        <div class="dependency-item">
-                                                            <i class="fas fa-link"></i> ${dep}
-                                                        </div>
-                                                    `).join('')}
-                                                </div>
-                                            </div>
-                                        `;
-                                    }
-                                    
-                                    // Build combined specifications section
-                                    let specificationsSection = '';
-                                    let hasSpecs = false;
-                                    
-                                    let specsContent = '';
-                                    
-                                    // Add component specs section
-                                    if (item.component_specs && Object.keys(item.component_specs).length > 0) {
-                                        specsContent += `
-                                            <div class="spec-subsection">
-                                                <h5 class="spec-heading">Component Specifications:</h5>
-                                                <ul class="spec-list">
-                                                    ${Object.entries(item.component_specs).map(([key, value]) => `
-                                                        <li>${key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}: ${value}</li>
-                                                    `).join('')}
-                                                </ul>
-                                            </div>
-                                        `;
-                                        hasSpecs = true;
-                                    }
-                                    
-                                    // Add acceptance criteria section
-                                    if (item.acceptance_criteria && item.acceptance_criteria.length > 0) {
-                                        specsContent += `
-                                            <div class="spec-subsection">
-                                                <h5 class="spec-heading">Acceptance Criteria:</h5>
-                                                <ul class="spec-list">
-                                                    ${item.acceptance_criteria.map(criteria => `
-                                                        <li>${criteria}</li>
-                                                    `).join('')}
-                                                </ul>
-                                            </div>
-                                        `;
-                                        hasSpecs = true;
-                                    }
-                                    
-                                    // Add UI requirements section
-                                    if (item.ui_requirements && Object.keys(item.ui_requirements).length > 0) {
-                                        specsContent += `
-                                            <div class="spec-subsection">
-                                                <h5 class="spec-heading">UI Requirements:</h5>
-                                                <ul class="spec-list">
-                                                    ${Object.entries(item.ui_requirements).map(([key, value]) => `
-                                                        <li>${key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}: ${value}</li>
-                                                    `).join('')}
-                                                </ul>
-                                            </div>
-                                        `;
-                                        hasSpecs = true;
-                                    }
-                                    
-                                    if (hasSpecs) {
-                                        specificationsSection = `
-                                            <div class="drawer-section">
-                                                <h4 class="section-title">Specifications</h4>
-                                                <div class="specifications-content">
-                                                    ${specsContent}
-                                                </div>
-                                            </div>
-                                        `;
-                                    }
-                                    
-                                    // Build details section
-                                    let detailsSection = '';
-                                    if (item.details && Object.keys(item.details).length > 0) {
-                                        detailsSection = `
-                                            <div class="drawer-section">
-                                                <h4 class="section-title">Technical Details</h4>
-                                                <div class="details-content">
-                                                    ${Object.entries(item.details).map(([key, value]) => {
-                                                        let valueHtml = '';
-                                                        if (Array.isArray(value)) {
-                                                            if (value.length > 0) {
-                                                                valueHtml = `
-                                                                    <ul class="detail-list">
-                                                                        ${value.map(v => `<li>${typeof v === 'object' ? JSON.stringify(v, null, 2) : v}</li>`).join('')}
-                                                                    </ul>
-                                                                `;
-                                                            } else {
-                                                                valueHtml = '<em>Empty list</em>';
-                                                            }
-                                                        } else if (typeof value === 'object' && value !== null) {
-                                                            valueHtml = `<pre class="detail-object">${JSON.stringify(value, null, 2)}</pre>`;
-                                                        } else {
-                                                            valueHtml = value || '<em>Not specified</em>';
-                                                        }
-                                                        
-                                                        return `
-                                                            <div class="detail-item">
-                                                                <h5 class="detail-key">${key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</h5>
-                                                                <div class="detail-value">${valueHtml}</div>
-                                                            </div>
-                                                        `;
-                                                    }).join('')}
-                                                </div>
-                                            </div>
-                                        `;
-                                    }
-                                    
-                                    // Populate drawer with item details
-                                    checklistDrawerContent.innerHTML = `
-                                        <div class="drawer-section">
-                                            <h4 class="section-title">Item Information</h4>
-                                            <div class="checklist-detail-info">
-                                                <p class="detail-row"><strong>Name:</strong> ${item.name}</p>
-                                                <div class="detail-row">
-                                                    <strong>Status:</strong> 
-                                                    <select class="status-dropdown" data-item-id="${item.id}" data-current-status="${item.status || 'open'}">
-                                                        <option value="open" ${(item.status || 'open') === 'open' ? 'selected' : ''}>Open</option>
-                                                        <option value="in_progress" ${item.status === 'in_progress' ? 'selected' : ''}>In Progress</option>
-                                                        <option value="done" ${item.status === 'done' ? 'selected' : ''}>Done</option>
-                                                        <option value="failed" ${item.status === 'failed' ? 'selected' : ''}>Failed</option>
-                                                        <option value="blocked" ${item.status === 'blocked' ? 'selected' : ''}>Blocked</option>
-                                                    </select>
-                                                </div>
-                                                <p class="detail-row"><strong>Priority:</strong> <span class="priority-badge ${(item.priority || 'medium').toLowerCase()}">${item.priority || 'Medium'}</span></p>
-                                                <div class="detail-row">
-                                                    <strong>Assigned to:</strong> 
-                                                    <select class="role-dropdown" data-item-id="${item.id}" data-current-role="${item.role || 'user'}">
-                                                        <option value="user" ${(item.role || 'user') === 'user' ? 'selected' : ''}>User</option>
-                                                        <option value="agent" ${item.role === 'agent' ? 'selected' : ''}>Agent</option>
-                                                    </select>
-                                                </div>
-                                                ${item.complexity ? `<p class="detail-row"><strong>Complexity:</strong> <span class="complexity-badge ${item.complexity}">${item.complexity}</span></p>` : ''}
-                                                ${item.requires_worktree !== undefined ? `<p class="detail-row"><strong>Requires Worktree:</strong> ${item.requires_worktree ? 'Yes' : 'No'}</p>` : ''}
-                                            </div>
-                                        </div>
-                                        
-                                        <div class="drawer-section">
-                                            <h4 class="section-title">Description</h4>
-                                            <div class="section-content description-content">
-                                                ${item.description ? item.description.replace(/\n/g, '<br>') : 'No description provided.'}
-                                            </div>
-                                        </div>
-                                        
-                                        ${dependenciesSection}
-                                        ${specificationsSection}
-                                        ${detailsSection}
-                                        
-                                        <div class="drawer-section">
-                                            <h4 class="section-title">Timeline</h4>
-                                            <div class="section-content">
-                                                <p class="detail-row"><strong>Created:</strong> ${new Date(item.created_at).toLocaleDateString()} at ${new Date(item.created_at).toLocaleTimeString()}</p>
-                                                <p class="detail-row"><strong>Last Updated:</strong> ${new Date(item.updated_at).toLocaleDateString()} at ${new Date(item.updated_at).toLocaleTimeString()}</p>
-                                            </div>
-                                        </div>
-                                        
-                                        <div class="drawer-section">
-                                            <h4 class="section-title">Actions</h4>
-                                            <div class="drawer-actions">
-                                                <button class="drawer-action-btn edit-btn" onclick="editChecklistItem(${item.id})" title="Edit Item" style="padding: 8px 10px;">
-                                                    <i class="fas fa-edit"></i>
-                                                </button>
-                                                <button class="drawer-action-btn toggle-btn" onclick="toggleChecklistStatus(${item.id}, '${item.status}')" title="Toggle Status" style="padding: 8px 10px;">
-                                                    <i class="fas fa-sync-alt"></i>
-                                                </button>
-                                                <button class="drawer-action-btn delete-btn" data-item-id="${item.id}" title="Delete Item" style="padding: 8px 10px; background: rgba(239, 68, 68, 0.2); color: #f87171;">
-                                                    <i class="fas fa-trash"></i>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    `;
-                                    
-                                    // Show the drawer
-                                    checklistDrawer.classList.add('open');
-                                    checklistDrawerOverlay.classList.add('active');
-                                    
-                                    // Add event listeners for the dropdowns
-                                    attachDropdownListeners();
-                                }
+
+                                modalHelpers.open(currentItems, index);
                             });
                         });
-                        
-                        // Function to attach dropdown event listeners
-                        const attachDropdownListeners = () => {
-                            const statusDropdowns = document.querySelectorAll('.status-dropdown');
-                            const roleDropdowns = document.querySelectorAll('.role-dropdown');
-                            
-                            statusDropdowns.forEach(dropdown => {
-                                dropdown.addEventListener('change', function() {
-                                    const itemId = this.getAttribute('data-item-id');
-                                    const newStatus = this.value;
-                                    const oldStatus = this.getAttribute('data-current-status');
-                                    
-                                    updateChecklistItemStatus(itemId, newStatus, oldStatus);
-                                });
-                            });
-                            
-                            roleDropdowns.forEach(dropdown => {
-                                dropdown.addEventListener('change', function() {
-                                    const itemId = this.getAttribute('data-item-id');
-                                    const newRole = this.value;
-                                    const oldRole = this.getAttribute('data-current-role');
-                                    
-                                    updateChecklistItemRole(itemId, newRole, oldRole);
-                                });
-                            });
-                            
-                            // Add delete button listener in drawer
-                            const deleteBtn = document.querySelector('.drawer-action-btn.delete-btn');
-                            if (deleteBtn) {
-                                deleteBtn.addEventListener('click', function() {
-                                    const itemId = this.getAttribute('data-item-id');
-                                    const item = checklist.find(i => i.id == itemId);
-                                    
-                                    if (item && confirm(`Are you sure you want to delete "${item.name}"?`)) {
-                                        // Close the drawer first
-                                        checklistDrawer.classList.remove('open');
-                                        checklistDrawerOverlay.classList.remove('active');
-                                        
-                                        // Call delete API
-                                        fetch(`/projects/${projectId}/api/checklist/${itemId}/delete/`, {
-                                            method: 'DELETE',
-                                            headers: {
-                                                'X-CSRFToken': getCsrfToken()
-                                            }
-                                        })
-                                        .then(response => {
-                                            if (!response.ok) {
-                                                throw new Error('Failed to delete item');
-                                            }
-                                            return response.json();
-                                        })
-                                        .then(data => {
-                                            if (data.success) {
-                                                showToast('Item deleted successfully', 'success');
-                                                // Reload checklist to reflect the deletion
-                                                ArtifactsLoader.loadChecklist(projectId);
-                                            } else {
-                                                showToast(data.error || 'Failed to delete item', 'error');
-                                            }
-                                        })
-                                        .catch(error => {
-                                            console.error('Error deleting item:', error);
-                                            showToast('Error deleting item', 'error');
-                                        });
-                                    }
-                                });
-                            }
-                        };
-                        
-                        // Add click handlers for view details buttons
-                        viewDetailsButtons.forEach(button => {
+
+                        viewDetailsButtons.forEach((button) => {
                             button.addEventListener('click', function(e) {
-                                e.stopPropagation(); // Prevent card click event
-                                const itemId = this.getAttribute('data-item-id');
-                                const item = checklist.find(i => i.id == itemId);
-                                
-                                if (item) {
-                                    // Trigger the same drawer opening logic
-                                    const card = this.closest('.checklist-card');
-                                    if (card) {
-                                        card.click();
-                                    }
+                                e.stopPropagation();
+                                const card = this.closest('.checklist-card');
+                                if (!card) {
+                                    return;
+                                }
+                                const cardIndex = Array.from(checklistCards).indexOf(card);
+                                if (cardIndex >= 0) {
+                                    modalHelpers.open(currentItems, cardIndex);
                                 }
                             });
                         });
-                        
-                        // Add event listeners for delete buttons
-                        const deleteButtons = document.querySelectorAll('.delete-checklist-btn');
-                        deleteButtons.forEach(button => {
-                            button.addEventListener('click', function(e) {
-                                e.stopPropagation(); // Prevent card click
-                                const itemId = this.getAttribute('data-item-id');
-                                const item = checklist.find(i => i.id == itemId);
-                                
-                                if (item && confirm(`Are you sure you want to delete "${item.name}"?`)) {
-                                    // Call delete API
-                                    fetch(`/projects/${projectId}/api/checklist/${itemId}/delete/`, {
-                                        method: 'DELETE',
-                                        headers: {
-                                            'X-CSRFToken': getCsrfToken()
-                                        }
-                                    })
-                                    .then(response => {
-                                        if (!response.ok) {
-                                            throw new Error('Failed to delete item');
-                                        }
-                                        return response.json();
-                                    })
-                                    .then(data => {
-                                        if (data.success) {
-                                            showToast('Item deleted successfully', 'success');
-                                            // Reload checklist to reflect the deletion
-                                            ArtifactsLoader.loadChecklist(projectId);
-                                        } else {
-                                            showToast(data.error || 'Failed to delete item', 'error');
-                                        }
-                                    })
-                                    .catch(error => {
-                                        console.error('Error deleting item:', error);
-                                        showToast('Error deleting item', 'error');
-                                    });
-                                }
-                            });
-                        });
-                        
-                        // Close drawer event handlers
-                        if (closeChecklistDrawerBtn) {
-                            closeChecklistDrawerBtn.addEventListener('click', function() {
-                                checklistDrawer.classList.remove('open');
-                                checklistDrawerOverlay.classList.remove('active');
-                            });
-                        }
-                        
-                        if (checklistDrawerOverlay) {
-                            checklistDrawerOverlay.addEventListener('click', function() {
-                                checklistDrawer.classList.remove('open');
-                                checklistDrawerOverlay.classList.remove('active');
-                            });
-                        }
                     };
 
                     // Function to update checklist item status
@@ -3331,12 +3448,12 @@ document.addEventListener('DOMContentLoaded', function() {
          */
         loadAppPreview: function(projectId, conversationId) {
             console.log(`[ArtifactsLoader] loadAppPreview called with project ID: ${projectId}, conversation ID: ${conversationId}`);
-            
+
             if (!projectId) {
                 console.warn('[ArtifactsLoader] No project ID provided for loading app preview');
                 return;
             }
-            
+
             // Get app tab elements
             const appTab = document.getElementById('apps');
             const appLoading = document.getElementById('app-loading');
@@ -4291,11 +4408,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     command += `Please implement this feature following the specifications above.`;
                     
-                    // Close the ticket drawer
-                    const detailsDrawer = document.getElementById('ticket-details-drawer');
-                    const drawerOverlay = document.getElementById('drawer-overlay');
-                    if (detailsDrawer) detailsDrawer.classList.remove('open');
-                    if (drawerOverlay) drawerOverlay.classList.remove('active');
+                    // Close any open ticket modal before sending the command
+                    if (window.ArtifactsLoader && typeof window.ArtifactsLoader.closeTicketModal === 'function') {
+                        window.ArtifactsLoader.closeTicketModal();
+                    }
                     
                     // Send the command to the chat
                     if (window.sendMessage && typeof window.sendMessage === 'function') {
@@ -7685,5 +7801,302 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
     }, 500); // Small delay to ensure elements are loaded
-    
+
 }); // End of DOMContentLoaded
+
+// Global functions for checklist item editing (accessible from inline onclick handlers)
+window.editChecklistItem = function(itemId) {
+    const projectId = window.getCurrentProjectId ? window.getCurrentProjectId() : window.ArtifactsLoader?.getCurrentProjectId();
+    if (!projectId) {
+        console.error('[EditChecklistItem] No project ID available');
+        alert('Unable to edit item: No project ID found');
+        return;
+    }
+
+    // Fetch current checklist data
+    fetch(`/projects/${projectId}/api/checklist/`)
+        .then(response => response.json())
+        .then(data => {
+            const checklist = data.checklist || [];
+            const item = checklist.find(i => i.id == itemId);
+
+            if (!item) {
+                alert('Checklist item not found');
+                return;
+            }
+
+            const escapeHtml = (value) => {
+                if (value === null || value === undefined) {
+                    return '';
+                }
+                return String(value)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            };
+
+            const formatStatusText = (value) => {
+                if (!value) {
+                    return 'OPEN';
+                }
+                return value.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase()).toUpperCase();
+            };
+
+            const formatTitleUpper = (value, fallback = '') => {
+                const source = value || fallback;
+                if (!source) {
+                    return fallback.toUpperCase();
+                }
+                return String(source)
+                    .toLowerCase()
+                    .replace(/(^|\s|[_-])(\w)/g, (_, sep, char) => `${sep === '_' || sep === '-' ? ' ' : sep}${char.toUpperCase()}`)
+                    .trim()
+                    .toUpperCase();
+            };
+
+            // Create modal overlay
+            const overlay = document.createElement('div');
+            overlay.className = 'edit-checklist-overlay';
+            overlay.style.cssText = 'position: fixed; inset: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(12px); background: rgba(5,7,12,0.55); z-index: 10000; padding: 24px;';
+
+            // Create modal container
+            const modal = document.createElement('div');
+            modal.className = 'edit-checklist-modal';
+            modal.style.cssText = 'background: rgba(30,30,30,0.88); border: 1px solid rgba(255,255,255,0.05); border-radius: 18px; max-width: 700px; width: 100%; max-height: 92vh; overflow-y: auto; box-shadow: 0 28px 60px rgba(0,0,0,0.55); color: #e2e8f0; padding: 32px; display: flex; flex-direction: column; gap: 24px;';
+
+            const sanitizedDescription = escapeHtml(item.description || '');
+
+            modal.innerHTML = `
+                <header style="display: flex; flex-direction: column; gap: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+                        <div style="display: flex; flex-direction: column; gap: 4px;">
+                            <span style="font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: rgba(148, 163, 184, 0.6);">Edit Ticket</span>
+                            <h3 style="margin: 0; font-size: 22px; font-weight: 600; color: #f8fafc;">${escapeHtml(item.name || 'Checklist Item')}</h3>
+                            <span style="font-size: 13px; color: rgba(203, 213, 225, 0.65);">Update ticket details to keep the plan in sync.</span>
+                        </div>
+                        <button type="button" id="close-edit-modal" style="width: 34px; height: 34px; border-radius: 10px; border: 1px solid rgba(148,163,184,0.2); background: rgba(148,163,184,0.09); color: #ccd3f6; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 16px;">
+                            <span style="transform: translateY(-1px);">×</span>
+                        </button>
+                    </div>
+                    <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                        <span class="ticket-chip" style="padding: 6px 12px; min-height: 26px; border-radius: 9px; font-size: 11px; letter-spacing: 0.09em;">${formatStatusText(item.status)}</span>
+                        <span class="ticket-chip" style="padding: 6px 12px; min-height: 26px; border-radius: 9px; font-size: 11px; letter-spacing: 0.09em;">${formatTitleUpper(item.complexity, 'Medium')}</span>
+                        <span class="ticket-chip" style="padding: 6px 12px; min-height: 26px; border-radius: 9px; font-size: 11px; letter-spacing: 0.09em;">${formatTitleUpper(item.priority, 'Medium')}</span>
+                    </div>
+                </header>
+                <form id="edit-checklist-form" style="display: flex; flex-direction: column; gap: 20px;">
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <label style="font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(148,163,184,0.65);">Name *</label>
+                        <input type="text" id="edit-name" value="${(item.name || '').replace(/"/g, '&quot;')}"
+                            style="width: 100%; padding: 12px 14px; background: rgba(12,12,16,0.75); border: 1px solid rgba(71,85,105,0.45); color: #f8fafc; border-radius: 12px; font-size: 15px; font-weight: 500;" required>
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <label style="font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(148,163,184,0.65);">Description</label>
+                        <textarea id="edit-description" rows="6"
+                            style="width: 100%; padding: 14px; background: rgba(12,12,16,0.75); border: 1px solid rgba(71,85,105,0.45); color: #f1f5f9; border-radius: 12px; font-size: 14px; line-height: 1.6; resize: vertical; min-height: 160px;">${sanitizedDescription}</textarea>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); gap: 10px; align-items: flex-end;">
+                        <div style="display: flex; flex-direction: column; gap: 6px;">
+                            <label style="font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(148,163,184,0.65);">Status</label>
+                            <select id="edit-status" class="ticket-form-select">
+                                <option value="open" ${item.status === 'open' ? 'selected' : ''}>Open</option>
+                                <option value="in_progress" ${item.status === 'in_progress' ? 'selected' : ''}>In Progress</option>
+                                <option value="done" ${item.status === 'done' ? 'selected' : ''}>Done</option>
+                                <option value="failed" ${item.status === 'failed' ? 'selected' : ''}>Failed</option>
+                                <option value="blocked" ${item.status === 'blocked' ? 'selected' : ''}>Blocked</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 6px;">
+                            <label style="font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(148,163,184,0.65);">Priority</label>
+                            <select id="edit-priority" class="ticket-form-select">
+                                <option value="High" ${item.priority === 'High' ? 'selected' : ''}>High</option>
+                                <option value="Medium" ${item.priority === 'Medium' ? 'selected' : ''}>Medium</option>
+                                <option value="Low" ${item.priority === 'Low' ? 'selected' : ''}>Low</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 6px;">
+                            <label style="font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(148,163,184,0.65);">Role</label>
+                            <select id="edit-role" class="ticket-form-select">
+                                <option value="agent" ${item.role === 'agent' ? 'selected' : ''}>Agent</option>
+                                <option value="user" ${item.role === 'user' ? 'selected' : ''}>User</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 6px;">
+                            <label style="font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(148,163,184,0.65);">Complexity</label>
+                            <select id="edit-complexity" class="ticket-form-select">
+                                <option value="simple" ${item.complexity === 'simple' ? 'selected' : ''}>Simple</option>
+                                <option value="medium" ${item.complexity === 'medium' ? 'selected' : ''}>Medium</option>
+                                <option value="complex" ${item.complexity === 'complex' ? 'selected' : ''}>Complex</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <label style="display: inline-flex; align-items: center; gap: 10px; padding: 14px; border-radius: 12px; background: rgba(15,23,42,0.4); border: 1px solid rgba(71,85,105,0.45); color: rgba(226,232,240,0.8); font-size: 13px;">
+                        <input type="checkbox" id="edit-requires-worktree" ${item.requires_worktree ? 'checked' : ''}
+                            style="width: 18px; height: 18px; border-radius: 4px; border: 1px solid rgba(71,85,105,0.6); background: rgba(12,12,16,0.75);">
+                        Requires git worktree for code changes
+                    </label>
+
+                    <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                        <button type="button" id="cancel-edit-btn"
+                            style="padding: 12px 20px; border-radius: 10px; border: 1px solid rgba(148,163,184,0.25); background: rgba(51,65,85,0.35); color: #e2e8f0; font-size: 14px; font-weight: 600; cursor: pointer;">
+                            Cancel
+                        </button>
+                        <button type="submit" id="save-edit-btn"
+                            style="padding: 12px 20px; border-radius: 10px; border: none; background: linear-gradient(135deg, #7c3aed, #a855f7); color: #f8fafc; font-size: 14px; font-weight: 600; cursor: pointer; box-shadow: 0 10px 26px rgba(124,58,237,0.28);">
+                            Save Changes
+                        </button>
+                    </div>
+                </form>
+            `;
+
+            overlay.appendChild(modal);
+            document.body.appendChild(overlay);
+
+            const cancelBtn = modal.querySelector('#cancel-edit-btn');
+            const saveBtn = modal.querySelector('#save-edit-btn');
+            const originalSaveLabel = saveBtn.innerHTML;
+            const closeBtn = modal.querySelector('#close-edit-modal');
+
+            const removeModal = () => overlay.remove();
+
+            cancelBtn.addEventListener('click', removeModal);
+            closeBtn.addEventListener('click', removeModal);
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) {
+                    removeModal();
+                }
+            });
+
+            // Handle form submission
+            const form = modal.querySelector('#edit-checklist-form');
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+
+                const updatedData = {
+                    item_id: itemId,
+                    name: document.getElementById('edit-name').value,
+                    description: document.getElementById('edit-description').value,
+                    status: document.getElementById('edit-status').value,
+                    priority: document.getElementById('edit-priority').value,
+                    role: document.getElementById('edit-role').value,
+                    complexity: document.getElementById('edit-complexity').value,
+                    requires_worktree: document.getElementById('edit-requires-worktree').checked
+                };
+
+                // Disable submit button and show loading state
+                saveBtn.disabled = true;
+                saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+
+                try {
+                    const getCsrfToken = () => {
+                        return document.querySelector('[name=csrfmiddlewaretoken]')?.value
+                            || document.cookie.split('; ').find(row => row.startsWith('csrftoken='))?.split('=')[1]
+                            || '';
+                    };
+
+                    const response = await fetch(`/projects/${projectId}/api/checklist/update/`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCsrfToken()
+                        },
+                        body: JSON.stringify(updatedData)
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        if (window.showToast) {
+                            window.showToast('Checklist item updated successfully', 'success');
+                        }
+                        overlay.remove();
+
+                        // Reload checklist to show updated data
+                        if (window.ArtifactsLoader && window.ArtifactsLoader.loadChecklist) {
+                            window.ArtifactsLoader.loadChecklist(projectId);
+                        }
+                    } else {
+                        throw new Error(result.error || 'Failed to update item');
+                    }
+                } catch (error) {
+                    console.error('Error updating checklist item:', error);
+                    if (window.showToast) {
+                        window.showToast('Error updating item: ' + error.message, 'error');
+                    } else {
+                        alert('Error updating item: ' + error.message);
+                    }
+                    // Re-enable button
+                    saveBtn.disabled = false;
+                    saveBtn.innerHTML = originalSaveLabel;
+                }
+            });
+        })
+        .catch(error => {
+            console.error('Error fetching checklist data:', error);
+            alert('Error loading checklist data: ' + error.message);
+        });
+};
+
+window.toggleChecklistStatus = function(itemId, currentStatus) {
+    const projectId = window.getCurrentProjectId ? window.getCurrentProjectId() : window.ArtifactsLoader?.getCurrentProjectId();
+    if (!projectId) {
+        console.error('[ToggleChecklistStatus] No project ID available');
+        alert('Unable to toggle status: No project ID found');
+        return;
+    }
+
+    // Define status cycle: open -> in_progress -> done -> open
+    const statusCycle = {
+        'open': 'in_progress',
+        'in_progress': 'done',
+        'done': 'open',
+        'failed': 'open',
+        'blocked': 'open'
+    };
+
+    const newStatus = statusCycle[currentStatus] || 'in_progress';
+
+    const getCsrfToken = () => {
+        return document.querySelector('[name=csrfmiddlewaretoken]')?.value
+            || document.cookie.split('; ').find(row => row.startsWith('csrftoken='))?.split('=')[1]
+            || '';
+    };
+
+    // Update status via API
+    fetch(`/projects/${projectId}/api/checklist/update/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrfToken()
+        },
+        body: JSON.stringify({ item_id: itemId, status: newStatus })
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.success) {
+            if (window.showToast) {
+                window.showToast(`Status updated to ${newStatus.replace('_', ' ')}`, 'success');
+            }
+
+            // Reload checklist to show updated data
+            if (window.ArtifactsLoader && window.ArtifactsLoader.loadChecklist) {
+                window.ArtifactsLoader.loadChecklist(projectId);
+            }
+        } else {
+            throw new Error(result.error || 'Failed to update status');
+        }
+    })
+    .catch(error => {
+        console.error('Error toggling status:', error);
+        if (window.showToast) {
+            window.showToast('Error updating status: ' + error.message, 'error');
+        } else {
+            alert('Error updating status: ' + error.message);
+        }
+    });
+};

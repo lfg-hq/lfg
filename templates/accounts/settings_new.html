@@ -1463,8 +1463,8 @@
                     {% endif %}
                 </div>
                 
-                <!-- Notion Integration (Coming Soon) -->
-                <div class="integration-card disabled">
+                <!-- Notion Integration -->
+                <div class="integration-card {% if notion_connected %}connected{% endif %}">
                     <div class="integration-header">
                         <div class="integration-info">
                             <div class="integration-logo notion">
@@ -1475,17 +1475,45 @@
                                 <p>Documentation and knowledge management</p>
                             </div>
                         </div>
-                        <div class="integration-status disabled">
-                            <span class="coming-soon-badge">Coming Soon</span>
+                        <div class="integration-status {% if notion_connected %}connected{% else %}disconnected{% endif %}">
+                            <i class="fas fa-{% if notion_connected %}check-circle{% else %}circle{% endif %}"></i>
+                            {% if notion_connected %}Connected{% else %}Not Connected{% endif %}
                         </div>
                     </div>
-                    
+
                     <div class="integration-actions">
-                        <button class="integration-button primary" disabled>
-                            <i class="fas fa-clock"></i>
-                            Coming Soon
-                        </button>
+                        {% if not notion_connected %}
+                            <a href="https://www.notion.so/my-integrations" target="_blank" class="integration-button secondary">
+                                <i class="fas fa-external-link-alt"></i>
+                                Create Integration
+                            </a>
+                        {% else %}
+                            <a href="https://www.notion.so" target="_blank" class="integration-button secondary">
+                                <i class="fas fa-external-link-alt"></i>
+                                Open Notion
+                            </a>
+                            <form method="post" action="{% url 'accounts:disconnect_api_key' 'notion' %}" style="display: inline;">
+                                {% csrf_token %}
+                                <button type="submit" class="integration-button danger" onclick="return confirm('Disconnect Notion integration?');">
+                                    <i class="fas fa-unlink"></i>
+                                    Disconnect
+                                </button>
+                            </form>
+                        {% endif %}
                     </div>
+
+                    {% if not notion_connected %}
+                    <div class="api-key-input-section">
+                        <form method="post" action="{% url 'accounts:save_api_key' 'notion' %}" class="api-key-form">
+                            {% csrf_token %}
+                            <input type="password" name="api_key" placeholder="Enter your Notion integration token" required>
+                            <button type="submit">
+                                <i class="fas fa-plug"></i>
+                                Connect
+                            </button>
+                        </form>
+                    </div>
+                    {% endif %}
                 </div>
                 
                 <!-- Jira Integration (Coming Soon) -->

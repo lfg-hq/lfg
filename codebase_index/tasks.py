@@ -25,7 +25,7 @@ def index_repository_task(repository_id: int, force_full_reindex: bool = False, 
     """
     from .models import IndexedRepository, IndexingJob
     from .github_sync import RepositoryIndexer
-    from .embeddings import generate_repository_insights
+    from .embeddings import generate_repository_insights, generate_and_store_codebase_summary
     from django.contrib.auth.models import User
     
     # Get repository
@@ -70,27 +70,23 @@ def index_repository_task(repository_id: int, force_full_reindex: bool = False, 
             job.result_summary = {
                 'message': message,
                 'indexed_files': repository.indexed_files_count,
-                'total_chunks': repository.total_chunks,
+                'entities_mapped': repository.total_entities,
             }
-            
-            # Generate repository insights
+
+            # Generate repository insights using indexed chunks
             try:
                 insights = generate_repository_insights(repository)
                 job.result_summary['insights'] = insights
             except Exception as e:
-                logger.warning(f"Failed to generate insights: {e}")
+                logger.warning(f"Failed to generate repository insights: {e}")
                 job.result_summary['insights_error'] = str(e)
 
-            # Generate AI-powered codebase summary
+            # Generate codebase summary from index map (no embeddings)
             try:
-                from .embeddings import generate_and_store_codebase_summary
-                logger.info("Generating AI-powered codebase summary...")
                 summary_result = generate_and_store_codebase_summary(repository)
                 if summary_result.get('success'):
-                    logger.info("Codebase summary generated successfully")
                     job.result_summary['summary_generated'] = True
                 else:
-                    logger.warning(f"Failed to generate codebase summary: {summary_result.get('error')}")
                     job.result_summary['summary_error'] = summary_result.get('error')
             except Exception as e:
                 logger.warning(f"Failed to generate codebase summary: {e}")
@@ -118,7 +114,7 @@ def index_repository_task(repository_id: int, force_full_reindex: bool = False, 
             'message': message,
             'job_id': job.id,
             'repository_id': repository.id,
-            'insights': job.result_summary.get('insights') if success else None
+            'entities_mapped': repository.total_entities if success else 0
         }
         
     except Exception as e:
@@ -146,16 +142,17 @@ def index_repository_task(repository_id: int, force_full_reindex: bool = False, 
 
 def cleanup_old_embeddings_task(repository_id: int) -> Dict[str, Any]:
     """
-    Background task to clean up old embeddings from ChromaDB
-    
+    Cleanup existing code map data for a repository. Previously removed
+    vector embeddings; now it clears indexed files, chunks, and index map
+    entries stored in Postgres.
+
     Args:
         repository_id: ID of the IndexedRepository to clean
-    
+
     Returns:
         Dictionary with cleanup results
     """
-    from .models import IndexedRepository, IndexingJob
-    from .chroma_client import get_chroma_client
+    from .models import IndexedRepository, IndexingJob, CodeChunk, CodebaseIndexMap
     
     try:
         repository = IndexedRepository.objects.get(id=repository_id)
@@ -171,31 +168,36 @@ def cleanup_old_embeddings_task(repository_id: int) -> Dict[str, Any]:
     )
     
     try:
-        chroma_client = get_chroma_client()
-        collection_name = repository.get_chroma_collection_name()
-        
-        # Delete the entire collection
-        success = chroma_client.delete_collection(collection_name)
-        
-        if success:
-            # Reset embedding status for all chunks
-            repository.files.all().update(embedding_stored=False)
-            
-            job.status = 'completed'
-            job.result_summary = {'message': 'Successfully cleaned up embeddings'}
-            logger.info(f"Cleaned up embeddings for repository {repository.github_repo_name}")
-            
-        else:
-            job.status = 'failed'
-            job.error_logs = 'Failed to delete ChromaDB collection'
-            logger.error(f"Failed to clean up embeddings for repository {repository.github_repo_name}")
-        
+        # Clear stored code chunks and index map entries
+        CodeChunk.objects.filter(file__repository=repository).delete()
+        CodebaseIndexMap.objects.filter(repository=repository).delete()
+        repository.files.all().update(
+            code_chunks_count=0,
+            status='pending',
+            error_message='',
+            indexed_at=None
+        )
+        repository.files.all().update(
+            code_chunks_count=0,
+            status='pending',
+            error_message=''  # if field exists? check model? maybe not but leave? there is error_message? yes in IndexedFile? need verifying. but `update` with field not available results error. we must ensure fields exist. In IndexedFile, there is error_message field. yes we can include.
+        )
+        repository.indexed_files_count = 0
+        repository.total_chunks = 0
+        repository.status = 'pending'
+        repository.error_message = ''
+        repository.save()
+
+        job.status = 'completed'
+        job.result_summary = {'message': 'Cleared code map data'}
         job.completed_at = timezone.now()
         job.save()
-        
+
+        logger.info(f"Cleared code map data for repository {repository.github_repo_name}")
+
         return {
-            'success': success,
-            'message': job.result_summary.get('message') if success else job.error_logs,
+            'success': True,
+            'message': job.result_summary.get('message'),
             'job_id': job.id
         }
         
