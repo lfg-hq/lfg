@@ -214,6 +214,7 @@ def repository_status(request, repository_id):
             'total_files': indexed_repo.total_files,
             'indexed_files': indexed_repo.indexed_files_count,
             'total_chunks': indexed_repo.total_chunks,
+            'total_entities': indexed_repo.total_entities,
             'last_indexed_at': indexed_repo.last_indexed_at.isoformat() if indexed_repo.last_indexed_at else None,
             'error_message': indexed_repo.error_message,
         }
@@ -514,9 +515,10 @@ def get_repository_stats(request, repository_id):
         return JsonResponse({
             'success': True,
             'stats': {
+                'indexed_files': indexed_repo.indexed_files_count,
                 'total_chunks': total_chunks,
                 'total_functions': total_functions,
-                'indexed_files': indexed_repo.indexed_files_count,
+                'total_entities': indexed_repo.total_entities,
             }
         })
     except Exception as e:

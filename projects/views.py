@@ -1,6 +1,6 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponseForbidden
 from django.contrib import messages
 from .models import Project, ProjectFeature, ProjectPersona, ProjectFile, ProjectDesignSchema, ProjectChecklist, ToolCallHistory, ProjectMember, ProjectInvitation
 from django.views.decorators.http import require_POST, require_http_methods
@@ -317,6 +317,21 @@ def update_project_name(request):
             'success': False,
             'error': str(e)
         }, status=500)
+
+@login_required
+@require_POST
+def update_project_description(request, project_id):
+    project = get_object_or_404(Project, project_id=project_id)
+
+    if not project.can_user_access(request.user):
+        return HttpResponseForbidden('You do not have permission to update this project')
+
+    description = request.POST.get('description', '').strip()
+    project.description = description
+    project.save()
+
+    messages.success(request, 'Project description updated successfully.')
+    return redirect('projects:project_detail', project_id=project.project_id)
 
 @login_required
 def update_project(request, project_id):
@@ -1787,5 +1802,3 @@ def accept_project_invitation(request, token):
     except Exception as e:
         messages.error(request, "An error occurred while accepting the invitation. Please try again.")
         return redirect('project_list')
-
-

@@ -477,22 +477,14 @@ async function refreshSidebarData() {
 
 // Update repository statistics
 function updateRepositoryStats(statusData) {
-    // Update total chunks
-    const totalChunksElement = document.getElementById('totalChunks');
-    if (totalChunksElement) {
-        totalChunksElement.textContent = statusData.total_chunks || '-';
+    const filesIndexedElement = document.getElementById('filesIndexed');
+    if (filesIndexedElement) {
+        filesIndexedElement.textContent = statusData.indexed_files || '-';
     }
-    
-    // Update total functions
-    const totalFunctionsElement = document.getElementById('totalFunctions');
-    if (totalFunctionsElement) {
-        totalFunctionsElement.textContent = statusData.functions_count || '-';
-    }
-    
-    // Update total classes
-    const totalClassesElement = document.getElementById('totalClasses');
-    if (totalClassesElement) {
-        totalClassesElement.textContent = statusData.classes_count || '-';
+
+    const entitiesMappedElement = document.getElementById('entitiesMapped');
+    if (entitiesMappedElement) {
+        entitiesMappedElement.textContent = statusData.total_entities || '-';
     }
 }
 
