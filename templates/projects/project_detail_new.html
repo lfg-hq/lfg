@@ -569,6 +569,15 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
     }
+
+    const params = new URLSearchParams(window.location.search);
+    let targetSection = params.get('section');
+    if (!targetSection && window.location.hash) {
+        targetSection = window.location.hash.replace('#', '');
+    }
+    if (targetSection && document.getElementById(`${targetSection}-section`)) {
+        showSection(targetSection);
+    }
 });
 
 function openAboutModal() {

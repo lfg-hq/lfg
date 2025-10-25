@@ -17,6 +17,10 @@ from datetime import datetime, time
 from django.db.models import Sum
 from accounts.models import TokenUsage, ApplicationState
 from subscriptions.models import UserCredit
+from subscriptions.constants import (
+    FREE_TIER_TOKEN_LIMIT,
+    PRO_MONTHLY_TOKEN_LIMIT,
+)
 from accounts.utils import get_daily_token_usage
 
 
@@ -94,7 +98,9 @@ def index(request):
     context['show_tokens_exhausted_popup'] = show_tokens_exhausted_popup
     context['is_free_tier'] = user_credit.is_free_tier
     context['remaining_tokens'] = user_credit.get_remaining_tokens()
-    context['total_tokens_limit'] = 100000 if user_credit.is_free_tier else 300000
+    context['total_tokens_limit'] = (
+        FREE_TIER_TOKEN_LIMIT if user_credit.is_free_tier else PRO_MONTHLY_TOKEN_LIMIT
+    )
     
     return render(request, 'chat/main.html', context)
 
@@ -148,7 +154,9 @@ def project_chat(request, project_id):
     user_credit, created = UserCredit.objects.get_or_create(user=request.user)
     context['is_free_tier'] = user_credit.is_free_tier
     context['remaining_tokens'] = user_credit.get_remaining_tokens()
-    context['total_tokens_limit'] = 100000 if user_credit.is_free_tier else 300000
+    context['total_tokens_limit'] = (
+        FREE_TIER_TOKEN_LIMIT if user_credit.is_free_tier else PRO_MONTHLY_TOKEN_LIMIT
+    )
         
     return render(request, 'chat/main.html', context)
 
@@ -211,7 +219,9 @@ def show_conversation(request, conversation_id):
     user_credit, created = UserCredit.objects.get_or_create(user=request.user)
     context['is_free_tier'] = user_credit.is_free_tier
     context['remaining_tokens'] = user_credit.get_remaining_tokens()
-    context['total_tokens_limit'] = 100000 if user_credit.is_free_tier else 300000
+    context['total_tokens_limit'] = (
+        FREE_TIER_TOKEN_LIMIT if user_credit.is_free_tier else PRO_MONTHLY_TOKEN_LIMIT
+    )
         
     return render(request, 'chat/main.html', context)
 

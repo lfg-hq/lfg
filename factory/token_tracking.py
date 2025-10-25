@@ -13,6 +13,10 @@ from accounts.models import TokenUsage
 from projects.models import Project
 from chat.models import Conversation
 from subscriptions.models import UserCredit
+from subscriptions.constants import (
+    FREE_TIER_TOKEN_LIMIT,
+    PRO_MONTHLY_TOKEN_LIMIT,
+)
 from django.contrib.auth.models import User
 
 logger = logging.getLogger(__name__)
@@ -135,11 +139,11 @@ async def track_token_usage(
             else:
                 user_credit.paid_tokens_used += total_tokens
                 
-                # Deduction order: free (one-time 100K) -> monthly (300K) -> additional credits
+                # Deduction order: free allowance -> monthly subscription -> additional credits
                 remaining_tokens = total_tokens
                 
-                # 1. First use free tokens (one-time 100K allowance)
-                free_limit = 100000
+                # 1. First use free tokens (one-time allowance)
+                free_limit = FREE_TIER_TOKEN_LIMIT
                 free_remaining = max(0, free_limit - user_credit.free_tokens_used)
                 if remaining_tokens > 0 and free_remaining > 0:
                     free_tokens_to_use = min(remaining_tokens, free_remaining)
@@ -147,8 +151,8 @@ async def track_token_usage(
                     remaining_tokens -= free_tokens_to_use
                     logger.debug(f"Used {free_tokens_to_use} free tokens, {remaining_tokens} remaining")
                 
-                # 2. Then use monthly credits (300K per month)
-                monthly_limit = 300000
+                # 2. Then use monthly credits
+                monthly_limit = PRO_MONTHLY_TOKEN_LIMIT
                 monthly_remaining = max(0, monthly_limit - user_credit.monthly_tokens_used)
                 if remaining_tokens > 0 and monthly_remaining > 0:
                     monthly_tokens_to_use = min(remaining_tokens, monthly_remaining)

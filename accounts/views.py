@@ -8,6 +8,7 @@ from .forms import UserRegisterForm, UserUpdateForm, ProfileUpdateForm, EmailAut
 from django.contrib.auth.models import User
 from .models import GitHubToken, EmailVerificationToken, LLMApiKeys, ExternalServicesAPIKeys, Organization, OrganizationMembership, OrganizationInvitation
 from subscriptions.models import UserCredit, OrganizationCredit
+from subscriptions.constants import FREE_TIER_TOKEN_LIMIT, PRO_MONTHLY_TOKEN_LIMIT
 from chat.models import AgentRole
 import requests
 import uuid
@@ -548,13 +549,13 @@ def integrations(request):
     
     # Calculate usage percentages and display tokens
     if user_credit.is_free_tier:
-        total_limit = 100000  # 100K for free tier
+        total_limit = FREE_TIER_TOKEN_LIMIT
         tokens_used = user_credit.total_tokens_used
         usage_percentage = min((tokens_used / total_limit * 100), 100) if total_limit > 0 else 0
         monthly_usage_percentage = 0
     else:
         # Pro tier calculations
-        monthly_limit = 300000
+        monthly_limit = PRO_MONTHLY_TOKEN_LIMIT
         additional_credits = max(0, user_credit.credits)
         total_limit = monthly_limit + additional_credits
         
@@ -566,7 +567,7 @@ def integrations(request):
         usage_percentage = monthly_usage_percentage
         
         # Calculate additional credits usage percentage
-        # Additional credits start being consumed after monthly 300K limit is reached
+        # Additional credits start being consumed after the monthly limit is reached
         if user_credit.monthly_tokens_used > monthly_limit:
             # User has exceeded monthly limit, so additional credits are being consumed
             additional_credits_consumed = user_credit.monthly_tokens_used - monthly_limit
@@ -582,8 +583,7 @@ def integrations(request):
     # Calculate free tokens remaining for Pro tier display
     free_tokens_remaining = 0
     if not user_credit.is_free_tier:
-        free_limit = 100000
-        free_tokens_remaining = max(0, free_limit - user_credit.free_tokens_used)
+        free_tokens_remaining = max(0, FREE_TIER_TOKEN_LIMIT - user_credit.free_tokens_used)
     
     # Get subscription data for subscriptions section
     from subscriptions.models import PaymentPlan, Transaction
@@ -1234,11 +1234,11 @@ def organization_dashboard(request, slug):
     
     # Calculate usage statistics
     if org_credit.is_free_tier:
-        total_limit = 100000
+        total_limit = FREE_TIER_TOKEN_LIMIT
         tokens_used = org_credit.total_tokens_used
         usage_percentage = min((tokens_used / total_limit * 100), 100) if total_limit > 0 else 0
     else:
-        total_limit = 300000 * org_credit.seat_count
+        total_limit = PRO_MONTHLY_TOKEN_LIMIT * org_credit.seat_count
         tokens_used = org_credit.monthly_tokens_used
         usage_percentage = min((tokens_used / total_limit * 100), 100) if total_limit > 0 else 0
     

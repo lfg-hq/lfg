@@ -61,14 +61,22 @@
                         </div>
                     </a>
                     <div class="project-list-actions">
+                        <a href="{% url 'projects:project_detail' item.project.project_id %}?section=codebase"
+                           class="project-action-button {% if not item.codebase_info %}project-action-button-secondary{% endif %}">
+                            <i class="fas fa-code-branch"></i>
+                            {% if item.codebase_info %}
+                                Manage Codebase
+                            {% else %}
+                                Connect Codebase
+                            {% endif %}
+                        </a>
                         <div class="dropdown">
                             <button class="dropdown-button">
                                 <i class="fas fa-ellipsis-v"></i>
                             </button>
                             <div class="dropdown-menu">
-                                <a href="{% url 'projects:project_detail' item.project.project_id %}" 
-                                   class="dropdown-item" 
-                                   onclick="setTimeout(() => openCodebaseSidebar(), 100)">
+                                <a href="{% url 'projects:project_detail' item.project.project_id %}?section=codebase" 
+                                   class="dropdown-item">
                                     <i class="fas fa-code-branch"></i> 
                                     {% if item.codebase_info %}
                                         Manage Codebase
