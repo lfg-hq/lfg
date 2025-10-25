@@ -760,6 +760,7 @@
 </style>
 {% endblock %}
 
+
 {% block content %}
 <!-- CSRF Token for JavaScript -->
 {% csrf_token %}
@@ -796,9 +797,9 @@
                 </div>
                 <div class="plan-details">
                     {% if user_credit.is_free_tier %}
-                        100,000 lifetime tokens • gpt-5-mini only
+                        {{ free_tier_token_limit|intcomma }} lifetime tokens • gpt-5-mini only
                     {% else %}
-                        300,000 tokens per month • All AI models
+                        {{ pro_monthly_token_limit|intcomma }} tokens per month • All AI models
                     {% endif %}
                 </div>
             </div>
@@ -835,7 +836,7 @@
             <div class="stat-item">
                 <span class="stat-label">Total Limit</span>
                 <span class="stat-value limit">
-                    {% if user_credit.is_free_tier %}100,000{% else %}300,000{% endif %}
+                    {% if user_credit.is_free_tier %}{{ free_tier_token_limit|intcomma }}{% else %}{{ pro_monthly_token_limit|intcomma }}{% endif %}
                 </span>
             </div>
         </div>
@@ -911,12 +912,12 @@
                 
                 <ul class="plan-features">
                     {% if plan.name == 'Free Tier' %}
-                        <li><i class="fas fa-check"></i> 100,000 lifetime tokens</li>
+                        <li><i class="fas fa-check"></i> {{ free_tier_token_limit|intcomma }} lifetime tokens</li>
                         <li><i class="fas fa-check"></i> GPT-5-mini model only</li>
                         <li><i class="fas fa-check"></i> Basic features</li>
                         <li><i class="fas fa-check"></i> Community support</li>
                     {% elif plan.name == 'Pro Monthly' %}
-                        <li><i class="fas fa-check"></i> 300,000 tokens per month</li>
+                        <li><i class="fas fa-check"></i> {{ pro_monthly_token_limit|intcomma }} tokens per month</li>
                         <li><i class="fas fa-check"></i> All AI models (GPT-4o, Claude, Gemini)</li>
                         <li><i class="fas fa-check"></i> Priority support</li>
                         <li><i class="fas fa-check"></i> Advanced features</li>
@@ -1206,3 +1207,4 @@
     }
 </script>
 {% endblock %}
+

@@ -74,6 +74,8 @@ def dashboard(request):
         'transactions': transactions,
         'usage_percentage': min(usage_percentage, 100),  # Cap at 100%
         'STRIPE_PUBLIC_KEY': stripe_public_key,
+        'free_tier_token_limit': FREE_TIER_TOKEN_LIMIT,
+        'pro_monthly_token_limit': PRO_MONTHLY_TOKEN_LIMIT,
     }
     
     return render(request, 'subscriptions/dashboard.html', context)
@@ -370,7 +372,11 @@ def payment_success(request):
                 
                 # Add success message
                 if session.mode == 'subscription':
-                    messages.success(request, "Subscription started successfully! You now have access to 300,000 tokens per month and all AI models.")
+                    messages.success(
+                        request,
+                        "Subscription started successfully! You now have access to "
+                        f"{PRO_MONTHLY_TOKEN_LIMIT:,} tokens per month and all AI models.",
+                    )
                 else:
                     messages.success(request, "Payment successful! Additional tokens have been added to your account.")
                     
@@ -392,7 +398,14 @@ def payment_cancel(request):
             status=Transaction.PENDING
         ).update(status=Transaction.FAILED)
     
-    return render(request, 'subscriptions/payment_cancel.html')
+    return render(
+        request,
+        'subscriptions/payment_cancel.html',
+        {
+            'free_tier_token_limit': FREE_TIER_TOKEN_LIMIT,
+            'pro_monthly_token_limit': PRO_MONTHLY_TOKEN_LIMIT,
+        },
+    )
 
 @login_required
 def cancel_subscription(request):

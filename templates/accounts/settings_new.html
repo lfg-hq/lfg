@@ -794,6 +794,77 @@
                     border-color: rgba(34, 197, 94, 0.3);
                     background: rgba(34, 197, 94, 0.05);
                 }
+
+                .llm-integration-card.locked {
+                    border-color: rgba(167, 139, 250, 0.35);
+                    background: rgba(30, 18, 64, 0.5);
+                    box-shadow: inset 0 0 0 1px rgba(167, 139, 250, 0.1);
+                }
+
+                .llm-integration-card.locked .llm-integration-status {
+                    color: #a855f7;
+                }
+
+                .llm-integration-locked {
+                    margin-top: 16px;
+                    padding: 16px;
+                    border: 1px dashed rgba(167, 139, 250, 0.35);
+                    border-radius: 10px;
+                    background: rgba(76, 29, 149, 0.15);
+                    display: flex;
+                    flex-direction: column;
+                    gap: 12px;
+                }
+
+                .llm-integration-locked-message {
+                    display: flex;
+                    gap: 10px;
+                    align-items: flex-start;
+                    color: #c4b5fd;
+                    font-size: 14px;
+                    line-height: 1.5;
+                }
+
+                .llm-integration-locked-message i {
+                    font-size: 16px;
+                    color: #a855f7;
+                    margin-top: 2px;
+                }
+
+                .llm-integration-locked-actions {
+                    display: flex;
+                    gap: 12px;
+                    flex-wrap: wrap;
+                }
+
+                .llm-availability-note {
+                    margin-bottom: 24px;
+                    padding: 16px 18px;
+                    border-radius: 10px;
+                    background: rgba(15, 23, 42, 0.75);
+                    border: 1px solid rgba(148, 163, 184, 0.2);
+                    display: flex;
+                    gap: 14px;
+                    align-items: flex-start;
+                    color: #94a3b8;
+                    font-size: 14px;
+                    line-height: 1.6;
+                }
+
+                .llm-availability-note i {
+                    color: #8b5cf6;
+                    margin-top: 2px;
+                }
+
+                .inline-upgrade-link {
+                    color: #a855f7;
+                    font-weight: 600;
+                    text-decoration: none;
+                }
+
+                .inline-upgrade-link:hover {
+                    text-decoration: underline;
+                }
                 
                 .llm-integration-header {
                     display: flex;
@@ -879,6 +950,10 @@
                 
                 .llm-integration-status.disconnected {
                     color: #6b7280;
+                }
+
+                .llm-integration-status.locked {
+                    color: #a855f7;
                 }
                 
                 .llm-integration-actions {
@@ -978,9 +1053,25 @@
                     transform: translateY(-1px);
                     box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);
                 }
-            </style>
-            
-            <div class="llm-integrations-grid">
+        </style>
+        
+        <div class="llm-availability-note">
+            <i class="fas fa-info-circle"></i>
+            <div>
+                <div style="color: #f1f5f9; font-weight: 600; margin-bottom: 6px;">
+                    {% if has_paid_subscription %}Paid plan active{% else %}Upgrade for more models{% endif %}
+                </div>
+                <div>
+                    {% if has_paid_subscription %}
+                        GPT-5 access is included with your subscription. Add your Anthropic or Google API keys below to use Claude and Gemini with your own credits.
+                    {% else %}
+                        GPT-5-mini is available with the platform key. Upgrade to <a href="#subscriptions" class="inline-upgrade-link">Pro Monthly</a> to unlock GPT-5 and bring your own Anthropic &amp; Google keys.
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="llm-integrations-grid">
                 <!-- OpenAI Integration -->
                 <div class="llm-integration-card {% if openai_connected %}connected{% endif %}">
                     <div class="llm-integration-header">
@@ -990,7 +1081,7 @@
                             </div>
                             <div class="llm-integration-details">
                                 <h3>OpenAI</h3>
-                                <p>OpenAI models</p>
+                                <p>{% if has_paid_subscription %}GPT-5 with platform credits{% else %}GPT-5-mini with platform credits{% endif %}</p>
                             </div>
                         </div>
                         <div class="llm-integration-status {% if openai_connected %}connected{% else %}disconnected{% endif %}">
@@ -1035,7 +1126,7 @@
                 </div>
                 
                 <!-- Anthropic Integration -->
-                <div class="llm-integration-card {% if anthropic_connected %}connected{% endif %}">
+                <div class="llm-integration-card{% if anthropic_connected and has_paid_subscription %} connected{% endif %}{% if not has_paid_subscription %} locked{% endif %}">
                     <div class="llm-integration-header">
                         <div class="llm-integration-info">
                             <div class="llm-integration-logo anthropic">
@@ -1043,52 +1134,72 @@
                             </div>
                             <div class="llm-integration-details">
                                 <h3>Anthropic</h3>
-                                <p>Claude Sonnet and Haiku models</p>
+                                <p>Bring your Claude API key</p>
                             </div>
                         </div>
-                        <div class="llm-integration-status {% if anthropic_connected %}connected{% else %}disconnected{% endif %}">
-                            <i class="fas fa-{% if anthropic_connected %}check-circle{% else %}circle{% endif %}"></i>
-                            {% if anthropic_connected %}Connected{% else %}Not Connected{% endif %}
+                        <div class="llm-integration-status {% if not has_paid_subscription %}locked{% elif anthropic_connected %}connected{% else %}disconnected{% endif %}">
+                            {% if not has_paid_subscription %}
+                                <i class="fas fa-lock"></i>
+                                Locked
+                            {% else %}
+                                <i class="fas fa-{% if anthropic_connected %}check-circle{% else %}circle{% endif %}"></i>
+                                {% if anthropic_connected %}Connected{% else %}Not Connected{% endif %}
+                            {% endif %}
                         </div>
                     </div>
-                    
-                    <div class="llm-integration-actions">
+
+                    {% if has_paid_subscription %}
+                        <div class="llm-integration-actions">
+                            {% if not anthropic_connected %}
+                                <a href="https://console.anthropic.com/settings/keys" target="_blank" class="llm-integration-button secondary">
+                                    <i class="fas fa-external-link-alt"></i>
+                                    Get API Key
+                                </a>
+                            {% else %}
+                                <a href="https://console.anthropic.com" target="_blank" class="llm-integration-button secondary">
+                                    <i class="fas fa-external-link-alt"></i>
+                                    Anthropic Console
+                                </a>
+                                <form method="post" action="{% url 'accounts:disconnect_api_key' 'anthropic' %}" style="display: inline;">
+                                    {% csrf_token %}
+                                    <button type="submit" class="llm-integration-button danger" onclick="return confirm('Disconnect Anthropic integration?');">
+                                        <i class="fas fa-unlink"></i>
+                                        Disconnect
+                                    </button>
+                                </form>
+                            {% endif %}
+                        </div>
+
                         {% if not anthropic_connected %}
-                            <a href="https://console.anthropic.com/settings/keys" target="_blank" class="llm-integration-button secondary">
-                                <i class="fas fa-external-link-alt"></i>
-                                Get API Key
-                            </a>
-                        {% else %}
-                            <a href="https://console.anthropic.com" target="_blank" class="llm-integration-button secondary">
-                                <i class="fas fa-external-link-alt"></i>
-                                Anthropic Console
-                            </a>
-                            <form method="post" action="{% url 'accounts:disconnect_api_key' 'anthropic' %}" style="display: inline;">
+                        <div class="llm-api-key-input-section">
+                            <form method="post" action="{% url 'accounts:save_api_key' 'anthropic' %}" class="llm-api-key-form">
                                 {% csrf_token %}
-                                <button type="submit" class="llm-integration-button danger" onclick="return confirm('Disconnect Anthropic integration?');">
-                                    <i class="fas fa-unlink"></i>
-                                    Disconnect
+                                <input type="password" name="api_key" placeholder="Enter your Anthropic API key (sk-ant-...)" required>
+                                <button type="submit">
+                                    <i class="fas fa-plug"></i>
+                                    Connect
                                 </button>
                             </form>
+                        </div>
                         {% endif %}
-                    </div>
-                    
-                    {% if not anthropic_connected %}
-                    <div class="llm-api-key-input-section">
-                        <form method="post" action="{% url 'accounts:save_api_key' 'anthropic' %}" class="llm-api-key-form">
-                            {% csrf_token %}
-                            <input type="password" name="api_key" placeholder="Enter your Anthropic API key (sk-ant-...)" required>
-                            <button type="submit">
-                                <i class="fas fa-plug"></i>
-                                Connect
-                            </button>
-                        </form>
-                    </div>
+                    {% else %}
+                        <div class="llm-integration-locked">
+                            <div class="llm-integration-locked-message">
+                                <i class="fas fa-lock"></i>
+                                <span>Upgrade to connect your Anthropic key and use Claude models.</span>
+                            </div>
+                            <div class="llm-integration-locked-actions">
+                                <a href="#subscriptions" class="llm-integration-button primary">
+                                    <i class="fas fa-arrow-up"></i>
+                                    Upgrade Plan
+                                </a>
+                            </div>
+                        </div>
                     {% endif %}
                 </div>
                 
                 <!-- Gemini Integration -->
-                <div class="llm-integration-card {% if gemini_connected %}connected{% endif %}">
+                <div class="llm-integration-card{% if gemini_connected and has_paid_subscription %} connected{% endif %}{% if not has_paid_subscription %} locked{% endif %}">
                     <div class="llm-integration-header">
                         <div class="llm-integration-info">
                             <div class="llm-integration-logo gemini">
@@ -1096,47 +1207,67 @@
                             </div>
                             <div class="llm-integration-details">
                                 <h3>Google Gemini</h3>
-                                <p>Gemini Pro, Gemini Flash, and other Google AI models</p>
+                                <p>Bring your Gemini API key</p>
                             </div>
                         </div>
-                        <div class="llm-integration-status {% if gemini_connected %}connected{% else %}disconnected{% endif %}">
-                            <i class="fas fa-{% if gemini_connected %}check-circle{% else %}circle{% endif %}"></i>
-                            {% if gemini_connected %}Connected{% else %}Not Connected{% endif %}
+                        <div class="llm-integration-status {% if not has_paid_subscription %}locked{% elif gemini_connected %}connected{% else %}disconnected{% endif %}">
+                            {% if not has_paid_subscription %}
+                                <i class="fas fa-lock"></i>
+                                Locked
+                            {% else %}
+                                <i class="fas fa-{% if gemini_connected %}check-circle{% else %}circle{% endif %}"></i>
+                                {% if gemini_connected %}Connected{% else %}Not Connected{% endif %}
+                            {% endif %}
                         </div>
                     </div>
                     
-                    <div class="llm-integration-actions">
+                    {% if has_paid_subscription %}
+                        <div class="llm-integration-actions">
+                            {% if not gemini_connected %}
+                                <a href="https://makersuite.google.com/app/apikey" target="_blank" class="llm-integration-button secondary">
+                                    <i class="fas fa-external-link-alt"></i>
+                                    Get API Key
+                                </a>
+                            {% else %}
+                                <a href="https://makersuite.google.com" target="_blank" class="llm-integration-button secondary">
+                                    <i class="fas fa-external-link-alt"></i>
+                                    Google AI Studio
+                                </a>
+                                <form method="post" action="{% url 'accounts:disconnect_api_key' 'gemini' %}" style="display: inline;">
+                                    {% csrf_token %}
+                                    <button type="submit" class="llm-integration-button danger" onclick="return confirm('Disconnect Gemini integration?');">
+                                        <i class="fas fa-unlink"></i>
+                                        Disconnect
+                                    </button>
+                                </form>
+                            {% endif %}
+                        </div>
+
                         {% if not gemini_connected %}
-                            <a href="https://makersuite.google.com/app/apikey" target="_blank" class="llm-integration-button secondary">
-                                <i class="fas fa-external-link-alt"></i>
-                                Get API Key
-                            </a>
-                        {% else %}
-                            <a href="https://makersuite.google.com" target="_blank" class="llm-integration-button secondary">
-                                <i class="fas fa-external-link-alt"></i>
-                                Google AI Studio
-                            </a>
-                            <form method="post" action="{% url 'accounts:disconnect_api_key' 'gemini' %}" style="display: inline;">
+                        <div class="llm-api-key-input-section">
+                            <form method="post" action="{% url 'accounts:save_api_key' 'gemini' %}" class="llm-api-key-form">
                                 {% csrf_token %}
-                                <button type="submit" class="llm-integration-button danger" onclick="return confirm('Disconnect Gemini integration?');">
-                                    <i class="fas fa-unlink"></i>
-                                    Disconnect
+                                <input type="password" name="api_key" placeholder="Enter your Gemini API key" required>
+                                <button type="submit">
+                                    <i class="fas fa-plug"></i>
+                                    Connect
                                 </button>
                             </form>
+                        </div>
                         {% endif %}
-                    </div>
-                    
-                    {% if not gemini_connected %}
-                    <div class="llm-api-key-input-section">
-                        <form method="post" action="{% url 'accounts:save_api_key' 'gemini' %}" class="llm-api-key-form">
-                            {% csrf_token %}
-                            <input type="password" name="api_key" placeholder="Enter your Gemini API key" required>
-                            <button type="submit">
-                                <i class="fas fa-plug"></i>
-                                Connect
-                            </button>
-                        </form>
-                    </div>
+                    {% else %}
+                        <div class="llm-integration-locked">
+                            <div class="llm-integration-locked-message">
+                                <i class="fas fa-lock"></i>
+                                <span>Upgrade to connect your Google key and chat with Gemini models.</span>
+                            </div>
+                            <div class="llm-integration-locked-actions">
+                                <a href="#subscriptions" class="llm-integration-button primary">
+                                    <i class="fas fa-arrow-up"></i>
+                                    Upgrade Plan
+                                </a>
+                            </div>
+                        </div>
                     {% endif %}
                 </div>
                 
@@ -1194,7 +1325,7 @@
                 </div>
             </div>
         </div>
-        
+
         <!-- Project Management Section -->
         <div id="project-management-new" class="settings-section">
             <h2 class="section-heading">Project Management Integrations</h2>
@@ -2213,9 +2344,9 @@
                         </div>
                         <div style="color: #6b7280; font-size: 12px; margin-top: 8px;">
                             {% if user_credit.is_free_tier %}
-                                100,000 lifetime tokens • gpt-5-mini only
+                                {{ free_tier_token_limit|intcomma }} lifetime tokens • gpt-5-mini only
                             {% else %}
-                                1,000,000 tokens per month • All AI models
+                                {{ pro_monthly_token_limit|intcomma }} tokens per month • All AI models
                             {% endif %}
                         </div>
                     </div>
@@ -2280,7 +2411,7 @@
                 
                 <!-- Credit Breakdown -->
                 <div style="margin-top: 16px; text-align: center; font-size: 9px; color: #6b7280; line-height: 1.3;">
-                    Free: 100K (one-time){% if not user_credit.is_free_tier %} • Monthly: 300K{% if user_credit.credits > 0 %} • Additional: {{ user_credit.credits|intcomma }}{% endif %}{% endif %}
+                    Free: {{ free_tier_token_limit|intcomma }} (one-time){% if not user_credit.is_free_tier %} • Monthly: {{ pro_monthly_token_limit|intcomma }}{% if user_credit.credits > 0 %} • Additional: {{ user_credit.credits|intcomma }}{% endif %}{% endif %}
                 </div>
                 
                 {% if not user_credit.is_free_tier and user_credit.subscription_end_date %}
@@ -2334,15 +2465,15 @@
                         
                         <ul class="subscription-plan-features">
                             {% if plan.name == 'Free Tier' %}
-                                <li><i class="fas fa-check"></i> 100,000 lifetime tokens</li>
+                                <li><i class="fas fa-check"></i> {{ free_tier_token_limit|intcomma }} lifetime tokens</li>
                                 <li><i class="fas fa-check"></i> GPT-5-mini model only</li>
                                 <li><i class="fas fa-check"></i> Basic features</li>
                                 <li><i class="fas fa-check"></i> Community support</li>
                             {% elif plan.name == 'Pro Monthly' %}
-                                <li><i class="fas fa-check"></i> 300,000 tokens per month</li>
-                                <li><i class="fas fa-check"></i> All AI models (GPT-4o, Claude, Gemini)</li>
-                                <li><i class="fas fa-check"></i> Priority support</li>
-                                <li><i class="fas fa-check"></i> Advanced features</li>
+                                <li><i class="fas fa-check"></i> {{ pro_monthly_token_limit|intcomma }} tokens per month</li>
+                                <li><i class="fas fa-check"></i> GPT-5 included with platform credits</li>
+                                <li><i class="fas fa-check"></i> BYO Anthropic &amp; Google API keys</li>
+                                <li><i class="fas fa-check"></i> Priority support &amp; advanced features</li>
                             {% else %}
                                 <li><i class="fas fa-check"></i> {{ plan.credits|intcomma }} additional tokens</li>
                                 <li><i class="fas fa-check"></i> One-time purchase</li>
@@ -2352,7 +2483,7 @@
                         </ul>
                         
                         {% if plan.price > 0 %}
-                            {% if user_credit.has_active_subscription and plan.is_subscription %}
+                            {% if has_paid_subscription and plan.is_subscription %}
                                 <button class="subscription-plan-button secondary" disabled>Current Plan</button>
                             {% else %}
                                 <a href="{% url 'subscriptions:checkout' plan.id %}" class="subscription-plan-button primary">
