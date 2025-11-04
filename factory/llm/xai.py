@@ -248,7 +248,12 @@ class XAIProvider(BaseLLMProvider):
                                 
                                 # Yield any content that needs to be streamed
                                 if yielded_content:
-                                    yield yielded_content
+                                    if isinstance(yielded_content, (list, tuple)):
+                                        for chunk in yielded_content:
+                                            if chunk:
+                                                yield chunk
+                                    else:
+                                        yield yielded_content
                                 
                                 # Append tool result message
                                 tool_results_messages.append({
@@ -260,9 +265,11 @@ class XAIProvider(BaseLLMProvider):
                                 # If we have notification data, yield it
                                 if notification_data:
                                     logger.debug("YIELDING NOTIFICATION DATA TO CONSUMER")
-                                    notification_json = json.dumps(notification_data)
-                                    logger.debug(f"Notification JSON: {notification_json}")
-                                    yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                    notification_list = notification_data if isinstance(notification_data, list) else [notification_data]
+                                    for notification in notification_list:
+                                        notification_json = json.dumps(notification)
+                                        logger.debug(f"Notification JSON: {notification_json}")
+                                        yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
                                 
                             current_messages.extend(tool_results_messages)
                             # Continue the outer while loop to make the next API call

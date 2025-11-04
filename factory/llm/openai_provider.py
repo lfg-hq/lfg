@@ -575,7 +575,12 @@ class OpenAIProvider(BaseLLMProvider):
                                 )
                                 
                                 if yielded_content:
-                                    yield yielded_content
+                                    if isinstance(yielded_content, (list, tuple)):
+                                        for chunk in yielded_content:
+                                            if chunk:
+                                                yield chunk
+                                    else:
+                                        yield yielded_content
                                 
                                 tool_results_messages.append({
                                     "role": "tool",
@@ -585,8 +590,10 @@ class OpenAIProvider(BaseLLMProvider):
                                 
                                 if notification_data:
                                     logger.debug("YIELDING NOTIFICATION DATA TO CONSUMER")
-                                    notification_json = json.dumps(notification_data)
-                                    yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                    notification_list = notification_data if isinstance(notification_data, list) else [notification_data]
+                                    for notification in notification_list:
+                                        notification_json = json.dumps(notification)
+                                        yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
                                 
                             current_messages.extend(tool_results_messages)
                             

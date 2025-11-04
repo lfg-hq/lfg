@@ -1,16 +1,52 @@
+
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 
-export default function Sidebar() {
+interface SidebarConversation {
+  id: string;
+  title: string;
+  updatedAt?: string;
+}
+
+interface SidebarProject {
+  id: string;
+  name: string;
+  icon?: string;
+}
+
+interface SidebarProps {
+  conversations: SidebarConversation[];
+  activeConversationId?: string | null;
+  onSelectConversation: (conversationId: string) => void;
+  onNewChat: () => void;
+  projects?: SidebarProject[];
+  activeProjectId?: string | null;
+  onSelectProject?: (projectId: string) => void;
+}
+
+export default function Sidebar({
+  conversations,
+  activeConversationId,
+  onSelectConversation,
+  onNewChat,
+  projects = [],
+  activeProjectId,
+  onSelectProject,
+}: SidebarProps) {
   const [isMinimized, setIsMinimized] = useState(false);
 
-  const conversations = [
-    { id: '1', title: 'E-commerce Features' },
-    { id: '2', title: 'Mobile App Design' },
-    { id: '3', title: 'API Integration' },
-  ];
+  const sortedConversations = useMemo(() => {
+    return [...conversations].sort((a, b) => {
+      if (a.id === activeConversationId) return -1;
+      if (b.id === activeConversationId) return 1;
+      if (a.updatedAt && b.updatedAt) {
+        return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+      }
+      return a.title.localeCompare(b.title);
+    });
+  }, [conversations, activeConversationId]);
 
   return (
     <aside
@@ -44,13 +80,41 @@ export default function Sidebar() {
 
       {/* New Chat Button */}
       <div className="p-4">
-        <button className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium">
+        <button
+          onClick={onNewChat}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"
+        >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
           {!isMinimized && <span>New Chat</span>}
         </button>
       </div>
+
+      {/* Project Selection */}
+      {!isMinimized && projects.length > 0 && (
+        <div className="px-4">
+          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+            Active Project
+          </label>
+          <div className="space-y-2">
+            {projects.map((project) => (
+              <button
+                key={project.id}
+                onClick={() => onSelectProject?.(project.id)}
+                className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors border ${
+                  project.id === activeProjectId
+                    ? 'bg-purple-50 border-purple-200 text-purple-700'
+                    : 'border-transparent text-gray-700 hover:bg-gray-100 hover:text-gray-900'
+                }`}
+              >
+                <span className="text-lg">{project.icon ?? '🚀'}</span>
+                <span className="truncate">{project.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Navigation */}
       {!isMinimized && (
@@ -60,15 +124,22 @@ export default function Sidebar() {
               Recent Conversations
             </h3>
             <div className="space-y-1">
-              {conversations.map((conv) => (
-                <Link
+              {sortedConversations.map((conv) => (
+                <button
                   key={conv.id}
-                  href={`/chat/${conv.id}`}
-                  className="block px-3 py-2 text-sm text-gray-700 hover:bg-purple-50 hover:text-purple-600 rounded-lg transition-colors truncate"
+                  onClick={() => onSelectConversation(conv.id)}
+                  className={`w-full text-left px-3 py-2 text-sm rounded-lg transition-colors truncate ${
+                    conv.id === activeConversationId
+                      ? 'bg-purple-50 text-purple-600'
+                      : 'text-gray-700 hover:bg-purple-50 hover:text-purple-600'
+                  }`}
                 >
                   {conv.title}
-                </Link>
+                </button>
               ))}
+              {sortedConversations.length === 0 && (
+                <p className="px-3 py-4 text-xs text-gray-500">No conversations yet. Start a new one!</p>
+              )}
             </div>
           </div>
         </nav>
@@ -76,6 +147,15 @@ export default function Sidebar() {
 
       {/* Bottom Navigation */}
       <div className="border-t border-gray-200 p-2">
+        <Link
+          href="/tickets"
+          className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-purple-50 hover:text-purple-600 rounded-lg transition-colors"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          {!isMinimized && <span>Tickets</span>}
+        </Link>
         <Link
           href="/projects"
           className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-purple-50 hover:text-purple-600 rounded-lg transition-colors"

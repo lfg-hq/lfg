@@ -359,6 +359,27 @@ update_ticket = {
     }
 }
 
+update_all_tickets = {
+    "type": "function",
+    "function": {
+        "name": "update_all_tickets",
+        "description": "Call this function to update the status of all checklist tickets. You need to pass the status.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "ticket_ids": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "Optional explicit list of ticket IDs to execute. Defaults to all open agent tickets when omitted."
+                },
+                "status": {"type": "string", "enum": ["done", "in_progress", "agent", "open"]}
+            },
+            "required": ["ticket_ids", "status"]
+        }
+    }
+}
+
+
 get_next_ticket = {
     "type": "function",
     "function": {
@@ -531,6 +552,111 @@ execute_command = {
                 "explaination": {"type": "string", "description": "A short explaination of this task, along with the `command` in the Markdown format"}
             },
             "required": ["commands", "explaination"]
+        }
+    }
+}
+
+provision_vibe_workspace = {
+    "type": "function",
+    "function": {
+        "name": "provision_vibe_workspace",
+        "description": "Provision or retrieve the persistent Magpie VM that hosts the Turbo Next.js workspace. Creates the VM, installs Node.js, scaffolds the project in /workspace/nextjs-app, and stores workspace metadata for reuse.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "project_name": {
+                    "type": "string",
+                    "description": "Human-friendly project name used when naming the Magpie job and workspace directory."
+                },
+                "summary": {
+                    "type": "string",
+                    "description": "Short description of the requested build; stored with the workspace record for future context."
+                }
+            },
+            "required": ["project_name"],
+            "additionalProperties": False,
+        }
+    }
+}
+
+magpie_ssh_command = {
+    "type": "function",
+    "function": {
+        "name": "magpie_ssh_command",
+        "description": "Execute a shell command inside the Magpie workspace via SSH. Use this for writing files, installing dependencies, running Prisma migrations, and verifying the app.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Workspace identifier returned by provision_vibe_workspace."
+                },
+                "command": {
+                    "type": "string",
+                    "description": "Shell command to run inside /workspace. Favor heredocs for file writes and descriptive scripts."
+                },
+                "explanation": {
+                    "type": "string",
+                    "description": "Brief natural-language explanation of the command purpose and expected changes or outputs."
+                },
+                "timeout": {
+                    "type": "integer",
+                    "description": "Optional timeout for the command in seconds (default 180)."
+                },
+                "with_node_env": {
+                    "type": "boolean",
+                    "description": "Whether to load the Node.js environment helpers before running the command. Defaults to true."
+                }
+            },
+            "required": ["workspace_id", "command", "explanation"],
+            "additionalProperties": False,
+        }
+    }
+}
+
+restart_vibe_dev_server = {
+    "type": "function",
+    "function": {
+        "name": "restart_vibe_dev_server",
+        "description": "Restart the Next.js dev server on the Magpie workspace and return connection details plus recent logs.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Workspace identifier returned by provision_vibe_workspace."
+                },
+                "log_tail_lines": {
+                    "type": "integer",
+                    "description": "Number of lines to tail from /workspace/nextjs-app/dev.log after restart (default 60)."
+                },
+                "environment": {
+                    "type": "string",
+                    "description": "Optional label describing the restart context (e.g., 'feature-update', 'hotfix')."
+                }
+            },
+            "required": ["workspace_id"],
+            "additionalProperties": False,
+        }
+    }
+}
+
+queue_ticket_execution = {
+    "type": "function",
+    "function": {
+        "name": "queue_ticket_execution",
+        "description": "Queue all open agent tickets for background execution in creation order. This schedules a Django-Q worker to process tickets sequentially and stream progress updates.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "ticket_ids": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "Explicit list of ticket IDs to execute. Defaults to all open agent tickets when omitted."
+                }
+            },
+            "required": ["ticket_ids"],
+            "additionalProperties": False,
         }
     }
 }
@@ -905,12 +1031,25 @@ tools_code = [get_prd, start_server, \
               stream_document_content, copy_boilerplate_code, capture_name, \
               index_repository, get_codebase_context, search_existing_code, get_repository_insights, get_codebase_summary, \
               connect_notion, search_notion, get_notion_page, list_notion_databases, query_notion_database, \
-              get_linear_issues, get_linear_issue_details]
+              get_linear_issues, get_linear_issue_details, queue_ticket_execution]
 
 tools_product = [get_file_list, get_codebase_summary, search_existing_code, get_file_content, create_tickets, get_pending_tickets, \
                  connect_notion, search_notion, get_notion_page, list_notion_databases, query_notion_database, \
                  get_linear_issues, get_linear_issue_details]
 
-tools_turbo = [get_prd, create_tickets, search_existing_code, get_pending_tickets, update_ticket, execute_command]
+tools_turbo = [
+    get_prd,
+    get_file_list,
+    get_file_content,
+    create_tickets,
+    search_existing_code,
+    get_pending_tickets,
+    update_ticket,
+    update_all_tickets,
+    # provision_vibe_workspace,
+    # magpie_ssh_command,
+    restart_vibe_dev_server,
+    queue_ticket_execution
+]
 
 tools_design = [get_prd, execute_command, start_server, get_github_access_token]

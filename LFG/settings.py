@@ -22,6 +22,7 @@ CSRF_TRUSTED_ORIGINS = [
     'http://localhost:8000',
     'http://127.0.0.1:8000',
     'http://localhost:3000',
+    'http://localhost:3001',
     'http://localhost:5173',
     'http://localhost:5174',
     'https://dev-rocks.lfg.run'
@@ -240,8 +241,14 @@ CORS_ALLOWED_ORIGINS = [
     'https://www.lfg.run',
     'http://localhost:8000',
     'http://localhost:3000',
+    'http://localhost:3001',
     'http://localhost:5173',
     'http://localhost:5174',
+]
+
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r'^http://localhost:\d+$',
+    r'^http://127\.0\.0\.1:\d+$',
 ]
 CORS_ALLOW_CREDENTIALS = True
 

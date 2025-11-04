@@ -1,8 +1,11 @@
 import json
 import os
+import re
 import asyncio
 import subprocess
 import logging
+import textwrap
+import time
 from datetime import datetime
 from pathlib import Path
 from asgiref.sync import sync_to_async
@@ -10,7 +13,7 @@ from projects.models import Project, ProjectFeature, ProjectPersona, \
                             ProjectPRD, ProjectDesignSchema, ProjectChecklist, \
                             ProjectImplementation, ProjectFile
 
-from development.models import ServerConfig
+from development.models import ServerConfig, MagpieWorkspace
 
 from django.conf import settings
 from django.core.cache import cache
@@ -22,6 +25,13 @@ from accounts.models import GitHubToken, ExternalServicesAPIKeys
 from chat.models import Conversation
 from factory.notion_connector import NotionConnector
 from projects.linear_sync import LinearSyncService
+from django.utils import timezone
+from tasks.task_manager import TaskManager
+
+try:
+    from magpie import Magpie
+except ImportError:  # pragma: no cover - Magpie is optional in some environments
+    Magpie = None
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -40,8 +50,272 @@ try:
     CODEBASE_INDEX_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"Codebase indexing not available: {e}")
-    CODEBASE_INDEX_AVAILABLE = False
+CODEBASE_INDEX_AVAILABLE = False
 
+
+# ============================================================================
+# MAGPIE WORKSPACE CONSTANTS & HELPERS
+# ============================================================================
+
+DEFAULT_MAGPIE_API_KEY = "e1e90cc27dfe6a50cc28699cdcb937ef8c443567b62cf064a063f9b34af0b91b"
+MAGPIE_API_KEY = getattr(settings, "MAGPIE_API_KEY", os.getenv("MAGPIE_API_KEY", DEFAULT_MAGPIE_API_KEY))
+
+MAGPIE_NODE_VERSION = "20.18.0"
+MAGPIE_NODE_DISTRO = "linux-x64"
+MAGPIE_WORKSPACE_DIR = "/workspace/nextjs-app"
+
+MAGPIE_NODE_ENV_LINES = [
+    "export PATH=/workspace/node/current/bin:$PATH",
+    "export npm_config_prefix=/workspace/.npm-global",
+    "export npm_config_cache=/workspace/.npm-cache",
+    "export NODE_ENV=development",
+    "mkdir -p /workspace/.npm-global /workspace/.npm-cache",
+]
+
+MAGPIE_BOOTSTRAP_SCRIPT = """#!/bin/sh
+set -eux
+cd /workspace
+echo "VM ready for Next.js provisioning" > /workspace/READY
+
+# keep the job marked running so SSH window stays open for orchestration
+while :; do sleep 3600 & wait $!; done
+"""
+
+
+def magpie_available() -> bool:
+    """Return True when the Magpie SDK and API key are configured."""
+    return Magpie is not None and bool(MAGPIE_API_KEY)
+
+
+def get_magpie_client():
+    """Instantiate a Magpie client or raise a helpful error."""
+    if not magpie_available():
+        raise RuntimeError("Magpie SDK or MAGPIE_API_KEY is not configured")
+    return Magpie(api_key=MAGPIE_API_KEY)
+
+
+def _slugify_project_name(name: str) -> str:
+    slug = re.sub(r'[^a-z0-9]+', '-', name.lower())
+    slug = slug.strip('-')
+    return slug or "turbo-app"
+
+
+def _truncate_output(value: str, limit: int = 4000) -> str:
+    if not value:
+        return ""
+    if len(value) <= limit:
+        return value
+    truncated = value[:limit]
+    omitted = len(value) - limit
+    return f"{truncated}\n... (truncated {omitted} characters)"
+
+
+def _format_command_output(stdout: str, stderr: str, limit: int = 6000) -> str:
+    stdout_trimmed = _truncate_output(stdout, limit // 2)
+    stderr_trimmed = _truncate_output(stderr, limit // 2)
+    parts = []
+    if stdout_trimmed:
+        parts.append(f"STDOUT:\n{stdout_trimmed}")
+    if stderr_trimmed:
+        parts.append(f"STDERR:\n{stderr_trimmed}")
+    return "\n\n".join(parts) if parts else "(no output)"
+
+
+def _run_magpie_ssh(client, job_id: str, command: str, timeout: int = 180, with_node_env: bool = True):
+    env_lines = ["set -e", "cd /workspace"]
+    if with_node_env:
+        env_lines.extend(MAGPIE_NODE_ENV_LINES)
+    wrapped = "\n".join(env_lines + [command])
+    logger.info("[MAGPIE][SSH] job_id=%s timeout=%s command=%s", job_id, timeout, command.split('\n')[0][:120])
+    print("[MAGPIE][SSH] Job prints", wrapped)
+    result = client.jobs.ssh(job_id, wrapped, timeout=timeout)
+    logger.debug(
+        "[MAGPIE][SSH RESULT] job_id=%s exit_code=%s stdout_len=%s stderr_len=%s",
+        job_id,
+        getattr(result, 'exit_code', None),
+        len(getattr(result, 'stdout', '') or ''),
+        len(getattr(result, 'stderr', '') or ''),
+    )
+    return {
+        "exit_code": getattr(result, 'exit_code', 0),
+        "stdout": getattr(result, 'stdout', '') or '',
+        "stderr": getattr(result, 'stderr', '') or ''
+    }
+
+
+def _extract_pid_from_output(output: str) -> str:
+    if not output:
+        return ""
+    match = re.search(r"PID:(\d+)", output)
+    if match:
+        return match.group(1)
+    match = re.search(r"\b(\d{3,})\b", output)
+    return match.group(1) if match else ""
+
+
+def _build_log_entries_from_steps(steps):
+    log_entries = []
+    for description, result in steps:
+        if not isinstance(result, dict):
+            continue
+        log_entries.append({
+            "title": description,
+            "command": _truncate_output(result.get("command", ""), 600),
+            "stdout": _truncate_output(result.get("stdout", ""), 800),
+            "stderr": _truncate_output(result.get("stderr", ""), 800),
+            "exit_code": result.get("exit_code")
+        })
+    return log_entries
+
+
+def _bootstrap_magpie_workspace(client, job_id: str):
+    """Install Node, scaffold the Next.js app, add Prisma, and launch the dev server."""
+    steps = []
+
+    install_node_cmd = textwrap.dedent(
+        f"""
+        mkdir -p node
+        cd node
+        if [ ! -d node-v{MAGPIE_NODE_VERSION}-{MAGPIE_NODE_DISTRO} ]; then
+            if ! command -v curl >/dev/null 2>&1 || ! command -v xz >/dev/null 2>&1; then
+                apk update
+                apk add --no-cache curl xz
+            fi
+            curl -fsSL https://nodejs.org/dist/v{MAGPIE_NODE_VERSION}/node-v{MAGPIE_NODE_VERSION}-{MAGPIE_NODE_DISTRO}.tar.xz -o node.tar.xz
+            tar -xf node.tar.xz
+            rm node.tar.xz
+            ln -sfn node-v{MAGPIE_NODE_VERSION}-{MAGPIE_NODE_DISTRO} current
+        fi
+        mkdir -p /workspace/.npm-global /workspace/.npm-cache
+        """
+    )
+    install_result = _run_magpie_ssh(client, job_id, install_node_cmd, timeout=240, with_node_env=False)
+    install_result["command"] = install_node_cmd
+    steps.append(("Install Node.js", install_result))
+
+    scaffold_cmd = textwrap.dedent(
+        r"""
+        pwd
+        rm -rf nextjs-app
+        mkdir -p nextjs-app
+        mkdir -p nextjs-app/pages
+
+        cat > nextjs-app/package.json <<'EOF'
+        {
+        "name": "nextjs-app",
+        "version": "1.0.0",
+        "private": true,
+        "scripts": {
+            "dev": "next dev --hostname :: --port 3000",
+            "build": "next build",
+            "start": "next start --hostname :: --port 3000"
+        },
+        "dependencies": {
+            "next": "14.0.0",
+            "react": "18.2.0",
+            "react-dom": "18.2.0"
+        }
+        }
+        EOF
+
+        cat > nextjs-app/next.config.js <<'EOF'
+        /** @type {import('next').NextConfig} */
+        const nextConfig = {
+        reactStrictMode: true
+        };
+        module.exports = nextConfig;
+        EOF
+
+        cat > nextjs-app/pages/index.js <<'EOF'
+        export default function Home() {
+        return (
+            <main style={{
+            minHeight: "100vh",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            fontFamily: "system-ui",
+            gap: "1.5rem"
+            }}>
+            <h1>🥳 Next.js on MicroVM -- Jitin</h1>
+            <p>Served from /workspace/nextjs-app</p>
+            <p>IPv6 ready: bound to :: port 3000</p>
+            </main>
+        );
+        }
+        EOF
+        """
+    )
+    scaffold_result = _run_magpie_ssh(client, job_id, scaffold_cmd, timeout=360)
+    scaffold_result["command"] = scaffold_cmd
+    steps.append(("Write Next.js project skeleton", scaffold_result))
+
+    install_dependencies_cmd = "cd nextjs-app && npm install"
+    deps_result = _run_magpie_ssh(client, job_id, install_dependencies_cmd, timeout=480)
+    deps_result["command"] = install_dependencies_cmd
+    steps.append(("Install npm dependencies", deps_result))
+
+    start_server_cmd = textwrap.dedent(
+        """
+        cd nextjs-app
+        if [ -f .devserver_pid ]; then
+          old_pid=$(cat .devserver_pid)
+          if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
+            kill "$old_pid" || true
+          fi
+        fi
+        : > /workspace/nextjs-app/dev.log
+        nohup npm run dev -- --hostname :: --port 3000 >/workspace/nextjs-app/dev.log 2>&1 &
+        pid=$!
+        echo "$pid" > .devserver_pid
+        echo "PID:$pid"
+        """
+    )
+    start_result = _run_magpie_ssh(client, job_id, start_server_cmd, timeout=120)
+    start_result["command"] = start_server_cmd
+    steps.append(("Launch dev server", start_result))
+
+    # Allow the dev server a few seconds to boot
+    time.sleep(5)
+
+    preview_cmd = "cd nextjs-app && curl -s --max-time 5 http://127.0.0.1:3000 | head -n 20"
+    preview_result = _run_magpie_ssh(client, job_id, preview_cmd, timeout=120)
+    preview_result["command"] = preview_cmd
+    steps.append(("Fetch preview", preview_result))
+
+    return {
+        "steps": steps,
+        "pid": _extract_pid_from_output(start_result.get("stdout", "")),
+        "preview": preview_result.get("stdout", "")
+    }
+
+
+def _update_workspace_metadata(workspace, **metadata):
+    current_metadata = workspace.metadata or {}
+    if metadata:
+        current_metadata.update(metadata)
+    workspace.metadata = current_metadata
+    workspace.last_seen_at = timezone.now()
+    workspace.save(update_fields=['metadata', 'last_seen_at', 'updated_at'])
+
+
+async def _fetch_workspace(project=None, conversation_id=None, workspace_id=None):
+    """Fetch a MagpieWorkspace by workspace_id, project, or conversation."""
+
+    def _query():
+        qs = MagpieWorkspace.objects.all()
+        if workspace_id:
+            return qs.filter(workspace_id=workspace_id).first()
+        if project:
+            workspace = qs.filter(project=project).first()
+            if workspace:
+                return workspace
+        if conversation_id:
+            return qs.filter(conversation_id=str(conversation_id)).first()
+        return None
+
+    return await sync_to_async(_query, thread_sensitive=True)()
 
 # ============================================================================
 # UTILITY FUNCTIONS
@@ -200,6 +474,8 @@ async def app_functions(function_name, function_args, project_id, conversation_i
             return await create_tickets(function_args, project_id)
         case "update_ticket":
             return await update_individual_checklist_ticket(project_id, function_args.get('ticket_id'), function_args.get('status'))
+        case "update_all_tickets":
+            return await update_all_checklist_tickets(project_id, function_args.get('ticket_ids'), function_args.get('status'))
         case "get_pending_tickets":
             return await get_pending_tickets(project_id)
         case "get_next_ticket":
@@ -213,7 +489,19 @@ async def app_functions(function_name, function_args, project_id, conversation_i
             else:
                 result = await run_command_in_k8s(command, project_id=project_id, conversation_id=conversation_id)
             return result
-        
+
+        case "provision_vibe_workspace":
+            return await provision_vibe_workspace_tool(function_args, project_id, conversation_id)
+
+        case "magpie_ssh_command":
+            return await magpie_ssh_command_tool(function_args, project_id, conversation_id)
+
+        case "restart_vibe_dev_server":
+            return await restart_vibe_dev_server_tool(function_args, project_id, conversation_id)
+
+        case "queue_ticket_execution":
+            return await queue_ticket_execution_tool(function_args, project_id, conversation_id)
+
         case "start_server":
             command = function_args.get('start_server_command', '')
             application_port = function_args.get('application_port', '')
@@ -440,7 +728,7 @@ async def extract_features(function_args, project_id, conversation_id=None):
             )
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "features",
             "message_to_agent": f"Features have been saved in the database"
         }
@@ -561,7 +849,7 @@ async def extract_personas(function_args, project_id, conversation_id=None):
             )
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "personas",
             "message_to_agent": f"Personas have been saved in the database"
         }
@@ -605,7 +893,7 @@ async def get_features(project_id):
     
     if not features:
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "features",
             "message_to_agent": "No features found for this project"
         }
@@ -620,7 +908,7 @@ async def get_features(project_id):
         })
 
     return {
-        "is_notification": True,
+        "is_notification": False,
         "notification_type": "features",
         "message_to_agent": f"Following features already exists in the database: {feature_list}"
     }
@@ -651,7 +939,7 @@ async def get_personas(project_id):
     
     if not personas:
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "personas",
             "message_to_agent": "No personas found for this project"
         }
@@ -665,7 +953,7 @@ async def get_personas(project_id):
         })
 
     return {
-        "is_notification": True,
+        "is_notification": False,
         "notification_type": "personas",
         "message_to_agent": f"Following personas already exists in the database: {persona_list}"
     }
@@ -728,7 +1016,7 @@ async def create_prd(function_args, project_id):
         await save_personas(project_id)
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "prd",
             "message_to_agent": f"PRD '{prd_name}' {action} successfully in the database",
             "prd_name": prd_name
@@ -767,7 +1055,7 @@ async def get_prd(project_id, prd_name=None):
                 lambda: ProjectPRD.objects.get(project=project, name=prd_name)
             )()
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "prd",
                 "message_to_agent": f"Here is the PRD '{prd_name}': {prd.prd}. Please proceed with users request.",
                 "prd_name": prd_name
@@ -792,7 +1080,7 @@ async def get_prd(project_id, prd_name=None):
             prd_list = "\n".join([f"- {prd['name']} (Created: {prd['created_at']}, Updated: {prd['updated_at']})" for prd in prds])
             
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "prd_list",
                 "message_to_agent": f"Found {len(prds)} PRD(s) for this project:\n{prd_list}\n\nLatest PRD '{latest_prd.name}' content: {latest_prd.prd}",
                 "prds": prds,
@@ -928,7 +1216,7 @@ async def stream_prd_content(function_args, project_id):
             except Exception as e:
                 logger.error(f"Error saving streamed PRD: {str(e)}")
                 return {
-                    "is_notification": True,
+                    "is_notification": False,
                     "notification_type": "prd_stream",
                     "content_chunk": "",
                     "is_complete": True,
@@ -937,7 +1225,7 @@ async def stream_prd_content(function_args, project_id):
     
     # Return notification to stream the chunk to frontend
     result = {
-        "is_notification": True,
+        "is_notification": False,
         "notification_type": "prd_stream",
         "content_chunk": content_chunk,
         "is_complete": is_complete,
@@ -1003,7 +1291,7 @@ async def create_implementation(function_args, project_id):
         action = "created" if created else "updated"
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "implementation",
             "message_to_agent": f"Implementation {action} successfully in the database"
         }
@@ -1038,7 +1326,7 @@ async def get_implementation(project_id):
         # Check if project has PRD and get content
         implementation_content = await sync_to_async(lambda: project.implementation.implementation)()
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "implementation",
             "message_to_agent": f"Here is the existing version of the Implementation: {implementation_content}. Proceed with user's request."
         }
@@ -1136,7 +1424,7 @@ async def update_implementation(function_args, project_id):
         )[1])()
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "implementation",
             "message_to_agent": f"Implementation {action} successfully. The update has been added to the document with timestamp {timestamp}."
         }
@@ -1257,7 +1545,7 @@ async def stream_implementation_content(function_args, project_id):
             except Exception as e:
                 logger.error(f"Error saving streamed Implementation: {str(e)}")
                 return {
-                    "is_notification": True,
+                    "is_notification": False,
                     "notification_type": "implementation_stream",
                     "content_chunk": "",
                     "is_complete": True,
@@ -1266,7 +1554,7 @@ async def stream_implementation_content(function_args, project_id):
     
     # Return notification to stream the chunk to frontend
     result = {
-        "is_notification": True,
+        "is_notification": False,
         "notification_type": "implementation_stream",
         "content_chunk": content_chunk,
         "is_complete": is_complete,
@@ -1508,7 +1796,7 @@ async def get_next_ticket(project_id):
     logger.debug(f"Message to agent: {message_to_agent}")
 
     return {
-        "is_notification": True,
+        "is_notification": False,
         "notification_type": "get_pending_tickets",
         "message_to_agent": message_to_agent
     }
@@ -1535,7 +1823,7 @@ async def update_individual_checklist_ticket(project_id, ticket_id, status):
         logger.info(f"Checklist ticket {ticket_id} has been successfully updated in the database. Proceed to next checklist item, unless otherwise specified by the user")
 
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "create_tickets",
             "message_to_agent": f"Checklist ticket {ticket_id} has been successfully updated in the database. Proceed to next checklist item, unless otherwise specified by the user"
         }
@@ -1544,6 +1832,35 @@ async def update_individual_checklist_ticket(project_id, ticket_id, status):
             "is_notification": False,
             "message_to_agent": f"Error updating ticket: {str(e)}"
         }
+
+
+async def update_all_checklist_tickets(project_id, ticket_ids, status):
+    """
+    Update checklist tickets by their ticket IDs
+    """
+    logger.info(f"Update checklist tickets by IDs function called - ticket_ids: {ticket_ids}, status: {status}")
+    
+    try:
+       # Get and update tickets with the specified IDs
+        updated_count = await sync_to_async(lambda: (
+                ProjectChecklist.objects.filter(
+                    id__in=ticket_ids,
+                ).update(status=status)
+            ))()
+
+        logger.info(f"{updated_count} pending checklist ticket(s) have been successfully updated in the database.")
+
+        return {
+            "is_notification": False,
+            "notification_type": "create_tickets",
+            "message_to_agent": f"{updated_count} pending checklist ticket(s) have been successfully updated to status '{status}' in the database."
+        }
+    except Exception as e:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error updating tickets: {str(e)}"
+        }
+
 
 async def get_pending_tickets(project_id):
     """
@@ -1563,7 +1880,11 @@ async def get_pending_tickets(project_id):
         }
     
     project_tickets = await sync_to_async(
-        lambda: list(ProjectChecklist.objects.filter(project=project, status='open', role='agent').values('id', 'name', 'description', 'status', 'priority'))
+        lambda: list(
+            ProjectChecklist.objects.filter(project=project, role='agent')
+            .order_by('created_at', 'id')
+            .values('id', 'name', 'description', 'status', 'priority')
+        )
     )()
 
     if project_tickets:
@@ -1580,7 +1901,7 @@ async def get_pending_tickets(project_id):
         message_content = "No pending tickets found"
 
     return {
-        "is_notification": True,
+        "is_notification": False,
         "notification_type": "get_pending_tickets",
         "message_to_agent": f"Pending tickets in open state: {message_content}. Please update the status of the tickets as needed. If not, continue closing them."
     }
@@ -1593,7 +1914,7 @@ async def get_github_access_token(project_id: int | str = None, conversation_id:
         error_response = validate_project_id(project_id)
         if error_response:
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "command_error",
                 "message_to_agent": "Error: project_id is required to get GitHub access token"
             }
@@ -1602,7 +1923,7 @@ async def get_github_access_token(project_id: int | str = None, conversation_id:
         project = await get_project_with_relations(project_id, 'owner')
         if not project:
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "command_error",
                 "message_to_agent": f"Project with ID {project_id} not found"
             }
@@ -1615,13 +1936,13 @@ async def get_github_access_token(project_id: int | str = None, conversation_id:
 
         if access_token is None or access_token == "":
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "command_error",
                 "message_to_agent": f"No Github access token found. Inform user to connect their Github account."
             }
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "command_output", 
             "message_to_agent": f"Github access token {access_token} found and project name {project_name} found. Please use this to commit the code",
             "user_id": user_id
@@ -1629,19 +1950,19 @@ async def get_github_access_token(project_id: int | str = None, conversation_id:
 
     except Project.DoesNotExist:
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "command_error",
             "message_to_agent": f"Project with ID {project_id} not found"
         }
     except GitHubToken.DoesNotExist:
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "command_error",
             "message_to_agent": f"No Github access token found for this user. Inform user to connect their Github account."
         }
     except Exception as e:
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "command_error", 
             "message_to_agent": f"Error getting user_id: {str(e)}"
         }
@@ -1695,13 +2016,13 @@ async def run_command_in_k8s(command: str, project_id: int | str = None, convers
             )[1])()
             
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "command_error",
             "message_to_agent": f"{stderr}The command execution failed. Stop generating further steps and inform the user that the command could not be executed.",
         }
     
     return {
-        "is_notification": True,
+        "is_notification": False,
         "notification_type": "command_output", 
         "message_to_agent": f"Command output: {stdout}Fix if there is any error, otherwise you can proceed to next step",
     }
@@ -1734,14 +2055,14 @@ async def server_command_in_k8s(command: str, project_id: int | str = None, conv
         )()
     else:
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "command_error",
             "message_to_agent": f"No project ID provided. Cannot execute the command."
         }
 
     if not pod:
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "command_error",
             "message_to_agent": f"No Kubernetes pod found for the project. Cannot execute the command."
         }
@@ -1755,13 +2076,13 @@ async def server_command_in_k8s(command: str, project_id: int | str = None, conv
             # Check if port is in valid range
             if application_port < 1 or application_port > 65535:
                 return {
-                    "is_notification": True,
+                    "is_notification": False,
                     "notification_type": "command_error",
                     "message_to_agent": f"Invalid application port: {application_port}. Port must be between 1 and 65535."
                 }
         except (ValueError, TypeError):
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "command_error",
                 "message_to_agent": f"Invalid application port: {application_port}. Must be a valid integer."
             }
@@ -1795,7 +2116,7 @@ async def server_command_in_k8s(command: str, project_id: int | str = None, conv
             )
             if not core_v1_api:
                 return {
-                    "is_notification": True,
+                    "is_notification": False,
                     "notification_type": "command_error",
                     "message_to_agent": f"Failed to connect to Kubernetes API"
                 }
@@ -1852,7 +2173,7 @@ async def server_command_in_k8s(command: str, project_id: int | str = None, conv
                             break
                     else:
                         return {
-                            "is_notification": True,
+                            "is_notification": False,
                             "notification_type": "command_error",
                             "message_to_agent": f"Failed to get nodePort for port {application_port}"
                         }
@@ -1906,13 +2227,13 @@ async def server_command_in_k8s(command: str, project_id: int | str = None, conv
                 
             except ApiException as e:
                 return {
-                    "is_notification": True,
+                    "is_notification": False,
                     "notification_type": "command_error",
                     "message_to_agent": f"Failed to update service: {e}"
                 }
             except Exception as e:
                 return {
-                    "is_notification": True,
+                    "is_notification": False,
                     "notification_type": "command_error",
                     "message_to_agent": f"Error setting up port mapping: {str(e)}"
                 }
@@ -1930,7 +2251,7 @@ async def server_command_in_k8s(command: str, project_id: int | str = None, conv
 
     if not success:
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "command_error",
             "message_to_agent": f"{stderr}The command execution failed. Stop generating further steps and inform the user that the command could not be executed.",
         }
@@ -1948,10 +2269,554 @@ async def server_command_in_k8s(command: str, project_id: int | str = None, conv
         message += f"\nYou can access it at: [http://{node_ip}:{node_port}](http://{node_ip}:{node_port})"
     
     return {
-        "is_notification": True,
+        "is_notification": False,
         "notification_type": "command_output",
         "message_to_agent": message + "Proceed to next step",
     }
+
+async def provision_vibe_workspace_tool(function_args, project_id, conversation_id):
+    """Provision or retrieve a Magpie workspace for Turbo mode."""
+
+    if not magpie_available():
+        return {
+            "is_notification": False,
+            "message_to_agent": "Magpie workspace provisioning is not available. Please configure the Magpie SDK and API key."
+        }
+
+    project = await get_project(project_id) if project_id else None
+    project_name = function_args.get('project_name')
+    if not project_name and project:
+        project_name = project.provided_name or project.name
+    if not project_name:
+        project_name = "Turbo Project"
+
+    summary = function_args.get('summary', '')
+
+    workspace = await _fetch_workspace(project=project, conversation_id=conversation_id)
+    if workspace and workspace.status == 'ready':
+        ipv6 = workspace.ipv6_address or 'pending'
+        preview_url = f"http://[{ipv6}]:3000" if workspace.ipv6_address else "(IPv6 pending)"
+        message_lines = [
+            "Magpie workspace already provisioned ✅",
+            f"Workspace ID: {workspace.workspace_id}",
+            f"Job ID: {workspace.job_id}",
+            f"Dev server: {preview_url}",
+            f"Project path: {MAGPIE_WORKSPACE_DIR}",
+            f"Logs: {MAGPIE_WORKSPACE_DIR}/dev.log"
+        ]
+        preview_snippet = _truncate_output((workspace.metadata or {}).get('last_preview', ''), 600)
+        if preview_snippet:
+            message_lines.append("\nLast preview snippet:\n" + preview_snippet)
+        return {
+            "is_notification": False,
+            "workspace_id": workspace.workspace_id,
+            "job_id": workspace.job_id,
+            "ipv6_address": workspace.ipv6_address,
+            "project_path": MAGPIE_WORKSPACE_DIR,
+            "preview_url": preview_url,
+            "log_path": f"{MAGPIE_WORKSPACE_DIR}/dev.log",
+            "preview_snippet": preview_snippet,
+            "status": "completed",
+            "message_to_agent": "\n".join(message_lines)
+        }
+
+    try:
+        client = get_magpie_client()
+    except RuntimeError as exc:
+        logger.error("Magpie client configuration error: %s", exc)
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Magpie client error: {exc}"
+        }
+
+    metadata = {"project_name": project_name, "summary": summary}
+    workspace = workspace  # preserve reference for exception handling
+
+    try:
+        response = await asyncio.to_thread(
+            client.jobs.create,
+            name=f"lfg-turbo-{_slugify_project_name(project_name)}",
+            script=MAGPIE_BOOTSTRAP_SCRIPT,
+            persist=True,
+            ip_lease=True,
+            stateful=True,
+            workspace_size_gb=10,
+            vcpus=2,
+            memory_mb=2048,
+        )
+        logger.info("[MAGPIE][CREATE] job response: %s", response)
+
+        job_id = response.get("request_id")
+        workspace_identifier = job_id
+
+        if workspace:
+            def _update_existing():
+                workspace.job_id = job_id
+                workspace.workspace_id = workspace_identifier
+                workspace.status = 'provisioning'
+                workspace.conversation_id = str(conversation_id) if conversation_id else workspace.conversation_id
+                workspace.metadata = metadata
+                workspace.save(update_fields=['job_id', 'workspace_id', 'status', 'conversation_id', 'metadata', 'updated_at'])
+
+            await sync_to_async(_update_existing, thread_sensitive=True)()
+        else:
+            def _create_workspace():
+                return MagpieWorkspace.objects.create(
+                    project=project,
+                    conversation_id=str(conversation_id) if conversation_id else None,
+                    job_id=job_id,
+                    workspace_id=workspace_identifier,
+                    status='provisioning',
+                    metadata=metadata,
+                )
+
+            workspace = await sync_to_async(_create_workspace, thread_sensitive=True)()
+
+        vm_info = await asyncio.to_thread(
+            client.jobs.get_vm_info,
+            job_id,
+            poll_timeout=240,
+            poll_interval=3,
+        )
+        ipv6 = vm_info.get("ip_address") or vm_info.get("ipv6_address")
+
+        await asyncio.sleep(3)
+        logger.info("[MAGPIE][BOOTSTRAP] Starting bootstrap for job_id=%s", job_id)
+        bootstrap_result = await asyncio.to_thread(_bootstrap_magpie_workspace, client, job_id)
+        logger.info("[MAGPIE][BOOTSTRAP] Completed bootstrap for job_id=%s", job_id)
+        metadata_updates = {
+            "project_name": project_name,
+            "summary": summary,
+            "dev_server_pid": bootstrap_result.get("pid"),
+            "last_preview": _truncate_output(bootstrap_result.get("preview", ""), 1000),
+            "last_bootstrap_at": datetime.utcnow().isoformat() + "Z",
+        }
+
+        await sync_to_async(workspace.mark_ready, thread_sensitive=True)(
+            ipv6=ipv6,
+            project_path=MAGPIE_WORKSPACE_DIR,
+            metadata=metadata_updates
+        )
+
+        preview_snippet = _truncate_output(bootstrap_result.get("preview", ""), 600)
+        preview_url = f"http://[{ipv6}]:3000" if ipv6 else "(IPv6 pending)"
+        log_entries = _build_log_entries_from_steps(bootstrap_result.get("steps", []))
+        message_lines = [
+            "Magpie workspace ready ✅",
+            f"Workspace ID: {workspace.workspace_id}",
+            f"Job ID: {workspace.job_id}",
+            f"Dev server: {preview_url}",
+            f"Project path: {MAGPIE_WORKSPACE_DIR}",
+            f"Logs: {MAGPIE_WORKSPACE_DIR}/dev.log"
+        ]
+        if preview_snippet:
+            message_lines.append("\nPreview snippet:\n" + preview_snippet)
+
+        return {
+            "is_notification": False,
+            "workspace_id": workspace.workspace_id,
+            "job_id": workspace.job_id,
+            "ipv6_address": ipv6,
+            "project_path": MAGPIE_WORKSPACE_DIR,
+            "log_entries": log_entries,
+            "preview_url": preview_url,
+            "log_path": f"{MAGPIE_WORKSPACE_DIR}/dev.log",
+            "preview_snippet": preview_snippet,
+            "status": "completed",
+            "message_to_agent": "\n".join(message_lines)
+        }
+
+    except Exception as exc:
+        logger.exception("Failed to provision Magpie workspace")
+        if workspace:
+            await sync_to_async(workspace.mark_error, thread_sensitive=True)(metadata={"last_error": str(exc)})
+        return {
+            "is_notification": False,
+            "notification_type": "toolhistory",
+            "notification_marker": "__NOTIFICATION__",
+            "function_name": "provision_vibe_workspace",
+            "status": "failed",
+            "message": "Magpie workspace provisioning failed. I cannot proceed with remote code execution until a workspace is available.",
+            "error": str(exc),
+            "message_to_agent": f"Magpie workspace provisioning failed: {exc}"
+        }
+
+
+async def magpie_ssh_command_tool(function_args, project_id, conversation_id):
+    """Execute a command inside the Magpie workspace via SSH."""
+
+    if not magpie_available():
+        return {
+            "is_notification": False,
+            "message_to_agent": "Magpie command execution is not available. Configure the Magpie SDK and API key."
+        }
+
+    workspace_id = function_args.get('workspace_id')
+    command = function_args.get('command')
+    explanation = function_args.get('explanation')
+    timeout = function_args.get('timeout', 180)
+    with_node_env = function_args.get('with_node_env', True)
+
+    if not workspace_id or not command:
+        return {
+            "is_notification": False,
+            "message_to_agent": "workspace_id and command are required to run a Magpie SSH command."
+        }
+
+    workspace = await _fetch_workspace(workspace_id=workspace_id)
+    if not workspace:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"No Magpie workspace found for ID {workspace_id}. Provision one first."
+        }
+
+    try:
+        client = get_magpie_client()
+    except RuntimeError as exc:
+        logger.error("Magpie client configuration error: %s", exc)
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Magpie client error: {exc}"
+        }
+
+    try:
+        result = await asyncio.to_thread(
+            _run_magpie_ssh,
+            client,
+            workspace.job_id,
+            command,
+            timeout,
+            with_node_env,
+        )
+        logger.info(
+            "[MAGPIE][SSH COMMAND] workspace=%s exit_code=%s",
+            workspace.workspace_id,
+            result.get('exit_code')
+        )
+    except Exception as exc:
+        logger.exception("Magpie SSH command failed")
+        await sync_to_async(workspace.mark_error, thread_sensitive=True)(metadata={"last_error": str(exc)})
+        return {
+            "is_notification": False,
+            "notification_type": "toolhistory",
+            "notification_marker": "__NOTIFICATION__",
+            "function_name": "magpie_ssh_command",
+            "status": "failed",
+            "message": "Magpie SSH command could not be executed. The remote workspace is unavailable.",
+            "error": str(exc),
+            "message_to_agent": f"Magpie SSH command failed: {exc}"
+        }
+
+    meta_updates = {
+        "last_command": explanation or command,
+        "last_exit_code": result.get('exit_code'),
+        "last_command_at": datetime.utcnow().isoformat() + "Z",
+    }
+    await sync_to_async(_update_workspace_metadata, thread_sensitive=True)(workspace, **meta_updates)
+
+    project_identifier = project_id or (workspace.project.project_id if getattr(workspace, 'project', None) else None)
+    if project_identifier:
+        await sync_to_async(CommandExecution.objects.create, thread_sensitive=True)(
+            project_id=project_identifier,
+            command=command,
+            output=_truncate_output(result.get('stdout') or result.get('stderr'), 4000)
+        )
+
+    status_text = "completed successfully" if result.get('exit_code') == 0 else f"exited with code {result.get('exit_code')}"
+    status_value = "completed" if result.get('exit_code') == 0 else "failed"
+    output_block = _format_command_output(result.get('stdout', ''), result.get('stderr', ''))
+    message = textwrap.dedent(
+        f"""
+        Command {status_text}: {explanation or command}
+
+        {output_block}
+        """
+    ).strip()
+
+    log_entries = [{
+        "title": "SSH command",
+        "command": command,
+        "stdout": _truncate_output(result.get('stdout', ''), 800),
+        "stderr": _truncate_output(result.get('stderr', ''), 800),
+        "exit_code": result.get('exit_code')
+    }]
+
+    return {
+        "is_notification": False,
+        "workspace_id": workspace.workspace_id,
+        "exit_code": result.get('exit_code'),
+        "stdout": _truncate_output(result.get('stdout', ''), 4000),
+        "stderr": _truncate_output(result.get('stderr', ''), 4000),
+        "status": status_value,
+        "command": command,
+        "log_entries": log_entries,
+        "message_to_agent": message
+    }
+
+
+async def restart_vibe_dev_server_tool(function_args, project_id, conversation_id):
+    """Restart the Next.js dev server on the Magpie workspace and tail logs."""
+
+    if not magpie_available():
+        return {
+            "is_notification": False,
+            "message_to_agent": "Magpie workspace tools are unavailable. Configure the Magpie SDK and API key."
+        }
+
+    workspace_id = function_args.get('workspace_id')
+    log_tail_lines = function_args.get('log_tail_lines', 60)
+    environment_label = function_args.get('environment')
+
+    if not workspace_id:
+        return {
+            "is_notification": False,
+            "message_to_agent": "workspace_id is required to restart the dev server."
+        }
+
+    workspace = await _fetch_workspace(workspace_id=workspace_id)
+    if not workspace:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"No Magpie workspace found for ID {workspace_id}. Provision one first."
+        }
+
+    try:
+        client = get_magpie_client()
+    except RuntimeError as exc:
+        logger.error("Magpie client configuration error: %s", exc)
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Magpie client error: {exc}"
+        }
+
+    restart_cmd = textwrap.dedent(
+        f"""
+        cd nextjs-app
+        if [ -f .devserver_pid ]; then
+          old_pid=$(cat .devserver_pid)
+          if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
+            kill "$old_pid" || true
+          fi
+        fi
+        : > /workspace/nextjs-app/dev.log
+        nohup npm run dev -- --hostname :: --port 3000 >/workspace/nextjs-app/dev.log 2>&1 &
+        pid=$!
+        echo "PID:$pid"
+        echo $pid > .devserver_pid
+        sleep 3
+        echo "---LOG---"
+        tail -n {log_tail_lines} /workspace/nextjs-app/dev.log || true
+        echo "---PREVIEW---"
+        curl -s --max-time 10 http://127.0.0.1:3000 | head -n 20 || true
+        """
+    )
+
+    try:
+        result = await asyncio.to_thread(
+            _run_magpie_ssh,
+            client,
+            workspace.job_id,
+            restart_cmd,
+            240,
+            True,
+        )
+        logger.info(
+            "[MAGPIE][DEV RESTART] workspace=%s exit_code=%s",
+            workspace.workspace_id,
+            result.get('exit_code')
+        )
+    except Exception as exc:
+        logger.exception("Failed to restart Magpie dev server")
+        await sync_to_async(workspace.mark_error, thread_sensitive=True)(metadata={"last_error": str(exc)})
+        return {
+            "is_notification": False,
+            "notification_type": "toolhistory",
+            "notification_marker": "__NOTIFICATION__",
+            "function_name": "restart_vibe_dev_server",
+            "status": "failed",
+            "message": "Dev server restart failed because the Magpie workspace is unavailable.",
+            "error": str(exc),
+            "message_to_agent": f"Dev server restart failed: {exc}"
+        }
+
+    stdout = result.get('stdout', '')
+    stderr = result.get('stderr', '')
+    pid = _extract_pid_from_output(stdout)
+
+    log_section = stdout
+    preview_section = ""
+    if "---PREVIEW---" in stdout:
+        log_section, preview_section = stdout.split("---PREVIEW---", 1)
+    if "---LOG---" in log_section:
+        _, log_section = log_section.split("---LOG---", 1)
+
+    log_tail = _truncate_output(log_section.strip(), 2000)
+    preview_snippet = _truncate_output(preview_section.strip(), 2000)
+
+    metadata_updates = {
+        "dev_server_pid": pid,
+        "last_restart": datetime.utcnow().isoformat() + "Z",
+        "last_preview": preview_snippet,
+    }
+    if environment_label:
+        metadata_updates['environment_label'] = environment_label
+
+    await sync_to_async(_update_workspace_metadata, thread_sensitive=True)(workspace, **metadata_updates)
+
+    preview_url = f"http://[{workspace.ipv6_address}]:3000" if workspace.ipv6_address else "(IPv6 pending)"
+    status_text = "completed successfully" if result.get('exit_code') == 0 else f"exited with code {result.get('exit_code')}"
+    message_lines = [
+        f"Dev server restart {status_text} 🚀",
+        f"Workspace ID: {workspace.workspace_id}",
+        f"PID: {pid or 'unknown'}",
+        f"Preview: {preview_url}",
+        f"Logs: {MAGPIE_WORKSPACE_DIR}/dev.log"
+    ]
+    if log_tail:
+        message_lines.append("\nLog tail:\n" + log_tail)
+    if preview_snippet:
+        message_lines.append("\nPreview snippet:\n" + preview_snippet)
+    if stderr.strip():
+        message_lines.append("\nSTDERR:\n" + _truncate_output(stderr.strip(), 2000))
+
+    log_entries = [
+        {
+            "title": "Restart dev server",
+            "command": "npm run dev -- --hostname :: --port 3000",
+            "stdout": _truncate_output(stdout, 800),
+            "stderr": _truncate_output(stderr, 800),
+            "exit_code": result.get('exit_code')
+        }
+    ]
+
+    return {
+        "is_notification": False,
+        "workspace_id": workspace.workspace_id,
+        "exit_code": result.get('exit_code'),
+        "preview_url": preview_url,
+        "log_path": f"{MAGPIE_WORKSPACE_DIR}/dev.log",
+        "preview_snippet": preview_snippet,
+        "log_tail": log_tail,
+        "dev_server_pid": pid,
+        "stderr": _truncate_output(stderr.strip(), 2000),
+        "status": "completed" if result.get('exit_code') == 0 else "failed",
+        "log_entries": log_entries,
+        "message_to_agent": "\n".join(message_lines)
+    }
+
+
+async def queue_ticket_execution_tool(function_args, project_id, conversation_id):
+    logger.info("Queue ticket execution tool called")
+    logger.debug(f"Function arguments: {function_args}")
+
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+
+    if not conversation_id:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Cannot queue ticket execution without an active conversation. Start a conversation first."
+        }
+
+    project = await get_project(project_id)
+    if not project:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Project with ID {project_id} does not exist"
+        }
+
+    ticket_id_list = function_args.get('ticket_ids') or []
+
+    # def _get_ticket_ids(ids):
+    #     queryset = ProjectChecklist.objects.filter(project=project, role='agent', status='open')
+    #     if ids:
+    #         queryset = queryset.filter(id__in=ids)
+    #     return list(queryset.order_by('created_at', 'id').values_list('id', flat=True))
+
+    # cleaned_requested_ids = []
+    # for raw_id in requested_ids:
+    #     try:
+    #         cleaned_requested_ids.append(int(raw_id))
+    #     except (TypeError, ValueError):
+    #         continue
+
+    # ticket_id_list = await sync_to_async(_get_ticket_ids)(cleaned_requested_ids)
+
+    if not ticket_id_list:
+        return {
+            "is_notification": False,
+            "notification_type": "toolhistory",
+            "notification_marker": "__NOTIFICATION__",
+            "message_to_agent": "No open agent tickets are available to execute.",
+            "status": "skipped"
+        }
+
+    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
+
+    def _mark_in_progress(ids):
+        for item in ProjectChecklist.objects.filter(id__in=ids):
+            note_line = f"[{timestamp}] Queued for background execution."
+            item.status = 'in_progress'
+            item.notes = f"{(item.notes or '').rstrip()}\n{note_line}".strip()
+            item.save(update_fields=['status', 'notes'])
+
+    await sync_to_async(_mark_in_progress)(ticket_id_list)
+
+    # Queue each ticket as a separate task for parallel execution
+    task_ids = []
+    failed_tickets = []
+
+    for ticket_id in ticket_id_list:
+        try:
+            task_id = await sync_to_async(TaskManager.publish_task)(
+                'tasks.task_definitions.execute_ticket_implementation',
+                ticket_id,
+                project.id,
+                conversation_id,
+                task_name=f"Ticket #{ticket_id} execution for {project.name}",
+                timeout=7200
+            )
+            task_ids.append(task_id)
+            logger.info(f"Queued ticket {ticket_id} with task ID {task_id}")
+        except Exception as exc:
+            logger.exception(f"Failed to queue ticket {ticket_id}")
+            failed_tickets.append({'ticket_id': ticket_id, 'error': str(exc)})
+
+    if failed_tickets and not task_ids:
+        # All tickets failed to queue
+        return {
+            "is_notification": False,
+            "notification_type": "toolhistory",
+            "notification_marker": "__NOTIFICATION__",
+            "status": "failed",
+            "message_to_agent": f"Failed to queue all {len(ticket_id_list)} tickets for execution.",
+            "failed_tickets": failed_tickets
+        }
+
+    if failed_tickets:
+        # Some tickets failed
+        return {
+            "is_notification": False,
+            "notification_type": "toolhistory",
+            "status": "partial",
+            "message_to_agent": f"Queued {len(task_ids)} tickets for background execution. {len(failed_tickets)} tickets failed to queue.",
+            "ticket_ids": ticket_id_list,
+            "task_ids": task_ids,
+            "failed_tickets": failed_tickets,
+            "notification_marker": "__NOTIFICATION__"
+        }
+
+    return {
+        "is_notification": False,
+        "notification_type": "toolhistory",
+        "status": "queued",
+        "message_to_agent": f"Queued {len(task_ids)} tickets for parallel background execution. Each ticket will run independently.",
+        "ticket_ids": ticket_id_list,
+        "task_ids": task_ids,
+        "notification_marker": "__NOTIFICATION__"
+    }
+
 
 async def run_command_locally(command: str, project_id: int | str = None, conversation_id: int | str = None) -> dict:
     """
@@ -2007,13 +2872,13 @@ async def run_command_locally(command: str, project_id: int | str = None, conver
 
     if not success:
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "command_error",
             "message_to_agent": f"{stderr}The local command execution failed. Stop generating further steps and inform the user that the command could not be executed.",
         }
     
     return {
-        "is_notification": True,
+        "is_notification": False,
         "notification_type": "command_output", 
         "message_to_agent": f"Local command output: {stdout}Fix if there is any error, otherwise you can proceed to next step",
     }
@@ -2036,7 +2901,7 @@ async def run_server_locally(command: str, project_id: int | str = None,
     # Validate port
     if not application_port:
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "command_error",
             "message_to_agent": "Port is required to run a server."
         }
@@ -2045,13 +2910,13 @@ async def run_server_locally(command: str, project_id: int | str = None,
         application_port = int(application_port)
         if application_port < 1 or application_port > 65535:
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "command_error",
                 "message_to_agent": f"Invalid application port: {application_port}. Port must be between 1 and 65535."
             }
     except (ValueError, TypeError):
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "command_error",
             "message_to_agent": f"Invalid application port: {application_port}. Must be a valid integer."
         }
@@ -2086,7 +2951,7 @@ async def run_server_locally(command: str, project_id: int | str = None,
     
     if not success:
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "command_error",
             "message_to_agent": f"Failed to start server: {stderr}"
         }
@@ -2101,7 +2966,7 @@ async def run_server_locally(command: str, project_id: int | str = None,
     if success and stdout:
         # Server is running
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "server_started",
             "message_to_agent": f"✅ Server started successfully!"
                                f"📍 Running on port {application_port}\n"
@@ -2120,7 +2985,7 @@ async def run_server_locally(command: str, project_id: int | str = None,
             last_lines = "Could not read log file"
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "server_error",
             "message_to_agent": f"⚠️ Server may not have started properly."
                                f"Recent logs:\n```\n{last_lines}\n```"
@@ -2137,7 +3002,7 @@ async def stop_server(project_id: int, port: int) -> dict:
     success, stdout, stderr = execute_local_command(kill_command, str(workspace_path))
     
     return {
-        "is_notification": True,
+        "is_notification": False,
         "notification_type": "server_stopped",
         "message_to_agent": f"Server on port {port} has been stopped."
     }
@@ -2165,7 +3030,7 @@ async def restart_server_from_config(project_id: int) -> dict:
         results.append(result['message_to_agent'])
     
     return {
-        "is_notification": True,
+        "is_notification": False,
         "notification_type": "servers_restarted",
         "message_to_agent": "\n".join(results)
     }
@@ -2212,7 +3077,7 @@ async def copy_boilerplate_code(project_id, project_name):
             subprocess.run(["git", "commit", "-m", "Initial commit: Copy boilerplate code"], cwd=dest_path, check=True)
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "boilerplate_code_copied",
             "message_to_agent": f"Boilerplate code has been successfully copied to ~/LFG/workspace/{folder_name}. The project has been initialized with git."
         }
@@ -2270,7 +3135,7 @@ async def save_project_name(project_name, project_id):
         )[1])()
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "project_name_saved",
             "message_to_agent": f"Project name '{project_name}' has been saved successfully as provided_name"
         }
@@ -2300,7 +3165,7 @@ async def get_project_name(project_id):
     try:
         if project.provided_name:
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "project_name_retrieved",
                 "message_to_agent": f"Project name is: {project.provided_name}"
             }
@@ -2310,7 +3175,7 @@ async def get_project_name(project_id):
             import re
             current_project_name = re.sub(r'[^a-z0-9-]', '', current_project_name)
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "project_name_not_confirmed",
                 "message_to_agent": f"Ask the user if they wish to use the name. You can ask user if they want to save this name: '{current_project_name}'? Do not proceed until user responds."
             }
@@ -2352,7 +3217,7 @@ async def implement_ticket(ticket_id, project_id, conversation_id, ticket_detail
     except Exception as e:
         logger.error(f"Error setting up ticket implementation {ticket_id}: {str(e)}")
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "ticket_error",
             "message_to_agent": f"Error setting up ticket implementation {ticket_id}: {str(e)}",
             "error": str(e)
@@ -2464,7 +3329,7 @@ async def save_file_from_stream(file_content, project_id, file_type, file_name):
         logger.info(f"[SAVE NOTIFICATION] Type: {file_type}, Name: {file_name}, ID: {file_obj.id}")
         
         notification = {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "file_saved",  # Use a generic notification type for all saved files
             "message_to_agent": f"{file_type_display} '{file_name}' {action} successfully in the database",
             "file_name": file_name,
@@ -2618,7 +3483,7 @@ async def edit_file_content(file_id, edit_operations, project_id):
     logger.info(f"[edit_file_content] File '{file_obj.name}' edited successfully. Lines changed from {original_line_count} to {new_line_count}")
     
     result = {
-        "is_notification": True,
+        "is_notification": False,
         "notification_type": "file_edited",
         "message_to_agent": f"File '{file_obj.name}' edited successfully. Applied {len(edit_operations)} operations. Lines: {original_line_count} → {new_line_count}",
         "file_id": file_id,
@@ -2709,7 +3574,7 @@ async def save_implementation_from_stream(implementation_content, project_id):
         action = "created" if created else "updated"
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "implementation",
             "message_to_agent": f"Implementation {action} successfully in the database"
         }
@@ -2815,7 +3680,7 @@ async def save_prd_from_stream(prd_content, project_id, prd_name=None):
         logger.info(f"PRD '{prd_name}' {action} successfully for project {project_id}")
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "prd",
             "message_to_agent": f"PRD '{prd_name}' {action} successfully in the database",
             "prd_name": prd_name
@@ -2878,7 +3743,7 @@ async def save_ticket_from_stream(ticket_data, project_id):
         logger.info(f"Ticket created successfully with ID {new_ticket.id}")
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "checklist",
             "message_to_agent": f"Ticket '{ticket_data.get('name', 'Unnamed')}' created successfully"
         }
@@ -2942,7 +3807,7 @@ async def web_search(query, conversation_id=None):
             logger.info(f"Web search completed successfully for query: {query}")
             
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "toolhistory",
                 "message_to_agent": f"Web search results for '{query}':\n\n{search_results}"
             }
@@ -2997,7 +3862,7 @@ async def get_file_list(project_id, file_type="all", limit=10):
         
         if not files:
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "file_list",
                 "message_to_agent": f"No {file_type} files found for this project"
             }
@@ -3014,7 +3879,7 @@ async def get_file_list(project_id, file_type="all", limit=10):
             })
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "file_list",
             "message_to_agent": f"Found {len(file_list)} {file_type} files. Here are the file details {file_list}",
             "files": file_list
@@ -3102,7 +3967,7 @@ async def get_file_content(project_id, file_ids):
             })
         
         response = {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "file_content",
             "message_to_agent": f"Retrieved {len(files)} file(s). Here are the file contents: {file_contents}. You can proceed to the next step.",
             "files": file_contents
@@ -3184,7 +4049,7 @@ async def update_file_content(file_id, updated_content, project_id):
         logger.info(f"File '{file_obj.name}' updated successfully. Content size: {old_content_length} → {new_content_length} characters")
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "file_edited",
             "message_to_agent": f"File '{file_obj.name}' updated successfully. Content updated from {old_content_length} to {new_content_length} characters.",
             "file_id": file_id,
@@ -3280,7 +4145,7 @@ async def index_repository(project_id, github_url, branch='main', force_reindex=
         await sync_to_async(indexed_repo.save)()
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "repository_indexing",
             "message_to_agent": f"Repository indexing started for {repo_info['owner']}/{repo_info['repo']}. "
                                f"Task ID: {task_id}. This may take a few minutes depending on repository size."
@@ -3364,7 +4229,7 @@ async def get_codebase_context(project_id, feature_description, search_type='all
             message = context_result['context']
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "codebase_context",
             "message_to_agent": f"Codebase context for '{feature_description}':\n\n{message}"
         }
@@ -3426,7 +4291,7 @@ async def search_existing_code(project_id, functionality, chunk_types=[]):
         
         if not implementations:
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "code_search",
                 "message_to_agent": f"No existing implementations found for '{functionality}'. "
                                    "This appears to be a new feature that will need to be built from scratch."
@@ -3443,7 +4308,7 @@ async def search_existing_code(project_id, functionality, chunk_types=[]):
             )
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "code_search",
             "message_to_agent": ''.join(message_parts)
         }
@@ -3526,7 +4391,7 @@ async def get_repository_insights(project_id):
             message_parts.append(f"**Documentation Coverage**: {coverage:.1f}%\n")
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "repository_insights",
             "message_to_agent": ''.join(message_parts)
         }
@@ -3605,7 +4470,7 @@ async def get_codebase_summary(project_id):
 """
 
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "codebase_summary",
             "message_to_agent": final_message
         }
@@ -3656,7 +4521,7 @@ async def connect_notion(project_id, conversation_id=None):
             user_type = result.get('type', 'user')
 
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "notion_connection",
                 "message_to_agent": f"✅ Successfully connected to Notion!\n\nUser: {user_name}\nType: {user_type}\n\nYou can now search and retrieve Notion pages and databases."
             }
@@ -3716,7 +4581,7 @@ async def search_notion(project_id, conversation_id, query="", page_size=10):
             if not results:
                 search_desc = f"query: '{query}'" if query else "your workspace"
                 return {
-                    "is_notification": True,
+                    "is_notification": False,
                     "notification_type": "notion_search",
                     "message_to_agent": f"No results found for {search_desc}. Make sure pages are shared with your integration in Notion."
                 }
@@ -3736,7 +4601,7 @@ async def search_notion(project_id, conversation_id, query="", page_size=10):
             results_text += "\n**Next Steps**: Use `get_notion_page` with a page ID to retrieve full content."
 
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "notion_search",
                 "message_to_agent": results_text
             }
@@ -3803,7 +4668,7 @@ async def get_notion_page(project_id, conversation_id, page_id):
                 content_text += page_data['content']
 
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "notion_page",
                 "message_to_agent": content_text
             }
@@ -3856,7 +4721,7 @@ async def list_notion_databases(project_id, conversation_id, page_size=10):
         if success:
             if not databases:
                 return {
-                    "is_notification": True,
+                    "is_notification": False,
                     "notification_type": "notion_databases",
                     "message_to_agent": "No databases found in your Notion workspace."
                 }
@@ -3872,7 +4737,7 @@ async def list_notion_databases(project_id, conversation_id, page_size=10):
             db_text += "\n**Next Steps**: Use `query_notion_database` with a database ID to retrieve entries."
 
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "notion_databases",
                 "message_to_agent": db_text
             }
@@ -3926,7 +4791,7 @@ async def query_notion_database(project_id, conversation_id, database_id, page_s
         if success:
             if not entries:
                 return {
-                    "is_notification": True,
+                    "is_notification": False,
                     "notification_type": "notion_database_query",
                     "message_to_agent": "No entries found in this database."
                 }
@@ -3946,7 +4811,7 @@ async def query_notion_database(project_id, conversation_id, database_id, page_s
                 entries_text += "\n"
 
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "notion_database_query",
                 "message_to_agent": entries_text
             }
@@ -4005,7 +4870,7 @@ async def get_linear_issues(project_id, conversation_id, limit=50, team_id=None)
             issues = result
             if not issues:
                 return {
-                    "is_notification": True,
+                    "is_notification": False,
                     "notification_type": "linear_issues",
                     "message_to_agent": "No Linear issues found. This could mean you have no issues or the API key doesn't have access to any teams."
                 }
@@ -4059,7 +4924,7 @@ async def get_linear_issues(project_id, conversation_id, limit=50, team_id=None)
                 issues_text += f" (limited to {limit}, use higher limit to see more)"
 
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "linear_issues",
                 "message_to_agent": issues_text
             }
@@ -4219,7 +5084,7 @@ async def get_linear_issue_details(project_id, conversation_id, issue_id):
                 details_text += f"- **Due date:** {due_date}\n"
 
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "linear_issue_details",
                 "message_to_agent": details_text
             }

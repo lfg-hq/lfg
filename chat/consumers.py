@@ -12,6 +12,8 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import User
 from django.core.files.base import ContentFile
 from django.urls import reverse
+from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework_simplejwt.exceptions import InvalidToken, AuthenticationFailed
 from chat.models import (
     Conversation, 
     Message,
@@ -40,6 +42,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         self.auto_save_task = None
         self.last_save_time = None
         self.message_save_lock = asyncio.Lock()  # Lock to prevent concurrent message saves
+        self.conversation_group_name = None
     async def connect(self):
         """
         Handle WebSocket connection
@@ -63,10 +66,23 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 # Already a proper User instance
                 self.user = lazy_user
             
-            # Get project_id from query string if available
+            # Get project_id and token from query string if available
             query_string = self.scope.get('query_string', b'').decode()
             query_params = dict(param.split('=') for param in query_string.split('&') if '=' in param)
             project_id = query_params.get('project_id')
+            token = query_params.get('token')
+
+            if (not getattr(self.user, 'is_authenticated', False) or not self.user) and token:
+                jwt_auth = JWTAuthentication()
+                try:
+                    validated_token = jwt_auth.get_validated_token(token)
+                    self.user = await database_sync_to_async(jwt_auth.get_user)(validated_token)
+                except (InvalidToken, AuthenticationFailed) as token_error:
+                    logger.warning(f"Invalid JWT token provided for WebSocket connection: {token_error}")
+                    self.user = lazy_user
+                except Exception as token_error:
+                    logger.error(f"Unexpected error validating JWT token: {token_error}")
+                    self.user = lazy_user
             
             # Each user joins their own room based on their email and project_id
             if self.user.is_authenticated:
@@ -124,6 +140,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                         'type': 'chat_history',
                         'messages': messages
                     }))
+                    await self.join_conversation_group(self.conversation.id)
             
         except Exception as e:
             logger.error(f"Error in WebSocket connect: {str(e)}")
@@ -175,6 +192,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     self.channel_name
                 )
                 logger.info(f"User {self.user} removed from group {self.room_group_name}")
+            if self.conversation_group_name:
+                await self.channel_layer.group_discard(
+                    self.conversation_group_name,
+                    self.channel_name
+                )
+                logger.info(f"User {self.user} removed from conversation group {self.conversation_group_name}")
         except Exception as e:
             logger.error(f"Error during disconnect: {str(e)}")
     
@@ -289,6 +312,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     if not self.conversation:
                         await self.send_error("Failed to create conversation. Please check your project ID.")
                         return
+                    await self.join_conversation_group(self.conversation.id)
+                else:
+                    await self.join_conversation_group(self.conversation.id)
                 
                 # If the message is empty but there's a file, use a placeholder message
                 if not user_message and file_data:
@@ -462,6 +488,27 @@ class ChatConsumer(AsyncWebsocketConsumer):
             except Exception as e:
                 logger.error(f"Heartbeat error: {e}")
                 break
+
+    async def join_conversation_group(self, conversation_id):
+        if not conversation_id or not hasattr(self, 'channel_layer') or not self.channel_layer:
+            return
+        group_name = f"conversation_{conversation_id}"
+        if self.conversation_group_name == group_name:
+            return
+        try:
+            if self.conversation_group_name:
+                await self.channel_layer.group_discard(
+                    self.conversation_group_name,
+                    self.channel_name
+                )
+            await self.channel_layer.group_add(
+                group_name,
+                self.channel_name
+            )
+            self.conversation_group_name = group_name
+            logger.info(f"User {self.user} joined conversation group {group_name}")
+        except Exception as e:
+            logger.error(f"Error joining conversation group {group_name}: {e}")
     
     async def generate_ai_response(self, user_message, provider_name, project_id=None, user_role=None, turbo_mode=False, mentioned_files=None):
         """
@@ -614,7 +661,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     try:
                         notification_json = content[len("__NOTIFICATION__"):-len("__NOTIFICATION__")]
                         notification_data = json.loads(notification_json)
-                        logger.info(f"[CONSUMER] NOTIFICATION DETECTED: type={notification_data.get('notification_type')}, has_file_id={bool(notification_data.get('file_id'))}")
+                        logger.info(f"[CONSUMER] NOTIFICATION DETECTED: data={notification_data}, type={notification_data.get('notification_type')}, has_file_id={bool(notification_data.get('file_id'))}")
                         if notification_data.get('file_id'):
                             logger.info(f"[CONSUMER] SAVE NOTIFICATION: file_id={notification_data.get('file_id')}, file_type={notification_data.get('file_type')}, file_name={notification_data.get('file_name')}")
                         
@@ -671,8 +718,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
                                 'type': 'ai_response_chunk',
                                 'chunk': '',
                                 'is_final': False,
-                                'is_notification': True,
-                                'notification_type': notification_data.get('notification_type', 'features'),
+                                'is_notification': notification_data.get('is_notification'),
+                                'notification_type': notification_data.get('notification_type', ''),
                                 'early_notification': notification_data.get('early_notification', False),
                                 'function_name': notification_data.get('function_name', '')
                             }
@@ -1110,25 +1157,40 @@ class ChatConsumer(AsyncWebsocketConsumer):
             logger.warning("Cannot create conversation without project_id")
             return None
             
-        conversation = Conversation.objects.create(
-            user=self.user,
-            title=title
-        )
-        
-        # Set project reference if provided
         try:
             from projects.models import Project
-            project = Project.objects.get(project_id=project_id, owner=self.user)
-            conversation.project = project
-            conversation.save()
-            logger.debug(f"Set project reference for conversation {conversation.id} to project {project_id}")
-        except Exception as e:
-            # If we can't find the project, delete the conversation we just created
-            conversation.delete()
-            logger.error(f"Error setting project reference: {str(e)}")
+            project = Project.objects.select_related('owner').get(project_id=project_id)
+
+            # Check access
+            if not project.can_user_access(self.user):
+                logger.warning(
+                    "User %s attempted to access project %s without permission",
+                    getattr(self.user, 'email', self.user),
+                    project_id
+                )
+                return None
+
+            conversation = Conversation.objects.create(
+                user=self.user,
+                title=title,
+                project=project
+            )
+
+            logger.debug(
+                "Created conversation %s for user %s attached to project %s",
+                conversation.id,
+                getattr(self.user, 'email', self.user),
+                project_id
+            )
+
+            return conversation
+
+        except Project.DoesNotExist:
+            logger.error(f"Project not found for project_id={project_id}")
             return None
-                
-        return conversation
+        except Exception as exc:
+            logger.error(f"Unexpected error creating conversation: {exc}")
+            return None
     
     @database_sync_to_async
     def update_conversation_title(self, title):

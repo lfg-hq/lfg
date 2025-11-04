@@ -25,6 +25,9 @@ export default function SettingsPage() {
               <Link href="/chat" className="text-sm font-medium text-gray-600 hover:text-gray-900">
                 Chat
               </Link>
+              <Link href="/tickets" className="text-sm font-medium text-gray-600 hover:text-gray-900">
+                Tickets
+              </Link>
               <Link href="/settings" className="text-sm font-medium text-purple-600">
                 Settings
               </Link>

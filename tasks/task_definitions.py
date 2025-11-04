@@ -56,17 +56,41 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List
 import os
 
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from django.conf import settings
 from django.db import transaction
 from asgiref.sync import sync_to_async, async_to_sync
 
 from projects.models import ProjectChecklist, Project
 from factory.ai_providers import get_ai_response
+from factory.ai_functions import provision_vibe_workspace_tool
 from development.utils.task_prompt import get_task_implementaion_developer
 from factory.ai_tools import tools_code
 import time
 
 logger = logging.getLogger(__name__)
+
+
+def broadcast_ticket_notification(conversation_id: Optional[int], payload: Dict[str, Any]) -> None:
+    if not conversation_id:
+        return
+    channel_layer = get_channel_layer()
+    if not channel_layer:
+        return
+    event = {
+        'type': 'ai_response_chunk',
+        'chunk': '',
+        'is_final': False,
+        'conversation_id': conversation_id,
+    }
+    event.update(payload)
+    event.setdefault('is_notification', True)
+    event.setdefault('notification_marker', "__NOTIFICATION__")
+    try:
+        async_to_sync(channel_layer.group_send)(f"conversation_{conversation_id}", event)
+    except Exception as exc:
+        logger.error(f"Failed to broadcast ticket notification: {exc}")
 
 
 def simple_test_task_for_debugging(message: str, delay: int = 1) -> dict:
@@ -172,11 +196,33 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
         # Get ticket and project
         ticket = ProjectChecklist.objects.get(id=ticket_id)
         project = Project.objects.get(id=project_id)
-        
-        # Update ticket status to in_progress
-        ticket.status = 'in_progress'
-        ticket.save()
-        
+
+        def add_note(message: str, save: bool = True) -> str:
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+            line = f"[{timestamp}] {message}"
+            ticket.notes = f"{ticket.notes.rstrip()}\n{line}" if ticket.notes else line
+            if save:
+                ticket.save(update_fields=['notes'])
+            return line
+
+        if ticket.status != 'in_progress':
+            ticket.status = 'in_progress'
+            add_note("Implementation started.", save=False)
+            ticket.save(update_fields=['status', 'notes'])
+        else:
+            add_note("Resuming implementation.", save=True)
+
+        broadcast_ticket_notification(conversation_id, {
+            'is_notification': True,
+            'notification_type': 'toolhistory',
+            'function_name': 'ticket_execution',
+            'status': 'in_progress',
+            'message': f"Working on ticket #{ticket.id}: {ticket.name}",
+            'ticket_id': ticket.id,
+            'ticket_name': ticket.name,
+            'refresh_checklist': True
+        })
+
         logger.info(f"Starting implementation of ticket {ticket_id}: {ticket.name}")
         
         # Get implementation prompt
@@ -296,6 +342,8 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
                 
             except Exception as iteration_error:
                 logger.error(f"Error in iteration {iteration}: {str(iteration_error)}")
+                add_note(f"Iteration {iteration} error: {iteration_error}")
+                ticket.save(update_fields=['notes'])
                 
                 # Don't break on individual iteration errors, but limit retries
                 if iteration >= MAX_ITERATIONS - 5:  # Last 5 iterations, be more strict
@@ -304,9 +352,24 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
         # Determine final status
         if ticket_completed:
             ticket.status = 'done'
-            ticket.save()
+            summary_text = last_ai_response.get('content', '') if last_ai_response else ''
+            add_note("Implementation completed successfully.", save=False)
+            if summary_text:
+                add_note(f"Final response summary: {summary_text[:240]}{'...' if len(summary_text) > 240 else ''}", save=False)
+            ticket.save(update_fields=['status', 'notes'])
             
             logger.info(f"Successfully completed ticket {ticket_id} after {iteration} iterations")
+
+            broadcast_ticket_notification(conversation_id, {
+                'is_notification': True,
+                'notification_type': 'toolhistory',
+                'function_name': 'ticket_execution',
+                'status': 'done',
+                'message': f"Completed ticket #{ticket.id}: {ticket.name}",
+                'ticket_id': ticket.id,
+                'ticket_name': ticket.name,
+                'refresh_checklist': True
+            })
             
             return {
                 "status": "success",
@@ -314,14 +377,26 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
                 "message": f"Ticket {ticket.name} implemented successfully",
                 "iterations_used": iteration,
                 "completion_time": datetime.now().isoformat(),
-                "final_response": last_ai_response.get('content', '') if last_ai_response else None
+                "final_response": summary_text
             }
         else:
             # Max iterations reached without completion
             ticket.status = 'failed'
-            ticket.save()
+            add_note("Maximum iterations reached without completion.", save=False)
+            ticket.save(update_fields=['status', 'notes'])
             
             logger.warning(f"Ticket {ticket_id} reached max iterations ({MAX_ITERATIONS}) without completion")
+            
+            broadcast_ticket_notification(conversation_id, {
+                'is_notification': True,
+                'notification_type': 'toolhistory',
+                'function_name': 'ticket_execution',
+                'status': 'failed',
+                'message': f"Ticket #{ticket.id} timed out without completion.",
+                'ticket_id': ticket.id,
+                'ticket_name': ticket.name,
+                'refresh_checklist': True
+            })
             
             return {
                 "status": "timeout",
@@ -331,14 +406,25 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
                 "completion_time": datetime.now().isoformat(),
                 "final_response": last_ai_response.get('content', '') if last_ai_response else None
             }
-        
+
     except Exception as e:
         logger.error(f"Critical error implementing ticket {ticket_id}: {str(e)}")
         
         # Update ticket status to failed
         if 'ticket' in locals():
             ticket.status = 'failed'
-            ticket.save()
+            add_note(f"Implementation failed with error: {e}", save=False)
+            ticket.save(update_fields=['status', 'notes'])
+            broadcast_ticket_notification(conversation_id, {
+                'is_notification': True,
+                'notification_type': 'toolhistory',
+                'function_name': 'ticket_execution',
+                'status': 'failed',
+                'message': f"Ticket #{ticket.id} failed with error: {e}",
+                'ticket_id': ticket.id,
+                'ticket_name': ticket.name,
+                'refresh_checklist': True
+            })
         
         return {
             "status": "error",
@@ -365,22 +451,123 @@ def batch_execute_tickets(ticket_ids: List[int], project_id: int, conversation_i
         Dict with batch execution results
     """
     results = []
+
+    broadcast_ticket_notification(conversation_id, {
+        'is_notification': True,
+        'notification_type': 'toolhistory',
+        'function_name': 'ticket_execution_queue',
+        'status': 'queued',
+        'message': f"Starting background execution for {len(ticket_ids)} tickets.",
+        'refresh_checklist': bool(ticket_ids)
+    })
     
-    for ticket_id in ticket_ids:
+    for index, ticket_id in enumerate(ticket_ids, start=1):
+        broadcast_ticket_notification(conversation_id, {
+            'is_notification': True,
+            'notification_type': 'toolhistory',
+            'function_name': 'ticket_execution_queue',
+            'status': 'in_progress',
+            'message': f"Executing ticket {index}/{len(ticket_ids)} (#{ticket_id}).",
+            'ticket_id': ticket_id,
+            'refresh_checklist': True
+        })
+
         result = execute_ticket_implementation(ticket_id, project_id, conversation_id)
         results.append(result)
+
+        broadcast_ticket_notification(conversation_id, {
+            'is_notification': True,
+            'notification_type': 'toolhistory',
+            'function_name': 'ticket_execution_queue',
+            'status': result.get('status'),
+            'message': f"Ticket #{ticket_id} finished with status: {result.get('status')}",
+            'ticket_id': ticket_id,
+            'refresh_checklist': True
+        })
         
-        # Stop on error
         if result.get("status") == "error":
             break
     
+    failed_tickets = len([r for r in results if r.get("status") in {"error", "failed", "timeout"}])
+    broadcast_ticket_notification(conversation_id, {
+        'is_notification': True,
+        'notification_type': 'toolhistory',
+        'function_name': 'ticket_execution_queue',
+        'status': 'completed' if failed_tickets == 0 else 'partial',
+        'message': f"Ticket execution batch finished. Success: {len([r for r in results if r.get('status') == 'success'])}, Issues: {failed_tickets}.",
+        'refresh_checklist': True
+    })
+
     return {
-        "batch_status": "completed",
+        "batch_status": "completed" if failed_tickets == 0 else "partial",
         "total_tickets": len(ticket_ids),
         "completed_tickets": len([r for r in results if r.get("status") == "success"]),
-        "failed_tickets": len([r for r in results if r.get("status") == "error"]),
+        "failed_tickets": failed_tickets,
         "results": results
     }
+
+
+def ensure_workspace_and_execute(ticket_ids: List[int], project_db_id: int, conversation_id: Optional[int]) -> Dict[str, Any]:
+    try:
+        project = Project.objects.get(id=project_db_id)
+    except Project.DoesNotExist:
+        return {
+            "status": "error",
+            "message": f"Project with id {project_db_id} does not exist"
+        }
+
+    broadcast_ticket_notification(conversation_id, {
+        'is_notification': True,
+        'notification_type': 'toolhistory',
+        'function_name': 'ticket_execution_queue',
+        'status': 'queued',
+        'message': "Ensuring Magpie workspace is available...",
+        'refresh_checklist': bool(ticket_ids)
+    })
+
+    result = None
+    loop = asyncio.new_event_loop()
+    try:
+        asyncio.set_event_loop(loop)
+        result = loop.run_until_complete(
+            provision_vibe_workspace_tool(
+                {
+                    'project_name': project.provided_name or project.name,
+                    'summary': project.description or ''
+                },
+                project.project_id,
+                conversation_id
+            )
+        )
+    finally:
+        asyncio.set_event_loop(None)
+        loop.close()
+
+    if isinstance(result, dict) and result.get('status') == 'failed':
+        broadcast_ticket_notification(conversation_id, {
+            'is_notification': True,
+            'notification_type': 'toolhistory',
+            'function_name': 'ticket_execution_queue',
+            'status': 'failed',
+            'message': f"Workspace provisioning failed: {result.get('message_to_agent') or result.get('message')}",
+            'refresh_checklist': False
+        })
+        return {
+            "status": "error",
+            "message": result.get('message_to_agent') or result.get('message') or 'Workspace provisioning failed'
+        }
+
+    if isinstance(result, dict) and not result.get('status'):
+        broadcast_ticket_notification(conversation_id, {
+            'is_notification': True,
+            'notification_type': 'toolhistory',
+            'function_name': 'ticket_execution_queue',
+            'status': 'completed',
+            'message': "Workspace ready. Beginning ticket execution...",
+            'refresh_checklist': False
+        })
+
+    return batch_execute_tickets(ticket_ids, project_db_id, conversation_id)
 
 
 def check_ticket_dependencies(ticket_id: int) -> bool:

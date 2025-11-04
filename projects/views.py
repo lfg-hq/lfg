@@ -541,7 +541,7 @@ def project_checklist_api(request, project_id):
         raise PermissionDenied("You don't have permission to access this project.")
     
     # Get all checklist items for this project
-    checklist_items = ProjectChecklist.objects.filter(project=project)
+    checklist_items = ProjectChecklist.objects.filter(project=project).order_by('created_at', 'id')
     
     checklist_list = []
     for item in checklist_items:
@@ -561,6 +561,7 @@ def project_checklist_api(request, project_id):
             'dependencies': item.dependencies,
             'complexity': item.complexity,
             'requires_worktree': item.requires_worktree,
+            'notes': item.notes,
             # Linear integration fields
             'linear_issue_id': item.linear_issue_id,
             'linear_issue_url': item.linear_issue_url,

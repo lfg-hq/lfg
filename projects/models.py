@@ -227,6 +227,9 @@ class ProjectChecklist(models.Model):
         help_text='List of acceptance criteria for ticket completion')
     dependencies = models.JSONField(default=list, blank=True,
         help_text='List of ticket IDs or names this ticket depends on')
+
+    notes = models.TextField(blank=True, default='',
+        help_text='Execution notes, issues, and progress updates for this ticket')
     
     # Execution metadata
     complexity = models.CharField(max_length=20, choices=(
@@ -251,7 +254,10 @@ class ProjectChecklist(models.Model):
     
     def __str__(self):
         return f"{self.project.name} - {self.name}"
-    
+
+    class Meta:
+        ordering = ['created_at', 'id']
+
 class ProjectCodeGeneration(models.Model):
     project = models.OneToOneField(Project, on_delete=models.CASCADE, related_name="code_generation")
     folder_name = models.CharField(max_length=255, unique=True)

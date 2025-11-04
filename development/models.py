@@ -142,6 +142,123 @@ class DockerPortMapping(models.Model):
         return f"{self.host_port}:{self.container_port} for {self.sandbox.container_name}"
 
 
+class MagpieWorkspace(models.Model):
+    """Persistent Magpie VM used for Turbo mode remote environments."""
+
+    STATUS_CHOICES = (
+        ('provisioning', 'Provisioning'),
+        ('ready', 'Ready'),
+        ('stopped', 'Stopped'),
+        ('error', 'Error'),
+    )
+
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name="magpie_workspaces",
+        blank=True,
+        null=True,
+        help_text="Project associated with this Magpie workspace"
+    )
+    conversation_id = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Conversation identifier associated with this workspace"
+    )
+    job_id = models.CharField(
+        max_length=255,
+        unique=True,
+        help_text="Magpie job identifier"
+    )
+    workspace_id = models.CharField(
+        max_length=255,
+        unique=True,
+        help_text="Workspace identifier used by the AI agent"
+    )
+    ipv6_address = models.CharField(
+        max_length=128,
+        blank=True,
+        null=True,
+        help_text="IPv6 (or IPv4) address assigned to the VM"
+    )
+    project_path = models.CharField(
+        max_length=512,
+        blank=True,
+        null=True,
+        help_text="Primary project directory inside the VM"
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='provisioning',
+        help_text="Current lifecycle status of the workspace"
+    )
+    metadata = models.JSONField(
+        blank=True,
+        null=True,
+        help_text="Arbitrary metadata including project summary, last restart, etc."
+    )
+    last_seen_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text="Timestamp when the workspace was last verified"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['project']),
+            models.Index(fields=['conversation_id']),
+            models.Index(fields=['workspace_id']),
+            models.Index(fields=['status']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['project'],
+                condition=models.Q(project__isnull=False),
+                name='unique_project_magpie_workspace'
+            ),
+            models.UniqueConstraint(
+                fields=['conversation_id'],
+                condition=models.Q(conversation_id__isnull=False),
+                name='unique_conversation_magpie_workspace'
+            ),
+        ]
+        verbose_name = "Magpie Workspace"
+        verbose_name_plural = "Magpie Workspaces"
+
+    def __str__(self):
+        identifier = self.project.provided_name if self.project and self.project.provided_name else self.workspace_id
+        return f"Magpie Workspace {identifier} ({self.status})"
+
+    def mark_ready(self, ipv6=None, project_path=None, metadata=None):
+        """Mark the workspace as ready and update connection details."""
+        self.status = 'ready'
+        self.last_seen_at = timezone.now()
+        if ipv6:
+            self.ipv6_address = ipv6
+        if project_path:
+            self.project_path = project_path
+        if metadata:
+            current_metadata = self.metadata or {}
+            current_metadata.update(metadata)
+            self.metadata = current_metadata
+        self.save()
+
+    def mark_error(self, metadata=None):
+        """Mark the workspace as errored."""
+        self.status = 'error'
+        self.last_seen_at = timezone.now()
+        if metadata:
+            current_metadata = self.metadata or {}
+            current_metadata.update(metadata)
+            self.metadata = current_metadata
+        self.save()
+
+
+
 class KubernetesPod(models.Model):
     """
     Model to store information about Kubernetes pods for projects and conversations.
