@@ -398,6 +398,77 @@ document.addEventListener('DOMContentLoaded', function() {
                 return escapeHtml(String(value));
             }
 
+            function formatExecutionNotes(notes) {
+                if (!notes || !notes.trim()) {
+                    return '<p class="ticket-modal-empty">No execution notes available.</p>';
+                }
+
+                const lines = notes.split('\n');
+                let formattedHtml = '<div class="execution-notes-timeline">';
+
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i];
+
+                    // Check if this line is a timestamp header like "[2025-01-04 12:30] Message"
+                    const timestampMatch = line.match(/^\[(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\]\s*(.+)$/);
+
+                    if (timestampMatch) {
+                        const timestamp = timestampMatch[1];
+                        const message = timestampMatch[2];
+
+                        // Determine the icon and class based on the message content
+                        let icon = 'circle';
+                        let itemClass = 'note-item';
+
+                        if (message.toLowerCase().includes('started') || message.toLowerCase().includes('beginning')) {
+                            icon = 'play-circle';
+                            itemClass += ' note-item-start';
+                        } else if (message.toLowerCase().includes('completed') || message.toLowerCase().includes('finished') || message.toLowerCase().includes('success')) {
+                            icon = 'check-circle';
+                            itemClass += ' note-item-success';
+                        } else if (message.toLowerCase().includes('error') || message.toLowerCase().includes('failed')) {
+                            icon = 'exclamation-circle';
+                            itemClass += ' note-item-error';
+                        } else if (message.toLowerCase().includes('iteration')) {
+                            icon = 'sync';
+                            itemClass += ' note-item-iteration';
+                        } else if (message.toLowerCase().includes('workspace') || message.toLowerCase().includes('provisioning')) {
+                            icon = 'server';
+                            itemClass += ' note-item-workspace';
+                        }
+
+                        formattedHtml += `
+                            <div class="${itemClass}">
+                                <div class="note-icon">
+                                    <i class="fas fa-${icon}"></i>
+                                </div>
+                                <div class="note-content">
+                                    <div class="note-timestamp">${escapeHtml(timestamp)}</div>
+                                    <div class="note-message">${escapeHtml(message)}</div>
+                                </div>
+                            </div>
+                        `;
+                    } else if (line.trim().startsWith('=') || line.trim().startsWith('-')) {
+                        // Separator lines
+                        if (line.trim().length > 10) {
+                            formattedHtml += `<div class="note-separator"></div>`;
+                        }
+                    } else if (line.trim()) {
+                        // Regular content lines (could be part of a multi-line note)
+                        formattedHtml += `
+                            <div class="note-item note-item-content">
+                                <div class="note-content">
+                                    <div class="note-message">${escapeHtml(line)}</div>
+                                </div>
+                            </div>
+                        `;
+                    }
+                }
+
+                formattedHtml += '</div>';
+                return formattedHtml;
+            }
+
             function formatStatus(value) {
                 if (!value) {
                     return 'Open';
@@ -453,6 +524,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     prevBtn: document.getElementById('ticket-modal-prev'),
                     nextBtn: document.getElementById('ticket-modal-next'),
                     editBtn: document.getElementById('ticket-modal-edit'),
+                    logsBtn: document.getElementById('ticket-modal-logs'),
                     deleteBtn: document.getElementById('ticket-modal-delete'),
                     executeBtn: document.getElementById('ticket-modal-execute'),
                     name: document.getElementById('ticket-modal-name'),
@@ -475,7 +547,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     dependenciesSection: document.getElementById('ticket-modal-dependencies-section'),
                     dependencies: document.getElementById('ticket-modal-dependencies'),
                     linearSection: document.getElementById('ticket-modal-linear-section'),
-                    linear: document.getElementById('ticket-modal-linear')
+                    linear: document.getElementById('ticket-modal-linear'),
+                    notesSection: document.getElementById('ticket-modal-notes-section'),
+                    notes: document.getElementById('ticket-modal-notes')
                 };
                 self._ticketModalElements = modalElements;
             }
@@ -614,6 +688,16 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 }
 
+                if (modalElements.notesSection) {
+                    if (ticket.notes && ticket.notes.trim()) {
+                        modalElements.notesSection.style.display = '';
+                        modalElements.notes.innerHTML = formatExecutionNotes(ticket.notes);
+                    } else {
+                        modalElements.notesSection.style.display = 'none';
+                        modalElements.notes.innerHTML = '';
+                    }
+                }
+
                 modalElements.container.scrollTop = 0;
                 if (modalElements.description && modalElements.description.classList.contains('markdown-content')) {
                     modalElements.description.setAttribute('data-raw-content', ticket.description || '');
@@ -739,10 +823,23 @@ document.addEventListener('DOMContentLoaded', function() {
                                     </header>
                                     <div id="ticket-modal-linear"></div>
                                 </section>
+                                <section class="ticket-modal-section" id="ticket-modal-notes-section">
+                                    <header class="ticket-section-header">
+                                        <div class="ticket-section-title">
+                                            <i class="fas fa-clipboard-list"></i>
+                                            <h4>Execution Notes</h4>
+                                        </div>
+                                        <span class="ticket-section-label">Build logs & progress</span>
+                                    </header>
+                                    <div id="ticket-modal-notes" class="ticket-execution-notes"></div>
+                                </section>
                             </div>
                             <div class="ticket-modal-footer">
                                 <button type="button" class="ticket-modal-secondary" id="ticket-modal-edit">
                                     <i class="fas fa-pen"></i> Edit ticket
+                                </button>
+                                <button type="button" class="ticket-modal-info" id="ticket-modal-logs" title="View execution logs">
+                                    <i class="fas fa-terminal"></i> View Logs
                                 </button>
                                 <button type="button" class="ticket-modal-danger" id="ticket-modal-delete">
                                     <i class="fas fa-trash"></i> Delete
@@ -816,6 +913,22 @@ document.addEventListener('DOMContentLoaded', function() {
                         });
                     }
 
+                    if (modalElements.logsBtn) {
+                        modalElements.logsBtn.addEventListener('click', function() {
+                            console.log('[TicketModal] Logs button clicked');
+                            const ticket = helpers.getCurrentTicket();
+                            console.log('[TicketModal] Current ticket:', ticket);
+                            if (modalState.onViewLogs) {
+                                console.log('[TicketModal] Calling onViewLogs handler');
+                                modalState.onViewLogs(ticket, helpers);
+                            } else {
+                                console.warn('[TicketModal] No onViewLogs handler registered');
+                            }
+                        });
+                    } else {
+                        console.warn('[TicketModal] Logs button element not found');
+                    }
+
                     document.addEventListener('keydown', function(event) {
                         if (!modalElements.overlay || !modalElements.overlay.classList.contains('active')) {
                             return;
@@ -844,6 +957,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     modalState.onEdit = handlers.onEdit || null;
                     modalState.onDelete = handlers.onDelete || null;
                     modalState.onExecute = handlers.onExecute || null;
+                    modalState.onViewLogs = handlers.onViewLogs || null;
                     ensureModal();
                     updateActionVisibility();
                 },
@@ -1973,8 +2087,12 @@ document.addEventListener('DOMContentLoaded', function() {
                         }),
                         onExecute: (ticket) => {
                             if (ticket) {
-                                modalHelpers.close();
                                 ArtifactsLoader.executeTicket(ticket.id);
+                            }
+                        },
+                        onViewLogs: (ticket) => {
+                            if (ticket) {
+                                ArtifactsLoader.showTicketLogs(ticket.id);
                             }
                         }
                     });
@@ -2537,8 +2655,12 @@ document.addEventListener('DOMContentLoaded', function() {
                         }),
                         onExecute: (item) => {
                             if (item) {
-                                modalHelpers.close();
                                 ArtifactsLoader.executeTicket(item.id);
+                            }
+                        },
+                        onViewLogs: (item) => {
+                            if (item) {
+                                ArtifactsLoader.showTicketLogs(item.id);
                             }
                         }
                     });
@@ -4158,6 +4280,123 @@ document.addEventListener('DOMContentLoaded', function() {
         },
 
         /**
+         * Open app in artifacts panel with the given URL
+         * @param {string} appUrl - The URL of the app (with IPv6)
+         * @param {string} workspaceId - The workspace ID
+         * @param {number} port - The port number
+         */
+        openAppInArtifacts: function(appUrl, workspaceId, port) {
+            console.log(`[ArtifactsLoader] openAppInArtifacts called with URL: ${appUrl}`);
+
+            if (!appUrl) {
+                console.error('[ArtifactsLoader] No app URL provided');
+                return;
+            }
+
+            // Switch to the apps tab
+            if (window.switchTab) {
+                window.switchTab('apps');
+            }
+
+            // Open the artifacts panel if not already open
+            const artifactsPanel = document.getElementById('artifacts-panel');
+            const artifactsToggle = document.getElementById('artifacts-toggle');
+            const appContainer = document.querySelector('.app-container');
+
+            if (artifactsPanel && !artifactsPanel.classList.contains('open')) {
+                artifactsPanel.classList.add('open');
+                if (appContainer) appContainer.classList.add('artifacts-expanded');
+                if (artifactsToggle) artifactsToggle.classList.add('active');
+            }
+
+            // Get UI elements
+            const appUrlPanel = document.getElementById('app-url-panel');
+            const appUrlInput = document.getElementById('app-url-input');
+            const appIframe = document.getElementById('app-iframe');
+            const appLoading = document.getElementById('app-loading');
+            const appEmpty = document.getElementById('app-empty');
+            const appFrameContainer = document.getElementById('app-frame-container');
+
+            if (!appIframe || !appUrlInput || !appFrameContainer) {
+                console.error('[ArtifactsLoader] Required app UI elements not found');
+                return;
+            }
+
+            // Show URL panel
+            if (appUrlPanel) {
+                appUrlPanel.style.display = 'block';
+            }
+
+            // Set the URL in the input field
+            appUrlInput.value = appUrl;
+
+            // Show loading state
+            if (appLoading) appLoading.style.display = 'block';
+            if (appEmpty) appEmpty.style.display = 'none';
+            appFrameContainer.style.display = 'none';
+
+            // Set up iframe load handlers
+            let hasLoaded = false;
+            let timeoutId = null;
+
+            appIframe.onload = function() {
+                console.log('[ArtifactsLoader] App iframe loaded successfully');
+                hasLoaded = true;
+                clearTimeout(timeoutId);
+
+                if (appLoading) appLoading.style.display = 'none';
+                appFrameContainer.style.display = 'flex';
+            };
+
+            appIframe.onerror = function(e) {
+                console.error('[ArtifactsLoader] Error loading app iframe:', e);
+                hasLoaded = true;
+                clearTimeout(timeoutId);
+
+                if (appLoading) appLoading.style.display = 'none';
+                if (appEmpty) {
+                    appEmpty.style.display = 'flex';
+                    appEmpty.querySelector('.empty-state-text').textContent =
+                        `Failed to load app from ${appUrl}. The server may not be running.`;
+                }
+            };
+
+            // Set timeout
+            timeoutId = setTimeout(() => {
+                if (!hasLoaded) {
+                    console.warn('[ArtifactsLoader] App iframe taking too long to load');
+                    if (appLoading) appLoading.style.display = 'none';
+                    appFrameContainer.style.display = 'flex';
+                }
+            }, 15000); // 15 second timeout
+
+            // Load the app in the iframe
+            console.log('[ArtifactsLoader] Loading app in iframe:', appUrl);
+            appIframe.src = appUrl;
+
+            // Set up refresh button
+            const refreshBtn = document.getElementById('app-refresh-btn');
+            if (refreshBtn) {
+                refreshBtn.onclick = function() {
+                    console.log('[ArtifactsLoader] Refreshing app');
+                    appIframe.src = appIframe.src; // Reload iframe
+                };
+            }
+
+            // Set up restart server button
+            const restartBtn = document.getElementById('app-restart-server-btn');
+            if (restartBtn) {
+                restartBtn.onclick = function() {
+                    console.log('[ArtifactsLoader] Restart server requested');
+                    // TODO: Implement server restart logic
+                    if (window.showToast) {
+                        window.showToast('Server restart functionality coming soon', 'info');
+                    }
+                };
+            }
+        },
+
+        /**
          * Load Tool Call History for a project
          * @param {number} projectId - The project ID
          */
@@ -4368,78 +4607,401 @@ document.addEventListener('DOMContentLoaded', function() {
          */
         executeTicket: function(ticketId) {
             console.log(`[ArtifactsLoader] Executing ticket ${ticketId}`);
-            
+
             // Find the ticket data
             const projectId = this.getCurrentProjectId();
             if (!projectId) {
                 console.error('[ArtifactsLoader] No project ID found');
-                alert('Unable to execute ticket: No project ID found');
+                if (window.showToast && typeof window.showToast === 'function') {
+                    window.showToast('Unable to execute ticket: No project ID found', 'error');
+                }
                 return;
             }
-            
-            // Get ticket details from the stored tickets data
-            fetch(`/projects/${projectId}/api/checklist/`)
-                .then(response => response.json())
+
+            // Get the execute button to update its state
+            const executeBtn = document.getElementById('ticket-modal-execute');
+            const originalBtnHTML = executeBtn ? executeBtn.innerHTML : null;
+
+            // Show loading state
+            if (executeBtn) {
+                executeBtn.disabled = true;
+                executeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Queueing...';
+            }
+
+            // Get conversation ID if available
+            const conversationId = window.conversationId || null;
+
+            // Queue the ticket for execution via API
+            fetch(`/api/v1/project-checklist/${ticketId}/queue-execution/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({
+                    conversation_id: conversationId
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'queued') {
+                    console.log(`[ArtifactsLoader] Ticket ${ticketId} queued successfully. Task ID: ${data.task_id}`);
+
+                    // Show success feedback
+                    if (executeBtn) {
+                        executeBtn.innerHTML = '<i class="fas fa-check"></i> Queued!';
+                        executeBtn.classList.add('success');
+
+                        // Reset button after 2 seconds
+                        setTimeout(() => {
+                            executeBtn.innerHTML = originalBtnHTML;
+                            executeBtn.disabled = false;
+                            executeBtn.classList.remove('success');
+                        }, 2000);
+                    }
+
+                    // Show toast notification
+                    if (window.showToast && typeof window.showToast === 'function') {
+                        window.showToast(`Ticket #${ticketId} has been queued for execution`, 'success');
+                    }
+                } else {
+                    throw new Error(data.message || 'Failed to queue ticket');
+                }
+            })
+            .catch(error => {
+                console.error('[ArtifactsLoader] Error queueing ticket:', error);
+
+                // Show error feedback
+                if (executeBtn) {
+                    executeBtn.innerHTML = '<i class="fas fa-times"></i> Failed';
+                    executeBtn.classList.add('error');
+
+                    // Reset button after 2 seconds
+                    setTimeout(() => {
+                        executeBtn.innerHTML = originalBtnHTML;
+                        executeBtn.disabled = false;
+                        executeBtn.classList.remove('error');
+                    }, 2000);
+                }
+
+                // Show error notification
+                if (window.showNotification && typeof window.showNotification === 'function') {
+                    window.showNotification(`Failed to queue ticket: ${error.message}`, 'error');
+                } else {
+                    alert(`Failed to queue ticket: ${error.message}`);
+                }
+            });
+        },
+
+        /**
+         * Show execution logs for a ticket in a side drawer
+         * @param {number} ticketId - The ID of the ticket to show logs for
+         */
+        showTicketLogs: function(ticketId) {
+            console.log(`[ArtifactsLoader] showTicketLogs called with ticketId:`, ticketId);
+
+            const projectId = this.getCurrentProjectId();
+            console.log(`[ArtifactsLoader] Current project ID:`, projectId);
+            if (!projectId) {
+                console.error('[ArtifactsLoader] No project ID found');
+                return;
+            }
+
+            // Create side drawer overlay
+            const drawer = document.createElement('div');
+            drawer.id = 'ticket-logs-drawer';
+            drawer.className = 'logs-drawer-overlay';
+            drawer.innerHTML = `
+                <div class="logs-drawer">
+                    <div class="logs-drawer-header">
+                        <h3><i class="fas fa-terminal"></i> Ticket Execution Logs</h3>
+                        <div class="logs-drawer-actions">
+                            <button class="logs-drawer-refresh" title="Refresh logs">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                            <button class="logs-drawer-close" title="Close">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="logs-drawer-content">
+                        <div class="logs-loading">
+                            <i class="fas fa-spinner fa-spin"></i> Loading logs...
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(drawer);
+
+            // Add styles if not already present
+            if (!document.getElementById('ticket-logs-styles')) {
+                const style = document.createElement('style');
+                style.id = 'ticket-logs-styles';
+                style.textContent = `
+                    .logs-drawer-overlay {
+                        position: fixed;
+                        top: 0;
+                        left: 0;
+                        right: 0;
+                        bottom: 0;
+                        background: rgba(0, 0, 0, 0.5);
+                        z-index: 10001;
+                        display: flex;
+                        align-items: center;
+                        justify-content: flex-end;
+                        animation: fadeIn 0.2s ease;
+                    }
+                    .logs-drawer {
+                        background: #1a1a1a;
+                        width: 60%;
+                        max-width: 900px;
+                        height: 100%;
+                        display: flex;
+                        flex-direction: column;
+                        box-shadow: -4px 0 20px rgba(0, 0, 0, 0.5);
+                        animation: slideInRight 0.3s ease;
+                    }
+                    @keyframes slideInRight {
+                        from { transform: translateX(100%); }
+                        to { transform: translateX(0); }
+                    }
+                    .logs-drawer-header {
+                        display: flex;
+                        align-items: center;
+                        justify-content: space-between;
+                        padding: 20px;
+                        border-bottom: 1px solid #333;
+                        background: #222;
+                    }
+                    .logs-drawer-header h3 {
+                        margin: 0;
+                        color: #fff;
+                        font-size: 18px;
+                        display: flex;
+                        align-items: center;
+                        gap: 10px;
+                    }
+                    .logs-drawer-actions {
+                        display: flex;
+                        align-items: center;
+                        gap: 10px;
+                    }
+                    .logs-drawer-refresh,
+                    .logs-drawer-close {
+                        background: none;
+                        border: none;
+                        color: #999;
+                        font-size: 20px;
+                        cursor: pointer;
+                        padding: 8px 12px;
+                        transition: all 0.2s;
+                        border-radius: 6px;
+                    }
+                    .logs-drawer-refresh:hover {
+                        color: #4a9eff;
+                        background: rgba(74, 158, 255, 0.1);
+                    }
+                    .logs-drawer-refresh:active {
+                        transform: rotate(180deg);
+                    }
+                    .logs-drawer-refresh.refreshing {
+                        animation: spin 1s linear infinite;
+                    }
+                    @keyframes spin {
+                        from { transform: rotate(0deg); }
+                        to { transform: rotate(360deg); }
+                    }
+                    .logs-drawer-close:hover {
+                        color: #fff;
+                    }
+                    .logs-drawer-content {
+                        flex: 1;
+                        overflow-y: auto;
+                        padding: 20px;
+                        font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+                        font-size: 13px;
+                        line-height: 1.6;
+                    }
+                    .logs-loading {
+                        color: #999;
+                        text-align: center;
+                        padding: 40px;
+                    }
+                    .logs-section {
+                        margin-bottom: 30px;
+                        background: #0d0d0d;
+                        border: 1px solid #333;
+                        border-radius: 6px;
+                        overflow: hidden;
+                    }
+                    .logs-section-header {
+                        background: #1a1a1a;
+                        padding: 12px 16px;
+                        border-bottom: 1px solid #333;
+                        color: #fff;
+                        font-weight: 600;
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                    }
+                    .logs-section-content {
+                        padding: 16px;
+                        color: #ddd;
+                        white-space: pre-wrap;
+                        word-wrap: break-word;
+                    }
+                    .log-command {
+                        color: #4a9eff;
+                        margin-bottom: 8px;
+                    }
+                    .log-output {
+                        color: #9f9;
+                        margin-left: 20px;
+                    }
+                    .log-error {
+                        color: #f99;
+                    }
+                    .log-timestamp {
+                        color: #888;
+                        font-size: 11px;
+                    }
+                    .logs-empty {
+                        text-align: center;
+                        color: #666;
+                        padding: 60px 20px;
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+
+            // Function to load/reload logs
+            const loadLogs = () => {
+                const content = drawer.querySelector('.logs-drawer-content');
+                const refreshBtn = drawer.querySelector('.logs-drawer-refresh');
+
+                // Show loading state
+                content.innerHTML = '<div class="logs-loading"><i class="fas fa-spinner fa-spin"></i> Loading logs...</div>';
+
+                // Add refreshing animation
+                if (refreshBtn) {
+                    refreshBtn.classList.add('refreshing');
+                }
+
+                console.log(`[ArtifactsLoader] Fetching logs from: /api/v1/project-checklist/${ticketId}/logs/`);
+                fetch(`/api/v1/project-checklist/${ticketId}/logs/`)
+                .then(response => {
+                    console.log('[ArtifactsLoader] Response status:', response.status);
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    return response.json();
+                })
                 .then(data => {
-                    const tickets = data.checklist || [];
-                    const ticket = tickets.find(t => t.id == ticketId);
-                    
-                    if (!ticket) {
-                        console.error('[ArtifactsLoader] Ticket not found:', ticketId);
-                        alert('Unable to execute ticket: Ticket not found');
+                    console.log('[ArtifactsLoader] Logs data received:', data);
+
+                    // Update drawer header with ticket name
+                    const header = drawer.querySelector('.logs-drawer-header h3');
+                    if (header && data.ticket_name) {
+                        header.innerHTML = `<i class="fas fa-terminal"></i> ${data.ticket_name} - Execution Logs`;
+                    }
+
+                    const content = drawer.querySelector('.logs-drawer-content');
+
+                    if (!data.commands || data.commands.length === 0) {
+                        content.innerHTML = `
+                            <div class="logs-empty">
+                                <i class="fas fa-inbox" style="font-size: 48px; margin-bottom: 16px; opacity: 0.3;"></i>
+                                <p>No execution logs available for this ticket yet.</p>
+                                <p style="font-size: 12px; color: #555;">Logs will appear here after the ticket is executed.</p>
+                            </div>
+                        `;
                         return;
                     }
-                    
-                    // Construct the command to send
-                    let command = `Build the following feature from ticket #${ticket.id}: "${ticket.name}"\n\n`;
-                    command += `Description: ${ticket.description}\n\n`;
-                    
-                    if (ticket.details && Object.keys(ticket.details).length > 0) {
-                        command += `Technical Details:\n${JSON.stringify(ticket.details, null, 2)}\n\n`;
+
+                    let html = '';
+
+                    // Show ticket notes if available
+                    if (data.ticket_notes) {
+                        html += `
+                            <div class="logs-section">
+                                <div class="logs-section-header">
+                                    <i class="fas fa-clipboard-list"></i> Execution Summary
+                                </div>
+                                <div class="logs-section-content">${data.ticket_notes}</div>
+                            </div>
+                        `;
                     }
-                    
-                    if (ticket.acceptance_criteria && ticket.acceptance_criteria.length > 0) {
-                        command += `Acceptance Criteria:\n`;
-                        ticket.acceptance_criteria.forEach(criteria => {
-                            command += `- ${criteria}\n`;
-                        });
-                        command += `\n`;
-                    }
-                    
-                    command += `Please implement this feature following the specifications above.`;
-                    
-                    // Close any open ticket modal before sending the command
-                    if (window.ArtifactsLoader && typeof window.ArtifactsLoader.closeTicketModal === 'function') {
-                        window.ArtifactsLoader.closeTicketModal();
-                    }
-                    
-                    // Send the command to the chat
-                    if (window.sendMessage && typeof window.sendMessage === 'function') {
-                        console.log('[ArtifactsLoader] Sending ticket execution command to chat');
-                        window.sendMessage(command);
-                    } else {
-                        // Fallback: try to find the chat input and trigger send
-                        const chatInput = document.getElementById('chat-input');
-                        const sendButton = document.getElementById('send-btn');
-                        
-                        if (chatInput && sendButton) {
-                            chatInput.value = command;
-                            // Trigger input event to update any listeners
-                            chatInput.dispatchEvent(new Event('input', { bubbles: true }));
-                            // Click the send button
-                            sendButton.click();
-                        } else {
-                            console.error('[ArtifactsLoader] Unable to send message - no chat interface found');
-                            alert('Unable to send command to chat. Please copy the command manually.');
-                        }
+
+                    // Show command history
+                    data.commands.forEach((cmd, index) => {
+                        const timestamp = new Date(cmd.created_at).toLocaleString();
+                        html += `
+                            <div class="logs-section">
+                                <div class="logs-section-header">
+                                    <i class="fas fa-terminal"></i> Command ${index + 1}
+                                    <span class="log-timestamp" style="margin-left: auto;">${timestamp}</span>
+                                </div>
+                                <div class="logs-section-content">
+                                    <div class="log-command">$ ${cmd.command}</div>
+                                    ${cmd.output ? `<div class="log-output">${cmd.output}</div>` : '<div class="log-output" style="color: #666;">(no output)</div>'}
+                                </div>
+                            </div>
+                        `;
+                    });
+
+                    content.innerHTML = html;
+
+                    // Remove refreshing animation
+                    if (refreshBtn) {
+                        refreshBtn.classList.remove('refreshing');
                     }
                 })
                 .catch(error => {
-                    console.error('[ArtifactsLoader] Error fetching ticket details:', error);
-                    alert('Error executing ticket: ' + error.message);
+                    console.error('[ArtifactsLoader] Error fetching logs:', error);
+                    const content = drawer.querySelector('.logs-drawer-content');
+                    content.innerHTML = `
+                        <div class="logs-empty">
+                            <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 16px; color: #f99;"></i>
+                            <p class="log-error">Failed to load execution logs</p>
+                            <p style="font-size: 12px; color: #888;">${error.message}</p>
+                        </div>
+                    `;
+
+                    // Remove refreshing animation
+                    if (refreshBtn) {
+                        refreshBtn.classList.remove('refreshing');
+                    }
                 });
+            };
+
+            // Close button handler
+            drawer.querySelector('.logs-drawer-close').addEventListener('click', () => {
+                drawer.style.animation = 'fadeOut 0.2s ease';
+                drawer.querySelector('.logs-drawer').style.animation = 'slideOutRight 0.3s ease';
+                setTimeout(() => drawer.remove(), 300);
+            });
+
+            // Refresh button handler
+            const refreshBtn = drawer.querySelector('.logs-drawer-refresh');
+            if (refreshBtn) {
+                refreshBtn.addEventListener('click', () => {
+                    console.log('[ArtifactsLoader] Refresh logs button clicked');
+                    loadLogs();
+                });
+            }
+
+            // Click outside to close
+            drawer.addEventListener('click', (e) => {
+                if (e.target === drawer) {
+                    drawer.querySelector('.logs-drawer-close').click();
+                }
+            });
+
+            // Initial load
+            loadLogs();
         },
-        
+
         /**
          * Download file content as PDF
          * @param {number} projectId - The ID of the current project

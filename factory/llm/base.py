@@ -77,30 +77,77 @@ class BaseLLMProvider(ABC):
     def check_token_limits(self) -> tuple[bool, str, int]:
         """
         Check if user has enough tokens to make a request.
-        
+        Skip validation if user is using BYOK (Bring Your Own Key).
+
         Returns:
             tuple: (can_proceed, error_message, remaining_tokens)
         """
         if not self.user:
             return True, "", 0  # Allow if no user (shouldn't happen)
-        
+
         try:
+            # Check if user has BYOK API key configured for this provider
+            has_byok = self._check_has_byok_key()
+
+            if has_byok:
+                logger.info(f"User {self.user.id} has BYOK API key configured. Skipping platform credit validation.")
+                return True, "", 0  # Skip validation for BYOK users
+
+            # User is using platform credits - validate limits
             user_credit, created = UserCredit.objects.get_or_create(user=self.user)
-            
-            # Check if user can use this model
+
+            # Check if user can use this model with platform-provided API key
+            if not user_credit.can_use_platform_model(self.selected_model):
+                return False, f"Platform only provides gpt-5-mini. Please add your own API key in settings to use {self.selected_model}.", 0
+
+            # Check if user can use this model based on their subscription tier
             if not user_credit.can_use_model(self.selected_model):
                 return False, f"Free tier users can only use gpt-5-mini model. Please upgrade to Pro to use {self.selected_model}.", 0
-            
+
             # Check token limits
             remaining_tokens = user_credit.get_remaining_tokens()
             if remaining_tokens <= 0:
                 if user_credit.is_free_tier:
                     return False, "You have reached your free tier limit of 100,000 tokens. Please upgrade to Pro for 300,000 tokens per month.", 0
                 else:
-                    return False, "You have reached your monthly token limit of 300,000 tokens. Additional tokens can be purchased.", 0
-            
+                    return False, "You have reached your monthly token limit of 1,000,000 tokens. Additional tokens can be purchased.", 0
+
             return True, "", remaining_tokens
-            
+
         except Exception as e:
             logger.error(f"Error checking token limits: {e}")
             return True, "", 0  # Allow on error to not block users
+
+    def _check_has_byok_key(self) -> bool:
+        """
+        Check if user has BYOK API key configured for this provider.
+        This is a synchronous method called from within database_sync_to_async context.
+        """
+        try:
+            from accounts.models import LLMApiKeys
+
+            # Determine provider name from class name
+            provider_map = {
+                'AnthropicProvider': 'anthropic_api_key',
+                'OpenAIProvider': 'openai_api_key',
+                'XAIProvider': 'xai_api_key',
+                'GoogleGeminiProvider': 'google_api_key',
+            }
+
+            provider_key = provider_map.get(self.__class__.__name__)
+            if not provider_key:
+                logger.warning(f"Unknown provider class: {self.__class__.__name__}")
+                return False
+
+            llm_keys = LLMApiKeys.objects.get(user=self.user)
+            api_key = getattr(llm_keys, provider_key, '') or ''
+
+            has_key = bool(api_key)
+            logger.info(f"BYOK check for {self.__class__.__name__}: {has_key}")
+            return has_key
+
+        except LLMApiKeys.DoesNotExist:
+            return False
+        except Exception as e:
+            logger.warning(f"Could not check BYOK status: {e}")
+            return False

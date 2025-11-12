@@ -65,8 +65,8 @@ from asgiref.sync import sync_to_async, async_to_sync
 from projects.models import ProjectChecklist, Project
 from factory.ai_providers import get_ai_response
 from factory.ai_functions import provision_vibe_workspace_tool
-from development.utils.task_prompt import get_task_implementaion_developer
-from factory.ai_tools import tools_code
+from factory.prompts.builder_prompt import get_system_builder_mode
+from factory.ai_tools import tools_builder
 import time
 
 logger = logging.getLogger(__name__)
@@ -145,7 +145,7 @@ def safe_execute_ticket_implementation(ticket_id: int, project_id: int, conversa
         from projects.models import ProjectChecklist
         
         ticket = ProjectChecklist.objects.get(id=ticket_id)
-        ticket.status = 'done'  # Mark as done for testing
+        ticket.status = 'done'  # Mark as done when execution completes
         ticket.save()
         
         logger.info(f"Successfully completed SAFE implementation of ticket {ticket_id}")
@@ -171,47 +171,55 @@ def safe_execute_ticket_implementation(ticket_id: int, project_id: int, conversa
             "completion_time": datetime.now().isoformat()
         }
 
+import json
+import time
+import logging
+from datetime import datetime
+from typing import Dict, Any, List
+from django.db import models
+from asgiref.sync import async_to_sync
 
-def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_id: int) -> Dict[str, Any]:
+logger = logging.getLogger(__name__)
+
+
+def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_id: int, max_execution_time: int = 300) -> Dict[str, Any]:
     """
-    Execute a single ticket implementation asynchronously with continuous AI interaction.
-    
-    This task runs in a loop, continuously calling the AI and processing tool calls
-    until the ticket is marked as complete. It provides full access to execute_command
-    and other tools for comprehensive ticket implementation.
-    
+    Execute a single ticket implementation - streamlined version with timeout protection.
+    Works like Claude Code CLI - fast, efficient, limited tool rounds.
+
     Args:
         ticket_id: The ID of the ProjectChecklist ticket
         project_id: The ID of the project
         conversation_id: The ID of the conversation
-        
+        max_execution_time: Maximum execution time in seconds (default: 300s/5min)
+
     Returns:
         Dict with execution results and status
     """
-    # Configuration
-    MAX_ITERATIONS = 10  # Prevent infinite loops
-    ITERATION_DELAY = 2  # Seconds between iterations
-    
+    start_time = time.time()
+    workspace_id = None
+
     try:
-        # Get ticket and project
+        # 1. GET TICKET AND PROJECT
         ticket = ProjectChecklist.objects.get(id=ticket_id)
         project = Project.objects.get(id=project_id)
 
-        def add_note(message: str, save: bool = True) -> str:
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-            line = f"[{timestamp}] {message}"
-            ticket.notes = f"{ticket.notes.rstrip()}\n{line}" if ticket.notes else line
-            if save:
-                ticket.save(update_fields=['notes'])
-            return line
+        # 2. CHECK IF ALREADY COMPLETED (prevent duplicate execution on retry)
+        if ticket.status == 'done':
+            logger.info(f"Ticket #{ticket_id} already completed, skipping")
+            return {
+                "status": "success",
+                "ticket_id": ticket_id,
+                "message": "Already completed",
+                "skipped": True
+            }
 
-        if ticket.status != 'in_progress':
-            ticket.status = 'in_progress'
-            add_note("Implementation started.", save=False)
-            ticket.save(update_fields=['status', 'notes'])
-        else:
-            add_note("Resuming implementation.", save=True)
-
+        # 3. UPDATE STATUS TO IN-PROGRESS
+        ticket.status = 'in_progress'
+        ticket.save(update_fields=['status'])
+        logger.info(f"Starting ticket #{ticket_id}: {ticket.name}")
+        
+        # 4. BROADCAST START
         broadcast_ticket_notification(conversation_id, {
             'is_notification': True,
             'notification_type': 'toolhistory',
@@ -223,149 +231,284 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
             'refresh_checklist': True
         })
 
-        logger.info(f"Starting implementation of ticket {ticket_id}: {ticket.name}")
+        # 5. GET WORKSPACE
+        workspace_result = async_to_sync(provision_vibe_workspace_tool)(
+            {
+                'project_name': project.provided_name or project.name,
+                'summary': project.description or 'Ticket implementation workspace'
+            },
+            project.project_id,
+            conversation_id
+        )
+
+        if workspace_result.get('status') == 'failed':
+            raise Exception(f"Workspace provisioning failed: {workspace_result.get('message_to_agent')}")
+
+        workspace_id = workspace_result.get('workspace_id')
+        logger.info(f"Workspace ready: {workspace_id}")
+
+        # 6. FETCH PROJECT DOCUMENTATION (PRD & Implementation)
+        project_context = ""
+        try:
+            from projects.models import ProjectFile
+
+            # Fetch PRD files
+            prd_files = ProjectFile.objects.filter(
+                project=project,
+                file_type='prd',
+                is_active=True
+            ).order_by('-updated_at')[:2]  # Get up to 2 most recent PRDs
+
+            # Fetch implementation files
+            impl_files = ProjectFile.objects.filter(
+                project=project,
+                file_type='implementation',
+                is_active=True
+            ).order_by('-updated_at')[:2]  # Get up to 2 most recent implementation docs
+
+            if prd_files or impl_files:
+                project_context = "\n\n📋 PROJECT DOCUMENTATION:\n"
+
+                for prd in prd_files:
+                    project_context += f"\n--- PRD: {prd.name} ---\n"
+                    project_context += prd.file_content[:5000]  # Limit to 5000 chars per file
+                    if len(prd.file_content) > 5000:
+                        project_context += "\n...(truncated for brevity)\n"
+                    project_context += "\n"
+
+                for impl in impl_files:
+                    project_context += f"\n--- Technical Implementation: {impl.name} ---\n"
+                    project_context += impl.file_content[:5000]  # Limit to 5000 chars per file
+                    if len(impl.file_content) > 5000:
+                        project_context += "\n...(truncated for brevity)\n"
+                    project_context += "\n"
+
+                logger.info(f"Added project documentation to context: {len(prd_files)} PRDs, {len(impl_files)} implementation docs")
+        except Exception as e:
+            logger.warning(f"Could not fetch project documentation: {str(e)}")
+
+        # 7. EXECUTE IMPLEMENTATION WITH LIMITED TOOL ROUNDS
+        # Check if ticket has notes from a previous failed attempt
+        previous_attempt_context = ""
+        if ticket.notes and "RETRYABLE ERROR" in ticket.notes:
+            previous_attempt_context = f"""
+⚠️ RETRY CONTEXT: This ticket was attempted before but failed due to an API error.
+Previous attempt notes:
+{ticket.notes}
+
+IMPORTANT: Before doing ANY work:
+1. Check what files already exist
+2. Check what was already installed
+3. Continue from where the previous attempt left off
+4. DO NOT redo work that's already complete
+"""
+
+        implementation_prompt = f"""
+You are implementing ticket #{ticket.id}: {ticket.name}
+
+TICKET DESCRIPTION:
+{ticket.description}
+
+WORKSPACE: {workspace_id}
+PROJECT PATH: /workspace/nextjs-app
+{project_context}
+{previous_attempt_context}
+
+
+REQUIRED FINAL MESSAGE FORMAT:
+After completing the ticket requirements, you MUST write:
+
+✅ Success case: "IMPLEMENTATION_STATUS: COMPLETE - [brief summary of what you did]"
+❌ Failure case: "IMPLEMENTATION_STATUS: FAILED - [reason]"
+
+Remember:
+- ALWAYS check workspace state first (ls, cat package.json)
+- This is an EXISTING project - don't recreate it
+- Focus ONLY on the ticket requirements
+- Don't redo work that's already complete
+- Make minimal, targeted changes
+- Maximum 100 tool calls
+"""
+
+        system_prompt = """
+You are an expert developer working on assigned tickets. You will implement tickets with surgical precision.
+
+Remember that you are working on an existing project, and every ticket is a TARGETED change on the existing codebase.
+
+🔍 MANDATORY FIRST STEP - ALWAYS CHECK STATE:
+Before EVERY ticket implementation, you MUST:
+1. Make sure the parent folder is /workspace/nextjs-app/
+1. Read the codebase using `ls -la` and `cat` and `grep` (see what exists and read the code)
+3. Assess what already exists vs what needs to be done
+4. This is NOT optional - you MUST check before doing any work!
+
+Plan once. No loops. No tests. No builds. Minimal edits.
+
+Phases: ANALYZE → APPLY → RUN → REPORT. No going backwards.
+
+1. In the planning phase, understand and list all the libraries that need to be installed. Install them at once.
+2. Understand all the files that need to be created at once. Create them in a single command. 
+3. Understand all the edits that need to be made. Make the edits in a single command.
+4. Run the app (npm run dev), and check for errors. 
+5. If errors, then fix them and hand over control. 
+6. Do not attempt to build the project (no npm build). Just the `npm run dev` and leave it at that, so that the user can test it.
+
+Remember that there is another QA agent which can test and fix for any issues. 
+
+IMPORTANT: 
+- You can read multiple files in a single command
+- Identify and create multiple files in a single command. This will help save the tool calls. 
+- If required, then edit multiple files in a single command
+
+End with: "IMPLEMENTATION_STATUS: COMPLETE - [specific changes made]" or "IMPLEMENTATION_STATUS: FAILED - [reason]"
+"""
+
+        # System prompt with strict completion requirements
+        system_prompt_ = """
+You are an expert developer working on an EXISTING codebase. You implement tickets with surgical precision.
+
+FUNDAMENTAL PRINCIPLE: You are working on an EXISTING PROJECT. Every ticket is a TARGETED change to this existing codebase.
+
+🔍 MANDATORY FIRST STEP - ALWAYS CHECK STATE:
+Before EVERY ticket implementation, you MUST:
+1. Make sure the parent folder is /workspace/nextjs-app/
+1. Read the codebase using `ls -la` and `cat` and `grep` (see what exists and read the code)
+3. Assess what already exists vs what needs to be done
+4. This is NOT optional - you MUST check before doing any work!
+
+YOUR APPROACH (Like Claude Code):
+1. CHECK FIRST: Always check workspace state before making changes
+2. UNDERSTAND: Read and analyze existing code when the ticket involves modifications
+3. MINIMAL CHANGES: Make ONLY the changes required by the ticket
+4. PRESERVE EXISTING: Never recreate files or structures that already exist
+5. TARGETED FIXES: For bugs, fix only the specific issue; for features, add only what's needed
+6. SKIP TESTING: Just make sure the files are there, then run the project and let the user know. 
+    Another testing agent will check and confirm the results
+
+Do not keep repeating the process
+
+1. Read code 
+2. Install all the needed packages
+3. Create code as needed: write new files or edit existing ones. Make sure to create all the files first
+4. Run the code. If any errors, fix them. Them run the code and hand over.
+5. End with: "IMPLEMENTATION_STATUS: COMPLETE - [specific changes made]" or "IMPLEMENTATION_STATUS: FAILED - [reason]"
+6. The status message is MANDATORY - you must provide it after tools finish
+
+STRICT RULES:
+1. Complete implementation in ≤50 tool calls
+2. CHECK workspace state before making changes
+3. READ before you WRITE when modifying existing functionality
+4. Write COMPLETE production code (no TODOs/placeholders)
+5. ALWAYS end with: "IMPLEMENTATION_STATUS: COMPLETE - [specific changes made]" or "IMPLEMENTATION_STATUS: FAILED - [reason]"
+6. The status message is MANDATORY - you must provide it after tools finish
+
+DO NOT:
+- Recreate the entire project or application structure
+- Create files that already exist without checking first
+- Install dependencies that are already installed
+- Make changes unrelated to the ticket
+- Run build commands (too slow)
+- Continue without giving final status
+
+REMEMBER: Always check state first, then make surgical changes. You're a precision surgeon, not a bulldozer.
+
+Very simple flow:
+1. Read and analysis requirements
+2. Install the libraries
+3. Create files: if required create multiple files at once. Make sure to batch multiple files together to save time. 
+4. Run and check for errors
+5. Then hand over control.
+6. Don't overcomplicate and keep checking and testing for things.
+
+Run the server and hand over controll
+"""
+
+        # 8. CALL AI WITH TIMEOUT PROTECTION
+        logger.info("Calling AI for implementation...")
+
+        # Wrap AI call with timeout check
+        try:
+            ai_response = async_to_sync(get_ai_response)(
+                user_message=implementation_prompt,
+                system_prompt=system_prompt,
+                project_id=project.project_id,  # Use UUID, not database ID
+                conversation_id=conversation_id,
+                stream=False,
+                tools=tools_builder
+            )
+        except Exception as ai_error:
+            # Handle API errors (500s, timeouts, etc.)
+            logger.error(f"AI call failed: {str(ai_error)}")
+            if "500" in str(ai_error) or "Internal server error" in str(ai_error):
+                raise Exception(f"Anthropic API error (500): {str(ai_error)}. Will retry.")
+            raise
+
+        content = ai_response.get('content', '') if ai_response else ''
+        execution_time = time.time() - start_time
+
+        # Log the AI response for debugging
+        logger.info(f"AI response keys: {ai_response.keys() if ai_response else 'None'}")
+        logger.info(f"AI response content preview: {content[:200] if content else 'Empty'}")
+
+        # Check if AI response indicates an error (500, overloaded, etc.)
+        has_api_error = ai_response.get('error') if ai_response else False
+        error_message = ai_response.get('error_message', '') if ai_response else ''
+
+        # Check for timeout
+        if execution_time > max_execution_time:
+            raise Exception(f"Execution timeout after {execution_time:.2f}s (max: {max_execution_time}s)")
+
+        # If there was an API error, treat as failed
+        if has_api_error:
+            raise Exception(f"AI API error during execution: {error_message}")
+
+        # 8. CHECK COMPLETION STATUS (with fallback detection)
+        completed = 'IMPLEMENTATION_STATUS: COMPLETE' in content
+        failed = 'IMPLEMENTATION_STATUS: FAILED' in content
+
+        # Fallback: If no explicit status, ticket is NOT complete
+        # Only mark as complete if there's an explicit success status
+        if not completed and not failed:
+            logger.warning(f"No explicit completion status found in AI response. Content length: {len(content)}")
+            # ALWAYS mark as failed if no explicit completion status
+            # The AI MUST provide explicit status - anything else is incomplete
+            failed = True
+            logger.error("Marking as FAILED due to missing explicit completion status. AI must end with IMPLEMENTATION_STATUS.")
+
+        logger.info(f"AI response received. Completed: {completed}, Failed: {failed}, Time: {execution_time:.2f}s")
         
-        # Get implementation prompt
-        system_prompt = async_to_sync(get_task_implementaion_developer)()
-        
-        # Prepare initial ticket context
-        initial_message = f"""
-        You have been assigned the following ticket to implement:
-        
-        **Ticket Details:**
-        - Ticket ID: {ticket.id}
-        - Ticket Name: {ticket.name}
-        - Description: {ticket.description}
-        - Priority: {ticket.priority}
-        - Project: {project.name}
-        - Complexity: {ticket.complexity}
-        - Requires Worktree: {ticket.requires_worktree}
-        
-        **Technical Details:**
-        ```json
-        {json.dumps(ticket.details, indent=2)}
-        ```
-        
-        **UI/UX Requirements:**
-        ```json
-        {json.dumps(ticket.ui_requirements, indent=2)}
-        ```
-        
-        **Component Specifications:**
-        ```json
-        {json.dumps(ticket.component_specs, indent=2)}
-        ```
-        
-        **Acceptance Criteria:**
-        ```json
-        {json.dumps(ticket.acceptance_criteria, indent=2)}
-        ```
-        
-        **Dependencies:**
-        ```json
-        {json.dumps(ticket.dependencies, indent=2)}
-        ```
-        
-        Please implement this ticket following the workflow outlined in your system prompt.
-        Use the execute_command tool to run any necessary commands for setup, implementation, and testing.
-        
-        Start by setting up the ticket context and environment as described in your prompt.
-        Continue working until the ticket is fully implemented and all acceptance criteria are met.
-        """
-        
-        iteration = 0
-        ticket_completed = False
-        last_ai_response = None
-        
-        # Main implementation loop
-        while not ticket_completed and iteration < MAX_ITERATIONS:
-            iteration += 1
-            logger.info(f"Ticket {ticket_id} - Iteration {iteration}/{MAX_ITERATIONS}")
-            
-            try:
-                # Call AI with current message
-                if iteration == 1:
-                    current_message = initial_message
-                else:
-                    # For subsequent iterations, ask the AI to continue
-                    current_message = """
-                    Please continue with the ticket implementation. 
-                    
-                    If you have completed all the requirements:
-                    - Ensure all acceptance criteria are met
-                    - Run any final tests
-                    - State clearly "TICKET IMPLEMENTATION COMPLETED" 
-                    
-                    If you need to continue working:
-                    - Use the execute_command tool for any necessary operations
-                    - Follow the implementation workflow from your system prompt
-                    - Focus on the remaining tasks for this ticket
-                    """
-                
-                ai_response = async_to_sync(get_ai_response)(
-                    user_message=current_message,
-                    system_prompt=system_prompt,
-                    project_id=project_id,
-                    conversation_id=conversation_id,
-                    stream=False,
-                    tools=tools_code  # Use the full tools_code list which includes execute_command
-                )
-                
-                last_ai_response = ai_response
-                
-                # Check if ticket implementation is complete
-                response_content = ai_response.get('content', '').lower()
-                completion_indicators = [
-                    'ticket implementation completed',
-                    'implementation completed',
-                    'ticket completed successfully',
-                    'all acceptance criteria met',
-                    'implementation finished',
-                    'ticket is now complete',
-                    'implementation is complete'
-                ]
-                
-                if any(indicator in response_content for indicator in completion_indicators):
-                    logger.info(f"Ticket {ticket_id} appears to be completed based on AI response")
-                    ticket_completed = True
-                    break
-                
-                # Check for explicit completion signals
-                if 'completed' in response_content and iteration > 3:
-                    # If we've done several iterations and AI mentions completion
-                    logger.info(f"Ticket {ticket_id} likely completed after {iteration} iterations")
-                    ticket_completed = True
-                    break
-                
-                # Add delay between iterations to prevent overwhelming
-                time.sleep(ITERATION_DELAY)
-                
-            except Exception as iteration_error:
-                logger.error(f"Error in iteration {iteration}: {str(iteration_error)}")
-                add_note(f"Iteration {iteration} error: {iteration_error}")
-                ticket.save(update_fields=['notes'])
-                
-                # Don't break on individual iteration errors, but limit retries
-                if iteration >= MAX_ITERATIONS - 5:  # Last 5 iterations, be more strict
-                    break
-        
-        # Determine final status
-        if ticket_completed:
+        # 9. EXTRACT WHAT WAS DONE (for logging)
+        import re
+        files_created = re.findall(r'cat > (/workspace/nextjs-app/[\w\-\./]+)', content)
+        deps_installed = re.findall(r'npm install ([\w\-\s@/]+)', content)
+        dependencies = []
+        for dep_string in deps_installed:
+            dependencies.extend(dep_string.split())
+
+        # Count tool executions from content
+        tool_calls_count = content.count('ssh_command') + content.count('Tool call')
+        logger.info(f"Estimated tool calls: {tool_calls_count}, Files created: {len(files_created)}, Dependencies: {len(dependencies)}")
+
+        # 10. UPDATE TICKET BASED ON RESULT
+        if completed and not failed:
+            # SUCCESS!
             ticket.status = 'done'
-            summary_text = last_ai_response.get('content', '') if last_ai_response else ''
-            add_note("Implementation completed successfully.", save=False)
-            if summary_text:
-                add_note(f"Final response summary: {summary_text[:240]}{'...' if len(summary_text) > 240 else ''}", save=False)
+            ticket.notes = f"""
+[{datetime.now().strftime('%Y-%m-%d %H:%M')}] IMPLEMENTATION COMPLETED
+Time: {execution_time:.2f} seconds
+Files created: {len(files_created)}
+Dependencies: {', '.join(set(dependencies))}
+Workspace: {workspace_id}
+Status: ✓ Complete
+"""
             ticket.save(update_fields=['status', 'notes'])
             
-            logger.info(f"Successfully completed ticket {ticket_id} after {iteration} iterations")
-
             broadcast_ticket_notification(conversation_id, {
                 'is_notification': True,
                 'notification_type': 'toolhistory',
                 'function_name': 'ticket_execution',
-                'status': 'done',
-                'message': f"Completed ticket #{ticket.id}: {ticket.name}",
+                'status': 'completed',
+                'message': f"✓ Completed ticket #{ticket.id}: {ticket.name}",
                 'ticket_id': ticket.id,
                 'ticket_name': ticket.name,
                 'refresh_checklist': True
@@ -374,64 +517,115 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
             return {
                 "status": "success",
                 "ticket_id": ticket_id,
-                "message": f"Ticket {ticket.name} implemented successfully",
-                "iterations_used": iteration,
-                "completion_time": datetime.now().isoformat(),
-                "final_response": summary_text
+                "ticket_name": ticket.name,
+                "message": f"Ticket completed in {execution_time:.2f}s",
+                "execution_time": f"{execution_time:.2f}s",
+                "files_created": files_created,
+                "dependencies": list(set(dependencies)),
+                "workspace_id": workspace_id,
+                "completion_time": datetime.now().isoformat()
             }
         else:
-            # Max iterations reached without completion
+            # FAILED OR INCOMPLETE
+            error_match = re.search(r'IMPLEMENTATION_STATUS: FAILED - (.+)', content)
+            if error_match:
+                error_reason = error_match.group(1)
+            elif not content or len(content) < 100:
+                error_reason = "AI response was empty or incomplete. Possible API timeout or error."
+            else:
+                error_reason = "No explicit completion status provided. AI may have exceeded tool limit or stopped unexpectedly."
+
             ticket.status = 'failed'
-            add_note("Maximum iterations reached without completion.", save=False)
+            ticket.notes = f"""
+[{datetime.now().strftime('%Y-%m-%d %H:%M')}] IMPLEMENTATION FAILED
+Time: {execution_time:.2f} seconds
+Tool calls: ~{tool_calls_count}
+Files attempted: {len(files_created)}
+Error: {error_reason}
+Workspace: {workspace_id}
+Manual intervention required
+"""
             ticket.save(update_fields=['status', 'notes'])
-            
-            logger.warning(f"Ticket {ticket_id} reached max iterations ({MAX_ITERATIONS}) without completion")
             
             broadcast_ticket_notification(conversation_id, {
                 'is_notification': True,
                 'notification_type': 'toolhistory',
                 'function_name': 'ticket_execution',
                 'status': 'failed',
-                'message': f"Ticket #{ticket.id} timed out without completion.",
+                'message': f"✗ Failed ticket #{ticket.id}: {error_reason}",
                 'ticket_id': ticket.id,
                 'ticket_name': ticket.name,
                 'refresh_checklist': True
             })
             
             return {
-                "status": "timeout",
+                "status": "failed",
                 "ticket_id": ticket_id,
-                "message": f"Ticket {ticket.name} reached maximum iterations without completion",
-                "iterations_used": iteration,
-                "completion_time": datetime.now().isoformat(),
-                "final_response": last_ai_response.get('content', '') if last_ai_response else None
+                "ticket_name": ticket.name,
+                "error": error_reason,
+                "execution_time": f"{execution_time:.2f}s",
+                "workspace_id": workspace_id,
+                "requires_manual_intervention": True
             }
-
+            
     except Exception as e:
-        logger.error(f"Critical error implementing ticket {ticket_id}: {str(e)}")
-        
-        # Update ticket status to failed
+        # EXCEPTION HANDLING
+        execution_time = time.time() - start_time
+        error_msg = str(e)
+        logger.error(f"Critical error in ticket {ticket_id}: {error_msg}", exc_info=True)
+
+        # Determine if this is a retryable error
+        is_retryable = any(indicator in error_msg.lower() for indicator in [
+            '500', 'internal server error', 'timeout', 'connection', 'api error'
+        ])
+
         if 'ticket' in locals():
-            ticket.status = 'failed'
-            add_note(f"Implementation failed with error: {e}", save=False)
+            # For retryable errors, keep status as in_progress for Django-Q retry
+            if is_retryable and execution_time < max_execution_time:
+                ticket.status = 'in_progress'
+                ticket.notes = f"""
+[{datetime.now().strftime('%Y-%m-%d %H:%M')}] RETRYABLE ERROR (will retry)
+Error: {error_msg}
+Time: {execution_time:.2f}s
+Workspace: {workspace_id or 'N/A'}
+"""
+                logger.info(f"Marking ticket #{ticket_id} for retry due to retryable error")
+            else:
+                # Non-retryable or already timed out
+                ticket.status = 'failed'
+                ticket.notes = f"""
+[{datetime.now().strftime('%Y-%m-%d %H:%M')}] FATAL ERROR
+Error: {error_msg}
+Time: {execution_time:.2f}s
+Workspace: {workspace_id or 'N/A'}
+Retryable: {is_retryable}
+Manual intervention required
+"""
+
             ticket.save(update_fields=['status', 'notes'])
+
             broadcast_ticket_notification(conversation_id, {
                 'is_notification': True,
                 'notification_type': 'toolhistory',
                 'function_name': 'ticket_execution',
-                'status': 'failed',
-                'message': f"Ticket #{ticket.id} failed with error: {e}",
+                'status': 'failed' if not is_retryable else 'error',
+                'message': f"✗ Ticket #{ticket.id} error: {error_msg[:100]}",
                 'ticket_id': ticket.id,
                 'ticket_name': ticket.name,
                 'refresh_checklist': True
             })
-        
+
+        # Re-raise retryable errors for Django-Q to handle
+        if is_retryable and execution_time < max_execution_time:
+            raise  # Let Django-Q retry
+
         return {
             "status": "error",
             "ticket_id": ticket_id,
-            "error": str(e),
-            "completion_time": datetime.now().isoformat(),
-            "iterations_used": iteration if 'iteration' in locals() else 0
+            "error": error_msg,
+            "workspace_id": workspace_id,
+            "execution_time": f"{execution_time:.2f}s",
+            "retryable": is_retryable
         }
 
 

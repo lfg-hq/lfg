@@ -319,7 +319,7 @@ create_tickets = {
     "function": {
         "name": "create_tickets",
         "description": "Call this function to generate the tickets for the project. This is based of the referred PRD or technical analysis or provided contenxt in markedown format \
-                        This will include UI Requirements, Component Specs, and Acceptance Criteria",
+                        This will include user-story and UI Requirements, and Acceptance Criteria",
         "parameters": {
             "type": "object",
             "properties": {
@@ -329,7 +329,7 @@ create_tickets = {
                         "type": "object",
                         "properties": {
                             "name": {"type": "string"},
-                            "description": {"type": "string", "description": "Detailed description as to all the details that needs to be implemented"},
+                            "description": {"type": "string", "description": "The user-story of the ticket to be implemented"},
                             "role": {"type": "string", "enum": ["agent", "user"]},
                             "dependencies": {"type": "array", "items": {"type": "string"}, "description": "Is this ticket dependent on any other ticket? If yes, pass the ticket id"},
                             "priority": {"type": "string", "enum": ["High", "Medium", "Low"]}
@@ -556,10 +556,10 @@ execute_command = {
     }
 }
 
-provision_vibe_workspace = {
+provision_workspace = {
     "type": "function",
     "function": {
-        "name": "provision_vibe_workspace",
+        "name": "provision_workspace",
         "description": "Provision or retrieve the persistent Magpie VM that hosts the Turbo Next.js workspace. Creates the VM, installs Node.js, scaffolds the project in /workspace/nextjs-app, and stores workspace metadata for reuse.",
         "parameters": {
             "type": "object",
@@ -579,17 +579,17 @@ provision_vibe_workspace = {
     }
 }
 
-magpie_ssh_command = {
+ssh_command = {
     "type": "function",
     "function": {
-        "name": "magpie_ssh_command",
+        "name": "ssh_command",
         "description": "Execute a shell command inside the Magpie workspace via SSH. Use this for writing files, installing dependencies, running Prisma migrations, and verifying the app.",
         "parameters": {
             "type": "object",
             "properties": {
                 "workspace_id": {
                     "type": "string",
-                    "description": "Workspace identifier returned by provision_vibe_workspace."
+                    "description": "Workspace identifier returned by provision_workspace."
                 },
                 "command": {
                     "type": "string",
@@ -601,7 +601,7 @@ magpie_ssh_command = {
                 },
                 "timeout": {
                     "type": "integer",
-                    "description": "Optional timeout for the command in seconds (default 180)."
+                    "description": "Optional timeout for the command in seconds (default 300)."
                 },
                 "with_node_env": {
                     "type": "boolean",
@@ -624,7 +624,7 @@ restart_vibe_dev_server = {
             "properties": {
                 "workspace_id": {
                     "type": "string",
-                    "description": "Workspace identifier returned by provision_vibe_workspace."
+                    "description": "Workspace identifier returned by provision_workspace."
                 },
                 "log_tail_lines": {
                     "type": "integer",
@@ -1046,10 +1046,20 @@ tools_turbo = [
     get_pending_tickets,
     update_ticket,
     update_all_tickets,
-    # provision_vibe_workspace,
-    # magpie_ssh_command,
+    # provision_workspace,
+    # ssh_command,
     restart_vibe_dev_server,
     queue_ticket_execution
+]
+
+tools_builder = [
+    get_prd,
+    get_file_list,
+    get_file_content,
+    get_pending_tickets,
+    restart_vibe_dev_server,
+    update_ticket,
+    ssh_command
 ]
 
 tools_design = [get_prd, execute_command, start_server, get_github_access_token]

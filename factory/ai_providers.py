@@ -81,10 +81,19 @@ async def get_ai_response(user_message: str, system_prompt: str, project_id: Opt
             user = conversation.user
             project = conversation.project
         elif project_id:
-            project = await asyncio.to_thread(
-                Project.objects.select_related('owner').get,
-                id=project_id
-            )
+            # Try to get project by UUID (project_id field) or database ID
+            if isinstance(project_id, str) and len(project_id) > 10:
+                # Looks like a UUID
+                project = await asyncio.to_thread(
+                    Project.objects.select_related('owner').get,
+                    project_id=project_id
+                )
+            else:
+                # Looks like a database ID
+                project = await asyncio.to_thread(
+                    Project.objects.select_related('owner').get,
+                    id=project_id
+                )
             user = project.owner
     except Exception as e:
         logger.warning(f"Could not get user/conversation/project: {e}")
@@ -95,28 +104,37 @@ async def get_ai_response(user_message: str, system_prompt: str, project_id: Opt
     # Collect the streaming response
     full_content = ""
     tool_calls = []
-    
+    has_500_error = False
+
     try:
         async for chunk in provider.generate_stream(messages, project_id, conversation_id, tools):
+            # Check for error markers
+            if isinstance(chunk, str) and "__ERROR_500__" in chunk:
+                has_500_error = True
+                continue
             # Skip notification chunks
             if isinstance(chunk, str) and ("__NOTIFICATION__" in chunk):
                 continue
             full_content += chunk
-        
+
         # Note: The provider.generate_stream already handles tool calls internally
         # and executes them. The tool calls are not returned in the stream,
         # they are executed automatically within the stream processing.
-        
+
         return {
             "content": full_content,
-            "tool_calls": tool_calls  # Will be empty since tools are auto-executed
+            "tool_calls": tool_calls,  # Will be empty since tools are auto-executed
+            "error": has_500_error,
+            "error_message": "Anthropic API returned 500 Internal Server Error" if has_500_error else None
         }
         
     except Exception as e:
         logger.error(f"Error in get_ai_response: {str(e)}")
         return {
             "content": f"Error generating AI response: {str(e)}",
-            "tool_calls": []
+            "tool_calls": [],
+            "error": True,
+            "error_message": str(e)
         }
 
 

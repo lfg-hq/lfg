@@ -1452,7 +1452,8 @@
 
 .ticket-modal-primary,
 .ticket-modal-secondary,
-.ticket-modal-danger {
+.ticket-modal-danger,
+.ticket-modal-info {
     border: none;
     border-radius: 10px;
     padding: 11px 18px;
@@ -1493,6 +1494,16 @@
 .ticket-modal-danger:hover {
     background: rgba(239, 68, 68, 0.26);
     color: #fee2e2;
+}
+
+.ticket-modal-info {
+    background: rgba(59, 130, 246, 0.18);
+    color: #bfdbfe;
+}
+
+.ticket-modal-info:hover {
+    background: rgba(59, 130, 246, 0.26);
+    color: #dbeafe;
 }
 
 .ticket-modal-link {
@@ -1553,7 +1564,8 @@ body.ticket-modal-open {
 
     .ticket-modal-primary,
     .ticket-modal-secondary,
-    .ticket-modal-danger {
+    .ticket-modal-danger,
+    .ticket-modal-info {
         width: 100%;
         justify-content: center;
     }
@@ -3247,12 +3259,205 @@ body.ticket-modal-open {
     #file-table-header > div:nth-child(5) {
         display: none !important;
     }
-    
+
     .file-list-item {
         grid-template-columns: 40px 1fr 80px !important;
     }
-    
+
     #file-table-header {
         grid-template-columns: 40px 1fr 80px !important;
     }
+}
+
+/* ========================================
+   Execution Notes Timeline Styling
+   ======================================== */
+
+.ticket-execution-notes {
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.execution-notes-timeline {
+    position: relative;
+    padding-left: 0;
+}
+
+.note-item {
+    position: relative;
+    display: flex;
+    gap: 16px;
+    margin-bottom: 20px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    background: rgba(30, 41, 59, 0.3);
+    border-left: 3px solid #64748b;
+    transition: all 0.2s ease;
+}
+
+.note-item:hover {
+    background: rgba(30, 41, 59, 0.5);
+    transform: translateX(2px);
+}
+
+.note-item-start {
+    border-left-color: #3b82f6;
+    background: rgba(59, 130, 246, 0.1);
+}
+
+.note-item-start:hover {
+    background: rgba(59, 130, 246, 0.15);
+}
+
+.note-item-success {
+    border-left-color: #10b981;
+    background: rgba(16, 185, 129, 0.1);
+}
+
+.note-item-success:hover {
+    background: rgba(16, 185, 129, 0.15);
+}
+
+.note-item-error {
+    border-left-color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+}
+
+.note-item-error:hover {
+    background: rgba(239, 68, 68, 0.15);
+}
+
+.note-item-iteration {
+    border-left-color: #f59e0b;
+    background: rgba(245, 158, 11, 0.1);
+}
+
+.note-item-iteration:hover {
+    background: rgba(245, 158, 11, 0.15);
+}
+
+.note-item-workspace {
+    border-left-color: #8b5cf6;
+    background: rgba(139, 92, 246, 0.1);
+}
+
+.note-item-workspace:hover {
+    background: rgba(139, 92, 246, 0.15);
+}
+
+.note-item-content {
+    border-left-color: #475569;
+    background: rgba(51, 65, 85, 0.2);
+    padding: 8px 16px;
+    margin-bottom: 8px;
+}
+
+.note-icon {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    color: #e2e8f0;
+    font-size: 16px;
+}
+
+.note-item-start .note-icon {
+    background: rgba(59, 130, 246, 0.2);
+    color: #60a5fa;
+}
+
+.note-item-success .note-icon {
+    background: rgba(16, 185, 129, 0.2);
+    color: #34d399;
+}
+
+.note-item-error .note-icon {
+    background: rgba(239, 68, 68, 0.2);
+    color: #f87171;
+}
+
+.note-item-iteration .note-icon {
+    background: rgba(245, 158, 11, 0.2);
+    color: #fbbf24;
+}
+
+.note-item-workspace .note-icon {
+    background: rgba(139, 92, 246, 0.2);
+    color: #a78bfa;
+}
+
+.note-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.note-timestamp {
+    font-size: 12px;
+    color: #94a3b8;
+    font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+    margin-bottom: 4px;
+    font-weight: 500;
+}
+
+.note-message {
+    color: #e2e8f0;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+}
+
+.note-item-error .note-message {
+    color: #fecaca;
+}
+
+.note-item-success .note-message {
+    color: #d1fae5;
+}
+
+.note-separator {
+    height: 1px;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(148, 163, 184, 0.3) 20%,
+        rgba(148, 163, 184, 0.3) 80%,
+        transparent
+    );
+    margin: 24px 0;
+}
+
+.ticket-modal-empty {
+    color: #94a3b8;
+    font-style: italic;
+    padding: 20px;
+    text-align: center;
+}
+
+/* Execute button state styles */
+.ticket-modal-primary.success {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    border-color: #10b981;
+}
+
+.ticket-modal-primary.success:hover {
+    background: linear-gradient(135deg, #059669 0%, #047857 100%);
+    border-color: #059669;
+}
+
+.ticket-modal-primary.error {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    border-color: #ef4444;
+}
+
+.ticket-modal-primary.error:hover {
+    background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+    border-color: #dc2626;
+}
+
+.ticket-modal-primary:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
 }

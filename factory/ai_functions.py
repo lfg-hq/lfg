@@ -91,7 +91,14 @@ def get_magpie_client():
     """Instantiate a Magpie client or raise a helpful error."""
     if not magpie_available():
         raise RuntimeError("Magpie SDK or MAGPIE_API_KEY is not configured")
-    return Magpie(api_key=MAGPIE_API_KEY)
+    # Create client with extended timeout for long-running commands (npm install, build, etc.)
+    client = Magpie(api_key=MAGPIE_API_KEY)
+    # Increase HTTP read timeout from default 30s to 5 minutes
+    if hasattr(client, 'session'):
+        client.session.timeout = 300
+    elif hasattr(client, 'timeout'):
+        client.timeout = 300
+    return client
 
 
 def _slugify_project_name(name: str) -> str:
@@ -100,9 +107,23 @@ def _slugify_project_name(name: str) -> str:
     return slug or "turbo-app"
 
 
+def _sanitize_string(value: str) -> str:
+    """
+    Remove NUL bytes and other problematic characters that PostgreSQL cannot store.
+    """
+    if not value:
+        return ""
+    # Remove NUL bytes (0x00) which PostgreSQL text fields cannot store
+    sanitized = value.replace('\x00', '')
+    # Optionally remove other control characters except newlines, tabs, and carriage returns
+    # sanitized = ''.join(char for char in sanitized if char >= ' ' or char in '\n\r\t')
+    return sanitized
+
 def _truncate_output(value: str, limit: int = 4000) -> str:
     if not value:
         return ""
+    # Sanitize NUL bytes first
+    value = _sanitize_string(value)
     if len(value) <= limit:
         return value
     truncated = value[:limit]
@@ -121,7 +142,7 @@ def _format_command_output(stdout: str, stderr: str, limit: int = 6000) -> str:
     return "\n\n".join(parts) if parts else "(no output)"
 
 
-def _run_magpie_ssh(client, job_id: str, command: str, timeout: int = 180, with_node_env: bool = True):
+def _run_magpie_ssh(client, job_id: str, command: str, timeout: int = 300, with_node_env: bool = True):
     env_lines = ["set -e", "cd /workspace"]
     if with_node_env:
         env_lines.extend(MAGPIE_NODE_ENV_LINES)
@@ -194,57 +215,8 @@ def _bootstrap_magpie_workspace(client, job_id: str):
     steps.append(("Install Node.js", install_result))
 
     scaffold_cmd = textwrap.dedent(
-        r"""
-        pwd
-        rm -rf nextjs-app
-        mkdir -p nextjs-app
-        mkdir -p nextjs-app/pages
-
-        cat > nextjs-app/package.json <<'EOF'
-        {
-        "name": "nextjs-app",
-        "version": "1.0.0",
-        "private": true,
-        "scripts": {
-            "dev": "next dev --hostname :: --port 3000",
-            "build": "next build",
-            "start": "next start --hostname :: --port 3000"
-        },
-        "dependencies": {
-            "next": "14.0.0",
-            "react": "18.2.0",
-            "react-dom": "18.2.0"
-        }
-        }
-        EOF
-
-        cat > nextjs-app/next.config.js <<'EOF'
-        /** @type {import('next').NextConfig} */
-        const nextConfig = {
-        reactStrictMode: true
-        };
-        module.exports = nextConfig;
-        EOF
-
-        cat > nextjs-app/pages/index.js <<'EOF'
-        export default function Home() {
-        return (
-            <main style={{
-            minHeight: "100vh",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            fontFamily: "system-ui",
-            gap: "1.5rem"
-            }}>
-            <h1>🥳 Next.js on MicroVM -- Jitin</h1>
-            <p>Served from /workspace/nextjs-app</p>
-            <p>IPv6 ready: bound to :: port 3000</p>
-            </main>
-        );
-        }
-        EOF
+        """
+        rm -rf nextjs-ap        
         """
     )
     scaffold_result = _run_magpie_ssh(client, job_id, scaffold_cmd, timeout=360)
@@ -490,17 +462,20 @@ async def app_functions(function_name, function_args, project_id, conversation_i
                 result = await run_command_in_k8s(command, project_id=project_id, conversation_id=conversation_id)
             return result
 
-        case "provision_vibe_workspace":
+        case "provision_workspace":
             return await provision_vibe_workspace_tool(function_args, project_id, conversation_id)
 
-        case "magpie_ssh_command":
-            return await magpie_ssh_command_tool(function_args, project_id, conversation_id)
+        case "ssh_command":
+            return await ssh_command_tool(function_args, project_id, conversation_id)
 
         case "restart_vibe_dev_server":
             return await restart_vibe_dev_server_tool(function_args, project_id, conversation_id)
 
         case "queue_ticket_execution":
             return await queue_ticket_execution_tool(function_args, project_id, conversation_id)
+
+        case "open_app_in_artifacts":
+            return await open_app_in_artifacts_tool(function_args, project_id, conversation_id)
 
         case "start_server":
             command = function_args.get('start_server_command', '')
@@ -2332,10 +2307,15 @@ async def provision_vibe_workspace_tool(function_args, project_id, conversation_
     metadata = {"project_name": project_name, "summary": summary}
     workspace = workspace  # preserve reference for exception handling
 
+    # Get user_id for workspace naming
+    user_id = project.owner_id if project else "unknown"
+    project_db_id = project.id if project else "unknown"
+    workspace_name = f"lfg-{user_id}--{project_db_id}"
+
     try:
         response = await asyncio.to_thread(
             client.jobs.create,
-            name=f"lfg-turbo-{_slugify_project_name(project_name)}",
+            name=workspace_name,
             script=MAGPIE_BOOTSTRAP_SCRIPT,
             persist=True,
             ip_lease=True,
@@ -2434,7 +2414,7 @@ async def provision_vibe_workspace_tool(function_args, project_id, conversation_
             "is_notification": False,
             "notification_type": "toolhistory",
             "notification_marker": "__NOTIFICATION__",
-            "function_name": "provision_vibe_workspace",
+            "function_name": "provision_workspace",
             "status": "failed",
             "message": "Magpie workspace provisioning failed. I cannot proceed with remote code execution until a workspace is available.",
             "error": str(exc),
@@ -2442,7 +2422,7 @@ async def provision_vibe_workspace_tool(function_args, project_id, conversation_
         }
 
 
-async def magpie_ssh_command_tool(function_args, project_id, conversation_id):
+async def ssh_command_tool(function_args, project_id, conversation_id):
     """Execute a command inside the Magpie workspace via SSH."""
 
     if not magpie_available():
@@ -2454,7 +2434,7 @@ async def magpie_ssh_command_tool(function_args, project_id, conversation_id):
     workspace_id = function_args.get('workspace_id')
     command = function_args.get('command')
     explanation = function_args.get('explanation')
-    timeout = function_args.get('timeout', 180)
+    timeout = function_args.get('timeout', 300)
     with_node_env = function_args.get('with_node_env', True)
 
     if not workspace_id or not command:
@@ -2496,15 +2476,36 @@ async def magpie_ssh_command_tool(function_args, project_id, conversation_id):
     except Exception as exc:
         logger.exception("Magpie SSH command failed")
         await sync_to_async(workspace.mark_error, thread_sensitive=True)(metadata={"last_error": str(exc)})
+
+        # Provide specific guidance for different error types
+        error_msg = str(exc)
+        if "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
+            agent_message = (
+                f"Command execution timed out after {timeout}s. "
+                f"For long-running commands (npm install, build), either: "
+                f"1) Assume they succeeded if earlier output looked good, or "
+                f"2) Run a quick check command (ls, cat package.json) to verify. "
+                f"DO NOT retry the same long command."
+            )
+        elif "500" in error_msg or "failed to execute ssh command" in error_msg:
+            agent_message = (
+                f"Magpie API error (500): Command was too long or complex. "
+                f"You likely tried to create multiple files in one ssh_command. "
+                f"Create ONE file per ssh_command instead. "
+                f"DO NOT retry the exact same command."
+            )
+        else:
+            agent_message = f"Magpie SSH command failed: {exc}"
+
         return {
             "is_notification": False,
             "notification_type": "toolhistory",
             "notification_marker": "__NOTIFICATION__",
-            "function_name": "magpie_ssh_command",
+            "function_name": "ssh_command",
             "status": "failed",
             "message": "Magpie SSH command could not be executed. The remote workspace is unavailable.",
-            "error": str(exc),
-            "message_to_agent": f"Magpie SSH command failed: {exc}"
+            "error": error_msg,
+            "message_to_agent": agent_message
         }
 
     meta_updates = {
@@ -2754,14 +2755,6 @@ async def queue_ticket_execution_tool(function_args, project_id, conversation_id
 
     timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
 
-    def _mark_in_progress(ids):
-        for item in ProjectChecklist.objects.filter(id__in=ids):
-            note_line = f"[{timestamp}] Queued for background execution."
-            item.status = 'in_progress'
-            item.notes = f"{(item.notes or '').rstrip()}\n{note_line}".strip()
-            item.save(update_fields=['status', 'notes'])
-
-    await sync_to_async(_mark_in_progress)(ticket_id_list)
 
     # Queue each ticket as a separate task for parallel execution
     task_ids = []
@@ -2815,6 +2808,121 @@ async def queue_ticket_execution_tool(function_args, project_id, conversation_id
         "ticket_ids": ticket_id_list,
         "task_ids": task_ids,
         "notification_marker": "__NOTIFICATION__"
+    }
+
+
+async def open_app_in_artifacts_tool(function_args, project_id, conversation_id):
+    """
+    Open the app in the artifacts panel.
+    Fetches the workspace and constructs the app URL from the IPv6 address.
+    Can optionally start the dev server if not already running.
+    """
+    if not magpie_available():
+        return {
+            "is_notification": False,
+            "message_to_agent": "Magpie workspace is not available. Configure the Magpie SDK and API key to run apps."
+        }
+
+    project = await get_project(project_id) if project_id else None
+    workspace_id = function_args.get('workspace_id')
+    port = function_args.get('port', 3000)
+    start_server = function_args.get('start_server', False)
+    server_command = function_args.get('server_command', 'npm run dev')
+
+    # Fetch workspace by workspace_id or project
+    workspace = await _fetch_workspace(workspace_id=workspace_id, project=project, conversation_id=conversation_id)
+
+    if not workspace:
+        return {
+            "is_notification": False,
+            "message_to_agent": "No Magpie workspace found. Provision a workspace first using provision_workspace tool."
+        }
+
+    if workspace.status != 'ready':
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Workspace is not ready yet (status: {workspace.status}). Wait for provisioning to complete."
+        }
+
+    if not workspace.ipv6_address:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Workspace IPv6 address is not available. Try restarting the workspace."
+        }
+
+    # Optionally start the dev server
+    if start_server:
+        try:
+            client = get_magpie_client()
+        except RuntimeError as exc:
+            logger.error("Magpie client configuration error: %s", exc)
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Magpie client error: {exc}"
+            }
+
+        # Start the server in background
+        start_cmd = textwrap.dedent(
+            f"""
+            cd nextjs-app
+            if [ -f .devserver_pid ]; then
+              old_pid=$(cat .devserver_pid)
+              if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
+                echo "Server already running with PID $old_pid"
+                exit 0
+              fi
+            fi
+            : > /workspace/nextjs-app/dev.log
+            nohup {server_command} -- --hostname :: --port {port} >/workspace/nextjs-app/dev.log 2>&1 &
+            pid=$!
+            echo "$pid" > .devserver_pid
+            echo "PID:$pid"
+            sleep 2
+            """
+        )
+
+        try:
+            result = await asyncio.to_thread(
+                _run_magpie_ssh,
+                client,
+                workspace.job_id,
+                start_cmd,
+                120,
+                True,
+            )
+            logger.info(
+                "[MAGPIE][START SERVER] workspace=%s exit_code=%s",
+                workspace.workspace_id,
+                result.get('exit_code')
+            )
+
+            # Extract PID
+            stdout = result.get('stdout', '')
+            pid = _extract_pid_from_output(stdout)
+
+            # Update workspace metadata
+            metadata_updates = {
+                "dev_server_pid": pid,
+                "last_server_start": datetime.utcnow().isoformat() + "Z",
+            }
+            await sync_to_async(_update_workspace_metadata, thread_sensitive=True)(workspace, **metadata_updates)
+
+        except Exception as exc:
+            logger.exception("Failed to start dev server")
+            # Continue anyway - maybe server is already running
+
+    # Construct the app URL with IPv6
+    app_url = f"http://[{workspace.ipv6_address}]:{port}"
+
+    logger.info(f"Opening app in artifacts panel: {app_url}")
+
+    return {
+        "is_notification": True,
+        "notification_type": "app_url",
+        "app_url": app_url,
+        "workspace_id": workspace.workspace_id,
+        "port": port,
+        "message_to_agent": f"App is now available at {app_url}. The app will be displayed in the artifacts panel."
     }
 
 
@@ -3329,7 +3437,7 @@ async def save_file_from_stream(file_content, project_id, file_type, file_name):
         logger.info(f"[SAVE NOTIFICATION] Type: {file_type}, Name: {file_name}, ID: {file_obj.id}")
         
         notification = {
-            "is_notification": False,
+            "is_notification": True,  # Fixed: Must be True for notification to be sent
             "notification_type": "file_saved",  # Use a generic notification type for all saved files
             "message_to_agent": f"{file_type_display} '{file_name}' {action} successfully in the database",
             "file_name": file_name,
@@ -3483,7 +3591,7 @@ async def edit_file_content(file_id, edit_operations, project_id):
     logger.info(f"[edit_file_content] File '{file_obj.name}' edited successfully. Lines changed from {original_line_count} to {new_line_count}")
     
     result = {
-        "is_notification": False,
+        "is_notification": True,  # Fixed: Must be True for notification to be sent
         "notification_type": "file_edited",
         "message_to_agent": f"File '{file_obj.name}' edited successfully. Applied {len(edit_operations)} operations. Lines: {original_line_count} → {new_line_count}",
         "file_id": file_id,
@@ -4049,14 +4157,15 @@ async def update_file_content(file_id, updated_content, project_id):
         logger.info(f"File '{file_obj.name}' updated successfully. Content size: {old_content_length} → {new_content_length} characters")
         
         return {
-            "is_notification": False,
+            "is_notification": True,  # Fixed: Must be True for notification to be sent
             "notification_type": "file_edited",
             "message_to_agent": f"File '{file_obj.name}' updated successfully. Content updated from {old_content_length} to {new_content_length} characters.",
             "file_id": file_id,
             "file_name": file_obj.name,
             "file_type": file_obj.file_type,
             "old_size": old_content_length,
-            "new_size": new_content_length
+            "new_size": new_content_length,
+            "notification_marker": "__NOTIFICATION__"  # Add notification marker
         }
         
     except Exception as e:

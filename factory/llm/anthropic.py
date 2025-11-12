@@ -18,7 +18,7 @@ class AnthropicProvider(BaseLLMProvider):
     """Anthropic Claude provider implementation"""
     
     MODEL_MAPPING = {
-        "claude_4_sonnet": "claude-sonnet-4-20250514",
+        "claude_4_sonnet": "claude-sonnet-4-5-20250929",
     }
     
     def __init__(self, selected_model: str, user=None, conversation=None, project=None):
@@ -160,7 +160,22 @@ class AnthropicProvider(BaseLLMProvider):
         # Initialize streaming tag handler
         tag_handler = StreamingTagHandler()
 
+        # Tool round limiter to prevent infinite loops
+        max_tool_rounds = 80  # Maximum number of tool-use iterations
+        current_tool_round = 0
+
         while True: # Loop to handle potential multi-turn tool calls
+            current_tool_round += 1
+
+            # Check if we've exceeded max tool rounds
+            if current_tool_round > max_tool_rounds:
+                logger.error(f"Exceeded maximum tool rounds ({max_tool_rounds}). Breaking loop.")
+                error_msg = f"⚠️ Maximum tool execution limit reached ({max_tool_rounds} rounds). Implementation may be incomplete."
+                yield error_msg
+                return
+
+            logger.info(f"[ANTHROPIC] Starting tool round {current_tool_round}/{max_tool_rounds}")
+
             try:
                 # Convert messages and tools to Claude format
                 claude_messages = self._convert_messages_to_provider_format(current_messages)
@@ -462,9 +477,28 @@ class AnthropicProvider(BaseLLMProvider):
                     return
 
             except Exception as e:
-                logger.error(f"Critical Error: {str(e)}\n{traceback.format_exc()}")
-                yield f"Error with Claude stream: {str(e)}"
-                return
+                error_str = str(e)
+                logger.error(f"Critical Error: {error_str}\n{traceback.format_exc()}")
+
+                # Check if this is a 500 Internal Server Error
+                if "500" in error_str or "Internal server error" in error_str or "InternalServerError" in error_str:
+                    # For 500 errors, add retry logic with exponential backoff
+                    if current_tool_round <= 3:  # Only retry on early rounds
+                        retry_delay = 2 ** current_tool_round  # Exponential backoff: 2s, 4s, 8s
+                        logger.warning(f"Anthropic API 500 error on round {current_tool_round}. Retrying in {retry_delay}s...")
+                        yield f"⚠️ API error (500). Retrying in {retry_delay}s..."
+                        await asyncio.sleep(retry_delay)
+                        continue  # Retry the same round
+                    else:
+                        logger.error(f"Anthropic API 500 error persisted after {current_tool_round} rounds. Giving up.")
+                        yield f"❌ Persistent API error (500). Please try again later."
+                        # Signal the error to the caller
+                        yield "__ERROR_500__"
+                        return
+                else:
+                    # Non-retryable error
+                    yield f"Error with Claude stream: {error_str}"
+                    return
 
     async def _execute_tool(self, tool_call, project_id, conversation_id):
         """Execute a single tool call and return results"""

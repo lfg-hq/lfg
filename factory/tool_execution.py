@@ -472,7 +472,19 @@ async def execute_tool_call(
     # Save the tool call history to database
     try:
         # Get the project and conversation objects
-        project = await asyncio.to_thread(Project.objects.get, project_id=project_id) if project_id else None
+        # project_id can be either the UUID field or database ID - try both
+        project = None
+        if project_id:
+            try:
+                # First try as database ID (integer)
+                if isinstance(project_id, int) or (isinstance(project_id, str) and project_id.isdigit()):
+                    project = await asyncio.to_thread(Project.objects.get, id=int(project_id))
+                else:
+                    # Try as UUID field
+                    project = await asyncio.to_thread(Project.objects.get, project_id=project_id)
+            except Project.DoesNotExist:
+                logger.warning(f"Project not found for ID: {project_id}")
+                project = None
         conversation = await asyncio.to_thread(Conversation.objects.get, id=conversation_id) if conversation_id else None
         
         if project:

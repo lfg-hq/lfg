@@ -2041,7 +2041,15 @@ document.addEventListener('DOMContentLoaded', () => {
                             // Normal loading for all notifications
                             // PRD and Implementation now use streaming and handle their own display
                             window.ArtifactsLoader[loaderMethod](currentProjectId);
-                        } else if (data.notification_type === 'command_output' || 
+                        } else if (data.notification_type === 'app_url') {
+                            // Handle app_url notification - open app in artifacts panel
+                            console.log(`Opening app in artifacts panel: ${data.app_url}`);
+                            if (window.ArtifactsLoader && typeof window.ArtifactsLoader.openAppInArtifacts === 'function') {
+                                window.ArtifactsLoader.openAppInArtifacts(data.app_url, data.workspace_id, data.port);
+                            } else {
+                                console.error('ArtifactsLoader.openAppInArtifacts not available!');
+                            }
+                        } else if (data.notification_type === 'command_output' ||
                                   data.notification_type === 'execute_command' ||
                                   data.notification_type === 'start_server' ||
                                   data.notification_type === 'implement_ticket') {

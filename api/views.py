@@ -2,6 +2,7 @@ from rest_framework import status, generics, viewsets
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.authentication import SessionAuthentication
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.exceptions import ValidationError
 from django.contrib.auth import authenticate
@@ -513,6 +514,7 @@ class ProjectDocumentViewSet(viewsets.ReadOnlyModelViewSet):
 
 class ProjectChecklistViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ProjectChecklistItemSerializer
+    authentication_classes = [SessionAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
@@ -523,3 +525,79 @@ class ProjectChecklistViewSet(viewsets.ReadOnlyModelViewSet):
         return ProjectChecklist.objects.filter(
             project__in=accessible_projects
         ).select_related('project').order_by('created_at')
+
+    @action(detail=True, methods=['post'], url_path='queue-execution')
+    def queue_execution(self, request, pk=None):
+        """Queue a ticket for execution in the background task queue"""
+        ticket = self.get_object()
+        project = ticket.project
+
+        # Get conversation_id from request (optional, could be None)
+        conversation_id = request.data.get('conversation_id')
+
+        try:
+            from tasks.task_manager import TaskManager
+
+            # Queue the ticket execution
+            task_id = TaskManager.publish_task(
+                'tasks.task_definitions.execute_ticket_implementation',
+                ticket.id,
+                project.id,
+                conversation_id,
+                task_name=f"Ticket #{ticket.id} execution for {project.name}",
+                timeout=7200  # 2 hour timeout
+            )
+
+            return Response({
+                'status': 'queued',
+                'message': f'Ticket #{ticket.id} queued for execution',
+                'ticket_id': ticket.id,
+                'task_id': task_id
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({
+                'status': 'error',
+                'message': f'Failed to queue ticket: {str(e)}',
+                'ticket_id': ticket.id
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['get'], url_path='logs')
+    def logs(self, request, pk=None):
+        """Get execution logs for a specific ticket"""
+        from development.models import CommandExecution
+        import logging
+        logger = logging.getLogger(__name__)
+
+        ticket = self.get_object()
+        project = ticket.project
+
+        logger.info(f"[LOGS API] Fetching logs for ticket {ticket.id}, project {project.project_id}")
+
+        # Get commands for this ticket's project
+        commands = CommandExecution.objects.filter(
+            project_id=project.project_id
+        ).order_by('created_at')
+
+        # Also try to get all commands to see what's in the database
+        all_commands_count = CommandExecution.objects.count()
+        recent_commands = CommandExecution.objects.order_by('-created_at')[:5]
+
+        logger.info(f"[LOGS API] Total commands in DB: {all_commands_count}")
+        logger.info(f"[LOGS API] Commands for project {project.project_id}: {commands.count()}")
+        logger.info(f"[LOGS API] Recent 5 commands project_ids: {[cmd.project_id for cmd in recent_commands]}")
+
+        # Format commands for response
+        commands_data = [{
+            'command': cmd.command,
+            'output': cmd.output or '',
+            'created_at': cmd.created_at.isoformat()
+        } for cmd in commands]
+
+        return Response({
+            'ticket_id': ticket.id,
+            'ticket_name': ticket.name,
+            'ticket_status': ticket.status,
+            'ticket_notes': ticket.notes or '',
+            'commands': commands_data
+        }, status=status.HTTP_200_OK)
