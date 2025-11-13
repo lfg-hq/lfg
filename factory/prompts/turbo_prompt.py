@@ -94,5 +94,7 @@ HOW TO CREATE FILES:
 <lfg-file type="prd|implementation|research|etc" name="Document Name">
 [Full markdown content here]
 </lfg-file> 
-(Remember to ask the user to confirm)
+
+REMEMBER: After each step, present the next set of options. 
+Example: After creating PRD, ask if user wishes to build a prototype or create tickets. 
 """
