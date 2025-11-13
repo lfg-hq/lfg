@@ -10,8 +10,8 @@ from datetime import datetime
 from pathlib import Path
 from asgiref.sync import sync_to_async
 from projects.models import Project, ProjectFeature, ProjectPersona, \
-                            ProjectPRD, ProjectDesignSchema, ProjectChecklist, \
-                            ProjectImplementation, ProjectFile
+                            ProjectPRD, ProjectDesignSchema, ProjectTicket, \
+                            ProjectImplementation, ProjectFile, ProjectTaskList
 
 from development.models import ServerConfig, MagpieWorkspace
 
@@ -216,7 +216,7 @@ def _bootstrap_magpie_workspace(client, job_id: str):
 
     scaffold_cmd = textwrap.dedent(
         """
-        rm -rf nextjs-ap        
+        rm -rf nextjs-app
         """
     )
     scaffold_result = _run_magpie_ssh(client, job_id, scaffold_cmd, timeout=360)
@@ -404,12 +404,14 @@ def execute_local_server_command(command: str, workspace_path: str) -> tuple[boo
 # MAIN DISPATCHER
 # ============================================================================
 
-async def app_functions(function_name, function_args, project_id, conversation_id):
+async def app_functions(function_name, function_args, project_id, conversation_id, ticket_id=None):
     """
     Return a list of all the functions that can be called by the AI
     """
     logger.info(f"Function name: {function_name}")
     logger.debug(f"Function args: {function_args}")
+    if ticket_id:
+        logger.info(f"Executing for ticket_id: {ticket_id}")
 
     # Validate project_id for most functions
     if function_name not in ["get_github_access_token", "web_search"] and project_id:
@@ -452,21 +454,21 @@ async def app_functions(function_name, function_args, project_id, conversation_i
             return await get_pending_tickets(project_id)
         case "get_next_ticket":
             return await get_next_ticket(project_id)
-        
+
         case "execute_command":
             command = function_args.get('commands', '')
             logger.debug(f"Running command: {command}")
             if settings.ENVIRONMENT == "local":
-                result = await run_command_locally(command, project_id=project_id, conversation_id=conversation_id)
+                result = await run_command_locally(command, project_id=project_id, conversation_id=conversation_id, ticket_id=ticket_id)
             else:
-                result = await run_command_in_k8s(command, project_id=project_id, conversation_id=conversation_id)
+                result = await run_command_in_k8s(command, project_id=project_id, conversation_id=conversation_id, ticket_id=ticket_id)
             return result
 
         case "provision_workspace":
             return await provision_vibe_workspace_tool(function_args, project_id, conversation_id)
 
         case "ssh_command":
-            return await ssh_command_tool(function_args, project_id, conversation_id)
+            return await ssh_command_tool(function_args, project_id, conversation_id, ticket_id)
 
         case "restart_vibe_dev_server":
             return await restart_vibe_dev_server_tool(function_args, project_id, conversation_id)
@@ -476,6 +478,12 @@ async def app_functions(function_name, function_args, project_id, conversation_i
 
         case "open_app_in_artifacts":
             return await open_app_in_artifacts_tool(function_args, project_id, conversation_id)
+
+        case "manage_ticket_tasks":
+            return await manage_ticket_tasks_tool(function_args, project_id, conversation_id)
+
+        case "run_code_server":
+            return await run_code_server_tool(function_args, project_id, conversation_id)
 
         case "start_server":
             command = function_args.get('start_server_command', '')
@@ -516,9 +524,9 @@ async def app_functions(function_name, function_args, project_id, conversation_i
             return await capture_name(action, project_name, project_id)
         
         case "web_search":
-            query = function_args.get('query')
-            logger.debug(f"Search Query: {query}")
-            return await web_search(query, conversation_id)
+            queries = function_args.get('queries', [])
+            logger.debug(f"Search Queries: {queries}")
+            return await web_search(queries, conversation_id)
         
         case "get_file_list":
             file_type = function_args.get('file_type', 'all')
@@ -1708,7 +1716,7 @@ async def create_tickets(function_args, project_id):
                 # Extract details from the ticket
                 details = ticket.get('details', {})
                 
-                new_ticket = await sync_to_async(ProjectChecklist.objects.create)(
+                new_ticket = await sync_to_async(ProjectTicket.objects.create)(
                     project=project,
                     name=ticket.get('name', ''),
                     description=ticket.get('description', ''),
@@ -1755,7 +1763,7 @@ async def get_next_ticket(project_id):
         }
     
     pending_ticket = await sync_to_async(
-        lambda: ProjectChecklist.objects.filter(project=project, status='open', role='agent').first()
+        lambda: ProjectTicket.objects.filter(project=project, status='open', role='agent').first()
     )()
     
     # Print ticket ID instead of the object to avoid triggering __str__ method
@@ -1792,7 +1800,7 @@ async def update_individual_checklist_ticket(project_id, ticket_id, status):
     try:
         # Get and update ticket in a single async operation
         await sync_to_async(lambda: (
-            ProjectChecklist.objects.filter(id=ticket_id).update(status=status)
+            ProjectTicket.objects.filter(id=ticket_id).update(status=status)
         ))()
 
         logger.info(f"Checklist ticket {ticket_id} has been successfully updated in the database. Proceed to next checklist item, unless otherwise specified by the user")
@@ -1818,7 +1826,7 @@ async def update_all_checklist_tickets(project_id, ticket_ids, status):
     try:
        # Get and update tickets with the specified IDs
         updated_count = await sync_to_async(lambda: (
-                ProjectChecklist.objects.filter(
+                ProjectTicket.objects.filter(
                     id__in=ticket_ids,
                 ).update(status=status)
             ))()
@@ -1856,7 +1864,7 @@ async def get_pending_tickets(project_id):
     
     project_tickets = await sync_to_async(
         lambda: list(
-            ProjectChecklist.objects.filter(project=project, role='agent')
+            ProjectTicket.objects.filter(project=project, role='agent')
             .order_by('created_at', 'id')
             .values('id', 'name', 'description', 'status', 'priority')
         )
@@ -1942,7 +1950,7 @@ async def get_github_access_token(project_id: int | str = None, conversation_id:
             "message_to_agent": f"Error getting user_id: {str(e)}"
         }
 
-async def run_command_in_k8s(command: str, project_id: int | str = None, conversation_id: int | str = None) -> dict:
+async def run_command_in_k8s(command: str, project_id: int | str = None, conversation_id: int | str = None, ticket_id: int = None) -> dict:
     """
     Run a command in the terminal using Kubernetes pod.
     """
@@ -1956,13 +1964,25 @@ async def run_command_in_k8s(command: str, project_id: int | str = None, convers
     logger.debug(f"Command: {command_to_run}")
 
     # Create command record in database
-    cmd_record = await sync_to_async(lambda: (
-        CommandExecution.objects.create(
-            project_id=project_id,
-            command=command,
-            output=None  # Will update after execution
-        )
-    ))()
+    try:
+        cmd_record = await sync_to_async(lambda: (
+            CommandExecution.objects.create(
+                project_id=project_id,
+                ticket_id=ticket_id,
+                command=command,
+                output=None  # Will update after execution
+            )
+        ))()
+    except TypeError:
+        # ticket_id field doesn't exist yet (migrations not run)
+        logger.warning("ticket_id field not available, creating command without it")
+        cmd_record = await sync_to_async(lambda: (
+            CommandExecution.objects.create(
+                project_id=project_id,
+                command=command,
+                output=None  # Will update after execution
+            )
+        ))()
 
     success = False
     stdout = ""
@@ -2422,7 +2442,7 @@ async def provision_vibe_workspace_tool(function_args, project_id, conversation_
         }
 
 
-async def ssh_command_tool(function_args, project_id, conversation_id):
+async def ssh_command_tool(function_args, project_id, conversation_id, ticket_id=None):
     """Execute a command inside the Magpie workspace via SSH."""
 
     if not magpie_available():
@@ -2517,11 +2537,21 @@ async def ssh_command_tool(function_args, project_id, conversation_id):
 
     project_identifier = project_id or (workspace.project.project_id if getattr(workspace, 'project', None) else None)
     if project_identifier:
-        await sync_to_async(CommandExecution.objects.create, thread_sensitive=True)(
-            project_id=project_identifier,
-            command=command,
-            output=_truncate_output(result.get('stdout') or result.get('stderr'), 4000)
-        )
+        try:
+            await sync_to_async(CommandExecution.objects.create, thread_sensitive=True)(
+                project_id=project_identifier,
+                ticket_id=ticket_id,
+                command=command,
+                output=_truncate_output(result.get('stdout') or result.get('stderr'), 4000)
+            )
+        except TypeError:
+            # ticket_id field doesn't exist yet (migrations not run)
+            logger.warning("ticket_id field not available, creating command without it")
+            await sync_to_async(CommandExecution.objects.create, thread_sensitive=True)(
+                project_id=project_identifier,
+                command=command,
+                output=_truncate_output(result.get('stdout') or result.get('stderr'), 4000)
+            )
 
     status_text = "completed successfully" if result.get('exit_code') == 0 else f"exited with code {result.get('exit_code')}"
     status_value = "completed" if result.get('exit_code') == 0 else "failed"
@@ -2730,7 +2760,7 @@ async def queue_ticket_execution_tool(function_args, project_id, conversation_id
     ticket_id_list = function_args.get('ticket_ids') or []
 
     # def _get_ticket_ids(ids):
-    #     queryset = ProjectChecklist.objects.filter(project=project, role='agent', status='open')
+    #     queryset = ProjectTicket.objects.filter(project=project, role='agent', status='open')
     #     if ids:
     #         queryset = queryset.filter(id__in=ids)
     #     return list(queryset.order_by('created_at', 'id').values_list('id', flat=True))
@@ -2807,6 +2837,224 @@ async def queue_ticket_execution_tool(function_args, project_id, conversation_id
         "message_to_agent": f"Queued {len(task_ids)} tickets for parallel background execution. Each ticket will run independently.",
         "ticket_ids": ticket_id_list,
         "task_ids": task_ids,
+        "notification_marker": "__NOTIFICATION__"
+    }
+
+
+async def manage_ticket_tasks_tool(function_args, project_id, conversation_id):
+    """
+    Manage tasks for a specific ticket. Can add new tasks, update existing tasks, or change task status.
+    """
+    logger.info("Manage ticket tasks tool called")
+    logger.debug(f"Function arguments: {function_args}")
+
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+
+    ticket_id = function_args.get('ticket_id')
+    action = function_args.get('action')
+    tasks_data = function_args.get('tasks', [])
+
+    if not ticket_id:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: ticket_id is required"
+        }
+
+    if not action:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: action is required (add, update, or update_status)"
+        }
+
+    try:
+        # Verify ticket exists
+        ticket = await sync_to_async(ProjectTicket.objects.get)(id=ticket_id)
+
+        if action == "add":
+            # Add new tasks
+            created_tasks = []
+            for task_data in tasks_data:
+                task = await sync_to_async(ProjectTaskList.objects.create)(
+                    ticket=ticket,
+                    name=task_data.get('name', ''),
+                    description=task_data.get('description', ''),
+                    status=task_data.get('status', 'pending'),
+                    order=task_data.get('order', 0)
+                )
+                created_tasks.append({
+                    'id': task.id,
+                    'name': task.name,
+                    'status': task.status
+                })
+
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Successfully created {len(created_tasks)} task(s) for ticket #{ticket_id}",
+                "created_tasks": created_tasks
+            }
+
+        elif action == "update":
+            # Update existing tasks
+            updated_tasks = []
+            for task_data in tasks_data:
+                task_id = task_data.get('task_id')
+                if not task_id:
+                    continue
+
+                task = await sync_to_async(ProjectTaskList.objects.get)(id=task_id, ticket=ticket)
+
+                if 'name' in task_data:
+                    task.name = task_data['name']
+                if 'description' in task_data:
+                    task.description = task_data['description']
+                if 'status' in task_data:
+                    task.status = task_data['status']
+                if 'order' in task_data:
+                    task.order = task_data['order']
+
+                await sync_to_async(task.save)()
+                updated_tasks.append({
+                    'id': task.id,
+                    'name': task.name,
+                    'status': task.status
+                })
+
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Successfully updated {len(updated_tasks)} task(s) for ticket #{ticket_id}",
+                "updated_tasks": updated_tasks
+            }
+
+        elif action == "update_status":
+            # Update task status only
+            updated_tasks = []
+            for task_data in tasks_data:
+                task_id = task_data.get('task_id')
+                new_status = task_data.get('status')
+
+                if not task_id or not new_status:
+                    continue
+
+                task = await sync_to_async(ProjectTaskList.objects.get)(id=task_id, ticket=ticket)
+                task.status = new_status
+                await sync_to_async(task.save)()
+
+                updated_tasks.append({
+                    'id': task.id,
+                    'name': task.name,
+                    'status': task.status
+                })
+
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Successfully updated status for {len(updated_tasks)} task(s) for ticket #{ticket_id}",
+                "updated_tasks": updated_tasks
+            }
+
+        else:
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Error: Invalid action '{action}'. Use 'add', 'update', or 'update_status'"
+            }
+
+    except ProjectTicket.DoesNotExist:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Ticket with ID {ticket_id} does not exist"
+        }
+    except ProjectTaskList.DoesNotExist:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: One or more tasks not found"
+        }
+    except Exception as e:
+        logger.error(f"Error managing ticket tasks: {str(e)}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error managing tasks: {str(e)}"
+        }
+
+
+async def run_code_server_tool(function_args, project_id, conversation_id):
+    """
+    Execute code via SSH on the Magpie server and open the app in the artifacts panel.
+    Uses default values if not specified: command='cd /workspace/nextjs-app && npm run dev', port=3000
+    """
+    logger.info("Run code server tool called")
+    logger.debug(f"Function arguments: {function_args}")
+
+    if not magpie_available():
+        return {
+            "is_notification": False,
+            "message_to_agent": "Magpie workspace is not available. Configure the Magpie SDK and API key to run apps."
+        }
+
+    # Get parameters with defaults
+    command = function_args.get('command', 'cd /workspace/nextjs-app && npm run dev')
+    port = function_args.get('port', 3000)
+    description = function_args.get('description', 'Starting development server')
+
+    project = await get_project(project_id) if project_id else None
+
+    # Fetch workspace
+    workspace = await _fetch_workspace(workspace_id=None, project=project, conversation_id=conversation_id)
+
+    if not workspace:
+        return {
+            "is_notification": False,
+            "message_to_agent": "No Magpie workspace found. Provision a workspace first using provision_workspace tool."
+        }
+
+    if workspace.status != 'ready':
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Workspace is not ready yet (status: {workspace.status}). Wait for provisioning to complete."
+        }
+
+    if not workspace.ipv6_address:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Workspace IPv6 address is not available. Try restarting the workspace."
+        }
+
+    # Execute the command via SSH
+    try:
+        client = get_magpie_client()
+        logger.info(f"Executing command on workspace: {command}")
+
+        # Execute the command in the background
+        result = await sync_to_async(client.run_command)(
+            workspace_id=workspace.workspace_id,
+            command=command,
+            timeout=10  # Short timeout as we're running in background
+        )
+
+        logger.info(f"Command execution result: {result}")
+
+    except Exception as exc:
+        logger.error(f"Error executing command: {exc}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error executing command: {str(exc)}"
+        }
+
+    # Construct the app URL
+    ipv6 = workspace.ipv6_address.strip('[]')
+    app_url = f"http://[{ipv6}]:{port}"
+
+    logger.info(f"App should be available at: {app_url}")
+
+    # Send notification to open the app in artifacts panel
+    return {
+        "is_notification": True,
+        "notification_type": "open_app",
+        "message_to_agent": f"{description}. The app should be starting at {app_url}",
+        "app_url": app_url,
+        "port": port,
+        "command": command,
+        "workspace_id": workspace.workspace_id,
         "notification_marker": "__NOTIFICATION__"
     }
 
@@ -2926,7 +3174,7 @@ async def open_app_in_artifacts_tool(function_args, project_id, conversation_id)
     }
 
 
-async def run_command_locally(command: str, project_id: int | str = None, conversation_id: int | str = None) -> dict:
+async def run_command_locally(command: str, project_id: int | str = None, conversation_id: int | str = None, ticket_id: int = None) -> dict:
     """
     Run a command in the local terminal using subprocess.
     Creates a local workspace directory if it doesn't exist.
@@ -2935,18 +3183,30 @@ async def run_command_locally(command: str, project_id: int | str = None, conver
     # Create workspace directory if it doesn't exist
     workspace_path = Path.home() / "LFG" / "workspace" / project.name
     workspace_path.mkdir(parents=True, exist_ok=True)
-    
+
     command_to_run = f"cd {workspace_path} && {command}"
     logger.debug(f"Local Command: {command_to_run}")
 
     # Create command record in database
-    cmd_record = await sync_to_async(lambda: (
-        CommandExecution.objects.create(
-            project_id=project_id,
-            command=command,
-            output=None  # Will update after execution
-        )
-    ))()
+    try:
+        cmd_record = await sync_to_async(lambda: (
+            CommandExecution.objects.create(
+                project_id=project_id,
+                ticket_id=ticket_id,
+                command=command,
+                output=None  # Will update after execution
+            )
+        ))()
+    except TypeError:
+        # ticket_id field doesn't exist yet (migrations not run)
+        logger.warning("ticket_id field not available, creating command without it")
+        cmd_record = await sync_to_async(lambda: (
+            CommandExecution.objects.create(
+                project_id=project_id,
+                command=command,
+                output=None  # Will update after execution
+            )
+        ))()
 
     success = False
     stdout = ""
@@ -3835,7 +4095,7 @@ async def save_ticket_from_stream(ticket_data, project_id):
     
     try:
         # Create ticket with enhanced details
-        new_ticket = await sync_to_async(ProjectChecklist.objects.create)(
+        new_ticket = await sync_to_async(ProjectTicket.objects.create)(
             project=project,
             name=ticket_data.get('name', ''),
             description=ticket_data.get('description', ''),
@@ -3867,69 +4127,87 @@ async def save_ticket_from_stream(ticket_data, project_id):
 # Only to be used with OpenAIProvider
 # As OpenAI doesn't support web search tool yet
 # Claude does.
-async def web_search(query, conversation_id=None):
+async def web_search(queries, conversation_id=None):
     """
-    Perform a web search using OpenAI's web search capabilities.
+    Perform web searches using OpenAI's web search capabilities.
     This function is only available for OpenAI provider.
-    
+
     Args:
-        query: The search query string
+        queries: List of search query strings
         conversation_id: The conversation ID (optional)
-        
+
     Returns:
-        Dict with search results or error message
+        Dict with combined search results or error message
     """
-    logger.info(f"Web search function called with query: {query}")
-    
-    if not query:
+    logger.info(f"Web search function called with {len(queries)} queries: {queries}")
+
+    if not queries or not isinstance(queries, list):
         return {
             "is_notification": False,
-            "message_to_agent": "Error: query is required for web search"
+            "message_to_agent": "Error: queries must be a non-empty list of search queries"
         }
-    
+
     try:
         # Get user and conversation details
         model = "gpt-5-nano"  # Default model
-        
+
         # Get OpenAI API key
         openai_api_key = os.environ.get('OPENAI_API_KEY')
-        
+
         # Initialize OpenAI client
         import openai
         client = openai.OpenAI(api_key=openai_api_key)
-        
+
         logger.info(f"Using model {model} for web search")
-        
-        # Make the search request using OpenAI's responses.create API
-        response = client.responses.create(
-            model=model,
-            tools=[{"type": "web_search_preview"}],
-            input=query
-        )
-        
-        # Extract the search results from the response
-        if response:
-            # Convert response to string format
-            search_results = str(response)
-            
-            logger.info(f"Web search completed successfully for query: {query}")
-            
+
+        # Loop through each query and collect results
+        all_results = []
+        for idx, query in enumerate(queries, 1):
+            if not query or not isinstance(query, str):
+                logger.warning(f"Skipping invalid query at index {idx}: {query}")
+                continue
+
+            logger.info(f"Searching query {idx}/{len(queries)}: {query}")
+
+            try:
+                # Make the search request using OpenAI's responses.create API
+                response = client.responses.create(
+                    model=model,
+                    tools=[{"type": "web_search_preview"}],
+                    input=query
+                )
+
+                # Extract the search results from the response
+                if response:
+                    search_results = str(response)
+                    all_results.append(f"### Query {idx}: {query}\n\n{search_results}\n")
+                    logger.info(f"Web search completed successfully for query {idx}: {query}")
+                else:
+                    all_results.append(f"### Query {idx}: {query}\n\nNo results found\n")
+
+            except Exception as query_error:
+                logger.error(f"Error searching query {idx} '{query}': {str(query_error)}")
+                all_results.append(f"### Query {idx}: {query}\n\nError: {str(query_error)}\n")
+
+        # Combine all results
+        if all_results:
+            combined_results = "\n---\n\n".join(all_results)
             return {
                 "is_notification": False,
                 "notification_type": "toolhistory",
-                "message_to_agent": f"Web search results for '{query}':\n\n{search_results}"
+                "message_to_agent": f"Web search results for {len(queries)} queries:\n\n{combined_results}"
             }
         else:
             return {
                 "is_notification": False,
-                "message_to_agent": "No search results found"
+                "message_to_agent": "No valid queries provided or all searches failed"
             }
-            
+
     except Exception as e:
-        logger.error(f"Error performing web search: {str(e)}")
+        logger.error(f"Error performing web searches: {str(e)}")
         return {
             "is_notification": False,
-            "message_to_agent": f"Error performing web search: {str(e)}"
+            "message_to_agent": f"Error performing web searches: {str(e)}"
         }
 
 async def get_file_list(project_id, file_type="all", limit=10):

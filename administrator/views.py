@@ -9,7 +9,7 @@ from django.utils import timezone
 from datetime import timedelta
 
 from .middleware import superadmin_required
-from projects.models import Project, ProjectPRD, ProjectImplementation, ProjectChecklist
+from projects.models import Project, ProjectPRD, ProjectImplementation, ProjectTicket
 from chat.models import Conversation, Message
 from accounts.models import Profile, TokenUsage
 
@@ -100,10 +100,10 @@ def api_user_stats(request, user_id):
             ).count(),
         },
         'tickets': {
-            'total': ProjectChecklist.objects.filter(project__owner=user).count(),
-            'open': ProjectChecklist.objects.filter(project__owner=user, status='open').count(),
-            'in_progress': ProjectChecklist.objects.filter(project__owner=user, status='in_progress').count(),
-            'done': ProjectChecklist.objects.filter(project__owner=user, status='done').count(),
+            'total': ProjectTicket.objects.filter(project__owner=user).count(),
+            'open': ProjectTicket.objects.filter(project__owner=user, status='open').count(),
+            'in_progress': ProjectTicket.objects.filter(project__owner=user, status='in_progress').count(),
+            'done': ProjectTicket.objects.filter(project__owner=user, status='done').count(),
         },
         'messages': {
             'total': Message.objects.filter(conversation__user=user).count(),
@@ -145,8 +145,8 @@ def api_project_details(request, project_id):
         'features_count': project.features.count(),
         'personas_count': project.personas.count(),
         'checklist_items': {
-            'total': project.checklist.count(),
-            'by_status': dict(project.checklist.values('status').annotate(count=Count('id')).values_list('status', 'count'))
+            'total': project.tickets.count(),
+            'by_status': dict(project.tickets.values('status').annotate(count=Count('id')).values_list('status', 'count'))
         },
         'conversations_count': project.direct_conversations.count(),
     }
@@ -160,7 +160,7 @@ def api_project_details(request, project_id):
         data['implementation_content'] = project.implementation.implementation
     
     # Include tickets details
-    tickets = project.checklist.all().values('id', 'name', 'status', 'priority', 'description')[:20]  # Limit to 20 tickets
+    tickets = project.tickets.all().values('id', 'name', 'status', 'priority', 'description')[:20]  # Limit to 20 tickets
     data['tickets'] = list(tickets)
     
     return JsonResponse(data)

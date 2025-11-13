@@ -191,8 +191,8 @@ class ProjectDesignSchema(models.Model):
         return self.design_schema
     
     
-class ProjectChecklist(models.Model):
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="checklist")
+class ProjectTicket(models.Model):
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="tickets")
     name = models.CharField(max_length=255)
     status = models.CharField(max_length=20, choices=(
         ('open', 'Open'),
@@ -257,6 +257,29 @@ class ProjectChecklist(models.Model):
 
     class Meta:
         ordering = ['created_at', 'id']
+
+
+class ProjectTaskList(models.Model):
+    """Model to store tasks associated with each project ticket"""
+    ticket = models.ForeignKey(ProjectTicket, on_delete=models.CASCADE, related_name="tasks")
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True, null=True)
+    status = models.CharField(max_length=20, choices=(
+        ('pending', 'Pending'),
+        ('in_progress', 'In Progress'),
+        ('success', 'Success'),
+        ('fail', 'Fail'),
+    ), default='pending')
+    order = models.IntegerField(default=0, help_text='Order of task execution')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.ticket.name} - {self.name}"
+
+    class Meta:
+        ordering = ['order', 'created_at', 'id']
+
 
 class ProjectCodeGeneration(models.Model):
     project = models.OneToOneField(Project, on_delete=models.CASCADE, related_name="code_generation")

@@ -661,6 +661,87 @@ queue_ticket_execution = {
     }
 }
 
+manage_ticket_tasks = {
+    "type": "function",
+    "function": {
+        "name": "manage_ticket_tasks",
+        "description": "Manage tasks for a specific ticket. Can add new tasks, update existing tasks, or change task status. Each ticket can have multiple tasks that track the implementation progress.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "ticket_id": {
+                    "type": "integer",
+                    "description": "The ID of the ticket these tasks belong to"
+                },
+                "action": {
+                    "type": "string",
+                    "enum": ["add", "update", "update_status"],
+                    "description": "The action to perform: 'add' to create new tasks, 'update' to modify task details, 'update_status' to change task status"
+                },
+                "tasks": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "task_id": {
+                                "type": "integer",
+                                "description": "Task ID (required for update and update_status actions)"
+                            },
+                            "name": {
+                                "type": "string",
+                                "description": "Task name/title"
+                            },
+                            "description": {
+                                "type": "string",
+                                "description": "Detailed description of the task"
+                            },
+                            "status": {
+                                "type": "string",
+                                "enum": ["pending", "in_progress", "success", "fail"],
+                                "description": "Current status of the task"
+                            },
+                            "order": {
+                                "type": "integer",
+                                "description": "Execution order of the task (0-indexed)"
+                            }
+                        }
+                    },
+                    "description": "Array of task objects to add or update"
+                }
+            },
+            "required": ["ticket_id", "action", "tasks"],
+            "additionalProperties": False,
+        }
+    }
+}
+
+run_code_server = {
+    "type": "function",
+    "function": {
+        "name": "run_code_server",
+        "description": "Execute code/commands via SSH on the remote Magpie server and start a development server. This will run the specified command and make the app available at the given port. The app URL will be opened in the artifacts browser panel.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "string",
+                    "description": "The shell command to execute (e.g., 'cd /workspace/nextjs-app && npm run dev'). Default: 'cd /workspace/nextjs-app && npm run dev'"
+                },
+                "port": {
+                    "type": "integer",
+                    "description": "The port where the application will be running. Default: 3000"
+                },
+                "description": {
+                    "type": "string",
+                    "description": "A brief description of what this command does (e.g., 'Starting Next.js development server')"
+                }
+            },
+            "required": [],
+            "additionalProperties": False,
+        }
+    }
+}
+
 start_server = {
     "type": "function",
     "function": {
@@ -1059,7 +1140,9 @@ tools_builder = [
     get_pending_tickets,
     restart_vibe_dev_server,
     update_ticket,
-    ssh_command
+    ssh_command,
+    manage_ticket_tasks,
+    run_code_server
 ]
 
 tools_design = [get_prd, execute_command, start_server, get_github_access_token]

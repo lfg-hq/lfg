@@ -2024,7 +2024,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 })
                 .then(data => {
                     console.log('[ArtifactsLoader] Tickets API data received:', data);
-                    const tickets = data.checklist || [];
+                    const tickets = data.tickets || [];
                     console.log(`[ArtifactsLoader] Found ${tickets.length} tickets`);
 
                     if (tickets.length === 0) {
@@ -2522,7 +2522,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 .then(data => {
                     console.log('[ArtifactsLoader] Checklist API data received:', data);
                     // Process checklist data
-                    const checklist = data.checklist || [];
+                    const checklist = data.tickets || [];
                     console.log(`[ArtifactsLoader] Found ${checklist.length} checklist items`);
 
                     const modalHelpers = this.getTicketModalHelpers();
@@ -4632,7 +4632,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const conversationId = window.conversationId || null;
 
             // Queue the ticket for execution via API
-            fetch(`/api/v1/project-checklist/${ticketId}/queue-execution/`, {
+            fetch(`/api/v1/project-tickets/${ticketId}/queue-execution/`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -4715,9 +4715,9 @@ document.addEventListener('DOMContentLoaded', function() {
             drawer.innerHTML = `
                 <div class="logs-drawer">
                     <div class="logs-drawer-header">
-                        <h3><i class="fas fa-terminal"></i> Ticket Execution Logs</h3>
+                        <h3><i class="fas fa-terminal"></i> Ticket Details</h3>
                         <div class="logs-drawer-actions">
-                            <button class="logs-drawer-refresh" title="Refresh logs">
+                            <button class="logs-drawer-refresh" title="Refresh">
                                 <i class="fas fa-sync-alt"></i>
                             </button>
                             <button class="logs-drawer-close" title="Close">
@@ -4725,9 +4725,24 @@ document.addEventListener('DOMContentLoaded', function() {
                             </button>
                         </div>
                     </div>
+                    <div class="logs-drawer-tabs">
+                        <button class="logs-tab-btn active" data-tab="logs">
+                            <i class="fas fa-terminal"></i> Logs
+                        </button>
+                        <button class="logs-tab-btn" data-tab="tasks">
+                            <i class="fas fa-list-check"></i> Tasks
+                        </button>
+                    </div>
                     <div class="logs-drawer-content">
-                        <div class="logs-loading">
-                            <i class="fas fa-spinner fa-spin"></i> Loading logs...
+                        <div id="logs-tab-content" class="tab-content-panel active">
+                            <div class="logs-loading">
+                                <i class="fas fa-spinner fa-spin"></i> Loading logs...
+                            </div>
+                        </div>
+                        <div id="tasks-tab-content" class="tab-content-panel">
+                            <div class="logs-loading">
+                                <i class="fas fa-spinner fa-spin"></i> Loading tasks...
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -4781,6 +4796,40 @@ document.addEventListener('DOMContentLoaded', function() {
                         display: flex;
                         align-items: center;
                         gap: 10px;
+                    }
+                    .logs-drawer-tabs {
+                        display: flex;
+                        gap: 0;
+                        background: #1a1a1a;
+                        border-bottom: 1px solid #333;
+                        padding: 0 20px;
+                    }
+                    .logs-tab-btn {
+                        background: none;
+                        border: none;
+                        color: #999;
+                        padding: 12px 20px;
+                        cursor: pointer;
+                        font-size: 14px;
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                        border-bottom: 2px solid transparent;
+                        transition: all 0.2s;
+                    }
+                    .logs-tab-btn:hover {
+                        color: #fff;
+                        background: rgba(255, 255, 255, 0.05);
+                    }
+                    .logs-tab-btn.active {
+                        color: #4a9eff;
+                        border-bottom-color: #4a9eff;
+                    }
+                    .tab-content-panel {
+                        display: none;
+                    }
+                    .tab-content-panel.active {
+                        display: block;
                     }
                     .logs-drawer-actions {
                         display: flex;
@@ -4871,14 +4920,108 @@ document.addEventListener('DOMContentLoaded', function() {
                         color: #666;
                         padding: 60px 20px;
                     }
+                    .task-item {
+                        background: #0d0d0d;
+                        border: 1px solid #333;
+                        border-radius: 6px;
+                        padding: 16px;
+                        margin-bottom: 12px;
+                        display: flex;
+                        align-items: flex-start;
+                        gap: 12px;
+                        transition: all 0.2s;
+                    }
+                    .task-item:hover {
+                        border-color: #4a9eff;
+                        background: #111;
+                    }
+                    .task-icon {
+                        width: 24px;
+                        height: 24px;
+                        border-radius: 50%;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        flex-shrink: 0;
+                        font-size: 12px;
+                        margin-top: 2px;
+                    }
+                    .task-icon.pending {
+                        background: rgba(156, 163, 175, 0.2);
+                        color: #9ca3af;
+                        border: 2px solid #4b5563;
+                    }
+                    .task-icon.in_progress {
+                        background: rgba(59, 130, 246, 0.2);
+                        color: #60a5fa;
+                        border: 2px solid #3b82f6;
+                    }
+                    .task-icon.success {
+                        background: rgba(16, 185, 129, 0.2);
+                        color: #10b981;
+                        border: 2px solid #10b981;
+                    }
+                    .task-icon.fail {
+                        background: rgba(239, 68, 68, 0.2);
+                        color: #ef4444;
+                        border: 2px solid #ef4444;
+                    }
+                    .task-content {
+                        flex: 1;
+                    }
+                    .task-name {
+                        color: #fff;
+                        font-weight: 600;
+                        margin-bottom: 6px;
+                        font-size: 14px;
+                    }
+                    .task-description {
+                        color: #999;
+                        font-size: 13px;
+                        line-height: 1.5;
+                    }
+                    .task-status-badge {
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 6px;
+                        padding: 4px 10px;
+                        border-radius: 12px;
+                        font-size: 11px;
+                        font-weight: 600;
+                        text-transform: uppercase;
+                        letter-spacing: 0.5px;
+                        margin-top: 8px;
+                    }
+                    .task-status-badge.pending {
+                        background: rgba(156, 163, 175, 0.15);
+                        color: #9ca3af;
+                    }
+                    .task-status-badge.in_progress {
+                        background: rgba(59, 130, 246, 0.15);
+                        color: #60a5fa;
+                    }
+                    .task-status-badge.success {
+                        background: rgba(16, 185, 129, 0.15);
+                        color: #10b981;
+                    }
+                    .task-status-badge.fail {
+                        background: rgba(239, 68, 68, 0.15);
+                        color: #ef4444;
+                    }
                 `;
                 document.head.appendChild(style);
             }
 
             // Function to load/reload logs
             const loadLogs = () => {
-                const content = drawer.querySelector('.logs-drawer-content');
+                console.log('[ArtifactsLoader] Loading logs for ticket:', ticketId);
+                const content = drawer.querySelector('#logs-tab-content');
                 const refreshBtn = drawer.querySelector('.logs-drawer-refresh');
+
+                if (!content) {
+                    console.error('[ArtifactsLoader] #logs-tab-content element not found at start of loadLogs');
+                    return;
+                }
 
                 // Show loading state
                 content.innerHTML = '<div class="logs-loading"><i class="fas fa-spinner fa-spin"></i> Loading logs...</div>';
@@ -4888,8 +5031,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     refreshBtn.classList.add('refreshing');
                 }
 
-                console.log(`[ArtifactsLoader] Fetching logs from: /api/v1/project-checklist/${ticketId}/logs/`);
-                fetch(`/api/v1/project-checklist/${ticketId}/logs/`)
+                console.log(`[ArtifactsLoader] Fetching logs from: /api/v1/project-tickets/${ticketId}/logs/`);
+                fetch(`/api/v1/project-tickets/${ticketId}/logs/`)
                 .then(response => {
                     console.log('[ArtifactsLoader] Response status:', response.status);
                     if (!response.ok) {
@@ -4906,7 +5049,14 @@ document.addEventListener('DOMContentLoaded', function() {
                         header.innerHTML = `<i class="fas fa-terminal"></i> ${data.ticket_name} - Execution Logs`;
                     }
 
-                    const content = drawer.querySelector('.logs-drawer-content');
+                    const content = drawer.querySelector('#logs-tab-content');
+                    if (!content) {
+                        console.error('[ArtifactsLoader] #logs-tab-content element not found');
+                        if (refreshBtn) {
+                            refreshBtn.classList.remove('refreshing');
+                        }
+                        return;
+                    }
 
                     if (!data.commands || data.commands.length === 0) {
                         content.innerHTML = `
@@ -4916,10 +5066,23 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <p style="font-size: 12px; color: #555;">Logs will appear here after the ticket is executed.</p>
                             </div>
                         `;
+
+                        // Remove refreshing animation
+                        if (refreshBtn) {
+                            refreshBtn.classList.remove('refreshing');
+                        }
                         return;
                     }
 
                     let html = '';
+
+                    // Helper function to escape HTML
+                    const escapeHtml = (text) => {
+                        if (!text) return '';
+                        const div = document.createElement('div');
+                        div.textContent = text;
+                        return div.innerHTML;
+                    };
 
                     // Show ticket notes if available
                     if (data.ticket_notes) {
@@ -4928,7 +5091,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <div class="logs-section-header">
                                     <i class="fas fa-clipboard-list"></i> Execution Summary
                                 </div>
-                                <div class="logs-section-content">${data.ticket_notes}</div>
+                                <div class="logs-section-content">${escapeHtml(data.ticket_notes)}</div>
                             </div>
                         `;
                     }
@@ -4943,8 +5106,8 @@ document.addEventListener('DOMContentLoaded', function() {
                                     <span class="log-timestamp" style="margin-left: auto;">${timestamp}</span>
                                 </div>
                                 <div class="logs-section-content">
-                                    <div class="log-command">$ ${cmd.command}</div>
-                                    ${cmd.output ? `<div class="log-output">${cmd.output}</div>` : '<div class="log-output" style="color: #666;">(no output)</div>'}
+                                    <div class="log-command">$ ${escapeHtml(cmd.command)}</div>
+                                    ${cmd.output ? `<div class="log-output">${escapeHtml(cmd.output)}</div>` : '<div class="log-output" style="color: #666;">(no output)</div>'}
                                 </div>
                             </div>
                         `;
@@ -4959,14 +5122,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 })
                 .catch(error => {
                     console.error('[ArtifactsLoader] Error fetching logs:', error);
-                    const content = drawer.querySelector('.logs-drawer-content');
-                    content.innerHTML = `
-                        <div class="logs-empty">
-                            <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 16px; color: #f99;"></i>
-                            <p class="log-error">Failed to load execution logs</p>
-                            <p style="font-size: 12px; color: #888;">${error.message}</p>
-                        </div>
-                    `;
+                    const content = drawer.querySelector('#logs-tab-content');
+                    if (content) {
+                        content.innerHTML = `
+                            <div class="logs-empty">
+                                <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 16px; color: #f99;"></i>
+                                <p class="log-error">Failed to load execution logs</p>
+                                <p style="font-size: 12px; color: #888;">${error.message}</p>
+                            </div>
+                        `;
+                    }
 
                     // Remove refreshing animation
                     if (refreshBtn) {
@@ -4975,6 +5140,123 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
             };
 
+            // Function to load/reload tasks
+            const loadTasks = () => {
+                console.log('[ArtifactsLoader] Loading tasks for ticket:', ticketId);
+                const tasksContent = drawer.querySelector('#tasks-tab-content');
+                const refreshBtn = drawer.querySelector('.logs-drawer-refresh');
+
+                if (!tasksContent) {
+                    console.error('[ArtifactsLoader] #tasks-tab-content element not found');
+                    if (refreshBtn) {
+                        refreshBtn.classList.remove('refreshing');
+                    }
+                    return;
+                }
+
+                if (refreshBtn) {
+                    refreshBtn.classList.add('refreshing');
+                }
+
+                tasksContent.innerHTML = '<div class="logs-loading"><i class="fas fa-spinner fa-spin"></i> Loading tasks...</div>';
+
+                fetch(`/api/v1/project-tickets/${ticketId}/tasks/`)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log('[ArtifactsLoader] Tasks loaded:', data);
+
+                        if (!data.tasks || data.tasks.length === 0) {
+                            tasksContent.innerHTML = '<div class="logs-empty"><i class="fas fa-info-circle" style="font-size: 32px; margin-bottom: 12px; color: #888;"></i><p>No tasks defined for this ticket yet.</p></div>';
+                            if (refreshBtn) {
+                                refreshBtn.classList.remove('refreshing');
+                            }
+                            return;
+                        }
+
+                        let html = '';
+                        data.tasks.forEach(task => {
+                            const statusIcon = {
+                                'pending': '○',
+                                'in_progress': '◐',
+                                'success': '✓',
+                                'fail': '✗'
+                            }[task.status] || '○';
+
+                            const escapedName = (task.name || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                            const escapedDescription = (task.description || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+                            html += `
+                                <div class="task-item">
+                                    <div class="task-icon ${task.status}">${statusIcon}</div>
+                                    <div class="task-content">
+                                        <div class="task-name">${escapedName}</div>
+                                        ${escapedDescription ? `<div class="task-description">${escapedDescription}</div>` : ''}
+                                        <span class="task-status-badge ${task.status}">${task.status.replace('_', ' ')}</span>
+                                    </div>
+                                </div>
+                            `;
+                        });
+
+                        tasksContent.innerHTML = html;
+
+                        if (refreshBtn) {
+                            refreshBtn.classList.remove('refreshing');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('[ArtifactsLoader] Error loading tasks:', error);
+                        if (tasksContent) {
+                            tasksContent.innerHTML = `
+                                <div class="logs-empty">
+                                    <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 16px; color: #f99;"></i>
+                                    <p class="log-error">Failed to load tasks</p>
+                                    <p style="font-size: 12px; color: #888;">${error.message}</p>
+                                </div>
+                            `;
+                        }
+
+                        if (refreshBtn) {
+                            refreshBtn.classList.remove('refreshing');
+                        }
+                    });
+            };
+
+            // Tab switching logic
+            drawer.querySelectorAll('.logs-tab-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const tab = btn.dataset.tab;
+                    console.log('[ArtifactsLoader] Switching to tab:', tab);
+
+                    // Update active states
+                    drawer.querySelectorAll('.logs-tab-btn').forEach(b => b.classList.remove('active'));
+                    drawer.querySelectorAll('.tab-content-panel').forEach(p => p.classList.remove('active'));
+                    btn.classList.add('active');
+
+                    const tabContent = drawer.querySelector(`#${tab}-tab-content`);
+                    if (tabContent) {
+                        tabContent.classList.add('active');
+                    } else {
+                        console.error(`[ArtifactsLoader] Tab content #${tab}-tab-content not found`);
+                    }
+
+                    // Load tasks when switching to tasks tab for the first time
+                    if (tab === 'tasks') {
+                        const tasksContent = drawer.querySelector('#tasks-tab-content');
+                        // Check if tasks haven't been loaded yet (still has placeholder loading spinner)
+                        const hasPlaceholder = tasksContent && tasksContent.innerHTML.includes('Loading tasks...');
+                        if (tasksContent && (hasPlaceholder || !tasksContent.dataset.loaded)) {
+                            tasksContent.dataset.loaded = 'true';
+                            loadTasks();
+                        }
+                    }
+                });
+            });
+
             // Close button handler
             drawer.querySelector('.logs-drawer-close').addEventListener('click', () => {
                 drawer.style.animation = 'fadeOut 0.2s ease';
@@ -4982,12 +5264,23 @@ document.addEventListener('DOMContentLoaded', function() {
                 setTimeout(() => drawer.remove(), 300);
             });
 
-            // Refresh button handler
+            // Refresh button handler - updated to work with both tabs
             const refreshBtn = drawer.querySelector('.logs-drawer-refresh');
             if (refreshBtn) {
                 refreshBtn.addEventListener('click', () => {
-                    console.log('[ArtifactsLoader] Refresh logs button clicked');
-                    loadLogs();
+                    const activeTabBtn = drawer.querySelector('.logs-tab-btn.active');
+                    if (!activeTabBtn) {
+                        console.error('[ArtifactsLoader] No active tab button found');
+                        return;
+                    }
+                    const activeTab = activeTabBtn.dataset.tab;
+                    console.log('[ArtifactsLoader] Refresh button clicked for tab:', activeTab);
+
+                    if (activeTab === 'logs') {
+                        loadLogs();
+                    } else if (activeTab === 'tasks') {
+                        loadTasks();
+                    }
                 });
             }
 
@@ -8379,7 +8672,7 @@ window.editChecklistItem = function(itemId) {
     fetch(`/projects/${projectId}/api/checklist/`)
         .then(response => response.json())
         .then(data => {
-            const checklist = data.checklist || [];
+            const checklist = data.tickets || [];
             const item = checklist.find(i => i.id == itemId);
 
             if (!item) {

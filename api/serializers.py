@@ -3,7 +3,7 @@ from django.contrib.auth.models import User
 from accounts.models import Profile, LLMApiKeys
 from subscriptions.models import PaymentPlan
 from chat.models import Conversation, Message
-from projects.models import Project, ProjectFile, ProjectChecklist
+from projects.models import Project, ProjectFile, ProjectTicket, ProjectTaskList
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -191,7 +191,7 @@ class ProjectSerializer(serializers.ModelSerializer):
         annotated = getattr(obj, 'tickets_count', None)
         if annotated is not None:
             return annotated
-        return obj.checklist.count()
+        return obj.tickets.count()
 
     def get_code_chunks(self, obj: Project):
         indexed_repo = getattr(obj, 'indexed_repository', None)
@@ -216,17 +216,34 @@ class ProjectDocumentSerializer(serializers.ModelSerializer):
         return obj.file_content
 
 
-class ProjectChecklistItemSerializer(serializers.ModelSerializer):
+class ProjectTicketSerializer(serializers.ModelSerializer):
     project_id = serializers.CharField(source='project.project_id', read_only=True)
+    tasks = serializers.SerializerMethodField()
 
     class Meta:
-        model = ProjectChecklist
+        model = ProjectTicket
         fields = [
             'id', 'project_id', 'name', 'status', 'priority', 'role',
             'details', 'ui_requirements', 'component_specs',
             'acceptance_criteria', 'dependencies', 'notes', 'complexity',
             'requires_worktree', 'linear_issue_id', 'linear_issue_url',
             'linear_state', 'linear_priority', 'linear_assignee_id',
-            'linear_synced_at', 'linear_sync_enabled', 'created_at', 'updated_at'
+            'linear_synced_at', 'linear_sync_enabled', 'created_at', 'updated_at', 'tasks'
+        ]
+        read_only_fields = fields
+
+    def get_tasks(self, obj):
+        from api.serializers import ProjectTaskSerializer
+        return ProjectTaskSerializer(obj.tasks.all(), many=True).data
+
+
+class ProjectTaskSerializer(serializers.ModelSerializer):
+    ticket_id = serializers.IntegerField(source='ticket.id', read_only=True)
+
+    class Meta:
+        model = ProjectTaskList
+        fields = [
+            'id', 'ticket_id', 'name', 'description', 'status', 'order',
+            'created_at', 'updated_at'
         ]
         read_only_fields = fields

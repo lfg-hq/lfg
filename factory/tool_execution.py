@@ -274,13 +274,16 @@ async def execute_tool_call(
         pending_json = json.dumps(pending_notification)
         yield_chunks.append(f"__NOTIFICATION__{pending_json}__NOTIFICATION__")
 
+        # Extract ticket_id from ticket_context for command logging
+        ticket_id = int(ticket_context.get("id")) if ticket_context.get("id") else None
+
         # Log the function call with clean arguments
-        logger.debug(f"Calling app_functions with {tool_call_name}, {parsed_args}, {project_id}, {conversation_id}")
-        
+        logger.debug(f"Calling app_functions with {tool_call_name}, {parsed_args}, {project_id}, {conversation_id}, ticket_id={ticket_id}")
+
         # Execute the function
         try:
             tool_result = await app_functions(
-                tool_call_name, parsed_args, project_id, conversation_id
+                tool_call_name, parsed_args, project_id, conversation_id, ticket_id
             )
             logger.debug(f"app_functions call successful for {tool_call_name}")
         except Exception as func_error:

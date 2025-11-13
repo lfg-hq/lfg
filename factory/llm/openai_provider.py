@@ -386,13 +386,17 @@ class OpenAIProvider(BaseLLMProvider):
             "type": "function",
             "function": {
                 "name": "web_search",
-                "description": "Search the web",
+                "description": "Search the web with multiple queries. Each query will be searched independently and results combined.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "query": {"type": "string"}
+                        "queries": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of search queries to execute"
+                        }
                     },
-                    "required": ["query"]
+                    "required": ["queries"]
                 }
             }
         }
@@ -419,6 +423,15 @@ class OpenAIProvider(BaseLLMProvider):
                 # Variables for this specific API call
                 tool_calls_requested = [] # Stores {id, function_name, function_args_str}
                 full_assistant_message = {"role": "assistant", "content": None, "tool_calls": []} # To store the complete assistant turn
+
+                def append_assistant_text(text: Optional[str]):
+                    nonlocal total_assistant_output
+                    if not text:
+                        return
+                    total_assistant_output += text
+                    if full_assistant_message["content"] is None:
+                        full_assistant_message["content"] = ""
+                    full_assistant_message["content"] += text
 
                 logger.debug("New Loop!!")
                 
@@ -462,8 +475,7 @@ class OpenAIProvider(BaseLLMProvider):
                     if delta.content:
                         text = delta.content
                         
-                        # Capture ALL assistant output for token counting
-                        total_assistant_output += text
+                        append_assistant_text(text)
                         logger.debug(f"Captured {len(text)} chars of assistant output, total: {len(total_assistant_output)}")
                         
                         # Process text through tag handler
@@ -477,6 +489,11 @@ class OpenAIProvider(BaseLLMProvider):
                         
                         # Yield notification if present
                         if notification:
+                            message_to_agent = notification.get("message_to_agent") if isinstance(notification, dict) else None
+                            if message_to_agent:
+                                logger.debug(f"[OPENAI] Yielding message_to_agent from notification: {message_to_agent[:200]}")
+                                append_assistant_text(message_to_agent)
+                                yield message_to_agent
                             yield format_notification(notification)
                         
                         # Yield output text if present
@@ -490,15 +507,17 @@ class OpenAIProvider(BaseLLMProvider):
                         for immediate_notification in immediate_notifications:
                             logger.info(f"[OPENAI] Yielding immediate notification: {immediate_notification.get('notification_type')}")
                             logger.info(f"[OPENAI] Full notification data: {immediate_notification}")
+                            message_to_agent = immediate_notification.get("message_to_agent") if isinstance(immediate_notification, dict) else None
+                            if message_to_agent:
+                                logger.debug(f"[OPENAI] Yielding message_to_agent from immediate notification: {message_to_agent[:200]}")
+                                append_assistant_text(message_to_agent)
+                                yield message_to_agent
                             formatted = format_notification(immediate_notification)
                             logger.info(f"[OPENAI] Formatted notification: {formatted[:200]}...")
                             yield formatted
                         
                         # Update the full assistant message
-                        if full_assistant_message["content"] is None:
-                            full_assistant_message["content"] = ""
-                        full_assistant_message["content"] += text
-
+                        # Content already appended via helper
                     # --- Accumulate Tool Call Details --- 
                     if delta.tool_calls:
                         for tool_call_chunk in delta.tool_calls:
@@ -637,6 +656,11 @@ class OpenAIProvider(BaseLLMProvider):
                         pending_notifications.append(unclosed_save)
                     for notification in pending_notifications:
                         logger.info(f"[OPENAI] Yielding pending notification: {notification}")
+                        message_to_agent = notification.get("message_to_agent") if isinstance(notification, dict) else None
+                        if message_to_agent:
+                            logger.debug(f"[OPENAI] Yielding message_to_agent from pending notification: {message_to_agent[:200]}")
+                            append_assistant_text(message_to_agent)
+                            yield message_to_agent
                         formatted = format_notification(notification)
                         yield formatted
                     
@@ -652,6 +676,11 @@ class OpenAIProvider(BaseLLMProvider):
                         save_notifications.append(unclosed_save2)
                     for notification in save_notifications:
                         logger.info(f"[OPENAI] Yielding save notification: {notification}")
+                        message_to_agent = notification.get("message_to_agent") if isinstance(notification, dict) else None
+                        if message_to_agent:
+                            logger.debug(f"[OPENAI] Yielding message_to_agent from save notification: {message_to_agent[:200]}")
+                            append_assistant_text(message_to_agent)
+                            yield message_to_agent
                         formatted = format_notification(notification)
                         yield formatted
                     

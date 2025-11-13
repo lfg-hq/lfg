@@ -169,7 +169,17 @@ if USE_POSTGRES_DB:
             'PASSWORD': os.environ.get('POSTGRES_PASSWORD', ''),
             'HOST': os.environ.get('POSTGRES_HOST', 'localhost'),
             'PORT': os.environ.get('POSTGRES_PORT', '5432'),
-            'CONN_MAX_AGE': 600
+            # Persistent connections for better performance (reused for this duration)
+            'CONN_MAX_AGE': 300,  # Reduced from 600 to 5 minutes
+            # Connection pool settings to limit total connections
+            'OPTIONS': {
+                # Explicitly close connections on thread exit
+                'connect_timeout': 10,
+                # Additional connection options
+                'options': '-c statement_timeout=30000',  # 30 second query timeout
+            },
+            # Disable automatic connection health checks in favor of explicit management
+            'CONN_HEALTH_CHECKS': False,
         }
     }
 else:

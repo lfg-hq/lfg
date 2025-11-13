@@ -10,6 +10,7 @@ from django.views.decorators.csrf import csrf_exempt
 from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
+from django.db import close_old_connections
 from development.models import KubernetesPod
 from kubernetes import client, config
 from kubernetes.stream import ws_client
@@ -28,10 +29,13 @@ class TerminalConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         """Handle WebSocket connection."""
         logger.info("WebSocket connection attempt")
-        
+
+        # Clean up any stale database connections before starting
+        await database_sync_to_async(close_old_connections)()
+
         # Accept the WebSocket connection
         await self.accept()
-        
+
         try:
             # Get query parameters
             query_string = self.scope.get('query_string', b'').decode()
@@ -69,18 +73,18 @@ class TerminalConsumer(AsyncWebsocketConsumer):
     async def disconnect(self, close_code):
         """Handle WebSocket disconnect."""
         logger.info(f"WebSocket disconnected with code {close_code}")
-        
+
         # Cancel the WebSocket read task if it exists
         if hasattr(self, 'ws_read_task') and self.ws_read_task:
             self.ws_read_task.cancel()
-            
+
         # Close Kubernetes WebSocket connection
         if hasattr(self, 'k8s_ws') and self.k8s_ws:
             try:
                 await self.k8s_ws.close()
             except Exception as e:
                 logger.error(f"Error closing K8s WebSocket: {str(e)}")
-                
+
         # Close SSH connections if in SSH mode
         if hasattr(self, 'ssh_mode') and self.ssh_mode:
             if hasattr(self, 'shell_channel') and self.shell_channel:
@@ -88,18 +92,24 @@ class TerminalConsumer(AsyncWebsocketConsumer):
                     self.shell_channel.close()
                 except Exception:
                     pass
-                    
+
             if hasattr(self, 'ssh_client') and self.ssh_client:
                 try:
                     self.ssh_client.close()
                 except Exception:
                     pass
+
+        # CRITICAL: Close database connections to prevent leaks
+        await database_sync_to_async(close_old_connections)()
     
     async def receive(self, text_data=None, bytes_data=None):
         """Handle data received from WebSocket client."""
         if not text_data:
             return
-            
+
+        # Periodically close stale connections
+        await database_sync_to_async(close_old_connections)()
+
         try:
             # Check if we're in SSH mode (fallback)
             if hasattr(self, 'ssh_mode') and self.ssh_mode and hasattr(self, 'shell_channel') and self.shell_channel:

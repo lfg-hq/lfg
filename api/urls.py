@@ -10,7 +10,7 @@ router.register(r'conversations', views.ConversationViewSet, basename='conversat
 router.register(r'messages', views.MessageViewSet, basename='message')
 router.register(r'projects', views.ProjectViewSet, basename='project')
 router.register(r'project-documents', views.ProjectDocumentViewSet, basename='project-document')
-router.register(r'project-checklist', views.ProjectChecklistViewSet, basename='project-checklist')
+router.register(r'project-tickets', views.ProjectTicketViewSet, basename='project-ticket')
 
 urlpatterns = [
     # Authentication endpoints

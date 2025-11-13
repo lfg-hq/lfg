@@ -2,7 +2,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse, HttpResponseForbidden
 from django.contrib import messages
-from .models import Project, ProjectFeature, ProjectPersona, ProjectFile, ProjectDesignSchema, ProjectChecklist, ToolCallHistory, ProjectMember, ProjectInvitation
+from .models import Project, ProjectFeature, ProjectPersona, ProjectFile, ProjectDesignSchema, ProjectTicket, ToolCallHistory, ProjectMember, ProjectInvitation
 from django.views.decorators.http import require_POST, require_http_methods
 from django.core.exceptions import PermissionDenied
 from django.db.models import Q
@@ -57,8 +57,8 @@ def project_list(request):
             tool_name__in=['create_prd', 'create_implementation_plan', 'create_design_schema']
         ).count()
         
-        # Count tickets (checklist items)
-        tickets_count = project.checklist.count()
+        # Count tickets
+        tickets_count = project.tickets.count()
         
         # Get codebase information if available
         codebase_info = None
@@ -529,7 +529,7 @@ def project_design_schema_api(request, project_id):
     
     return JsonResponse(design_schema_data)
 
-# ProjectTickets has been removed - use ProjectChecklist instead
+# ProjectTickets has been removed - use ProjectTicket instead
 
 @login_required
 def project_checklist_api(request, project_id):
@@ -540,12 +540,12 @@ def project_checklist_api(request, project_id):
     if not project.can_user_access(request.user):
         raise PermissionDenied("You don't have permission to access this project.")
     
-    # Get all checklist items for this project
-    checklist_items = ProjectChecklist.objects.filter(project=project).order_by('created_at', 'id')
-    
-    checklist_list = []
-    for item in checklist_items:
-        checklist_list.append({
+    # Get all tickets for this project
+    tickets = ProjectTicket.objects.filter(project=project).order_by('created_at', 'id')
+
+    tickets_list = []
+    for item in tickets:
+        tickets_list.append({
             'id': item.id,
             'name': item.name,
             'description': item.description,
@@ -571,8 +571,8 @@ def project_checklist_api(request, project_id):
             'linear_synced_at': item.linear_synced_at.isoformat() if item.linear_synced_at else None,
             'linear_sync_enabled': item.linear_sync_enabled,
         })
-    
-    return JsonResponse({'checklist': checklist_list})
+
+    return JsonResponse({'tickets': tickets_list})
 
 @login_required
 def project_server_configs_api(request, project_id):
@@ -893,8 +893,8 @@ def update_checklist_item_api(request, project_id):
             'error': 'You do not have permission to manage tickets in this project'
         }, status=403)
     try:
-        item = ProjectChecklist.objects.get(id=item_id, project=project)
-    except ProjectChecklist.DoesNotExist:
+        item = ProjectTicket.objects.get(id=item_id, project=project)
+    except ProjectTicket.DoesNotExist:
         return JsonResponse({'success': False, 'error': 'Checklist item not found'}, status=404)
 
     changed = False
@@ -1119,14 +1119,14 @@ def delete_checklist_item_api(request, project_id, item_id):
     project = get_object_or_404(Project, project_id=project_id, owner=request.user)
     
     try:
-        checklist_item = ProjectChecklist.objects.get(id=item_id, project=project)
+        checklist_item = ProjectTicket.objects.get(id=item_id, project=project)
         checklist_item.delete()
         
         return JsonResponse({
             'success': True,
             'message': 'Checklist item deleted successfully'
         })
-    except ProjectChecklist.DoesNotExist:
+    except ProjectTicket.DoesNotExist:
         return JsonResponse({
             'success': False,
             'error': 'Checklist item not found'

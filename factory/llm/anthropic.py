@@ -229,6 +229,13 @@ class AnthropicProvider(BaseLLMProvider):
                 # Variables for this specific API call
                 tool_calls_requested = [] # Stores {id, function_name, function_args_str}
                 full_assistant_message = {"role": "assistant", "content": None, "tool_calls": []} # To store the complete assistant turn
+
+                def append_assistant_text(text: Optional[str]):
+                    if not text:
+                        return
+                    if full_assistant_message["content"] is None:
+                        full_assistant_message["content"] = ""
+                    full_assistant_message["content"] += text
                 current_tool_use = None
                 current_tool_args = ""
 
@@ -292,6 +299,10 @@ class AnthropicProvider(BaseLLMProvider):
                                 
                                 # Yield notification if present
                                 if notification:
+                                    message_to_agent = notification.get("message_to_agent") if isinstance(notification, dict) else None
+                                    if message_to_agent:
+                                        append_assistant_text(message_to_agent)
+                                        yield message_to_agent
                                     yield format_notification(notification)
                                 
                                 # Yield output text if present
@@ -302,12 +313,14 @@ class AnthropicProvider(BaseLLMProvider):
                                 immediate_notifications = tag_handler.get_immediate_notifications()
                                 for immediate_notification in immediate_notifications:
                                     logger.info(f"[ANTHROPIC] Yielding immediate notification: {immediate_notification.get('notification_type')}")
+                                    message_to_agent = immediate_notification.get("message_to_agent") if isinstance(immediate_notification, dict) else None
+                                    if message_to_agent:
+                                        append_assistant_text(message_to_agent)
+                                        yield message_to_agent
                                     yield format_notification(immediate_notification)
                                 
                                 # Update the full assistant message
-                                if full_assistant_message["content"] is None:
-                                    full_assistant_message["content"] = ""
-                                full_assistant_message["content"] += text
+                                append_assistant_text(text)
                                 
                                 # Check if this might be web search results
                                 if "search result" in text.lower() or "web search" in text.lower():
@@ -407,9 +420,13 @@ class AnthropicProvider(BaseLLMProvider):
                                             logger.debug("YIELDING NOTIFICATION DATA TO CONSUMER")
                                             notification_list = notification_data if isinstance(notification_data, list) else [notification_data]
                                             for notification in notification_list:
-                                                notification_json = json.dumps(notification)
-                                                logger.debug(f"Notification JSON: {notification_json}")
-                                                yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                                message_to_agent = notification.get("message_to_agent") if isinstance(notification, dict) else None
+                                                if message_to_agent:
+                                                    append_assistant_text(message_to_agent)
+                                                    yield message_to_agent
+                                                formatted = format_notification(notification)
+                                                logger.debug(f"Notification JSON: {formatted}")
+                                                yield formatted
                                 
                                 current_messages.extend(tool_results_messages)
                                 # Continue the outer while loop to make the next API call
@@ -438,6 +455,10 @@ class AnthropicProvider(BaseLLMProvider):
                                     pending_notifications.append(unclosed_save)
                                 for notification in pending_notifications:
                                     logger.info(f"[ANTHROPIC] Yielding pending notification: {notification}")
+                                    message_to_agent = notification.get("message_to_agent") if isinstance(notification, dict) else None
+                                    if message_to_agent:
+                                        append_assistant_text(message_to_agent)
+                                        yield message_to_agent
                                     formatted = format_notification(notification)
                                     yield formatted
                                 

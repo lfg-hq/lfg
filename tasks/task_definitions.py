@@ -62,7 +62,7 @@ from django.conf import settings
 from django.db import transaction
 from asgiref.sync import sync_to_async, async_to_sync
 
-from projects.models import ProjectChecklist, Project
+from projects.models import ProjectTicket, Project
 from factory.ai_providers import get_ai_response
 from factory.ai_functions import provision_vibe_workspace_tool
 from factory.prompts.builder_prompt import get_system_builder_mode
@@ -142,9 +142,9 @@ def safe_execute_ticket_implementation(ticket_id: int, project_id: int, conversa
         time.sleep(2)  # Simulate work
         
         # Update ticket status with minimal Django operations
-        from projects.models import ProjectChecklist
+        from projects.models import ProjectTicket
         
-        ticket = ProjectChecklist.objects.get(id=ticket_id)
+        ticket = ProjectTicket.objects.get(id=ticket_id)
         ticket.status = 'done'  # Mark as done when execution completes
         ticket.save()
         
@@ -188,7 +188,7 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
     Works like Claude Code CLI - fast, efficient, limited tool rounds.
 
     Args:
-        ticket_id: The ID of the ProjectChecklist ticket
+        ticket_id: The ID of the ProjectTicket ticket
         project_id: The ID of the project
         conversation_id: The ID of the conversation
         max_execution_time: Maximum execution time in seconds (default: 300s/5min)
@@ -201,7 +201,7 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
 
     try:
         # 1. GET TICKET AND PROJECT
-        ticket = ProjectChecklist.objects.get(id=ticket_id)
+        ticket = ProjectTicket.objects.get(id=ticket_id)
         project = Project.objects.get(id=project_id)
 
         # 2. CHECK IF ALREADY COMPLETED (prevent duplicate execution on retry)
@@ -327,13 +327,15 @@ Remember:
 - Focus ONLY on the ticket requirements
 - Don't redo work that's already complete
 - Make minimal, targeted changes
-- Maximum 100 tool calls
 """
 
         system_prompt = """
 You are an expert developer working on assigned tickets. You will implement tickets with surgical precision.
 
 Remember that you are working on an existing project, and every ticket is a TARGETED change on the existing codebase.
+
+Before working on the ticket, check if tasklist exists for this ticket. If not then create the tasks using manage_ticket_tasks(). 
+You will work off these tasklist. Whenever the task is completed, update the task status.
 
 🔍 MANDATORY FIRST STEP - ALWAYS CHECK STATE:
 Before EVERY ticket implementation, you MUST:
@@ -349,16 +351,18 @@ Phases: ANALYZE → APPLY → RUN → REPORT. No going backwards.
 1. In the planning phase, understand and list all the libraries that need to be installed. Install them at once.
 2. Understand all the files that need to be created at once. Create them in a single command. 
 3. Understand all the edits that need to be made. Make the edits in a single command.
-4. Run the app (npm run dev), and check for errors. 
-5. If errors, then fix them and hand over control. 
-6. Do not attempt to build the project (no npm build). Just the `npm run dev` and leave it at that, so that the user can test it.
+4. Run the app (npm run dev), and check for errors. Use the tool `run_code_server`. Always use this. 
+6. Do not build the project, and do not attempt to test the project or verify the files.
 
 Remember that there is another QA agent which can test and fix for any issues. 
+DO NOT create Readme. User has enough context to understand the project.
 
 IMPORTANT: 
 - You can read multiple files in a single command
 - Identify and create multiple files in a single command. This will help save the tool calls. 
 - If required, then edit multiple files in a single command
+
+No need to verify or keep testing in a loop. Mark the tasks are completed and exit this ticket with below instructions. 
 
 End with: "IMPLEMENTATION_STATUS: COMPLETE - [specific changes made]" or "IMPLEMENTATION_STATUS: FAILED - [reason]"
 """
@@ -774,16 +778,16 @@ def check_ticket_dependencies(ticket_id: int) -> bool:
     Returns:
         bool: True if all dependencies are met, False otherwise
     """
-    from projects.models import ProjectChecklist
+    from projects.models import ProjectTicket
     
     try:
-        ticket = ProjectChecklist.objects.get(id=ticket_id)
+        ticket = ProjectTicket.objects.get(id=ticket_id)
         
         # For now, we'll implement a simple priority-based dependency
         # High priority tickets should be done before medium/low
         if ticket.priority.lower() in ['medium', 'low']:
             # Check if there are any high priority tickets still pending
-            high_priority_pending = ProjectChecklist.objects.filter(
+            high_priority_pending = ProjectTicket.objects.filter(
                 project=ticket.project,
                 status='open',
                 priority='High',
@@ -795,7 +799,7 @@ def check_ticket_dependencies(ticket_id: int) -> bool:
         
         return True
         
-    except ProjectChecklist.DoesNotExist:
+    except ProjectTicket.DoesNotExist:
         return False
 
 
@@ -809,9 +813,9 @@ def monitor_ticket_progress(project_id: int) -> Dict[str, Any]:
     Returns:
         Dict with project ticket statistics
     """
-    from projects.models import ProjectChecklist
+    from projects.models import ProjectTicket
     
-    tickets = ProjectChecklist.objects.filter(project_id=project_id)
+    tickets = ProjectTicket.objects.filter(project_id=project_id)
     
     stats = {
         "total_tickets": tickets.count(),
@@ -846,14 +850,14 @@ def parallel_ticket_executor(project_id: int, conversation_id: int, max_workers:
     Returns:
         Dict with parallel execution status
     """
-    from projects.models import ProjectChecklist
+    from projects.models import ProjectTicket
     from tasks.task_manager import TaskManager
     
     task_manager = TaskManager()
     
     try:
         # Get all open tickets that can be executed by agents
-        open_tickets = ProjectChecklist.objects.filter(
+        open_tickets = ProjectTicket.objects.filter(
             project_id=project_id,
             status='open',
             role='agent'

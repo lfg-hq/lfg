@@ -1593,12 +1593,76 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.log('==================================================');
             }
             
+            // Handle open_app notification
+            if (data.notification_type === 'open_app' && data.app_url) {
+                console.log('[Chat] Open app notification received:', data);
+
+                // Switch to apps tab
+                if (window.loadTabData) {
+                    window.loadTabData('apps');
+                }
+
+                // Get elements
+                const appEmpty = document.getElementById('app-empty');
+                const appLoading = document.getElementById('app-loading');
+                const appFrameContainer = document.getElementById('app-frame-container');
+                const appIframe = document.getElementById('app-iframe');
+                const appUrlInput = document.getElementById('app-url-input');
+                const appUrlPanel = document.getElementById('app-url-panel');
+
+                if (appIframe && appFrameContainer) {
+                    // Show loading
+                    if (appEmpty) appEmpty.style.display = 'none';
+                    if (appLoading) appLoading.style.display = 'block';
+                    if (appFrameContainer) appFrameContainer.style.display = 'none';
+
+                    // Set URL in input field
+                    if (appUrlInput) {
+                        appUrlInput.value = data.app_url;
+                    }
+
+                    // Show URL panel
+                    if (appUrlPanel) {
+                        appUrlPanel.style.display = 'block';
+                    }
+
+                    // Load URL in iframe
+                    appIframe.onload = function() {
+                        if (appLoading) appLoading.style.display = 'none';
+                        if (appFrameContainer) appFrameContainer.style.display = 'flex';
+                        console.log('[Chat] App iframe loaded successfully');
+                    };
+
+                    appIframe.onerror = function(e) {
+                        console.error('[Chat] Error loading app iframe:', e);
+                        if (appLoading) appLoading.style.display = 'none';
+                        if (appEmpty) {
+                            appEmpty.style.display = 'block';
+                            appEmpty.innerHTML = `
+                                <div class="empty-state-icon">
+                                    <i class="fas fa-exclamation-triangle"></i>
+                                </div>
+                                <div class="empty-state-text">
+                                    Error loading app. Please check if the server is running.
+                                </div>
+                            `;
+                        }
+                    };
+
+                    appIframe.src = data.app_url;
+
+                    console.log('[Chat] App URL loaded:', data.app_url);
+                }
+
+                return; // Don't process further
+            }
+
             // Check if this is a document save notification with file_id
             // Handle any notification with a file_id as a potential document save, except for non-document types
-            const nonDocumentTypes = ['features', 'personas', 'execute_command', 'command_output', 'start_server', 'checklist', 'file_stream'];
+            const nonDocumentTypes = ['features', 'personas', 'execute_command', 'command_output', 'start_server', 'checklist', 'file_stream', 'open_app'];
             if (data.file_id && !nonDocumentTypes.includes(data.notification_type)) {
                 console.log('[Chat] This is a document save notification');
-                
+
                 if (window.ArtifactsLoader && typeof window.ArtifactsLoader.handleDocumentSaved === 'function') {
                     console.log('[Chat] Calling ArtifactsLoader.handleDocumentSaved');
                     window.ArtifactsLoader.handleDocumentSaved(data);
@@ -1609,7 +1673,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     console.log('[Chat] handleDocumentSaved exists:', !!(window.ArtifactsLoader && window.ArtifactsLoader.handleDocumentSaved));
                 }
             }
-            
+
             // Show a function call indicator in the UI for the function that generated this notification
             const functionName = data.notification_type === 'features' ? 'extract_features' : 
                                data.notification_type === 'personas' ? 'extract_personas' : 
@@ -3035,7 +3099,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }, 4000); // show for 4 seconds
     }
-    
+
     // Function to add a permanent mini indicator of function call success
     function addFunctionCallMiniIndicator(functionName, type) {
         // Create mini indicator

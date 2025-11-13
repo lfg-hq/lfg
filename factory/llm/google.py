@@ -271,16 +271,17 @@ class GoogleGeminiProvider(BaseLLMProvider):
                 "type": "function",
                 "function": {
                     "name": "web_search",
-                    "description": "Search the web for current information",
+                    "description": "Search the web with multiple queries. Each query will be searched independently and results combined.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "query": {
-                                "type": "string",
-                                "description": "The search query"
+                            "queries": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "List of search queries to execute"
                             }
                         },
-                        "required": ["query"]
+                        "required": ["queries"]
                     }
                 }
             }
@@ -325,6 +326,12 @@ class GoogleGeminiProvider(BaseLLMProvider):
                 # Variables for this specific API call
                 tool_calls_requested = [] # Stores tool call info
                 full_assistant_message = {"role": "assistant", "content": "", "tool_calls": []}
+                
+                def append_assistant_text(text: Optional[str]):
+                    nonlocal full_assistant_message
+                    if not text:
+                        return
+                    full_assistant_message["content"] = (full_assistant_message.get("content") or "") + text
                 usage_metadata = None  # Store usage metadata from response
                 
                 # Generate streaming response
@@ -360,6 +367,10 @@ class GoogleGeminiProvider(BaseLLMProvider):
                             
                             # Yield notification if present
                             if notification:
+                                message_to_agent = notification.get("message_to_agent") if isinstance(notification, dict) else None
+                                if message_to_agent:
+                                    append_assistant_text(message_to_agent)
+                                    yield message_to_agent
                                 yield format_notification(notification)
                             
                             # Yield output text if present
@@ -370,10 +381,14 @@ class GoogleGeminiProvider(BaseLLMProvider):
                             immediate_notifications = tag_handler.get_immediate_notifications()
                             for immediate_notification in immediate_notifications:
                                 logger.info(f"[GOOGLE] Yielding immediate notification: {immediate_notification.get('notification_type')}")
+                                message_to_agent = immediate_notification.get("message_to_agent") if isinstance(immediate_notification, dict) else None
+                                if message_to_agent:
+                                    append_assistant_text(message_to_agent)
+                                    yield message_to_agent
                                 yield format_notification(immediate_notification)
                             
                             # Update the full assistant message with original text (for context)
-                            full_assistant_message["content"] += text
+                            append_assistant_text(text)
                         
                         # Check for function calls
                         if hasattr(chunk, 'candidates') and chunk.candidates:
@@ -461,8 +476,12 @@ class GoogleGeminiProvider(BaseLLMProvider):
                             logger.debug("YIELDING NOTIFICATION DATA TO CONSUMER")
                             notification_list = notification_data if isinstance(notification_data, list) else [notification_data]
                             for notification in notification_list:
-                                notification_json = json.dumps(notification)
-                                yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                message_to_agent = notification.get("message_to_agent") if isinstance(notification, dict) else None
+                                if message_to_agent:
+                                    append_assistant_text(message_to_agent)
+                                    yield message_to_agent
+                                formatted = format_notification(notification)
+                                yield formatted
                     
                     current_messages.extend(tool_results_messages)
                     # Continue the loop for next iteration
@@ -487,6 +506,10 @@ class GoogleGeminiProvider(BaseLLMProvider):
                         pending_notifications.append(unclosed_save)
                     for notification in pending_notifications:
                         logger.info(f"[GEMINI] Yielding pending notification: {notification}")
+                        message_to_agent = notification.get("message_to_agent") if isinstance(notification, dict) else None
+                        if message_to_agent:
+                            append_assistant_text(message_to_agent)
+                            yield message_to_agent
                         formatted = format_notification(notification)
                         yield formatted
                     
@@ -502,6 +525,10 @@ class GoogleGeminiProvider(BaseLLMProvider):
                         save_notifications.append(unclosed_save2)
                     for notification in save_notifications:
                         logger.info(f"[GEMINI] Yielding save notification: {notification}")
+                        message_to_agent = notification.get("message_to_agent") if isinstance(notification, dict) else None
+                        if message_to_agent:
+                            append_assistant_text(message_to_agent)
+                            yield message_to_agent
                         formatted = format_notification(notification)
                         yield formatted
                     

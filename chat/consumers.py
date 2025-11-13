@@ -12,16 +12,17 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import User
 from django.core.files.base import ContentFile
 from django.urls import reverse
+from django.db import close_old_connections
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import InvalidToken, AuthenticationFailed
 from chat.models import (
-    Conversation, 
+    Conversation,
     Message,
     ChatFile,
     ModelSelection,
     AgentRole
 )
-from projects.models import ProjectChecklist
+from projects.models import ProjectTicket
 from factory.ai_providers import AIProvider
 from factory.ai_providers import FileHandler
 from factory.prompts import get_system_turbo_mode, \
@@ -48,8 +49,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
         Handle WebSocket connection
         """
         connection_accepted = False
-        
+
         try:
+            # Clean up any stale database connections before starting
+            await database_sync_to_async(close_old_connections)()
+
             # Get user from scope and ensure it's properly resolved
             lazy_user = self.scope["user"]
             
@@ -171,7 +175,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # Cancel heartbeat task
         if self.heartbeat_task:
             self.heartbeat_task.cancel()
-            
+
         # Cancel any active generation task
         if hasattr(self, 'active_generation_task') and self.active_generation_task and not self.active_generation_task.done():
             self.should_stop_generation = True
@@ -180,11 +184,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 await asyncio.wait_for(self.active_generation_task, timeout=2.0)
             except asyncio.TimeoutError:
                 logger.warning("Active generation task did not stop gracefully")
-            
+
         # Save any pending AI message
         if self.pending_message:
             await self.force_save_message()
-            
+
         try:
             if hasattr(self, 'using_groups') and self.using_groups:
                 await self.channel_layer.group_discard(
@@ -200,15 +204,21 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 logger.info(f"User {self.user} removed from conversation group {self.conversation_group_name}")
         except Exception as e:
             logger.error(f"Error during disconnect: {str(e)}")
+        finally:
+            # CRITICAL: Close database connections to prevent leaks
+            await database_sync_to_async(close_old_connections)()
     
     async def receive(self, text_data):
         """
         Receive message from WebSocket
         """
         try:
+            # Periodically close stale connections
+            await database_sync_to_async(close_old_connections)()
+
             text_data_json = json.loads(text_data)
             message_type = text_data_json.get('type', 'message')
-            
+
             logger.info(f"=== RECEIVED WebSocket message ===")
             logger.info(f"Message type: {message_type}")
             logger.info(f"Full message: {text_data_json}")
@@ -514,6 +524,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """
         Generate response from AI
         """
+        try:
+            # Clean up stale connections at the start of AI generation
+            await database_sync_to_async(close_old_connections)()
+        except Exception as e:
+            logger.error(f"Error closing old connections: {e}")
+
         # Send typing indicator
         try:
             if hasattr(self, 'using_groups') and self.using_groups:
@@ -798,8 +814,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 except Exception as e:
                     logger.error(f"Error sending AI chunk: {str(e)}")
                 
-                # Small delay to simulate natural typing
-                await asyncio.sleep(0.03)
+                # Removed artificial delay so chunks reach clients immediately
             
             # Finalize any partial message or save the complete message
             if full_response:
@@ -878,7 +893,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
             
             # Clear the active task reference
             self.active_generation_task = None
-            
+
+            # Clean up database connections after generation completes
+            await database_sync_to_async(close_old_connections)()
+
         except Exception as e:
             error_message = f"Sorry, I encountered an error: {str(e)}"
             # Only try to save error message if we have a conversation

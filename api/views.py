@@ -16,12 +16,12 @@ import uuid
 import requests
 from accounts.models import Profile, LLMApiKeys
 from chat.models import Conversation, Message
-from projects.models import Project, ProjectFile, ProjectChecklist
+from projects.models import Project, ProjectFile, ProjectTicket, ProjectTaskList
 from subscriptions.models import UserCredit
 from .serializers import (
     UserSerializer, ProfileSerializer, RegisterSerializer,
     LLMApiKeysSerializer, ConversationSerializer, MessageSerializer,
-    ProjectSerializer, ProjectDocumentSerializer, ProjectChecklistItemSerializer
+    ProjectSerializer, ProjectDocumentSerializer, ProjectTicketSerializer, ProjectTaskSerializer
 )
 from django.db.models import Count, Q
 
@@ -483,10 +483,10 @@ class ProjectViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     @action(detail=True, methods=['get'])
-    def checklist(self, request, project_id=None):
+    def tickets(self, request, project_id=None):
         project = self.get_object()
-        checklist_items = project.checklist.all().order_by('created_at')
-        serializer = ProjectChecklistItemSerializer(checklist_items, many=True)
+        tickets = project.tickets.all().order_by('created_at')
+        serializer = ProjectTicketSerializer(tickets, many=True)
         return Response(serializer.data)
 
     @action(detail=True, methods=['get'])
@@ -512,8 +512,8 @@ class ProjectDocumentViewSet(viewsets.ReadOnlyModelViewSet):
         ).select_related('project').order_by('-updated_at')
 
 
-class ProjectChecklistViewSet(viewsets.ReadOnlyModelViewSet):
-    serializer_class = ProjectChecklistItemSerializer
+class ProjectTicketViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = ProjectTicketSerializer
     authentication_classes = [SessionAuthentication]
     permission_classes = [IsAuthenticated]
 
@@ -522,7 +522,7 @@ class ProjectChecklistViewSet(viewsets.ReadOnlyModelViewSet):
         accessible_projects = Project.objects.filter(
             Q(owner=user) | Q(members__user=user, members__status='active')
         ).distinct()
-        return ProjectChecklist.objects.filter(
+        return ProjectTicket.objects.filter(
             project__in=accessible_projects
         ).select_related('project').order_by('created_at')
 
@@ -566,6 +566,7 @@ class ProjectChecklistViewSet(viewsets.ReadOnlyModelViewSet):
     def logs(self, request, pk=None):
         """Get execution logs for a specific ticket"""
         from development.models import CommandExecution
+        from django.db import connection
         import logging
         logger = logging.getLogger(__name__)
 
@@ -574,18 +575,36 @@ class ProjectChecklistViewSet(viewsets.ReadOnlyModelViewSet):
 
         logger.info(f"[LOGS API] Fetching logs for ticket {ticket.id}, project {project.project_id}")
 
-        # Get commands for this ticket's project
-        commands = CommandExecution.objects.filter(
-            project_id=project.project_id
-        ).order_by('created_at')
+        # Check if ticket_id column exists in the database
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name='development_commandexecution' AND column_name='ticket_id'
+            """)
+            has_ticket_id_column = cursor.fetchone() is not None
 
-        # Also try to get all commands to see what's in the database
-        all_commands_count = CommandExecution.objects.count()
-        recent_commands = CommandExecution.objects.order_by('-created_at')[:5]
+        if has_ticket_id_column:
+            # Get commands for this specific ticket
+            commands = CommandExecution.objects.filter(
+                ticket_id=ticket.id
+            ).order_by('created_at')
 
-        logger.info(f"[LOGS API] Total commands in DB: {all_commands_count}")
-        logger.info(f"[LOGS API] Commands for project {project.project_id}: {commands.count()}")
-        logger.info(f"[LOGS API] Recent 5 commands project_ids: {[cmd.project_id for cmd in recent_commands]}")
+            # Fallback: if no ticket-specific commands, show project commands (for backwards compatibility)
+            if commands.count() == 0:
+                logger.info(f"[LOGS API] No ticket-specific logs found, falling back to project logs")
+                commands = CommandExecution.objects.filter(
+                    project_id=project.project_id,
+                    ticket_id__isnull=True
+                ).order_by('created_at')
+        else:
+            # Migrations not run yet, fall back to project-level filtering
+            logger.warning(f"[LOGS API] ticket_id column doesn't exist yet, using project-level filtering")
+            commands = CommandExecution.objects.filter(
+                project_id=project.project_id
+            ).order_by('created_at')
+
+        logger.info(f"[LOGS API] Found {commands.count()} commands for ticket {ticket.id}")
 
         # Format commands for response
         commands_data = [{
@@ -600,4 +619,36 @@ class ProjectChecklistViewSet(viewsets.ReadOnlyModelViewSet):
             'ticket_status': ticket.status,
             'ticket_notes': ticket.notes or '',
             'commands': commands_data
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='tasks')
+    def tasks(self, request, pk=None):
+        """Get tasks for a specific ticket"""
+        from projects.models import ProjectTaskList
+        import logging
+        logger = logging.getLogger(__name__)
+
+        ticket = self.get_object()
+        logger.info(f"[TASKS API] Fetching tasks for ticket {ticket.id}")
+
+        # Get all tasks for this ticket
+        tasks = ProjectTaskList.objects.filter(ticket=ticket).order_by('order', 'created_at')
+
+        logger.info(f"[TASKS API] Found {tasks.count()} tasks for ticket {ticket.id}")
+
+        # Format tasks for response
+        tasks_data = [{
+            'id': task.id,
+            'name': task.name,
+            'description': task.description or '',
+            'status': task.status,
+            'order': task.order,
+            'created_at': task.created_at.isoformat(),
+            'updated_at': task.updated_at.isoformat()
+        } for task in tasks]
+
+        return Response({
+            'ticket_id': ticket.id,
+            'ticket_name': ticket.name,
+            'tasks': tasks_data
         }, status=status.HTTP_200_OK)
