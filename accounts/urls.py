@@ -18,6 +18,7 @@ urlpatterns = [
     path('google-callback/', views.google_callback, name='google_callback'),
     path('save-api-key/<str:provider>/', views.save_api_key, name='save_api_key'),
     path('disconnect-api-key/<str:provider>/', views.disconnect_api_key, name='disconnect_api_key'),
+    path('toggle-llm-keys/', views.toggle_llm_byok, name='toggle_llm_byok'),
     path('agent-settings/', views.get_agent_settings, name='get_agent_settings'),
     
     # Email verification URLs

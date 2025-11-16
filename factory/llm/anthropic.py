@@ -229,6 +229,9 @@ class AnthropicProvider(BaseLLMProvider):
                 # Variables for this specific API call
                 tool_calls_requested = [] # Stores {id, function_name, function_args_str}
                 full_assistant_message = {"role": "assistant", "content": None, "tool_calls": []} # To store the complete assistant turn
+                agent_followup_messages: List[Dict[str, Any]] = []
+                agent_followup_counter = 0
+                continue_after_stop = False
 
                 def append_assistant_text(text: Optional[str]):
                     if not text:
@@ -236,6 +239,16 @@ class AnthropicProvider(BaseLLMProvider):
                     if full_assistant_message["content"] is None:
                         full_assistant_message["content"] = ""
                     full_assistant_message["content"] += text
+
+                def enqueue_agent_followup(message_text: Optional[str]):
+                    nonlocal agent_followup_counter
+                    if not message_text:
+                        return
+                    agent_followup_counter += 1
+                    agent_followup_messages.append({
+                        "role": "system",
+                        "content": message_text
+                    })
                 current_tool_use = None
                 current_tool_args = ""
 
@@ -299,10 +312,8 @@ class AnthropicProvider(BaseLLMProvider):
                                 
                                 # Yield notification if present
                                 if notification:
-                                    message_to_agent = notification.get("message_to_agent") if isinstance(notification, dict) else None
-                                    if message_to_agent:
-                                        append_assistant_text(message_to_agent)
-                                        yield message_to_agent
+                                    if isinstance(notification, dict):
+                                        enqueue_agent_followup(notification.get("message_to_agent"))
                                     yield format_notification(notification)
                                 
                                 # Yield output text if present
@@ -313,10 +324,8 @@ class AnthropicProvider(BaseLLMProvider):
                                 immediate_notifications = tag_handler.get_immediate_notifications()
                                 for immediate_notification in immediate_notifications:
                                     logger.info(f"[ANTHROPIC] Yielding immediate notification: {immediate_notification.get('notification_type')}")
-                                    message_to_agent = immediate_notification.get("message_to_agent") if isinstance(immediate_notification, dict) else None
-                                    if message_to_agent:
-                                        append_assistant_text(message_to_agent)
-                                        yield message_to_agent
+                                    if isinstance(immediate_notification, dict):
+                                        enqueue_agent_followup(immediate_notification.get("message_to_agent"))
                                     yield format_notification(immediate_notification)
                                 
                                 # Update the full assistant message
@@ -420,10 +429,8 @@ class AnthropicProvider(BaseLLMProvider):
                                             logger.debug("YIELDING NOTIFICATION DATA TO CONSUMER")
                                             notification_list = notification_data if isinstance(notification_data, list) else [notification_data]
                                             for notification in notification_list:
-                                                message_to_agent = notification.get("message_to_agent") if isinstance(notification, dict) else None
-                                                if message_to_agent:
-                                                    append_assistant_text(message_to_agent)
-                                                    yield message_to_agent
+                                                if isinstance(notification, dict):
+                                                    enqueue_agent_followup(notification.get("message_to_agent"))
                                                 formatted = format_notification(notification)
                                                 logger.debug(f"Notification JSON: {formatted}")
                                                 yield formatted
@@ -455,10 +462,8 @@ class AnthropicProvider(BaseLLMProvider):
                                     pending_notifications.append(unclosed_save)
                                 for notification in pending_notifications:
                                     logger.info(f"[ANTHROPIC] Yielding pending notification: {notification}")
-                                    message_to_agent = notification.get("message_to_agent") if isinstance(notification, dict) else None
-                                    if message_to_agent:
-                                        append_assistant_text(message_to_agent)
-                                        yield message_to_agent
+                                    if isinstance(notification, dict):
+                                        enqueue_agent_followup(notification.get("message_to_agent"))
                                     formatted = format_notification(notification)
                                     yield formatted
                                 
@@ -480,16 +485,30 @@ class AnthropicProvider(BaseLLMProvider):
                                         logger.info(f"[ANTHROPIC] Notification type: {notification.get('notification_type')}")
                                     else:
                                         logger.warning(f"[ANTHROPIC] NO FILE_ID IN NOTIFICATION! Keys: {list(notification.keys())}")
+                                    if isinstance(notification, dict):
+                                        enqueue_agent_followup(notification.get("message_to_agent"))
                                     formatted = format_notification(notification)
                                     logger.info(f"[ANTHROPIC] Formatted notification: {formatted[:100]}...")
                                     logger.info(f"[ANTHROPIC] Full formatted notification: {formatted}")
                                     yield formatted
                                 
+                                if agent_followup_messages:
+                                    logger.info("[ANTHROPIC] Continuing conversation to process agent follow-up messages")
+                                    if full_assistant_message.get("content") or full_assistant_message.get("tool_calls"):
+                                        current_messages.append({k: v for k, v in full_assistant_message.items() if v})
+                                    current_messages.extend(agent_followup_messages)
+                                    continue_after_stop = True
+                                    break
+
                                 return
                             else:
                                 logger.warning(f"[AnthropicProvider] Unhandled stop reason: {stop_reason}")
                                 return
                 
+                # If we broke out because we need a follow-up turn, restart loop
+                if continue_after_stop:
+                    continue
+
                 # If we broke out of the inner loop due to tool_use, continue
                 if tool_calls_requested:
                     continue

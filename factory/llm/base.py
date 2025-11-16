@@ -59,13 +59,15 @@ class BaseLLMProvider(ABC):
         try:
             from accounts.models import LLMApiKeys
             llm_keys = LLMApiKeys.objects.get(user=user)
+            if not llm_keys.use_personal_llm_keys:
+                return ''
             return getattr(llm_keys, provider_key, '') or ''
         except LLMApiKeys.DoesNotExist:
             return ''
         except Exception as e:
             logger.warning(f"Could not fetch API key: {e}")
             return ''
-    
+
     async def _process_stream_async(self, response_stream):
         """Process the response stream asynchronously by yielding control back to event loop"""
         for chunk in response_stream:
@@ -140,6 +142,8 @@ class BaseLLMProvider(ABC):
                 return False
 
             llm_keys = LLMApiKeys.objects.get(user=self.user)
+            if not llm_keys.use_personal_llm_keys:
+                return False
             api_key = getattr(llm_keys, provider_key, '') or ''
 
             has_key = bool(api_key)

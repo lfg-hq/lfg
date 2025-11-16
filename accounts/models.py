@@ -15,6 +15,7 @@ class LLMApiKeys(models.Model):
     google_api_key = models.CharField(max_length=255, blank=True, null=True)
 
     free_trial = models.BooleanField(default=True)
+    use_personal_llm_keys = models.BooleanField(default=False)
     
     def __str__(self):
         return f"{self.user.username}'s API keys"

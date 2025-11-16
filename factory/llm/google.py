@@ -25,7 +25,7 @@ class GoogleGeminiProvider(BaseLLMProvider):
     
     MODEL_MAPPING = {
         "gemini_2.5_pro": "models/gemini-2.5-pro",
-        "gemini_2.5_flash": "models/gemini-2.5-flash",
+        "gemini_2.5_flash": "models/gemini-3-flash",
         "gemini_2.5_flash_lite": "models/gemini-2.5-flash-lite",
     }
     
@@ -326,12 +326,24 @@ class GoogleGeminiProvider(BaseLLMProvider):
                 # Variables for this specific API call
                 tool_calls_requested = [] # Stores tool call info
                 full_assistant_message = {"role": "assistant", "content": "", "tool_calls": []}
+                agent_followup_messages: List[Dict[str, Any]] = []
+                agent_followup_counter = 0
                 
                 def append_assistant_text(text: Optional[str]):
                     nonlocal full_assistant_message
                     if not text:
                         return
                     full_assistant_message["content"] = (full_assistant_message.get("content") or "") + text
+
+                def enqueue_agent_followup(message_text: Optional[str]):
+                    nonlocal agent_followup_counter
+                    if not message_text:
+                        return
+                    agent_followup_counter += 1
+                    agent_followup_messages.append({
+                        "role": "system",
+                        "content": message_text
+                    })
                 usage_metadata = None  # Store usage metadata from response
                 
                 # Generate streaming response
@@ -367,10 +379,8 @@ class GoogleGeminiProvider(BaseLLMProvider):
                             
                             # Yield notification if present
                             if notification:
-                                message_to_agent = notification.get("message_to_agent") if isinstance(notification, dict) else None
-                                if message_to_agent:
-                                    append_assistant_text(message_to_agent)
-                                    yield message_to_agent
+                                if isinstance(notification, dict):
+                                    enqueue_agent_followup(notification.get("message_to_agent"))
                                 yield format_notification(notification)
                             
                             # Yield output text if present
@@ -381,10 +391,8 @@ class GoogleGeminiProvider(BaseLLMProvider):
                             immediate_notifications = tag_handler.get_immediate_notifications()
                             for immediate_notification in immediate_notifications:
                                 logger.info(f"[GOOGLE] Yielding immediate notification: {immediate_notification.get('notification_type')}")
-                                message_to_agent = immediate_notification.get("message_to_agent") if isinstance(immediate_notification, dict) else None
-                                if message_to_agent:
-                                    append_assistant_text(message_to_agent)
-                                    yield message_to_agent
+                                if isinstance(immediate_notification, dict):
+                                    enqueue_agent_followup(immediate_notification.get("message_to_agent"))
                                 yield format_notification(immediate_notification)
                             
                             # Update the full assistant message with original text (for context)
@@ -476,10 +484,8 @@ class GoogleGeminiProvider(BaseLLMProvider):
                             logger.debug("YIELDING NOTIFICATION DATA TO CONSUMER")
                             notification_list = notification_data if isinstance(notification_data, list) else [notification_data]
                             for notification in notification_list:
-                                message_to_agent = notification.get("message_to_agent") if isinstance(notification, dict) else None
-                                if message_to_agent:
-                                    append_assistant_text(message_to_agent)
-                                    yield message_to_agent
+                                if isinstance(notification, dict):
+                                    enqueue_agent_followup(notification.get("message_to_agent"))
                                 formatted = format_notification(notification)
                                 yield formatted
                     
@@ -506,10 +512,8 @@ class GoogleGeminiProvider(BaseLLMProvider):
                         pending_notifications.append(unclosed_save)
                     for notification in pending_notifications:
                         logger.info(f"[GEMINI] Yielding pending notification: {notification}")
-                        message_to_agent = notification.get("message_to_agent") if isinstance(notification, dict) else None
-                        if message_to_agent:
-                            append_assistant_text(message_to_agent)
-                            yield message_to_agent
+                        if isinstance(notification, dict):
+                            enqueue_agent_followup(notification.get("message_to_agent"))
                         formatted = format_notification(notification)
                         yield formatted
                     
@@ -525,13 +529,19 @@ class GoogleGeminiProvider(BaseLLMProvider):
                         save_notifications.append(unclosed_save2)
                     for notification in save_notifications:
                         logger.info(f"[GEMINI] Yielding save notification: {notification}")
-                        message_to_agent = notification.get("message_to_agent") if isinstance(notification, dict) else None
-                        if message_to_agent:
-                            append_assistant_text(message_to_agent)
-                            yield message_to_agent
+                        if isinstance(notification, dict):
+                            enqueue_agent_followup(notification.get("message_to_agent"))
                         formatted = format_notification(notification)
                         yield formatted
-                    
+
+                    if agent_followup_messages:
+                        logger.info("[GEMINI] Continuing conversation to process agent follow-up messages")
+                        message_payload = {k: v for k, v in full_assistant_message.items() if v}
+                        if message_payload:
+                            current_messages.append(message_payload)
+                        current_messages.extend(agent_followup_messages)
+                        continue
+
                     # Track token usage if available
                     # Google Gemini provides token counts in the response
                     if user and usage_metadata:

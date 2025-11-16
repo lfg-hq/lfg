@@ -74,7 +74,7 @@ class OpenAIProvider(BaseLLMProvider):
             except Exception as e:
                 logger.warning(f"Could not fetch OpenAI API key: {e}")
         
-        # Fallback to platform API key if no user key found
+        # Fallback to platform API key if no user key found or preference disabled
         if not self.api_key:
             platform_openai_key = os.getenv('OPENAI_API_KEY')
             if platform_openai_key:
@@ -423,6 +423,8 @@ class OpenAIProvider(BaseLLMProvider):
                 # Variables for this specific API call
                 tool_calls_requested = [] # Stores {id, function_name, function_args_str}
                 full_assistant_message = {"role": "assistant", "content": None, "tool_calls": []} # To store the complete assistant turn
+                agent_followup_messages = []  # Messages we need to feed back to the model
+                agent_followup_counter = 0
 
                 def append_assistant_text(text: Optional[str]):
                     nonlocal total_assistant_output
@@ -432,6 +434,16 @@ class OpenAIProvider(BaseLLMProvider):
                     if full_assistant_message["content"] is None:
                         full_assistant_message["content"] = ""
                     full_assistant_message["content"] += text
+
+                def enqueue_agent_followup(message_text: Optional[str]):
+                    nonlocal agent_followup_counter
+                    if not message_text:
+                        return
+                    agent_followup_counter += 1
+                    agent_followup_messages.append({
+                        "role": "system",
+                        "content": message_text
+                    })
 
                 logger.debug("New Loop!!")
                 
@@ -489,11 +501,10 @@ class OpenAIProvider(BaseLLMProvider):
                         
                         # Yield notification if present
                         if notification:
-                            message_to_agent = notification.get("message_to_agent") if isinstance(notification, dict) else None
-                            if message_to_agent:
-                                logger.debug(f"[OPENAI] Yielding message_to_agent from notification: {message_to_agent[:200]}")
-                                append_assistant_text(message_to_agent)
-                                yield message_to_agent
+                            if isinstance(notification, dict):
+                                message_to_agent = notification.get("message_to_agent")
+                                if message_to_agent:
+                                    enqueue_agent_followup(message_to_agent)
                             yield format_notification(notification)
                         
                         # Yield output text if present
@@ -507,11 +518,10 @@ class OpenAIProvider(BaseLLMProvider):
                         for immediate_notification in immediate_notifications:
                             logger.info(f"[OPENAI] Yielding immediate notification: {immediate_notification.get('notification_type')}")
                             logger.info(f"[OPENAI] Full notification data: {immediate_notification}")
-                            message_to_agent = immediate_notification.get("message_to_agent") if isinstance(immediate_notification, dict) else None
-                            if message_to_agent:
-                                logger.debug(f"[OPENAI] Yielding message_to_agent from immediate notification: {message_to_agent[:200]}")
-                                append_assistant_text(message_to_agent)
-                                yield message_to_agent
+                            if isinstance(immediate_notification, dict):
+                                message_to_agent = immediate_notification.get("message_to_agent")
+                                if message_to_agent:
+                                    enqueue_agent_followup(message_to_agent)
                             formatted = format_notification(immediate_notification)
                             logger.info(f"[OPENAI] Formatted notification: {formatted[:200]}...")
                             yield formatted
@@ -656,11 +666,8 @@ class OpenAIProvider(BaseLLMProvider):
                         pending_notifications.append(unclosed_save)
                     for notification in pending_notifications:
                         logger.info(f"[OPENAI] Yielding pending notification: {notification}")
-                        message_to_agent = notification.get("message_to_agent") if isinstance(notification, dict) else None
-                        if message_to_agent:
-                            logger.debug(f"[OPENAI] Yielding message_to_agent from pending notification: {message_to_agent[:200]}")
-                            append_assistant_text(message_to_agent)
-                            yield message_to_agent
+                        if isinstance(notification, dict):
+                            enqueue_agent_followup(notification.get("message_to_agent"))
                         formatted = format_notification(notification)
                         yield formatted
                     
@@ -676,14 +683,18 @@ class OpenAIProvider(BaseLLMProvider):
                         save_notifications.append(unclosed_save2)
                     for notification in save_notifications:
                         logger.info(f"[OPENAI] Yielding save notification: {notification}")
-                        message_to_agent = notification.get("message_to_agent") if isinstance(notification, dict) else None
-                        if message_to_agent:
-                            logger.debug(f"[OPENAI] Yielding message_to_agent from save notification: {message_to_agent[:200]}")
-                            append_assistant_text(message_to_agent)
-                            yield message_to_agent
+                        if isinstance(notification, dict):
+                            enqueue_agent_followup(notification.get("message_to_agent"))
                         formatted = format_notification(notification)
                         yield formatted
                     
+                    if agent_followup_messages:
+                        logger.info("[OPENAI] Agent follow-up messages detected; continuing conversation for handoff")
+                        if full_assistant_message.get("content") or full_assistant_message.get("tool_calls"):
+                            current_messages.append({k: v for k, v in full_assistant_message.items() if v})
+                        current_messages.extend(agent_followup_messages)
+                        continue
+
                     # Track token usage using consolidated helper
                     await self._track_usage_if_available(
                         user, project, conversation, current_messages, total_assistant_output, usage_data

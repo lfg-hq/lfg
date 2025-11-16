@@ -4289,7 +4289,7 @@ async def get_file_content(project_id, file_ids):
     Returns:
         Dict with file contents or error message
     """
-    logger.info(f"Get file content function called for project {project_id}, file_ids: {file_ids}")
+    print(f"Get file content function called for project {project_id}, file_ids: {file_ids}")
     
     error_response = validate_project_id(project_id)
     if error_response:

@@ -246,6 +246,27 @@ def save_api_key(request, provider):
     if not api_key:
         messages.error(request, 'API key cannot be empty')
         return redirect('accounts:integrations')
+
+    if provider == 'openai':
+        user_credit, _ = UserCredit.objects.get_or_create(user=request.user)
+        has_paid_subscription = (
+            user_credit.subscription_tier == 'pro'
+            and (user_credit.is_subscribed or user_credit.has_active_subscription)
+        )
+        if not has_paid_subscription:
+            messages.error(request, 'Upgrade to Pro to use your own OpenAI API key.')
+            return redirect('accounts:integrations')
+    
+    # Enforce subscription requirements for OpenAI self-hosted keys
+    if provider == 'openai':
+        user_credit, _ = UserCredit.objects.get_or_create(user=request.user)
+        has_paid_subscription = (
+            user_credit.subscription_tier == 'pro'
+            and (user_credit.is_subscribed or user_credit.has_active_subscription)
+        )
+        if not has_paid_subscription:
+            messages.error(request, 'Upgrade to Pro to use your own OpenAI API key.')
+            return redirect('accounts:integrations')
     
     # Handle external services (Linear, Notion, etc.) separately as they're in ExternalServicesAPIKeys
     if provider in ['linear', 'notion', 'jira']:
@@ -327,6 +348,44 @@ def disconnect_api_key(request, provider):
     
     messages.success(request, f'{provider.capitalize()} connection removed successfully.')
     return redirect('accounts:integrations')
+
+
+@login_required
+def toggle_llm_byok(request):
+    """Enable or disable BYOK usage by keeping or clearing saved keys."""
+    if request.method != 'POST':
+        messages.error(request, 'Invalid request')
+        return redirect('accounts:integrations')
+
+    enable = request.POST.get('enable', '1') == '1'
+
+    user_credit, _ = UserCredit.objects.get_or_create(user=request.user)
+    has_paid_subscription = (
+        user_credit.subscription_tier == 'pro'
+        and (user_credit.is_subscribed or user_credit.has_active_subscription)
+    )
+
+    if not has_paid_subscription:
+        messages.error(request, 'Bring-your-own keys are available on the Pro plan. Please upgrade to enable this feature.')
+        return redirect('accounts:integrations')
+
+    llm_keys, _ = LLMApiKeys.objects.get_or_create(user=request.user)
+
+    if enable:
+        llm_keys.use_personal_llm_keys = True
+        llm_keys.save(update_fields=['use_personal_llm_keys'])
+        messages.success(request, 'Bring-your-own-keys enabled. Add your provider keys below.')
+    else:
+        llm_keys.openai_api_key = ''
+        llm_keys.anthropic_api_key = ''
+        llm_keys.google_api_key = ''
+        llm_keys.xai_api_key = ''
+        llm_keys.use_personal_llm_keys = False
+        llm_keys.save()
+        messages.success(request, 'Your provider keys were removed. LFG platform credits will be used instead.')
+
+    return redirect('accounts:integrations')
+
 
 # @login_required
 # def user_settings(request):
@@ -517,18 +576,13 @@ def integrations(request):
             except Exception as e:
                 messages.error(request, f'Error disconnecting GitHub: {str(e)}')
     
-    # Get API keys status
-    try:
-        llm_keys = LLMApiKeys.objects.get(user=request.user)
-        openai_connected = bool(llm_keys.openai_api_key)
-        anthropic_connected = bool(llm_keys.anthropic_api_key)
-        xai_connected = bool(llm_keys.xai_api_key)
-        google_connected = bool(llm_keys.google_api_key)
-    except LLMApiKeys.DoesNotExist:
-        openai_connected = False
-        anthropic_connected = False
-        xai_connected = False
-        google_connected = False
+    # Get or create API keys record for LLM providers
+    llm_keys, _ = LLMApiKeys.objects.get_or_create(user=request.user)
+    openai_connected = bool(llm_keys.openai_api_key)
+    anthropic_connected = bool(llm_keys.anthropic_api_key)
+    xai_connected = bool(llm_keys.xai_api_key)
+    google_connected = bool(llm_keys.google_api_key)
+    personal_llm_keys_enabled = llm_keys.use_personal_llm_keys
     
     # Check external service API keys (Linear, Notion, etc.)
     try:
@@ -607,6 +661,7 @@ def integrations(request):
         'anthropic_connected': anthropic_connected,
         'xai_connected': xai_connected,
         'google_connected': google_connected,
+        'byok_enabled': personal_llm_keys_enabled,
         'linear_connected': linear_connected,
         'notion_connected': notion_connected,
         'current_org_role': current_org_role,

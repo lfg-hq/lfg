@@ -770,11 +770,15 @@
             <style>
                 .llm-integrations-grid {
                     display: grid;
-                    grid-template-columns: 1fr;
-                    gap: 1.5rem;
-                    max-width: 600px;
-                    margin: 0 auto;
+                    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+                    gap: 1.25rem;
                     width: 100%;
+                }
+
+                @media (max-width: 768px) {
+                    .llm-integrations-grid {
+                        grid-template-columns: 1fr;
+                    }
                 }
                 
                 .llm-integration-card {
@@ -919,10 +923,6 @@
                     color: #4285f4;
                 }
                 
-                .llm-integration-logo.grok {
-                    color: #ffffff;
-                }
-                
                 .llm-integration-details h3 {
                     margin: 0 0 4px 0;
                     font-size: 16px;
@@ -1053,6 +1053,242 @@
                     transform: translateY(-1px);
                     box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);
                 }
+
+                .llm-byok-controls {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 18px 20px;
+                    border: 1px solid rgba(148, 163, 184, 0.15);
+                    border-radius: 10px;
+                    background: rgba(15, 23, 42, 0.5);
+                    margin-bottom: 20px;
+                    gap: 16px;
+                }
+
+                .llm-byok-copy {
+                    color: #cbd5f5;
+                    font-size: 14px;
+                    line-height: 1.5;
+                }
+
+                .llm-byok-title {
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: #e5e7eb;
+                    margin-bottom: 6px;
+                    text-transform: uppercase;
+                    letter-spacing: 0.08em;
+                }
+
+                .llm-keys-table {
+                    width: 100%;
+                    border: 1px solid rgba(148, 163, 184, 0.2);
+                    border-radius: 12px;
+                    overflow: hidden;
+                    background: rgba(15, 23, 42, 0.5);
+                }
+
+                .llm-keys-row {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 18px 22px;
+                    border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+                    gap: 32px;
+                }
+
+                .llm-keys-row:last-child {
+                    border-bottom: none;
+                }
+
+                .llm-row-label {
+                    display: flex;
+                    align-items: center;
+                    gap: 16px;
+                    flex: 1;
+                }
+
+                .llm-row-value {
+                    flex: 1;
+                    display: flex;
+                    justify-content: flex-end;
+                    align-items: center;
+                }
+
+                .llm-row-title {
+                    font-size: 15px;
+                    font-weight: 600;
+                    color: #e5e7eb;
+                    margin-bottom: 2px;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                }
+
+                .llm-row-subtitle {
+                    font-size: 12px;
+                    color: #94a3b8;
+                }
+
+                .llm-row-status {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    font-size: 13px;
+                    color: #94a3b8;
+                }
+
+                .llm-row-actions {
+                    width: 100%;
+                    display: flex;
+                    justify-content: flex-end;
+                    align-items: center;
+                    gap: 12px;
+                }
+
+                .llm-row-actions form {
+                    margin: 0;
+                }
+
+                .llm-row-input {
+                    flex: 1;
+                    max-width: 440px;
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                }
+
+                .llm-row-input a.mini-link {
+                    font-size: 12px;
+                    color: #a5b4fc;
+                    text-decoration: none;
+                }
+
+                .llm-row-input input {
+                    flex: 1;
+                    padding: 10px 12px;
+                    background: rgba(2, 6, 23, 0.8);
+                    border: 1px solid rgba(255, 255, 255, 0.12);
+                    border-radius: 6px;
+                    color: #e5e7eb;
+                    font-size: 13px;
+                    font-family: monospace;
+                }
+
+                .llm-row-input input:disabled {
+                    opacity: 0.65;
+                    cursor: default;
+                }
+
+                .integration-help {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    width: 20px;
+                    height: 20px;
+                    border-radius: 50%;
+                    border: 1px solid rgba(148, 163, 184, 0.45);
+                    color: #cbd5f5;
+                    font-size: 11px;
+                    text-decoration: none;
+                    transition: all 0.2s ease;
+                }
+
+                .integration-help:hover {
+                    border-color: rgba(167, 139, 250, 0.8);
+                    color: #f4f4ff;
+                }
+
+                .connect-arrow {
+                    width: 32px;
+                    height: 32px;
+                    padding: 0 !important;
+                    border-radius: 20%;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 0;
+                }
+
+                .connect-arrow i {
+                    margin: 0;
+                    font-size: 14px;
+                }
+
+                .llm-integration-button.compact {
+                    width: 40px;
+                    height: 40px;
+                    padding: 0;
+                    border-radius: 50%;
+                    justify-content: center;
+                    gap: 0;
+                }
+
+                .llm-integration-button.compact i {
+                    margin: 0;
+                }
+
+                .llm-keys-table.byok-disabled .llm-row-actions {
+                    opacity: 0.35;
+                    pointer-events: none;
+                }
+
+                .llm-row-disabled-note {
+                    font-size: 12px;
+                    color: #94a3b8;
+                }
+
+                .hidden {
+                    display: none !important;
+                }
+
+                .openai-mode-card {
+                    margin-top: 18px;
+                    padding: 18px 20px;
+                    border-radius: 10px;
+                    border: 1px solid rgba(255, 255, 255, 0.08);
+                    background: rgba(15, 23, 42, 0.65);
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 16px;
+                }
+
+                .openai-mode-label {
+                    display: block;
+                    text-transform: uppercase;
+                    font-size: 12px;
+                    letter-spacing: 0.08em;
+                    color: #a78bfa;
+                    margin-bottom: 6px;
+                }
+
+                .openai-mode-description {
+                    margin: 0;
+                    color: #cbd5f5;
+                    font-size: 14px;
+                    line-height: 1.5;
+                }
+
+                .openai-mode-toggle {
+                    display: flex;
+                    align-items: center;
+                    justify-content: flex-end;
+                }
+
+                .llm-platform-note {
+                    margin-top: 18px;
+                    padding: 16px;
+                    border-radius: 10px;
+                    background: rgba(15, 118, 110, 0.12);
+                    border: 1px solid rgba(45, 212, 191, 0.35);
+                    color: #99f6e4;
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    font-size: 14px;
+                }
         </style>
         
         <div class="llm-availability-note">
@@ -1071,622 +1307,331 @@
             </div>
         </div>
 
-        <div class="llm-integrations-grid">
-                <!-- OpenAI Integration -->
-                <div class="llm-integration-card {% if openai_connected %}connected{% endif %}">
-                    <div class="llm-integration-header">
-                        <div class="llm-integration-info">
-                            <div class="llm-integration-logo openai">
-                                <svg fill="currentColor" width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142-.0852 4.783-2.7582a.7712.7712 0 0 0 .7806 0l5.8428 3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142.0852-4.7735 2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0593a4.4708 4.4708 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997L9.4041 13.5V10.4976z"/></svg>
-                            </div>
-                            <div class="llm-integration-details">
-                                <h3>OpenAI</h3>
-                                <p>{% if has_paid_subscription %}GPT-5 with platform credits{% else %}GPT-5-mini with platform credits{% endif %}</p>
-                            </div>
-                        </div>
-                        <div class="llm-integration-status {% if openai_connected %}connected{% else %}disconnected{% endif %}">
-                            <i class="fas fa-{% if openai_connected %}check-circle{% else %}circle{% endif %}"></i>
-                            {% if openai_connected %}Connected{% else %}Not Connected{% endif %}
-                        </div>
-                    </div>
-                    
-                    <div class="llm-integration-actions">
-                        {% if not openai_connected %}
-                            <a href="https://platform.openai.com/api-keys" target="_blank" class="llm-integration-button secondary">
-                                <i class="fas fa-external-link-alt"></i>
-                                Get API Key
-                            </a>
-                        {% else %}
-                            <a href="https://platform.openai.com" target="_blank" class="llm-integration-button secondary">
-                                <i class="fas fa-external-link-alt"></i>
-                                OpenAI Dashboard
-                            </a>
-                            <form method="post" action="{% url 'accounts:disconnect_api_key' 'openai' %}" style="display: inline;">
-                                {% csrf_token %}
-                                <button type="submit" class="llm-integration-button danger" onclick="return confirm('Disconnect OpenAI integration?');">
-                                    <i class="fas fa-unlink"></i>
-                                    Disconnect
-                                </button>
-                            </form>
-                        {% endif %}
-                    </div>
-                    
-                    {% if not openai_connected %}
-                    <div class="llm-api-key-input-section">
-                        <form method="post" action="{% url 'accounts:save_api_key' 'openai' %}" class="llm-api-key-form">
-                            {% csrf_token %}
-                            <input type="password" name="api_key" placeholder="Enter your OpenAI API key (sk-...)" required>
-                            <button type="submit">
-                                <i class="fas fa-plug"></i>
-                                Connect
-                            </button>
-                        </form>
-                    </div>
+        {% if has_paid_subscription %}
+        <div class="llm-byok-controls">
+            <div>
+                <div class="llm-byok-title">Bring your own keys</div>
+                <div class="llm-byok-copy">
+                    {% if byok_enabled %}
+                        Your OpenAI, Anthropic, and Google keys will be used where available.
+                    {% else %}
+                        Using LFG platform credits only. Enable the switch to add personal keys.
                     {% endif %}
                 </div>
-                
-                <!-- Anthropic Integration -->
-                <div class="llm-integration-card{% if anthropic_connected and has_paid_subscription %} connected{% endif %}{% if not has_paid_subscription %} locked{% endif %}">
-                    <div class="llm-integration-header">
-                        <div class="llm-integration-info">
-                            <div class="llm-integration-logo anthropic">
-                                <img src="{% static 'images/anthropic-logo.png' %}" alt="Anthropic" class="llm-logo-img">
-                            </div>
-                            <div class="llm-integration-details">
-                                <h3>Anthropic</h3>
-                                <p>Bring your Claude API key</p>
-                            </div>
-                        </div>
-                        <div class="llm-integration-status {% if not has_paid_subscription %}locked{% elif anthropic_connected %}connected{% else %}disconnected{% endif %}">
-                            {% if not has_paid_subscription %}
-                                <i class="fas fa-lock"></i>
-                                Locked
-                            {% else %}
-                                <i class="fas fa-{% if anthropic_connected %}check-circle{% else %}circle{% endif %}"></i>
-                                {% if anthropic_connected %}Connected{% else %}Not Connected{% endif %}
-                            {% endif %}
-                        </div>
-                    </div>
+            </div>
+            <form id="byok-toggle-form" method="post" action="{% url 'accounts:toggle_llm_byok' %}">
+                {% csrf_token %}
+                <input type="hidden" name="enable" value="{{ byok_enabled|yesno:'1,0' }}">
+                <label class="toggle-switch">
+                    <input type="checkbox" id="byok-toggle" {% if byok_enabled %}checked{% endif %}>
+                    <span class="toggle-slider"></span>
+                </label>
+            </form>
+        </div>
+        {% endif %}
 
-                    {% if has_paid_subscription %}
-                        <div class="llm-integration-actions">
-                            {% if not anthropic_connected %}
-                                <a href="https://console.anthropic.com/settings/keys" target="_blank" class="llm-integration-button secondary">
-                                    <i class="fas fa-external-link-alt"></i>
-                                    Get API Key
-                                </a>
-                            {% else %}
-                                <a href="https://console.anthropic.com" target="_blank" class="llm-integration-button secondary">
-                                    <i class="fas fa-external-link-alt"></i>
-                                    Anthropic Console
-                                </a>
-                                <form method="post" action="{% url 'accounts:disconnect_api_key' 'anthropic' %}" style="display: inline;">
+            <div class="llm-keys-table {% if not has_paid_subscription or not byok_enabled %}byok-disabled{% endif %}" id="llm-keys-table">
+            <!-- OpenAI Row -->
+            <div class="llm-keys-row">
+                <div class="llm-row-label">
+                    <div class="llm-integration-logo openai">
+                        <svg fill="currentColor" width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142-.0852 4.783-2.7582a.7712.7712 0 0 0 .7806 0l5.8428 3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142.0852-4.7735 2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0593a4.4708 4.4708 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997L9.4041 13.5V10.4976z"/></svg>
+                    </div>
+                    <div>
+                        <div class="llm-row-title">
+                            OpenAI
+                            <a href="https://platform.openai.com/api-keys" target="_blank" class="integration-help" title="How to get an OpenAI key">?</a>
+                        </div>
+                        <div class="llm-row-subtitle">{% if has_paid_subscription %}GPT-5 access with platform credits{% else %}GPT-5-mini with platform credits{% endif %}</div>
+                    </div>
+                </div>
+                <div class="llm-row-value">
+                    <div class="llm-row-actions">
+                        {% if has_paid_subscription %}
+                            {% if openai_connected %}
+                                <form method="post" action="{% url 'accounts:disconnect_api_key' 'openai' %}" class="llm-row-input" id="openai-disconnect-form">
                                     {% csrf_token %}
-                                    <button type="submit" class="llm-integration-button danger" onclick="return confirm('Disconnect Anthropic integration?');">
-                                        <i class="fas fa-unlink"></i>
-                                        Disconnect
+                                    <input type="password" value="••••••••••••" disabled>
+                                    <button type="submit" class="llm-integration-button danger connect-arrow" aria-label="Disconnect OpenAI" title="Disconnect OpenAI">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </form>
+                            {% else %}
+                                <form method="post" action="{% url 'accounts:save_api_key' 'openai' %}" class="llm-row-input">
+                                    {% csrf_token %}
+                                    <input type="password" name="api_key" placeholder="Enter OpenAI key (sk-...)" required>
+                                    <button type="submit" class="llm-integration-button primary connect-arrow" aria-label="Connect OpenAI" title="Connect OpenAI">
+                                        <i class="fas fa-arrow-right"></i>
                                     </button>
                                 </form>
                             {% endif %}
-                        </div>
-
-                        {% if not anthropic_connected %}
-                        <div class="llm-api-key-input-section">
-                            <form method="post" action="{% url 'accounts:save_api_key' 'anthropic' %}" class="llm-api-key-form">
-                                {% csrf_token %}
-                                <input type="password" name="api_key" placeholder="Enter your Anthropic API key (sk-ant-...)" required>
-                                <button type="submit">
-                                    <i class="fas fa-plug"></i>
-                                    Connect
-                                </button>
-                            </form>
-                        </div>
+                        {% else %}
+                            <div class="llm-row-disabled-note">Upgrade to Pro to bring your own keys.</div>
                         {% endif %}
-                    {% else %}
-                        <div class="llm-integration-locked">
-                            <div class="llm-integration-locked-message">
-                                <i class="fas fa-lock"></i>
-                                <span>Upgrade to connect your Anthropic key and use Claude models.</span>
-                            </div>
-                            <div class="llm-integration-locked-actions">
-                                <a href="#subscriptions" class="llm-integration-button primary">
-                                    <i class="fas fa-arrow-up"></i>
-                                    Upgrade Plan
-                                </a>
-                            </div>
-                        </div>
-                    {% endif %}
-                </div>
-                
-                <!-- Gemini Integration -->
-                <div class="llm-integration-card{% if gemini_connected and has_paid_subscription %} connected{% endif %}{% if not has_paid_subscription %} locked{% endif %}">
-                    <div class="llm-integration-header">
-                        <div class="llm-integration-info">
-                            <div class="llm-integration-logo gemini">
-                                <img src="{% static 'images/gemini-logo.png' %}" alt="Google Gemini" class="llm-logo-img">
-                            </div>
-                            <div class="llm-integration-details">
-                                <h3>Google Gemini</h3>
-                                <p>Bring your Gemini API key</p>
-                            </div>
-                        </div>
-                        <div class="llm-integration-status {% if not has_paid_subscription %}locked{% elif gemini_connected %}connected{% else %}disconnected{% endif %}">
-                            {% if not has_paid_subscription %}
-                                <i class="fas fa-lock"></i>
-                                Locked
-                            {% else %}
-                                <i class="fas fa-{% if gemini_connected %}check-circle{% else %}circle{% endif %}"></i>
-                                {% if gemini_connected %}Connected{% else %}Not Connected{% endif %}
-                            {% endif %}
-                        </div>
                     </div>
-                    
-                    {% if has_paid_subscription %}
-                        <div class="llm-integration-actions">
-                            {% if not gemini_connected %}
-                                <a href="https://makersuite.google.com/app/apikey" target="_blank" class="llm-integration-button secondary">
-                                    <i class="fas fa-external-link-alt"></i>
-                                    Get API Key
-                                </a>
-                            {% else %}
-                                <a href="https://makersuite.google.com" target="_blank" class="llm-integration-button secondary">
-                                    <i class="fas fa-external-link-alt"></i>
-                                    Google AI Studio
-                                </a>
-                                <form method="post" action="{% url 'accounts:disconnect_api_key' 'gemini' %}" style="display: inline;">
+                </div>
+            </div>
+
+            <!-- Anthropic Row -->
+            <div class="llm-keys-row">
+                <div class="llm-row-label">
+                    <div class="llm-integration-logo anthropic">
+                        <img src="{% static 'images/anthropic-logo.png' %}" alt="Anthropic" class="llm-logo-img">
+                    </div>
+                    <div>
+                        <div class="llm-row-title">
+                            Anthropic
+                            <a href="https://console.anthropic.com/settings/keys" target="_blank" class="integration-help" title="How to get an Anthropic key">?</a>
+                        </div>
+                        <div class="llm-row-subtitle">Bring your Claude API key</div>
+                    </div>
+                </div>
+                <div class="llm-row-value">
+                    <div class="llm-row-actions">
+                        {% if has_paid_subscription %}
+                            {% if anthropic_connected %}
+                                <form method="post" action="{% url 'accounts:disconnect_api_key' 'anthropic' %}" class="llm-row-input">
                                     {% csrf_token %}
-                                    <button type="submit" class="llm-integration-button danger" onclick="return confirm('Disconnect Gemini integration?');">
-                                        <i class="fas fa-unlink"></i>
-                                        Disconnect
+                                    <input type="password" value="••••••••••••" disabled>
+                                    <button type="submit" class="llm-integration-button danger connect-arrow" aria-label="Disconnect Anthropic" title="Disconnect Anthropic">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </form>
+                            {% else %}
+                                <form method="post" action="{% url 'accounts:save_api_key' 'anthropic' %}" class="llm-row-input">
+                                    {% csrf_token %}
+                                    <input type="password" name="api_key" placeholder="Enter Anthropic API key" required>
+                                    <button type="submit" class="llm-integration-button primary connect-arrow" aria-label="Connect Anthropic" title="Connect Anthropic">
+                                        <i class="fas fa-arrow-right"></i>
                                     </button>
                                 </form>
                             {% endif %}
-                        </div>
-
-                        {% if not gemini_connected %}
-                        <div class="llm-api-key-input-section">
-                            <form method="post" action="{% url 'accounts:save_api_key' 'gemini' %}" class="llm-api-key-form">
-                                {% csrf_token %}
-                                <input type="password" name="api_key" placeholder="Enter your Gemini API key" required>
-                                <button type="submit">
-                                    <i class="fas fa-plug"></i>
-                                    Connect
-                                </button>
-                            </form>
-                        </div>
-                        {% endif %}
-                    {% else %}
-                        <div class="llm-integration-locked">
-                            <div class="llm-integration-locked-message">
-                                <i class="fas fa-lock"></i>
-                                <span>Upgrade to connect your Google key and chat with Gemini models.</span>
-                            </div>
-                            <div class="llm-integration-locked-actions">
-                                <a href="#subscriptions" class="llm-integration-button primary">
-                                    <i class="fas fa-arrow-up"></i>
-                                    Upgrade Plan
-                                </a>
-                            </div>
-                        </div>
-                    {% endif %}
-                </div>
-                
-                <!-- Grok Integration -->
-                <div class="llm-integration-card {% if grok_connected %}connected{% endif %}">
-                    <div class="llm-integration-header">
-                        <div class="llm-integration-info">
-                            <div class="llm-integration-logo grok">
-                                <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
-                            </div>
-                            <div class="llm-integration-details">
-                                <h3>Grok (xAI)</h3>
-                                <p>Grok and other xAI models for advanced reasoning</p>
-                            </div>
-                        </div>
-                        <div class="llm-integration-status {% if grok_connected %}connected{% else %}disconnected{% endif %}">
-                            <i class="fas fa-{% if grok_connected %}check-circle{% else %}circle{% endif %}"></i>
-                            {% if grok_connected %}Connected{% else %}Not Connected{% endif %}
-                        </div>
-                    </div>
-                    
-                    <div class="llm-integration-actions">
-                        {% if not grok_connected %}
-                            <a href="https://console.x.ai" target="_blank" class="llm-integration-button secondary">
-                                <i class="fas fa-external-link-alt"></i>
-                                Get API Key
-                            </a>
                         {% else %}
-                            <a href="https://console.x.ai" target="_blank" class="llm-integration-button secondary">
-                                <i class="fas fa-external-link-alt"></i>
-                                xAI Console
-                            </a>
-                            <form method="post" action="{% url 'accounts:disconnect_api_key' 'grok' %}" style="display: inline;">
-                                {% csrf_token %}
-                                <button type="submit" class="llm-integration-button danger" onclick="return confirm('Disconnect Grok integration?');">
-                                    <i class="fas fa-unlink"></i>
-                                    Disconnect
-                                </button>
-                            </form>
+                            <div class="llm-row-disabled-note">Upgrade to connect your Anthropic key.</div>
                         {% endif %}
                     </div>
-                    
-                    {% if not grok_connected %}
-                    <div class="llm-api-key-input-section">
-                        <form method="post" action="{% url 'accounts:save_api_key' 'grok' %}" class="llm-api-key-form">
-                            {% csrf_token %}
-                            <input type="password" name="api_key" placeholder="Enter your xAI API key" required>
-                            <button type="submit">
-                                <i class="fas fa-plug"></i>
-                                Connect
-                            </button>
-                        </form>
+                </div>
+            </div>
+
+            <!-- Google Gemini Row -->
+            <div class="llm-keys-row">
+                <div class="llm-row-label">
+                    <div class="llm-integration-logo gemini">
+                        <img src="{% static 'images/gemini-logo.png' %}" alt="Google Gemini" class="llm-logo-img">
                     </div>
-                    {% endif %}
+                    <div>
+                        <div class="llm-row-title">
+                            Google Gemini
+                            <a href="https://makersuite.google.com/app/apikey" target="_blank" class="integration-help" title="How to get a Gemini key">?</a>
+                        </div>
+                        <div class="llm-row-subtitle">Bring your Gemini API key</div>
+                    </div>
+                </div>
+                <div class="llm-row-value">
+                    <div class="llm-row-actions">
+                        {% if has_paid_subscription %}
+                            {% if google_connected %}
+                                <form method="post" action="{% url 'accounts:disconnect_api_key' 'google' %}" class="llm-row-input" id="google-disconnect-form">
+                                    {% csrf_token %}
+                                    <input type="password" value="••••••••••••" disabled>
+                                    <button type="submit" class="llm-integration-button danger connect-arrow" aria-label="Disconnect Gemini" title="Disconnect Gemini">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </form>
+                            {% else %}
+                                <form method="post" action="{% url 'accounts:save_api_key' 'google' %}" class="llm-row-input">
+                                    {% csrf_token %}
+                                    <input type="password" name="api_key" placeholder="Enter Gemini API key" required>
+                                    <button type="submit" class="llm-integration-button primary connect-arrow" aria-label="Connect Gemini" title="Connect Gemini">
+                                        <i class="fas fa-arrow-right"></i>
+                                    </button>
+                                </form>
+                            {% endif %}
+                        {% else %}
+                            <div class="llm-row-disabled-note">Upgrade to connect Google Gemini.</div>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- Project Management Section -->
+        {% if has_paid_subscription %}
+        <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                const toggle = document.getElementById('byok-toggle');
+                const form = document.getElementById('byok-toggle-form');
+                const table = document.getElementById('llm-keys-table');
+                if (!toggle || !form || !table) return;
+                const hiddenInput = form.querySelector('input[name="enable"]');
+
+                const setTableState = (enabled) => {
+                    table.classList.toggle('byok-disabled', !enabled);
+                };
+
+                setTableState(toggle.checked);
+
+                toggle.addEventListener('change', function() {
+                    const enabled = toggle.checked;
+                    if (!enabled) {
+                        const confirmed = confirm('Disabling BYOK will remove your saved OpenAI, Anthropic, and Google keys.');
+                        if (!confirmed) {
+                            toggle.checked = true;
+                            return;
+                        }
+                    }
+                    if (hiddenInput) {
+                        hiddenInput.value = enabled ? '1' : '0';
+                    }
+                    setTableState(enabled);
+                    form.submit();
+                });
+            });
+        </script>
+        {% endif %}
+        </div>
+
+<!-- Project Management Section -->
         <div id="project-management-new" class="settings-section">
             <h2 class="section-heading">Project Management Integrations</h2>
-            
+
             <style>
-                .integrations-grid {
-                    display: grid;
-                    grid-template-columns: 1fr;
-                    gap: 1.5rem;
-                    max-width: 600px;
-                    margin: 0 auto;
-                    width: 100%;
+                .project-table {
+                    margin-top: 20px;
                 }
-                
-                .integration-card {
-                    background: #1a1a1a;
-                    border: 1px solid #2a2a2a;
+
+                .project-table .llm-row-label {
+                    flex: 1.15;
+                }
+
+                .project-table .llm-row-actions {
+                    align-items: flex-start;
+                }
+
+                .project-table .integration-logo {
+                    width: 42px;
+                    height: 42px;
                     border-radius: 12px;
-                    padding: 24px;
-                    transition: all 0.3s ease;
-                }
-                
-                .integration-card:hover:not(.disabled) {
-                    border-color: rgba(167, 139, 250, 0.3);
-                    background: rgba(167, 139, 250, 0.05);
-                }
-                
-                .integration-card.disabled {
-                    opacity: 0.5;
-                    cursor: not-allowed;
-                    background: #141414;
-                }
-                
-                .integration-card.connected {
-                    border-color: rgba(34, 197, 94, 0.3);
-                    background: rgba(34, 197, 94, 0.05);
-                }
-                
-                .integration-header {
-                    display: flex;
-                    align-items: center;
-                    justify-content: space-between;
-                    margin-bottom: 16px;
-                }
-                
-                .integration-info {
-                    display: flex;
-                    align-items: center;
-                    gap: 12px;
-                }
-                
-                .integration-logo {
-                    width: 40px;
-                    height: 40px;
-                    border-radius: 8px;
                     display: flex;
                     align-items: center;
                     justify-content: center;
                     font-size: 20px;
-                    flex-shrink: 0;
-                }
-                
-                .integration-logo.linear {
-                    background: linear-gradient(135deg, #5e6ad2, #4c63d2);
-                    color: white;
-                }
-                
-                .integration-logo.notion {
-                    background: #000;
-                    color: white;
-                }
-                
-                .integration-logo.jira {
-                    background: #ffffff;
-                    color: #2684FF;
-                }
-                
-                .integration-details h3 {
-                    margin: 0 0 4px 0;
-                    font-size: 16px;
-                    font-weight: 600;
-                    color: #e5e7eb;
-                }
-                
-                .integration-details p {
-                    margin: 0;
-                    font-size: 14px;
-                    color: #9ca3af;
-                }
-                
-                .integration-status {
-                    display: flex;
-                    align-items: center;
-                    gap: 8px;
-                    font-size: 14px;
-                    font-weight: 500;
-                }
-                
-                .integration-status.connected {
-                    color: #22c55e;
-                }
-                
-                .integration-status.disconnected {
-                    color: #6b7280;
-                }
-                
-                .integration-status.disabled {
-                    color: #4b5563;
-                }
-                
-                .integration-actions {
-                    margin-top: 16px;
-                    display: flex;
-                    gap: 12px;
-                    align-items: center;
-                }
-                
-                .integration-button {
-                    padding: 8px 16px;
-                    border: none;
-                    border-radius: 8px;
-                    font-size: 14px;
-                    font-weight: 500;
-                    cursor: pointer;
-                    transition: all 0.2s ease;
-                    text-decoration: none;
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 6px;
-                }
-                
-                .integration-button.primary {
-                    background: linear-gradient(135deg, #8B5CF6, #A855F7);
-                    color: white;
-                }
-                
-                .integration-button.primary:hover {
-                    transform: translateY(-1px);
-                    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);
-                }
-                
-                .integration-button.secondary {
                     background: transparent;
-                    color: #9ca3af;
-                    border: 1px solid #374151;
                 }
                 
-                .integration-button.secondary:hover {
-                    background: rgba(255, 255, 255, 0.05);
-                    border-color: #4b5563;
+                .project-coming-soon {
+                    opacity: 0.75;
                 }
-                
-                .integration-button.danger {
-                    background: transparent;
-                    color: #ef4444;
-                    border: 1px solid rgba(239, 68, 68, 0.3);
-                }
-                
-                .integration-button.danger:hover {
-                    background: rgba(239, 68, 68, 0.1);
-                    border-color: rgba(239, 68, 68, 0.5);
-                }
-                
-                .integration-button:disabled {
-                    opacity: 0.5;
-                    cursor: not-allowed;
-                    transform: none !important;
-                }
-                
-                .api-key-input-section {
-                    margin-top: 16px;
-                    padding-top: 16px;
-                    border-top: 1px solid #2a2a2a;
-                }
-                
-                .api-key-form {
-                    display: flex;
-                    gap: 12px;
-                    margin-top: 12px;
-                }
-                
-                .api-key-form input {
-                    flex: 1;
-                    padding: 10px 14px;
-                    background: rgba(10, 10, 15, 0.6);
-                    border: 1px solid rgba(255, 255, 255, 0.1);
-                    border-radius: 8px;
-                    color: #e5e7eb;
-                    font-size: 14px;
-                    font-family: monospace;
-                }
-                
-                .api-key-form input:focus {
-                    outline: none;
-                    border-color: #8B5CF6;
-                }
-                
-                .api-key-form button {
-                    padding: 10px 16px;
-                    background: linear-gradient(135deg, #8B5CF6, #A855F7);
-                    color: white;
-                    border: none;
-                    border-radius: 8px;
-                    font-weight: 500;
-                    cursor: pointer;
-                    transition: all 0.2s ease;
-                    font-size: 14px;
-                }
-                
-                .api-key-form button:hover {
-                    transform: translateY(-1px);
-                    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);
-                }
-                
-                .coming-soon-badge {
-                    background: rgba(75, 85, 99, 0.3);
-                    color: #9ca3af;
-                    padding: 4px 8px;
-                    border-radius: 12px;
+
+                .coming-soon-chip {
+                    background: rgba(148, 163, 184, 0.2);
+                    color: #cbd5f5;
+                    padding: 4px 10px;
+                    border-radius: 999px;
                     font-size: 12px;
-                    font-weight: 500;
+                    letter-spacing: 0.08em;
                     text-transform: uppercase;
-                    letter-spacing: 0.5px;
                 }
             </style>
-            
-            <div class="integrations-grid">
-                <!-- Linear Integration -->
-                <div class="integration-card {% if linear_connected %}connected{% endif %}">
-                    <div class="integration-header">
-                        <div class="integration-info">
-                            <div class="integration-logo linear">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" width="24" height="24" viewBox="0 0 100 100"><path fill="currentColor" d="M1.22541 61.5228c-.2225-.9485.90748-1.5459 1.59638-.857L39.3342 97.1782c.6889.6889.0915 1.8189-.857 1.5964C20.0515 94.4522 5.54779 79.9485 1.22541 61.5228ZM.00189135 46.8891c-.01764375.2833.08887215.5599.28957165.7606L52.3503 99.7085c.2007.2007.4773.3075.7606.2896 2.3692-.1476 4.6938-.46 6.9624-.9259.7645-.157 1.0301-1.0963.4782-1.6481L2.57595 39.4485c-.55186-.5519-1.49117-.2863-1.648174.4782-.465915 2.2686-.77832 4.5932-.92588465 6.9624ZM4.21093 29.7054c-.16649.3738-.08169.8106.20765 1.1l64.77602 64.776c.2894.2894.7262.3742 1.1.2077 1.7861-.7956 3.5171-1.6927 5.1855-2.684.5521-.328.6373-1.0867.1832-1.5407L8.43566 24.3367c-.45409-.4541-1.21271-.3689-1.54074.1832-.99132 1.6684-1.88843 3.3994-2.68399 5.1855ZM12.6587 18.074c-.3701-.3701-.393-.9637-.0443-1.3541C21.7795 6.45931 35.1114 0 49.9519 0 77.5927 0 100 22.4073 100 50.0481c0 14.8405-6.4593 28.1724-16.7199 37.3375-.3903.3487-.984.3258-1.3542-.0443L12.6587 18.074Z"/></svg>
-                            </div>
-                            <div class="integration-details">
-                                <h3>Linear</h3>
-                                <p>Issue tracking and project management</p>
-                            </div>
-                        </div>
-                        <div class="integration-status {% if linear_connected %}connected{% else %}disconnected{% endif %}">
-                            <i class="fas fa-{% if linear_connected %}check-circle{% else %}circle{% endif %}"></i>
-                            {% if linear_connected %}Connected{% else %}Not Connected{% endif %}
-                        </div>
-                    </div>
-                    
-                    <div class="integration-actions">
-                        {% if not linear_connected %}
-                            <a href="https://linear.app/settings/api" target="_blank" class="integration-button secondary">
-                                <i class="fas fa-external-link-alt"></i>
-                                Get API Key
-                            </a>
-                        {% else %}
-                            <a href="https://linear.app" target="_blank" class="integration-button secondary">
-                                <i class="fas fa-external-link-alt"></i>
-                                Open Linear
-                            </a>
-                            <form method="post" action="{% url 'accounts:disconnect_api_key' 'linear' %}" style="display: inline;">
-                                {% csrf_token %}
-                                <button type="submit" class="integration-button danger" onclick="return confirm('Disconnect Linear integration?');">
-                                    <i class="fas fa-unlink"></i>
-                                    Disconnect
-                                </button>
-                            </form>
-                        {% endif %}
-                    </div>
-                    
-                    {% if not linear_connected %}
-                    <div class="api-key-input-section">
-                        <form method="post" action="{% url 'accounts:save_api_key' 'linear' %}" class="api-key-form">
-                            {% csrf_token %}
-                            <input type="password" name="api_key" placeholder="Enter your Linear API key" required>
-                            <button type="submit">
-                                <i class="fas fa-plug"></i>
-                                Connect
-                            </button>
-                        </form>
-                    </div>
-                    {% endif %}
-                </div>
-                
-                <!-- Notion Integration -->
-                <div class="integration-card {% if notion_connected %}connected{% endif %}">
-                    <div class="integration-header">
-                        <div class="integration-info">
-                            <div class="integration-logo notion">
-                                <svg width="24" height="24" viewBox="0 0 29 30" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1.81 1.294L18.446.068c2.043-.175 2.568-.057 3.852.875l5.311 3.733c.877.642 1.169.817 1.169 1.516v20.473c0 1.283-.468 2.042-2.102 2.158L7.357 29.99c-1.228.058-1.811-.117-2.454-.934l-3.91-5.074C.29 23.048 0 22.349 0 21.532V3.334c0-1.049.468-1.924 1.81-2.04z" fill="#fff"></path><path fill-rule="evenodd" clip-rule="evenodd" d="M18.447.068L1.808 1.294C.468 1.41 0 2.285 0 3.334v18.198c0 .817.291 1.516.992 2.45l3.911 5.074c.643.817 1.226.992 2.453.934l19.321-1.167c1.634-.116 2.102-.875 2.102-2.158V6.192c0-.663-.263-.854-1.037-1.42l-.132-.096L22.3.943c-1.285-.932-1.81-1.05-3.854-.875zM7.793 5.857c-1.577.106-1.936.13-2.831-.597L2.685 3.452c-.233-.234-.116-.526.467-.584l15.995-1.166c1.342-.117 2.043.35 2.568.758l2.744 1.983c.117.059.408.408.058.408l-16.52.992-.203.014zM5.954 26.49V9.11c0-.759.234-1.109.934-1.168l18.971-1.108c.643-.058.935.35.935 1.108v17.264c0 .759-.117 1.401-1.168 1.459l-18.154 1.05c-1.05.058-1.518-.291-1.518-1.225zm17.922-16.448c.116.525 0 1.05-.527 1.11l-.874.173v12.832c-.76.408-1.46.641-2.044.641-.934 0-1.168-.292-1.868-1.166l-5.721-8.982v8.69l1.81.409s0 1.05-1.46 1.05l-4.027.233c-.117-.234 0-.817.408-.933l1.051-.291v-11.49L9.165 12.2c-.117-.525.174-1.283.992-1.341l4.32-.292 5.954 9.1v-8.05l-1.518-.174c-.116-.643.35-1.109.934-1.167l4.029-.234z" fill="#000"></path></svg>
-                            </div>
-                            <div class="integration-details">
-                                <h3>Notion</h3>
-                                <p>Documentation and knowledge management</p>
-                            </div>
-                        </div>
-                        <div class="integration-status {% if notion_connected %}connected{% else %}disconnected{% endif %}">
-                            <i class="fas fa-{% if notion_connected %}check-circle{% else %}circle{% endif %}"></i>
-                            {% if notion_connected %}Connected{% else %}Not Connected{% endif %}
-                        </div>
-                    </div>
 
-                    <div class="integration-actions">
-                        {% if not notion_connected %}
-                            <a href="https://www.notion.so/my-integrations" target="_blank" class="integration-button secondary">
-                                <i class="fas fa-external-link-alt"></i>
-                                Create Integration
-                            </a>
-                        {% else %}
-                            <a href="https://www.notion.so" target="_blank" class="integration-button secondary">
-                                <i class="fas fa-external-link-alt"></i>
-                                Open Notion
-                            </a>
-                            <form method="post" action="{% url 'accounts:disconnect_api_key' 'notion' %}" style="display: inline;">
-                                {% csrf_token %}
-                                <button type="submit" class="integration-button danger" onclick="return confirm('Disconnect Notion integration?');">
-                                    <i class="fas fa-unlink"></i>
-                                    Disconnect
-                                </button>
-                            </form>
-                        {% endif %}
+            <div class="llm-keys-table project-table">
+                <div class="llm-keys-row">
+                    <div class="llm-row-label">
+                        <div class="integration-logo linear">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" width="24" height="24" viewBox="0 0 100 100"><path fill="currentColor" d="M1.22541 61.5228c-.2225-.9485.90748-1.5459 1.59638-.857L39.3342 97.1782c.6889.6889.0915 1.8189-.857 1.5964C20.0515 94.4522 5.54779 79.9485 1.22541 61.5228ZM.00189135 46.8891c-.01764375.2833.08887215.5599.28957165.7606L52.3503 99.7085c.2007.2007.4773.3075.7606.2896 2.3692-.1476 4.6938-.46 6.9624-.9259.7645-.157 1.0301-1.0963.4782-1.6481L2.57595 39.4485c-.55186-.5519-1.49117-.2863-1.648174.4782-.465915 2.2686-.77832 4.5932-.92588465 6.9624ZM4.21093 29.7054c-.16649.3738-.08169.8106.20765 1.1l64.77602 64.776c.2894.2894.7262.3742 1.1.2077 1.7861-.7956 3.5171-1.6927 5.1855-2.684.5521-.328.6373-1.0867.1832-1.5407L8.43566 24.3367c-.45409-.4541-1.21271-.3689-1.54074.1832-.99132 1.6684-1.88843 3.3994-2.68399 5.1855ZM12.6587 18.074c-.3701-.3701-.393-.9637-.0443-1.3541C21.7795 6.45931 35.1114 0 49.9519 0 77.5927 0 100 22.4073 100 50.0481c0 14.8405-6.4593 28.1724-16.7199 37.3375-.3903.3487-.984.3258-1.3542-.0443L12.6587 18.074Z"/></svg>
+                        </div>
+                        <div>
+                            <div class="llm-row-title">
+                                Linear
+                                <a href="https://linear.app/settings/api" target="_blank" class="integration-help" title="How to get your Linear API key">?</a>
+                            </div>
+                            <div class="llm-row-subtitle">Issue tracking and project management</div>
+                        </div>
                     </div>
-
-                    {% if not notion_connected %}
-                    <div class="api-key-input-section">
-                        <form method="post" action="{% url 'accounts:save_api_key' 'notion' %}" class="api-key-form">
-                            {% csrf_token %}
-                            <input type="password" name="api_key" placeholder="Enter your Notion integration token" required>
-                            <button type="submit">
-                                <i class="fas fa-plug"></i>
-                                Connect
-                            </button>
-                        </form>
+                    <div class="llm-row-value">
+                        <div class="llm-row-actions">
+                            {% if linear_connected %}
+                                <div class="llm-row-input">
+                                    <a href="https://linear.app" target="_blank" class="llm-integration-button secondary compact" aria-label="Open Linear" title="Open Linear">
+                                        <i class="fas fa-external-link-alt"></i>
+                                    </a>
+                                    <form method="post" action="{% url 'accounts:disconnect_api_key' 'linear' %}">
+                                        {% csrf_token %}
+                                        <button type="submit" class="llm-integration-button danger connect-arrow" aria-label="Disconnect Linear" title="Disconnect Linear" onclick="return confirm('Disconnect Linear integration?');">
+                                            <i class="fas fa-arrow-right"></i>
+                                        </button>
+                                    </form>
+                                </div>
+                            {% else %}
+                                <form method="post" action="{% url 'accounts:save_api_key' 'linear' %}" class="llm-row-input">
+                                    {% csrf_token %}
+                                    <input type="password" name="api_key" placeholder="Enter your Linear API key" required>
+                                    <button type="submit" class="llm-integration-button primary connect-arrow" aria-label="Connect Linear">
+                                        <i class="fas fa-arrow-right"></i>
+                                    </button>
+                                </form>
+                            {% endif %}
+                        </div>
                     </div>
-                    {% endif %}
                 </div>
-                
-                <!-- Jira Integration (Coming Soon) -->
-                <div class="integration-card disabled">
-                    <div class="integration-header">
-                        <div class="integration-info">
-                            <div class="integration-logo jira">
-                                <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M11.53 2c0 2.4 1.97 4.35 4.35 4.35h1.78c1.16 0 2.1.94 2.1 2.1v1.78c0 2.4 1.97 4.35 4.35 4.35V2H11.53z" fill="#2684FF"/><path d="M11.53 2H2v12.57c2.4 0 4.35 1.97 4.35 4.35v1.78c0 1.16.94 2.1 2.1 2.1h1.78c2.4 0 4.35 1.97 4.35 4.35V14.57c0-2.4-1.97-4.35-4.35-4.35H8.45c-1.16 0-2.1-.94-2.1-2.1V6.35C6.35 3.97 4.4 2 2 2h9.53z" fill="#2684FF"/></svg>
-                            </div>
-                            <div class="integration-details">
-                                <h3>Jira</h3>
-                                <p>Enterprise project management and issue tracking</p>
-                            </div>
+
+                <div class="llm-keys-row">
+                    <div class="llm-row-label">
+                        <div class="integration-logo notion">
+                            <svg width="24" height="24" viewBox="0 0 29 30" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1.81 1.294L18.446.068c2.043-.175 2.568-.057 3.852.875l5.311 3.733c.877.642 1.169.817 1.169 1.516v20.473c0 1.283-.468 2.042-2.102 2.158L7.357 29.99c-1.228.058-1.811-.117-2.454-.934l-3.91-5.074C.29 23.048 0 22.349 0 21.532V3.334c0-1.049.468-1.924 1.81-2.04z" fill="#fff"></path><path fill-rule="evenodd" clip-rule="evenodd" d="M18.447.068L1.808 1.294C.468 1.41 0 2.285 0 3.334v18.198c0 .817.291 1.516.992 2.45l3.911 5.074c.643.817 1.226.992 2.453.934l19.321-1.167c1.634-.116 2.102-.875 2.102-2.158V6.192c0-.663-.263-.854-1.037-1.42l-.132-.096L22.3.943c-1.285-.932-1.81-1.05-3.854-.875zM7.793 5.857c-1.577.106-1.936.13-2.831-.597L2.685 3.452c-.233-.234-.116-.526.467-.584l15.995-1.166c1.342-.117 2.043.35 2.568.758l2.744 1.983c.117.059.408.408.058.408l-16.52.992-.203.014zM5.954 26.49V9.11c0-.759.234-1.109.934-1.168l18.971-1.108c.643-.058.935.35.935 1.108v17.264c0 .759-.117 1.401-1.168 1.459l-18.154 1.05c-1.05.058-1.518-.291-1.518-1.225zm17.922-16.448c.116.525 0 1.05-.527 1.11l-.874.173v12.832c-.76.408-1.46.641-2.044.641-.934 0-1.168-.292-1.868-1.166l-5.721-8.982v8.69l1.81.409s0 1.05-1.46 1.05l-4.027.233c-.117-.234 0-.817.408-.933l1.051-.291v-11.49L9.165 12.2c-.117-.525.174-1.283.992-1.341l4.32-.292 5.954 9.1v-8.05l-1.518-.174c-.116-.643.35-1.109.934-1.167l4.029-.234z" fill="#000"></path></svg>
                         </div>
-                        <div class="integration-status disabled">
-                            <span class="coming-soon-badge">Coming Soon</span>
+                        <div>
+                            <div class="llm-row-title">Notion
+                                <a href="https://www.notion.so/my-integrations" target="_blank" class="integration-help" title="Steps to create a Notion integration token">?</a>
+                            </div>
+                            <div class="llm-row-subtitle">Documentation and knowledge management</div>
                         </div>
                     </div>
-                    
-                    <div class="integration-actions">
-                        <button class="integration-button primary" disabled>
-                            <i class="fas fa-clock"></i>
-                            Coming Soon
-                        </button>
+                    <div class="llm-row-value">
+                        <div class="llm-row-actions">
+                            {% if notion_connected %}
+                                <div class="llm-row-input">
+                                    <a href="https://www.notion.so" target="_blank" class="llm-integration-button secondary compact" aria-label="Open Notion" title="Open Notion workspace">
+                                        <i class="fas fa-external-link-alt"></i>
+                                    </a>
+                                    <form method="post" action="{% url 'accounts:disconnect_api_key' 'notion' %}">
+                                        {% csrf_token %}
+                                        <button type="submit" class="llm-integration-button danger connect-arrow" aria-label="Disconnect Notion" title="Disconnect Notion" onclick="return confirm('Disconnect Notion integration?');">
+                                            <i class="fas fa-arrow-right"></i>
+                                        </button>
+                                    </form>
+                                </div>
+                            {% else %}
+                                <form method="post" action="{% url 'accounts:save_api_key' 'notion' %}" class="llm-row-input">
+                                    {% csrf_token %}
+                                    <input type="password" name="api_key" placeholder="Enter your Notion integration token" required>
+                                    <button type="submit" class="llm-integration-button primary connect-arrow" aria-label="Connect Notion">
+                                        <i class="fas fa-arrow-right"></i>
+                                    </button>
+                                </form>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="llm-keys-row project-coming-soon">
+                    <div class="llm-row-label">
+                        <div class="integration-logo jira">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M19.146 2H11.18a.6.6 0 00-.424.176l-8.58 8.58a.6.6 0 000 .849l7.965 7.966a.6.6 0 00.849 0l8.58-8.58a.6.6 0 00.176-.424V2.6a.6.6 0 00-.6-.6zm-5.6 6.4h3.549L12 13.494 8.905 10.4h3.54a.6.6 0 00.6-.6V4.16l3.245 3.245h-2.744a.6.6 0 00-.6.6v2.395z"/></svg>
+                        </div>
+                        <div>
+                            <div class="llm-row-title">Jira</div>
+                            <div class="llm-row-subtitle">Enterprise issue tracking</div>
+                        </div>
+                    </div>
+                    <div class="llm-row-value">
+                        <div class="llm-row-status">
+                            <span class="coming-soon-chip">Coming Soon</span>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-        
-        <!-- Subscriptions Section -->
+<!-- Subscriptions Section -->
         <div id="subscriptions" class="settings-section">
             <h2 class="section-heading">Subscription & Billing</h2>
             
@@ -2594,8 +2539,8 @@
                         </form>
                     {% endif %}
                     
-                    <a href="https://platform.openai.com/settings/organization/api-keys" target="_blank" class="external-link">
-                        Get API Key
+                    <a href="https://platform.openai.com/settings/organization/api-keys" target="_blank" class="external-link" title="OpenAI API key guide">
+                        <span class="integration-help">?</span>
                         <i class="fas fa-external-link-alt"></i>
                     </a>
                 </div>
@@ -2644,8 +2589,8 @@
                         </form>
                     {% endif %}
                     
-                    <a href="https://console.anthropic.com/settings/keys" target="_blank" class="external-link">
-                        Get API Key
+                    <a href="https://console.anthropic.com/settings/keys" target="_blank" class="external-link" title="Anthropic API key guide">
+                        <span class="integration-help">?</span>
                         <i class="fas fa-external-link-alt"></i>
                     </a>
                 </div>
@@ -2696,8 +2641,8 @@
                         </form>
                     {% endif %}
                     
-                    <a href="https://console.x.ai/" target="_blank" class="external-link">
-                        Get API Key
+                    <a href="https://console.x.ai/" target="_blank" class="external-link" title="xAI API key guide">
+                        <span class="integration-help">?</span>
                         <i class="fas fa-external-link-alt"></i>
                     </a>
                 </div>
@@ -2746,8 +2691,8 @@
                         </form>
                     {% endif %}
                     
-                    <a href="https://aistudio.google.com/apikey" target="_blank" class="external-link">
-                        Get API Key
+                    <a href="https://aistudio.google.com/apikey" target="_blank" class="external-link" title="Google AI Studio keys">
+                        <span class="integration-help">?</span>
                         <i class="fas fa-external-link-alt"></i>
                     </a>
                 </div>
