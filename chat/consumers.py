@@ -460,7 +460,27 @@ class ChatConsumer(AsyncWebsocketConsumer):
         logger.warning("ai_chunk message received on channel layer - this should use ai_response_chunk instead")
         # Redirect to the proper handler
         await self.ai_response_chunk(event)
-    
+
+    async def ticket_chat_message(self, event):
+        """
+        Send ticket chat message to WebSocket
+        """
+        logger.info(f"ticket_chat_message received: ticket_id={event.get('ticket_id')}, role={event.get('role')}")
+
+        response_data = {
+            'type': 'ticket_chat',
+            'ticket_id': event.get('ticket_id'),
+            'role': event.get('role'),
+            'content': event.get('content', ''),
+            'is_streaming': event.get('is_streaming', False)
+        }
+
+        try:
+            await self.send(text_data=json.dumps(response_data))
+            logger.info(f"Successfully sent ticket chat message to client")
+        except Exception as e:
+            logger.error(f"Error sending ticket chat message to client: {str(e)}")
+
     async def tool_progress_update(self, event):
         """
         Send tool progress update to WebSocket

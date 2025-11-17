@@ -76,6 +76,31 @@ class TicketExecutor:
         except Exception as exc:
             logger.error(f"Failed to broadcast notification: {exc}")
 
+    def broadcast_chat_message(self, role: str, content: str, is_streaming: bool = False) -> None:
+        """Send chat message to the ticket chat UI via WebSocket."""
+        if not self.conversation_id or not self.ticket:
+            return
+
+        channel_layer = get_channel_layer()
+        if not channel_layer:
+            return
+
+        event = {
+            'type': 'ticket_chat_message',
+            'ticket_id': self.ticket.id,
+            'role': role,
+            'content': content,
+            'is_streaming': is_streaming,
+        }
+
+        try:
+            async_to_sync(channel_layer.group_send)(
+                f"conversation_{self.conversation_id}",
+                event
+            )
+        except Exception as exc:
+            logger.error(f"Failed to broadcast chat message: {exc}")
+
     async def get_project_context(self) -> str:
         """Fetch project documentation (PRD and implementation docs)."""
         project_context = ""
@@ -307,18 +332,29 @@ REMEMBER: Always check state first, then make surgical changes. You're a precisi
                 timeout=max_execution_time * 1000,  # Convert to milliseconds
             )
 
-            # Execute the query using Claude Agent SDK
+            # Execute the query using Claude Agent SDK with streaming
+            # Note: For now, we'll use the regular query method
+            # In the future, we can implement streaming via the SDK
+
+            # Send initial message to chat UI
+            self.broadcast_chat_message('assistant', '', is_streaming=True)
+
             response = await query(
                 prompt=implementation_prompt,
                 options=agent_options
             )
 
-            # Process the response
+            # Process the response and stream to chat
             content = ""
             if hasattr(response, 'content'):
                 for block in response.content:
                     if isinstance(block, TextBlock):
                         content += block.text
+                        # Stream each text block to the chat UI
+                        self.broadcast_chat_message('assistant', content, is_streaming=True)
+
+            # Send final message
+            self.broadcast_chat_message('assistant', content, is_streaming=False)
 
             execution_time = time.time() - start_time
 

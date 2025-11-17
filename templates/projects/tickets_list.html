@@ -119,14 +119,24 @@
     <div id="ticketDrawerOverlay" class="drawer-overlay" onclick="closeTicketDrawer()"></div>
     <div id="ticketDrawer" class="drawer">
         <div class="drawer-header">
-            <h3 class="drawer-title" id="drawerTicketTitle"></h3>
-            <button class="drawer-close" onclick="closeTicketDrawer()">
-                <i class="fas fa-times"></i>
-            </button>
+            <div class="drawer-header-left">
+                <h3 class="drawer-title" id="drawerTicketTitle"></h3>
+            </div>
+            <div class="drawer-header-right">
+                <button class="drawer-execute-btn" onclick="executeTicket()" id="executeTicketBtn">
+                    <i class="fas fa-play"></i> Execute
+                </button>
+                <button class="drawer-close" onclick="closeTicketDrawer()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
         </div>
         <div class="drawer-tabs">
             <button class="drawer-tab active" data-tab="details" onclick="switchDrawerTab('details')">
                 <i class="fas fa-info-circle"></i> Details
+            </button>
+            <button class="drawer-tab" data-tab="chat" onclick="switchDrawerTab('chat')">
+                <i class="fas fa-comments"></i> Chat
             </button>
             <button class="drawer-tab" data-tab="logs" onclick="switchDrawerTab('logs')">
                 <i class="fas fa-terminal"></i> Logs
@@ -241,6 +251,9 @@
                 case 'details':
                     showDetailsTab(body);
                     break;
+                case 'chat':
+                    showChatTab(body);
+                    break;
                 case 'logs':
                     showLogsTab(body);
                     break;
@@ -254,40 +267,31 @@
             const ticket = currentTicket;
             body.innerHTML = `
                 <div class="ticket-detail-drawer">
-                    <div class="detail-section">
-                        <h4>Description</h4>
-                        <p>${ticket.description || 'No description provided'}</p>
+                    <div class="detail-meta-row">
+                        <select class="compact-select status-select" id="ticketStatus" data-status="${ticket.status}" onchange="updateTicketField('status', this.value)">
+                            <option value="open" ${ticket.status === 'open' ? 'selected' : ''}>Open</option>
+                            <option value="in_progress" ${ticket.status === 'in_progress' ? 'selected' : ''}>In Progress</option>
+                            <option value="done" ${ticket.status === 'done' ? 'selected' : ''}>Done</option>
+                            <option value="blocked" ${ticket.status === 'blocked' ? 'selected' : ''}>Blocked</option>
+                        </select>
+
+                        <select class="compact-select priority-select" id="ticketPriority" data-priority="${ticket.priority}" onchange="updateTicketField('priority', this.value)">
+                            <option value="Low" ${ticket.priority === 'Low' ? 'selected' : ''}>Low</option>
+                            <option value="Medium" ${ticket.priority === 'Medium' ? 'selected' : ''}>Medium</option>
+                            <option value="High" ${ticket.priority === 'High' ? 'selected' : ''}>High</option>
+                        </select>
+
+                        <div class="detail-meta-badge">
+                            <i class="fas fa-layer-group"></i> ${ticket.complexity || 'medium'}
+                        </div>
+
+                        <div class="detail-meta-badge">
+                            <i class="fas fa-calendar"></i> ${formatDate(ticket.created_at)}
+                        </div>
                     </div>
 
-                    <div class="detail-grid">
-                        <div class="detail-item">
-                            <label>Status</label>
-                            <select class="edit-select" id="ticketStatus" onchange="updateTicketField('status', this.value)">
-                                <option value="open" ${ticket.status === 'open' ? 'selected' : ''}>Open</option>
-                                <option value="in_progress" ${ticket.status === 'in_progress' ? 'selected' : ''}>In Progress</option>
-                                <option value="done" ${ticket.status === 'done' ? 'selected' : ''}>Done</option>
-                                <option value="blocked" ${ticket.status === 'blocked' ? 'selected' : ''}>Blocked</option>
-                            </select>
-                        </div>
-
-                        <div class="detail-item">
-                            <label>Priority</label>
-                            <select class="edit-select" id="ticketPriority" onchange="updateTicketField('priority', this.value)">
-                                <option value="Low" ${ticket.priority === 'Low' ? 'selected' : ''}>Low</option>
-                                <option value="Medium" ${ticket.priority === 'Medium' ? 'selected' : ''}>Medium</option>
-                                <option value="High" ${ticket.priority === 'High' ? 'selected' : ''}>High</option>
-                            </select>
-                        </div>
-
-                        <div class="detail-item">
-                            <label>Complexity</label>
-                            <span>${ticket.complexity || 'medium'}</span>
-                        </div>
-
-                        <div class="detail-item">
-                            <label>Created</label>
-                            <span>${formatDate(ticket.created_at)}</span>
-                        </div>
+                    <div class="detail-section">
+                        <p>${ticket.description || 'No description provided'}</p>
                     </div>
 
                     ${ticket.acceptance_criteria && ticket.acceptance_criteria.length > 0 ? `
@@ -359,6 +363,130 @@
                     </div>
                 `;
             }
+        }
+
+        function showChatTab(body) {
+            body.innerHTML = `
+                <div class="ticket-chat-container">
+                    <div class="ticket-chat-messages" id="ticketChatMessages">
+                        <div class="ticket-chat-welcome">
+                            <i class="fas fa-robot" style="font-size: 2rem; color: var(--primary-color); opacity: 0.5;"></i>
+                            <p style="color: var(--text-secondary); margin-top: 1rem;">Chat with AI agent for ticket #${currentTicket.id}</p>
+                            <p style="color: var(--text-secondary); font-size: 0.875rem;">Ask questions or provide guidance during implementation</p>
+                        </div>
+                    </div>
+                    <div class="ticket-chat-input-container">
+                        <textarea
+                            id="ticketChatInput"
+                            class="ticket-chat-input"
+                            placeholder="Type your message..."
+                            rows="1"
+                            onkeydown="handleChatInputKeydown(event)"
+                        ></textarea>
+                        <button class="ticket-chat-send-btn" onclick="sendTicketChatMessage()">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            // Auto-resize textarea
+            const textarea = document.getElementById('ticketChatInput');
+            if (textarea) {
+                textarea.addEventListener('input', function() {
+                    this.style.height = 'auto';
+                    this.style.height = Math.min(this.scrollHeight, 150) + 'px';
+                });
+            }
+
+            // Load existing chat messages if any
+            loadTicketChatHistory();
+        }
+
+        function handleChatInputKeydown(event) {
+            // Send on Enter (without Shift)
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendTicketChatMessage();
+            }
+        }
+
+        let ticketChatMessages = [];
+        let currentAIMessageElement = null;
+
+        function loadTicketChatHistory() {
+            // Initialize empty chat history for now
+            // In the future, we can load from backend
+            ticketChatMessages = [];
+        }
+
+        function sendTicketChatMessage() {
+            const input = document.getElementById('ticketChatInput');
+            const message = input.value.trim();
+
+            if (!message || !currentTicket) return;
+
+            // Clear input
+            input.value = '';
+            input.style.height = 'auto';
+
+            // Add user message to chat
+            addChatMessage('user', message);
+
+            // Send message to backend via WebSocket or API
+            sendMessageToTicketAgent(message);
+        }
+
+        function addChatMessage(role, content, isStreaming = false) {
+            const messagesContainer = document.getElementById('ticketChatMessages');
+            if (!messagesContainer) return;
+
+            // Remove welcome message if it exists
+            const welcome = messagesContainer.querySelector('.ticket-chat-welcome');
+            if (welcome) {
+                welcome.remove();
+            }
+
+            if (role === 'user') {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'ticket-chat-message ticket-user-message';
+                messageDiv.innerHTML = `
+                    <div class="ticket-message-content">
+                        <div class="ticket-message-text">${escapeHtml(content)}</div>
+                    </div>
+                `;
+                messagesContainer.appendChild(messageDiv);
+                ticketChatMessages.push({role: 'user', content});
+            } else if (role === 'assistant') {
+                if (isStreaming && currentAIMessageElement) {
+                    // Update existing streaming message
+                    const textDiv = currentAIMessageElement.querySelector('.ticket-message-text');
+                    if (textDiv) {
+                        textDiv.textContent = content;
+                    }
+                } else {
+                    // Create new assistant message
+                    const messageDiv = document.createElement('div');
+                    messageDiv.className = 'ticket-chat-message ticket-assistant-message';
+                    messageDiv.innerHTML = `
+                        <div class="ticket-message-content">
+                            <div class="ticket-message-icon"><i class="fas fa-robot"></i></div>
+                            <div class="ticket-message-text">${escapeHtml(content)}</div>
+                        </div>
+                    `;
+                    messagesContainer.appendChild(messageDiv);
+
+                    if (isStreaming) {
+                        currentAIMessageElement = messageDiv;
+                    } else {
+                        ticketChatMessages.push({role: 'assistant', content});
+                        currentAIMessageElement = null;
+                    }
+                }
+            }
+
+            // Scroll to bottom
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
 
         function showTicketModal(ticket) {
@@ -489,6 +617,16 @@
                     // Update the current ticket object
                     currentTicket[field] = value;
 
+                    // Update the drawer select's data attribute for color coding
+                    const drawerSelect = document.getElementById(field === 'status' ? 'ticketStatus' : 'ticketPriority');
+                    if (drawerSelect) {
+                        if (field === 'status') {
+                            drawerSelect.setAttribute('data-status', value);
+                        } else if (field === 'priority') {
+                            drawerSelect.setAttribute('data-priority', value);
+                        }
+                    }
+
                     // Update the table row
                     const row = document.querySelector(`tr[data-ticket-id="${currentTicket.id}"]`);
                     if (row) {
@@ -499,6 +637,12 @@
                         const select = row.querySelector(selectClass);
                         if (select) {
                             select.value = value;
+                            // Update data attribute for color coding
+                            if (field === 'status') {
+                                select.setAttribute('data-status', value);
+                            } else if (field === 'priority') {
+                                select.setAttribute('data-priority', value);
+                            }
                         }
                     }
                 } else {
@@ -507,6 +651,52 @@
             } catch (error) {
                 console.error('Error updating ticket:', error);
                 alert('Error updating ticket');
+            }
+        }
+
+        async function executeTicket() {
+            if (!currentTicket || !currentProjectId) return;
+
+            const btn = document.getElementById('executeTicketBtn');
+            if (!btn) return;
+
+            // Disable button and show loading state
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Executing...';
+
+            try {
+                const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+                const response = await fetch(`/projects/${currentProjectId}/api/tickets/${currentTicket.id}/execute/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({
+                        ticket_id: currentTicket.id,
+                        conversation_id: ticketConversationId
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    // Switch to Chat tab to show execution progress
+                    switchDrawerTab('chat');
+
+                    // Show success message in chat
+                    addChatMessage('assistant', 'Ticket execution started. You can monitor progress here and provide guidance as needed.');
+                } else {
+                    alert('Failed to execute ticket: ' + (data.error || 'Unknown error'));
+                    // Re-enable button
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-play"></i> Execute Ticket';
+                }
+            } catch (error) {
+                console.error('Error executing ticket:', error);
+                alert('Error executing ticket: ' + error.message);
+                // Re-enable button
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-play"></i> Execute Ticket';
             }
         }
 
@@ -535,6 +725,98 @@
             }
         });
 
+        // WebSocket connection for ticket chat
+        let ticketWebSocket = null;
+        let ticketConversationId = null;
+
+        function initializeTicketWebSocket() {
+            // Generate or get conversation ID
+            ticketConversationId = Date.now(); // Simple ID generation for now
+
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/chat/${ticketConversationId}/`;
+
+            ticketWebSocket = new WebSocket(wsUrl);
+
+            ticketWebSocket.onopen = function() {
+                console.log('Ticket WebSocket connected');
+            };
+
+            ticketWebSocket.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                console.log('WebSocket message received:', data);
+
+                if (data.type === 'ticket_chat') {
+                    handleTicketChatMessage(data);
+                }
+            };
+
+            ticketWebSocket.onclose = function() {
+                console.log('Ticket WebSocket disconnected');
+                // Reconnect after 3 seconds
+                setTimeout(initializeTicketWebSocket, 3000);
+            };
+
+            ticketWebSocket.onerror = function(error) {
+                console.error('Ticket WebSocket error:', error);
+            };
+        }
+
+        function handleTicketChatMessage(data) {
+            // Only show messages for the currently open ticket
+            if (!currentTicket || data.ticket_id !== currentTicket.id) {
+                return;
+            }
+
+            // Only update if chat tab is active
+            const chatTab = document.querySelector('.drawer-tab[data-tab="chat"]');
+            if (!chatTab || !chatTab.classList.contains('active')) {
+                return;
+            }
+
+            const role = data.role || 'assistant';
+            const content = data.content || '';
+            const isStreaming = data.is_streaming || false;
+
+            addChatMessage(role, content, isStreaming);
+        }
+
+        // Update sendMessageToTicketAgent to include conversation_id
+        function sendMessageToTicketAgent(message) {
+            if (!currentTicket || !currentProjectId) return;
+
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+            // Send message to backend API
+            fetch(`/projects/${currentProjectId}/api/tickets/${currentTicket.id}/chat/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({
+                    message: message,
+                    ticket_id: currentTicket.id,
+                    conversation_id: ticketConversationId
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Message sent successfully
+                    // Response will come via WebSocket
+                    console.log('Message sent to agent');
+                } else {
+                    console.error('Failed to send message:', data.error);
+                    addChatMessage('assistant', 'Error: Failed to send message. ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                console.error('Error sending message:', error);
+                addChatMessage('assistant', 'Error: Could not connect to server.');
+            });
+        }
+
         // Test drawer on page load
         document.addEventListener('DOMContentLoaded', function() {
             console.log('Page loaded, checking drawer elements...');
@@ -548,6 +830,9 @@
             if (overlay) {
                 console.log('Overlay classes:', overlay.className);
             }
+
+            // Initialize WebSocket connection
+            initializeTicketWebSocket();
         });
     </script>
 

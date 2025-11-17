@@ -1823,15 +1823,15 @@ def project_invitations_api(request, project_id):
 def accept_project_invitation(request, token):
     """View to accept a project invitation"""
     invitation = get_object_or_404(ProjectInvitation, token=token)
-    
+
     if not invitation.is_valid():
         messages.error(request, "This invitation has expired or is no longer valid.")
         return redirect('project_list')
-    
+
     if request.user.email.lower() != invitation.email.lower():
         messages.error(request, "This invitation is for a different email address.")
         return redirect('project_list')
-    
+
     try:
         membership = invitation.accept(request.user)
         messages.success(request, f"You have successfully joined the project '{invitation.project.name}'!")
@@ -1842,3 +1842,122 @@ def accept_project_invitation(request, token):
     except Exception as e:
         messages.error(request, "An error occurred while accepting the invitation. Please try again.")
         return redirect('project_list')
+
+
+@login_required
+@require_http_methods(["POST"])
+def ticket_chat_api(request, project_id, ticket_id):
+    """API endpoint to handle chat messages for ticket execution"""
+    import json
+    from channels.layers import get_channel_layer
+    from asgiref.sync import async_to_sync
+
+    try:
+        data = json.loads(request.body.decode('utf-8'))
+        message = data.get('message', '').strip()
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': 'Invalid request data'}, status=400)
+
+    if not message:
+        return JsonResponse({'success': False, 'error': 'Message is required'}, status=400)
+
+    # Get project and ticket
+    project = get_object_or_404(Project, project_id=project_id)
+    ticket = get_object_or_404(ProjectTicket, id=ticket_id, project=project)
+
+    # Check if user has access
+    if not project.can_user_access(request.user):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    # For now, we'll store the message and send it via WebSocket
+    # The actual AI integration will be handled in the backend executor
+
+    try:
+        # Get the conversation_id from the request (if available)
+        conversation_id = data.get('conversation_id')
+
+        # Store user message (you may want to create a TicketChatMessage model in the future)
+        # For now, we'll broadcast it via WebSocket
+
+        channel_layer = get_channel_layer()
+        if channel_layer and conversation_id:
+            async_to_sync(channel_layer.group_send)(
+                f"conversation_{conversation_id}",
+                {
+                    'type': 'ticket_chat_message',
+                    'ticket_id': ticket_id,
+                    'role': 'user',
+                    'message': message,
+                }
+            )
+
+        return JsonResponse({
+            'success': True,
+            'message': 'Message sent successfully',
+            'ticket_id': ticket_id
+        })
+
+    except Exception as e:
+        logger.error(f"Error handling ticket chat message: {str(e)}", exc_info=True)
+        return JsonResponse({
+            'success': False,
+            'error': f'Failed to process message: {str(e)}'
+        }, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def execute_ticket_api(request, project_id, ticket_id):
+    """API endpoint to execute a ticket using the Claude Agent SDK"""
+    import json
+    from django_q.tasks import async_task
+
+    try:
+        data = json.loads(request.body.decode('utf-8'))
+        conversation_id = data.get('conversation_id')
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': 'Invalid request data'}, status=400)
+
+    # Get project and ticket
+    project = get_object_or_404(Project, project_id=project_id)
+    ticket = get_object_or_404(ProjectTicket, id=ticket_id, project=project)
+
+    # Check if user has permission to manage tickets
+    if not project.can_user_manage_tickets(request.user):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    # Check if ticket is already done
+    if ticket.status == 'done':
+        return JsonResponse({
+            'success': False,
+            'error': 'Ticket is already completed'
+        }, status=400)
+
+    try:
+        # Import the executor function
+        from tasks.claude_agent_ticket_executor import execute_ticket_implementation_claude_sdk
+
+        # Queue the ticket execution as a background task
+        task_id = async_task(
+            execute_ticket_implementation_claude_sdk,
+            ticket_id=ticket.id,
+            project_id=project.id,
+            conversation_id=conversation_id or 0,
+            max_execution_time=300
+        )
+
+        logger.info(f"Queued ticket execution: ticket_id={ticket_id}, task_id={task_id}")
+
+        return JsonResponse({
+            'success': True,
+            'message': 'Ticket execution started',
+            'ticket_id': ticket_id,
+            'task_id': task_id
+        })
+
+    except Exception as e:
+        logger.error(f"Error starting ticket execution: {str(e)}", exc_info=True)
+        return JsonResponse({
+            'success': False,
+            'error': f'Failed to start execution: {str(e)}'
+        }, status=500)

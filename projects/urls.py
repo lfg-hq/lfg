@@ -61,4 +61,10 @@ urlpatterns = [
     
     # Project invitation acceptance (public URL with token)
     path('invitation/<str:token>/accept/', views.accept_project_invitation, name='accept_project_invitation'),
+
+    # Ticket chat API
+    path('<str:project_id>/api/tickets/<int:ticket_id>/chat/', views.ticket_chat_api, name='ticket_chat_api'),
+
+    # Ticket execution API
+    path('<str:project_id>/api/tickets/<int:ticket_id>/execute/', views.execute_ticket_api, name='execute_ticket_api'),
 ]
