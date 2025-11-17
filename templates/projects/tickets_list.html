@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tickets - LFG 🚀</title>
+    <link rel="stylesheet" href="/static/css/common.css">
+    <link rel="stylesheet" href="/static/css/sidebar.css">
+    <link rel="stylesheet" href="/static/css/tickets.css?v=2">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="icon" type="image/x-icon" href="/static/images/favicon.ico">
+</head>
+<body data-user-authenticated="{% if user.is_authenticated %}true{% else %}false{% endif %}">
+    <div class="app-container">
+        {% include 'includes/sidebar.html' with show_conversations=False %}
+
+        <div class="main-content tickets-page">
+
+            <div class="tickets-body">
+                <!-- Filters Section -->
+                <div class="tickets-filters">
+                    <div class="filter-left">
+                        <input type="text" class="filter-search" id="ticketSearch" placeholder="Search tickets..." onkeyup="filterTickets()">
+                    </div>
+                    <div class="filter-right">
+                        <select class="filter-select" id="projectFilter" onchange="filterTickets()">
+                            <option value="">All Projects</option>
+                            {% for project in projects %}
+                                <option value="{{ project.project_id }}">{{ project.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <select class="filter-select" id="statusFilter" onchange="filterTickets()">
+                            <option value="">All Statuses</option>
+                            {% for status in statuses %}
+                                <option value="{{ status }}">{{ status|title }}</option>
+                            {% endfor %}
+                        </select>
+                        <select class="filter-select" id="priorityFilter" onchange="filterTickets()">
+                            <option value="">All Priorities</option>
+                            {% for priority in priorities %}
+                                <option value="{{ priority }}">{{ priority }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Tickets Table -->
+                <div class="tickets-table-wrapper">
+                    {% if tickets %}
+                        <table class="tickets-table" id="ticketsTable">
+                            <thead>
+                                <tr>
+                                    <th>Ticket</th>
+                                    <th>Status</th>
+                                    <th>Priority</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ticketsTableBody">
+                                {% for ticket in tickets %}
+                                    <tr class="ticket-row"
+                                        data-ticket-id="{{ ticket.id }}"
+                                        data-project-id="{{ ticket.project.project_id }}"
+                                        data-status="{{ ticket.status }}"
+                                        data-priority="{{ ticket.priority }}"
+                                        data-name="{{ ticket.name|lower }}"
+                                        data-description="{{ ticket.description|lower }}">
+                                        <td onclick="viewTicketDetails({{ ticket.id }}, '{{ ticket.project.project_id }}')" style="cursor: pointer;">
+                                            <div class="ticket-info">
+                                                <div class="ticket-name">{{ ticket.name }}</div>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <select class="table-select status-select"
+                                                    data-ticket-id="{{ ticket.id }}"
+                                                    data-project-id="{{ ticket.project.project_id }}"
+                                                    data-status="{{ ticket.status }}"
+                                                    onchange="updateTicketFromTable(this, 'status')">
+                                                <option value="open" {% if ticket.status == 'open' %}selected{% endif %}>Open</option>
+                                                <option value="in_progress" {% if ticket.status == 'in_progress' %}selected{% endif %}>In Progress</option>
+                                                <option value="done" {% if ticket.status == 'done' %}selected{% endif %}>Done</option>
+                                                <option value="blocked" {% if ticket.status == 'blocked' %}selected{% endif %}>Blocked</option>
+                                            </select>
+                                        </td>
+                                        <td>
+                                            <select class="table-select priority-select"
+                                                    data-ticket-id="{{ ticket.id }}"
+                                                    data-project-id="{{ ticket.project.project_id }}"
+                                                    data-priority="{{ ticket.priority }}"
+                                                    onchange="updateTicketFromTable(this, 'priority')">
+                                                <option value="Low" {% if ticket.priority == 'Low' %}selected{% endif %}>Low</option>
+                                                <option value="Medium" {% if ticket.priority == 'Medium' %}selected{% endif %}>Medium</option>
+                                                <option value="High" {% if ticket.priority == 'High' %}selected{% endif %}>High</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    {% else %}
+                        <div class="empty-state">
+                            <div class="empty-state-icon">
+                                <i class="fas fa-tasks"></i>
+                            </div>
+                            <h3 class="empty-state-title">No tickets yet</h3>
+                            <div class="empty-state-text">
+                                Create tickets in your projects to track work items.
+                            </div>
+                            <a href="{% url 'projects:project_list' %}" class="btn btn-primary">
+                                <i class="fas fa-folder"></i> Go to Projects
+                            </a>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ticket Details Drawer -->
+    <div id="ticketDrawerOverlay" class="drawer-overlay" onclick="closeTicketDrawer()"></div>
+    <div id="ticketDrawer" class="drawer">
+        <div class="drawer-header">
+            <h3 class="drawer-title" id="drawerTicketTitle"></h3>
+            <button class="drawer-close" onclick="closeTicketDrawer()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="drawer-tabs">
+            <button class="drawer-tab active" data-tab="details" onclick="switchDrawerTab('details')">
+                <i class="fas fa-info-circle"></i> Details
+            </button>
+            <button class="drawer-tab" data-tab="logs" onclick="switchDrawerTab('logs')">
+                <i class="fas fa-terminal"></i> Logs
+            </button>
+            <button class="drawer-tab" data-tab="tasks" onclick="switchDrawerTab('tasks')">
+                <i class="fas fa-list-check"></i> Tasks
+            </button>
+        </div>
+        <div class="drawer-body" id="drawerTicketBody">
+            <!-- Ticket details will be loaded here -->
+        </div>
+    </div>
+
+    <script src="/static/js/sidebar.js"></script>
+    <script>
+        // Filter tickets function
+        function filterTickets() {
+            const searchTerm = document.getElementById('ticketSearch').value.toLowerCase();
+            const projectFilter = document.getElementById('projectFilter').value;
+            const statusFilter = document.getElementById('statusFilter').value;
+            const priorityFilter = document.getElementById('priorityFilter').value;
+
+            const rows = document.querySelectorAll('.ticket-row');
+            let visibleCount = 0;
+
+            rows.forEach(row => {
+                const name = row.dataset.name || '';
+                const description = row.dataset.description || '';
+                const projectId = row.dataset.projectId || '';
+                const status = row.dataset.status || '';
+                const priority = row.dataset.priority || '';
+
+                const matchesSearch = !searchTerm ||
+                    name.includes(searchTerm) ||
+                    description.includes(searchTerm);
+                const matchesProject = !projectFilter || projectId === projectFilter;
+                const matchesStatus = !statusFilter || status === statusFilter;
+                const matchesPriority = !priorityFilter || priority === priorityFilter;
+
+                if (matchesSearch && matchesProject && matchesStatus && matchesPriority) {
+                    row.style.display = '';
+                    visibleCount++;
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+
+            // Show/hide empty state if needed
+            const table = document.getElementById('ticketsTable');
+            if (table) {
+                table.style.display = visibleCount > 0 ? 'table' : 'none';
+            }
+        }
+
+        // View ticket details
+        async function viewTicketDetails(ticketId, projectId) {
+            console.log('viewTicketDetails called:', {ticketId, projectId});
+            try {
+                const url = `/projects/${projectId}/api/checklist/`;
+                console.log('Fetching from:', url);
+                const response = await fetch(url);
+                console.log('Response status:', response.status);
+                const data = await response.json();
+                console.log('Response data:', data);
+
+                // Handle both response formats: {success, checklist} and {tickets}
+                const ticketsList = data.tickets || data.checklist || [];
+                console.log('Tickets list:', ticketsList);
+
+                const ticket = ticketsList.find(t => t.id === ticketId);
+                console.log('Found ticket:', ticket);
+
+                if (ticket) {
+                    // Add project_id to ticket if it doesn't exist
+                    if (!ticket.project_id) {
+                        ticket.project_id = projectId;
+                    }
+                    showTicketModal(ticket);
+                } else {
+                    console.error('Ticket not found in list');
+                    alert('Ticket not found');
+                }
+            } catch (error) {
+                console.error('Error loading ticket details:', error);
+                alert('Error loading ticket details: ' + error.message);
+            }
+        }
+
+        let currentTicket = null;
+        let currentProjectId = null;
+        let currentTab = 'details';
+
+        function switchDrawerTab(tab) {
+            currentTab = tab;
+
+            // Update tab buttons
+            document.querySelectorAll('.drawer-tab').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.querySelector(`.drawer-tab[data-tab="${tab}"]`).classList.add('active');
+
+            // Reload content for current ticket
+            if (currentTicket) {
+                loadTabContent(tab);
+            }
+        }
+
+        function loadTabContent(tab) {
+            const body = document.getElementById('drawerTicketBody');
+
+            switch(tab) {
+                case 'details':
+                    showDetailsTab(body);
+                    break;
+                case 'logs':
+                    showLogsTab(body);
+                    break;
+                case 'tasks':
+                    showTasksTab(body);
+                    break;
+            }
+        }
+
+        function showDetailsTab(body) {
+            const ticket = currentTicket;
+            body.innerHTML = `
+                <div class="ticket-detail-drawer">
+                    <div class="detail-section">
+                        <h4>Description</h4>
+                        <p>${ticket.description || 'No description provided'}</p>
+                    </div>
+
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <label>Status</label>
+                            <select class="edit-select" id="ticketStatus" onchange="updateTicketField('status', this.value)">
+                                <option value="open" ${ticket.status === 'open' ? 'selected' : ''}>Open</option>
+                                <option value="in_progress" ${ticket.status === 'in_progress' ? 'selected' : ''}>In Progress</option>
+                                <option value="done" ${ticket.status === 'done' ? 'selected' : ''}>Done</option>
+                                <option value="blocked" ${ticket.status === 'blocked' ? 'selected' : ''}>Blocked</option>
+                            </select>
+                        </div>
+
+                        <div class="detail-item">
+                            <label>Priority</label>
+                            <select class="edit-select" id="ticketPriority" onchange="updateTicketField('priority', this.value)">
+                                <option value="Low" ${ticket.priority === 'Low' ? 'selected' : ''}>Low</option>
+                                <option value="Medium" ${ticket.priority === 'Medium' ? 'selected' : ''}>Medium</option>
+                                <option value="High" ${ticket.priority === 'High' ? 'selected' : ''}>High</option>
+                            </select>
+                        </div>
+
+                        <div class="detail-item">
+                            <label>Complexity</label>
+                            <span>${ticket.complexity || 'medium'}</span>
+                        </div>
+
+                        <div class="detail-item">
+                            <label>Created</label>
+                            <span>${formatDate(ticket.created_at)}</span>
+                        </div>
+                    </div>
+
+                    ${ticket.acceptance_criteria && ticket.acceptance_criteria.length > 0 ? `
+                        <div class="detail-section">
+                            <h4>Acceptance Criteria</h4>
+                            <ul class="criteria-list">
+                                ${ticket.acceptance_criteria.map(criteria =>
+                                    `<li>${escapeHtml(criteria)}</li>`
+                                ).join('')}
+                            </ul>
+                        </div>
+                    ` : ''}
+
+                    ${ticket.notes ? `
+                        <div class="detail-section">
+                            <h4>Notes</h4>
+                            <p>${escapeHtml(ticket.notes)}</p>
+                        </div>
+                    ` : ''}
+
+                    ${ticket.linear_issue_url ? `
+                        <div class="detail-section">
+                            <h4>Linear Integration</h4>
+                            <a href="${ticket.linear_issue_url}" target="_blank" class="btn btn-outline btn-sm">
+                                <i class="fas fa-external-link-alt"></i> View in Linear
+                            </a>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        function showLogsTab(body) {
+            body.innerHTML = `
+                <div class="drawer-tab-content">
+                    <div class="empty-logs">
+                        <i class="fas fa-terminal" style="font-size: 2rem; color: var(--text-secondary); opacity: 0.5;"></i>
+                        <p style="color: var(--text-secondary); margin-top: 1rem;">No execution logs available for this ticket yet.</p>
+                        <p style="color: var(--text-secondary); font-size: 0.875rem;">Logs will appear here after the ticket is executed.</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        function showTasksTab(body) {
+            const ticket = currentTicket;
+            const tasks = ticket.acceptance_criteria || [];
+
+            if (tasks.length === 0) {
+                body.innerHTML = `
+                    <div class="drawer-tab-content">
+                        <div class="empty-logs">
+                            <i class="fas fa-list-check" style="font-size: 2rem; color: var(--text-secondary); opacity: 0.5;"></i>
+                            <p style="color: var(--text-secondary); margin-top: 1rem;">No tasks defined for this ticket.</p>
+                        </div>
+                    </div>
+                `;
+            } else {
+                body.innerHTML = `
+                    <div class="drawer-tab-content">
+                        <div class="tasks-list">
+                            ${tasks.map((task, index) => `
+                                <div class="task-item">
+                                    <input type="checkbox" id="task-${index}" class="task-checkbox">
+                                    <label for="task-${index}" class="task-label">${escapeHtml(task)}</label>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        function showTicketModal(ticket) {
+            console.log('showTicketModal called with ticket:', ticket);
+            currentTicket = ticket;
+            currentProjectId = ticket.project_id;
+            currentTab = 'details';
+
+            const drawer = document.getElementById('ticketDrawer');
+            const overlay = document.getElementById('ticketDrawerOverlay');
+            const title = document.getElementById('drawerTicketTitle');
+
+            console.log('Drawer elements:', {drawer, overlay, title});
+
+            if (!drawer || !overlay) {
+                console.error('Drawer elements not found!');
+                return;
+            }
+
+            title.textContent = `TKT-${ticket.id}: ${ticket.name}`;
+
+            // Reset tabs
+            document.querySelectorAll('.drawer-tab').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.querySelector('.drawer-tab[data-tab="details"]').classList.add('active');
+
+            // Load details tab
+            loadTabContent('details');
+
+            drawer.classList.add('active');
+            overlay.classList.add('active');
+        }
+
+        function closeTicketDrawer() {
+            const drawer = document.getElementById('ticketDrawer');
+            const overlay = document.getElementById('ticketDrawerOverlay');
+            drawer.classList.remove('active');
+            overlay.classList.remove('active');
+            currentTicket = null;
+            currentProjectId = null;
+        }
+
+        function closeTicketModal() {
+            closeTicketDrawer();
+        }
+
+        async function updateTicketFromTable(selectElement, field) {
+            const ticketId = selectElement.dataset.ticketId;
+            const projectId = selectElement.dataset.projectId;
+            const value = selectElement.value;
+
+            try {
+                const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+                const response = await fetch(`/projects/${projectId}/api/checklist/update/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({
+                        item_id: parseInt(ticketId),
+                        [field]: value
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    // Update the row data attributes
+                    const row = selectElement.closest('tr');
+                    if (row) {
+                        row.dataset[field] = value;
+                    }
+
+                    // Update the select element's data attribute for color coding
+                    if (field === 'status') {
+                        selectElement.dataset.status = value;
+                    } else if (field === 'priority') {
+                        selectElement.dataset.priority = value;
+                    }
+
+                    // If drawer is open for this ticket, update it too
+                    if (currentTicket && currentTicket.id === parseInt(ticketId)) {
+                        currentTicket[field] = value;
+                        const drawerSelect = document.getElementById(field === 'status' ? 'ticketStatus' : 'ticketPriority');
+                        if (drawerSelect) {
+                            drawerSelect.value = value;
+                        }
+                    }
+                } else {
+                    alert('Failed to update ticket: ' + (data.error || 'Unknown error'));
+                    // Revert the select to previous value
+                    const row = selectElement.closest('tr');
+                    if (row) {
+                        selectElement.value = row.dataset[field];
+                    }
+                }
+            } catch (error) {
+                console.error('Error updating ticket:', error);
+                alert('Error updating ticket');
+                // Revert the select to previous value
+                const row = selectElement.closest('tr');
+                if (row) {
+                    selectElement.value = row.dataset[field];
+                }
+            }
+        }
+
+        async function updateTicketField(field, value) {
+            if (!currentTicket || !currentProjectId) return;
+
+            try {
+                const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+                const response = await fetch(`/projects/${currentProjectId}/api/checklist/update/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({
+                        item_id: currentTicket.id,
+                        [field]: value
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    // Update the current ticket object
+                    currentTicket[field] = value;
+
+                    // Update the table row
+                    const row = document.querySelector(`tr[data-ticket-id="${currentTicket.id}"]`);
+                    if (row) {
+                        row.dataset[field] = value;
+
+                        // Update the select in the table
+                        const selectClass = field === 'status' ? '.status-select' : '.priority-select';
+                        const select = row.querySelector(selectClass);
+                        if (select) {
+                            select.value = value;
+                        }
+                    }
+                } else {
+                    alert('Failed to update ticket: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error updating ticket:', error);
+                alert('Error updating ticket');
+            }
+        }
+
+        // Helper functions
+        function formatStatus(status) {
+            return status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+        }
+
+        function formatDate(dateString) {
+            if (!dateString) return '—';
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Close drawer on Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeTicketDrawer();
+            }
+        });
+
+        // Test drawer on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Page loaded, checking drawer elements...');
+            const drawer = document.getElementById('ticketDrawer');
+            const overlay = document.getElementById('ticketDrawerOverlay');
+            console.log('Drawer exists:', !!drawer);
+            console.log('Overlay exists:', !!overlay);
+            if (drawer) {
+                console.log('Drawer classes:', drawer.className);
+            }
+            if (overlay) {
+                console.log('Overlay classes:', overlay.className);
+            }
+        });
+    </script>
+
+    {% csrf_token %}
+</body>
+</html>

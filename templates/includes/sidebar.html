@@ -25,6 +25,10 @@
                 <i class="fas fa-comments"></i>
                 <span class="nav-text">Chat</span>
             </a>
+            <a href="{% url 'projects:tickets_list' %}" class="nav-link{% if request.resolver_match.url_name == 'tickets_list' %} active{% endif %}" title="Tickets">
+                <i class="fas fa-tasks"></i>
+                <span class="nav-text">Tickets</span>
+            </a>
         </div>
         {% if show_conversations %}
         <div class="conversations-section">

@@ -90,6 +90,45 @@ def project_list(request):
     })
 
 @login_required
+def tickets_list(request):
+    """View to display all tickets for the current user across all projects"""
+    # Get all projects where user has access
+    owned_projects = Project.objects.filter(owner=request.user)
+
+    try:
+        member_projects = Project.objects.filter(
+            members__user=request.user,
+            members__status='active'
+        ).exclude(owner=request.user)
+    except Exception:
+        member_projects = Project.objects.none()
+
+    # Combine projects
+    all_projects = list(owned_projects) + list(member_projects)
+    project_ids = [p.id for p in all_projects]
+
+    # Get all tickets from these projects (oldest first)
+    tickets = ProjectTicket.objects.filter(
+        project_id__in=project_ids
+    ).select_related('project').order_by('created_at')
+
+    # Get distinct statuses and priorities for filters
+    statuses = ProjectTicket.objects.filter(
+        project_id__in=project_ids
+    ).values_list('status', flat=True).distinct()
+
+    priorities = ProjectTicket.objects.filter(
+        project_id__in=project_ids
+    ).values_list('priority', flat=True).distinct()
+
+    return render(request, 'projects/tickets_list.html', {
+        'tickets': tickets,
+        'statuses': statuses,
+        'priorities': priorities,
+        'projects': all_projects
+    })
+
+@login_required
 def project_detail(request, project_id):
     """View to display a specific project"""
     project = get_object_or_404(Project, project_id=project_id)

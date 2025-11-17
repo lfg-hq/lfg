@@ -7,6 +7,7 @@ app_name = 'projects'
 
 urlpatterns = [
     path('', views.project_list, name='project_list'),
+    path('tickets/', views.tickets_list, name='tickets_list'),
     path('create/', views.create_project, name='create_project'),
     path('api/create/', views.create_project_api, name='create_project_api'),
     path('<str:project_id>/', views.project_detail, name='project_detail'),
