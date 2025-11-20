@@ -169,17 +169,7 @@ if USE_POSTGRES_DB:
             'PASSWORD': os.environ.get('POSTGRES_PASSWORD', ''),
             'HOST': os.environ.get('POSTGRES_HOST', 'localhost'),
             'PORT': os.environ.get('POSTGRES_PORT', '5432'),
-            # Persistent connections for better performance (reused for this duration)
-            'CONN_MAX_AGE': 300,  # Reduced from 600 to 5 minutes
-            # Connection pool settings to limit total connections
-            'OPTIONS': {
-                # Explicitly close connections on thread exit
-                'connect_timeout': 10,
-                # Additional connection options
-                'options': '-c statement_timeout=30000',  # 30 second query timeout
-            },
-            # Disable automatic connection health checks in favor of explicit management
-            'CONN_HEALTH_CHECKS': False,
+            'CONN_MAX_AGE': 600,
         }
     }
 else:
@@ -374,8 +364,8 @@ Q_CLUSTER = {
         'name': 'LFG_Tasks',
         'workers': 1,  # Reduced to single worker to prevent timer conflicts
         'recycle': 100,  # Reduced recycle count
-        'timeout': 30,   # Reduced timeout
-        'retry': 60,     # Reduced retry time
+        'timeout': 1500,   # Reduced timeout
+        # 'retry': 60,     # Reduced retry time
         'queue_limit': 10,  # Reduced queue limit
         'bulk': 1,       # Single task processing
         'orm': 'default',

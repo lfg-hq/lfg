@@ -556,41 +556,14 @@ execute_command = {
     }
 }
 
-provision_workspace = {
-    "type": "function",
-    "function": {
-        "name": "provision_workspace",
-        "description": "Provision or retrieve the persistent Magpie VM that hosts the Turbo Next.js workspace. Creates the VM, installs Node.js, scaffolds the project in /workspace/nextjs-app, and stores workspace metadata for reuse.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "project_name": {
-                    "type": "string",
-                    "description": "Human-friendly project name used when naming the Magpie job and workspace directory."
-                },
-                "summary": {
-                    "type": "string",
-                    "description": "Short description of the requested build; stored with the workspace record for future context."
-                }
-            },
-            "required": ["project_name"],
-            "additionalProperties": False,
-        }
-    }
-}
-
 ssh_command = {
     "type": "function",
     "function": {
         "name": "ssh_command",
-        "description": "Execute a shell command inside the Magpie workspace via SSH. Use this for writing files, installing dependencies, running Prisma migrations, and verifying the app.",
+        "description": "Execute a shell command inside the Magpie workspace via SSH. Use this for writing files, installing dependencies, running Prisma migrations, and verifying the app. The workspace is automatically determined from execution context.",
         "parameters": {
             "type": "object",
             "properties": {
-                "workspace_id": {
-                    "type": "string",
-                    "description": "Workspace identifier returned by provision_workspace."
-                },
                 "command": {
                     "type": "string",
                     "description": "Shell command to run inside /workspace. Favor heredocs for file writes and descriptive scripts."
@@ -608,31 +581,31 @@ ssh_command = {
                     "description": "Whether to load the Node.js environment helpers before running the command. Defaults to true."
                 }
             },
-            "required": ["workspace_id", "command", "explanation"],
+            "required": ["command", "explanation"],
             "additionalProperties": False,
         }
     }
 }
 
-restart_vibe_dev_server = {
+new_dev_sandbox = {
     "type": "function",
     "function": {
-        "name": "restart_vibe_dev_server",
-        "description": "Restart the Next.js dev server on the Magpie workspace and return connection details plus recent logs.",
+        "name": "new_dev_sandbox",
+        "description": "Clone the Next.js template project and start the dev server on the Magpie workspace. Returns connection details plus recent logs.",
         "parameters": {
             "type": "object",
             "properties": {
                 "workspace_id": {
                     "type": "string",
-                    "description": "Workspace identifier returned by provision_workspace."
+                    "description": "Workspace identifier for the Magpie VM."
                 },
                 "log_tail_lines": {
                     "type": "integer",
-                    "description": "Number of lines to tail from /workspace/nextjs-app/dev.log after restart (default 60)."
+                    "description": "Number of lines to tail from /workspace/nextjs-app/dev.log after startup (default 60)."
                 },
                 "environment": {
                     "type": "string",
-                    "description": "Optional label describing the restart context (e.g., 'feature-update', 'hotfix')."
+                    "description": "Optional label describing the environment context (e.g., 'feature-update', 'hotfix')."
                 }
             },
             "required": ["workspace_id"],
@@ -661,55 +634,81 @@ queue_ticket_execution = {
     }
 }
 
-manage_ticket_tasks = {
+update_todo_status = {
     "type": "function",
     "function": {
-        "name": "manage_ticket_tasks",
-        "description": "Manage tasks for a specific ticket. Can add new tasks, update existing tasks, or change task status. Each ticket can have multiple tasks that track the implementation progress.",
+        "name": "update_todo_status",
+        "description": "Update the status of a todo by its todo_id. Use this to mark todos as in_progress, success, or fail as you work through them. Get the todo_id from get_ticket_todos first.",
         "parameters": {
             "type": "object",
             "properties": {
                 "ticket_id": {
                     "type": "integer",
-                    "description": "The ID of the ticket these tasks belong to"
+                    "description": "The ID of the ticket this todo belongs to"
                 },
-                "action": {
+                "todo_id": {
+                    "type": "integer",
+                    "description": "The database ID of the todo to update (get this from get_ticket_todos)"
+                },
+                "status": {
                     "type": "string",
-                    "enum": ["add", "update", "update_status"],
-                    "description": "The action to perform: 'add' to create new tasks, 'update' to modify task details, 'update_status' to change task status"
+                    "enum": ["pending", "in_progress", "success", "fail"],
+                    "description": "The new status for the todo"
+                }
+            },
+            "required": ["ticket_id", "todo_id", "status"],
+            "additionalProperties": False,
+        }
+    }
+}
+
+create_ticket_todos = {
+    "type": "function",
+    "function": {
+        "name": "create_ticket_todos",
+        "description": "Create todos for a ticket. Call this at the start of ticket implementation to break down the work into trackable todos.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "ticket_id": {
+                    "type": "integer",
+                    "description": "The ID of the ticket to create todos for"
                 },
-                "tasks": {
+                "todos": {
                     "type": "array",
                     "items": {
                         "type": "object",
                         "properties": {
-                            "task_id": {
-                                "type": "integer",
-                                "description": "Task ID (required for update and update_status actions)"
-                            },
-                            "name": {
-                                "type": "string",
-                                "description": "Task name/title"
-                            },
                             "description": {
                                 "type": "string",
-                                "description": "Detailed description of the task"
-                            },
-                            "status": {
-                                "type": "string",
-                                "enum": ["pending", "in_progress", "success", "fail"],
-                                "description": "Current status of the task"
-                            },
-                            "order": {
-                                "type": "integer",
-                                "description": "Execution order of the task (0-indexed)"
+                                "description": "Todo description (what needs to be done)"
                             }
-                        }
+                        },
+                        "required": ["description"]
                     },
-                    "description": "Array of task objects to add or update"
+                    "description": "Array of todo descriptions to create in order. They will be numbered 0, 1, 2... automatically."
                 }
             },
-            "required": ["ticket_id", "action", "tasks"],
+            "required": ["ticket_id", "todos"],
+            "additionalProperties": False,
+        }
+    }
+}
+
+get_ticket_todos = {
+    "type": "function",
+    "function": {
+        "name": "get_ticket_todos",
+        "description": "Get all todos for a ticket with their current status and order. Use this to see what todos exist and their progress.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "ticket_id": {
+                    "type": "integer",
+                    "description": "The ID of the ticket to get todos for"
+                }
+            },
+            "required": ["ticket_id"],
             "additionalProperties": False,
         }
     }
@@ -1129,7 +1128,7 @@ tools_turbo = [
     update_all_tickets,
     # provision_workspace,
     # ssh_command,
-    restart_vibe_dev_server,
+    # new_dev_sandbox,
     queue_ticket_execution
 ]
 
@@ -1138,10 +1137,11 @@ tools_builder = [
     get_file_list,
     get_file_content,
     get_pending_tickets,
-    restart_vibe_dev_server,
     update_ticket,
     ssh_command,
-    manage_ticket_tasks,
+    get_ticket_todos,
+    create_ticket_todos,
+    update_todo_status,
     run_code_server
 ]
 

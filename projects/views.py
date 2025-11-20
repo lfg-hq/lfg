@@ -1935,15 +1935,14 @@ def execute_ticket_api(request, project_id, ticket_id):
 
     try:
         # Import the executor function
-        from tasks.claude_agent_ticket_executor import execute_ticket_implementation_claude_sdk
+        from tasks.task_definitions import execute_ticket_implementation
 
         # Queue the ticket execution as a background task
         task_id = async_task(
-            execute_ticket_implementation_claude_sdk,
+            execute_ticket_implementation,
             ticket_id=ticket.id,
             project_id=project.id,
             conversation_id=conversation_id or 0,
-            max_execution_time=300
         )
 
         logger.info(f"Queued ticket execution: ticket_id={ticket_id}, task_id={task_id}")
@@ -1959,5 +1958,101 @@ def execute_ticket_api(request, project_id, ticket_id):
         logger.error(f"Error starting ticket execution: {str(e)}", exc_info=True)
         return JsonResponse({
             'success': False,
-            'error': f'Failed to start execution: {str(e)}'
+            'error': str(e)
         }, status=500)
+
+
+@login_required
+def ticket_logs_api(request, project_id, ticket_id):
+    """API endpoint to get execution logs for a ticket"""
+    project = get_object_or_404(Project, project_id=project_id)
+    ticket = get_object_or_404(ProjectTicket, id=ticket_id, project=project)
+
+    # Check if user has permission to view this project
+    if not (project.owner == request.user or project.members.filter(user=request.user, status='active').exists()):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    logs = []
+
+    # Parse the ticket notes field to extract execution logs
+    if ticket.notes:
+        # The notes contain execution information with timestamps and status
+        # Parse them into structured log entries
+        import re
+        from datetime import datetime
+
+        # Split by timestamp pattern to get individual log entries
+        log_entries = re.split(r'\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2})\]', ticket.notes)
+
+        # Process log entries (pattern: timestamp, content, timestamp, content, ...)
+        for i in range(1, len(log_entries), 2):
+            if i + 1 < len(log_entries):
+                timestamp_str = log_entries[i]
+                content = log_entries[i + 1].strip()
+
+                # Determine status from content
+                if 'IMPLEMENTATION COMPLETED' in content or 'Complete' in content:
+                    status = 'completed'
+                elif 'IMPLEMENTATION FAILED' in content or 'FATAL ERROR' in content:
+                    status = 'failed'
+                elif 'RETRYABLE ERROR' in content:
+                    status = 'retrying'
+                else:
+                    status = 'in_progress'
+
+                # Extract key information
+                time_match = re.search(r'Time: ([\d.]+)', content)
+                execution_time = time_match.group(1) if time_match else None
+
+                error_match = re.search(r'Error: (.+?)(?:\n|$)', content)
+                error = error_match.group(1) if error_match else None
+
+                logs.append({
+                    'timestamp': timestamp_str,
+                    'status': status,
+                    'notes': content,
+                    'execution_time': execution_time,
+                    'error': error,
+                    'summary': f"{ticket.status.replace('_', ' ').title()} - {execution_time}s" if execution_time else ticket.status.replace('_', ' ').title()
+                })
+
+    return JsonResponse({
+        'success': True,
+        'logs': logs,
+        'ticket_id': ticket_id,
+        'ticket_status': ticket.status
+    })
+
+
+@login_required
+def ticket_tasks_api(request, project_id, ticket_id):
+    """API endpoint to get tasks for a ticket"""
+    from projects.models import ProjectTodoList
+
+    project = get_object_or_404(Project, project_id=project_id)
+    ticket = get_object_or_404(ProjectTicket, id=ticket_id, project=project)
+
+    # Check if user has permission to view this project
+    if not (project.owner == request.user or project.members.filter(user=request.user, status='active').exists()):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    # Get tasks from ProjectTodoList model
+    task_objects = ProjectTodoList.objects.filter(ticket=ticket).order_by('order')
+
+    tasks = []
+    for task in task_objects:
+        tasks.append({
+            'id': task.id,
+            'description': task.description,
+            'status': task.status,
+            'order': task.order,
+            'created_at': task.created_at.isoformat() if task.created_at else None,
+            'updated_at': task.updated_at.isoformat() if task.updated_at else None
+        })
+
+    return JsonResponse({
+        'success': True,
+        'tasks': tasks,
+        'ticket_id': ticket_id,
+        'total_tasks': len(tasks)
+    })

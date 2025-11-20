@@ -5085,16 +5085,16 @@ document.addEventListener('DOMContentLoaded', function() {
                     };
 
                     // Show ticket notes if available
-                    if (data.ticket_notes) {
-                        html += `
-                            <div class="logs-section">
-                                <div class="logs-section-header">
-                                    <i class="fas fa-clipboard-list"></i> Execution Summary
-                                </div>
-                                <div class="logs-section-content">${escapeHtml(data.ticket_notes)}</div>
-                            </div>
-                        `;
-                    }
+                    // if (data.ticket_notes) {
+                    //     html += `
+                    //         <div class="logs-section">
+                    //             <div class="logs-section-header">
+                    //                 <i class="fas fa-clipboard-list"></i> Execution Summary
+                    //             </div>
+                    //             <div class="logs-section-content">${escapeHtml(data.ticket_notes)}</div>
+                    //         </div>
+                    //     `;
+                    // }
 
                     // Show command history
                     data.commands.forEach((cmd, index) => {
@@ -5247,10 +5247,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Load tasks when switching to tasks tab for the first time
                     if (tab === 'tasks') {
                         const tasksContent = drawer.querySelector('#tasks-tab-content');
-                        // Check if tasks haven't been loaded yet (still has placeholder loading spinner)
-                        const hasPlaceholder = tasksContent && tasksContent.innerHTML.includes('Loading tasks...');
-                        if (tasksContent && (hasPlaceholder || !tasksContent.dataset.loaded)) {
-                            tasksContent.dataset.loaded = 'true';
+                        if (tasksContent && (!tasksContent.hasChildNodes() || tasksContent.innerHTML.trim() === '')) {
                             loadTasks();
                         }
                     }
@@ -5291,8 +5288,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
 
-            // Initial load
-            loadLogs();
+            // Initial load - wait for DOM to be ready
+            setTimeout(() => loadLogs(), 100);
         },
 
         /**

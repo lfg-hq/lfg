@@ -377,7 +377,7 @@
 .drawer {
     position: fixed;
     top: 0;
-    right: -700px;
+    right: 0;
     width: 700px;
     height: 100vh;
     background-color: var(--card-bg);
@@ -386,16 +386,47 @@
     z-index: 1002;
     display: flex;
     flex-direction: column;
+    transform: translateX(100%);
 }
 
 .drawer.active {
-    right: 0;
+    transform: translateX(0);
+}
+
+.drawer.resizing {
+    transition: none;
+}
+
+.drawer-resize-handle {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 8px;
+    cursor: ew-resize;
+    background: transparent;
+    z-index: 10;
+    transition: background-color 0.2s ease;
+}
+
+.drawer-resize-handle:hover,
+.drawer-resize-handle.active {
+    background: var(--primary-color);
+    opacity: 0.5;
 }
 
 @media (max-width: 768px) {
     .drawer {
-        right: -100%;
         width: 100%;
+        transform: translateX(100%);
+    }
+
+    .drawer.active {
+        transform: translateX(0);
+    }
+
+    .drawer-resize-handle {
+        display: none; /* Hide resize handle on mobile */
     }
 }
 
@@ -416,6 +447,38 @@
     display: flex;
     align-items: center;
     gap: 0.75rem;
+}
+
+.drawer-pin-btn {
+    padding: 0.5rem;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-secondary);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-md);
+    font-size: 0.875rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    transition: all 0.2s ease;
+}
+
+.drawer-pin-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-color);
+}
+
+.drawer-pin-btn.pinned {
+    background: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+    transform: rotate(45deg);
+}
+
+.drawer-pin-btn.pinned:hover {
+    background: var(--primary-hover);
 }
 
 .drawer-execute-btn {
@@ -808,17 +871,17 @@
 .tasks-list {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    /* gap: 0.75rem; */
 }
 
 .task-item {
     display: flex;
     align-items: flex-start;
     gap: 0.75rem;
-    padding: 0.875rem;
+    /* padding: 0.875rem;
     background: rgba(255, 255, 255, 0.02);
     border-radius: var(--radius-md);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.05); */
     transition: all 0.2s ease;
 }
 
@@ -1087,14 +1150,5 @@
 
     .detail-grid {
         grid-template-columns: 1fr;
-    }
-
-    .drawer {
-        width: 100%;
-        right: -100%;
-    }
-
-    .drawer.active {
-        right: 0;
     }
 }

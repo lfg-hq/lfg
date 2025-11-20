@@ -67,4 +67,10 @@ urlpatterns = [
 
     # Ticket execution API
     path('<str:project_id>/api/tickets/<int:ticket_id>/execute/', views.execute_ticket_api, name='execute_ticket_api'),
+
+    # Ticket logs API
+    path('<str:project_id>/api/tickets/<int:ticket_id>/logs/', views.ticket_logs_api, name='ticket_logs_api'),
+
+    # Ticket tasks API
+    path('<str:project_id>/api/tickets/<int:ticket_id>/tasks/', views.ticket_tasks_api, name='ticket_tasks_api'),
 ]

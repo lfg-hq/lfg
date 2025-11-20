@@ -6,9 +6,380 @@
     <title>Tickets - LFG 🚀</title>
     <link rel="stylesheet" href="/static/css/common.css">
     <link rel="stylesheet" href="/static/css/sidebar.css">
-    <link rel="stylesheet" href="/static/css/tickets.css?v=2">
+    <link rel="stylesheet" href="/static/css/tickets.css?v=5">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link rel="icon" type="image/x-icon" href="/static/images/favicon.ico">
+    <style>
+        /* Execution logs styles */
+        .execution-summary {
+            background: var(--surface-secondary, #1a1a1a);
+            border: 1px solid var(--border-color, #333);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .execution-summary h4 {
+            margin: 0 0 0.75rem 0;
+            color: var(--text-primary, #fff);
+            font-size: 0.95rem;
+            font-weight: 600;
+        }
+
+        .execution-summary h4 i {
+            margin-right: 0.5rem;
+            color: var(--accent-color, #4A90E2);
+        }
+
+        .execution-logs-container h4 {
+            color: var(--text-primary, #fff);
+            font-size: 0.95rem;
+            font-weight: 600;
+            margin: 0 0 1rem 0;
+        }
+
+        .execution-logs-container h4 i {
+            margin-right: 0.5rem;
+            color: var(--accent-color, #4A90E2);
+        }
+
+        .execution-log-entry {
+            padding: 0.15rem 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .execution-log-entry:last-child {
+            border-bottom: none;
+        }
+
+        .log-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            padding: 0.5rem;
+            margin: -0.5rem;
+            margin-bottom: 0.5rem;
+            border-radius: 4px;
+            transition: background-color 0.2s;
+        }
+
+        .log-header:hover {
+            background-color: rgba(255, 255, 255, 0.03);
+        }
+
+        .log-command-num {
+            font-weight: 300;
+            color: var(--text-primary, #fff);
+            font-size: 0.875rem;
+        }
+
+        .log-timestamp {
+            font-size: 0.75rem;
+            color: var(--text-secondary, #888);
+        }
+
+        .log-explanation {
+            color: var(--text-secondary, #aaa);
+            font-size: 0.875rem;
+            font-weight: 400;
+        }
+
+        .log-explanation-detail {
+            background: rgba(74, 144, 226, 0.08);
+            padding: 0.625rem 0.875rem;
+            border-left: 3px solid var(--accent-color, #4A90E2);
+            color: var(--text-secondary, #ccc);
+            font-size: 0.875rem;
+            margin-bottom: 0.75rem;
+            font-style: italic;
+            border-radius: 4px;
+        }
+
+        .log-command {
+            background: rgba(255, 255, 255, 0.02);
+            padding: 0.5rem 0.75rem;
+            border-left: 2px solid var(--accent-color, #4A90E2);
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+            font-size: 0.8125rem;
+            color: #4EC9B0;
+            margin-bottom: 0.5rem;
+            overflow-x: auto;
+            white-space: pre;
+        }
+
+        .log-output {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 0.5rem 0.75rem;
+            border-left: 2px solid rgba(255, 255, 255, 0.1);
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+            font-size: 0.8125rem;
+            color: var(--text-secondary, #ccc);
+            margin: 0;
+            overflow-x: auto;
+            white-space: pre;
+        }
+
+        .log-details {
+            max-width: 100%;
+            overflow-x: auto;
+        }
+
+        .log-notes {
+            background: var(--surface-primary, #0d0d0d);
+            padding: 0.75rem;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+            font-size: 0.875rem;
+            color: var(--text-secondary, #ccc);
+            margin: 0;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        /* Tasks styling */
+        .tasks-list {
+            padding: 0;
+            list-style: none;
+        }
+
+        .task-item {
+            display: flex;
+            align-items: flex-start;
+            padding: 0.625rem 0.5rem;
+            gap: 0.75rem;
+            border: none;
+            background: transparent;
+        }
+
+        .task-checkbox {
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border: 1.5px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            cursor: pointer;
+            position: relative;
+            flex-shrink: 0;
+            margin-top: 0.125rem;
+            background-color: transparent;
+            transition: all 0.2s;
+        }
+
+        .task-checkbox:hover {
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+
+        .task-checkbox:checked {
+            background-color: transparent;
+            border-color: #22c55e;
+        }
+
+        .task-checkbox:checked::after {
+            content: '\f00c';
+            font-family: 'Font Awesome 6 Free';
+            font-weight: 900;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #22c55e;
+            font-size: 10px;
+        }
+
+        .task-item.pending .task-checkbox {
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+
+        .task-item.success .task-checkbox,
+        .task-item.completed .task-checkbox {
+            background-color: transparent;
+            border-color: #22c55e;
+        }
+
+        .task-item.success .task-checkbox::after,
+        .task-item.completed .task-checkbox::after {
+            content: '\f00c';
+            font-family: 'Font Awesome 6 Free';
+            font-weight: 900;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #22c55e;
+            font-size: 10px;
+        }
+
+        .task-item.in_progress .task-checkbox {
+            border-color: #f59e0b;
+            background-color: transparent;
+        }
+
+        .task-item.in_progress .task-checkbox::after {
+            content: '\f110';
+            font-family: 'Font Awesome 6 Free';
+            font-weight: 900;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #f59e0b;
+            font-size: 10px;
+        }
+
+        .task-item.fail .task-checkbox,
+        .task-item.failed .task-checkbox {
+            border-color: #ef4444;
+            background-color: transparent;
+        }
+
+        .task-item.fail .task-checkbox::after,
+        .task-item.failed .task-checkbox::after {
+            content: '\f00d';
+            font-family: 'Font Awesome 6 Free';
+            font-weight: 900;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ef4444;
+            font-size: 10px;
+        }
+
+        .task-label {
+            flex: 1;
+            cursor: pointer;
+            font-size: 0.875rem;
+            line-height: 1.5;
+            color: var(--text-primary, #fff);
+        }
+
+        .task-item.success .task-label,
+        .task-item.completed .task-label {
+            text-decoration: line-through;
+            opacity: 0.6;
+        }
+
+        .task-description {
+            display: block;
+            color: var(--text-secondary, #aaa);
+            font-size: 0.8125rem;
+            margin-top: 0.25rem;
+        }
+
+        /* Markdown content styling */
+        .markdown-content {
+            line-height: 1.6;
+            color: var(--text-primary, #fff);
+        }
+
+        .markdown-content h1,
+        .markdown-content h2,
+        .markdown-content h3,
+        .markdown-content h4,
+        .markdown-content h5,
+        .markdown-content h6 {
+            margin-top: 1.5rem;
+            margin-bottom: 0.75rem;
+            font-weight: 600;
+            color: var(--text-primary, #fff);
+        }
+
+        .markdown-content h1 { font-size: 1.75rem; }
+        .markdown-content h2 { font-size: 1.5rem; }
+        .markdown-content h3 { font-size: 1.25rem; }
+        .markdown-content h4 { font-size: 1.1rem; }
+        .markdown-content h5 { font-size: 1rem; }
+        .markdown-content h6 { font-size: 0.95rem; }
+
+        .markdown-content p {
+            margin-bottom: 1rem;
+        }
+
+        .markdown-content ul,
+        .markdown-content ol {
+            margin-bottom: 1rem;
+            padding-left: 1.5rem;
+        }
+
+        .markdown-content li {
+            margin-bottom: 0.5rem;
+        }
+
+        .markdown-content code {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+            font-size: 0.875rem;
+            color: #4EC9B0;
+        }
+
+        .markdown-content pre {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 1rem;
+            border-radius: 4px;
+            overflow-x: auto;
+            margin-bottom: 1rem;
+        }
+
+        .markdown-content pre code {
+            background: none;
+            padding: 0;
+            color: var(--text-secondary, #ccc);
+        }
+
+        .markdown-content blockquote {
+            border-left: 3px solid var(--accent-color, #4A90E2);
+            padding-left: 1rem;
+            margin-left: 0;
+            color: var(--text-secondary, #aaa);
+            font-style: italic;
+        }
+
+        .markdown-content table {
+            border-collapse: collapse;
+            margin: 1rem 0;
+            width: 100%;
+            overflow-x: auto;
+        }
+
+        .markdown-content table th,
+        .markdown-content table td {
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 0.5rem 0.75rem;
+            text-align: left;
+        }
+
+        .markdown-content table th {
+            background: rgba(255, 255, 255, 0.05);
+            font-weight: 600;
+        }
+
+        .markdown-content a {
+            color: var(--accent-color, #4A90E2);
+            text-decoration: none;
+        }
+
+        .markdown-content a:hover {
+            text-decoration: underline;
+        }
+
+        .markdown-content hr {
+            border: none;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            margin: 1.5rem 0;
+        }
+
+        .markdown-content strong {
+            font-weight: 600;
+        }
+
+        .markdown-content em {
+            font-style: italic;
+        }
+    </style>
 </head>
 <body data-user-authenticated="{% if user.is_authenticated %}true{% else %}false{% endif %}">
     <div class="app-container">
@@ -116,13 +487,17 @@
     </div>
 
     <!-- Ticket Details Drawer -->
-    <div id="ticketDrawerOverlay" class="drawer-overlay" onclick="closeTicketDrawer()"></div>
+    <div id="ticketDrawerOverlay" class="drawer-overlay" onclick="handleOverlayClick()"></div>
     <div id="ticketDrawer" class="drawer">
+        <div class="drawer-resize-handle" id="drawerResizeHandle"></div>
         <div class="drawer-header">
             <div class="drawer-header-left">
                 <h3 class="drawer-title" id="drawerTicketTitle"></h3>
             </div>
             <div class="drawer-header-right">
+                <button class="drawer-pin-btn" onclick="toggleDrawerPin()" id="drawerPinBtn" title="Pin drawer">
+                    <i class="fas fa-thumbtack"></i>
+                </button>
                 <button class="drawer-execute-btn" onclick="executeTicket()" id="executeTicketBtn">
                     <i class="fas fa-play"></i> Execute
                 </button>
@@ -151,6 +526,22 @@
     </div>
 
     <script src="/static/js/sidebar.js"></script>
+    <script src="/static/js/marked.min.js"></script>
+    <script>
+        // Verify marked.js loaded
+        if (typeof marked === 'undefined') {
+            console.error('marked.js failed to load!');
+        } else {
+            console.log('marked.js loaded successfully!');
+            // Configure marked for GitHub Flavored Markdown
+            marked.setOptions({
+                gfm: true,
+                breaks: true,
+                headerIds: true,
+                mangle: false
+            });
+        }
+    </script>
     <script>
         // Filter tickets function
         function filterTickets() {
@@ -228,6 +619,7 @@
         let currentTicket = null;
         let currentProjectId = null;
         let currentTab = 'details';
+        let drawerPinned = false;
 
         function switchDrawerTab(tab) {
             currentTab = tab;
@@ -265,6 +657,38 @@
 
         function showDetailsTab(body) {
             const ticket = currentTicket;
+
+            console.log('showDetailsTab called, marked available:', typeof marked !== 'undefined');
+
+            // Helper function to render markdown safely
+            const renderMarkdown = (text) => {
+                if (!text) return 'No description provided';
+
+                console.log('renderMarkdown called with text:', text.substring(0, 50));
+                console.log('marked type:', typeof marked);
+
+                if (typeof marked !== 'undefined') {
+                    const result = marked.parse(text);
+                    console.log('marked.parse result:', result.substring(0, 100));
+                    return result;
+                } else {
+                    console.warn('marked.js not loaded, using escapeHtml');
+                    return escapeHtml(text);
+                }
+            };
+
+            // Pre-render markdown content
+            const descriptionHTML = renderMarkdown(ticket.description);
+            const notesHTML = ticket.notes ? renderMarkdown(ticket.notes) : '';
+
+            // Render acceptance criteria with inline markdown
+            const criteriaHTML = ticket.acceptance_criteria && ticket.acceptance_criteria.length > 0
+                ? ticket.acceptance_criteria.map(criteria => {
+                    const renderedCriteria = typeof marked !== 'undefined' ? marked.parseInline(criteria) : escapeHtml(criteria);
+                    return `<li>${renderedCriteria}</li>`;
+                }).join('')
+                : '';
+
             body.innerHTML = `
                 <div class="ticket-detail-drawer">
                     <div class="detail-meta-row">
@@ -290,25 +714,27 @@
                         </div>
                     </div>
 
-                    <div class="detail-section">
-                        <p>${ticket.description || 'No description provided'}</p>
+                    <div class="detail-section markdown-content">
+                        ${descriptionHTML}
                     </div>
 
-                    ${ticket.acceptance_criteria && ticket.acceptance_criteria.length > 0 ? `
+                    ${criteriaHTML ? `
                         <div class="detail-section">
                             <h4>Acceptance Criteria</h4>
-                            <ul class="criteria-list">
-                                ${ticket.acceptance_criteria.map(criteria =>
-                                    `<li>${escapeHtml(criteria)}</li>`
-                                ).join('')}
-                            </ul>
+                            <div class="markdown-content">
+                                <ul class="criteria-list">
+                                    ${criteriaHTML}
+                                </ul>
+                            </div>
                         </div>
                     ` : ''}
 
                     ${ticket.notes ? `
                         <div class="detail-section">
                             <h4>Notes</h4>
-                            <p>${escapeHtml(ticket.notes)}</p>
+                            <div class="markdown-content">
+                                ${notesHTML}
+                            </div>
                         </div>
                     ` : ''}
 
@@ -324,44 +750,190 @@
             `;
         }
 
-        function showLogsTab(body) {
+        async function showLogsTab(body) {
+            // Show loading state
             body.innerHTML = `
                 <div class="drawer-tab-content">
                     <div class="empty-logs">
-                        <i class="fas fa-terminal" style="font-size: 2rem; color: var(--text-secondary); opacity: 0.5;"></i>
-                        <p style="color: var(--text-secondary); margin-top: 1rem;">No execution logs available for this ticket yet.</p>
-                        <p style="color: var(--text-secondary); font-size: 0.875rem;">Logs will appear here after the ticket is executed.</p>
+                        <i class="fas fa-spinner fa-spin" style="font-size: 2rem; color: var(--text-secondary); opacity: 0.5;"></i>
+                        <p style="color: var(--text-secondary); margin-top: 1rem;">Loading execution logs...</p>
                     </div>
                 </div>
             `;
+
+            // Fetch ticket logs
+            if (!currentTicket || !currentProjectId) {
+                body.innerHTML = `
+                    <div class="drawer-tab-content">
+                        <div class="empty-logs">
+                            <i class="fas fa-terminal" style="font-size: 2rem; color: var(--text-secondary); opacity: 0.5;"></i>
+                            <p style="color: var(--text-secondary); margin-top: 1rem;">No execution logs available.</p>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/v1/project-tickets/${currentTicket.id}/logs/`);
+                const data = await response.json();
+
+                if (data.commands && data.commands.length > 0) {
+                    // Reverse commands to show latest first
+                    const reversedCommands = [...data.commands].reverse();
+                    const totalCommands = data.commands.length;
+
+                    // Display command execution logs
+                    body.innerHTML = `
+                        <div class="drawer-tab-content">
+                            <div class="execution-logs-container">
+                                
+                                <h4><i class="fas fa-terminal"></i> Command History (Latest First)</h4>
+                                ${reversedCommands.map((cmd, index) => {
+                                    const explanation = cmd.explanation || 'No explanation provided';
+                                    return `
+                                    <div class="execution-log-entry collapsed" data-cmd-index="${index}">
+                                        <div class="log-header" onclick="toggleCommandExpand(${index})">
+                                            <div style="display: flex; align-items: center; gap: 0.5rem; flex: 1; overflow: hidden;">
+                                                <i class="fas fa-chevron-right expand-icon" style="font-size: 0.75rem; transition: transform 0.2s;"></i>
+                                                <span class="log-explanation" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(explanation)}</span>
+                                            </div>
+                                            <span class="log-timestamp" style="white-space: nowrap; margin-left: 1rem;">${formatDate(cmd.created_at)}</span>
+                                        </div>
+                                        <div class="log-details" style="display: none;">
+                                            <pre class="log-command">${escapeHtml(cmd.command)}</pre>
+                                            ${cmd.output ? `<pre class="log-output">${escapeHtml(cmd.output)}</pre>` : '<p style="color: var(--text-secondary); font-style: italic; margin-top: 0.5rem; font-size: 0.875rem;">No output</p>'}
+                                        </div>
+                                    </div>
+                                `}).join('')}
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    // No logs available
+                    body.innerHTML = `
+                        <div class="drawer-tab-content">
+                            <div class="empty-logs">
+                                <i class="fas fa-terminal" style="font-size: 2rem; color: var(--text-secondary); opacity: 0.5;"></i>
+                                <p style="color: var(--text-secondary); margin-top: 1rem;">No execution logs available for this ticket yet.</p>
+                                <p style="color: var(--text-secondary); font-size: 0.875rem;">Logs will appear here after the ticket is executed.</p>
+                            </div>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error loading logs:', error);
+                body.innerHTML = `
+                    <div class="drawer-tab-content">
+                        <div class="empty-logs">
+                            <i class="fas fa-exclamation-triangle" style="font-size: 2rem; color: var(--error-color); opacity: 0.5;"></i>
+                            <p style="color: var(--text-secondary); margin-top: 1rem;">Error loading execution logs.</p>
+                        </div>
+                    </div>
+                `;
+            }
         }
 
-        function showTasksTab(body) {
-            const ticket = currentTicket;
-            const tasks = ticket.acceptance_criteria || [];
+        async function showTasksTab(body) {
+            // Show loading state
+            body.innerHTML = `
+                <div class="drawer-tab-content">
+                    <div class="empty-logs">
+                        <i class="fas fa-spinner fa-spin" style="font-size: 2rem; color: var(--text-secondary); opacity: 0.5;"></i>
+                        <p style="color: var(--text-secondary); margin-top: 1rem;">Loading tasks...</p>
+                    </div>
+                </div>
+            `;
 
-            if (tasks.length === 0) {
+            if (!currentTicket || !currentProjectId) {
                 body.innerHTML = `
                     <div class="drawer-tab-content">
                         <div class="empty-logs">
                             <i class="fas fa-list-check" style="font-size: 2rem; color: var(--text-secondary); opacity: 0.5;"></i>
-                            <p style="color: var(--text-secondary); margin-top: 1rem;">No tasks defined for this ticket.</p>
+                            <p style="color: var(--text-secondary); margin-top: 1rem;">No tasks available.</p>
                         </div>
                     </div>
                 `;
-            } else {
-                body.innerHTML = `
-                    <div class="drawer-tab-content">
-                        <div class="tasks-list">
-                            ${tasks.map((task, index) => `
-                                <div class="task-item">
-                                    <input type="checkbox" id="task-${index}" class="task-checkbox">
-                                    <label for="task-${index}" class="task-label">${escapeHtml(task)}</label>
-                                </div>
-                            `).join('')}
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/v1/project-tickets/${currentTicket.id}/tasks/`);
+                const data = await response.json();
+
+                const tasks = data.tasks || (currentTicket.acceptance_criteria || []);
+
+                if (tasks.length === 0) {
+                    body.innerHTML = `
+                        <div class="drawer-tab-content">
+                            <div class="empty-logs">
+                                <i class="fas fa-list-check" style="font-size: 2rem; color: var(--text-secondary); opacity: 0.5;"></i>
+                                <p style="color: var(--text-secondary); margin-top: 1rem;">No tasks defined for this ticket.</p>
+                            </div>
                         </div>
-                    </div>
-                `;
+                    `;
+                } else {
+                    // Check if tasks have structured data (from ProjectTaskList model) or are simple strings
+                    const isStructuredTasks = tasks.length > 0 && typeof tasks[0] === 'object';
+
+                    body.innerHTML = `
+                        <div class="drawer-tab-content">
+                            <div class="tasks-list">
+                                ${tasks.map((task, index) => {
+                                    if (isStructuredTasks) {
+                                        const taskStatus = task.status || 'pending';
+                                        const taskText = task.description || 'Unnamed task';
+                                        return `
+                                            <div class="task-item ${taskStatus}">
+                                                <input type="checkbox" id="task-${task.id || index}"
+                                                       class="task-checkbox"
+                                                       disabled>
+                                                <label for="task-${task.id || index}" class="task-label">
+                                                    ${escapeHtml(taskText)}
+                                                </label>
+                                            </div>
+                                        `;
+                                    } else {
+                                        // Simple string tasks from acceptance_criteria
+                                        return `
+                                            <div class="task-item pending">
+                                                <input type="checkbox" id="task-${index}" class="task-checkbox" disabled>
+                                                <label for="task-${index}" class="task-label">${escapeHtml(task)}</label>
+                                            </div>
+                                        `;
+                                    }
+                                }).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error loading tasks:', error);
+                // Fallback to acceptance criteria
+                const tasks = currentTicket.acceptance_criteria || [];
+                if (tasks.length === 0) {
+                    body.innerHTML = `
+                        <div class="drawer-tab-content">
+                            <div class="empty-logs">
+                                <i class="fas fa-list-check" style="font-size: 2rem; color: var(--text-secondary); opacity: 0.5;"></i>
+                                <p style="color: var(--text-secondary); margin-top: 1rem;">No tasks defined for this ticket.</p>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    body.innerHTML = `
+                        <div class="drawer-tab-content">
+                            <div class="tasks-list">
+                                ${tasks.map((task, index) => `
+                                    <div class="task-item pending">
+                                        <input type="checkbox" id="task-${index}" class="task-checkbox" disabled>
+                                        <label for="task-${index}" class="task-label">${escapeHtml(task)}</label>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
             }
         }
 
@@ -522,12 +1094,36 @@
         }
 
         function closeTicketDrawer() {
+            if (drawerPinned) return; // Don't close if pinned
+
             const drawer = document.getElementById('ticketDrawer');
             const overlay = document.getElementById('ticketDrawerOverlay');
             drawer.classList.remove('active');
             overlay.classList.remove('active');
             currentTicket = null;
             currentProjectId = null;
+        }
+
+        function handleOverlayClick() {
+            if (!drawerPinned) {
+                closeTicketDrawer();
+            }
+        }
+
+        function toggleDrawerPin() {
+            drawerPinned = !drawerPinned;
+            const pinBtn = document.getElementById('drawerPinBtn');
+            const drawer = document.getElementById('ticketDrawer');
+
+            if (drawerPinned) {
+                pinBtn.classList.add('pinned');
+                pinBtn.title = 'Unpin drawer';
+                drawer.classList.add('pinned');
+            } else {
+                pinBtn.classList.remove('pinned');
+                pinBtn.title = 'Pin drawer';
+                drawer.classList.remove('pinned');
+            }
         }
 
         function closeTicketModal() {
@@ -718,12 +1314,94 @@
             return div.innerHTML;
         }
 
+        function toggleCommandExpand(index) {
+            const entry = document.querySelector(`.execution-log-entry[data-cmd-index="${index}"]`);
+            if (!entry) return;
+
+            const details = entry.querySelector('.log-details');
+            const icon = entry.querySelector('.expand-icon');
+            const isExpanded = entry.classList.contains('expanded');
+
+            if (isExpanded) {
+                // Collapse
+                entry.classList.remove('expanded');
+                entry.classList.add('collapsed');
+                details.style.display = 'none';
+                icon.classList.remove('fa-chevron-down');
+                icon.classList.add('fa-chevron-right');
+            } else {
+                // Expand
+                entry.classList.remove('collapsed');
+                entry.classList.add('expanded');
+                details.style.display = 'block';
+                icon.classList.remove('fa-chevron-right');
+                icon.classList.add('fa-chevron-down');
+            }
+        }
+
         // Close drawer on Escape key
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') {
                 closeTicketDrawer();
             }
         });
+
+        // Drawer resize functionality
+        (function initDrawerResize() {
+            const drawer = document.getElementById('ticketDrawer');
+            const resizeHandle = document.getElementById('drawerResizeHandle');
+            let isResizing = false;
+            let startX = 0;
+            let startWidth = 0;
+            const minWidth = 500;
+            const maxWidth = window.innerWidth - 200;
+
+            // Load saved width from localStorage
+            const savedWidth = localStorage.getItem('ticketDrawerWidth');
+            if (savedWidth) {
+                const width = parseInt(savedWidth);
+                if (width >= minWidth && width <= maxWidth) {
+                    drawer.style.width = width + 'px';
+                }
+            }
+
+            resizeHandle.addEventListener('mousedown', function(e) {
+                isResizing = true;
+                startX = e.clientX;
+                startWidth = drawer.offsetWidth;
+                drawer.classList.add('resizing');
+                resizeHandle.classList.add('active');
+                e.preventDefault();
+            });
+
+            document.addEventListener('mousemove', function(e) {
+                if (!isResizing) return;
+
+                const deltaX = startX - e.clientX;
+                const newWidth = Math.min(Math.max(startWidth + deltaX, minWidth), maxWidth);
+                drawer.style.width = newWidth + 'px';
+            });
+
+            document.addEventListener('mouseup', function() {
+                if (isResizing) {
+                    isResizing = false;
+                    drawer.classList.remove('resizing');
+                    resizeHandle.classList.remove('active');
+                    // Save width to localStorage
+                    localStorage.setItem('ticketDrawerWidth', drawer.offsetWidth);
+                }
+            });
+
+            // Update max width on window resize
+            window.addEventListener('resize', function() {
+                const currentWidth = drawer.offsetWidth;
+                const newMaxWidth = window.innerWidth - 200;
+                if (currentWidth > newMaxWidth) {
+                    drawer.style.width = newMaxWidth + 'px';
+                    localStorage.setItem('ticketDrawerWidth', newMaxWidth);
+                }
+            });
+        })();
 
         // WebSocket connection for ticket chat
         let ticketWebSocket = null;

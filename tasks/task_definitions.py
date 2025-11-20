@@ -52,11 +52,12 @@ def your_task_function(param1: str, param2: int) -> dict:
 import asyncio
 import json
 import logging
+import time
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 import os
+from contextvars import ContextVar
 
-from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.conf import settings
 from django.db import transaction
@@ -64,10 +65,15 @@ from asgiref.sync import sync_to_async, async_to_sync
 
 from projects.models import ProjectTicket, Project
 from factory.ai_providers import get_ai_response
-from factory.ai_functions import provision_vibe_workspace_tool
+from factory.ai_functions import new_dev_sandbox_tool, _fetch_workspace, get_magpie_client, _slugify_project_name, MAGPIE_BOOTSTRAP_SCRIPT
 from factory.prompts.builder_prompt import get_system_builder_mode
 from factory.ai_tools import tools_builder
+from development.models import MagpieWorkspace
 import time
+
+# Context variables to store execution context
+current_ticket_id: ContextVar[Optional[int]] = ContextVar('current_ticket_id', default=None)
+current_workspace_id: ContextVar[Optional[str]] = ContextVar('current_workspace_id', default=None)
 
 logger = logging.getLogger(__name__)
 
@@ -182,7 +188,7 @@ from asgiref.sync import async_to_sync
 logger = logging.getLogger(__name__)
 
 
-def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_id: int, max_execution_time: int = 300) -> Dict[str, Any]:
+def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_id: int, max_execution_time: int = 600) -> Dict[str, Any]:
     """
     Execute a single ticket implementation - streamlined version with timeout protection.
     Works like Claude Code CLI - fast, efficient, limited tool rounds.
@@ -196,28 +202,37 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
     Returns:
         Dict with execution results and status
     """
+    # Set the current ticket_id in context for tool functions to access
+    current_ticket_id.set(ticket_id)
+    logger.info(f"\n{'='*80}\n[TASK START] Ticket #{ticket_id} | Project #{project_id} | Conv #{conversation_id}\n{'='*80}")
+
     start_time = time.time()
     workspace_id = None
 
     try:
+        logger.info(f"\n[STEP 1/10] Fetching ticket and project data...")
         # 1. GET TICKET AND PROJECT
         ticket = ProjectTicket.objects.get(id=ticket_id)
         project = Project.objects.get(id=project_id)
+        logger.info(f"[STEP 1/10] ✓ Ticket: '{ticket.name}' | Project: '{project.name}'")
 
+        logger.info(f"\n[STEP 2/10] Checking if ticket already completed...")
         # 2. CHECK IF ALREADY COMPLETED (prevent duplicate execution on retry)
         if ticket.status == 'done':
-            logger.info(f"Ticket #{ticket_id} already completed, skipping")
+            logger.info(f"[STEP 2/10] ⊘ Ticket already completed, skipping")
             return {
                 "status": "success",
                 "ticket_id": ticket_id,
                 "message": "Already completed",
                 "skipped": True
             }
+        logger.info(f"[STEP 2/10] ✓ Ticket status: {ticket.status}, proceeding...")
 
+        logger.info(f"\n[STEP 3/10] Updating ticket status to in_progress...")
         # 3. UPDATE STATUS TO IN-PROGRESS
         ticket.status = 'in_progress'
         ticket.save(update_fields=['status'])
-        logger.info(f"Starting ticket #{ticket_id}: {ticket.name}")
+        logger.info(f"[STEP 3/10] ✓ Ticket #{ticket_id} marked as in_progress")
         
         # 4. BROADCAST START
         broadcast_ticket_notification(conversation_id, {
@@ -231,22 +246,83 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
             'refresh_checklist': True
         })
 
-        # 5. GET WORKSPACE
-        workspace_result = async_to_sync(provision_vibe_workspace_tool)(
-            {
-                'project_name': project.provided_name or project.name,
-                'summary': project.description or 'Ticket implementation workspace'
-            },
-            project.project_id,
-            conversation_id
-        )
+        logger.info(f"\n[STEP 4/10] Broadcasting start notification...")
 
-        if workspace_result.get('status') == 'failed':
-            raise Exception(f"Workspace provisioning failed: {workspace_result.get('message_to_agent')}")
+        logger.info(f"\n[STEP 5/10] Fetching or creating workspace...")
+        # 5. GET OR CREATE WORKSPACE
+        workspace = async_to_sync(_fetch_workspace)(project=project, conversation_id=conversation_id)
 
-        workspace_id = workspace_result.get('workspace_id')
-        logger.info(f"Workspace ready: {workspace_id}")
+        if not workspace:
+            logger.info(f"[STEP 5/10] No existing workspace found, creating new one...")
+            # Create new Magpie workspace
+            try:
+                client = get_magpie_client()
+                project_name = project.provided_name or project.name
+                slug = _slugify_project_name(project_name)
+                workspace_name = f"{slug}-{project.id}"
 
+                response = client.jobs.create(
+                    name=workspace_name,
+                    script=MAGPIE_BOOTSTRAP_SCRIPT,
+                    persist=True,
+                    ip_lease=True,
+                    stateful=True,
+                    workspace_size_gb=10,
+                    vcpus=2,
+                    memory_mb=2048,
+                )
+                logger.info(f"[MAGPIE][CREATE] job response: {response}")
+
+                run_id = response.get("request_id")
+                workspace_identifier = run_id
+
+                workspace = MagpieWorkspace.objects.create(
+                    project=project,
+                    conversation_id=str(conversation_id) if conversation_id else None,
+                    job_id=run_id,
+                    workspace_id=workspace_identifier,
+                    status='provisioning',
+                    metadata={'project_name': project_name}
+                )
+
+                # Wait for VM to be ready with IP address (polls internally)
+                logger.info(f"[MAGPIE][POLL] Waiting for VM to be ready with IP address...")
+                vm_info = client.jobs.get_vm_info(run_id, poll_timeout=120, poll_interval=5)
+
+                ipv6 = vm_info.get("ip_address")
+                if not ipv6:
+                    raise Exception(f"VM provisioning timed out - no IP address received")
+
+                workspace.mark_ready(ipv6=ipv6, project_path='/workspace')
+                logger.info(f"[MAGPIE][READY] Workspace ready: {workspace.workspace_id}, IP: {ipv6}")
+            except Exception as e:
+                raise Exception(f"Workspace provisioning failed: {str(e)}")
+
+        workspace_id = workspace.workspace_id
+        logger.info(f"[STEP 5/10] ✓ Workspace ready: {workspace_id}")
+
+        # Set workspace_id in context so tools can access it
+        current_workspace_id.set(workspace_id)
+        logger.info(f"[STEP 5/10] ✓ Set workspace_id in context: {workspace_id}")
+
+        logger.info(f"\n[STEP 6/10] Setting up dev sandbox...")
+        # 5b. SETUP DEV SANDBOX (only if not already initialized)
+        workspace_metadata = workspace.metadata or {}
+        if not workspace_metadata.get('sandbox_initialized'):
+            logger.info(f"[STEP 6/10] Initializing dev sandbox for workspace {workspace_id}...")
+            sandbox_result = async_to_sync(new_dev_sandbox_tool)(
+                {'workspace_id': workspace_id},
+                project.project_id,
+                conversation_id
+            )
+
+            if sandbox_result.get('status') == 'failed':
+                raise Exception(f"Dev sandbox setup failed: {sandbox_result.get('message_to_agent')}")
+            logger.info(f"[STEP 6/10] ✓ Dev sandbox initialized")
+        else:
+            logger.info(f"[STEP 6/10] ⊘ Skipping - dev sandbox already initialized")
+
+        logger.info(f"\n[STEP 7/10] Fetching project documentation...")
         # 6. FETCH PROJECT DOCUMENTATION (PRD & Implementation)
         project_context = ""
         try:
@@ -283,25 +359,11 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
                         project_context += "\n...(truncated for brevity)\n"
                     project_context += "\n"
 
-                logger.info(f"Added project documentation to context: {len(prd_files)} PRDs, {len(impl_files)} implementation docs")
+                logger.info(f"[STEP 7/10] ✓ Added {len(prd_files)} PRDs, {len(impl_files)} implementation docs to context")
+            else:
+                logger.info(f"[STEP 7/10] ⊘ No project documentation found")
         except Exception as e:
-            logger.warning(f"Could not fetch project documentation: {str(e)}")
-
-        # 7. EXECUTE IMPLEMENTATION WITH LIMITED TOOL ROUNDS
-        # Check if ticket has notes from a previous failed attempt
-        previous_attempt_context = ""
-        if ticket.notes and "RETRYABLE ERROR" in ticket.notes:
-            previous_attempt_context = f"""
-⚠️ RETRY CONTEXT: This ticket was attempted before but failed due to an API error.
-Previous attempt notes:
-{ticket.notes}
-
-IMPORTANT: Before doing ANY work:
-1. Check what files already exist
-2. Check what was already installed
-3. Continue from where the previous attempt left off
-4. DO NOT redo work that's already complete
-"""
+            logger.warning(f"[STEP 7/10] ⚠ Could not fetch project documentation: {str(e)}")
 
         implementation_prompt = f"""
 You are implementing ticket #{ticket.id}: {ticket.name}
@@ -309,128 +371,47 @@ You are implementing ticket #{ticket.id}: {ticket.name}
 TICKET DESCRIPTION:
 {ticket.description}
 
-WORKSPACE: {workspace_id}
-PROJECT PATH: /workspace/nextjs-app
+PROJECT PATH: nextjs-app
 {project_context}
-{previous_attempt_context}
-
-
-REQUIRED FINAL MESSAGE FORMAT:
-After completing the ticket requirements, you MUST write:
 
 ✅ Success case: "IMPLEMENTATION_STATUS: COMPLETE - [brief summary of what you did]"
 ❌ Failure case: "IMPLEMENTATION_STATUS: FAILED - [reason]"
-
-Remember:
-- ALWAYS check workspace state first (ls, cat package.json)
-- This is an EXISTING project - don't recreate it
-- Focus ONLY on the ticket requirements
-- Don't redo work that's already complete
-- Make minimal, targeted changes
 """
-
         system_prompt = """
-You are an expert developer working on assigned tickets. You will implement tickets with surgical precision.
+You are expert developer assigned to work on a development ticket. You will follow these steps
 
-Remember that you are working on an existing project, and every ticket is a TARGETED change on the existing codebase.
+1. Check if the ticket has todolist. If no, then create new todo list. If todos exist, then continue from pending ones. 
+2. Build the todolist one by one, and complete the project in minimal shell commands. Mandatory. 
 
-Before working on the ticket, check if tasklist exists for this ticket. If not then create the tasks using manage_ticket_tasks(). 
-You will work off these tasklist. Whenever the task is completed, update the task status.
+3. Start by checking the agent.md file. Note you will keep update all the important changes to agents.md
+You can check the status of the project using shell commands. Batch multiple checks in a single command.
+eg. ls -la && cat .... && grep ....  cat ....
+Keep the checks to minimum and don't loop around. Usually agent.md will have all the information.
 
-🔍 MANDATORY FIRST STEP - ALWAYS CHECK STATE:
-Before EVERY ticket implementation, you MUST:
-1. Make sure the parent folder is /workspace/nextjs-app/
-1. Read the codebase using `ls -la` and `cat` and `grep` (see what exists and read the code)
-3. Assess what already exists vs what needs to be done
-4. This is NOT optional - you MUST check before doing any work!
+4. Create all the required files to complete the tasks
+5. Install the libraries
 
-Plan once. No loops. No tests. No builds. Minimal edits.
+6. Mark the todo as done when it is completed
 
-Phases: ANALYZE → APPLY → RUN → REPORT. No going backwards.
+🎯 COMPLETION CRITERIA:
+- Project runs with npm run dev (Do no build the Project)
+- All the todos are completed
+- Todos are marked done
 
-1. In the planning phase, understand and list all the libraries that need to be installed. Install them at once.
-2. Understand all the files that need to be created at once. Create them in a single command. 
-3. Understand all the edits that need to be made. Make the edits in a single command.
-4. Run the app (npm run dev), and check for errors. Use the tool `run_code_server`. Always use this. 
-6. Do not build the project, and do not attempt to test the project or verify the files.
+DO NOT verify extensively or test in loops.
+You can skip writing explainer documentation.
 
-Remember that there is another QA agent which can test and fix for any issues. 
-DO NOT create Readme. User has enough context to understand the project.
-
-IMPORTANT: 
-- You can read multiple files in a single command
-- Identify and create multiple files in a single command. This will help save the tool calls. 
-- If required, then edit multiple files in a single command
-
-No need to verify or keep testing in a loop. Mark the tasks are completed and exit this ticket with below instructions. 
+Note: whenever a TODO item is completed, make sure to mark the TODO as done.
 
 End with: "IMPLEMENTATION_STATUS: COMPLETE - [specific changes made]" or "IMPLEMENTATION_STATUS: FAILED - [reason]"
-"""
+        """
 
-        # System prompt with strict completion requirements
-        system_prompt_ = """
-You are an expert developer working on an EXISTING codebase. You implement tickets with surgical precision.
-
-FUNDAMENTAL PRINCIPLE: You are working on an EXISTING PROJECT. Every ticket is a TARGETED change to this existing codebase.
-
-🔍 MANDATORY FIRST STEP - ALWAYS CHECK STATE:
-Before EVERY ticket implementation, you MUST:
-1. Make sure the parent folder is /workspace/nextjs-app/
-1. Read the codebase using `ls -la` and `cat` and `grep` (see what exists and read the code)
-3. Assess what already exists vs what needs to be done
-4. This is NOT optional - you MUST check before doing any work!
-
-YOUR APPROACH (Like Claude Code):
-1. CHECK FIRST: Always check workspace state before making changes
-2. UNDERSTAND: Read and analyze existing code when the ticket involves modifications
-3. MINIMAL CHANGES: Make ONLY the changes required by the ticket
-4. PRESERVE EXISTING: Never recreate files or structures that already exist
-5. TARGETED FIXES: For bugs, fix only the specific issue; for features, add only what's needed
-6. SKIP TESTING: Just make sure the files are there, then run the project and let the user know. 
-    Another testing agent will check and confirm the results
-
-Do not keep repeating the process
-
-1. Read code 
-2. Install all the needed packages
-3. Create code as needed: write new files or edit existing ones. Make sure to create all the files first
-4. Run the code. If any errors, fix them. Them run the code and hand over.
-5. End with: "IMPLEMENTATION_STATUS: COMPLETE - [specific changes made]" or "IMPLEMENTATION_STATUS: FAILED - [reason]"
-6. The status message is MANDATORY - you must provide it after tools finish
-
-STRICT RULES:
-1. Complete implementation in ≤50 tool calls
-2. CHECK workspace state before making changes
-3. READ before you WRITE when modifying existing functionality
-4. Write COMPLETE production code (no TODOs/placeholders)
-5. ALWAYS end with: "IMPLEMENTATION_STATUS: COMPLETE - [specific changes made]" or "IMPLEMENTATION_STATUS: FAILED - [reason]"
-6. The status message is MANDATORY - you must provide it after tools finish
-
-DO NOT:
-- Recreate the entire project or application structure
-- Create files that already exist without checking first
-- Install dependencies that are already installed
-- Make changes unrelated to the ticket
-- Run build commands (too slow)
-- Continue without giving final status
-
-REMEMBER: Always check state first, then make surgical changes. You're a precision surgeon, not a bulldozer.
-
-Very simple flow:
-1. Read and analysis requirements
-2. Install the libraries
-3. Create files: if required create multiple files at once. Make sure to batch multiple files together to save time. 
-4. Run and check for errors
-5. Then hand over control.
-6. Don't overcomplicate and keep checking and testing for things.
-
-Run the server and hand over controll
-"""
-
+        logger.info(f"\n[STEP 8/10] Calling AI for ticket implementation...")
+        logger.info(f"[STEP 8/10] Max execution time: {max_execution_time}s | Elapsed: {time.time() - start_time:.1f}s")
         # 8. CALL AI WITH TIMEOUT PROTECTION
-        logger.info("Calling AI for implementation...")
 
         # Wrap AI call with timeout check
+        ai_call_start = time.time()
         try:
             ai_response = async_to_sync(get_ai_response)(
                 user_message=implementation_prompt,
@@ -440,19 +421,19 @@ Run the server and hand over controll
                 stream=False,
                 tools=tools_builder
             )
+            ai_call_duration = time.time() - ai_call_start
+            logger.info(f"[STEP 8/10] ✓ AI call completed in {ai_call_duration:.1f}s")
         except Exception as ai_error:
-            # Handle API errors (500s, timeouts, etc.)
-            logger.error(f"AI call failed: {str(ai_error)}")
-            if "500" in str(ai_error) or "Internal server error" in str(ai_error):
-                raise Exception(f"Anthropic API error (500): {str(ai_error)}. Will retry.")
-            raise
+            # Handle API errors (500s, timeouts, etc.) - no retry, just fail
+            logger.error(f"[STEP 8/10] ✗ AI call failed: {str(ai_error)}")
+            raise Exception(f"AI API error: {str(ai_error)}")
 
         content = ai_response.get('content', '') if ai_response else ''
         execution_time = time.time() - start_time
 
         # Log the AI response for debugging
-        logger.info(f"AI response keys: {ai_response.keys() if ai_response else 'None'}")
-        logger.info(f"AI response content preview: {content[:200] if content else 'Empty'}")
+        logger.info(f"[STEP 8/10] AI response length: {len(content)} chars")
+        logger.info(f"[STEP 8/10] Total elapsed time: {execution_time:.1f}s")
 
         # Check if AI response indicates an error (500, overloaded, etc.)
         has_api_error = ai_response.get('error') if ai_response else False
@@ -466,6 +447,7 @@ Run the server and hand over controll
         if has_api_error:
             raise Exception(f"AI API error during execution: {error_message}")
 
+        logger.info(f"\n[STEP 9/10] Checking AI completion status...")
         # 8. CHECK COMPLETION STATUS (with fallback detection)
         completed = 'IMPLEMENTATION_STATUS: COMPLETE' in content
         failed = 'IMPLEMENTATION_STATUS: FAILED' in content
@@ -473,17 +455,18 @@ Run the server and hand over controll
         # Fallback: If no explicit status, ticket is NOT complete
         # Only mark as complete if there's an explicit success status
         if not completed and not failed:
-            logger.warning(f"No explicit completion status found in AI response. Content length: {len(content)}")
+            logger.warning(f"[STEP 9/10] ⚠ No explicit completion status found in AI response")
+            logger.warning(f"[STEP 9/10] Content length: {len(content)} chars")
             # ALWAYS mark as failed if no explicit completion status
             # The AI MUST provide explicit status - anything else is incomplete
             failed = True
-            logger.error("Marking as FAILED due to missing explicit completion status. AI must end with IMPLEMENTATION_STATUS.")
+            logger.error("[STEP 9/10] ✗ Marking as FAILED - AI must end with IMPLEMENTATION_STATUS")
 
-        logger.info(f"AI response received. Completed: {completed}, Failed: {failed}, Time: {execution_time:.2f}s")
+        logger.info(f"[STEP 9/10] Status check - Completed: {completed} | Failed: {failed} | Time: {execution_time:.1f}s")
         
         # 9. EXTRACT WHAT WAS DONE (for logging)
         import re
-        files_created = re.findall(r'cat > (/workspace/nextjs-app/[\w\-\./]+)', content)
+        files_created = re.findall(r'cat > (nextjs-app/[\w\-\./]+)', content)
         deps_installed = re.findall(r'npm install ([\w\-\s@/]+)', content)
         dependencies = []
         for dep_string in deps_installed:
@@ -493,16 +476,17 @@ Run the server and hand over controll
         tool_calls_count = content.count('ssh_command') + content.count('Tool call')
         logger.info(f"Estimated tool calls: {tool_calls_count}, Files created: {len(files_created)}, Dependencies: {len(dependencies)}")
 
+        logger.info(f"\n[STEP 10/10] Updating ticket status and saving results...")
         # 10. UPDATE TICKET BASED ON RESULT
         if completed and not failed:
             # SUCCESS!
+            logger.info(f"[STEP 10/10] ✓ SUCCESS - Marking ticket as done")
             ticket.status = 'done'
             ticket.notes = f"""
 [{datetime.now().strftime('%Y-%m-%d %H:%M')}] IMPLEMENTATION COMPLETED
 Time: {execution_time:.2f} seconds
 Files created: {len(files_created)}
 Dependencies: {', '.join(set(dependencies))}
-Workspace: {workspace_id}
 Status: ✓ Complete
 """
             ticket.save(update_fields=['status', 'notes'])
@@ -517,7 +501,10 @@ Status: ✓ Complete
                 'ticket_name': ticket.name,
                 'refresh_checklist': True
             })
-            
+
+            logger.info(f"[STEP 10/10] ✓ Task completed successfully in {execution_time:.1f}s")
+            logger.info(f"{'='*80}\n[TASK END] SUCCESS - Ticket #{ticket_id}\n{'='*80}\n")
+
             return {
                 "status": "success",
                 "ticket_id": ticket_id,
@@ -531,6 +518,7 @@ Status: ✓ Complete
             }
         else:
             # FAILED OR INCOMPLETE
+            logger.warning(f"[STEP 10/10] ✗ FAILED - Marking ticket as failed")
             error_match = re.search(r'IMPLEMENTATION_STATUS: FAILED - (.+)', content)
             if error_match:
                 error_reason = error_match.group(1)
@@ -561,7 +549,9 @@ Manual intervention required
                 'ticket_name': ticket.name,
                 'refresh_checklist': True
             })
-            
+
+            logger.info(f"{'='*80}\n[TASK END] FAILED - Ticket #{ticket_id}\n{'='*80}\n")
+
             return {
                 "status": "failed",
                 "ticket_id": ticket_id,
@@ -571,67 +561,47 @@ Manual intervention required
                 "workspace_id": workspace_id,
                 "requires_manual_intervention": True
             }
-            
+
     except Exception as e:
-        # EXCEPTION HANDLING
+        # EXCEPTION HANDLING - NO RETRIES
         execution_time = time.time() - start_time
         error_msg = str(e)
-        logger.error(f"Critical error in ticket {ticket_id}: {error_msg}", exc_info=True)
-
-        # Determine if this is a retryable error
-        is_retryable = any(indicator in error_msg.lower() for indicator in [
-            '500', 'internal server error', 'timeout', 'connection', 'api error'
-        ])
+        logger.error(f"\n{'='*80}\n[EXCEPTION] Critical error in ticket {ticket_id}\n{'='*80}")
+        logger.error(f"Error: {error_msg}", exc_info=True)
+        logger.error(f"Elapsed time: {execution_time:.1f}s")
 
         if 'ticket' in locals():
-            # For retryable errors, keep status as in_progress for Django-Q retry
-            if is_retryable and execution_time < max_execution_time:
-                ticket.status = 'in_progress'
-                ticket.notes = f"""
-[{datetime.now().strftime('%Y-%m-%d %H:%M')}] RETRYABLE ERROR (will retry)
+            # Mark ticket as failed - no retry logic
+            ticket.status = 'failed'
+            ticket.notes = f"""
+[{datetime.now().strftime('%Y-%m-%d %H:%M')}] EXECUTION FAILED
 Error: {error_msg}
 Time: {execution_time:.2f}s
 Workspace: {workspace_id or 'N/A'}
-"""
-                logger.info(f"Marking ticket #{ticket_id} for retry due to retryable error")
-            else:
-                # Non-retryable or already timed out
-                ticket.status = 'failed'
-                ticket.notes = f"""
-[{datetime.now().strftime('%Y-%m-%d %H:%M')}] FATAL ERROR
-Error: {error_msg}
-Time: {execution_time:.2f}s
-Workspace: {workspace_id or 'N/A'}
-Retryable: {is_retryable}
 Manual intervention required
 """
-
             ticket.save(update_fields=['status', 'notes'])
 
             broadcast_ticket_notification(conversation_id, {
                 'is_notification': True,
                 'notification_type': 'toolhistory',
                 'function_name': 'ticket_execution',
-                'status': 'failed' if not is_retryable else 'error',
+                'status': 'failed',
                 'message': f"✗ Ticket #{ticket.id} error: {error_msg[:100]}",
                 'ticket_id': ticket.id,
                 'ticket_name': ticket.name,
                 'refresh_checklist': True
             })
 
-        # Re-raise retryable errors for Django-Q to handle
-        if is_retryable and execution_time < max_execution_time:
-            raise  # Let Django-Q retry
-
+        # Return error without re-raising (prevents Django-Q retry loops)
+        logger.error(f"{'='*80}\n[TASK END] ERROR - Ticket #{ticket_id}\n{'='*80}\n")
         return {
             "status": "error",
             "ticket_id": ticket_id,
             "error": error_msg,
             "workspace_id": workspace_id,
-            "execution_time": f"{execution_time:.2f}s",
-            "retryable": is_retryable
+            "execution_time": f"{execution_time:.2f}s"
         }
-
 
 def batch_execute_tickets(ticket_ids: List[int], project_id: int, conversation_id: int) -> Dict[str, Any]:
     """
@@ -723,16 +693,73 @@ def ensure_workspace_and_execute(ticket_ids: List[int], project_db_id: int, conv
         'refresh_checklist': bool(ticket_ids)
     })
 
-    result = None
+    # Get or create workspace
+    workspace = None
     loop = asyncio.new_event_loop()
     try:
         asyncio.set_event_loop(loop)
-        result = loop.run_until_complete(
-            provision_vibe_workspace_tool(
-                {
-                    'project_name': project.provided_name or project.name,
-                    'summary': project.description or ''
-                },
+        workspace = loop.run_until_complete(_fetch_workspace(project=project, conversation_id=conversation_id))
+
+        if not workspace:
+            # Create new Magpie workspace
+            try:
+                client = get_magpie_client()
+                project_name = project.provided_name or project.name
+                slug = _slugify_project_name(project_name)
+                workspace_name = f"{slug}-{project.id}"
+
+                response = client.jobs.create(
+                    name=workspace_name,
+                    script=MAGPIE_BOOTSTRAP_SCRIPT,
+                    persist=True,
+                    ip_lease=True,
+                    stateful=True,
+                    workspace_size_gb=10,
+                    vcpus=2,
+                    memory_mb=2048,
+                )
+                logger.info(f"[MAGPIE][CREATE] job response: {response}")
+
+                run_id = response.get("request_id")
+                workspace_identifier = run_id
+
+                workspace = MagpieWorkspace.objects.create(
+                    project=project,
+                    conversation_id=str(conversation_id) if conversation_id else None,
+                    job_id=run_id,
+                    workspace_id=workspace_identifier,
+                    status='provisioning',
+                    metadata={'project_name': project_name}
+                )
+
+                # Wait for VM to be ready with IP address (polls internally)
+                logger.info(f"[MAGPIE][POLL] Waiting for VM to be ready with IP address...")
+                vm_info = client.jobs.get_vm_info(run_id, poll_timeout=120, poll_interval=5)
+
+                ipv6 = vm_info.get("ip_address")
+                if not ipv6:
+                    raise Exception(f"VM provisioning timed out - no IP address received")
+
+                workspace.mark_ready(ipv6=ipv6, project_path='/workspace')
+                logger.info(f"[MAGPIE][READY] Workspace ready: {workspace.workspace_id}, IP: {ipv6}")
+            except Exception as e:
+                broadcast_ticket_notification(conversation_id, {
+                    'is_notification': True,
+                    'notification_type': 'toolhistory',
+                    'function_name': 'ticket_execution_queue',
+                    'status': 'failed',
+                    'message': f"Workspace provisioning failed: {str(e)}",
+                    'refresh_checklist': False
+                })
+                return {
+                    "status": "error",
+                    "message": f"Workspace provisioning failed: {str(e)}"
+                }
+
+        # Setup dev sandbox
+        sandbox_result = loop.run_until_complete(
+            new_dev_sandbox_tool(
+                {'workspace_id': workspace.workspace_id},
                 project.project_id,
                 conversation_id
             )
@@ -741,29 +768,28 @@ def ensure_workspace_and_execute(ticket_ids: List[int], project_db_id: int, conv
         asyncio.set_event_loop(None)
         loop.close()
 
-    if isinstance(result, dict) and result.get('status') == 'failed':
+    if isinstance(sandbox_result, dict) and sandbox_result.get('status') == 'failed':
         broadcast_ticket_notification(conversation_id, {
             'is_notification': True,
             'notification_type': 'toolhistory',
             'function_name': 'ticket_execution_queue',
             'status': 'failed',
-            'message': f"Workspace provisioning failed: {result.get('message_to_agent') or result.get('message')}",
+            'message': f"Dev sandbox setup failed: {sandbox_result.get('message_to_agent') or sandbox_result.get('message')}",
             'refresh_checklist': False
         })
         return {
             "status": "error",
-            "message": result.get('message_to_agent') or result.get('message') or 'Workspace provisioning failed'
+            "message": sandbox_result.get('message_to_agent') or sandbox_result.get('message') or 'Dev sandbox setup failed'
         }
 
-    if isinstance(result, dict) and not result.get('status'):
-        broadcast_ticket_notification(conversation_id, {
-            'is_notification': True,
-            'notification_type': 'toolhistory',
-            'function_name': 'ticket_execution_queue',
-            'status': 'completed',
-            'message': "Workspace ready. Beginning ticket execution...",
-            'refresh_checklist': False
-        })
+    broadcast_ticket_notification(conversation_id, {
+        'is_notification': True,
+        'notification_type': 'toolhistory',
+        'function_name': 'ticket_execution_queue',
+        'status': 'completed',
+        'message': "Workspace ready. Beginning ticket execution...",
+        'refresh_checklist': False
+    })
 
     return batch_execute_tickets(ticket_ids, project_db_id, conversation_id)
 

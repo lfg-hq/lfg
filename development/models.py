@@ -421,13 +421,14 @@ class KubernetesPortMapping(models.Model):
         return f"{self.service_name}: {self.container_port} ({self.container_name}) for pod {self.pod.pod_name}"
 
 
-class CommandExecution(models.Model):
+class CommandExecutionOld(models.Model):
     """
     Model to store history of commands executed in the system.
     """
     project_id = models.CharField(max_length=255, blank=True, null=True)
     ticket_id = models.IntegerField(blank=True, null=True, help_text="Ticket ID that initiated this command")
     command = models.TextField(help_text="The command that was executed")
+    explanation = models.TextField(blank=True, null=True, help_text="Explanation of what this command does")
     output = models.TextField(blank=True, null=True, help_text="Output from the command")
     created_at = models.DateTimeField(auto_now_add=True)
 

@@ -16,7 +16,7 @@ import uuid
 import requests
 from accounts.models import Profile, LLMApiKeys
 from chat.models import Conversation, Message
-from projects.models import Project, ProjectFile, ProjectTicket, ProjectTaskList
+from projects.models import Project, ProjectFile, ProjectTicket, ProjectTodoList
 from subscriptions.models import UserCredit
 from .serializers import (
     UserSerializer, ProfileSerializer, RegisterSerializer,
@@ -565,53 +565,27 @@ class ProjectTicketViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=True, methods=['get'], url_path='logs')
     def logs(self, request, pk=None):
         """Get execution logs for a specific ticket"""
-        from development.models import CommandExecution
-        from django.db import connection
+        from projects.models import TicketLog
         import logging
         logger = logging.getLogger(__name__)
 
         ticket = self.get_object()
-        project = ticket.project
 
-        logger.info(f"[LOGS API] Fetching logs for ticket {ticket.id}, project {project.project_id}")
+        logger.info(f"[LOGS API] Fetching logs for ticket {ticket.id}")
 
-        # Check if ticket_id column exists in the database
-        with connection.cursor() as cursor:
-            cursor.execute("""
-                SELECT column_name
-                FROM information_schema.columns
-                WHERE table_name='development_commandexecution' AND column_name='ticket_id'
-            """)
-            has_ticket_id_column = cursor.fetchone() is not None
+        # Get logs for this specific ticket
+        logs = TicketLog.objects.filter(ticket=ticket).order_by('created_at')
 
-        if has_ticket_id_column:
-            # Get commands for this specific ticket
-            commands = CommandExecution.objects.filter(
-                ticket_id=ticket.id
-            ).order_by('created_at')
+        logger.info(f"[LOGS API] Found {logs.count()} logs for ticket {ticket.id}")
 
-            # Fallback: if no ticket-specific commands, show project commands (for backwards compatibility)
-            if commands.count() == 0:
-                logger.info(f"[LOGS API] No ticket-specific logs found, falling back to project logs")
-                commands = CommandExecution.objects.filter(
-                    project_id=project.project_id,
-                    ticket_id__isnull=True
-                ).order_by('created_at')
-        else:
-            # Migrations not run yet, fall back to project-level filtering
-            logger.warning(f"[LOGS API] ticket_id column doesn't exist yet, using project-level filtering")
-            commands = CommandExecution.objects.filter(
-                project_id=project.project_id
-            ).order_by('created_at')
-
-        logger.info(f"[LOGS API] Found {commands.count()} commands for ticket {ticket.id}")
-
-        # Format commands for response
+        # Format logs for response
         commands_data = [{
-            'command': cmd.command,
-            'output': cmd.output or '',
-            'created_at': cmd.created_at.isoformat()
-        } for cmd in commands]
+            'command': log.command,
+            'explanation': log.explanation or '',
+            'output': log.output or '',
+            'exit_code': log.exit_code,
+            'created_at': log.created_at.isoformat()
+        } for log in logs]
 
         return Response({
             'ticket_id': ticket.id,
@@ -624,7 +598,7 @@ class ProjectTicketViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=True, methods=['get'], url_path='tasks')
     def tasks(self, request, pk=None):
         """Get tasks for a specific ticket"""
-        from projects.models import ProjectTaskList
+        from projects.models import ProjectTodoList
         import logging
         logger = logging.getLogger(__name__)
 
@@ -632,15 +606,14 @@ class ProjectTicketViewSet(viewsets.ReadOnlyModelViewSet):
         logger.info(f"[TASKS API] Fetching tasks for ticket {ticket.id}")
 
         # Get all tasks for this ticket
-        tasks = ProjectTaskList.objects.filter(ticket=ticket).order_by('order', 'created_at')
+        tasks = ProjectTodoList.objects.filter(ticket=ticket).order_by('order', 'created_at')
 
         logger.info(f"[TASKS API] Found {tasks.count()} tasks for ticket {ticket.id}")
 
         # Format tasks for response
         tasks_data = [{
             'id': task.id,
-            'name': task.name,
-            'description': task.description or '',
+            'description': task.description,
             'status': task.status,
             'order': task.order,
             'created_at': task.created_at.isoformat(),

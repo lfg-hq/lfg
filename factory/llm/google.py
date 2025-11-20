@@ -24,8 +24,9 @@ class GoogleGeminiProvider(BaseLLMProvider):
     """Google Gemini provider implementation"""
     
     MODEL_MAPPING = {
+        "gemini_3_pro": "models/gemini-3-pro-preview",
         "gemini_2.5_pro": "models/gemini-2.5-pro",
-        "gemini_2.5_flash": "models/gemini-3-flash",
+        "gemini_2.5_flash": "models/gemini-2.5-flash",
         "gemini_2.5_flash_lite": "models/gemini-2.5-flash-lite",
     }
     
@@ -359,6 +360,11 @@ class GoogleGeminiProvider(BaseLLMProvider):
                     yield f"Error creating Google Gemini stream: {str(e)}"
                     return
                 
+                if not response_stream:
+                    logger.error("The call to generate_content_stream returned None.")
+                    yield "Error: Failed to get a response stream from Google Gemini."
+                    return
+                
                 # Process the stream
                 async for chunk in self._process_gemini_stream_async(response_stream):
                         # Check for usage metadata in chunk
@@ -401,7 +407,7 @@ class GoogleGeminiProvider(BaseLLMProvider):
                         # Check for function calls
                         if hasattr(chunk, 'candidates') and chunk.candidates:
                             for candidate in chunk.candidates:
-                                if hasattr(candidate, 'content') and candidate.content and hasattr(candidate.content, 'parts'):
+                                if hasattr(candidate, 'content') and candidate.content and hasattr(candidate.content, 'parts') and candidate.content.parts:
                                     for part in candidate.content.parts:
                                         if hasattr(part, 'function_call') and part.function_call:
                                             fc = part.function_call

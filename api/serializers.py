@@ -3,7 +3,7 @@ from django.contrib.auth.models import User
 from accounts.models import Profile, LLMApiKeys
 from subscriptions.models import PaymentPlan
 from chat.models import Conversation, Message
-from projects.models import Project, ProjectFile, ProjectTicket, ProjectTaskList
+from projects.models import Project, ProjectFile, ProjectTicket, ProjectTodoList
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -241,9 +241,9 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
     ticket_id = serializers.IntegerField(source='ticket.id', read_only=True)
 
     class Meta:
-        model = ProjectTaskList
+        model = ProjectTodoList
         fields = [
-            'id', 'ticket_id', 'name', 'description', 'status', 'order',
+            'id', 'ticket_id', 'description', 'status', 'order',
             'created_at', 'updated_at'
         ]
         read_only_fields = fields

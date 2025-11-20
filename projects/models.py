@@ -259,11 +259,10 @@ class ProjectTicket(models.Model):
         ordering = ['created_at', 'id']
 
 
-class ProjectTaskList(models.Model):
+class ProjectTodoList(models.Model):
     """Model to store tasks associated with each project ticket"""
     ticket = models.ForeignKey(ProjectTicket, on_delete=models.CASCADE, related_name="tasks")
-    name = models.CharField(max_length=255)
-    description = models.TextField(blank=True, null=True)
+    description = models.TextField(help_text="Task description")
     status = models.CharField(max_length=20, choices=(
         ('pending', 'Pending'),
         ('in_progress', 'In Progress'),
@@ -275,10 +274,31 @@ class ProjectTaskList(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.ticket.name} - {self.name}"
+        return f"{self.ticket.name} - {self.description[:50]}"
 
     class Meta:
         ordering = ['order', 'created_at', 'id']
+
+
+class TicketLog(models.Model):
+    """Model to store execution logs for tickets"""
+    ticket = models.ForeignKey(ProjectTicket, on_delete=models.CASCADE, related_name="logs")
+    task = models.ForeignKey(ProjectTodoList, on_delete=models.SET_NULL, null=True, blank=True, related_name="logs", help_text="Associated task if any")
+    command = models.TextField(help_text="The command that was executed")
+    explanation = models.TextField(blank=True, null=True, help_text="Explanation of what this command does")
+    output = models.TextField(blank=True, null=True, help_text="Output from the command")
+    exit_code = models.IntegerField(null=True, blank=True, help_text="Command exit code")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Log for {self.ticket.name} - {self.command[:50]}"
+
+    class Meta:
+        ordering = ['created_at', 'id']
+        indexes = [
+            models.Index(fields=['ticket']),
+            models.Index(fields=['task']),
+        ]
 
 
 class ProjectCodeGeneration(models.Model):

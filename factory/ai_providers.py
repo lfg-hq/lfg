@@ -71,7 +71,7 @@ async def get_ai_response(user_message: str, system_prompt: str, project_id: Opt
     conversation = None
     project = None
     user = None
-    
+
     try:
         if conversation_id:
             conversation = await asyncio.to_thread(
@@ -80,7 +80,12 @@ async def get_ai_response(user_message: str, system_prompt: str, project_id: Opt
             )
             user = conversation.user
             project = conversation.project
-        elif project_id:
+    except Exception as e:
+        logger.warning(f"Could not get user/conversation from conversation_id {conversation_id}: {e}")
+
+    # If we couldn't get user from conversation, try project
+    if not user and project_id:
+        try:
             # Try to get project by UUID (project_id field) or database ID
             if isinstance(project_id, str) and len(project_id) > 10:
                 # Looks like a UUID
@@ -95,8 +100,9 @@ async def get_ai_response(user_message: str, system_prompt: str, project_id: Opt
                     id=project_id
                 )
             user = project.owner
-    except Exception as e:
-        logger.warning(f"Could not get user/conversation/project: {e}")
+            logger.info(f"Retrieved user {user.id} from project {project_id}")
+        except Exception as e:
+            logger.warning(f"Could not get user/project from project_id {project_id}: {e}")
     
     # Get the default provider (can be enhanced later to support provider selection)
     provider = AIProvider.get_provider("anthropic", "claude_4_sonnet", user, conversation, project)

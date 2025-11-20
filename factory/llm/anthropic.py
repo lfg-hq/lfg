@@ -219,9 +219,17 @@ class AnthropicProvider(BaseLLMProvider):
                     "tools": claude_tools,
                     "tool_choice": {"type": "auto"}
                 }
-                
+
+                # Add system message with prompt caching
+                # Use array format with cache_control to enable caching
                 if system_message:
-                    params["system"] = system_message
+                    params["system"] = [
+                        {
+                            "type": "text",
+                            "text": system_message,
+                            "cache_control": {"type": "ephemeral"}
+                        }
+                    ]
                 
                 logger.debug(f"Making Claude API call with {len(claude_messages)} messages.")
                 logger.info(f"Claude model: {self.model} - web_search is built-in for Claude Sonnet 4")
@@ -355,13 +363,27 @@ class AnthropicProvider(BaseLLMProvider):
                             
                             # Track token usage if available
                             if hasattr(event.message, 'usage') and event.message.usage:
+                                usage = event.message.usage
+
+                                # Log prompt caching stats
+                                cache_creation = getattr(usage, 'cache_creation_input_tokens', 0)
+                                cache_read = getattr(usage, 'cache_read_input_tokens', 0)
+                                input_tokens = getattr(usage, 'input_tokens', 0)
+                                output_tokens = getattr(usage, 'output_tokens', 0)
+
+                                if cache_creation > 0 or cache_read > 0:
+                                    logger.info(f"[PROMPT CACHE] Cache creation: {cache_creation}, Cache read: {cache_read}, Regular input: {input_tokens}, Output: {output_tokens}")
+                                    if cache_read > 0:
+                                        savings_pct = (cache_read / (cache_read + input_tokens) * 100) if (cache_read + input_tokens) > 0 else 0
+                                        logger.info(f"[PROMPT CACHE] Cache hit! Saved ~90% cost on {cache_read} tokens ({savings_pct:.1f}% of total input)")
+
                                 if user:
-                                    logger.info(f"Tracking token usage for Anthropic: input={getattr(event.message.usage, 'input_tokens', 0)}, output={getattr(event.message.usage, 'output_tokens', 0)}")
+                                    logger.info(f"Tracking token usage for Anthropic: input={input_tokens}, output={output_tokens}, cache_creation={cache_creation}, cache_read={cache_read}")
                                     await track_token_usage(
                                         user, project, conversation, event.message.usage, 'anthropic', self.model
                                     )
                                 else:
-                                    logger.warning(f"Cannot track token usage - no user available. Usage data: input={getattr(event.message.usage, 'input_tokens', 0)}, output={getattr(event.message.usage, 'output_tokens', 0)}")
+                                    logger.warning(f"Cannot track token usage - no user available. Usage data: input={input_tokens}, output={output_tokens}")
                             else:
                                 logger.debug("No usage data available in message_stop event")
                             

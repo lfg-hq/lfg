@@ -488,7 +488,15 @@ async def execute_tool_call(
             except Project.DoesNotExist:
                 logger.warning(f"Project not found for ID: {project_id}")
                 project = None
-        conversation = await asyncio.to_thread(Conversation.objects.get, id=conversation_id) if conversation_id else None
+
+        # Get conversation if provided
+        conversation = None
+        if conversation_id:
+            try:
+                conversation = await asyncio.to_thread(Conversation.objects.get, id=conversation_id)
+            except Conversation.DoesNotExist:
+                logger.warning(f"Conversation not found for ID: {conversation_id}")
+                conversation = None
         
         if project:
             # Get the latest message from the conversation if available
