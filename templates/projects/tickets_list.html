@@ -620,9 +620,136 @@
         let currentProjectId = null;
         let currentTab = 'details';
         let drawerPinned = false;
+        let ticketLogsWebSocket = null;
+        let reconnectAttempts = 0;
+        const MAX_RECONNECT_ATTEMPTS = 5;
+
+        // WebSocket functions for real-time log updates
+        function connectTicketLogsWebSocket(ticketId) {
+            // Close existing connection if any
+            disconnectTicketLogsWebSocket();
+
+            try {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsUrl = `${protocol}//${window.location.host}/ws/tickets/${ticketId}/logs/`;
+
+                console.log(`Connecting to ticket logs WebSocket: ${wsUrl}`);
+                ticketLogsWebSocket = new WebSocket(wsUrl);
+
+                ticketLogsWebSocket.onopen = function() {
+                    console.log(`Connected to ticket logs WebSocket for ticket ${ticketId}`);
+                    reconnectAttempts = 0;
+                };
+
+                ticketLogsWebSocket.onmessage = function(event) {
+                    const data = JSON.parse(event.data);
+                    console.log('Received WebSocket message:', data);
+
+                    if (data.type === 'log_created') {
+                        // Add the new log to the UI
+                        handleNewLog(data.log);
+                    }
+                };
+
+                ticketLogsWebSocket.onerror = function(error) {
+                    console.error('WebSocket error:', error);
+                };
+
+                ticketLogsWebSocket.onclose = function(event) {
+                    console.log('WebSocket closed:', event.code, event.reason);
+
+                    // Try to reconnect if we're still viewing the logs tab
+                    if (currentTab === 'logs' && currentTicket && currentTicket.id === ticketId) {
+                        if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                            reconnectAttempts++;
+                            const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+                            console.log(`Attempting to reconnect in ${delay}ms (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+                            setTimeout(() => {
+                                if (currentTab === 'logs' && currentTicket && currentTicket.id === ticketId) {
+                                    connectTicketLogsWebSocket(ticketId);
+                                }
+                            }, delay);
+                        }
+                    }
+                };
+            } catch (error) {
+                console.error('Error creating WebSocket connection:', error);
+            }
+        }
+
+        function disconnectTicketLogsWebSocket() {
+            if (ticketLogsWebSocket) {
+                console.log('Closing ticket logs WebSocket');
+                ticketLogsWebSocket.close();
+                ticketLogsWebSocket = null;
+            }
+        }
+
+        function handleNewLog(log) {
+            console.log('Handling new log:', log);
+
+            // Find the logs container
+            const logsContainer = document.querySelector('.execution-logs-container');
+            if (!logsContainer) {
+                console.log('Logs container not found, user may not be on logs tab');
+                return;
+            }
+
+            // Check if this log already exists (to prevent duplicates)
+            const existingLog = document.querySelector(`.execution-log-entry[data-log-id="${log.id}"]`);
+            if (existingLog) {
+                console.log('Log already exists, skipping');
+                return;
+            }
+
+            // Create new log entry HTML
+            const explanation = log.explanation || 'No explanation provided';
+            const logHtml = `
+                <div class="execution-log-entry collapsed" data-log-id="${log.id}" data-cmd-index="new-${log.id}">
+                    <div class="log-header" onclick="toggleCommandExpand('new-${log.id}')">
+                        <div style="display: flex; align-items: center; gap: 0.5rem; flex: 1; overflow: hidden;">
+                            <i class="fas fa-chevron-right expand-icon" style="font-size: 0.75rem; transition: transform 0.2s;"></i>
+                            <span class="log-explanation" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(explanation)}</span>
+                        </div>
+                        <span class="log-timestamp" style="white-space: nowrap; margin-left: 1rem;">${formatDate(log.created_at)}</span>
+                    </div>
+                    <div class="log-details" style="display: none;">
+                        <pre class="log-command">${escapeHtml(log.command)}</pre>
+                        ${log.output ? `<pre class="log-output">${escapeHtml(log.output)}</pre>` : '<p style="color: var(--text-secondary); font-style: italic; margin-top: 0.5rem; font-size: 0.875rem;">No output</p>'}
+                    </div>
+                </div>
+            `;
+
+            // Insert at the top (latest first)
+            const firstLog = logsContainer.querySelector('.execution-log-entry');
+            if (firstLog) {
+                firstLog.insertAdjacentHTML('beforebegin', logHtml);
+            } else {
+                // No logs yet, add after the header
+                const header = logsContainer.querySelector('h4');
+                if (header) {
+                    header.insertAdjacentHTML('afterend', logHtml);
+                }
+            }
+
+            // Add a subtle animation to highlight the new log
+            const newLogElement = document.querySelector(`.execution-log-entry[data-log-id="${log.id}"]`);
+            if (newLogElement) {
+                newLogElement.style.backgroundColor = 'rgba(74, 144, 226, 0.1)';
+                setTimeout(() => {
+                    newLogElement.style.transition = 'background-color 1s ease';
+                    newLogElement.style.backgroundColor = '';
+                }, 100);
+            }
+        }
 
         function switchDrawerTab(tab) {
             currentTab = tab;
+
+            // Disconnect WebSocket if leaving logs tab
+            if (tab !== 'logs') {
+                disconnectTicketLogsWebSocket();
+            }
 
             // Update tab buttons
             document.querySelectorAll('.drawer-tab').forEach(btn => {
@@ -792,7 +919,7 @@
                                 ${reversedCommands.map((cmd, index) => {
                                     const explanation = cmd.explanation || 'No explanation provided';
                                     return `
-                                    <div class="execution-log-entry collapsed" data-cmd-index="${index}">
+                                    <div class="execution-log-entry collapsed" data-cmd-index="${index}" data-log-id="${cmd.id}">
                                         <div class="log-header" onclick="toggleCommandExpand(${index})">
                                             <div style="display: flex; align-items: center; gap: 0.5rem; flex: 1; overflow: hidden;">
                                                 <i class="fas fa-chevron-right expand-icon" style="font-size: 0.75rem; transition: transform 0.2s;"></i>
@@ -821,6 +948,9 @@
                         </div>
                     `;
                 }
+
+                // Connect to WebSocket for real-time log updates
+                connectTicketLogsWebSocket(currentTicket.id);
             } catch (error) {
                 console.error('Error loading logs:', error);
                 body.innerHTML = `

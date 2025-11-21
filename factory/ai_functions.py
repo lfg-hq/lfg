@@ -12,6 +12,7 @@ from asgiref.sync import sync_to_async
 from projects.models import Project, ProjectFeature, ProjectPersona, \
                             ProjectPRD, ProjectDesignSchema, ProjectTicket, \
                             ProjectImplementation, ProjectFile, ProjectTodoList, TicketLog
+from projects.websocket_utils import async_send_ticket_log_notification
 
 from development.models import ServerConfig, MagpieWorkspace
 
@@ -2035,6 +2036,19 @@ async def run_command_in_k8s(command: str, project_id: int | str = None, convers
                 cmd_record.save()
             )[2])()
 
+            # Send WebSocket notification for the updated log
+            await async_send_ticket_log_notification(
+                ticket_id=ticket_id,
+                log_data={
+                    'id': cmd_record.id,
+                    'command': cmd_record.command,
+                    'explanation': cmd_record.explanation,
+                    'output': cmd_record.output,
+                    'exit_code': cmd_record.exit_code,
+                    'created_at': cmd_record.created_at.isoformat()
+                }
+            )
+
     if not success or not pod:
         # If no pod is found, update the command record
         if not pod and cmd_record:
@@ -2043,7 +2057,20 @@ async def run_command_in_k8s(command: str, project_id: int | str = None, convers
                 setattr(cmd_record, 'exit_code', 1),
                 cmd_record.save()
             )[2])()
-            
+
+            # Send WebSocket notification for the error log
+            await async_send_ticket_log_notification(
+                ticket_id=ticket_id,
+                log_data={
+                    'id': cmd_record.id,
+                    'command': cmd_record.command,
+                    'explanation': cmd_record.explanation,
+                    'output': cmd_record.output,
+                    'exit_code': cmd_record.exit_code,
+                    'created_at': cmd_record.created_at.isoformat()
+                }
+            )
+
         return {
             "is_notification": False,
             "notification_type": "command_error",
@@ -2485,6 +2512,19 @@ async def ssh_command_tool(function_args, project_id, conversation_id, ticket_id
                 exit_code=result.get('exit_code')
             )
             logger.info(f"[SSH_COMMAND_TOOL] TicketLog created successfully: id={log_entry.id}")
+
+            # Send WebSocket notification for the new log
+            await async_send_ticket_log_notification(
+                ticket_id=ticket_id,
+                log_data={
+                    'id': log_entry.id,
+                    'command': log_entry.command,
+                    'explanation': log_entry.explanation,
+                    'output': log_entry.output,
+                    'exit_code': log_entry.exit_code,
+                    'created_at': log_entry.created_at.isoformat()
+                }
+            )
         except ProjectTicket.DoesNotExist:
             logger.warning(f"[SSH_COMMAND_TOOL] Ticket {ticket_id} not found, skipping log creation")
         except Exception as e:

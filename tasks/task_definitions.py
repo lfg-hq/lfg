@@ -391,19 +391,21 @@ Keep the checks to minimum and don't loop around. Usually agent.md will have all
 4. Create all the required files to complete the tasks
 5. Install the libraries
 
-6. Mark the todo as done when it is completed
+6. Mark the todo as `Success` when it is completed
 
 🎯 COMPLETION CRITERIA:
 - Project runs with npm run dev (Do no build the Project)
-- All the todos are completed
-- Todos are marked done
+- All the todos are completed (Success)
+- Todos are marked `Success`
 
-DO NOT verify extensively or test in loops.
-You can skip writing explainer documentation.
-
-Note: whenever a TODO item is completed, make sure to mark the TODO as done.
+IMPORTANT:
+1. DO NOT verify extensively or test in loops.
+2. Skip writing explainer documentation, completion summary, etc. Don't create any .MD files other than updating agent.md file
+3. When the server is running with NO ERRORS, Update status of todolist using update_todo_status() and END this workflow. 
 
 End with: "IMPLEMENTATION_STATUS: COMPLETE - [specific changes made]" or "IMPLEMENTATION_STATUS: FAILED - [reason]"
+
+Note: whenever a TODO item is completed, make sure to mark the TODO as done.
         """
 
         logger.info(f"\n[STEP 8/10] Calling AI for ticket implementation...")
