@@ -12,6 +12,7 @@ from google.genai.types import (
 )
 
 from .base import BaseLLMProvider
+from factory.llm_config import get_provider_model_mapping, get_default_model_key
 
 # Import functions from ai_common and streaming_handlers
 from factory.ai_common import execute_tool_call, get_notification_type_for_tool, track_token_usage
@@ -23,20 +24,17 @@ logger = logging.getLogger(__name__)
 class GoogleGeminiProvider(BaseLLMProvider):
     """Google Gemini provider implementation"""
     
-    MODEL_MAPPING = {
-        "gemini_3_pro": "models/gemini-3-pro-preview",
-        "gemini_2.5_pro": "models/gemini-2.5-pro",
-        "gemini_2.5_flash": "models/gemini-2.5-flash",
-        "gemini_2.5_flash_lite": "models/gemini-2.5-flash-lite",
-    }
+    MODEL_MAPPING = get_provider_model_mapping("google")
+    DEFAULT_MODEL_KEY = get_default_model_key("google") or "gemini_2.5_pro"
     
     def __init__(self, selected_model: str, user=None, conversation=None, project=None):
         super().__init__(selected_model, user, conversation, project)
         
         # Map model selection to actual model name
-        self.model = self.MODEL_MAPPING.get(selected_model, "models/gemini-2.5-pro")
+        fallback_model = self.MODEL_MAPPING.get(self.DEFAULT_MODEL_KEY, "models/gemini-2.5-pro")
+        self.model = self.MODEL_MAPPING.get(selected_model, fallback_model)
         if selected_model not in self.MODEL_MAPPING:
-            logger.warning(f"Unknown model {selected_model}, defaulting to gemini-2.5-pro")
+            logger.warning(f"Unknown Google model {selected_model}, defaulting to {self.DEFAULT_MODEL_KEY}")
             
         logger.info(f"Google Gemini Provider initialized with model: {self.model}")
     

@@ -147,6 +147,26 @@ class TicketLogsConsumer(AsyncWebsocketConsumer):
 
         logger.info(f"Sent new log to client for ticket {self.ticket_id}: {log_data.get('id')}")
 
+    async def ticket_status_changed(self, event):
+        """
+        Handler for ticket_status_changed events sent to the group.
+        Receives status update and sends it to the WebSocket client.
+        """
+        logger.info(f"ticket_status_changed event received for ticket {self.ticket_id}")
+
+        # Extract status from event
+        status = event.get('status')
+        ticket_id = event.get('ticket_id')
+
+        # Send to WebSocket client
+        await self.send(text_data=json.dumps({
+            'type': 'status_changed',
+            'status': status,
+            'ticket_id': ticket_id
+        }))
+
+        logger.info(f"Sent status update to client for ticket {self.ticket_id}: {status}")
+
     @database_sync_to_async
     def verify_ticket_access(self):
         """Verify that the user has access to this ticket"""

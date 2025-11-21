@@ -2,6 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
 from . import views
+from . import dev_server
 
 # Create router for ViewSets
 router = DefaultRouter()
@@ -30,6 +31,10 @@ urlpatterns = [
 
     # Chat helpers
     path('chat/socket/', views.chat_socket_info, name='chat_socket_info'),
+
+    # Dev Server management
+    path('project-tickets/<int:ticket_id>/start-dev-server/', dev_server.start_dev_server, name='start_dev_server'),
+    path('project-tickets/<int:ticket_id>/stop-dev-server/', dev_server.stop_dev_server, name='stop_dev_server'),
 
     # Include router URLs
     path('', include(router.urls)),

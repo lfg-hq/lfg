@@ -8,6 +8,7 @@ import os
 from typing import List, Dict, Any, Optional, AsyncGenerator
 
 from .base import BaseLLMProvider
+from factory.llm_config import get_provider_model_mapping, get_default_model_key
 from channels.db import database_sync_to_async
 
 # Import functions from ai_common and streaming_handlers
@@ -24,10 +25,8 @@ DEBUG_TOKEN_TRACKING = logger.isEnabledFor(logging.DEBUG)
 class OpenAIProvider(BaseLLMProvider):
     """OpenAI provider implementation"""
     
-    MODEL_MAPPING = {
-        "gpt-5": "gpt-5",
-        "gpt-5-mini": "gpt-5-mini",
-    }
+    MODEL_MAPPING = get_provider_model_mapping("openai")
+    DEFAULT_MODEL_KEY = get_default_model_key("openai") or "gpt-5-mini"
     
     # Class-level metrics for tracking token usage success rates
     _usage_tracking_stats = {
@@ -41,9 +40,10 @@ class OpenAIProvider(BaseLLMProvider):
         super().__init__(selected_model, user, conversation, project)
         
         # Map model selection to actual model name
-        self.model = self.MODEL_MAPPING.get(selected_model, "gpt-5-mini")
+        fallback_model = self.MODEL_MAPPING.get(self.DEFAULT_MODEL_KEY, "gpt-5-mini")
+        self.model = self.MODEL_MAPPING.get(selected_model, fallback_model)
         if selected_model not in self.MODEL_MAPPING:
-            logger.warning(f"Unknown model {selected_model}, defaulting to gpt-5-mini")
+            logger.warning(f"Unknown OpenAI model {selected_model}, defaulting to {self.DEFAULT_MODEL_KEY}")
             
         logger.info(f"OpenAI Provider initialized with model: {self.model}")
     

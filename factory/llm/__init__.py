@@ -7,6 +7,7 @@ from .anthropic import AnthropicProvider
 from .openai_provider import OpenAIProvider
 from .xai import XAIProvider
 from .google import GoogleGeminiProvider
+from factory.llm_config import get_model_provider_map
 
 logger = logging.getLogger(__name__)
 
@@ -23,22 +24,7 @@ class LLMProviderFactory:
     }
     
     # Model to provider mapping
-    _model_to_provider = {
-        # Anthropic models
-        'claude_4_sonnet': 'anthropic',
-        
-        # OpenAI models
-        'gpt-5': 'openai',
-        'gpt-5-mini': 'openai',
-        
-        # XAI models
-        'grok_4': 'xai',
-        
-        # Google models
-        'gemini_2.5_pro': 'google',
-        'gemini_2.5_flash': 'google',
-        'gemini_2.5_flash_lite': 'google',
-    }
+    _model_to_provider = get_model_provider_map()
     
     @classmethod
     def get_provider(cls, provider_name: Optional[str], selected_model: str, 

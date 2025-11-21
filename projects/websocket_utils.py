@@ -8,6 +8,38 @@ from asgiref.sync import async_to_sync
 logger = logging.getLogger(__name__)
 
 
+def send_ticket_status_notification(ticket_id, status):
+    """
+    Send a WebSocket notification when a ticket status changes.
+
+    Args:
+        ticket_id: The ID of the ticket
+        status: The new status of the ticket (e.g., 'done', 'in_progress', 'failed')
+    """
+    try:
+        channel_layer = get_channel_layer()
+        if not channel_layer:
+            logger.warning("No channel layer configured, cannot send WebSocket notification")
+            return
+
+        group_name = f'ticket_logs_{ticket_id}'
+
+        # Send the status update to all clients in the ticket's group
+        async_to_sync(channel_layer.group_send)(
+            group_name,
+            {
+                'type': 'ticket_status_changed',
+                'status': status,
+                'ticket_id': ticket_id
+            }
+        )
+
+        logger.info(f"Sent WebSocket notification for ticket {ticket_id} status change to: {status}")
+
+    except Exception as e:
+        logger.error(f"Error sending WebSocket notification for ticket {ticket_id}: {e}")
+
+
 def send_ticket_log_notification(ticket_id, log_data):
     """
     Send a WebSocket notification when a new ticket log is created.
@@ -40,6 +72,39 @@ def send_ticket_log_notification(ticket_id, log_data):
         )
 
         logger.info(f"Sent WebSocket notification for new log on ticket {ticket_id}: log_id={log_data.get('id')}")
+
+    except Exception as e:
+        logger.error(f"Error sending WebSocket notification for ticket {ticket_id}: {e}")
+
+
+async def async_send_ticket_status_notification(ticket_id, status):
+    """
+    Async version of send_ticket_status_notification.
+    Use this when calling from async code.
+
+    Args:
+        ticket_id: The ID of the ticket
+        status: The new status of the ticket
+    """
+    try:
+        channel_layer = get_channel_layer()
+        if not channel_layer:
+            logger.warning("No channel layer configured, cannot send WebSocket notification")
+            return
+
+        group_name = f'ticket_logs_{ticket_id}'
+
+        # Send the status update to all clients in the ticket's group
+        await channel_layer.group_send(
+            group_name,
+            {
+                'type': 'ticket_status_changed',
+                'status': status,
+                'ticket_id': ticket_id
+            }
+        )
+
+        logger.info(f"Sent WebSocket notification for ticket {ticket_id} status change to: {status}")
 
     except Exception as e:
         logger.error(f"Error sending WebSocket notification for ticket {ticket_id}: {e}")

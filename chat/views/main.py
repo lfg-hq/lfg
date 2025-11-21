@@ -22,6 +22,7 @@ from subscriptions.constants import (
     PRO_MONTHLY_TOKEN_LIMIT,
 )
 from accounts.utils import get_daily_token_usage
+from factory.llm_config import get_llm_model_config, get_model_label
 
 
 @login_required
@@ -53,7 +54,7 @@ def index(request):
     # Get user's model selection
     model_selection, created = ModelSelection.objects.get_or_create(
         user=request.user,
-        defaults={'selected_model': 'gpt-5-mini'}
+        defaults={'selected_model': ModelSelection.DEFAULT_MODEL_KEY}
     )
     
     # Force free tier users to use o4-mini
@@ -64,6 +65,7 @@ def index(request):
             model_selection.save()
     
     context['model_key'] = model_selection.selected_model
+    context['current_model_label'] = get_model_label(model_selection.selected_model)
     
     # Get or create ApplicationState for sidebar and other UI state
     app_state, created = ApplicationState.objects.get_or_create(
@@ -101,6 +103,7 @@ def index(request):
     context['total_tokens_limit'] = (
         FREE_TIER_TOKEN_LIMIT if user_credit.is_free_tier else PRO_MONTHLY_TOKEN_LIMIT
     )
+    context['llm_model_config'] = get_llm_model_config()
     
     return render(request, 'chat/main.html', context)
 
@@ -126,7 +129,7 @@ def project_chat(request, project_id):
     # Get user's model selection
     model_selection, created = ModelSelection.objects.get_or_create(
         user=request.user,
-        defaults={'selected_model': 'gpt-5-mini'}
+        defaults={'selected_model': ModelSelection.DEFAULT_MODEL_KEY}
     )
     
     # Force free tier users to use o4-mini
@@ -137,6 +140,7 @@ def project_chat(request, project_id):
             model_selection.save()
     
     context['model_key'] = model_selection.selected_model
+    context['current_model_label'] = get_model_label(model_selection.selected_model)
     
     # Get or create ApplicationState for sidebar and other UI state
     app_state, created = ApplicationState.objects.get_or_create(
@@ -157,6 +161,7 @@ def project_chat(request, project_id):
     context['total_tokens_limit'] = (
         FREE_TIER_TOKEN_LIMIT if user_credit.is_free_tier else PRO_MONTHLY_TOKEN_LIMIT
     )
+    context['llm_model_config'] = get_llm_model_config()
         
     return render(request, 'chat/main.html', context)
 
@@ -191,7 +196,7 @@ def show_conversation(request, conversation_id):
     # Get user's model selection
     model_selection, created = ModelSelection.objects.get_or_create(
         user=request.user,
-        defaults={'selected_model': 'gpt-5-mini'}
+        defaults={'selected_model': ModelSelection.DEFAULT_MODEL_KEY}
     )
     
     # Force free tier users to use o4-mini
@@ -202,6 +207,7 @@ def show_conversation(request, conversation_id):
             model_selection.save()
     
     context['model_key'] = model_selection.selected_model
+    context['current_model_label'] = get_model_label(model_selection.selected_model)
     
     # Get or create ApplicationState for sidebar and other UI state
     app_state, created = ApplicationState.objects.get_or_create(
@@ -222,6 +228,7 @@ def show_conversation(request, conversation_id):
     context['total_tokens_limit'] = (
         FREE_TIER_TOKEN_LIMIT if user_credit.is_free_tier else PRO_MONTHLY_TOKEN_LIMIT
     )
+    context['llm_model_config'] = get_llm_model_config()
         
     return render(request, 'chat/main.html', context)
 
@@ -463,7 +470,7 @@ def user_model_selection(request):
         # Get user's model selection or create default one
         model_selection, created = ModelSelection.objects.get_or_create(
             user=request.user,
-            defaults={'selected_model': 'gpt-5-mini'}
+            defaults={'selected_model': ModelSelection.DEFAULT_MODEL_KEY}
         )
         
         return JsonResponse({

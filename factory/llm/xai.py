@@ -6,6 +6,7 @@ import openai
 from typing import List, Dict, Any, Optional, AsyncGenerator
 
 from .base import BaseLLMProvider
+from factory.llm_config import get_provider_model_mapping, get_default_model_key
 
 # Import functions from ai_common and streaming_handlers
 from factory.ai_common import execute_tool_call, get_notification_type_for_tool, track_token_usage
@@ -17,17 +18,17 @@ logger = logging.getLogger(__name__)
 class XAIProvider(BaseLLMProvider):
     """XAI (Grok) provider implementation using OpenAI-compatible interface"""
     
-    MODEL_MAPPING = {
-        "grok_4": "grok-4",
-    }
+    MODEL_MAPPING = get_provider_model_mapping("xai")
+    DEFAULT_MODEL_KEY = get_default_model_key("xai") or "grok_4"
     
     def __init__(self, selected_model: str, user=None, conversation=None, project=None):
         super().__init__(selected_model, user, conversation, project)
         
         # Map model selection to actual model name
-        self.model = self.MODEL_MAPPING.get(selected_model, "grok-4")
+        fallback_model = self.MODEL_MAPPING.get(self.DEFAULT_MODEL_KEY, "grok-4")
+        self.model = self.MODEL_MAPPING.get(selected_model, fallback_model)
         if selected_model not in self.MODEL_MAPPING:
-            logger.warning(f"Unknown model {selected_model}, defaulting to grok-4")
+            logger.warning(f"Unknown XAI model {selected_model}, defaulting to {self.DEFAULT_MODEL_KEY}")
             
         logger.info(f"Selected XAI model: {self.model}")
         

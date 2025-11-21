@@ -571,7 +571,7 @@
 
 .drawer-body {
     flex: 1;
-    padding: 1.5rem;
+    padding: .5rem;
     overflow-y: auto;
     position: relative; /* For absolute positioning of chat container */
     min-height: 0; /* Allow flex shrinking */

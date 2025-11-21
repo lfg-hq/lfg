@@ -540,7 +540,7 @@
                                 </span>
                                 <span class="status-divider">•</span>
                                 <span class="status-item model-status" id="model-status-btn">
-                                    <span id="current-model-left">GPT-5 mini</span>
+                                    <span id="current-model-left">{{ current_model_label|default:"GPT-5 mini" }}</span>
                                 </span>
                             </span>
                             <div class="settings-dropdown" id="settings-dropdown">
@@ -560,47 +560,31 @@
                                     
                                     <div class="menu-item" data-submenu="model">
                                         <i class="fas fa-robot"></i>
-                                        <span>Model</span>
-                                        <i class="fas fa-chevron-right submenu-arrow"></i>
-                                        
-                                        <div class="submenu" id="model-submenu">
-                                            <div class="submenu-group">Claude</div>
-                                            <button type="button" class="submenu-option{% if is_free_tier %} disabled{% endif %}" data-value="claude_4_sonnet" {% if is_free_tier %}disabled title="Upgrade to Pro to access Claude models"{% endif %}>
-                                                <span>Sonnet 4{% if is_free_tier %} <i class="fas fa-lock" style="color: #6b7280; font-size: 0.8em;"></i>{% endif %}</span>
-                                                <i class="fas fa-check"></i>
-                                            </button>
+                                            <span>Model</span>
+                                            <i class="fas fa-chevron-right submenu-arrow"></i>
                                             
-                                            <div class="submenu-group">OpenAI</div>
-                                            <button type="button" class="submenu-option{% if is_free_tier %} disabled{% endif %}" data-value="gpt-5" {% if is_free_tier %}disabled title="Upgrade to Pro to access GPT-5"{% endif %}>
-                                                <span>GPT-5{% if is_free_tier %} <i class="fas fa-lock" style="color: #6b7280; font-size: 0.8em;"></i>{% endif %}</span>
-                                                <i class="fas fa-check"></i>
-                                            </button>
-                                            <button type="button" class="submenu-option selected" data-value="gpt-5-mini">
-                                                <span>GPT-5 mini</span>
-                                                <i class="fas fa-check"></i>
-                                            </button>
-                                            
-                                            <div class="submenu-group">xAI</div>
-                                            <button type="button" class="submenu-option{% if is_free_tier %} disabled{% endif %}" data-value="grok_4" {% if is_free_tier %}disabled title="Upgrade to Pro to access Grok models"{% endif %}>
-                                                <span>Grok 4{% if is_free_tier %} <i class="fas fa-lock" style="color: #6b7280; font-size: 0.8em;"></i>{% endif %}</span>
-                                                <i class="fas fa-check"></i>
-                                            </button>
-                                            
-                                            <div class="submenu-group">Google</div>
-                                            <button type="button" class="submenu-option{% if is_free_tier %} disabled{% endif %}" data-value="gemini_2.5_pro" {% if is_free_tier %}disabled title="Upgrade to Pro to access Gemini models"{% endif %}>
-                                                <span>Gemini 2.5 Pro{% if is_free_tier %} <i class="fas fa-lock" style="color: #6b7280; font-size: 0.8em;"></i>{% endif %}</span>
-                                                <i class="fas fa-check"></i>
-                                            </button>
-                                            <button type="button" class="submenu-option{% if is_free_tier %} disabled{% endif %}" data-value="gemini_2.5_flash" {% if is_free_tier %}disabled title="Upgrade to Pro to access Gemini models"{% endif %}>
-                                                <span>Gemini 2.5 Flash{% if is_free_tier %} <i class="fas fa-lock" style="color: #6b7280; font-size: 0.8em;"></i>{% endif %}</span>
-                                                <i class="fas fa-check"></i>
-                                            </button>
-                                            <button type="button" class="submenu-option{% if is_free_tier %} disabled{% endif %}" data-value="gemini_2.5_flash_lite" {% if is_free_tier %}disabled title="Upgrade to Pro to access Gemini models"{% endif %}>
-                                                <span>Gemini 2.5 Flash Lite{% if is_free_tier %} <i class="fas fa-lock" style="color: #6b7280; font-size: 0.8em;"></i>{% endif %}</span>
-                                                <i class="fas fa-check"></i>
-                                            </button>
+                                            <div class="submenu" id="model-submenu">
+                                                {% for provider_key, provider in llm_model_config.providers.items %}
+                                                    <div class="submenu-group">{{ provider.label }}</div>
+                                                    {% for model in provider.models %}
+                                                        {% with requires_pro=model.requires_pro %}
+                                                        <button type="button"
+                                                                class="submenu-option{% if is_free_tier and requires_pro %} disabled{% endif %}{% if model_key == model.key %} selected{% endif %}"
+                                                                data-value="{{ model.key }}"
+                                                                {% if is_free_tier and requires_pro %}disabled title="Upgrade to Pro to access {{ model.label }}"{% endif %}>
+                                                            <span>
+                                                                {{ model.label }}
+                                                                {% if is_free_tier and requires_pro %}
+                                                                    <i class="fas fa-lock" style="color: #6b7280; font-size: 0.8em;"></i>
+                                                                {% endif %}
+                                                            </span>
+                                                            <i class="fas fa-check"></i>
+                                                        </button>
+                                                        {% endwith %}
+                                                    {% endfor %}
+                                                {% endfor %}
+                                            </div>
                                         </div>
-                                    </div>
                                 </div>
                             </div>
                         </div>

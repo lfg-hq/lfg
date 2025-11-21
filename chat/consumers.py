@@ -31,9 +31,13 @@ from factory.prompts import get_system_turbo_mode, \
                                     get_system_prompt_developer
 from factory.ai_tools import tools_code, tools_product, tools_design, tools_turbo
 from chat.storage import ChatFileStorage
+from factory.llm_config import get_model_provider_map
 
 # Set up logger
 logger = logging.getLogger(__name__)
+
+MODEL_TO_PROVIDER = get_model_provider_map()
+
 
 class ChatConsumer(AsyncWebsocketConsumer):
     def __init__(self, *args, **kwargs):
@@ -617,18 +621,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
             # Create a default model selection if none exists
             model_selection = await database_sync_to_async(ModelSelection.objects.create)(
                 user=self.user,
-                selected_model='claude_4_sonnet'
+                selected_model=ModelSelection.DEFAULT_MODEL_KEY
             )
             selected_model = model_selection.selected_model
 
-        if selected_model == "claude_4_sonnet":
-            provider_name = "anthropic"
-        elif selected_model == "grok_4":
-            provider_name = "xai"
-        elif selected_model in ["gemini_2.5_pro", "gemini_2.5_flash", "gemini_2.5_flash_lite"]:
-            provider_name = "google"
-        else:
-            provider_name = "openai"
+        provider_name = MODEL_TO_PROVIDER.get(selected_model, 'openai')
         
         # Get the project object if project_id is provided
         project = None
@@ -1588,18 +1585,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
             # Create a default model selection if none exists
             model_selection = await database_sync_to_async(ModelSelection.objects.create)(
                 user=self.user,
-                selected_model='claude_4_sonnet'
+                selected_model=ModelSelection.DEFAULT_MODEL_KEY
             )
             selected_model = model_selection.selected_model
 
-        if selected_model == "claude_4_sonnet":
-            provider_name = "anthropic"
-        elif selected_model == "grok_4":
-            provider_name = "xai"
-        elif selected_model in ["gemini_2.5_pro", "gemini_2.5_flash", "gemini_2.5_flash_lite"]:
-            provider_name = "google"
-        else:
-            provider_name = "openai"
+        provider_name = MODEL_TO_PROVIDER.get(selected_model, 'openai')
         
         provider = AIProvider.get_provider(provider_name, selected_model, user=self.user, conversation=self.conversation)
         
