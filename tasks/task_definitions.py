@@ -181,11 +181,713 @@ import json
 import time
 import logging
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from django.db import models
 from asgiref.sync import async_to_sync
+import requests
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# GitHub Integration Helper Functions
+# ============================================================================
+
+def get_github_token(user) -> Optional[str]:
+    """Get user's GitHub access token"""
+    from accounts.models import GitHubToken
+    try:
+        github_token = GitHubToken.objects.get(user=user)
+        return github_token.access_token
+    except GitHubToken.DoesNotExist:
+        return None
+
+
+def get_or_create_github_repo(project, user) -> Dict[str, Any]:
+    """
+    Get existing GitHub repo or create a new one for the project.
+    If creating new, initialize it with the nextjs-template.
+
+    Returns:
+        Dict with 'owner', 'repo_name', 'url', 'created' keys
+
+    Raises:
+        Exception with detailed error message if repo cannot be created or accessed
+    """
+    from codebase_index.models import IndexedRepository
+
+    # Check if project already has a GitHub repo linked
+    try:
+        indexed_repo = IndexedRepository.objects.get(project=project)
+        logger.info(f"Found existing GitHub repo: {indexed_repo.github_owner}/{indexed_repo.github_repo_name}")
+
+        # Check if the repo actually has content (main branch exists)
+        token = get_github_token(user)
+        if not token:
+            raise Exception("GitHub not connected. Please connect GitHub in settings.")
+
+        headers = {
+            'Authorization': f'token {token}',
+            'Accept': 'application/vnd.github.v3+json'
+        }
+
+        # Try to get the main branch to see if repo has content
+        try:
+            main_response = requests.get(
+                f'https://api.github.com/repos/{indexed_repo.github_owner}/{indexed_repo.github_repo_name}/git/refs/heads/main',
+                headers=headers,
+                timeout=10
+            )
+            repo_has_content = (main_response.status_code == 200)
+        except:
+            repo_has_content = False
+
+        logger.info(f"Existing repo has content: {repo_has_content}")
+
+        return {
+            'owner': indexed_repo.github_owner,
+            'repo_name': indexed_repo.github_repo_name,
+            'url': indexed_repo.github_url,
+            'created': False,
+            'needs_template': not repo_has_content  # If no content, needs template
+        }
+    except IndexedRepository.DoesNotExist:
+        logger.info(f"No existing GitHub repo found for project {project.name}, will create new one")
+
+    # Get GitHub token
+    token = get_github_token(user)
+    if not token:
+        raise Exception("GitHub not connected. Please connect GitHub in settings.")
+
+    # Create new repo name
+    repo_name = project.provided_name or project.name
+    repo_name = repo_name.lower().replace(' ', '-').replace('_', '-')
+    logger.info(f"Creating GitHub repository: {repo_name}")
+
+    headers = {
+        'Authorization': f'token {token}',
+        'Accept': 'application/vnd.github.v3+json'
+    }
+
+    # Step 1: Create empty repo on GitHub
+    data = {
+        'name': repo_name,
+        'description': f'LFG Project: {project.name}',
+        'private': True,
+        'auto_init': False
+    }
+
+    try:
+        response = requests.post(
+            'https://api.github.com/user/repos',
+            headers=headers,
+            json=data,
+            timeout=10
+        )
+    except requests.exceptions.Timeout:
+        raise Exception("GitHub API timeout while creating repository")
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"GitHub API request failed: {str(e)}")
+
+    if response.status_code == 201:
+        repo_data = response.json()
+        owner = repo_data['owner']['login']
+        repo_url = repo_data['html_url']
+
+        logger.info(f"Created empty GitHub repo: {owner}/{repo_name}")
+
+        # Step 2: Initialize repo with nextjs-template using GitHub API
+        # This is a template repository, so we use the GitHub template API
+        template_data = {
+            'owner': 'lfg-hq',
+            'name': 'nextjs-template',
+            'description': f'LFG Project: {project.name}',
+            'private': True
+        }
+
+        # Try to use GitHub's template repository feature to copy the template
+        # Note: This will only work if lfg-hq/nextjs-template is marked as a template repo
+        repo_needs_template = True
+        try:
+            # First, delete the empty repo we just created
+            delete_response = requests.delete(
+                f'https://api.github.com/repos/{owner}/{repo_name}',
+                headers=headers,
+                timeout=10
+            )
+
+            if delete_response.status_code not in [204, 404]:
+                logger.warning(f"Failed to delete empty repo (will continue): {delete_response.status_code}")
+
+            # Now create from template
+            template_response = requests.post(
+                'https://api.github.com/repos/lfg-hq/nextjs-template/generate',
+                headers=headers,
+                json={
+                    'owner': owner,
+                    'name': repo_name,
+                    'description': f'LFG Project: {project.name}',
+                    'private': True
+                },
+                timeout=30
+            )
+
+            if template_response.status_code == 201:
+                repo_data = template_response.json()
+                repo_url = repo_data['html_url']
+                logger.info(f"Successfully created repo from template: {owner}/{repo_name}")
+                repo_needs_template = False  # Template was successfully applied
+            else:
+                # If template creation fails, fall back to the empty repo
+                error_detail = template_response.json().get('message', '') if template_response.text else ''
+                logger.warning(f"Template creation failed ({template_response.status_code}): {error_detail}. Will push template from workspace.")
+                # Recreate the empty repo
+                response = requests.post(
+                    'https://api.github.com/user/repos',
+                    headers=headers,
+                    json=data,
+                    timeout=10
+                )
+                if response.status_code == 201:
+                    repo_data = response.json()
+                    repo_url = repo_data['html_url']
+
+        except Exception as e:
+            logger.warning(f"Failed to use template repository: {str(e)}. Will push template from workspace.")
+
+        # Create IndexedRepository record
+        IndexedRepository.objects.create(
+            project=project,
+            github_url=repo_url,
+            github_owner=owner,
+            github_repo_name=repo_name,
+            github_branch='main'
+        )
+
+        logger.info(f"Successfully created GitHub repo: {owner}/{repo_name}")
+        return {
+            'owner': owner,
+            'repo_name': repo_name,
+            'url': repo_url,
+            'created': True,
+            'needs_template': repo_needs_template
+        }
+    elif response.status_code == 422:
+        # Repo already exists, get user info first to determine owner
+        logger.info(f"Repository {repo_name} already exists, fetching existing repo...")
+        try:
+            user_response = requests.get('https://api.github.com/user', headers=headers, timeout=10)
+            if user_response.status_code != 200:
+                error_detail = user_response.json().get('message', user_response.text) if user_response.text else 'Unknown error'
+                raise Exception(f"Failed to get GitHub user info: {error_detail}")
+
+            username = user_response.json()['login']
+            logger.info(f"GitHub username: {username}")
+
+            # Now get the existing repo
+            repo_response = requests.get(
+                f'https://api.github.com/repos/{username}/{repo_name}',
+                headers=headers,
+                timeout=10
+            )
+
+            if repo_response.status_code == 200:
+                repo_data = repo_response.json()
+                owner = repo_data['owner']['login']
+
+                # Create IndexedRepository record
+                IndexedRepository.objects.create(
+                    project=project,
+                    github_url=repo_data['html_url'],
+                    github_owner=owner,
+                    github_repo_name=repo_name,
+                    github_branch='main'
+                )
+
+                logger.info(f"Using existing GitHub repo: {owner}/{repo_name}")
+                return {
+                    'owner': owner,
+                    'repo_name': repo_name,
+                    'url': repo_data['html_url'],
+                    'created': False,
+                    'needs_template': False  # Existing repo already has content
+                }
+            else:
+                error_detail = repo_response.json().get('message', repo_response.text) if repo_response.text else 'Unknown error'
+                raise Exception(f"Repository exists but cannot be accessed: {error_detail}")
+        except requests.exceptions.Timeout:
+            raise Exception("GitHub API timeout while fetching existing repository")
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"Failed to fetch existing repository: {str(e)}")
+    elif response.status_code == 401:
+        raise Exception("GitHub authentication failed. Please reconnect GitHub in settings.")
+    elif response.status_code == 403:
+        error_detail = response.json().get('message', 'Permission denied') if response.text else 'Permission denied'
+        raise Exception(f"GitHub permission denied: {error_detail}. Check your GitHub token scopes.")
+    else:
+        error_detail = response.json().get('message', response.text) if response.text else 'Unknown error'
+        logger.error(f"GitHub API error: HTTP {response.status_code} - {error_detail}")
+        raise Exception(f"Failed to create GitHub repository: {error_detail}")
+
+
+def ensure_branch_exists(token: str, owner: str, repo_name: str, branch_name: str, base_branch: str = 'main') -> bool:
+    """
+    Ensure a branch exists in the GitHub repo. Create if it doesn't exist.
+
+    If creating a feature branch, ensures lfg-agent branch exists first and uses it as base.
+
+    Returns:
+        True if branch exists or was created, False otherwise
+
+    Raises:
+        Exception with detailed error message if branch cannot be verified or created
+    """
+    headers = {
+        'Authorization': f'token {token}',
+        'Accept': 'application/vnd.github.v3+json'
+    }
+
+    # Check if branch exists
+    try:
+        response = requests.get(
+            f'https://api.github.com/repos/{owner}/{repo_name}/branches/{branch_name}',
+            headers=headers,
+            timeout=10
+        )
+
+        if response.status_code == 200:
+            logger.info(f"Branch {branch_name} already exists in {owner}/{repo_name}")
+            return True
+
+        # If this is a feature branch, ensure lfg-agent exists first
+        if branch_name.startswith('feature/'):
+            logger.info(f"Feature branch detected, ensuring lfg-agent branch exists...")
+            # Recursively ensure lfg-agent exists (from main)
+            ensure_branch_exists(token, owner, repo_name, 'lfg-agent', 'main')
+            # Now create feature branch from lfg-agent
+            base_branch = 'lfg-agent'
+
+        # Get base branch SHA
+        logger.info(f"Branch {branch_name} doesn't exist, creating from {base_branch}...")
+        base_response = requests.get(
+            f'https://api.github.com/repos/{owner}/{repo_name}/git/refs/heads/{base_branch}',
+            headers=headers,
+            timeout=10
+        )
+
+        if base_response.status_code != 200:
+            error_detail = base_response.json().get('message', base_response.text) if base_response.text else 'Unknown error'
+            logger.error(f"Failed to get base branch {base_branch}: HTTP {base_response.status_code} - {error_detail}")
+            raise Exception(f"Base branch '{base_branch}' not found in {owner}/{repo_name}. Error: {error_detail}")
+
+        base_sha = base_response.json()['object']['sha']
+        logger.info(f"Base branch SHA: {base_sha[:8]}...")
+
+        # Create new branch
+        data = {
+            'ref': f'refs/heads/{branch_name}',
+            'sha': base_sha
+        }
+
+        create_response = requests.post(
+            f'https://api.github.com/repos/{owner}/{repo_name}/git/refs',
+            headers=headers,
+            json=data,
+            timeout=10
+        )
+
+        if create_response.status_code == 201:
+            logger.info(f"Successfully created branch {branch_name} from {base_branch}")
+            return True
+        else:
+            error_detail = create_response.json().get('message', create_response.text) if create_response.text else 'Unknown error'
+            logger.error(f"Failed to create branch {branch_name}: HTTP {create_response.status_code} - {error_detail}")
+            raise Exception(f"Failed to create branch '{branch_name}': {error_detail}")
+
+    except requests.exceptions.Timeout:
+        error_msg = f"GitHub API timeout while creating branch {branch_name}"
+        logger.error(error_msg)
+        raise Exception(error_msg)
+    except requests.exceptions.RequestException as e:
+        error_msg = f"GitHub API request failed for branch {branch_name}: {str(e)}"
+        logger.error(error_msg)
+        raise Exception(error_msg)
+
+
+def get_github_user_info(token: str) -> Dict[str, str]:
+    """Get GitHub user's name and email from their profile."""
+    headers = {
+        'Authorization': f'token {token}',
+        'Accept': 'application/vnd.github.v3+json'
+    }
+
+    try:
+        response = requests.get('https://api.github.com/user', headers=headers, timeout=10)
+        if response.status_code == 200:
+            user_data = response.json()
+            name = user_data.get('name') or user_data.get('login', 'LFG Agent')
+            email = user_data.get('email') or f"{user_data.get('login')}@users.noreply.github.com"
+            return {'name': name, 'email': email}
+    except:
+        pass
+
+    # Fallback to default
+    return {'name': 'LFG Agent', 'email': 'agent@lfg.ai'}
+
+
+def push_template_and_create_branch(workspace_id: str, owner: str, repo_name: str, branch_name: str, token: str) -> Dict[str, Any]:
+    """
+    Push the template from /workspace/nextjs-app to the empty GitHub repo and create the feature branch.
+
+    Workflow:
+    1. Clone template if directory doesn't exist
+    2. Remove .git from template (it points to lfg-hq/nextjs-template)
+    3. Initialize new git repo
+    4. Push to GitHub main branch
+    5. Create and push feature branch
+
+    Returns:
+        Dict with status and any error messages
+    """
+    from factory.ai_functions import get_magpie_client, _run_magpie_ssh
+    import shlex
+
+    client = get_magpie_client()
+    escaped_branch = shlex.quote(branch_name)
+
+    # Get GitHub user info for proper commit attribution
+    user_info = get_github_user_info(token)
+    git_name = user_info['name']
+    git_email = user_info['email']
+
+    commands = [
+        # Clone the template if directory doesn't exist
+        "if [ ! -d /workspace/nextjs-app ]; then cd /workspace && git clone https://github.com/lfg-hq/nextjs-template nextjs-app; fi",
+        # Remove the template's .git directory (points to lfg-hq/nextjs-template)
+        "cd /workspace/nextjs-app && rm -rf .git",
+        # Initialize new git repo
+        "cd /workspace/nextjs-app && git init -b main",
+        # Configure git user with actual GitHub account info
+        f'cd /workspace/nextjs-app && git config user.email "{git_email}"',
+        f'cd /workspace/nextjs-app && git config user.name "{git_name}"',
+        # Add all template files
+        "cd /workspace/nextjs-app && git add -A",
+        # Create initial commit
+        'cd /workspace/nextjs-app && git commit -m "Initial commit: Next.js template from LFG"',
+        # Add remote origin (allow to fail if remote already exists)
+        f"cd /workspace/nextjs-app && (git remote add origin https://{token}@github.com/{owner}/{repo_name}.git || git remote set-url origin https://{token}@github.com/{owner}/{repo_name}.git)",
+        # Push main branch to GitHub
+        "cd /workspace/nextjs-app && git push -u origin main",
+        # Create lfg-agent branch from main
+        "cd /workspace/nextjs-app && git checkout -b lfg-agent",
+        # Push lfg-agent branch to GitHub
+        "cd /workspace/nextjs-app && git push -u origin lfg-agent",
+        # Create and checkout feature branch from lfg-agent
+        f"cd /workspace/nextjs-app && git checkout -b {escaped_branch}",
+        # Push feature branch to GitHub
+        f"cd /workspace/nextjs-app && git push -u origin {escaped_branch}",
+        # Verify current branch
+        "cd /workspace/nextjs-app && git branch --show-current"
+    ]
+
+    try:
+        current_branch = None
+        for i, cmd in enumerate(commands):
+            result = _run_magpie_ssh(client, workspace_id, cmd, timeout=60, with_node_env=False)
+            logger.info(f"[Template Push {i+1}/{len(commands)}] {cmd}")
+
+            stdout = result.get('stdout', '').strip()
+            stderr = result.get('stderr', '').strip()
+            exit_code = result.get('exit_code', 0)
+
+            if stdout:
+                logger.info(f"  stdout: {stdout}")
+            if stderr and exit_code != 0:
+                logger.warning(f"  stderr: {stderr}")
+
+            # Capture the current branch from the last line of stdout
+            # (The script outputs echo messages, so we need only the last line)
+            if 'git branch --show-current' in cmd and stdout:
+                current_branch = stdout.strip().split('\n')[-1]
+                logger.info(f"  ✓ Current branch: {current_branch}")
+
+            # Allow rm -rf and conditional clone to not fail the operation
+            # The conditional clone returns exit 0 even if directory exists (due to if statement)
+            is_allowed_failure = ('rm -rf' in cmd)
+
+            if exit_code != 0 and not is_allowed_failure:
+                error_msg = stderr or stdout or f"Command failed with exit code {exit_code}"
+                logger.error(f"  ✗ Git command failed: {error_msg}")
+                return {'status': 'error', 'message': f'Template push failed: {error_msg}'}
+
+        if current_branch != branch_name:
+            logger.warning(f"Branch mismatch: expected {branch_name}, got {current_branch}")
+            return {'status': 'error', 'message': f'Failed to checkout branch {branch_name}, currently on {current_branch}'}
+
+        logger.info(f"✓ Template pushed and branch '{current_branch}' created successfully")
+        return {
+            'status': 'success',
+            'message': f'Template pushed to GitHub and branch {branch_name} created',
+            'current_branch': current_branch
+        }
+    except Exception as e:
+        logger.error(f"Failed to push template: {str(e)}", exc_info=True)
+        return {'status': 'error', 'message': str(e)}
+
+
+def setup_git_in_workspace(workspace_id: str, owner: str, repo_name: str, branch_name: str, token: str) -> Dict[str, Any]:
+    """
+    Setup git repository in workspace and checkout the feature branch.
+
+    Smart workflow:
+    - If repo exists: fetch latest changes and switch to branch
+    - If repo doesn't exist: clone the repo and checkout branch
+
+    This avoids unnecessary deletions and re-cloning.
+
+    Returns:
+        Dict with status and any error messages
+    """
+    from factory.ai_functions import get_magpie_client, _run_magpie_ssh
+    import shlex
+
+    client = get_magpie_client()
+
+    # Properly escape branch name for shell (handles special characters like &, spaces, etc.)
+    escaped_branch = shlex.quote(branch_name)
+
+    # Get GitHub user info for proper commit attribution
+    user_info = get_github_user_info(token)
+    git_name = user_info['name']
+    git_email = user_info['email']
+
+    # Single command that handles all cases
+    setup_command = f'''
+cd /workspace
+if [ -d nextjs-app/.git ]; then
+    echo "Git repo exists, updating..."
+    cd nextjs-app
+    git fetch origin
+    git checkout {escaped_branch} || git checkout -b {escaped_branch} origin/{escaped_branch} || (git fetch origin {escaped_branch} && git checkout {escaped_branch})
+elif [ -d nextjs-app ]; then
+    echo "Directory exists but not a git repo, removing and cloning..."
+    rm -rf nextjs-app
+    git clone https://{token}@github.com/{owner}/{repo_name}.git nextjs-app
+    cd nextjs-app
+    git checkout {escaped_branch}
+else
+    echo "Directory doesn't exist, cloning..."
+    git clone https://{token}@github.com/{owner}/{repo_name}.git nextjs-app
+    cd nextjs-app
+    git checkout {escaped_branch}
+fi
+git config user.email "{git_email}"
+git config user.name "{git_name}"
+git branch --show-current
+'''
+
+    commands = [setup_command]
+
+    try:
+        current_branch = None
+        for i, cmd in enumerate(commands):
+            result = _run_magpie_ssh(client, workspace_id, cmd, timeout=60, with_node_env=False)
+            logger.info(f"[Git Setup {i+1}/{len(commands)}] {cmd}")
+
+            stdout = result.get('stdout', '').strip()
+            stderr = result.get('stderr', '').strip()
+            exit_code = result.get('exit_code', 0)
+
+            # Log output for debugging
+            if stdout:
+                logger.info(f"  stdout: {stdout}")
+            if stderr and exit_code != 0:
+                logger.warning(f"  stderr: {stderr}")
+
+            # Capture the current branch from the last line of stdout
+            # (The script outputs echo messages, so we need only the last line)
+            if 'git branch --show-current' in cmd and stdout:
+                current_branch = stdout.strip().split('\n')[-1]
+                logger.info(f"  ✓ Current branch: {current_branch}")
+
+            # Check for errors (but allow some commands to fail gracefully)
+            is_allowed_failure = ('rm -rf' in cmd)
+
+            if exit_code != 0 and not is_allowed_failure:
+                error_msg = stderr or stdout or f"Command failed with exit code {exit_code}"
+                logger.error(f"  ✗ Git command failed: {error_msg}")
+                return {'status': 'error', 'message': f'Git setup failed: {error_msg}'}
+
+        if current_branch != branch_name:
+            logger.warning(f"Branch mismatch: expected {branch_name}, got {current_branch}")
+            return {'status': 'error', 'message': f'Failed to checkout branch {branch_name}, currently on {current_branch}'}
+
+        logger.info(f"✓ Git setup complete: workspace is on branch '{current_branch}'")
+        return {'status': 'success', 'message': f'Git setup complete on branch {branch_name}', 'current_branch': current_branch}
+    except Exception as e:
+        logger.error(f"Failed to setup git in workspace: {str(e)}", exc_info=True)
+        return {'status': 'error', 'message': str(e)}
+
+
+def merge_feature_to_lfg_agent(token: str, owner: str, repo_name: str, feature_branch: str) -> Dict[str, Any]:
+    """
+    Merge the feature branch into lfg-agent branch using GitHub API.
+
+    Returns:
+        Dict with merge status and details
+    """
+    headers = {
+        'Authorization': f'token {token}',
+        'Accept': 'application/vnd.github.v3+json'
+    }
+
+    # Merge feature branch into lfg-agent
+    data = {
+        'base': 'lfg-agent',
+        'head': feature_branch,
+        'commit_message': f'Merge {feature_branch} into lfg-agent'
+    }
+
+    try:
+        response = requests.post(
+            f'https://api.github.com/repos/{owner}/{repo_name}/merges',
+            headers=headers,
+            json=data,
+            timeout=10
+        )
+
+        if response.status_code in [201, 204]:
+            logger.info(f"Successfully merged {feature_branch} into lfg-agent")
+            return {
+                'status': 'success',
+                'message': f'Successfully merged {feature_branch} into lfg-agent'
+            }
+        elif response.status_code == 409:
+            logger.warning(f"Merge conflict detected for {feature_branch} → lfg-agent")
+            return {
+                'status': 'conflict',
+                'message': 'Merge conflict detected. Manual resolution required.'
+            }
+        elif response.status_code == 204:
+            # 204 means branches are already merged/identical
+            logger.info(f"Branch {feature_branch} already merged into lfg-agent (no changes)")
+            return {
+                'status': 'success',
+                'message': 'Already up to date - no merge needed'
+            }
+        else:
+            error_detail = response.json().get('message', response.text) if response.text else 'Unknown error'
+            logger.error(f"Merge failed: {response.status_code} - {error_detail}")
+            return {
+                'status': 'error',
+                'message': f'Merge failed: {error_detail}'
+            }
+    except requests.exceptions.Timeout:
+        return {'status': 'error', 'message': 'GitHub API timeout during merge'}
+    except Exception as e:
+        logger.error(f"Exception during merge: {str(e)}", exc_info=True)
+        return {'status': 'error', 'message': str(e)}
+
+
+def commit_and_push_changes(workspace_id: str, branch_name: str, commit_message: str, ticket_id: int) -> Dict[str, Any]:
+    """
+    Commit all changes in workspace/nextjs-app and push to GitHub.
+
+    Returns:
+        Dict with status and commit details
+    """
+    from factory.ai_functions import get_magpie_client, _run_magpie_ssh
+    import shlex
+
+    client = get_magpie_client()
+
+    # Escape commit message for shell
+    escaped_message = commit_message.replace('"', '\\"').replace('$', '\\$').replace('`', '\\`').replace('\n', ' ')
+
+    # Properly escape branch name for shell (handles special characters like &, spaces, etc.)
+    escaped_branch = shlex.quote(branch_name)
+
+    commands = [
+        # Check current branch
+        "cd /workspace/nextjs-app && git branch --show-current",
+        # Check git status
+        "cd /workspace/nextjs-app && git status --short",
+        # Add all changes
+        "cd /workspace/nextjs-app && git add -A",
+        # Commit changes
+        f'cd /workspace/nextjs-app && git commit -m "{escaped_message}" || echo "No changes to commit"',
+        # Push to remote
+        f"cd /workspace/nextjs-app && git push -u origin {escaped_branch}"
+    ]
+
+    try:
+        commit_sha = None
+        current_branch = None
+        changes_detected = False
+
+        for i, cmd in enumerate(commands):
+            result = _run_magpie_ssh(client, workspace_id, cmd, timeout=60, with_node_env=False)
+            logger.info(f"[Git Commit {i+1}/{len(commands)}] {cmd}")
+
+            stdout = result.get('stdout', '').strip()
+            stderr = result.get('stderr', '').strip()
+            exit_code = result.get('exit_code', 0)
+
+            # Log output
+            if stdout:
+                logger.info(f"  stdout: {stdout}")
+            if stderr and exit_code != 0:
+                logger.warning(f"  stderr: {stderr}")
+
+            # Capture current branch
+            if 'git branch --show-current' in cmd and stdout:
+                current_branch = stdout
+                logger.info(f"  Current branch: {current_branch}")
+
+            # Check if there are changes
+            if 'git status --short' in cmd and stdout:
+                changes_detected = bool(stdout)
+                logger.info(f"  Changes detected: {changes_detected}")
+                if changes_detected:
+                    logger.info(f"  Modified files:\n{stdout}")
+
+            # Extract commit SHA
+            if 'git commit' in cmd and exit_code == 0:
+                # Try to extract commit SHA from output
+                if '[' in stdout and ']' in stdout:
+                    try:
+                        commit_sha = stdout.split('[')[1].split(']')[0].split()[0]
+                        logger.info(f"  Commit SHA: {commit_sha}")
+                    except:
+                        pass
+
+            # Check for errors
+            if exit_code != 0:
+                # Allow "nothing to commit" and git pull failures
+                if 'nothing to commit' in stderr or 'nothing to commit' in stdout:
+                    logger.info(f"  No changes to commit")
+                    continue
+                elif 'No changes to commit' in stdout:
+                    logger.info(f"  No changes to commit")
+                    continue
+                else:
+                    logger.error(f"  ✗ Git command failed: {stderr or stdout}")
+                    return {'status': 'error', 'message': stderr or stdout or 'Git command failed'}
+
+        if current_branch != branch_name:
+            logger.warning(f"Branch mismatch during commit: expected {branch_name}, on {current_branch}")
+
+        return {
+            'status': 'success',
+            'message': f'Changes committed and pushed to {branch_name}',
+            'commit_sha': commit_sha,
+            'changes_detected': changes_detected
+        }
+    except Exception as e:
+        logger.error(f"Failed to commit and push changes: {str(e)}", exc_info=True)
+        return {'status': 'error', 'message': str(e)}
+
+
 
 
 def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_id: int, max_execution_time: int = 600) -> Dict[str, Any]:
@@ -228,13 +930,137 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
             }
         logger.info(f"[STEP 2/10] ✓ Ticket status: {ticket.status}, proceeding...")
 
-        logger.info(f"\n[STEP 3/10] Updating ticket status to in_progress...")
-        # 3. UPDATE STATUS TO IN-PROGRESS
+        logger.info(f"\n[STEP 3/10] Setting up GitHub repository and branches...")
+        # 3. SETUP GITHUB REPOSITORY AND BRANCHES
+        github_owner = None
+        github_repo = None
+        github_token = None
+        feature_branch_name = None
+
+        # Get GitHub token first
+        github_token = get_github_token(project.owner)
+        if not github_token:
+            error_msg = "GitHub not connected. Please connect GitHub in settings before running tickets."
+            logger.error(f"[STEP 3/10] ✗ {error_msg}")
+            ticket.status = 'failed'
+            ticket.notes = f"""
+[{datetime.now().strftime('%Y-%m-%d %H:%M')}] EXECUTION FAILED
+Error: {error_msg}
+
+Please connect your GitHub account in Settings > Integrations > GitHub
+"""
+            ticket.save(update_fields=['status', 'notes'])
+
+            broadcast_ticket_notification(conversation_id, {
+                'is_notification': True,
+                'notification_type': 'toolhistory',
+                'function_name': 'ticket_execution',
+                'status': 'failed',
+                'message': f"✗ Ticket #{ticket.id} failed: {error_msg}",
+                'ticket_id': ticket.id,
+                'ticket_name': ticket.name,
+                'refresh_checklist': True
+            })
+
+            return {
+                "status": "error",
+                "ticket_id": ticket_id,
+                "error": error_msg,
+                "requires_github_setup": True
+            }
+
+        # Initialize variables before try block
+        repo_needs_template = False
+
+        try:
+            # Get or create GitHub repo
+            logger.info(f"[STEP 3/10] Getting or creating GitHub repository...")
+            repo_info = get_or_create_github_repo(project, project.owner)
+            github_owner = repo_info['owner']
+            github_repo = repo_info['repo_name']
+            repo_needs_template = repo_info.get('needs_template', False)
+
+            if repo_info['created']:
+                if repo_needs_template:
+                    logger.info(f"[STEP 3/10] ✓ Created new empty GitHub repo: {github_owner}/{github_repo}")
+                    logger.info(f"[STEP 3/10]   Template will be pushed from workspace before creating branches")
+                else:
+                    logger.info(f"[STEP 3/10] ✓ Created new GitHub repo from template: {github_owner}/{github_repo}")
+            else:
+                logger.info(f"[STEP 3/10] ✓ Using existing GitHub repo: {github_owner}/{github_repo}")
+
+            # Create feature branch name from ticket (format: feature/<ticket-name>)
+            sanitized_name = ticket.name.lower().replace(' ', '-').replace('_', '-')[:30]
+            feature_branch_name = f"feature/{sanitized_name}"
+            logger.info(f"[STEP 3/10] ✓ Feature branch name: {feature_branch_name}")
+
+            # Save branch name to ticket
+            ticket.github_branch = feature_branch_name
+            ticket.github_merge_status = 'pending'
+            ticket.save(update_fields=['github_branch', 'github_merge_status'])
+
+            # Only create the branch on GitHub if the repo already has content
+            # If repo needs template, we'll push template and create branch later
+            if not repo_needs_template:
+                logger.info(f"[STEP 3/10] Creating branch '{feature_branch_name}' on GitHub...")
+                branch_created = ensure_branch_exists(
+                    token=github_token,
+                    owner=github_owner,
+                    repo_name=github_repo,
+                    branch_name=feature_branch_name,
+                    base_branch='main'
+                )
+                if branch_created:
+                    logger.info(f"[STEP 3/10] ✓ Branch '{feature_branch_name}' is ready on GitHub")
+            else:
+                logger.info(f"[STEP 3/10] ⊘ Skipping branch creation - will create after pushing template")
+
+        except Exception as e:
+            error_msg = f"GitHub setup failed: {str(e)}"
+            logger.error(f"[STEP 3/10] ✗ {error_msg}", exc_info=True)
+
+            # Mark ticket as failed
+            ticket.status = 'failed'
+            ticket.notes = f"""
+[{datetime.now().strftime('%Y-%m-%d %H:%M')}] EXECUTION FAILED
+Error: {error_msg}
+
+GitHub Error Details:
+{str(e)}
+
+Please check:
+1. GitHub connection is active in Settings
+2. Repository permissions are correct
+3. Network connectivity to GitHub
+"""
+            ticket.save(update_fields=['status', 'notes'])
+
+            broadcast_ticket_notification(conversation_id, {
+                'is_notification': True,
+                'notification_type': 'toolhistory',
+                'function_name': 'ticket_execution',
+                'status': 'failed',
+                'message': f"✗ Ticket #{ticket.id} failed: GitHub setup error",
+                'ticket_id': ticket.id,
+                'ticket_name': ticket.name,
+                'refresh_checklist': True
+            })
+
+            return {
+                "status": "error",
+                "ticket_id": ticket_id,
+                "error": error_msg,
+                "github_error": str(e),
+                "execution_time": f"{time.time() - start_time:.2f}s"
+            }
+
+        logger.info(f"\n[STEP 4/10] Updating ticket status to in_progress...")
+        # 4. UPDATE STATUS TO IN-PROGRESS
         ticket.status = 'in_progress'
         ticket.save(update_fields=['status'])
-        logger.info(f"[STEP 3/10] ✓ Ticket #{ticket_id} marked as in_progress")
+        logger.info(f"[STEP 4/10] ✓ Ticket #{ticket_id} marked as in_progress")
         
-        # 4. BROADCAST START
+        # 5. BROADCAST START
         broadcast_ticket_notification(conversation_id, {
             'is_notification': True,
             'notification_type': 'toolhistory',
@@ -246,14 +1072,14 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
             'refresh_checklist': True
         })
 
-        logger.info(f"\n[STEP 4/10] Broadcasting start notification...")
+        logger.info(f"\n[STEP 5/10] Broadcasting start notification...")
 
-        logger.info(f"\n[STEP 5/10] Fetching or creating workspace...")
-        # 5. GET OR CREATE WORKSPACE
+        logger.info(f"\n[STEP 6/10] Fetching or creating workspace...")
+        # 6. GET OR CREATE WORKSPACE
         workspace = async_to_sync(_fetch_workspace)(project=project, conversation_id=conversation_id)
 
         if not workspace:
-            logger.info(f"[STEP 5/10] No existing workspace found, creating new one...")
+            logger.info(f"[STEP 6/10] No existing workspace found, creating new one...")
             # Create new Magpie workspace
             try:
                 client = get_magpie_client()
@@ -299,17 +1125,17 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
                 raise Exception(f"Workspace provisioning failed: {str(e)}")
 
         workspace_id = workspace.workspace_id
-        logger.info(f"[STEP 5/10] ✓ Workspace ready: {workspace_id}")
+        logger.info(f"[STEP 6/10] ✓ Workspace ready: {workspace_id}")
 
         # Set workspace_id in context so tools can access it
         current_workspace_id.set(workspace_id)
-        logger.info(f"[STEP 5/10] ✓ Set workspace_id in context: {workspace_id}")
+        logger.info(f"[STEP 6/10] ✓ Set workspace_id in context: {workspace_id}")
 
-        logger.info(f"\n[STEP 6/10] Setting up dev sandbox...")
-        # 5b. SETUP DEV SANDBOX (only if not already initialized)
+        logger.info(f"\n[STEP 7/10] Setting up dev sandbox...")
+        # 7. SETUP DEV SANDBOX (only if not already initialized)
         workspace_metadata = workspace.metadata or {}
         if not workspace_metadata.get('sandbox_initialized'):
-            logger.info(f"[STEP 6/10] Initializing dev sandbox for workspace {workspace_id}...")
+            logger.info(f"[STEP 7/10] Initializing dev sandbox for workspace {workspace_id}...")
             sandbox_result = async_to_sync(new_dev_sandbox_tool)(
                 {'workspace_id': workspace_id},
                 project.project_id,
@@ -318,12 +1144,83 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
 
             if sandbox_result.get('status') == 'failed':
                 raise Exception(f"Dev sandbox setup failed: {sandbox_result.get('message_to_agent')}")
-            logger.info(f"[STEP 6/10] ✓ Dev sandbox initialized")
+            logger.info(f"[STEP 7/10] ✓ Dev sandbox initialized")
         else:
-            logger.info(f"[STEP 6/10] ⊘ Skipping - dev sandbox already initialized")
+            logger.info(f"[STEP 7/10] ⊘ Skipping - dev sandbox already initialized")
 
-        logger.info(f"\n[STEP 7/10] Fetching project documentation...")
-        # 6. FETCH PROJECT DOCUMENTATION (PRD & Implementation)
+        logger.info(f"\n[STEP 8/10] Setting up Git repository in workspace...")
+        # 8. SETUP GIT IN WORKSPACE (if GitHub is configured)
+        if github_owner and github_repo and github_token and feature_branch_name:
+            # Check if repo needs template push first
+            if repo_needs_template:
+                logger.info(f"[STEP 8/10] Pushing template to GitHub and creating branch...")
+                git_setup_result = push_template_and_create_branch(
+                    workspace_id,
+                    github_owner,
+                    github_repo,
+                    feature_branch_name,
+                    github_token
+                )
+            else:
+                logger.info(f"[STEP 8/10] Cloning existing repo and checking out branch...")
+                git_setup_result = setup_git_in_workspace(
+                    workspace_id,
+                    github_owner,
+                    github_repo,
+                    feature_branch_name,
+                    github_token
+                )
+
+            if git_setup_result['status'] == 'success':
+                logger.info(f"[STEP 8/10] ✓ Git repository initialized on branch {feature_branch_name}")
+                # Store git info in workspace metadata for later use
+                workspace.metadata = workspace.metadata or {}
+                workspace.metadata['git_configured'] = True
+                workspace.metadata['git_branch'] = feature_branch_name
+                workspace.save(update_fields=['metadata'])
+            else:
+                # Git setup failed - STOP execution and mark ticket as failed
+                error_msg = git_setup_result.get('message', 'Unknown git setup error')
+                logger.error(f"[STEP 8/10] ✗ Git setup failed: {error_msg}")
+
+                ticket.status = 'failed'
+                ticket.notes = f"""
+[{datetime.now().strftime('%Y-%m-%d %H:%M')}] EXECUTION FAILED - Git Setup Error
+
+{error_msg}
+
+This typically happens due to:
+1. Branch name contains special characters that need escaping
+2. Network connectivity issues to GitHub
+3. Permission issues with the repository
+
+Please check the logs above for more details.
+"""
+                ticket.save(update_fields=['status', 'notes'])
+
+                broadcast_ticket_notification(conversation_id, {
+                    'is_notification': True,
+                    'notification_type': 'toolhistory',
+                    'function_name': 'ticket_execution',
+                    'status': 'failed',
+                    'message': f"✗ Ticket #{ticket.id} failed: Git setup error",
+                    'ticket_id': ticket.id,
+                    'ticket_name': ticket.name,
+                    'refresh_checklist': True
+                })
+
+                return {
+                    "status": "error",
+                    "ticket_id": ticket_id,
+                    "error": "Git setup failed",
+                    "details": error_msg,
+                    "execution_time": f"{time.time() - start_time:.2f}s"
+                }
+        else:
+            logger.info(f"[STEP 8/10] ⊘ Skipping Git setup - GitHub not configured")
+
+        logger.info(f"\n[STEP 9/10] Fetching project documentation...")
+        # 9. FETCH PROJECT DOCUMENTATION (PRD & Implementation)
         project_context = ""
         try:
             from projects.models import ProjectFile
@@ -359,11 +1256,11 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
                         project_context += "\n...(truncated for brevity)\n"
                     project_context += "\n"
 
-                logger.info(f"[STEP 7/10] ✓ Added {len(prd_files)} PRDs, {len(impl_files)} implementation docs to context")
+                logger.info(f"[STEP 9/10] ✓ Added {len(prd_files)} PRDs, {len(impl_files)} implementation docs to context")
             else:
-                logger.info(f"[STEP 7/10] ⊘ No project documentation found")
+                logger.info(f"[STEP 9/10] ⊘ No project documentation found")
         except Exception as e:
-            logger.warning(f"[STEP 7/10] ⚠ Could not fetch project documentation: {str(e)}")
+            logger.warning(f"[STEP 9/10] ⚠ Could not fetch project documentation: {str(e)}")
 
         implementation_prompt = f"""
 You are implementing ticket #{ticket.id}: {ticket.name}
@@ -399,8 +1296,9 @@ Keep the checks to minimum and don't loop around. Usually agent.md will have all
 - Todos are marked `Success`
 
 IMPORTANT:
+0. DO NOT ATTEMPT TO RE CREATE THE PROJECT AGAIN. Make modifications within existing project.
 1. DO NOT verify extensively or test in loops.
-2. Skip writing explainer documentation, completion summary, etc. Don't create any .MD files other than updating agent.md file
+2. Skip writing explainer documentation, completion summary, etc. Don't create any *.MD files other than updating agent.md file
 3. When the server is running with NO ERRORS, Update status of todolist using update_todo_status() and END this workflow. 
 
 End with: "IMPLEMENTATION_STATUS: COMPLETE - [specific changes made]" or "IMPLEMENTATION_STATUS: FAILED - [reason]"
@@ -408,9 +1306,9 @@ End with: "IMPLEMENTATION_STATUS: COMPLETE - [specific changes made]" or "IMPLEM
 Note: whenever a TODO item is completed, make sure to mark the TODO as done.
         """
 
-        logger.info(f"\n[STEP 8/10] Calling AI for ticket implementation...")
-        logger.info(f"[STEP 8/10] Max execution time: {max_execution_time}s | Elapsed: {time.time() - start_time:.1f}s")
-        # 8. CALL AI WITH TIMEOUT PROTECTION
+        logger.info(f"\n[STEP 10/11] Calling AI for ticket implementation...")
+        logger.info(f"[STEP 10/11] Max execution time: {max_execution_time}s | Elapsed: {time.time() - start_time:.1f}s")
+        # 10. CALL AI WITH TIMEOUT PROTECTION
 
         # Wrap AI call with timeout check
         ai_call_start = time.time()
@@ -424,18 +1322,18 @@ Note: whenever a TODO item is completed, make sure to mark the TODO as done.
                 tools=tools_builder
             )
             ai_call_duration = time.time() - ai_call_start
-            logger.info(f"[STEP 8/10] ✓ AI call completed in {ai_call_duration:.1f}s")
+            logger.info(f"[STEP 10/11] ✓ AI call completed in {ai_call_duration:.1f}s")
         except Exception as ai_error:
             # Handle API errors (500s, timeouts, etc.) - no retry, just fail
-            logger.error(f"[STEP 8/10] ✗ AI call failed: {str(ai_error)}")
+            logger.error(f"[STEP 10/11] ✗ AI call failed: {str(ai_error)}")
             raise Exception(f"AI API error: {str(ai_error)}")
 
         content = ai_response.get('content', '') if ai_response else ''
         execution_time = time.time() - start_time
 
         # Log the AI response for debugging
-        logger.info(f"[STEP 8/10] AI response length: {len(content)} chars")
-        logger.info(f"[STEP 8/10] Total elapsed time: {execution_time:.1f}s")
+        logger.info(f"[STEP 10/11] AI response length: {len(content)} chars")
+        logger.info(f"[STEP 10/11] Total elapsed time: {execution_time:.1f}s")
 
         # Check if AI response indicates an error (500, overloaded, etc.)
         has_api_error = ai_response.get('error') if ai_response else False
@@ -449,22 +1347,22 @@ Note: whenever a TODO item is completed, make sure to mark the TODO as done.
         if has_api_error:
             raise Exception(f"AI API error during execution: {error_message}")
 
-        logger.info(f"\n[STEP 9/10] Checking AI completion status...")
-        # 8. CHECK COMPLETION STATUS (with fallback detection)
+        logger.info(f"\n[STEP 11/11] Checking AI completion status and committing changes...")
+        # 11. CHECK COMPLETION STATUS (with fallback detection)
         completed = 'IMPLEMENTATION_STATUS: COMPLETE' in content
         failed = 'IMPLEMENTATION_STATUS: FAILED' in content
 
         # Fallback: If no explicit status, ticket is NOT complete
         # Only mark as complete if there's an explicit success status
         if not completed and not failed:
-            logger.warning(f"[STEP 9/10] ⚠ No explicit completion status found in AI response")
-            logger.warning(f"[STEP 9/10] Content length: {len(content)} chars")
+            logger.warning(f"[STEP 11/11] ⚠ No explicit completion status found in AI response")
+            logger.warning(f"[STEP 11/11] Content length: {len(content)} chars")
             # ALWAYS mark as failed if no explicit completion status
             # The AI MUST provide explicit status - anything else is incomplete
             failed = True
-            logger.error("[STEP 9/10] ✗ Marking as FAILED - AI must end with IMPLEMENTATION_STATUS")
+            logger.error("[STEP 11/11] ✗ Marking as FAILED - AI must end with IMPLEMENTATION_STATUS")
 
-        logger.info(f"[STEP 9/10] Status check - Completed: {completed} | Failed: {failed} | Time: {execution_time:.1f}s")
+        logger.info(f"[STEP 11/11] Status check - Completed: {completed} | Failed: {failed} | Time: {execution_time:.1f}s")
         
         # 9. EXTRACT WHAT WAS DONE (for logging)
         import re
@@ -478,17 +1376,77 @@ Note: whenever a TODO item is completed, make sure to mark the TODO as done.
         tool_calls_count = content.count('ssh_command') + content.count('Tool call')
         logger.info(f"Estimated tool calls: {tool_calls_count}, Files created: {len(files_created)}, Dependencies: {len(dependencies)}")
 
-        logger.info(f"\n[STEP 10/10] Updating ticket status and saving results...")
-        # 10. UPDATE TICKET BASED ON RESULT
+        # 12. COMMIT AND PUSH TO GITHUB (if configured and ticket completed)
+        commit_sha = None
+        merge_status = None
+
+        if completed and not failed and github_owner and github_repo and github_token and feature_branch_name:
+            logger.info(f"\n[STEP 12/12] Committing and pushing changes to GitHub...")
+
+            # Commit and push changes
+            commit_message = f"feat: {ticket.name}\n\nImplemented ticket #{ticket_id}\n\n{ticket.description[:200]}"
+            commit_result = commit_and_push_changes(workspace_id, feature_branch_name, commit_message, ticket_id)
+
+            if commit_result['status'] == 'success':
+                commit_sha = commit_result.get('commit_sha')
+                logger.info(f"[STEP 12/12] ✓ Changes committed and pushed: {commit_sha}")
+
+                # Save commit SHA to ticket
+                ticket.github_commit_sha = commit_sha
+                ticket.save(update_fields=['github_commit_sha'])
+
+                # Merge feature branch into lfg-agent
+                logger.info(f"[STEP 12/12] Merging {feature_branch_name} into lfg-agent...")
+                merge_result = merge_feature_to_lfg_agent(github_token, github_owner, github_repo, feature_branch_name)
+
+                if merge_result['status'] == 'success':
+                    logger.info(f"[STEP 12/12] ✓ Merged {feature_branch_name} into lfg-agent")
+                    merge_status = 'merged'
+                elif merge_result['status'] == 'conflict':
+                    logger.warning(f"[STEP 12/12] ⚠ Merge conflict detected - manual resolution required")
+                    merge_status = 'conflict'
+                else:
+                    logger.error(f"[STEP 12/12] ✗ Merge failed: {merge_result.get('message')}")
+                    merge_status = 'failed'
+
+                # Save merge status to ticket
+                ticket.github_merge_status = merge_status
+                ticket.save(update_fields=['github_merge_status'])
+            else:
+                logger.error(f"[STEP 12/12] ✗ Failed to commit changes: {commit_result.get('message')}")
+
+        logger.info(f"\n[STEP 13/13] Updating ticket status and saving results...")
+        # 13. UPDATE TICKET BASED ON RESULT
         if completed and not failed:
             # SUCCESS!
-            logger.info(f"[STEP 10/10] ✓ SUCCESS - Marking ticket as done")
+            logger.info(f"[STEP 13/13] ✓ SUCCESS - Marking ticket as done")
             ticket.status = 'done'
+
+            # Build notes with Git information if available
+            git_info = ""
+            if github_owner and github_repo:
+                repo_url = f"https://github.com/{github_owner}/{github_repo}"
+                git_info = f"\nGitHub Repository: {repo_url}"
+                if feature_branch_name:
+                    git_info += f"\nFeature Branch: {feature_branch_name}"
+                    branch_url = f"{repo_url}/tree/{feature_branch_name}"
+                    git_info += f"\nFeature Branch URL: {branch_url}"
+                if commit_sha:
+                    git_info += f"\nCommit: {commit_sha}"
+                    commit_url = f"{repo_url}/commit/{commit_sha}"
+                    git_info += f"\nCommit URL: {commit_url}"
+                if merge_status:
+                    merge_emoji = '✓' if merge_status == 'merged' else ('⚠' if merge_status == 'conflict' else '✗')
+                    git_info += f"\nMerge to lfg-agent: {merge_emoji} {merge_status}"
+                    if merge_status == 'merged':
+                        lfg_agent_url = f"{repo_url}/tree/lfg-agent"
+                        git_info += f"\nlfg-agent Branch: {lfg_agent_url}"
+
             ticket.notes = f"""
 [{datetime.now().strftime('%Y-%m-%d %H:%M')}] IMPLEMENTATION COMPLETED
 Time: {execution_time:.2f} seconds
 Files created: {len(files_created)}
-Dependencies: {', '.join(set(dependencies))}
+Dependencies: {', '.join(set(dependencies))}{git_info}
 Status: ✓ Complete
 """
             ticket.save(update_fields=['status', 'notes'])
@@ -504,10 +1462,10 @@ Status: ✓ Complete
                 'refresh_checklist': True
             })
 
-            logger.info(f"[STEP 10/10] ✓ Task completed successfully in {execution_time:.1f}s")
+            logger.info(f"[STEP 13/13] ✓ Task completed successfully in {execution_time:.1f}s")
             logger.info(f"{'='*80}\n[TASK END] SUCCESS - Ticket #{ticket_id}\n{'='*80}\n")
 
-            return {
+            result = {
                 "status": "success",
                 "ticket_id": ticket_id,
                 "ticket_name": ticket.name,
@@ -518,9 +1476,20 @@ Status: ✓ Complete
                 "workspace_id": workspace_id,
                 "completion_time": datetime.now().isoformat()
             }
+
+            # Add Git information to result if available
+            if github_owner and github_repo:
+                result["git"] = {
+                    "repository": f"{github_owner}/{github_repo}",
+                    "branch": feature_branch_name,
+                    "commit_sha": commit_sha,
+                    "merge_status": merge_status
+                }
+
+            return result
         else:
             # FAILED OR INCOMPLETE
-            logger.warning(f"[STEP 10/10] ✗ FAILED - Marking ticket as failed")
+            logger.warning(f"[STEP 13/13] ✗ FAILED - Marking ticket as failed")
             error_match = re.search(r'IMPLEMENTATION_STATUS: FAILED - (.+)', content)
             if error_match:
                 error_reason = error_match.group(1)

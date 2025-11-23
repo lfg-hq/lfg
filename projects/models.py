@@ -234,12 +234,25 @@ class ProjectTicket(models.Model):
     # Execution metadata
     complexity = models.CharField(max_length=20, choices=(
         ('simple', 'Simple'),
-        ('medium', 'Medium'), 
+        ('medium', 'Medium'),
         ('complex', 'Complex'),
     ), default='medium', help_text='Estimated complexity of the ticket')
     requires_worktree = models.BooleanField(default=True,
         help_text='Whether this ticket requires a git worktree for code changes')
-    
+
+    # Git/GitHub metadata
+    github_branch = models.CharField(max_length=255, blank=True, null=True,
+        help_text='Feature branch name for this ticket (e.g., feature/ticket-name)')
+    github_commit_sha = models.CharField(max_length=40, blank=True, null=True,
+        help_text='Git commit SHA for the ticket implementation')
+    github_merge_status = models.CharField(max_length=20, blank=True, null=True,
+        choices=(
+            ('merged', 'Merged'),
+            ('conflict', 'Conflict'),
+            ('failed', 'Failed'),
+            ('pending', 'Pending'),
+        ), help_text='Merge status of feature branch into lfg-agent')
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     

@@ -13,7 +13,7 @@ import asyncio
 from typing import Optional, Dict, Any, List
 from django.contrib.auth.models import User
 
-from chat.models import Conversation
+from chat.models import Conversation, ModelSelection
 from projects.models import Project
 
 # Import shared functions from ai_common to avoid circular imports
@@ -38,6 +38,28 @@ from factory.utils import FileHandler
 # Set up logger
 logger = logging.getLogger(__name__)
 
+
+async def _get_selected_model_for_user(user: Optional[User]) -> str:
+    """Return the user's selected model or default."""
+    default_model = ModelSelection.DEFAULT_MODEL_KEY
+    if not user:
+        return default_model
+    try:
+        model_selection = await asyncio.to_thread(ModelSelection.objects.get, user=user)
+        return model_selection.selected_model
+    except ModelSelection.DoesNotExist:
+        try:
+            model_selection = await asyncio.to_thread(
+                ModelSelection.objects.create,
+                user=user,
+                selected_model=default_model
+            )
+            return model_selection.selected_model
+        except Exception as create_error:
+            logger.warning(f"Could not create default model selection for user {user.id}: {create_error}")
+    except Exception as selection_error:
+        logger.warning(f"Could not load model selection for user {user.id}: {selection_error}")
+    return default_model
 
 async def get_ai_response(user_message: str, system_prompt: str, project_id: Optional[int], 
                           conversation_id: Optional[int], stream: bool = False, 
@@ -104,8 +126,9 @@ async def get_ai_response(user_message: str, system_prompt: str, project_id: Opt
         except Exception as e:
             logger.warning(f"Could not get user/project from project_id {project_id}: {e}")
     
-    # Get the default provider (can be enhanced later to support provider selection)
-    provider = AIProvider.get_provider("anthropic", "claude_4_sonnet", user, conversation, project)
+    # Determine which model/provider to use for this user
+    selected_model = await _get_selected_model_for_user(user)
+    provider = AIProvider.get_provider(None, selected_model, user, conversation, project)
     
     # Collect the streaming response
     full_content = ""

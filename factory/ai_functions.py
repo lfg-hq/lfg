@@ -2611,14 +2611,15 @@ async def new_dev_sandbox_tool(function_args, project_id, conversation_id):
             kill "$old_pid" || true
           fi
         fi
+        npm config set cache /workspace/.npm-cache
         # Clone the nextjs-template repo if it doesn't exist
-        if [ ! -d "nextjs-app" ]; then
-          echo "Cloning nextjs-template repository..."
-          git clone https://github.com/lfg-hq/nextjs-template nextjs-app
-          cd nextjs-app
-          echo "Installing dependencies..."
-          npm install
-        fi
+        # if [ ! -d "nextjs-app" ]; then
+        #   echo "Cloning nextjs-template repository..."
+        #   git clone https://github.com/lfg-hq/nextjs-template nextjs-app
+        #   cd nextjs-app
+        #   echo "Installing dependencies..."
+        #   npm install
+        # fi
         """
     )
 

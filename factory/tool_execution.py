@@ -10,12 +10,35 @@ from datetime import datetime
 from typing import Tuple, Optional, Dict, Any, List
 
 from projects.models import Project, ToolCallHistory
-from chat.models import Conversation
+from chat.models import Conversation, ModelSelection
 
 logger = logging.getLogger(__name__)
 
 # Maximum tool output size (50KB)
 MAX_TOOL_OUTPUT_SIZE = 50 * 1024
+
+
+async def _get_selected_model_for_user(user) -> str:
+    """Return the selected model for a user, falling back to default."""
+    default_model = ModelSelection.DEFAULT_MODEL_KEY
+    if not user:
+        return default_model
+    try:
+        model_selection = await asyncio.to_thread(ModelSelection.objects.get, user=user)
+        return model_selection.selected_model
+    except ModelSelection.DoesNotExist:
+        try:
+            model_selection = await asyncio.to_thread(
+                ModelSelection.objects.create,
+                user=user,
+                selected_model=default_model
+            )
+            return model_selection.selected_model
+        except Exception as create_error:
+            logger.warning(f"Could not create default model selection for user {user.id}: {create_error}")
+    except Exception as selection_error:
+        logger.warning(f"Could not load model selection for user {user.id}: {selection_error}")
+    return default_model
 
 
 def truncate_text(text: str, limit: int = 600) -> str:
@@ -597,8 +620,9 @@ async def get_ai_response(
     except Exception as e:
         logger.warning(f"Could not get user/conversation/project: {e}")
     
-    # Get the default provider (can be enhanced later to support provider selection)
-    provider = ai_providers.AIProvider.get_provider("anthropic", "claude_4_sonnet", user, conversation, project)
+    # Determine selected model for user
+    selected_model = await _get_selected_model_for_user(user)
+    provider = ai_providers.AIProvider.get_provider(None, selected_model, user, conversation, project)
     
     # Collect the streaming response
     full_content = ""

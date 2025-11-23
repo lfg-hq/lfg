@@ -23,6 +23,8 @@ logger = logging.getLogger(__name__)
 
 # Import the functions from ai_functions
 from factory.ai_functions import execute_local_command, restart_server_from_config
+from factory.llm_config import get_llm_model_config
+from chat.models import ModelSelection
 
 # Create your views here.
 
@@ -121,11 +123,17 @@ def tickets_list(request):
         project_id__in=project_ids
     ).values_list('priority', flat=True).distinct()
 
+    # Determine user's current model selection for pre-selecting option
+    model_selection = ModelSelection.objects.filter(user=request.user).first()
+    current_model_key = model_selection.selected_model if model_selection else ModelSelection.DEFAULT_MODEL_KEY
+
     return render(request, 'projects/tickets_list.html', {
         'tickets': tickets,
         'statuses': statuses,
         'priorities': priorities,
-        'projects': all_projects
+        'projects': all_projects,
+        'llm_model_config': get_llm_model_config(),
+        'current_model_key': current_model_key,
     })
 
 @login_required

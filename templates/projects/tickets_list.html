@@ -425,20 +425,37 @@
                             {% endfor %}
                         </select>
                         <select class="filter-select" id="llmModelFilter" style="min-width: 180px;">
-                            <optgroup label="Anthropic">
-                                <option value="claude_4_sonnet" selected>Claude 4 Sonnet</option>
-                            </optgroup>
-                            <optgroup label="OpenAI">
-                                <option value="gpt-5">GPT-5</option>
-                                <option value="gpt-5-mini">GPT-5 Mini</option>
-                            </optgroup>
-                            <optgroup label="Google">
-                                <option value="gemini_2.5_pro">Gemini 2.5 Pro</option>
-                                <option value="gemini_2.5_flash">Gemini 2.5 Flash</option>
-                            </optgroup>
-                            <optgroup label="xAI">
-                                <option value="grok_4">Grok 4</option>
-                            </optgroup>
+                            {% if llm_model_config.providers %}
+                                {% for provider_key, provider in llm_model_config.providers.items %}
+                                    <optgroup label="{{ provider.label }}">
+                                        {% for model in provider.models %}
+                                            <option value="{{ model.key }}"
+                                                {% if current_model_key == model.key %}
+                                                    selected
+                                                {% elif not current_model_key and forloop.parentloop.first and forloop.first %}
+                                                    selected
+                                                {% endif %}>
+                                                {{ model.label }}
+                                            </option>
+                                        {% endfor %}
+                                    </optgroup>
+                                {% endfor %}
+                            {% else %}
+                                <optgroup label="Anthropic">
+                                    <option value="claude_4_sonnet" selected>Claude 4 Sonnet</option>
+                                </optgroup>
+                                <optgroup label="OpenAI">
+                                    <option value="gpt-5">GPT-5</option>
+                                    <option value="gpt-5-mini">GPT-5 Mini</option>
+                                </optgroup>
+                                <optgroup label="Google">
+                                    <option value="gemini_2.5_pro">Gemini 2.5 Pro</option>
+                                    <option value="gemini_2.5_flash">Gemini 2.5 Flash</option>
+                                </optgroup>
+                                <optgroup label="xAI">
+                                    <option value="grok_4">Grok 4</option>
+                                </optgroup>
+                            {% endif %}
                         </select>
                     </div>
                 </div>
