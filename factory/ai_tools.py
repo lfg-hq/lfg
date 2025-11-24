@@ -638,7 +638,7 @@ update_todo_status = {
     "type": "function",
     "function": {
         "name": "update_todo_status",
-        "description": "Update the status of a todo by its todo_id. Use this to mark todos as in_progress, success, or fail as you work through them. Get the todo_id from get_ticket_todos first.",
+        "description": "Update the status of a todo by its todo_id. Use this to mark todos as in_progress, success, or fail as you work through them. Get the todo_id first.",
         "parameters": {
             "type": "object",
             "properties": {

@@ -362,12 +362,12 @@ SSH_KEY_STRING=os.getenv('SSH_KEY_STRING', None)
 
 Q_CLUSTER = {
         'name': 'LFG_Tasks',
-        'workers': 1,  # Reduced to single worker to prevent timer conflicts
+        'workers': 3,  # Optimal for 2CPU/4GB: I/O-bound tasks can over-subscribe CPUs
         'recycle': 100,  # Reduced recycle count
         'timeout': 1500,   # Reduced timeout
         # 'retry': 60,     # Reduced retry time
         'queue_limit': 10,  # Reduced queue limit
-        'bulk': 1,       # Single task processing
+        'bulk': 1,       # Single task processing (maintains sequential execution within groups)
         'orm': 'default',
         'guard_cycle': 10,  # Longer guard cycle
         'daemonize_workers': False,  # Disable daemon mode

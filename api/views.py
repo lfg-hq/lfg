@@ -538,13 +538,15 @@ class ProjectTicketViewSet(viewsets.ReadOnlyModelViewSet):
         try:
             from tasks.task_manager import TaskManager
 
-            # Queue the ticket execution
+            # Queue the ticket execution with project-based group
+            # Tasks in the same group execute sequentially, different groups execute in parallel
             task_id = TaskManager.publish_task(
                 'tasks.task_definitions.execute_ticket_implementation',
                 ticket.id,
                 project.id,
                 conversation_id,
                 task_name=f"Ticket #{ticket.id} execution for {project.name}",
+                group=f'project_{project.id}',  # ← Key: Group by project ID
                 timeout=7200  # 2 hour timeout
             )
 

@@ -3022,7 +3022,7 @@ async def get_ticket_todos_tool(function_args, project_id, conversation_id):
             logger.debug(f"Todo List: {todos_list}")
             return {
                 "is_notification": False,
-                "message_to_agent": f"Retrieved {len(todos_list)} todo(s) for ticket #{ticket_id}. Use the todo_id values to update todo status.",
+                "message_to_agent": f"Retrieved {len(todos_list)} todo(s) for ticket #{ticket_id}. Todo List: {todos_list} \nUse the todo_id values to update todo status.",
                 "todos": todos_list
             }
         else:

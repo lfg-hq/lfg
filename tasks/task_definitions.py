@@ -729,6 +729,196 @@ git branch --show-current
         return {'status': 'error', 'message': str(e)}
 
 
+def resolve_merge_conflict(workspace_id: str, feature_branch: str, ticket_id: int, project_id: str, conversation_id: int) -> Dict[str, Any]:
+    """
+    Resolve merge conflicts by having AI fix them in the workspace.
+
+    Args:
+        workspace_id: The Magpie workspace ID
+        feature_branch: The feature branch name (e.g., feature/xxx)
+        ticket_id: The ticket ID
+        project_id: The project UUID
+        conversation_id: The conversation ID
+
+    Returns:
+        Dict with resolution status
+    """
+    from factory.ai_functions import get_magpie_client, _run_magpie_ssh
+    from factory.ai_providers import get_ai_response
+    from factory.ai_tools import tools_builder
+
+    client = get_magpie_client()
+
+    logger.info(f"[CONFLICT RESOLUTION] Starting automatic conflict resolution for {feature_branch}")
+
+    # Step 1: Checkout lfg-agent and try to merge locally
+    merge_command = f'''
+cd /workspace/nextjs-app
+git fetch origin
+git checkout lfg-agent
+git pull origin lfg-agent
+git merge {feature_branch} || echo "CONFLICT_DETECTED"
+'''
+
+    result = _run_magpie_ssh(client, workspace_id, merge_command, timeout=60, with_node_env=False)
+    stdout = result.get('stdout', '')
+
+    if 'CONFLICT' in stdout or 'conflict' in stdout.lower():
+        logger.info(f"[CONFLICT RESOLUTION] Conflicts detected, getting conflict details...")
+
+        # Get list of conflicted files
+        status_cmd = "cd /workspace/nextjs-app && git status --short | grep '^UU\\|^AA\\|^DD'"
+        status_result = _run_magpie_ssh(client, workspace_id, status_cmd, timeout=30, with_node_env=False)
+        conflicted_files_raw = status_result.get('stdout', '').strip()
+        conflicted_files = [f.strip() for f in conflicted_files_raw.split('\n') if f.strip()]
+
+        logger.info(f"[CONFLICT RESOLUTION] Conflicted files: {conflicted_files}")
+
+        # if not conflicted_files:
+        #     logger.warning(f"[CONFLICT RESOLUTION] No conflicted files found, aborting merge")
+        #     abort_cmd = "cd /workspace/nextjs-app && git merge --abort"
+        #     _run_magpie_ssh(client, workspace_id, abort_cmd, timeout=30, with_node_env=False)
+        #     return {
+        #         'status': 'conflict',
+        #         'message': 'Merge conflict detected but no conflicted files found',
+        #         'conflicted_files': []
+        #     }
+
+        # Get conflict diff details
+        diff_cmd = "cd /workspace/nextjs-app && git diff --name-status"
+        diff_result = _run_magpie_ssh(client, workspace_id, diff_cmd, timeout=30, with_node_env=False)
+        conflict_diff = diff_result.get('stdout', '').strip()
+
+        logger.info(f"[CONFLICT RESOLUTION] Calling AI to resolve conflicts...")
+
+        # Build AI prompt for conflict resolution
+        implementation_prompt = f"""
+You are resolving merge conflicts between two branches:
+- Base branch: lfg-agent
+- Feature branch: {feature_branch}
+
+
+CONFLICT DETAILS:
+{conflict_diff}
+
+PROJECT PATH: nextjs-app
+
+Your task: Fix all merge conflicts using SSH commands.
+
+Steps:
+1. Check the conflicted files to understand the conflicts
+2. Resolve conflicts by editing files (choose appropriate resolution strategy)
+3. After resolving, stage the resolved files: git add <files>
+4. Complete the merge: git commit -m "Merge {feature_branch} into lfg-agent"
+5. Verify no conflicts remain: git status
+
+✅ Success case: "IMPLEMENTATION_STATUS: COMPLETE - Resolved all conflicts"
+❌ Failure case: "IMPLEMENTATION_STATUS: FAILED - [reason]"
+"""
+
+        system_prompt = """
+You are an expert developer resolving merge conflicts.
+
+IMPORTANT:
+1. Use ssh_command tool to inspect and edit conflicted files
+2. Understand BOTH sides of the conflict before resolving
+3. Choose the correct resolution strategy (accept theirs, ours, or manual merge)
+4. After resolving, stage files with: git add <file>
+5. Complete merge with: git commit -m "Merge conflicts resolved"
+6. DO NOT create new features - only resolve conflicts
+7. Keep all valid changes from both branches when possible
+
+🎯 COMPLETION CRITERIA:
+- All conflicted files are resolved
+- Changes are staged and committed
+- git status shows no conflicts
+
+End with: "IMPLEMENTATION_STATUS: COMPLETE - [summary]" or "IMPLEMENTATION_STATUS: FAILED - [reason]"
+"""
+
+        # Set context for workspace
+        current_workspace_id.set(workspace_id)
+
+        # Call AI to resolve conflicts
+        ai_start = time.time()
+        try:
+            ai_response = async_to_sync(get_ai_response)(
+                user_message=implementation_prompt,
+                system_prompt=system_prompt,
+                project_id=project_id,
+                conversation_id=conversation_id,
+                stream=False,
+                tools=tools_builder
+            )
+            ai_duration = time.time() - ai_start
+            logger.info(f"[CONFLICT RESOLUTION] AI call completed in {ai_duration:.1f}s")
+
+            content = ai_response.get('content', '') if ai_response else ''
+
+            # Check if AI successfully resolved conflicts
+            if 'IMPLEMENTATION_STATUS: COMPLETE' in content:
+                logger.info(f"[CONFLICT RESOLUTION] ✓ AI reported successful resolution")
+
+                # Verify conflicts are actually resolved
+                verify_cmd = "cd /workspace/nextjs-app && git status --short | grep '^UU\\|^AA\\|^DD'"
+                verify_result = _run_magpie_ssh(client, workspace_id, verify_cmd, timeout=30, with_node_env=False)
+                remaining_conflicts = verify_result.get('stdout', '').strip()
+
+                if remaining_conflicts:
+                    logger.error(f"[CONFLICT RESOLUTION] ✗ Conflicts still remain: {remaining_conflicts}")
+                    # Abort the merge
+                    abort_cmd = "cd /workspace/nextjs-app && git merge --abort"
+                    _run_magpie_ssh(client, workspace_id, abort_cmd, timeout=30, with_node_env=False)
+                    return {
+                        'status': 'conflict',
+                        'message': f'AI attempted resolution but conflicts remain in: {remaining_conflicts}',
+                        'conflicted_files': [f.strip() for f in remaining_conflicts.split('\n') if f.strip()]
+                    }
+
+                # Push the merge to GitHub
+                push_cmd = "cd /workspace/nextjs-app && git push origin lfg-agent"
+                push_result = _run_magpie_ssh(client, workspace_id, push_cmd, timeout=60, with_node_env=False)
+
+                if push_result.get('exit_code') == 0:
+                    logger.info(f"[CONFLICT RESOLUTION] ✓ Successfully resolved and pushed merge")
+                    return {'status': 'success', 'message': 'Conflicts resolved by AI and merged'}
+                else:
+                    push_error = push_result.get('stderr', push_result.get('stdout', 'Unknown error'))
+                    logger.error(f"[CONFLICT RESOLUTION] ✗ Failed to push: {push_error}")
+                    return {'status': 'error', 'message': f'Conflicts resolved but push failed: {push_error}'}
+            else:
+                # AI failed to resolve conflicts
+                logger.error(f"[CONFLICT RESOLUTION] ✗ AI failed to resolve conflicts")
+                abort_cmd = "cd /workspace/nextjs-app && git merge --abort"
+                _run_magpie_ssh(client, workspace_id, abort_cmd, timeout=30, with_node_env=False)
+                return {
+                    'status': 'conflict',
+                    'message': 'AI could not resolve conflicts automatically',
+                    'conflicted_files': conflicted_files
+                }
+
+        except Exception as ai_error:
+            logger.error(f"[CONFLICT RESOLUTION] ✗ AI error: {str(ai_error)}", exc_info=True)
+            # Abort the merge on error
+            abort_cmd = "cd /workspace/nextjs-app && git merge --abort"
+            _run_magpie_ssh(client, workspace_id, abort_cmd, timeout=30, with_node_env=False)
+            return {
+                'status': 'error',
+                'message': f'AI error during conflict resolution: {str(ai_error)}',
+                'conflicted_files': conflicted_files
+            }
+
+    # No conflicts - push the merge
+    push_cmd = "cd /workspace/nextjs-app && git push origin lfg-agent"
+    push_result = _run_magpie_ssh(client, workspace_id, push_cmd, timeout=60, with_node_env=False)
+
+    if push_result.get('exit_code') == 0:
+        logger.info(f"[CONFLICT RESOLUTION] ✓ Successfully merged {feature_branch} into lfg-agent (no conflicts)")
+        return {'status': 'success', 'message': 'No conflicts - merged successfully'}
+    else:
+        return {'status': 'error', 'message': 'Failed to push merge'}
+
+
 def merge_feature_to_lfg_agent(token: str, owner: str, repo_name: str, feature_branch: str) -> Dict[str, Any]:
     """
     Merge the feature branch into lfg-agent branch using GitHub API.
@@ -886,8 +1076,6 @@ def commit_and_push_changes(workspace_id: str, branch_name: str, commit_message:
     except Exception as e:
         logger.error(f"Failed to commit and push changes: {str(e)}", exc_info=True)
         return {'status': 'error', 'message': str(e)}
-
-
 
 
 def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_id: int, max_execution_time: int = 600) -> Dict[str, Any]:
@@ -1150,6 +1338,7 @@ Please check:
 
         logger.info(f"\n[STEP 8/10] Setting up Git repository in workspace...")
         # 8. SETUP GIT IN WORKSPACE (if GitHub is configured)
+        git_setup_error = None  # Track git setup issues to pass to AI
         if github_owner and github_repo and github_token and feature_branch_name:
             # Check if repo needs template push first
             if repo_needs_template:
@@ -1179,42 +1368,17 @@ Please check:
                 workspace.metadata['git_branch'] = feature_branch_name
                 workspace.save(update_fields=['metadata'])
             else:
-                # Git setup failed - STOP execution and mark ticket as failed
+                # Git setup failed - Don't stop execution, let AI fix it
                 error_msg = git_setup_result.get('message', 'Unknown git setup error')
-                logger.error(f"[STEP 8/10] ✗ Git setup failed: {error_msg}")
+                logger.warning(f"[STEP 8/10] ⚠ Git setup has issues: {error_msg}")
+                logger.info(f"[STEP 8/10] → Will delegate git issue resolution to AI")
 
-                ticket.status = 'failed'
-                ticket.notes = f"""
-[{datetime.now().strftime('%Y-%m-%d %H:%M')}] EXECUTION FAILED - Git Setup Error
-
-{error_msg}
-
-This typically happens due to:
-1. Branch name contains special characters that need escaping
-2. Network connectivity issues to GitHub
-3. Permission issues with the repository
-
-Please check the logs above for more details.
-"""
-                ticket.save(update_fields=['status', 'notes'])
-
-                broadcast_ticket_notification(conversation_id, {
-                    'is_notification': True,
-                    'notification_type': 'toolhistory',
-                    'function_name': 'ticket_execution',
-                    'status': 'failed',
-                    'message': f"✗ Ticket #{ticket.id} failed: Git setup error",
-                    'ticket_id': ticket.id,
-                    'ticket_name': ticket.name,
-                    'refresh_checklist': True
-                })
-
-                return {
-                    "status": "error",
-                    "ticket_id": ticket_id,
-                    "error": "Git setup failed",
-                    "details": error_msg,
-                    "execution_time": f"{time.time() - start_time:.2f}s"
+                # Capture git error context for AI to fix
+                git_setup_error = {
+                    'message': error_msg,
+                    'details': git_setup_result.get('details', ''),
+                    'branch': feature_branch_name,
+                    'repo': f"{github_owner}/{github_repo}"
                 }
         else:
             logger.info(f"[STEP 8/10] ⊘ Skipping Git setup - GitHub not configured")
@@ -1262,6 +1426,29 @@ Please check the logs above for more details.
         except Exception as e:
             logger.warning(f"[STEP 9/10] ⚠ Could not fetch project documentation: {str(e)}")
 
+        # Build git error context if present
+        git_error_context = ""
+        if git_setup_error:
+            git_error_context = f"""
+⚠️ GIT SETUP ISSUE DETECTED:
+Repository: {git_setup_error['repo']}
+Target Branch: {git_setup_error['branch']}
+Error: {git_setup_error['message']}
+
+🔧 BEFORE implementing the ticket, you MUST fix this git issue:
+1. Check the current git status: cd /workspace/nextjs-app && git status
+2. If there are merge conflicts, resolve them:
+   - Check conflicted files
+   - Resolve conflicts by editing files
+   - Stage resolved files: git add <files>
+   - Complete merge: git commit -m "Resolve merge conflicts"
+3. If there are uncommitted changes, either commit or stash them
+4. Checkout the correct branch: git checkout {git_setup_error['branch']}
+5. Verify you're on the right branch: git branch --show-current
+
+Only AFTER fixing the git issue should you proceed with ticket implementation.
+"""
+
         implementation_prompt = f"""
 You are implementing ticket #{ticket.id}: {ticket.name}
 
@@ -1270,6 +1457,7 @@ TICKET DESCRIPTION:
 
 PROJECT PATH: nextjs-app
 {project_context}
+{git_error_context}
 
 ✅ Success case: "IMPLEMENTATION_STATUS: COMPLETE - [brief summary of what you did]"
 ❌ Failure case: "IMPLEMENTATION_STATUS: FAILED - [reason]"
@@ -1403,8 +1591,20 @@ Note: whenever a TODO item is completed, make sure to mark the TODO as done.
                     logger.info(f"[STEP 12/12] ✓ Merged {feature_branch_name} into lfg-agent")
                     merge_status = 'merged'
                 elif merge_result['status'] == 'conflict':
-                    logger.warning(f"[STEP 12/12] ⚠ Merge conflict detected - manual resolution required")
-                    merge_status = 'conflict'
+                    # Try to resolve conflict locally in workspace
+                    logger.warning(f"[STEP 12/12] ⚠ Merge conflict detected via API, attempting AI-based resolution...")
+                    resolution_result = resolve_merge_conflict(workspace_id, feature_branch_name, ticket_id, project.project_id, conversation_id)
+
+                    if resolution_result['status'] == 'success':
+                        logger.info(f"[STEP 12/12] ✓ Conflicts resolved and merged locally")
+                        merge_status = 'merged'
+                    else:
+                        logger.error(f"[STEP 12/12] ✗ Could not resolve conflicts: {resolution_result.get('message')}")
+                        merge_status = 'conflict'
+                        # Add conflict details to ticket notes
+                        if 'conflicted_files' in resolution_result:
+                            ticket.notes += f"\n\n⚠ MERGE CONFLICTS:\nFiles: {', '.join(resolution_result['conflicted_files'])}"
+                            ticket.save(update_fields=['notes'])
                 else:
                     logger.error(f"[STEP 12/12] ✗ Merge failed: {merge_result.get('message')}")
                     merge_status = 'failed'
@@ -1576,16 +1776,17 @@ Manual intervention required
 
 def batch_execute_tickets(ticket_ids: List[int], project_id: int, conversation_id: int) -> Dict[str, Any]:
     """
-    Execute multiple tickets in sequence.
-    
-    This is useful when tickets have dependencies and need to be executed
-    in a specific order.
-    
+    Execute multiple tickets in sequence for a single project.
+
+    NOTE: This function executes tickets SYNCHRONOUSLY (one after another).
+    For the same project, tickets always execute sequentially.
+    Different projects can execute in parallel if workers > 1.
+
     Args:
         ticket_ids: List of ticket IDs to execute
-        project_id: The project ID
+        project_id: The project ID (database ID, not UUID)
         conversation_id: The conversation ID
-        
+
     Returns:
         Dict with batch execution results
     """
@@ -1599,7 +1800,7 @@ def batch_execute_tickets(ticket_ids: List[int], project_id: int, conversation_i
         'message': f"Starting background execution for {len(ticket_ids)} tickets.",
         'refresh_checklist': bool(ticket_ids)
     })
-    
+
     for index, ticket_id in enumerate(ticket_ids, start=1):
         broadcast_ticket_notification(conversation_id, {
             'is_notification': True,
