@@ -10311,6 +10311,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             // Use the raw type if type_display is not available
                             const displayType = file.type_display || file.type || 'Unknown';
                             typeBadge.textContent = displayType;
+                            typeBadge.title = displayType;
                             fileType.appendChild(typeBadge);
                             
                             // Create owner cell

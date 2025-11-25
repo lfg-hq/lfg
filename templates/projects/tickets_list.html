@@ -138,6 +138,322 @@
             word-wrap: break-word;
         }
 
+        /* Logs tab layout - flex container for logs + chat */
+        .logs-tab-content {
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 140px);
+            position: relative;
+        }
+
+        .logs-tab-content .execution-logs-container {
+            flex: 1;
+            overflow-y: auto;
+            padding-bottom: 100px; /* Space for fixed chat input */
+        }
+
+        /* Chat input container - fixed at bottom */
+        .logs-chat-container {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            border-top: 1px solid var(--border-color, #333);
+            padding: 1rem;
+            background: var(--surface-primary, #1e1e1e);
+        }
+
+        /* AI typing indicator */
+        .ai-typing-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 0;
+            margin: 0.25rem 0 0.5rem;
+            border-left: none;
+            background: transparent;
+            border-radius: 0;
+            color: var(--text-secondary, #bdbdbd);
+            font-size: 0.9rem;
+        }
+
+        .ai-typing-indicator .typing-dots {
+            display: flex;
+            gap: 4px;
+        }
+
+        .ai-typing-indicator .typing-dots span {
+            width: 6px;
+            height: 6px;
+            background: var(--purple-accent, #8B5CF6);
+            border-radius: 50%;
+            animation: typingBounce 1.4s infinite ease-in-out;
+        }
+
+        .ai-typing-indicator .typing-dots span:nth-child(1) { animation-delay: 0s; }
+        .ai-typing-indicator .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+        .ai-typing-indicator .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes typingBounce {
+            0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+            40% { transform: translateY(-4px); opacity: 1; }
+        }
+
+        /* Stop execution button */
+        .stop-execution-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            background: radial-gradient(circle at 30% 30%, #f87171, #dc2626);
+            border: none;
+            border-radius: 50%;
+            color: #fff;
+            font-size: 0.6rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        .stop-execution-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 14px rgba(248, 113, 113, 0.25);
+        }
+
+        .stop-execution-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .logs-chat-actions {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+
+        .logs-chat-stop-btn {
+            display: none;
+        }
+
+        .logs-chat-input-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .logs-chat-field {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            background: var(--surface-secondary, #111111);
+            border: 1px solid rgba(148, 163, 184, 0.25);
+            border-radius: 18px;
+            padding: 0.2rem 0.45rem 0.2rem 0.3rem;
+        }
+
+        .logs-chat-field:focus-within {
+            border-color: rgba(139, 92, 246, 0.8);
+            box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.6);
+        }
+
+        .logs-chat-attach-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: transparent;
+            border: none;
+            color: var(--text-secondary, #a3a3a3);
+            padding: 0.35rem;
+            cursor: pointer;
+            transition: color 0.2s, background 0.2s;
+            border-radius: 50%;
+        }
+
+        .logs-chat-attach-btn:hover {
+            color: var(--text-primary, #fff);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .logs-chat-attachments {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .logs-chat-attachment {
+            display: flex;
+            align-items: center;
+            gap: 0.375rem;
+            background: var(--surface-secondary, #1a1a1a);
+            border: 1px solid var(--border-color, #333);
+            border-radius: 6px;
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+            color: var(--text-secondary, #888);
+        }
+
+        .logs-chat-attachment .remove-attachment {
+            cursor: pointer;
+            color: var(--text-secondary, #888);
+            padding: 0.125rem;
+        }
+
+        .logs-chat-attachment .remove-attachment:hover {
+            color: var(--error-color, #ef4444);
+        }
+
+        .logs-chat-input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            padding: 0.45rem 0.3rem 0.45rem 0.1rem;
+            color: var(--text-primary, #fff);
+            font-size: 0.9rem;
+            resize: none;
+            font-family: inherit;
+            line-height: 1.4;
+            min-height: 38px;
+            max-height: 120px;
+        }
+
+        .logs-chat-input:focus {
+            outline: none;
+        }
+
+        .logs-chat-input::placeholder {
+            color: var(--text-secondary, #888);
+        }
+
+        .logs-chat-send-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: none;
+            background: radial-gradient(circle at 30% 30%, #c084fc, #7c3aed);
+            color: #fff;
+            cursor: pointer;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        .logs-chat-send-btn:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 14px rgba(124, 58, 237, 0.35);
+        }
+
+        .logs-chat-send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .logs-chat-send-btn i {
+            font-size: 0.675rem;
+        }
+
+
+        /* User message in logs - purple theme */
+        .execution-log-entry.user-message {
+            border-left: 3px solid var(--purple-accent, #8B5CF6);
+            margin: 1rem 0;
+            padding: 0.75rem 1rem;
+            background: rgba(139, 92, 246, 0.05);
+            border-radius: 0 8px 8px 0;
+        }
+
+        .execution-log-entry.user-message .log-header {
+            cursor: default;
+            padding: 0;
+        }
+
+        .execution-log-entry.user-message .log-explanation {
+            white-space: pre-wrap;
+            word-break: break-word;
+            color: var(--text-primary, #fff);
+        }
+
+        .user-message-icon {
+            color: var(--purple-accent, #8B5CF6);
+            flex-shrink: 0;
+        }
+
+        /* AI response in logs - slightly different shade */
+        .execution-log-entry.ai-response {
+            border-left: 3px solid #a78bfa;
+            margin: 1rem 0;
+            padding: 0.75rem 1rem;
+            background: rgba(167, 139, 250, 0.05);
+            border-radius: 0 8px 8px 0;
+        }
+
+        .execution-log-entry.ai-response .log-header {
+            cursor: default;
+            padding: 0;
+        }
+
+        .ai-response-icon {
+            color: #a78bfa;
+            flex-shrink: 0;
+        }
+
+        .ai-response-content {
+            margin-top: 0.75rem;
+            color: var(--text-primary, #e6e6e6);
+            font-family: inherit;
+            font-size: 0.9rem;
+            line-height: 1.65;
+        }
+
+        .ai-response-content p {
+            margin: 0 0 0.75rem;
+        }
+
+        .ai-response-content ul,
+        .ai-response-content ol {
+            margin: 0.5rem 0 0.75rem 1.25rem;
+            padding-left: 1.25rem;
+        }
+
+        .ai-response-content li {
+            margin-bottom: 0.35rem;
+        }
+
+        .ai-response-content pre {
+            background: #111826;
+            border: 1px solid rgba(148, 163, 184, 0.25);
+            border-radius: 6px;
+            padding: 0.75rem 1rem;
+            overflow-x: auto;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+            font-size: 0.8rem;
+            color: #e5e7eb;
+            margin-bottom: 1rem;
+        }
+
+        .ai-response-content code {
+            background: rgba(148, 163, 184, 0.15);
+            padding: 0.2rem 0.35rem;
+            border-radius: 4px;
+            font-size: 0.82rem;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+        }
+
+        .ai-response-content blockquote {
+            border-left: 4px solid rgba(167, 139, 250, 0.4);
+            padding-left: 0.75rem;
+            margin: 0.5rem 0 1rem;
+            color: var(--text-secondary, #b4b4b4);
+            font-style: italic;
+        }
+
+        /* Command entries - more spacing */
+        .execution-log-entry:not(.user-message):not(.ai-response) {
+            margin: 0.75rem 0;
+        }
+
         /* Tasks styling */
         .tasks-list {
             padding: 0;
@@ -833,9 +1149,6 @@
             <button class="drawer-tab active" data-tab="details" onclick="switchDrawerTab('details')">
                 <i class="fas fa-info-circle"></i> Details
             </button>
-            <button class="drawer-tab" data-tab="chat" onclick="switchDrawerTab('chat')">
-                <i class="fas fa-comments"></i> Chat
-            </button>
             <button class="drawer-tab" data-tab="logs" onclick="switchDrawerTab('logs')">
                 <i class="fas fa-terminal"></i> Logs
             </button>
@@ -1471,6 +1784,7 @@
         let drawerPinned = false;
         let ticketLogsWebSocket = null;
         let reconnectAttempts = 0;
+        let isAiProcessing = false;
         const MAX_RECONNECT_ATTEMPTS = 5;
 
         // WebSocket functions for real-time log updates
@@ -1537,13 +1851,346 @@
             }
         }
 
+        // Render a log entry based on its type
+        function renderLogEntry(log, index) {
+            const logType = log.log_type || 'command';
+            const timestamp = formatDate(log.created_at);
+
+            if (logType === 'user_message') {
+                // User message - purple theme
+                return `
+                    <div class="execution-log-entry user-message" data-cmd-index="${index}" data-log-id="${log.id}" data-log-type="user_message">
+                        <div class="log-header">
+                            <div style="display: flex; align-items: flex-start; gap: 0.625rem; flex: 1;">
+                                <i class="fas fa-user user-message-icon" style="font-size: 0.875rem; margin-top: 3px;"></i>
+                                <div>
+                                    <span style="color: #8B5CF6; font-weight: 500; font-size: 0.8rem;">You</span>
+                                    <div class="log-explanation" style="margin-top: 0.25rem;">${escapeHtml(log.command)}</div>
+                                </div>
+                            </div>
+                            <span class="log-timestamp" style="white-space: nowrap; margin-left: 1rem; align-self: flex-start;">${timestamp}</span>
+                        </div>
+                    </div>
+                `;
+            } else if (logType === 'ai_response') {
+                // AI response - show full message with markdown support
+                const fullResponse = log.output || log.command || '';
+                const renderedResponse = renderMarkdown(fullResponse);
+                return `
+                    <div class="execution-log-entry ai-response" data-cmd-index="${index}" data-log-id="${log.id}" data-log-type="ai_response">
+                        <div class="log-header">
+                            <div style="display: flex; align-items: flex-start; gap: 0.625rem; flex: 1;">
+                                <i class="fas fa-robot ai-response-icon" style="font-size: 0.875rem; margin-top: 3px;"></i>
+                                <span style="color: #a78bfa; font-weight: 500; font-size: 0.8rem;">AI Assistant</span>
+                            </div>
+                            <span class="log-timestamp" style="white-space: nowrap; margin-left: 1rem;">${timestamp}</span>
+                        </div>
+                        <div class="ai-response-content">${renderedResponse}</div>
+                    </div>
+                `;
+            } else {
+                // Command - default collapsible entry
+                const explanation = log.explanation || 'No explanation provided';
+                return `
+                    <div class="execution-log-entry collapsed" data-cmd-index="${index}" data-log-id="${log.id}" data-log-type="command">
+                        <div class="log-header" onclick="toggleCommandExpand('${index}')">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; flex: 1; overflow: hidden;">
+                                <i class="fas fa-chevron-right expand-icon" style="font-size: 0.75rem; transition: transform 0.2s;"></i>
+                                <span class="log-explanation" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(explanation)}</span>
+                            </div>
+                            <span class="log-timestamp" style="white-space: nowrap; margin-left: 1rem;">${timestamp}</span>
+                        </div>
+                        <div class="log-details" style="display: none;">
+                            <pre class="log-command">${escapeHtml(log.command)}</pre>
+                            ${log.output ? `<pre class="log-output">${escapeHtml(log.output)}</pre>` : '<p style="color: var(--text-secondary); font-style: italic; margin-top: 0.5rem; font-size: 0.875rem;">No output</p>'}
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        // Scroll logs container to bottom to show latest logs
+        function scrollLogsToBottom() {
+            const logsContainer = document.getElementById('executionLogsContainer');
+            if (logsContainer) {
+                // Use requestAnimationFrame to ensure DOM is updated
+                requestAnimationFrame(() => {
+                    logsContainer.scrollTop = logsContainer.scrollHeight;
+                });
+            }
+        }
+
+        // Store pending file attachments for chat
+        let logsChatAttachments = [];
+
+        // Handle file selection for chat attachments
+        function handleLogsChatFileSelect(event) {
+            const files = Array.from(event.target.files);
+            files.forEach(file => {
+                // Prevent duplicates
+                if (!logsChatAttachments.find(f => f.name === file.name && f.size === file.size)) {
+                    logsChatAttachments.push(file);
+                }
+            });
+            renderLogsChatAttachments();
+            // Reset file input
+            event.target.value = '';
+        }
+
+        // Render attachment previews
+        function renderLogsChatAttachments() {
+            const container = document.getElementById('logsChatAttachments');
+            if (!container) return;
+
+            if (logsChatAttachments.length === 0) {
+                container.innerHTML = '';
+                return;
+            }
+
+            container.innerHTML = logsChatAttachments.map((file, index) => `
+                <div class="logs-chat-attachment">
+                    <i class="fas ${getFileIcon(file.name)}"></i>
+                    <span>${escapeHtml(truncateFilename(file.name, 20))}</span>
+                    <span class="remove-attachment" onclick="removeLogsChatAttachment(${index})" title="Remove">
+                        <i class="fas fa-times"></i>
+                    </span>
+                </div>
+            `).join('');
+        }
+
+        // Get appropriate icon for file type
+        function getFileIcon(filename) {
+            const ext = filename.split('.').pop().toLowerCase();
+            const icons = {
+                'pdf': 'fa-file-pdf',
+                'doc': 'fa-file-word', 'docx': 'fa-file-word',
+                'xls': 'fa-file-excel', 'xlsx': 'fa-file-excel',
+                'png': 'fa-file-image', 'jpg': 'fa-file-image', 'jpeg': 'fa-file-image', 'gif': 'fa-file-image', 'svg': 'fa-file-image',
+                'zip': 'fa-file-archive', 'rar': 'fa-file-archive', 'tar': 'fa-file-archive', 'gz': 'fa-file-archive',
+                'js': 'fa-file-code', 'ts': 'fa-file-code', 'py': 'fa-file-code', 'html': 'fa-file-code', 'css': 'fa-file-code', 'json': 'fa-file-code',
+                'txt': 'fa-file-alt', 'md': 'fa-file-alt',
+            };
+            return icons[ext] || 'fa-file';
+        }
+
+        // Truncate filename for display
+        function truncateFilename(name, maxLen) {
+            if (name.length <= maxLen) return name;
+            const ext = name.split('.').pop();
+            const base = name.slice(0, name.length - ext.length - 1);
+            const truncatedBase = base.slice(0, maxLen - ext.length - 4) + '...';
+            return truncatedBase + '.' + ext;
+        }
+
+        // Remove an attachment
+        function removeLogsChatAttachment(index) {
+            logsChatAttachments.splice(index, 1);
+            renderLogsChatAttachments();
+        }
+
+        // Clear all attachments
+        function clearLogsChatAttachments() {
+            logsChatAttachments = [];
+            renderLogsChatAttachments();
+        }
+
+        // Handle keydown in chat input (Enter to send, Shift+Enter for newline)
+        function handleLogsChatKeydown(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendLogsChatMessage();
+            }
+        }
+
+        // Send chat message to continue ticket execution
+        async function sendLogsChatMessage() {
+            const input = document.getElementById('logsChatInput');
+            const sendBtn = document.getElementById('logsChatSendBtn');
+            const attachBtn = document.querySelector('.logs-chat-attach-btn');
+            const message = input?.value?.trim();
+            const hasAttachments = logsChatAttachments.length > 0;
+
+            // Need either message or attachments to send
+            if ((!message && !hasAttachments) || !currentTicket || !currentProjectId) {
+                return;
+            }
+
+            // Disable inputs while sending
+            input.disabled = true;
+            sendBtn.disabled = true;
+            if (attachBtn) attachBtn.disabled = true;
+            const originalBtnHtml = sendBtn.innerHTML;
+            sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+            try {
+                // User message will be added via WebSocket after it's saved to database
+                // Send the message to the backend API using FormData for file support
+                const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+                if (!csrfToken) {
+                    throw new Error('CSRF token not found. Please refresh the page.');
+                }
+
+                const formData = new FormData();
+                formData.append('message', message || '');
+                formData.append('project_id', currentProjectId);
+
+                // Add attachments
+                logsChatAttachments.forEach((file, index) => {
+                    formData.append('attachments', file);
+                });
+
+                const response = await fetch(`/api/v1/project-tickets/${currentTicket.id}/chat/`, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to send message');
+                }
+
+                // Clear input and attachments on success
+                input.value = '';
+                clearLogsChatAttachments();
+
+                // Show AI typing indicator
+                showAiTypingIndicator();
+
+                // Show success feedback
+                console.log('Chat message sent successfully:', data);
+
+            } catch (error) {
+                console.error('Error sending chat message:', error);
+                // Show error notification
+                alert('Failed to send message: ' + error.message);
+                // Hide typing indicator on error
+                hideAiTypingIndicator();
+            } finally {
+                // Re-enable inputs
+                input.disabled = false;
+                sendBtn.disabled = false;
+                if (attachBtn) attachBtn.disabled = false;
+                sendBtn.innerHTML = originalBtnHtml;
+                input.focus();
+            }
+        }
+
+        // Show AI typing indicator
+        function showAiTypingIndicator() {
+            const indicatorSlot = document.getElementById('aiTypingIndicatorSlot');
+            if (!indicatorSlot) return;
+
+            // Remove existing indicator if any
+            hideAiTypingIndicator();
+
+            indicatorSlot.innerHTML = `
+                <div class="ai-typing-indicator" id="aiTypingIndicator">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span>🚀 Agent is working…</span>
+                        <div class="typing-dots">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                        </div>
+                    </div>
+                </div>
+            `;
+            setAiProcessingState(true);
+        }
+
+        // Hide AI typing indicator
+        function hideAiTypingIndicator() {
+            const indicator = document.getElementById('aiTypingIndicator');
+            if (indicator) {
+                indicator.remove();
+                const slot = document.getElementById('aiTypingIndicatorSlot');
+                if (slot) {
+                    slot.innerHTML = '';
+                }
+            }
+            setAiProcessingState(false);
+        }
+
+        // Stop/interrupt AI execution
+        async function stopExecution(event = null) {
+            if (!currentTicket) return;
+
+            const stopBtn = event?.currentTarget || document.getElementById('logsChatStopBtn');
+            const originalBtnHtml = stopBtn ? stopBtn.innerHTML : null;
+            if (stopBtn) {
+                stopBtn.disabled = true;
+                stopBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Stopping...';
+            }
+
+            try {
+                const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+                const response = await fetch(`/api/v1/project-tickets/${currentTicket.id}/stop/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    }
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    console.log('Stop request sent:', data);
+                    // Hide typing indicator
+                    hideAiTypingIndicator();
+                } else {
+                    console.error('Failed to stop:', data);
+                    alert('Failed to stop: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error stopping execution:', error);
+                alert('Failed to stop execution');
+            } finally {
+                if (stopBtn) {
+                    stopBtn.disabled = false;
+                    stopBtn.innerHTML = originalBtnHtml;
+                }
+            }
+        }
+        function updateSendStopButtons() {
+            const sendBtn = document.getElementById('logsChatSendBtn');
+            const stopBtn = document.getElementById('logsChatStopBtn');
+            if (!sendBtn || !stopBtn) return;
+
+            if (isAiProcessing) {
+                sendBtn.style.display = 'none';
+                stopBtn.style.display = 'inline-flex';
+            } else {
+                sendBtn.style.display = 'inline-flex';
+                stopBtn.style.display = 'none';
+            }
+        }
+
+        function setAiProcessingState(value) {
+            isAiProcessing = value;
+            updateSendStopButtons();
+        }
+
+        // Store pending logs when not on logs tab
+        let pendingLogs = [];
+
         function handleNewLog(log) {
             console.log('Handling new log:', log);
+
+            // Hide typing indicator when AI response arrives
+            if (log.log_type === 'ai_response') {
+                hideAiTypingIndicator();
+            }
 
             // Find the logs container
             const logsContainer = document.querySelector('.execution-logs-container');
             if (!logsContainer) {
-                console.log('Logs container not found, user may not be on logs tab');
+                // Not on logs tab - store for later
+                console.log('Logs container not found, storing log for later');
+                pendingLogs.push(log);
                 return;
             }
 
@@ -1554,35 +2201,17 @@
                 return;
             }
 
-            // Create new log entry HTML
-            const explanation = log.explanation || 'No explanation provided';
-            const logHtml = `
-                <div class="execution-log-entry collapsed" data-log-id="${log.id}" data-cmd-index="new-${log.id}">
-                    <div class="log-header" onclick="toggleCommandExpand('new-${log.id}')">
-                        <div style="display: flex; align-items: center; gap: 0.5rem; flex: 1; overflow: hidden;">
-                            <i class="fas fa-chevron-right expand-icon" style="font-size: 0.75rem; transition: transform 0.2s;"></i>
-                            <span class="log-explanation" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(explanation)}</span>
-                        </div>
-                        <span class="log-timestamp" style="white-space: nowrap; margin-left: 1rem;">${formatDate(log.created_at)}</span>
-                    </div>
-                    <div class="log-details" style="display: none;">
-                        <pre class="log-command">${escapeHtml(log.command)}</pre>
-                        ${log.output ? `<pre class="log-output">${escapeHtml(log.output)}</pre>` : '<p style="color: var(--text-secondary); font-style: italic; margin-top: 0.5rem; font-size: 0.875rem;">No output</p>'}
-                    </div>
-                </div>
-            `;
-
-            // Insert at the top (latest first)
-            const firstLog = logsContainer.querySelector('.execution-log-entry');
-            if (firstLog) {
-                firstLog.insertAdjacentHTML('beforebegin', logHtml);
-            } else {
-                // No logs yet, add after the header
-                const header = logsContainer.querySelector('h4');
-                if (header) {
-                    header.insertAdjacentHTML('afterend', logHtml);
-                }
+            // Remove the "no logs" message if it exists
+            const noLogsMessage = logsContainer.querySelector('.no-logs-message');
+            if (noLogsMessage) {
+                noLogsMessage.remove();
             }
+
+            // Create new log entry HTML using the shared render function
+            const logHtml = renderLogEntry(log, `new-${log.id}`);
+
+            // Append at the bottom (oldest first, latest at bottom)
+            logsContainer.insertAdjacentHTML('beforeend', logHtml);
 
             // Add a subtle animation to highlight the new log
             const newLogElement = document.querySelector(`.execution-log-entry[data-log-id="${log.id}"]`);
@@ -1593,6 +2222,9 @@
                     newLogElement.style.backgroundColor = '';
                 }, 100);
             }
+
+            // Scroll to show the new log
+            scrollLogsToBottom();
         }
 
         function handleStatusChange(status, ticketId) {
@@ -1653,10 +2285,9 @@
         function switchDrawerTab(tab) {
             currentTab = tab;
 
-            // Disconnect WebSocket if leaving logs tab
-            if (tab !== 'logs') {
-                disconnectTicketLogsWebSocket();
-            }
+            // Keep WebSocket connected even when switching tabs
+            // This ensures we don't miss any messages
+            // WebSocket will be disconnected only when drawer closes or ticket changes
 
             // Update tab buttons
             document.querySelectorAll('.drawer-tab').forEach(btn => {
@@ -1676,9 +2307,6 @@
             switch(tab) {
                 case 'details':
                     showDetailsTab(body);
-                    break;
-                case 'chat':
-                    showChatTab(body);
                     break;
                 case 'logs':
                     showLogsTab(body);
@@ -1811,7 +2439,7 @@
         async function showLogsTab(body) {
             // Show loading state
             body.innerHTML = `
-                <div class="drawer-tab-content">
+                <div class="drawer-tab-content logs-tab-content">
                     <div class="empty-logs">
                         <i class="fas fa-spinner fa-spin" style="font-size: 2rem; color: var(--text-secondary); opacity: 0.5;"></i>
                         <p style="color: var(--text-secondary); margin-top: 1rem;">Loading execution logs...</p>
@@ -1822,7 +2450,7 @@
             // Fetch ticket logs
             if (!currentTicket || !currentProjectId) {
                 body.innerHTML = `
-                    <div class="drawer-tab-content">
+                    <div class="drawer-tab-content logs-tab-content">
                         <div class="empty-logs">
                             <i class="fas fa-terminal" style="font-size: 2rem; color: var(--text-secondary); opacity: 0.5;"></i>
                             <p style="color: var(--text-secondary); margin-top: 1rem;">No execution logs available.</p>
@@ -1833,59 +2461,92 @@
             }
 
             try {
-                const response = await fetch(`/api/v1/project-tickets/${currentTicket.id}/logs/`);
+                // Add cache-busting parameter to avoid stale data
+                const cacheBuster = new Date().getTime();
+                const response = await fetch(`/api/v1/project-tickets/${currentTicket.id}/logs/?_=${cacheBuster}`);
                 const data = await response.json();
 
-                if (data.commands && data.commands.length > 0) {
-                    // Reverse commands to show latest first
-                    const reversedCommands = [...data.commands].reverse();
-                    const totalCommands = data.commands.length;
+                console.log(`[LOGS] Loaded ${data.commands?.length || 0} logs for ticket ${currentTicket.id}`);
 
-                    // Display command execution logs
-                    body.innerHTML = `
-                        <div class="drawer-tab-content">
-                            <div class="execution-logs-container">
-                                
-                                <h4><i class="fas fa-terminal"></i> Command History (Latest First)</h4>
-                                ${reversedCommands.map((cmd, index) => {
-                                    const explanation = cmd.explanation || 'No explanation provided';
-                                    return `
-                                    <div class="execution-log-entry collapsed" data-cmd-index="${index}" data-log-id="${cmd.id}">
-                                        <div class="log-header" onclick="toggleCommandExpand(${index})">
-                                            <div style="display: flex; align-items: center; gap: 0.5rem; flex: 1; overflow: hidden;">
-                                                <i class="fas fa-chevron-right expand-icon" style="font-size: 0.75rem; transition: transform 0.2s;"></i>
-                                                <span class="log-explanation" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(explanation)}</span>
-                                            </div>
-                                            <span class="log-timestamp" style="white-space: nowrap; margin-left: 1rem;">${formatDate(cmd.created_at)}</span>
-                                        </div>
-                                        <div class="log-details" style="display: none;">
-                                            <pre class="log-command">${escapeHtml(cmd.command)}</pre>
-                                            ${cmd.output ? `<pre class="log-output">${escapeHtml(cmd.output)}</pre>` : '<p style="color: var(--text-secondary); font-style: italic; margin-top: 0.5rem; font-size: 0.875rem;">No output</p>'}
-                                        </div>
-                                    </div>
-                                `}).join('')}
-                            </div>
-                        </div>
-                    `;
-                } else {
-                    // No logs available
-                    body.innerHTML = `
-                        <div class="drawer-tab-content">
-                            <div class="empty-logs">
-                                <i class="fas fa-terminal" style="font-size: 2rem; color: var(--text-secondary); opacity: 0.5;"></i>
-                                <p style="color: var(--text-secondary); margin-top: 1rem;">No execution logs available for this ticket yet.</p>
-                                <p style="color: var(--text-secondary); font-size: 0.875rem;">Logs will appear here after the ticket is executed.</p>
-                            </div>
-                        </div>
-                    `;
+                // Log breakdown by type for debugging
+                if (data.commands && data.commands.length > 0) {
+                    const typeBreakdown = data.commands.reduce((acc, cmd) => {
+                        acc[cmd.log_type || 'unknown'] = (acc[cmd.log_type || 'unknown'] || 0) + 1;
+                        return acc;
+                    }, {});
+                    console.log('[LOGS] Type breakdown:', typeBreakdown);
                 }
 
-                // Connect to WebSocket for real-time log updates
-                connectTicketLogsWebSocket(currentTicket.id);
+                // Build the logs HTML (oldest first, latest at bottom)
+                let logsHtml = '';
+                if (data.commands && data.commands.length > 0) {
+                    // Keep original order (oldest first)
+                    const commands = data.commands;
+                    logsHtml = commands.map((cmd, index) => renderLogEntry(cmd, index)).join('');
+                }
+
+                // Display logs with chat input at bottom
+                body.innerHTML = `
+                    <div class="drawer-tab-content logs-tab-content">
+                        <div class="execution-logs-container" id="executionLogsContainer">
+                            <h4><i class="fas fa-terminal"></i> Command History</h4>
+                            ${logsHtml || '<p class="no-logs-message" style="color: var(--text-secondary); font-size: 0.875rem; padding: 1rem 0;">No execution logs yet. Logs will appear here after the ticket is executed.</p>'}
+                        </div>
+                        <div class="logs-chat-container">
+                            <div id="aiTypingIndicatorSlot"></div>
+                            <div class="logs-chat-attachments" id="logsChatAttachments"></div>
+                            <div class="logs-chat-input-wrapper">
+                                <input type="file" id="logsChatFileInput" style="display: none;" multiple onchange="handleLogsChatFileSelect(event)">
+                                <div class="logs-chat-field">
+                                    <button class="logs-chat-attach-btn" onclick="document.getElementById('logsChatFileInput').click()" title="Attach files">
+                                        <i class="fas fa-paperclip"></i>
+                                    </button>
+                                    <textarea
+                                        id="logsChatInput"
+                                        class="logs-chat-input"
+                                        placeholder="Message AI assistant..."
+                                        rows="1"
+                                        onkeydown="handleLogsChatKeydown(event)"
+                                    ></textarea>
+                                    <div class="logs-chat-actions">
+                                        <button class="logs-chat-send-btn" id="logsChatSendBtn" onclick="sendLogsChatMessage()" title="Send message">
+                                            <i class="fas fa-paper-plane"></i>
+                                        </button>
+                                        <button class="stop-execution-btn logs-chat-stop-btn" id="logsChatStopBtn" onclick="stopExecution(event)" title="Stop AI execution">
+                                            <i class="fas fa-stop"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                updateSendStopButtons();
+
+                // Process any pending logs that arrived while on other tabs
+                if (pendingLogs.length > 0) {
+                    console.log(`Processing ${pendingLogs.length} pending logs`);
+                    pendingLogs.forEach(log => handleNewLog(log));
+                    pendingLogs = [];
+                }
+
+                // Restore typing indicator if AI is currently processing
+                if (data.is_ai_processing) {
+                    console.log('[LOGS] AI is currently processing, showing typing indicator');
+                    showAiTypingIndicator();
+                }
+
+                // Scroll to bottom to show latest logs
+                scrollLogsToBottom();
+
+                // Connect to WebSocket for real-time log updates (if not already connected)
+                if (!ticketLogsWebSocket || ticketLogsWebSocket.readyState !== WebSocket.OPEN) {
+                    connectTicketLogsWebSocket(currentTicket.id);
+                }
             } catch (error) {
                 console.error('Error loading logs:', error);
                 body.innerHTML = `
-                    <div class="drawer-tab-content">
+                    <div class="drawer-tab-content logs-tab-content">
                         <div class="empty-logs">
                             <i class="fas fa-exclamation-triangle" style="font-size: 2rem; color: var(--error-color); opacity: 0.5;"></i>
                             <p style="color: var(--text-secondary); margin-top: 1rem;">Error loading execution logs.</p>
@@ -1998,135 +2659,19 @@
             }
         }
 
-        function showChatTab(body) {
-            body.innerHTML = `
-                <div class="ticket-chat-container">
-                    <div class="ticket-chat-messages" id="ticketChatMessages">
-                        <div class="ticket-chat-welcome">
-                            <i class="fas fa-robot" style="font-size: 2rem; color: var(--primary-color); opacity: 0.5;"></i>
-                            <p style="color: var(--text-secondary); margin-top: 1rem;">Chat with AI agent for ticket #${currentTicket.id}</p>
-                            <p style="color: var(--text-secondary); font-size: 0.875rem;">Ask questions or provide guidance during implementation</p>
-                        </div>
-                    </div>
-                    <div class="ticket-chat-input-container">
-                        <textarea
-                            id="ticketChatInput"
-                            class="ticket-chat-input"
-                            placeholder="Type your message..."
-                            rows="1"
-                            onkeydown="handleChatInputKeydown(event)"
-                        ></textarea>
-                        <button class="ticket-chat-send-btn" onclick="sendTicketChatMessage()">
-                            <i class="fas fa-paper-plane"></i>
-                        </button>
-                    </div>
-                </div>
-            `;
-
-            // Auto-resize textarea
-            const textarea = document.getElementById('ticketChatInput');
-            if (textarea) {
-                textarea.addEventListener('input', function() {
-                    this.style.height = 'auto';
-                    this.style.height = Math.min(this.scrollHeight, 150) + 'px';
-                });
-            }
-
-            // Load existing chat messages if any
-            loadTicketChatHistory();
-        }
-
-        function handleChatInputKeydown(event) {
-            // Send on Enter (without Shift)
-            if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
-                sendTicketChatMessage();
-            }
-        }
-
-        let ticketChatMessages = [];
-        let currentAIMessageElement = null;
-
-        function loadTicketChatHistory() {
-            // Initialize empty chat history for now
-            // In the future, we can load from backend
-            ticketChatMessages = [];
-        }
-
-        function sendTicketChatMessage() {
-            const input = document.getElementById('ticketChatInput');
-            const message = input.value.trim();
-
-            if (!message || !currentTicket) return;
-
-            // Clear input
-            input.value = '';
-            input.style.height = 'auto';
-
-            // Add user message to chat
-            addChatMessage('user', message);
-
-            // Send message to backend via WebSocket or API
-            sendMessageToTicketAgent(message);
-        }
-
-        function addChatMessage(role, content, isStreaming = false) {
-            const messagesContainer = document.getElementById('ticketChatMessages');
-            if (!messagesContainer) return;
-
-            // Remove welcome message if it exists
-            const welcome = messagesContainer.querySelector('.ticket-chat-welcome');
-            if (welcome) {
-                welcome.remove();
-            }
-
-            if (role === 'user') {
-                const messageDiv = document.createElement('div');
-                messageDiv.className = 'ticket-chat-message ticket-user-message';
-                messageDiv.innerHTML = `
-                    <div class="ticket-message-content">
-                        <div class="ticket-message-text">${escapeHtml(content)}</div>
-                    </div>
-                `;
-                messagesContainer.appendChild(messageDiv);
-                ticketChatMessages.push({role: 'user', content});
-            } else if (role === 'assistant') {
-                if (isStreaming && currentAIMessageElement) {
-                    // Update existing streaming message
-                    const textDiv = currentAIMessageElement.querySelector('.ticket-message-text');
-                    if (textDiv) {
-                        textDiv.textContent = content;
-                    }
-                } else {
-                    // Create new assistant message
-                    const messageDiv = document.createElement('div');
-                    messageDiv.className = 'ticket-chat-message ticket-assistant-message';
-                    messageDiv.innerHTML = `
-                        <div class="ticket-message-content">
-                            <div class="ticket-message-icon"><i class="fas fa-robot"></i></div>
-                            <div class="ticket-message-text">${escapeHtml(content)}</div>
-                        </div>
-                    `;
-                    messagesContainer.appendChild(messageDiv);
-
-                    if (isStreaming) {
-                        currentAIMessageElement = messageDiv;
-                    } else {
-                        ticketChatMessages.push({role: 'assistant', content});
-                        currentAIMessageElement = null;
-                    }
-                }
-            }
-
-            // Scroll to bottom
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
-        }
-
         function showTicketModal(ticket) {
             console.log('showTicketModal called with ticket:', ticket);
+
+            // Disconnect existing WebSocket if switching to a different ticket
+            if (currentTicket && currentTicket.id !== ticket.id) {
+                disconnectTicketLogsWebSocket();
+                pendingLogs = [];
+            }
+
             currentTicket = ticket;
             currentProjectId = ticket.project_id;
             currentTab = 'details';
+            setAiProcessingState(false);
 
             const drawer = document.getElementById('ticketDrawer');
             const overlay = document.getElementById('ticketDrawerOverlay');
@@ -2150,6 +2695,9 @@
             // Load details tab
             loadTabContent('details');
 
+            // Pre-connect WebSocket for this ticket (so messages aren't missed)
+            connectTicketLogsWebSocket(ticket.id);
+
             drawer.classList.add('active');
             overlay.classList.add('active');
         }
@@ -2157,10 +2705,15 @@
         function closeTicketDrawer() {
             if (drawerPinned) return; // Don't close if pinned
 
+            // Disconnect WebSocket when closing drawer
+            disconnectTicketLogsWebSocket();
+            pendingLogs = [];
+
             const drawer = document.getElementById('ticketDrawer');
             const overlay = document.getElementById('ticketDrawerOverlay');
             drawer.classList.remove('active');
             overlay.classList.remove('active');
+            setAiProcessingState(false);
             currentTicket = null;
             currentProjectId = null;
         }
@@ -2337,11 +2890,8 @@
 
                 const data = await response.json();
                 if (data.success) {
-                    // Switch to Chat tab to show execution progress
-                    switchDrawerTab('chat');
-
-                    // Show success message in chat
-                    addChatMessage('assistant', 'Ticket execution started. You can monitor progress here and provide guidance as needed.');
+                    // Switch to Logs tab to show execution progress
+                    switchDrawerTab('logs');
                 } else {
                     alert('Failed to execute ticket: ' + (data.error || 'Unknown error'));
                     // Re-enable button
@@ -2385,6 +2935,39 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        function sanitizeHtml(html) {
+            if (!html) return '';
+            const temp = document.createElement('div');
+            temp.innerHTML = html;
+            temp.querySelectorAll('script, style').forEach(el => el.remove());
+            temp.querySelectorAll('*').forEach(el => {
+                Array.from(el.attributes).forEach(attr => {
+                    const name = attr.name.toLowerCase();
+                    const value = (attr.value || '').trim().toLowerCase();
+                    if (name.startsWith('on')) {
+                        el.removeAttribute(attr.name);
+                    } else if ((name === 'href' || name === 'src') && value.startsWith('javascript:')) {
+                        el.removeAttribute(attr.name);
+                    }
+                });
+            });
+            return temp.innerHTML;
+        }
+
+        function renderMarkdown(content) {
+            if (!content) return '';
+            if (typeof marked === 'undefined') {
+                return `<pre>${escapeHtml(content)}</pre>`;
+            }
+            try {
+                const rendered = marked.parse(content);
+                return sanitizeHtml(rendered);
+            } catch (error) {
+                console.error('Error rendering markdown:', error);
+                return `<pre>${escapeHtml(content)}</pre>`;
+            }
         }
 
         let previewContent = null; // Cache the preview content
@@ -2997,61 +3580,6 @@
             ticketWebSocket.onerror = function(error) {
                 console.error('Ticket WebSocket error:', error);
             };
-        }
-
-        function handleTicketChatMessage(data) {
-            // Only show messages for the currently open ticket
-            if (!currentTicket || data.ticket_id !== currentTicket.id) {
-                return;
-            }
-
-            // Only update if chat tab is active
-            const chatTab = document.querySelector('.drawer-tab[data-tab="chat"]');
-            if (!chatTab || !chatTab.classList.contains('active')) {
-                return;
-            }
-
-            const role = data.role || 'assistant';
-            const content = data.content || '';
-            const isStreaming = data.is_streaming || false;
-
-            addChatMessage(role, content, isStreaming);
-        }
-
-        // Update sendMessageToTicketAgent to include conversation_id
-        function sendMessageToTicketAgent(message) {
-            if (!currentTicket || !currentProjectId) return;
-
-            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
-
-            // Send message to backend API
-            fetch(`/projects/${currentProjectId}/api/tickets/${currentTicket.id}/chat/`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': csrfToken
-                },
-                body: JSON.stringify({
-                    message: message,
-                    ticket_id: currentTicket.id,
-                    conversation_id: ticketConversationId
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    // Message sent successfully
-                    // Response will come via WebSocket
-                    console.log('Message sent to agent');
-                } else {
-                    console.error('Failed to send message:', data.error);
-                    addChatMessage('assistant', 'Error: Failed to send message. ' + (data.error || 'Unknown error'));
-                }
-            })
-            .catch(error => {
-                console.error('Error sending message:', error);
-                addChatMessage('assistant', 'Error: Could not connect to server.');
-            });
         }
 
         // Test drawer on page load

@@ -217,7 +217,7 @@
         /* File Browser Table Styles */
         .file-table-header {
             display: grid;
-            grid-template-columns: 40px 1fr 80px 80px 80px;
+            grid-template-columns: 40px minmax(0, 1fr) 130px 120px 90px;
             padding: 8px 16px;
             border-bottom: 1px solid #333;
             background: #1a1a1a;
@@ -232,7 +232,7 @@
         
         .file-list-item {
             display: grid;
-            grid-template-columns: 40px 1fr 80px 80px 80px;
+            grid-template-columns: 40px minmax(0, 1fr) 130px 120px 90px;
             padding: 8px 16px;
             border-bottom: 1px solid #2a2a2a;
             transition: all 0.15s ease;
@@ -279,8 +279,9 @@
         .file-type-cell {
             display: flex;
             align-items: center;
+            min-width: 0;
         }
-        
+
         .file-type-badge {
             display: inline-flex;
             align-items: center;
@@ -291,6 +292,10 @@
             text-transform: lowercase;
             letter-spacing: 0.3px;
             line-height: 1.2;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
         
         .file-owner-cell {

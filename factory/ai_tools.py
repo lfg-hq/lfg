@@ -714,6 +714,87 @@ get_ticket_todos = {
     }
 }
 
+record_ticket_summary = {
+    "type": "function",
+    "function": {
+        "name": "record_ticket_summary",
+        "description": "Record a summary of changes made during ticket execution. Use this instead of writing to .md files. Summaries are appended to the ticket's notes with timestamps, preserving previous entries. Call this at the end of ticket implementation to document what was done.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "ticket_id": {
+                    "type": "integer",
+                    "description": "The ID of the ticket to record the summary for"
+                },
+                "summary": {
+                    "type": "string",
+                    "description": "A concise summary of the changes made during ticket execution (files created/modified, features implemented, issues resolved, etc.)"
+                },
+                "files_modified": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "filename": {"type": "string", "description": "Name of the file (e.g., 'index.tsx')"},
+                            "path": {"type": "string", "description": "Full path to the file (e.g., '/workspace/nextjs-app/src/components/index.tsx')"},
+                            "action": {"type": "string", "enum": ["created", "modified", "deleted"], "description": "What was done to the file"}
+                        },
+                        "required": ["filename", "path"]
+                    },
+                    "description": "List of files that were created, modified, or deleted with their full paths"
+                }
+            },
+            "required": ["ticket_id", "summary"],
+            "additionalProperties": False,
+        }
+    }
+}
+
+broadcast_to_user = {
+    "type": "function",
+    "function": {
+        "name": "broadcast_to_user",
+        "description": "Broadcast the message to the user. Use this to answer their requests or question, communicate progress, completion status, or when you need manual intervention. This is one-way communication - it informs the user but does not continue the conversation loop. Use this when: (0) When replying to user's request (1) Task is complete, (2) You've tried multiple times to fix an issue without success, (3) Manual intervention is needed.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string",
+                    "description": "The message to broadcast to the user"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": ["progress", "complete", "blocked", "error"],
+                    "description": "Status type: 'progress' for updates, 'complete' when done, 'blocked' when manual help needed, 'error' for failures"
+                },
+                "summary": {
+                    "type": "object",
+                    "properties": {
+                        "completed_tasks": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of tasks that were completed"
+                        },
+                        "pending_issues": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of issues that still need attention"
+                        },
+                        "files_modified": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of files that were modified"
+                        }
+                    },
+                    "description": "Optional structured summary of work done"
+                }
+            },
+            "required": ["message", "status"],
+            "additionalProperties": False,
+        }
+    }
+}
+
 run_code_server = {
     "type": "function",
     "function": {
@@ -1142,7 +1223,9 @@ tools_builder = [
     get_ticket_todos,
     create_ticket_todos,
     update_todo_status,
-    run_code_server
+    run_code_server,
+    record_ticket_summary,
+    broadcast_to_user
 ]
 
 tools_design = [get_prd, execute_command, start_server, get_github_access_token]

@@ -550,6 +550,11 @@ class ProjectTicketViewSet(viewsets.ReadOnlyModelViewSet):
                 timeout=7200  # 2 hour timeout
             )
 
+            # Set AI processing flag in cache (expires in 2 hours to match task timeout)
+            from django.core.cache import cache
+            ai_processing_key = f'ticket_ai_processing_{ticket.id}'
+            cache.set(ai_processing_key, True, timeout=7200)
+
             return Response({
                 'status': 'queued',
                 'message': f'Ticket #{ticket.id} queued for execution',
@@ -580,8 +585,17 @@ class ProjectTicketViewSet(viewsets.ReadOnlyModelViewSet):
 
         logger.info(f"[LOGS API] Found {logs.count()} logs for ticket {ticket.id}")
 
+        # Log type breakdown for debugging
+        log_types = {}
+        for log in logs:
+            lt = log.log_type or 'command'
+            log_types[lt] = log_types.get(lt, 0) + 1
+        logger.info(f"[LOGS API] Log type breakdown: {log_types}")
+
         # Format logs for response
         commands_data = [{
+            'id': log.id,
+            'log_type': log.log_type or 'command',  # Ensure log_type is always set
             'command': log.command,
             'explanation': log.explanation or '',
             'output': log.output or '',
@@ -589,12 +603,18 @@ class ProjectTicketViewSet(viewsets.ReadOnlyModelViewSet):
             'created_at': log.created_at.isoformat()
         } for log in logs]
 
+        # Check if there's an active AI task for this ticket
+        from django.core.cache import cache
+        ai_processing_key = f'ticket_ai_processing_{ticket.id}'
+        is_ai_processing = cache.get(ai_processing_key, False)
+
         return Response({
             'ticket_id': ticket.id,
             'ticket_name': ticket.name,
             'ticket_status': ticket.status,
             'ticket_notes': ticket.notes or '',
-            'commands': commands_data
+            'commands': commands_data,
+            'is_ai_processing': is_ai_processing
         }, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], url_path='tasks')
@@ -627,3 +647,191 @@ class ProjectTicketViewSet(viewsets.ReadOnlyModelViewSet):
             'ticket_name': ticket.name,
             'tasks': tasks_data
         }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='chat')
+    def chat(self, request, pk=None):
+        """
+        Send a chat message to continue ticket execution with additional instructions.
+        This allows users to ask questions or request changes during ticket implementation.
+        Supports file attachments via multipart form data.
+        """
+        import logging
+        from projects.models import TicketLog, ProjectTicketAttachment
+        from projects.websocket_utils import send_ticket_log_notification
+
+        logger = logging.getLogger(__name__)
+
+        ticket = self.get_object()
+        project = ticket.project
+
+        # Handle both JSON and FormData
+        if hasattr(request.data, 'get'):
+            message = request.data.get('message', '').strip()
+        else:
+            message = request.POST.get('message', '').strip()
+
+        # Get uploaded files
+        attachments = request.FILES.getlist('attachments')
+
+        # Require either message or attachments
+        if not message and not attachments:
+            return Response({
+                'status': 'error',
+                'error': 'Message or attachments required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        logger.info(f"[TICKET CHAT] Received chat message for ticket {ticket.id}: {message[:100] if message else '(attachments only)'}...")
+
+        # Check if already processing to prevent duplicate task submissions
+        from django.core.cache import cache
+        ai_processing_key = f'ticket_ai_processing_{ticket.id}'
+        if cache.get(ai_processing_key):
+            logger.warning(f"[TICKET CHAT] Duplicate request blocked - ticket {ticket.id} already processing")
+            return Response({
+                'status': 'already_processing',
+                'message': 'Your previous message is still being processed. Please wait.',
+                'ticket_id': ticket.id
+            }, status=status.HTTP_200_OK)
+
+        try:
+            # Save attachments first
+            attachment_ids = []
+            attachment_names = []
+            for file in attachments:
+                attachment = ProjectTicketAttachment.objects.create(
+                    ticket=ticket,
+                    uploaded_by=request.user,
+                    file=file,
+                    original_filename=file.name,
+                    file_type=file.content_type or '',
+                    file_size=file.size
+                )
+                attachment_ids.append(attachment.id)
+                attachment_names.append(file.name)
+                logger.info(f"[TICKET CHAT] Saved attachment: {file.name} ({file.size} bytes)")
+
+            # Build display message including attachment info
+            display_message = message
+            if attachment_names:
+                attachment_text = ', '.join(attachment_names)
+                if message:
+                    display_message = f"{message}\n\n📎 Attachments: {attachment_text}"
+                else:
+                    display_message = f"📎 Attachments: {attachment_text}"
+
+            # Save user message to TicketLog
+            user_log = TicketLog.objects.create(
+                ticket=ticket,
+                log_type='user_message',
+                command=display_message,  # Store the message in 'command' field
+                explanation=f"Message from {request.user.email or request.user.username}"
+            )
+
+            # Send WebSocket notification for the new log
+            send_ticket_log_notification(ticket.id, {
+                'id': user_log.id,
+                'log_type': 'user_message',
+                'command': display_message,
+                'explanation': user_log.explanation,
+                'output': '',
+                'exit_code': None,
+                'created_at': user_log.created_at.isoformat()
+            })
+
+            logger.info(f"[TICKET CHAT] Saved user message as log {user_log.id}")
+
+            # Set AI processing flag BEFORE queuing to prevent race conditions
+            cache.set(ai_processing_key, True, timeout=1800)  # 30 minutes
+
+            from tasks.task_manager import TaskManager
+
+            # Queue the ticket continuation with the user's message and attachment IDs
+            task_id = TaskManager.publish_task(
+                'tasks.task_definitions.continue_ticket_with_message',
+                ticket.id,
+                project.id,
+                message or f"User attached files: {', '.join(attachment_names)}",
+                request.user.id,
+                attachment_ids=attachment_ids,  # Pass attachment IDs as keyword arg
+                task_name=f"Ticket #{ticket.id} chat continuation",
+                group=f'project_{project.id}',
+                timeout=3600  # 1 hour timeout
+            )
+
+            logger.info(f"[TICKET CHAT] Queued continuation task {task_id} for ticket {ticket.id}")
+
+            return Response({
+                'status': 'queued',
+                'message': 'Your message has been sent. The agent will process it shortly.',
+                'ticket_id': ticket.id,
+                'task_id': task_id,
+                'log_id': user_log.id,
+                'attachments': attachment_ids
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.error(f"[TICKET CHAT] Error queuing chat message: {str(e)}", exc_info=True)
+            return Response({
+                'status': 'error',
+                'error': f'Failed to send message: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['post'], url_path='stop')
+    def stop_execution(self, request, pk=None):
+        """
+        Stop/interrupt the current AI execution for this ticket.
+        This logs a stop request that the AI will see and respond to.
+        """
+        import logging
+        from projects.models import TicketLog
+        from projects.websocket_utils import send_ticket_log_notification
+        from django.core.cache import cache
+
+        logger = logging.getLogger(__name__)
+
+        ticket = self.get_object()
+
+        logger.info(f"[TICKET STOP] Stop requested for ticket {ticket.id}")
+
+        try:
+            # Set a cancellation flag in cache that AI tools can check
+            cache_key = f'ticket_cancel_{ticket.id}'
+            cache.set(cache_key, True, timeout=300)  # 5 minute timeout
+
+            # Log the stop request
+            stop_log = TicketLog.objects.create(
+                ticket=ticket,
+                log_type='user_message',
+                command='🛑 STOP REQUESTED - User interrupted the execution',
+                explanation=f"Stop requested by {request.user.email or request.user.username}"
+            )
+
+            # Send WebSocket notification
+            send_ticket_log_notification(ticket.id, {
+                'id': stop_log.id,
+                'log_type': 'user_message',
+                'command': stop_log.command,
+                'explanation': stop_log.explanation,
+                'output': '',
+                'exit_code': None,
+                'created_at': stop_log.created_at.isoformat()
+            })
+
+            logger.info(f"[TICKET STOP] Stop flag set for ticket {ticket.id}")
+
+            # Clear the AI processing flag
+            ai_processing_key = f'ticket_ai_processing_{ticket.id}'
+            cache.delete(ai_processing_key)
+
+            return Response({
+                'status': 'stopped',
+                'message': 'Stop request sent. The AI will stop at the next checkpoint.',
+                'ticket_id': ticket.id
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.error(f"[TICKET STOP] Error stopping ticket: {str(e)}", exc_info=True)
+            return Response({
+                'status': 'error',
+                'error': f'Failed to stop: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

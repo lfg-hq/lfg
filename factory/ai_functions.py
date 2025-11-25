@@ -509,6 +509,12 @@ async def app_functions(function_name, function_args, project_id, conversation_i
         case "update_todo_status":
             return await update_todo_status_tool(function_args, project_id, conversation_id)
 
+        case "record_ticket_summary":
+            return await record_ticket_summary_tool(function_args, project_id, conversation_id)
+
+        case "broadcast_to_user":
+            return await broadcast_to_user_tool(function_args, project_id, conversation_id)
+
         case "run_code_server":
             return await run_code_server_tool(function_args, project_id, conversation_id)
 
@@ -2366,14 +2372,57 @@ async def ssh_command_tool(function_args, project_id, conversation_id, ticket_id
     timeout = function_args.get('timeout', 300)
     with_node_env = function_args.get('with_node_env', True)
 
+    # Check if user has requested to stop execution
+    if ticket_id:
+        from django.core.cache import cache
+        cache_key = f'ticket_cancel_{ticket_id}'
+        if cache.get(cache_key):
+            logger.info(f"[SSH_COMMAND_TOOL] Cancellation requested for ticket #{ticket_id}")
+            # Clear the flag so subsequent operations can proceed
+            cache.delete(cache_key)
+            return {
+                "is_notification": False,
+                "message_to_agent": "STOP REQUESTED: User has interrupted the execution. Please acknowledge the stop request and end your current task gracefully. Respond with: IMPLEMENTATION_STATUS: STOPPED - User requested interruption"
+            }
+
     # Prepend cd /workspace && to ensure all commands run in workspace directory
     if command and not command.strip().startswith('cd /workspace'):
         command = f"cd /workspace && {command}"
 
-    if not workspace_id or not command:
+    if not command:
         return {
             "is_notification": False,
-            "message_to_agent": "workspace_id and command are required to run a Magpie SSH command."
+            "message_to_agent": "command is required to run a Magpie SSH command."
+        }
+
+    # Lazy workspace initialization: if no workspace_id but we have ticket_id, create workspace on-demand
+    if not workspace_id and ticket_id:
+        logger.info(f"[SSH_COMMAND_TOOL] No workspace_id, attempting lazy initialization for ticket #{ticket_id}")
+        try:
+            from tasks.task_definitions import ensure_workspace_available
+            ensure_result = await sync_to_async(ensure_workspace_available, thread_sensitive=True)(ticket_id)
+
+            if ensure_result['status'] == 'success':
+                workspace_id = ensure_result['workspace_id']
+                logger.info(f"[SSH_COMMAND_TOOL] Workspace {'created' if ensure_result.get('created') else 'found'}: {workspace_id}")
+            else:
+                error_msg = f"Failed to provision workspace: {ensure_result.get('error', 'Unknown error')}"
+                logger.error(f"[SSH_COMMAND_TOOL] {error_msg}")
+                return {
+                    "is_notification": False,
+                    "message_to_agent": error_msg
+                }
+        except Exception as e:
+            logger.error(f"[SSH_COMMAND_TOOL] Error during lazy workspace init: {e}", exc_info=True)
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Failed to initialize workspace: {str(e)}"
+            }
+
+    if not workspace_id:
+        return {
+            "is_notification": False,
+            "message_to_agent": "workspace_id is required. Either provide it directly or ensure ticket_id is set for automatic workspace provisioning."
         }
 
     workspace = await _fetch_workspace(workspace_id=workspace_id)
@@ -3202,6 +3251,136 @@ async def update_todo_status_tool(function_args, project_id, conversation_id):
             "is_notification": False,
             "message_to_agent": f"Error updating todo status: {str(e)}"
         }
+
+
+async def record_ticket_summary_tool(function_args, project_id, conversation_id):
+    """
+    Record a summary of changes made during ticket execution.
+    Appends to the ticket's notes field with a timestamp, preserving previous entries.
+    """
+    logger.info("Record ticket summary tool called")
+    logger.debug(f"Function arguments: {function_args}")
+
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+
+    ticket_id = function_args.get('ticket_id')
+    summary = function_args.get('summary', '')
+    files_modified = function_args.get('files_modified', [])
+
+    if not ticket_id:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: ticket_id is required"
+        }
+
+    if not summary:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: summary is required"
+        }
+
+    try:
+        # Verify ticket exists and get it
+        ticket = await sync_to_async(ProjectTicket.objects.get)(id=ticket_id)
+
+        # Build the new summary entry with timestamp
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # Format the summary entry
+        summary_entry = f"\n---\n## Summary - {timestamp}\n\n{summary}\n"
+
+        # Add files modified if provided (structured format with filename, path, action)
+        if files_modified:
+            summary_entry += "\n**Files Modified:**\n"
+            for file_info in files_modified:
+                if isinstance(file_info, dict):
+                    filename = file_info.get('filename', '')
+                    path = file_info.get('path', '')
+                    action = file_info.get('action', 'modified')
+                    summary_entry += f"- [{action}] `{filename}` - `{path}`\n"
+                else:
+                    # Fallback for simple string format
+                    summary_entry += f"- {file_info}\n"
+
+        # Get existing notes and append (not replace)
+        existing_notes = ticket.notes or ""
+        new_notes = existing_notes + summary_entry
+
+        # Update the ticket's notes field
+        ticket.notes = new_notes
+        await sync_to_async(ticket.save)(update_fields=['notes', 'updated_at'])
+
+        logger.info(f"Successfully recorded summary for ticket #{ticket_id}")
+
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Successfully recorded summary for ticket #{ticket_id}. The summary has been appended to the ticket's notes.",
+            "ticket_id": ticket_id,
+            "timestamp": timestamp,
+            "files_count": len(files_modified)
+        }
+
+    except ProjectTicket.DoesNotExist:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Ticket with ID {ticket_id} does not exist"
+        }
+    except Exception as e:
+        logger.error(f"Error recording ticket summary: {str(e)}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error recording ticket summary: {str(e)}"
+        }
+
+
+async def broadcast_to_user_tool(function_args, project_id, conversation_id):
+    """
+    Broadcast a message to the user without triggering agent follow-up.
+    This is one-way communication for progress updates and completion signals.
+
+    Key: Returns a notification WITHOUT message_to_agent, so no follow-up loop is triggered.
+    """
+    logger.info("Broadcast to user tool called")
+    logger.debug(f"Function arguments: {function_args}")
+
+    message = function_args.get('message', '')
+    status = function_args.get('status', 'progress')
+    summary = function_args.get('summary', {})
+
+    if not message:
+        # Even for errors, don't include message_to_agent to avoid triggering continuation
+        return {
+            "is_notification": True,
+            "notification_type": "broadcast",
+            "status": "error",
+            "message": "Error: message is required for broadcast"
+            # NO message_to_agent - prevents follow-up loop
+        }
+
+    if status not in ['progress', 'complete', 'blocked', 'error']:
+        status = 'progress'
+
+    logger.info(f"Broadcasting to user: status={status}, message={message[:100]}...")
+
+    # Build notification for user (goes through WebSocket)
+    notification = {
+        "is_notification": True,
+        "notification_type": "broadcast",
+        "status": status,
+        "message": message,
+        # NO message_to_agent - this is the key to preventing follow-up loops
+    }
+
+    # Add structured summary if provided
+    if summary:
+        if isinstance(summary, dict):
+            notification["completed_tasks"] = summary.get('completed_tasks', [])
+            notification["pending_issues"] = summary.get('pending_issues', [])
+            notification["files_modified"] = summary.get('files_modified', [])
+
+    return notification
 
 
 async def run_code_server_tool(function_args, project_id, conversation_id):

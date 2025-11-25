@@ -1078,6 +1078,327 @@ def commit_and_push_changes(workspace_id: str, branch_name: str, commit_message:
         return {'status': 'error', 'message': str(e)}
 
 
+def ensure_workspace_available(ticket_id: int) -> Dict[str, Any]:
+    """
+    Ensure a workspace is available for the given ticket. Creates one if needed.
+
+    This is used for lazy initialization - called by tools when they need workspace
+    but one doesn't exist yet.
+
+    Args:
+        ticket_id: The ID of the ProjectTicket
+
+    Returns:
+        Dict with:
+            - status: 'success' or 'error'
+            - workspace_id: The workspace identifier (if success)
+            - error: Error message (if error)
+    """
+    from development.models import MagpieWorkspace
+
+    logger.info(f"[ENSURE_WORKSPACE] Checking workspace for ticket #{ticket_id}")
+
+    try:
+        ticket = ProjectTicket.objects.get(id=ticket_id)
+        project = ticket.project
+
+        # Check if workspace already exists
+        workspace = MagpieWorkspace.objects.filter(
+            project=project,
+            status='ready'
+        ).order_by('-updated_at').first()
+
+        if workspace:
+            workspace_id = workspace.workspace_id
+            current_workspace_id.set(workspace_id)
+            logger.info(f"[ENSURE_WORKSPACE] Found existing workspace: {workspace_id}")
+            return {
+                'status': 'success',
+                'workspace_id': workspace_id,
+                'workspace': workspace,
+                'created': False
+            }
+
+        # No workspace - create one
+        logger.info(f"[ENSURE_WORKSPACE] No workspace found, creating one...")
+        setup_result = setup_ticket_workspace(
+            ticket=ticket,
+            project=project,
+            conversation_id=None,
+            create_branch=False  # Use existing branch from ticket
+        )
+
+        if setup_result['status'] == 'success':
+            logger.info(f"[ENSURE_WORKSPACE] Workspace created: {setup_result['workspace_id']}")
+            return {
+                'status': 'success',
+                'workspace_id': setup_result['workspace_id'],
+                'workspace': setup_result['workspace'],
+                'created': True
+            }
+        else:
+            logger.error(f"[ENSURE_WORKSPACE] Failed to create workspace: {setup_result.get('error')}")
+            return {
+                'status': 'error',
+                'error': setup_result.get('error', 'Failed to create workspace')
+            }
+
+    except ProjectTicket.DoesNotExist:
+        return {
+            'status': 'error',
+            'error': f'Ticket #{ticket_id} not found'
+        }
+    except Exception as e:
+        logger.error(f"[ENSURE_WORKSPACE] Error: {str(e)}", exc_info=True)
+        return {
+            'status': 'error',
+            'error': str(e)
+        }
+
+
+def setup_ticket_workspace(
+    ticket: 'ProjectTicket',
+    project: 'Project',
+    conversation_id: int = None,
+    create_branch: bool = True
+) -> Dict[str, Any]:
+    """
+    Setup workspace, GitHub repo, and Git configuration for a ticket.
+
+    This function handles:
+    1. GitHub repository setup (get or create)
+    2. Feature branch creation
+    3. Magpie workspace provisioning
+    4. Dev sandbox initialization
+    5. Git configuration in workspace
+
+    Args:
+        ticket: The ProjectTicket instance
+        project: The Project instance
+        conversation_id: Optional conversation ID for notifications
+        create_branch: Whether to create a new feature branch (default: True)
+
+    Returns:
+        Dict with:
+            - status: 'success' or 'error'
+            - workspace_id: The workspace identifier
+            - workspace: The MagpieWorkspace instance
+            - github_owner: GitHub repository owner
+            - github_repo: GitHub repository name
+            - feature_branch: Feature branch name
+            - git_setup_error: Any git setup errors (for AI to fix)
+            - error: Error message if status is 'error'
+    """
+    from development.models import MagpieWorkspace
+
+    logger.info(f"\n{'='*60}\n[WORKSPACE SETUP] Starting for ticket #{ticket.id}\n{'='*60}")
+
+    result = {
+        'status': 'success',
+        'workspace_id': None,
+        'workspace': None,
+        'github_owner': None,
+        'github_repo': None,
+        'feature_branch': None,
+        'git_setup_error': None,
+        'repo_needs_template': False,
+    }
+
+    # 1. GITHUB REPOSITORY SETUP
+    logger.info(f"[WORKSPACE SETUP] Step 1: Setting up GitHub repository...")
+
+    github_token = get_github_token(project.owner)
+    if not github_token:
+        error_msg = "GitHub not connected. Please connect GitHub in settings."
+        logger.error(f"[WORKSPACE SETUP] ✗ {error_msg}")
+        return {
+            **result,
+            'status': 'error',
+            'error': error_msg,
+            'requires_github_setup': True
+        }
+
+    try:
+        # Get or create GitHub repo
+        repo_info = get_or_create_github_repo(project, project.owner)
+        result['github_owner'] = repo_info['owner']
+        result['github_repo'] = repo_info['repo_name']
+        result['repo_needs_template'] = repo_info.get('needs_template', False)
+
+        if repo_info['created']:
+            logger.info(f"[WORKSPACE SETUP] ✓ Created GitHub repo: {result['github_owner']}/{result['github_repo']}")
+        else:
+            logger.info(f"[WORKSPACE SETUP] ✓ Using existing repo: {result['github_owner']}/{result['github_repo']}")
+
+        # Create feature branch name from ticket
+        if create_branch:
+            sanitized_name = ticket.name.lower().replace(' ', '-').replace('_', '-')[:30]
+            result['feature_branch'] = f"feature/{sanitized_name}"
+
+            # Save branch name to ticket
+            ticket.github_branch = result['feature_branch']
+            ticket.github_merge_status = 'pending'
+            ticket.save(update_fields=['github_branch', 'github_merge_status'])
+
+            logger.info(f"[WORKSPACE SETUP] ✓ Feature branch: {result['feature_branch']}")
+
+            # Create branch on GitHub if repo already has content
+            if not result['repo_needs_template']:
+                branch_created = ensure_branch_exists(
+                    token=github_token,
+                    owner=result['github_owner'],
+                    repo_name=result['github_repo'],
+                    branch_name=result['feature_branch'],
+                    base_branch='main'
+                )
+                if branch_created:
+                    logger.info(f"[WORKSPACE SETUP] ✓ Branch ready on GitHub")
+        else:
+            # Use existing branch from ticket
+            result['feature_branch'] = ticket.github_branch
+            logger.info(f"[WORKSPACE SETUP] ✓ Using existing branch: {result['feature_branch']}")
+
+    except Exception as e:
+        error_msg = f"GitHub setup failed: {str(e)}"
+        logger.error(f"[WORKSPACE SETUP] ✗ {error_msg}", exc_info=True)
+        return {
+            **result,
+            'status': 'error',
+            'error': error_msg,
+            'github_error': str(e)
+        }
+
+    # 2. WORKSPACE PROVISIONING
+    logger.info(f"[WORKSPACE SETUP] Step 2: Fetching or creating workspace...")
+
+    workspace = async_to_sync(_fetch_workspace)(project=project, conversation_id=conversation_id)
+
+    if not workspace:
+        logger.info(f"[WORKSPACE SETUP] No existing workspace, creating new one...")
+        try:
+            client = get_magpie_client()
+            project_name = project.provided_name or project.name
+            slug = _slugify_project_name(project_name)
+            workspace_name = f"{slug}-{project.id}"
+
+            response = client.jobs.create(
+                name=workspace_name,
+                script=MAGPIE_BOOTSTRAP_SCRIPT,
+                persist=True,
+                ip_lease=True,
+                stateful=True,
+                workspace_size_gb=10,
+                vcpus=2,
+                memory_mb=2048,
+            )
+            logger.info(f"[MAGPIE][CREATE] job response: {response}")
+
+            run_id = response.get("request_id")
+            workspace_identifier = run_id
+
+            workspace = MagpieWorkspace.objects.create(
+                project=project,
+                conversation_id=str(conversation_id) if conversation_id else None,
+                job_id=run_id,
+                workspace_id=workspace_identifier,
+                status='provisioning',
+                metadata={'project_name': project_name}
+            )
+
+            # Wait for VM to be ready
+            logger.info(f"[MAGPIE][POLL] Waiting for VM to be ready...")
+            vm_info = client.jobs.get_vm_info(run_id, poll_timeout=120, poll_interval=5)
+
+            ipv6 = vm_info.get("ip_address")
+            if not ipv6:
+                raise Exception(f"VM provisioning timed out - no IP address received")
+
+            workspace.mark_ready(ipv6=ipv6, project_path='/workspace')
+            logger.info(f"[MAGPIE][READY] Workspace ready: {workspace.workspace_id}, IP: {ipv6}")
+
+        except Exception as e:
+            error_msg = f"Workspace provisioning failed: {str(e)}"
+            logger.error(f"[WORKSPACE SETUP] ✗ {error_msg}", exc_info=True)
+            return {
+                **result,
+                'status': 'error',
+                'error': error_msg
+            }
+
+    result['workspace'] = workspace
+    result['workspace_id'] = workspace.workspace_id
+    logger.info(f"[WORKSPACE SETUP] ✓ Workspace ready: {result['workspace_id']}")
+
+    # Set workspace_id in context
+    current_workspace_id.set(result['workspace_id'])
+
+    # 3. DEV SANDBOX SETUP
+    logger.info(f"[WORKSPACE SETUP] Step 3: Setting up dev sandbox...")
+
+    workspace_metadata = workspace.metadata or {}
+    if not workspace_metadata.get('sandbox_initialized'):
+        try:
+            sandbox_result = async_to_sync(new_dev_sandbox_tool)(
+                {'workspace_id': result['workspace_id']},
+                project.project_id,
+                conversation_id
+            )
+
+            if sandbox_result.get('status') == 'failed':
+                raise Exception(f"Dev sandbox setup failed: {sandbox_result.get('message_to_agent')}")
+            logger.info(f"[WORKSPACE SETUP] ✓ Dev sandbox initialized")
+        except Exception as e:
+            logger.warning(f"[WORKSPACE SETUP] ⚠ Dev sandbox setup error: {str(e)}")
+            # Don't fail - sandbox might already be set up
+    else:
+        logger.info(f"[WORKSPACE SETUP] ⊘ Dev sandbox already initialized")
+
+    # 4. GIT CONFIGURATION IN WORKSPACE
+    logger.info(f"[WORKSPACE SETUP] Step 4: Setting up Git in workspace...")
+
+    if result['github_owner'] and result['github_repo'] and result['feature_branch']:
+        if result['repo_needs_template']:
+            logger.info(f"[WORKSPACE SETUP] Pushing template and creating branch...")
+            git_setup_result = push_template_and_create_branch(
+                result['workspace_id'],
+                result['github_owner'],
+                result['github_repo'],
+                result['feature_branch'],
+                github_token
+            )
+        else:
+            logger.info(f"[WORKSPACE SETUP] Cloning repo and checking out branch...")
+            git_setup_result = setup_git_in_workspace(
+                result['workspace_id'],
+                result['github_owner'],
+                result['github_repo'],
+                result['feature_branch'],
+                github_token
+            )
+
+        if git_setup_result['status'] == 'success':
+            logger.info(f"[WORKSPACE SETUP] ✓ Git configured on branch {result['feature_branch']}")
+            workspace.metadata = workspace.metadata or {}
+            workspace.metadata['git_configured'] = True
+            workspace.metadata['git_branch'] = result['feature_branch']
+            workspace.save(update_fields=['metadata'])
+        else:
+            # Git setup failed - capture error for AI to fix
+            error_msg = git_setup_result.get('message', 'Unknown git setup error')
+            logger.warning(f"[WORKSPACE SETUP] ⚠ Git setup issue: {error_msg}")
+            result['git_setup_error'] = {
+                'message': error_msg,
+                'details': git_setup_result.get('details', ''),
+                'branch': result['feature_branch'],
+                'repo': f"{result['github_owner']}/{result['github_repo']}"
+            }
+    else:
+        logger.info(f"[WORKSPACE SETUP] ⊘ Skipping Git setup - missing configuration")
+
+    logger.info(f"[WORKSPACE SETUP] ✓ Setup complete for ticket #{ticket.id}")
+    return result
+
+
 def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_id: int, max_execution_time: int = 600) -> Dict[str, Any]:
     """
     Execute a single ticket implementation - streamlined version with timeout protection.
@@ -1100,23 +1421,23 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
     workspace_id = None
 
     try:
-        logger.info(f"\n[STEP 1/10] Fetching ticket and project data...")
+        logger.info(f"\n[STEP 1/6] Fetching ticket and project data...")
         # 1. GET TICKET AND PROJECT
         ticket = ProjectTicket.objects.get(id=ticket_id)
         project = Project.objects.get(id=project_id)
-        logger.info(f"[STEP 1/10] ✓ Ticket: '{ticket.name}' | Project: '{project.name}'")
+        logger.info(f"[STEP 1/6] ✓ Ticket: '{ticket.name}' | Project: '{project.name}'")
 
-        logger.info(f"\n[STEP 2/10] Checking if ticket already completed...")
+        logger.info(f"\n[STEP 2/6] Checking if ticket already completed...")
         # 2. CHECK IF ALREADY COMPLETED (prevent duplicate execution on retry)
         if ticket.status == 'done':
-            logger.info(f"[STEP 2/10] ⊘ Ticket already completed, skipping")
+            logger.info(f"[STEP 2/6] ⊘ Ticket already completed, skipping")
             return {
                 "status": "success",
                 "ticket_id": ticket_id,
                 "message": "Already completed",
                 "skipped": True
             }
-        logger.info(f"[STEP 2/10] ✓ Ticket status: {ticket.status}, proceeding...")
+        logger.info(f"[STEP 2/6] ✓ Ticket status: {ticket.status}, proceeding...")
 
         attachments = list(ticket.attachments.all())
 
@@ -1142,24 +1463,24 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
         else:
             attachments_summary = "No attachments were provided for this ticket."
 
-        logger.info(f"\n[STEP 3/10] Setting up GitHub repository and branches...")
-        # 3. SETUP GITHUB REPOSITORY AND BRANCHES
-        github_owner = None
-        github_repo = None
-        github_token = None
-        feature_branch_name = None
+        logger.info(f"\n[STEP 3/6] Setting up workspace, GitHub, and Git...")
+        # 3. SETUP WORKSPACE (GitHub repo, branch, Magpie workspace, dev sandbox, Git)
+        setup_result = setup_ticket_workspace(
+            ticket=ticket,
+            project=project,
+            conversation_id=conversation_id,
+            create_branch=True
+        )
 
-        # Get GitHub token first
-        github_token = get_github_token(project.owner)
-        if not github_token:
-            error_msg = "GitHub not connected. Please connect GitHub in settings before running tickets."
-            logger.error(f"[STEP 3/10] ✗ {error_msg}")
+        if setup_result['status'] == 'error':
+            error_msg = setup_result.get('error', 'Workspace setup failed')
+            logger.error(f"[STEP 3/6] ✗ {error_msg}")
+
             ticket.status = 'failed'
-            ticket.notes = f"""
+            ticket.notes = (ticket.notes or "") + f"""
+---
 [{datetime.now().strftime('%Y-%m-%d %H:%M')}] EXECUTION FAILED
 Error: {error_msg}
-
-Please connect your GitHub account in Settings > Integrations > GitHub
 """
             ticket.save(update_fields=['status', 'notes'])
 
@@ -1178,101 +1499,24 @@ Please connect your GitHub account in Settings > Integrations > GitHub
                 "status": "error",
                 "ticket_id": ticket_id,
                 "error": error_msg,
-                "requires_github_setup": True
-            }
-
-        # Initialize variables before try block
-        repo_needs_template = False
-
-        try:
-            # Get or create GitHub repo
-            logger.info(f"[STEP 3/10] Getting or creating GitHub repository...")
-            repo_info = get_or_create_github_repo(project, project.owner)
-            github_owner = repo_info['owner']
-            github_repo = repo_info['repo_name']
-            repo_needs_template = repo_info.get('needs_template', False)
-
-            if repo_info['created']:
-                if repo_needs_template:
-                    logger.info(f"[STEP 3/10] ✓ Created new empty GitHub repo: {github_owner}/{github_repo}")
-                    logger.info(f"[STEP 3/10]   Template will be pushed from workspace before creating branches")
-                else:
-                    logger.info(f"[STEP 3/10] ✓ Created new GitHub repo from template: {github_owner}/{github_repo}")
-            else:
-                logger.info(f"[STEP 3/10] ✓ Using existing GitHub repo: {github_owner}/{github_repo}")
-
-            # Create feature branch name from ticket (format: feature/<ticket-name>)
-            sanitized_name = ticket.name.lower().replace(' ', '-').replace('_', '-')[:30]
-            feature_branch_name = f"feature/{sanitized_name}"
-            logger.info(f"[STEP 3/10] ✓ Feature branch name: {feature_branch_name}")
-
-            # Save branch name to ticket
-            ticket.github_branch = feature_branch_name
-            ticket.github_merge_status = 'pending'
-            ticket.save(update_fields=['github_branch', 'github_merge_status'])
-
-            # Only create the branch on GitHub if the repo already has content
-            # If repo needs template, we'll push template and create branch later
-            if not repo_needs_template:
-                logger.info(f"[STEP 3/10] Creating branch '{feature_branch_name}' on GitHub...")
-                branch_created = ensure_branch_exists(
-                    token=github_token,
-                    owner=github_owner,
-                    repo_name=github_repo,
-                    branch_name=feature_branch_name,
-                    base_branch='main'
-                )
-                if branch_created:
-                    logger.info(f"[STEP 3/10] ✓ Branch '{feature_branch_name}' is ready on GitHub")
-            else:
-                logger.info(f"[STEP 3/10] ⊘ Skipping branch creation - will create after pushing template")
-
-        except Exception as e:
-            error_msg = f"GitHub setup failed: {str(e)}"
-            logger.error(f"[STEP 3/10] ✗ {error_msg}", exc_info=True)
-
-            # Mark ticket as failed
-            ticket.status = 'failed'
-            ticket.notes = f"""
-[{datetime.now().strftime('%Y-%m-%d %H:%M')}] EXECUTION FAILED
-Error: {error_msg}
-
-GitHub Error Details:
-{str(e)}
-
-Please check:
-1. GitHub connection is active in Settings
-2. Repository permissions are correct
-3. Network connectivity to GitHub
-"""
-            ticket.save(update_fields=['status', 'notes'])
-
-            broadcast_ticket_notification(conversation_id, {
-                'is_notification': True,
-                'notification_type': 'toolhistory',
-                'function_name': 'ticket_execution',
-                'status': 'failed',
-                'message': f"✗ Ticket #{ticket.id} failed: GitHub setup error",
-                'ticket_id': ticket.id,
-                'ticket_name': ticket.name,
-                'refresh_checklist': True
-            })
-
-            return {
-                "status": "error",
-                "ticket_id": ticket_id,
-                "error": error_msg,
-                "github_error": str(e),
                 "execution_time": f"{time.time() - start_time:.2f}s"
             }
 
-        logger.info(f"\n[STEP 4/10] Updating ticket status to in_progress...")
+        # Extract setup results
+        workspace = setup_result['workspace']
+        workspace_id = setup_result['workspace_id']
+        feature_branch_name = setup_result['feature_branch']
+        git_setup_error = setup_result.get('git_setup_error')
+
+        logger.info(f"[STEP 3/6] ✓ Workspace setup complete: {workspace_id}")
+
         # 4. UPDATE STATUS TO IN-PROGRESS
+        logger.info(f"\n[STEP 4/6] Updating ticket status to in_progress...")
         ticket.status = 'in_progress'
         ticket.save(update_fields=['status'])
-        logger.info(f"[STEP 4/10] ✓ Ticket #{ticket_id} marked as in_progress")
-        
-        # 5. BROADCAST START
+        logger.info(f"[STEP 4/6] ✓ Ticket #{ticket_id} marked as in_progress")
+
+        # Broadcast start notification
         broadcast_ticket_notification(conversation_id, {
             'is_notification': True,
             'notification_type': 'toolhistory',
@@ -1284,131 +1528,8 @@ Please check:
             'refresh_checklist': True
         })
 
-        logger.info(f"\n[STEP 5/10] Broadcasting start notification...")
-
-        logger.info(f"\n[STEP 6/10] Fetching or creating workspace...")
-        # 6. GET OR CREATE WORKSPACE
-        workspace = async_to_sync(_fetch_workspace)(project=project, conversation_id=conversation_id)
-
-        if not workspace:
-            logger.info(f"[STEP 6/10] No existing workspace found, creating new one...")
-            # Create new Magpie workspace
-            try:
-                client = get_magpie_client()
-                project_name = project.provided_name or project.name
-                slug = _slugify_project_name(project_name)
-                workspace_name = f"{slug}-{project.id}"
-
-                response = client.jobs.create(
-                    name=workspace_name,
-                    script=MAGPIE_BOOTSTRAP_SCRIPT,
-                    persist=True,
-                    ip_lease=True,
-                    stateful=True,
-                    workspace_size_gb=10,
-                    vcpus=2,
-                    memory_mb=2048,
-                )
-                logger.info(f"[MAGPIE][CREATE] job response: {response}")
-
-                run_id = response.get("request_id")
-                workspace_identifier = run_id
-
-                workspace = MagpieWorkspace.objects.create(
-                    project=project,
-                    conversation_id=str(conversation_id) if conversation_id else None,
-                    job_id=run_id,
-                    workspace_id=workspace_identifier,
-                    status='provisioning',
-                    metadata={'project_name': project_name}
-                )
-
-                # Wait for VM to be ready with IP address (polls internally)
-                logger.info(f"[MAGPIE][POLL] Waiting for VM to be ready with IP address...")
-                vm_info = client.jobs.get_vm_info(run_id, poll_timeout=120, poll_interval=5)
-
-                ipv6 = vm_info.get("ip_address")
-                if not ipv6:
-                    raise Exception(f"VM provisioning timed out - no IP address received")
-
-                workspace.mark_ready(ipv6=ipv6, project_path='/workspace')
-                logger.info(f"[MAGPIE][READY] Workspace ready: {workspace.workspace_id}, IP: {ipv6}")
-            except Exception as e:
-                raise Exception(f"Workspace provisioning failed: {str(e)}")
-
-        workspace_id = workspace.workspace_id
-        logger.info(f"[STEP 6/10] ✓ Workspace ready: {workspace_id}")
-
-        # Set workspace_id in context so tools can access it
-        current_workspace_id.set(workspace_id)
-        logger.info(f"[STEP 6/10] ✓ Set workspace_id in context: {workspace_id}")
-
-        logger.info(f"\n[STEP 7/10] Setting up dev sandbox...")
-        # 7. SETUP DEV SANDBOX (only if not already initialized)
-        workspace_metadata = workspace.metadata or {}
-        if not workspace_metadata.get('sandbox_initialized'):
-            logger.info(f"[STEP 7/10] Initializing dev sandbox for workspace {workspace_id}...")
-            sandbox_result = async_to_sync(new_dev_sandbox_tool)(
-                {'workspace_id': workspace_id},
-                project.project_id,
-                conversation_id
-            )
-
-            if sandbox_result.get('status') == 'failed':
-                raise Exception(f"Dev sandbox setup failed: {sandbox_result.get('message_to_agent')}")
-            logger.info(f"[STEP 7/10] ✓ Dev sandbox initialized")
-        else:
-            logger.info(f"[STEP 7/10] ⊘ Skipping - dev sandbox already initialized")
-
-        logger.info(f"\n[STEP 8/10] Setting up Git repository in workspace...")
-        # 8. SETUP GIT IN WORKSPACE (if GitHub is configured)
-        git_setup_error = None  # Track git setup issues to pass to AI
-        if github_owner and github_repo and github_token and feature_branch_name:
-            # Check if repo needs template push first
-            if repo_needs_template:
-                logger.info(f"[STEP 8/10] Pushing template to GitHub and creating branch...")
-                git_setup_result = push_template_and_create_branch(
-                    workspace_id,
-                    github_owner,
-                    github_repo,
-                    feature_branch_name,
-                    github_token
-                )
-            else:
-                logger.info(f"[STEP 8/10] Cloning existing repo and checking out branch...")
-                git_setup_result = setup_git_in_workspace(
-                    workspace_id,
-                    github_owner,
-                    github_repo,
-                    feature_branch_name,
-                    github_token
-                )
-
-            if git_setup_result['status'] == 'success':
-                logger.info(f"[STEP 8/10] ✓ Git repository initialized on branch {feature_branch_name}")
-                # Store git info in workspace metadata for later use
-                workspace.metadata = workspace.metadata or {}
-                workspace.metadata['git_configured'] = True
-                workspace.metadata['git_branch'] = feature_branch_name
-                workspace.save(update_fields=['metadata'])
-            else:
-                # Git setup failed - Don't stop execution, let AI fix it
-                error_msg = git_setup_result.get('message', 'Unknown git setup error')
-                logger.warning(f"[STEP 8/10] ⚠ Git setup has issues: {error_msg}")
-                logger.info(f"[STEP 8/10] → Will delegate git issue resolution to AI")
-
-                # Capture git error context for AI to fix
-                git_setup_error = {
-                    'message': error_msg,
-                    'details': git_setup_result.get('details', ''),
-                    'branch': feature_branch_name,
-                    'repo': f"{github_owner}/{github_repo}"
-                }
-        else:
-            logger.info(f"[STEP 8/10] ⊘ Skipping Git setup - GitHub not configured")
-
-        logger.info(f"\n[STEP 9/10] Fetching project documentation...")
-        # 9. FETCH PROJECT DOCUMENTATION (PRD & Implementation)
+        logger.info(f"\n[STEP 5/6] Fetching project documentation...")
+        # 5. FETCH PROJECT DOCUMENTATION (PRD & Implementation)
         project_context = ""
         try:
             from projects.models import ProjectFile
@@ -1444,11 +1565,11 @@ Please check:
                         project_context += "\n...(truncated for brevity)\n"
                     project_context += "\n"
 
-                logger.info(f"[STEP 9/10] ✓ Added {len(prd_files)} PRDs, {len(impl_files)} implementation docs to context")
+                logger.info(f"[STEP 5/6] ✓ Added {len(prd_files)} PRDs, {len(impl_files)} implementation docs to context")
             else:
-                logger.info(f"[STEP 9/10] ⊘ No project documentation found")
+                logger.info(f"[STEP 5/6] ⊘ No project documentation found")
         except Exception as e:
-            logger.warning(f"[STEP 9/10] ⚠ Could not fetch project documentation: {str(e)}")
+            logger.warning(f"[STEP 5/6] ⚠ Could not fetch project documentation: {str(e)}")
 
         # Build git error context if present
         git_error_context = ""
@@ -1490,39 +1611,43 @@ ATTACHMENTS:
 ❌ Failure case: "IMPLEMENTATION_STATUS: FAILED - [reason]"
 """
         system_prompt = """
-You are expert developer assigned to work on a development ticket. You will follow these steps
+You are expert developer assigned to work on a development ticket.
 
-1. Check if the ticket has todolist. If no, then create new todo list. If todos exist, then continue from pending ones. 
-2. Build the todolist one by one, and complete the project in minimal shell commands. Mandatory. 
+COMMUNICATION PROTOCOL - VERY IMPORTANT:
+1. IMMEDIATELY call broadcast_to_user(status="progress", message="Starting work on: [ticket name]...")
+2. Work SILENTLY - do NOT output explanatory text like "Let me check...", "Perfect!", "Now I'll..."
+3. Just execute tools directly without narration
+4. At the END, call broadcast_to_user(status="complete", message="[summary of what was done]")
+5. If blocked or need help, call broadcast_to_user(status="blocked", message="[what's wrong]")
 
-3. Start by checking the agent.md file. Note you will keep update all the important changes to agents.md
-You can check the status of the project using shell commands. Batch multiple checks in a single command.
-eg. ls -la && cat .... && grep ....  cat ....
-Keep the checks to minimum and don't loop around. Usually agent.md will have all the information.
+The user only sees broadcast_to_user messages clearly. All other text output clutters the logs.
 
-4. Create all the required files to complete the tasks
-5. Install the libraries
-
-6. Mark the todo as `Success` when it is completed
+WORKFLOW:
+1. Broadcast that you're starting
+2. Check if todos exist - if no, create them. If yes, continue from pending ones.
+3. Check agent.md for project state. Update it with important changes.
+4. Execute todos one by one SILENTLY (batch shell commands: ls -la && cat ... && grep ...)
+5. Mark each todo as `Success` when complete
+6. Install libraries as needed
+7. Broadcast final summary
 
 🎯 COMPLETION CRITERIA:
-- Project runs with npm run dev (Do no build the Project)
-- All the todos are completed (Success)
-- Todos are marked `Success`
+- Project runs with `npm run dev` (DO NOT BUILD)
+- All todos marked `Success`
 
 IMPORTANT:
-0. DO NOT ATTEMPT TO RE CREATE THE PROJECT AGAIN. Make modifications within existing project.
-1. DO NOT verify extensively or test in loops.
-2. Skip writing explainer documentation, completion summary, etc. Don't create any *.MD files other than updating agent.md file
-3. When the server is running with NO ERRORS, Update status of todolist using update_todo_status() and END this workflow. 
+- DO NOT RE-CREATE the project. Modify existing files.
+- DO NOT verify extensively or test in loops.
+- DO NOT create documentation files (*.md) except agent.md
+- When done, update todos and broadcast completion
 
-End with: "IMPLEMENTATION_STATUS: COMPLETE - [specific changes made]" or "IMPLEMENTATION_STATUS: FAILED - [reason]"
-
-Note: whenever a TODO item is completed, make sure to mark the TODO as done.
+MANDATORY: You MUST end your response with one of these exact status lines (required for tracking):
+- "IMPLEMENTATION_STATUS: COMPLETE - [changes]"
+- "IMPLEMENTATION_STATUS: FAILED - [reason]"
         """
 
-        logger.info(f"\n[STEP 10/11] Calling AI for ticket implementation...")
-        logger.info(f"[STEP 10/11] Max execution time: {max_execution_time}s | Elapsed: {time.time() - start_time:.1f}s")
+        logger.info(f"\n[STEP 6/6] Calling AI for ticket implementation...")
+        logger.info(f"[STEP 6/6] Max execution time: {max_execution_time}s | Elapsed: {time.time() - start_time:.1f}s")
         # 10. CALL AI WITH TIMEOUT PROTECTION
 
         # Wrap AI call with timeout check
@@ -1538,18 +1663,18 @@ Note: whenever a TODO item is completed, make sure to mark the TODO as done.
                 attachments=attachments if attachments else None
             )
             ai_call_duration = time.time() - ai_call_start
-            logger.info(f"[STEP 10/11] ✓ AI call completed in {ai_call_duration:.1f}s")
+            logger.info(f"[STEP 6/6] ✓ AI call completed in {ai_call_duration:.1f}s")
         except Exception as ai_error:
             # Handle API errors (500s, timeouts, etc.) - no retry, just fail
-            logger.error(f"[STEP 10/11] ✗ AI call failed: {str(ai_error)}")
+            logger.error(f"[STEP 6/6] ✗ AI call failed: {str(ai_error)}")
             raise Exception(f"AI API error: {str(ai_error)}")
 
         content = ai_response.get('content', '') if ai_response else ''
         execution_time = time.time() - start_time
 
         # Log the AI response for debugging
-        logger.info(f"[STEP 10/11] AI response length: {len(content)} chars")
-        logger.info(f"[STEP 10/11] Total elapsed time: {execution_time:.1f}s")
+        logger.info(f"[STEP 6/6] AI response length: {len(content)} chars")
+        logger.info(f"[STEP 6/6] Total elapsed time: {execution_time:.1f}s")
 
         # Check if AI response indicates an error (500, overloaded, etc.)
         has_api_error = ai_response.get('error') if ai_response else False
@@ -1563,7 +1688,7 @@ Note: whenever a TODO item is completed, make sure to mark the TODO as done.
         if has_api_error:
             raise Exception(f"AI API error during execution: {error_message}")
 
-        logger.info(f"\n[STEP 11/11] Checking AI completion status and committing changes...")
+        logger.info(f"\n[POST-AI] Checking AI completion status and committing changes...")
         # 11. CHECK COMPLETION STATUS (with fallback detection)
         completed = 'IMPLEMENTATION_STATUS: COMPLETE' in content
         failed = 'IMPLEMENTATION_STATUS: FAILED' in content
@@ -1571,14 +1696,14 @@ Note: whenever a TODO item is completed, make sure to mark the TODO as done.
         # Fallback: If no explicit status, ticket is NOT complete
         # Only mark as complete if there's an explicit success status
         if not completed and not failed:
-            logger.warning(f"[STEP 11/11] ⚠ No explicit completion status found in AI response")
-            logger.warning(f"[STEP 11/11] Content length: {len(content)} chars")
+            logger.warning(f"[POST-AI] ⚠ No explicit completion status found in AI response")
+            logger.warning(f"[POST-AI] Content length: {len(content)} chars")
             # ALWAYS mark as failed if no explicit completion status
             # The AI MUST provide explicit status - anything else is incomplete
             failed = True
-            logger.error("[STEP 11/11] ✗ Marking as FAILED - AI must end with IMPLEMENTATION_STATUS")
+            logger.error("[POST-AI] ✗ Marking as FAILED - AI must end with IMPLEMENTATION_STATUS")
 
-        logger.info(f"[STEP 11/11] Status check - Completed: {completed} | Failed: {failed} | Time: {execution_time:.1f}s")
+        logger.info(f"[POST-AI] Status check - Completed: {completed} | Failed: {failed} | Time: {execution_time:.1f}s")
         
         # 9. EXTRACT WHAT WAS DONE (for logging)
         import re
@@ -1597,7 +1722,7 @@ Note: whenever a TODO item is completed, make sure to mark the TODO as done.
         merge_status = None
 
         if completed and not failed and github_owner and github_repo and github_token and feature_branch_name:
-            logger.info(f"\n[STEP 12/12] Committing and pushing changes to GitHub...")
+            logger.info(f"\n[COMMIT] Committing and pushing changes to GitHub...")
 
             # Commit and push changes
             commit_message = f"feat: {ticket.name}\n\nImplemented ticket #{ticket_id}\n\n{ticket.description[:200]}"
@@ -1605,49 +1730,49 @@ Note: whenever a TODO item is completed, make sure to mark the TODO as done.
 
             if commit_result['status'] == 'success':
                 commit_sha = commit_result.get('commit_sha')
-                logger.info(f"[STEP 12/12] ✓ Changes committed and pushed: {commit_sha}")
+                logger.info(f"[COMMIT] ✓ Changes committed and pushed: {commit_sha}")
 
                 # Save commit SHA to ticket
                 ticket.github_commit_sha = commit_sha
                 ticket.save(update_fields=['github_commit_sha'])
 
                 # Merge feature branch into lfg-agent
-                logger.info(f"[STEP 12/12] Merging {feature_branch_name} into lfg-agent...")
+                logger.info(f"[COMMIT] Merging {feature_branch_name} into lfg-agent...")
                 merge_result = merge_feature_to_lfg_agent(github_token, github_owner, github_repo, feature_branch_name)
 
                 if merge_result['status'] == 'success':
-                    logger.info(f"[STEP 12/12] ✓ Merged {feature_branch_name} into lfg-agent")
+                    logger.info(f"[COMMIT] ✓ Merged {feature_branch_name} into lfg-agent")
                     merge_status = 'merged'
                 elif merge_result['status'] == 'conflict':
                     # Try to resolve conflict locally in workspace
-                    logger.warning(f"[STEP 12/12] ⚠ Merge conflict detected via API, attempting AI-based resolution...")
+                    logger.warning(f"[COMMIT] ⚠ Merge conflict detected via API, attempting AI-based resolution...")
                     resolution_result = resolve_merge_conflict(workspace_id, feature_branch_name, ticket_id, project.project_id, conversation_id)
 
                     if resolution_result['status'] == 'success':
-                        logger.info(f"[STEP 12/12] ✓ Conflicts resolved and merged locally")
+                        logger.info(f"[COMMIT] ✓ Conflicts resolved and merged locally")
                         merge_status = 'merged'
                     else:
-                        logger.error(f"[STEP 12/12] ✗ Could not resolve conflicts: {resolution_result.get('message')}")
+                        logger.error(f"[COMMIT] ✗ Could not resolve conflicts: {resolution_result.get('message')}")
                         merge_status = 'conflict'
                         # Add conflict details to ticket notes
                         if 'conflicted_files' in resolution_result:
                             ticket.notes += f"\n\n⚠ MERGE CONFLICTS:\nFiles: {', '.join(resolution_result['conflicted_files'])}"
                             ticket.save(update_fields=['notes'])
                 else:
-                    logger.error(f"[STEP 12/12] ✗ Merge failed: {merge_result.get('message')}")
+                    logger.error(f"[COMMIT] ✗ Merge failed: {merge_result.get('message')}")
                     merge_status = 'failed'
 
                 # Save merge status to ticket
                 ticket.github_merge_status = merge_status
                 ticket.save(update_fields=['github_merge_status'])
             else:
-                logger.error(f"[STEP 12/12] ✗ Failed to commit changes: {commit_result.get('message')}")
+                logger.error(f"[COMMIT] ✗ Failed to commit changes: {commit_result.get('message')}")
 
-        logger.info(f"\n[STEP 13/13] Updating ticket status and saving results...")
+        logger.info(f"\n[FINALIZE] Updating ticket status and saving results...")
         # 13. UPDATE TICKET BASED ON RESULT
         if completed and not failed:
             # SUCCESS!
-            logger.info(f"[STEP 13/13] ✓ SUCCESS - Marking ticket as done")
+            logger.info(f"[FINALIZE] ✓ SUCCESS - Marking ticket as done")
             ticket.status = 'done'
 
             # Build notes with Git information if available
@@ -1670,7 +1795,8 @@ Note: whenever a TODO item is completed, make sure to mark the TODO as done.
                         lfg_agent_url = f"{repo_url}/tree/lfg-agent"
                         git_info += f"\nlfg-agent Branch: {lfg_agent_url}"
 
-            ticket.notes = f"""
+            ticket.notes = (ticket.notes or "") + f"""
+---
 [{datetime.now().strftime('%Y-%m-%d %H:%M')}] IMPLEMENTATION COMPLETED
 Time: {execution_time:.2f} seconds
 Files created: {len(files_created)}
@@ -1690,7 +1816,7 @@ Status: ✓ Complete
                 'refresh_checklist': True
             })
 
-            logger.info(f"[STEP 13/13] ✓ Task completed successfully in {execution_time:.1f}s")
+            logger.info(f"[FINALIZE] ✓ Task completed successfully in {execution_time:.1f}s")
             logger.info(f"{'='*80}\n[TASK END] SUCCESS - Ticket #{ticket_id}\n{'='*80}\n")
 
             result = {
@@ -1717,7 +1843,7 @@ Status: ✓ Complete
             return result
         else:
             # FAILED OR INCOMPLETE
-            logger.warning(f"[STEP 13/13] ✗ FAILED - Marking ticket as failed")
+            logger.warning(f"[FINALIZE] ✗ FAILED - Marking ticket as failed")
             error_match = re.search(r'IMPLEMENTATION_STATUS: FAILED - (.+)', content)
             if error_match:
                 error_reason = error_match.group(1)
@@ -1727,7 +1853,8 @@ Status: ✓ Complete
                 error_reason = "No explicit completion status provided. AI may have exceeded tool limit or stopped unexpectedly."
 
             ticket.status = 'failed'
-            ticket.notes = f"""
+            ticket.notes = (ticket.notes or "") + f"""
+---
 [{datetime.now().strftime('%Y-%m-%d %H:%M')}] IMPLEMENTATION FAILED
 Time: {execution_time:.2f} seconds
 Tool calls: ~{tool_calls_count}
@@ -1737,7 +1864,7 @@ Workspace: {workspace_id}
 Manual intervention required
 """
             ticket.save(update_fields=['status', 'notes'])
-            
+
             broadcast_ticket_notification(conversation_id, {
                 'is_notification': True,
                 'notification_type': 'toolhistory',
@@ -1772,7 +1899,8 @@ Manual intervention required
         if 'ticket' in locals():
             # Mark ticket as failed - no retry logic
             ticket.status = 'failed'
-            ticket.notes = f"""
+            ticket.notes = (ticket.notes or "") + f"""
+---
 [{datetime.now().strftime('%Y-%m-%d %H:%M')}] EXECUTION FAILED
 Error: {error_msg}
 Time: {execution_time:.2f}s
@@ -2146,4 +2274,393 @@ def parallel_ticket_executor(project_id: int, conversation_id: int, max_workers:
             "status": "error",
             "error": str(e),
             "queued_tasks": []
-        } 
+        }
+
+
+def continue_ticket_with_message(ticket_id: int, project_id: int, user_message: str, user_id: int, attachment_ids: list = None) -> Dict[str, Any]:
+    """
+    Continue a ticket implementation with a user's chat message.
+
+    This allows users to ask questions, request changes, or provide additional
+    instructions to the AI agent working on the ticket.
+
+    Args:
+        ticket_id: The ID of the ProjectTicket
+        project_id: The ID of the project
+        user_message: The message from the user
+        user_id: The ID of the user sending the message
+        attachment_ids: Optional list of ProjectTicketAttachment IDs
+
+    Returns:
+        Dict with execution results and status
+    """
+    logger.info(f"\n{'='*80}\n[TICKET CHAT] Processing message for ticket #{ticket_id}\n{'='*80}")
+
+    start_time = time.time()
+    workspace_id = None
+
+    try:
+        # 1. GET TICKET AND PROJECT
+        ticket = ProjectTicket.objects.get(id=ticket_id)
+        project = Project.objects.get(id=project_id)
+
+        # Set the ticket ID context for lazy workspace initialization
+        current_ticket_id.set(ticket_id)
+        logger.info(f"[TICKET CHAT] Set current_ticket_id context: {ticket_id}")
+
+        logger.info(f"[TICKET CHAT] Ticket: '{ticket.name}' | Project: '{project.name}'")
+        logger.info(f"[TICKET CHAT] User message: {user_message[:200]}...")
+
+        # 2. CHECK FOR EXISTING WORKSPACE (don't create yet - lazy initialization)
+        from development.models import MagpieWorkspace
+
+        workspace = MagpieWorkspace.objects.filter(
+            project=project,
+            status='ready'
+        ).order_by('-updated_at').first()
+
+        if workspace:
+            workspace_id = workspace.workspace_id
+            current_workspace_id.set(workspace_id)
+            logger.info(f"[TICKET CHAT] Using existing workspace: {workspace_id}")
+        else:
+            # No workspace yet - will be created on-demand if AI calls tools that need it
+            logger.info(f"[TICKET CHAT] No active workspace - will be created on-demand if needed")
+            workspace_id = None
+
+        # 3. GET RECENT CONVERSATION HISTORY (last 5 chat exchanges)
+        from projects.models import TicketLog
+
+        # Get chat messages (user messages and AI responses)
+        chat_logs = TicketLog.objects.filter(
+            ticket=ticket,
+            log_type__in=['user_message', 'ai_response']
+        ).order_by('-created_at')[:10]  # Last 10 entries = ~5 exchanges
+
+        conversation_history = ""
+        if chat_logs:
+            conversation_history = "\n\nCONVERSATION HISTORY:\n"
+            for log in reversed(list(chat_logs)):
+                if log.log_type == 'user_message':
+                    conversation_history += f"\n[USER]: {log.command}\n"
+                elif log.log_type == 'ai_response':
+                    # Use output field for full AI response, truncate if too long
+                    ai_content = log.output or log.command
+                    if len(ai_content) > 1000:
+                        ai_content = ai_content[:1000] + "... [truncated]"
+                    conversation_history += f"\n[ASSISTANT]: {ai_content}\n"
+
+        # Get recent command executions (separate from chat)
+        recent_commands = TicketLog.objects.filter(
+            ticket=ticket,
+            log_type='command'
+        ).order_by('-created_at')[:5]
+
+        logs_context = ""
+        if recent_commands:
+            logs_context = "\n\nRECENT COMMAND EXECUTIONS:\n"
+            for log in reversed(list(recent_commands)):
+                explanation = log.explanation or "Command executed"
+                logs_context += f"- {explanation}\n"
+                if log.output:
+                    logs_context += f"  Output: {log.output[:200]}...\n" if len(log.output) > 200 else f"  Output: {log.output}\n"
+
+        # 4. GET TODO LIST STATUS
+        from projects.models import ProjectTodoList
+
+        todos = ProjectTodoList.objects.filter(ticket=ticket).order_by('order')
+        todos_context = ""
+        if todos:
+            todos_context = "\n\nCURRENT TASK LIST:\n"
+            for todo in todos:
+                status_icon = "✓" if todo.status == "Success" else ("⏳" if todo.status == "in_progress" else "○")
+                todos_context += f"{status_icon} {todo.description} [{todo.status}]\n"
+
+        # 4.5 GET ATTACHMENTS
+        from projects.models import ProjectTicketAttachment
+
+        attachments_context = ""
+        attachment_files = []
+        if attachment_ids:
+            attachments = ProjectTicketAttachment.objects.filter(id__in=attachment_ids)
+            if attachments:
+                attachments_context = "\n\nATTACHED FILES:\n"
+                for att in attachments:
+                    attachments_context += f"- {att.original_filename} ({att.file_type}, {att.file_size} bytes)\n"
+                    # Store file paths for potential use with multimodal AI
+                    if att.file.path:
+                        attachment_files.append({
+                            'path': att.file.path,
+                            'name': att.original_filename,
+                            'type': att.file_type
+                        })
+                logger.info(f"[TICKET CHAT] Including {len(attachment_files)} attachments in context")
+
+        # 5. BUILD THE CONTINUATION PROMPT
+        workspace_info = ""
+        if workspace_id:
+            workspace_info = """
+You have full access to the workspace and can:
+1. Execute commands to inspect or modify code
+2. Make changes requested by the user
+3. Answer questions about the current state
+4. Continue implementation if needed"""
+        else:
+            workspace_info = """
+NOTE: No active workspace is currently running, but one will be created automatically when you use the ssh_command tool.
+You can:
+1. Execute commands using ssh_command - workspace will be provisioned on-demand
+2. Answer questions about the ticket based on the description and logs
+3. Make code changes as requested by the user
+
+When you call ssh_command for the first time, the workspace will be automatically initialized."""
+
+        continuation_prompt = f"""
+USER REQUEST:
+{user_message}
+
+TICKET CONTEXT:
+Ticket #{ticket.id}: {ticket.name}
+Description: {ticket.description}
+Status: {ticket.status}
+{todos_context}
+{conversation_history}
+{logs_context}
+{attachments_context}
+
+PROJECT PATH: nextjs-app
+{workspace_info}
+
+After completing the user's request:
+- If changes were made: "IMPLEMENTATION_STATUS: COMPLETE - [brief summary]"
+- If answering a question: "IMPLEMENTATION_STATUS: COMPLETE - Answered user's question"
+- If unable to complete: "IMPLEMENTATION_STATUS: FAILED - [reason]"
+"""
+
+        system_prompt = """
+You are an expert developer continuing work on a ticket based on user feedback.
+
+COMMUNICATION PROTOCOL - VERY IMPORTANT:
+1. IMMEDIATELY call broadcast_to_user(status="progress", message="I'll help you with [brief description]...") to acknowledge the request
+2. Work SILENTLY - do NOT output explanatory text like "Let me check...", "Perfect!", "Now I'll..."
+3. Just execute tools directly without narration
+4. At the END, call broadcast_to_user(status="complete", message="[summary of what was done]") with your final summary
+5. If blocked or need help, call broadcast_to_user(status="blocked", message="[what's wrong]")
+
+The user only sees broadcast_to_user messages clearly. All other text output clutters the logs.
+
+WORKFLOW:
+1. Broadcast acknowledgment FIRST
+2. If new task: create Todos, execute them silently one by one
+3. If question: look into codebase if needed
+4. Mark todos as done when complete
+5. Broadcast final summary
+
+IMPORTANT:
+- DO NOT RE-CREATE the project. Modify existing files.
+- DO NOT verify extensively or test in loops.
+- DO NOT create documentation files (*.md) except agent.md
+- When done, update todos and broadcast completion
+
+MANDATORY: You MUST end your response with one of these exact status lines (required for tracking):
+- "IMPLEMENTATION_STATUS: COMPLETE - [changes]"
+- "IMPLEMENTATION_STATUS: FAILED - [reason]"
+"""
+
+        # 6. CALL AI
+        logger.info(f"[TICKET CHAT] Calling AI to process user message...")
+
+        ai_start = time.time()
+        ai_response = async_to_sync(get_ai_response)(
+            user_message=continuation_prompt,
+            system_prompt=system_prompt,
+            project_id=project.project_id,
+            conversation_id=None,  # No specific conversation
+            stream=False,
+            tools=tools_builder
+        )
+        ai_duration = time.time() - ai_start
+        logger.info(f"[TICKET CHAT] AI call completed in {ai_duration:.1f}s")
+
+        content = ai_response.get('content', '') if ai_response else ''
+        execution_time = time.time() - start_time
+
+        # 7. SAVE AI RESPONSE TO LOG
+        if content:
+            from projects.models import TicketLog
+            from projects.websocket_utils import send_ticket_log_notification
+
+            # Extract a summary from the AI response (first paragraph or up to 500 chars)
+            summary = content.split('\n\n')[0][:500] if content else 'AI response'
+
+            ai_log = TicketLog.objects.create(
+                ticket=ticket,
+                log_type='ai_response',
+                command=summary,  # Brief summary in command field
+                explanation='AI Agent Response',
+                output=content  # Full response in output field
+            )
+
+            # Send WebSocket notification
+            send_ticket_log_notification(ticket.id, {
+                'id': ai_log.id,
+                'log_type': 'ai_response',
+                'command': summary,
+                'explanation': ai_log.explanation,
+                'output': content,
+                'exit_code': None,
+                'created_at': ai_log.created_at.isoformat()
+            })
+
+            logger.info(f"[TICKET CHAT] Saved AI response as log {ai_log.id}")
+
+            # Clear the AI processing flag
+            from django.core.cache import cache
+            ai_processing_key = f'ticket_ai_processing_{ticket_id}'
+            cache.delete(ai_processing_key)
+            logger.info(f"[TICKET CHAT] Cleared AI processing flag for ticket #{ticket_id}")
+
+        # 8. CHECK COMPLETION STATUS
+        completed = 'IMPLEMENTATION_STATUS: COMPLETE' in content
+        failed = 'IMPLEMENTATION_STATUS: FAILED' in content
+
+        # Re-fetch workspace in case it was created during AI execution (lazy initialization)
+        if not workspace_id:
+            workspace = MagpieWorkspace.objects.filter(
+                project=project,
+                status='ready'
+            ).order_by('-updated_at').first()
+            if workspace:
+                workspace_id = workspace.workspace_id
+                logger.info(f"[TICKET CHAT] Workspace was created during execution: {workspace_id}")
+
+        # 9. COMMIT CHANGES AND UPDATE STATUS IF COMPLETE
+        commit_sha = None
+        merge_status = None
+        github_owner = None
+        github_repo = None
+
+        logger.info(f"[TICKET CHAT] Commit check: workspace_id={workspace_id}, completed={completed}, failed={failed}")
+
+        if workspace_id and completed:
+            from codebase_index.models import IndexedRepository
+
+            try:
+                indexed_repo = IndexedRepository.objects.get(project=project)
+                github_token = get_github_token(project.owner)
+                feature_branch = ticket.github_branch
+                github_owner = indexed_repo.github_owner
+                github_repo = indexed_repo.github_repo_name
+
+                if github_token and feature_branch:
+                    commit_message = f"chore: User requested changes for ticket #{ticket_id}\n\n{user_message[:200]}"
+                    commit_result = commit_and_push_changes(workspace_id, feature_branch, commit_message, ticket_id)
+
+                    if commit_result['status'] == 'success':
+                        commit_sha = commit_result.get('commit_sha')
+                        logger.info(f"[TICKET CHAT] Changes committed: {commit_sha}")
+
+                        # Save commit SHA to ticket
+                        ticket.github_commit_sha = commit_sha
+                        ticket.save(update_fields=['github_commit_sha'])
+
+                        # Merge feature branch into lfg-agent (like execute_ticket_implementation does)
+                        logger.info(f"[TICKET CHAT] Merging {feature_branch} into lfg-agent...")
+                        merge_result = merge_feature_to_lfg_agent(github_token, github_owner, github_repo, feature_branch)
+
+                        if merge_result['status'] == 'success':
+                            logger.info(f"[TICKET CHAT] ✓ Merged {feature_branch} into lfg-agent")
+                            merge_status = 'merged'
+                        elif merge_result['status'] == 'conflict':
+                            # Try to resolve conflict locally in workspace
+                            logger.warning(f"[TICKET CHAT] ⚠ Merge conflict detected, attempting AI-based resolution...")
+                            resolution_result = resolve_merge_conflict(workspace_id, feature_branch, ticket_id, project.project_id, None)
+
+                            if resolution_result['status'] == 'success':
+                                logger.info(f"[TICKET CHAT] ✓ Conflicts resolved and merged locally")
+                                merge_status = 'merged'
+                            else:
+                                logger.error(f"[TICKET CHAT] ✗ Could not resolve conflicts: {resolution_result.get('message')}")
+                                merge_status = 'conflict'
+                        else:
+                            logger.error(f"[TICKET CHAT] ✗ Merge failed: {merge_result.get('message')}")
+                            merge_status = 'failed'
+
+                        # Save merge status to ticket
+                        ticket.github_merge_status = merge_status
+                        ticket.save(update_fields=['github_merge_status'])
+            except IndexedRepository.DoesNotExist:
+                logger.info(f"[TICKET CHAT] No GitHub repo linked, skipping commit")
+
+        # 9. UPDATE TICKET STATUS TO DONE IF ALL TASKS COMPLETE
+        if completed and not failed:
+            # Check if all todos are done
+            from projects.models import ProjectTodoList
+            pending_todos = ProjectTodoList.objects.filter(
+                ticket=ticket
+            ).exclude(status='Success').count()
+
+            if pending_todos == 0:
+                logger.info(f"[TICKET CHAT] ✓ All tasks complete - marking ticket as done")
+                ticket.status = 'done'
+
+                # Build notes with Git information if available
+                git_info = ""
+                if github_owner and github_repo:
+                    repo_url = f"https://github.com/{github_owner}/{github_repo}"
+                    git_info = f"\nGitHub Repository: {repo_url}"
+                    if ticket.github_branch:
+                        git_info += f"\nFeature Branch: {ticket.github_branch}"
+                    if commit_sha:
+                        git_info += f"\nCommit: {commit_sha}"
+                    if merge_status:
+                        merge_emoji = '✓' if merge_status == 'merged' else ('⚠' if merge_status == 'conflict' else '✗')
+                        git_info += f"\nMerge to lfg-agent: {merge_emoji} {merge_status}"
+
+                ticket.notes = (ticket.notes or "") + f"""
+---
+[{datetime.now().strftime('%Y-%m-%d %H:%M')}] IMPLEMENTATION COMPLETED (via chat)
+Time: {execution_time:.2f} seconds{git_info}
+Status: ✓ Complete
+"""
+                ticket.save(update_fields=['status', 'notes'])
+
+                # Send completion notification
+                broadcast_ticket_notification(None, {
+                    'is_notification': True,
+                    'notification_type': 'toolhistory',
+                    'function_name': 'ticket_execution',
+                    'status': 'completed',
+                    'message': f"✓ Completed ticket #{ticket.id}: {ticket.name}",
+                    'ticket_id': ticket.id,
+                    'ticket_name': ticket.name,
+                    'refresh_checklist': True
+                })
+            else:
+                logger.info(f"[TICKET CHAT] {pending_todos} todos still pending - ticket remains in progress")
+
+        logger.info(f"[TICKET CHAT] Completed in {execution_time:.1f}s")
+
+        return {
+            "status": "success" if completed else ("failed" if failed else "completed"),
+            "ticket_id": ticket_id,
+            "message": f"Processed user message in {execution_time:.2f}s",
+            "execution_time": f"{execution_time:.2f}s",
+            "workspace_id": workspace_id,
+            "ai_response_length": len(content),
+            "commit_sha": commit_sha,
+            "merge_status": merge_status
+        }
+
+    except Exception as e:
+        execution_time = time.time() - start_time
+        error_msg = str(e)
+        logger.error(f"[TICKET CHAT] Error: {error_msg}", exc_info=True)
+
+        return {
+            "status": "error",
+            "ticket_id": ticket_id,
+            "error": error_msg,
+            "workspace_id": workspace_id,
+            "execution_time": f"{execution_time:.2f}s"
+        }

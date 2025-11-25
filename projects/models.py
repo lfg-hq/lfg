@@ -295,23 +295,32 @@ class ProjectTodoList(models.Model):
 
 
 class TicketLog(models.Model):
-    """Model to store execution logs for tickets"""
+    """Model to store execution logs for tickets - includes commands, user messages, and AI responses"""
+
+    LOG_TYPE_CHOICES = [
+        ('command', 'Command'),
+        ('user_message', 'User Message'),
+        ('ai_response', 'AI Response'),
+    ]
+
     ticket = models.ForeignKey(ProjectTicket, on_delete=models.CASCADE, related_name="logs")
     task = models.ForeignKey(ProjectTodoList, on_delete=models.SET_NULL, null=True, blank=True, related_name="logs", help_text="Associated task if any")
-    command = models.TextField(help_text="The command that was executed")
+    log_type = models.CharField(max_length=20, choices=LOG_TYPE_CHOICES, default='command', help_text="Type of log entry")
+    command = models.TextField(help_text="The command that was executed (or message content for user/ai messages)")
     explanation = models.TextField(blank=True, null=True, help_text="Explanation of what this command does")
-    output = models.TextField(blank=True, null=True, help_text="Output from the command")
+    output = models.TextField(blank=True, null=True, help_text="Output from the command (or AI response content)")
     exit_code = models.IntegerField(null=True, blank=True, help_text="Command exit code")
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"Log for {self.ticket.name} - {self.command[:50]}"
+        return f"Log for {self.ticket.name} - {self.log_type}: {self.command[:50]}"
 
     class Meta:
         ordering = ['created_at', 'id']
         indexes = [
             models.Index(fields=['ticket']),
             models.Index(fields=['task']),
+            models.Index(fields=['log_type']),
         ]
 
 
