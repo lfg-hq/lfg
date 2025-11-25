@@ -1118,6 +1118,30 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
             }
         logger.info(f"[STEP 2/10] ✓ Ticket status: {ticket.status}, proceeding...")
 
+        attachments = list(ticket.attachments.all())
+
+        def _format_file_size(num_bytes: int) -> str:
+            try:
+                size = float(num_bytes or 0)
+            except (TypeError, ValueError):
+                size = 0
+            for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+                if size < 1024 or unit == 'TB':
+                    return f"{size:.1f} {unit}" if size >= 1024 and unit != 'B' else f"{int(size)} {unit}"
+                size /= 1024
+            return f"{size:.1f} TB"
+
+        if attachments:
+            attachment_lines = []
+            for attachment in attachments:
+                display_name = attachment.original_filename or os.path.basename(attachment.file.name)
+                size_label = _format_file_size(attachment.file_size)
+                uploaded_label = attachment.uploaded_at.strftime('%Y-%m-%d %H:%M')
+                attachment_lines.append(f"- {display_name} ({size_label}, uploaded {uploaded_label})")
+            attachments_summary = "\n".join(attachment_lines)
+        else:
+            attachments_summary = "No attachments were provided for this ticket."
+
         logger.info(f"\n[STEP 3/10] Setting up GitHub repository and branches...")
         # 3. SETUP GITHUB REPOSITORY AND BRANCHES
         github_owner = None
@@ -1459,6 +1483,9 @@ PROJECT PATH: nextjs-app
 {project_context}
 {git_error_context}
 
+ATTACHMENTS:
+{attachments_summary}
+
 ✅ Success case: "IMPLEMENTATION_STATUS: COMPLETE - [brief summary of what you did]"
 ❌ Failure case: "IMPLEMENTATION_STATUS: FAILED - [reason]"
 """
@@ -1507,7 +1534,8 @@ Note: whenever a TODO item is completed, make sure to mark the TODO as done.
                 project_id=project.project_id,  # Use UUID, not database ID
                 conversation_id=conversation_id,
                 stream=False,
-                tools=tools_builder
+                tools=tools_builder,
+                attachments=attachments if attachments else None
             )
             ai_call_duration = time.time() - ai_call_start
             logger.info(f"[STEP 10/11] ✓ AI call completed in {ai_call_duration:.1f}s")

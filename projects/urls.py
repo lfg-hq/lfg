@@ -28,6 +28,7 @@ urlpatterns = [
     path('<str:project_id>/api/design-schema/', views.project_design_schema_api, name='project_design_schema_api'),
     # Removed - use project_checklist_api instead
     path('<str:project_id>/api/checklist/', views.project_checklist_api, name='project_checklist_api'),
+    path('<str:project_id>/api/checklist/create/', views.create_checklist_item_api, name='create_checklist_item_api'),
     path('<str:project_id>/api/checklist/update/', views.update_checklist_item_api, name='update_checklist_item_api'),
     path('<str:project_id>/api/checklist/<int:item_id>/delete/', views.delete_checklist_item_api, name='delete_checklist_item_api'),
     path('<str:project_id>/api/server-configs/', views.project_server_configs_api, name='project_server_configs_api'),
@@ -64,6 +65,7 @@ urlpatterns = [
 
     # Ticket chat API
     path('<str:project_id>/api/tickets/<int:ticket_id>/chat/', views.ticket_chat_api, name='ticket_chat_api'),
+    path('<str:project_id>/api/tickets/<int:ticket_id>/attachments/', views.ticket_attachments_api, name='ticket_attachments_api'),
 
     # Ticket execution API
     path('<str:project_id>/api/tickets/<int:ticket_id>/execute/', views.execute_ticket_api, name='execute_ticket_api'),

@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.urls import reverse
 import uuid
+import os
 
 # Create your models here.
 class Project(models.Model):
@@ -313,6 +314,29 @@ class TicketLog(models.Model):
             models.Index(fields=['task']),
         ]
 
+
+def get_ticket_attachment_upload_path(instance, filename):
+    """Generate path for ticket attachments grouped by ticket ID"""
+    base, ext = os.path.splitext(filename)
+    unique_name = f"{uuid.uuid4().hex}{ext}"
+    return os.path.join('ticket_attachments', str(instance.ticket.id), unique_name)
+
+
+class ProjectTicketAttachment(models.Model):
+    """Files/screenshots associated with a ticket"""
+    ticket = models.ForeignKey(ProjectTicket, on_delete=models.CASCADE, related_name="attachments")
+    uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='ticket_attachments')
+    file = models.FileField(upload_to=get_ticket_attachment_upload_path)
+    original_filename = models.CharField(max_length=255, blank=True)
+    file_type = models.CharField(max_length=100, blank=True)
+    file_size = models.PositiveIntegerField(default=0)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-uploaded_at', '-id']
+
+    def __str__(self):
+        return self.original_filename or os.path.basename(self.file.name)
 
 class ProjectCodeGeneration(models.Model):
     project = models.OneToOneField(Project, on_delete=models.CASCADE, related_name="code_generation")

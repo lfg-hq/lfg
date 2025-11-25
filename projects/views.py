@@ -2,7 +2,18 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse, HttpResponseForbidden
 from django.contrib import messages
-from .models import Project, ProjectFeature, ProjectPersona, ProjectFile, ProjectDesignSchema, ProjectTicket, ToolCallHistory, ProjectMember, ProjectInvitation
+from .models import (
+    Project,
+    ProjectFeature,
+    ProjectPersona,
+    ProjectFile,
+    ProjectDesignSchema,
+    ProjectTicket,
+    ProjectTicketAttachment,
+    ToolCallHistory,
+    ProjectMember,
+    ProjectInvitation
+)
 from django.views.decorators.http import require_POST, require_http_methods
 from django.core.exceptions import PermissionDenied
 from django.db.models import Q
@@ -13,6 +24,8 @@ from pathlib import Path
 from django.views.decorators.csrf import csrf_exempt
 from django.utils import timezone
 import json
+import mimetypes
+import os
 
 # Import ServerConfig from development app
 from development.models import ServerConfig
@@ -26,6 +39,29 @@ from factory.ai_functions import execute_local_command, restart_server_from_conf
 from factory.llm_config import get_llm_model_config
 from chat.models import ModelSelection
 
+
+def serialize_ticket_attachment(attachment, request=None):
+    """Return a JSON-friendly representation of an attachment."""
+    file_url = attachment.file.url if attachment.file else ''
+    if request and file_url:
+        file_url = request.build_absolute_uri(file_url)
+
+    uploaded_by = None
+    if attachment.uploaded_by:
+        uploaded_by = (
+            attachment.uploaded_by.get_full_name()
+            or attachment.uploaded_by.username
+        )
+
+    return {
+        'id': attachment.id,
+        'original_filename': attachment.original_filename or os.path.basename(attachment.file.name),
+        'file_type': attachment.file_type,
+        'file_size': attachment.file_size,
+        'file_url': file_url,
+        'uploaded_at': attachment.uploaded_at.isoformat(),
+        'uploaded_by': uploaded_by,
+    }
 # Create your views here.
 
 @login_required
@@ -588,12 +624,18 @@ def project_checklist_api(request, project_id):
         raise PermissionDenied("You don't have permission to access this project.")
     
     # Get all tickets for this project
-    tickets = ProjectTicket.objects.filter(project=project).order_by('created_at', 'id')
+    tickets = ProjectTicket.objects.filter(project=project).select_related('project').prefetch_related('attachments').order_by('created_at', 'id')
 
     tickets_list = []
     for item in tickets:
+        attachments = [
+            serialize_ticket_attachment(attachment, request)
+            for attachment in item.attachments.all()
+        ]
         tickets_list.append({
             'id': item.id,
+            'project_id': str(item.project.project_id),
+            'project_name': item.project.name,
             'name': item.name,
             'description': item.description,
             'status': item.status,
@@ -617,9 +659,150 @@ def project_checklist_api(request, project_id):
             'linear_assignee_id': item.linear_assignee_id,
             'linear_synced_at': item.linear_synced_at.isoformat() if item.linear_synced_at else None,
             'linear_sync_enabled': item.linear_sync_enabled,
+            'attachments': attachments,
         })
 
     return JsonResponse({'tickets': tickets_list})
+
+@login_required
+@require_POST
+def create_checklist_item_api(request, project_id):
+    """API endpoint to create a new checklist/ticket item"""
+    project = get_object_or_404(Project, project_id=project_id)
+
+    if not project.can_user_manage_tickets(request.user):
+        return JsonResponse({
+            'success': False,
+            'error': 'You do not have permission to create tickets in this project'
+        }, status=403)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': 'Invalid JSON data'
+        }, status=400)
+
+    name = (data.get('name') or '').strip()
+    description = (data.get('description') or '').strip()
+
+    if not name:
+        return JsonResponse({
+            'success': False,
+            'error': 'Ticket name is required'
+        }, status=400)
+
+    if not description:
+        return JsonResponse({
+            'success': False,
+            'error': 'Ticket description is required'
+        }, status=400)
+
+    def validate_choice(value, choices, default_value):
+        return value if value in choices else default_value
+
+    status_choices = [choice[0] for choice in ProjectTicket._meta.get_field('status').choices]
+    priority_choices = [choice[0] for choice in ProjectTicket._meta.get_field('priority').choices]
+    role_choices = [choice[0] for choice in ProjectTicket._meta.get_field('role').choices]
+    complexity_choices = [choice[0] for choice in ProjectTicket._meta.get_field('complexity').choices]
+
+    status = validate_choice(data.get('status', 'open'), status_choices, 'open')
+    priority = validate_choice(data.get('priority', 'Medium'), priority_choices, 'Medium')
+    role = validate_choice(data.get('role', 'user'), role_choices, 'user')
+    complexity = validate_choice(data.get('complexity', 'medium'), complexity_choices, 'medium')
+
+    requires_worktree_value = data.get('requires_worktree', True)
+    if isinstance(requires_worktree_value, str):
+        requires_worktree = requires_worktree_value.lower() in ['true', '1', 'yes', 'on']
+    else:
+        requires_worktree = bool(requires_worktree_value)
+
+    ticket = ProjectTicket.objects.create(
+        project=project,
+        name=name,
+        description=description,
+        status=status,
+        priority=priority,
+        role=role,
+        complexity=complexity,
+        requires_worktree=requires_worktree,
+    )
+
+    ticket_data = {
+        'id': ticket.id,
+        'project_id': str(project.project_id),
+        'project_name': project.name,
+        'name': ticket.name,
+        'description': ticket.description,
+        'status': ticket.status,
+        'priority': ticket.priority,
+        'role': ticket.role,
+        'complexity': ticket.complexity,
+        'requires_worktree': ticket.requires_worktree,
+        'created_at': ticket.created_at.isoformat(),
+        'updated_at': ticket.updated_at.isoformat(),
+        'attachments': [],
+    }
+
+    return JsonResponse({
+        'success': True,
+        'message': 'Ticket created successfully',
+        'ticket': ticket_data
+    }, status=201)
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def ticket_attachments_api(request, project_id, ticket_id):
+    """Upload or list attachments for a ticket."""
+    project = get_object_or_404(Project, project_id=project_id)
+
+    if not project.can_user_access(request.user):
+        raise PermissionDenied("You don't have permission to access this project.")
+
+    ticket = get_object_or_404(ProjectTicket, id=ticket_id, project=project)
+
+    if request.method == "GET":
+        attachments = [
+            serialize_ticket_attachment(attachment, request)
+            for attachment in ticket.attachments.all()
+        ]
+        return JsonResponse({
+            'success': True,
+            'attachments': attachments
+        })
+
+    if not project.can_user_manage_tickets(request.user):
+        return JsonResponse({
+            'success': False,
+            'error': 'You do not have permission to upload attachments for this project'
+        }, status=403)
+
+    files = request.FILES.getlist('files')
+    if not files:
+        return JsonResponse({
+            'success': False,
+            'error': 'No files provided'
+        }, status=400)
+
+    saved = []
+    for file_obj in files:
+        file_type = file_obj.content_type or (mimetypes.guess_type(file_obj.name)[0] if file_obj.name else '') or ''
+        attachment = ProjectTicketAttachment.objects.create(
+            ticket=ticket,
+            uploaded_by=request.user,
+            file=file_obj,
+            original_filename=file_obj.name[:255] if file_obj.name else '',
+            file_type=file_type,
+            file_size=file_obj.size or 0,
+        )
+        saved.append(serialize_ticket_attachment(attachment, request))
+
+    return JsonResponse({
+        'success': True,
+        'attachments': saved
+    }, status=201)
 
 @login_required
 def project_server_configs_api(request, project_id):

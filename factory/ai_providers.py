@@ -12,6 +12,7 @@ import logging
 import asyncio
 from typing import Optional, Dict, Any, List
 from django.contrib.auth.models import User
+from django.core.files.storage import default_storage
 
 from chat.models import Conversation, ModelSelection
 from projects.models import Project
@@ -37,6 +38,36 @@ from factory.utils import FileHandler
 
 # Set up logger
 logger = logging.getLogger(__name__)
+PROVIDER_NAME_MAP = {
+    'AnthropicProvider': 'anthropic',
+    'OpenAIProvider': 'openai',
+    'XAIProvider': 'xai',
+    'GoogleGeminiProvider': 'google',
+}
+
+
+async def _prepare_attachment_messages(attachments: List[Any], provider_name: str, user: Optional[User]):
+    """Convert attachments into provider-specific message parts."""
+    if not attachments:
+        return []
+
+    prepared_messages = []
+    file_handler = FileHandler(provider_name, user)
+
+    for attachment in attachments:
+        storage = getattr(getattr(attachment, 'file', None), 'storage', default_storage)
+        if not storage:
+            storage = default_storage
+        try:
+            prepared = await file_handler.prepare_file_for_provider(attachment, storage)
+            if prepared:
+                prepared_messages.append(prepared)
+        except ValueError as unsupported_error:
+            logger.warning(f"Attachment {getattr(attachment, 'original_filename', 'unknown')} "
+                           f"skipped: {unsupported_error}")
+        except Exception as attachment_error:
+            logger.error(f"Failed to prepare attachment: {attachment_error}", exc_info=True)
+    return prepared_messages
 
 
 async def _get_selected_model_for_user(user: Optional[User]) -> str:
@@ -63,7 +94,8 @@ async def _get_selected_model_for_user(user: Optional[User]) -> str:
 
 async def get_ai_response(user_message: str, system_prompt: str, project_id: Optional[int], 
                           conversation_id: Optional[int], stream: bool = False, 
-                          tools: Optional[List[Dict]] = None) -> Dict[str, Any]:
+                          tools: Optional[List[Dict]] = None,
+                          attachments: Optional[List[Any]] = None) -> Dict[str, Any]:
     """
     Non-streaming wrapper for AI providers to be used in task implementations.
     Collects the full response from streaming providers and returns it as a complete response.
@@ -75,6 +107,7 @@ async def get_ai_response(user_message: str, system_prompt: str, project_id: Opt
         conversation_id: The conversation ID
         stream: Whether to return streaming (not used, kept for compatibility)
         tools: List of tools available to the AI
+        attachments: Optional iterable of file objects to include in the request
         
     Returns:
         Dict containing the AI response with content and tool_calls
@@ -84,9 +117,10 @@ async def get_ai_response(user_message: str, system_prompt: str, project_id: Opt
         tools = tools_code
     
     # Create messages list
+    user_content: Any = user_message
     messages = [
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_message}
+        {"role": "user", "content": user_content}
     ]
     
     # Get the conversation or project to extract the user
@@ -129,6 +163,14 @@ async def get_ai_response(user_message: str, system_prompt: str, project_id: Opt
     # Determine which model/provider to use for this user
     selected_model = await _get_selected_model_for_user(user)
     provider = AIProvider.get_provider(None, selected_model, user, conversation, project)
+    provider_name = PROVIDER_NAME_MAP.get(provider.__class__.__name__, 'openai')
+
+    if attachments:
+        attachment_messages = await _prepare_attachment_messages(attachments, provider_name, user)
+        if attachment_messages:
+            user_content = [{"type": "text", "text": user_message}]
+            user_content.extend(attachment_messages)
+            messages[1]["content"] = user_content
     
     # Collect the streaming response
     full_content = ""
