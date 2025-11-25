@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tickets - LFG 🚀</title>
+    <title>{% if current_project %}{{ current_project.name }} - Tickets{% else %}Tickets{% endif %} - LFG 🚀</title>
     <link rel="stylesheet" href="/static/css/common.css">
     <link rel="stylesheet" href="/static/css/sidebar.css">
     <link rel="stylesheet" href="/static/css/tickets.css?v=5">
@@ -664,8 +664,9 @@
     </style>
 </head>
 <body data-user-authenticated="{% if user.is_authenticated %}true{% else %}false{% endif %}"
-      data-model-key="{{ current_model_key|default:'gpt-5-mini' }}">
-    <div class="app-container">
+      data-model-key="{{ current_model_key|default:'gpt-5-mini' }}"
+      data-sidebar-minimized="{% if sidebar_minimized %}true{% else %}false{% endif %}">
+    <div class="app-container{% if sidebar_minimized %} sidebar-minimized{% endif %}">
         {% include 'includes/sidebar.html' with show_conversations=False %}
 
         <div class="main-content tickets-page">
@@ -677,12 +678,16 @@
                         <input type="text" class="filter-search" id="ticketSearch" placeholder="Search tickets..." onkeyup="filterTickets()">
                     </div>
                     <div class="filter-right">
+                        {% if not current_project %}
                         <select class="filter-select" id="projectFilter" onchange="filterTickets()">
                             <option value="">All Projects</option>
                             {% for project in projects %}
                                 <option value="{{ project.project_id }}">{{ project.name }}</option>
                             {% endfor %}
                         </select>
+                        {% else %}
+                        <input type="hidden" id="projectFilter" value="{{ current_project.project_id }}">
+                        {% endif %}
                         <select class="filter-select" id="statusFilter" onchange="filterTickets()">
                             <option value="">All Statuses</option>
                             {% for status in statuses %}
@@ -718,7 +723,7 @@
                         <button type="button"
                                 class="btn btn-primary new-ticket-btn"
                                 id="newTicketBtn"
-                                {% if not projects %}
+                                {% if not projects and not current_project %}
                                     disabled
                                     title="Create a project first"
                                 {% endif %}>
@@ -787,11 +792,17 @@
                         </div>
                         <h3 class="empty-state-title">No tickets yet</h3>
                         <div class="empty-state-text">
+                            {% if current_project %}
+                            Create tickets for {{ current_project.name }} to track work items.
+                            {% else %}
                             Create tickets in your projects to track work items.
+                            {% endif %}
                         </div>
+                        {% if not current_project %}
                         <a href="{% url 'projects:project_list' %}" class="btn btn-primary">
                             <i class="fas fa-folder"></i> Go to Projects
                         </a>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -855,10 +866,12 @@
                         <input type="hidden" id="newTicketProject">
                         <div class="modal-context" id="newTicketProjectDisplay">
                             <div class="modal-context-label">Project</div>
-                            <div class="modal-context-value" id="newTicketProjectLabel">---</div>
+                            <div class="modal-context-value" id="newTicketProjectLabel">{% if current_project %}{{ current_project.name }}{% else %}---{% endif %}</div>
+                            {% if not current_project %}
                             <div class="modal-context-hint">
                                 Uses the project from the filters above. Switch the filter to create a ticket in another project.
                             </div>
+                            {% endif %}
                         </div>
                         <div>
                             <label for="newTicketName">Ticket name</label>
@@ -957,6 +970,9 @@
         }
     </script>
     <script>
+        // Current project context (set by server when viewing project-scoped tickets)
+        const currentProject = {% if current_project %}{ id: '{{ current_project.project_id }}', name: '{{ current_project.name|escapejs }}' }{% else %}null{% endif %};
+
         // Filter tickets function
         function filterTickets() {
             const searchTerm = document.getElementById('ticketSearch').value.toLowerCase();
@@ -1112,8 +1128,18 @@
         const createTicketSubmit = document.getElementById('createTicketSubmit');
 
         function resolveProjectContextFromFilter() {
+            // If we have a current project context, use it
+            if (currentProject) {
+                return currentProject;
+            }
+
             const projectFilter = document.getElementById('projectFilter');
             if (!projectFilter) return null;
+
+            // For hidden input (when current_project is set), just use the value
+            if (projectFilter.type === 'hidden') {
+                return currentProject;
+            }
 
             let projectOption = null;
             if (projectFilter.value) {

@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 from factory.ai_functions import execute_local_command, restart_server_from_config
 from factory.llm_config import get_llm_model_config
 from chat.models import ModelSelection
+from accounts.models import ApplicationState
 
 
 def serialize_ticket_attachment(attachment, request=None):
@@ -163,6 +164,10 @@ def tickets_list(request):
     model_selection = ModelSelection.objects.filter(user=request.user).first()
     current_model_key = model_selection.selected_model if model_selection else ModelSelection.DEFAULT_MODEL_KEY
 
+    # Get sidebar state
+    app_state = ApplicationState.objects.filter(user=request.user).first()
+    sidebar_minimized = app_state.sidebar_minimized if app_state else False
+
     return render(request, 'projects/tickets_list.html', {
         'tickets': tickets,
         'statuses': statuses,
@@ -170,6 +175,61 @@ def tickets_list(request):
         'projects': all_projects,
         'llm_model_config': get_llm_model_config(),
         'current_model_key': current_model_key,
+        'sidebar_minimized': sidebar_minimized,
+    })
+
+@login_required
+def project_tickets_list(request, project_id):
+    """View to display tickets for a specific project"""
+    project = get_object_or_404(Project, project_id=project_id)
+
+    # Check if user has access to this project
+    if not project.can_user_access(request.user):
+        raise PermissionDenied("You don't have permission to access this project.")
+
+    # Get all projects where user has access (for the project dropdown)
+    owned_projects = Project.objects.filter(owner=request.user)
+    try:
+        member_projects = Project.objects.filter(
+            members__user=request.user,
+            members__status='active'
+        ).exclude(owner=request.user)
+    except Exception:
+        member_projects = Project.objects.none()
+
+    all_projects = list(owned_projects) + list(member_projects)
+
+    # Get tickets for this specific project (oldest first)
+    tickets = ProjectTicket.objects.filter(
+        project=project
+    ).select_related('project').order_by('created_at')
+
+    # Get distinct statuses and priorities for filters
+    statuses = ProjectTicket.objects.filter(
+        project=project
+    ).values_list('status', flat=True).distinct()
+
+    priorities = ProjectTicket.objects.filter(
+        project=project
+    ).values_list('priority', flat=True).distinct()
+
+    # Determine user's current model selection
+    model_selection = ModelSelection.objects.filter(user=request.user).first()
+    current_model_key = model_selection.selected_model if model_selection else ModelSelection.DEFAULT_MODEL_KEY
+
+    # Get sidebar state
+    app_state = ApplicationState.objects.filter(user=request.user).first()
+    sidebar_minimized = app_state.sidebar_minimized if app_state else False
+
+    return render(request, 'projects/tickets_list.html', {
+        'tickets': tickets,
+        'statuses': statuses,
+        'priorities': priorities,
+        'projects': all_projects,
+        'current_project': project,
+        'llm_model_config': get_llm_model_config(),
+        'current_model_key': current_model_key,
+        'sidebar_minimized': sidebar_minimized,
     })
 
 @login_required

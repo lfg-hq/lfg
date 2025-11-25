@@ -111,11 +111,25 @@ def index(request):
 def project_chat(request, project_id):
     """Create a new conversation linked to a project and redirect to the chat interface."""
     project = get_object_or_404(Project, project_id=project_id, owner=request.user)
-    
+
+    # Get all projects for the sidebar dropdown
+    owned_projects = Project.objects.filter(owner=request.user)
+    try:
+        from projects.models import ProjectMember
+        member_projects = Project.objects.filter(
+            members__user=request.user,
+            members__status='active'
+        ).exclude(owner=request.user)
+    except Exception:
+        member_projects = Project.objects.none()
+    all_projects = list(owned_projects) + list(member_projects)
+
     # Redirect to the chat interface with this conversation open
     context = {
         'project': project,
-        'project_id': project.project_id
+        'project_id': project.project_id,
+        'current_project': project,
+        'projects': all_projects
     }
     
     # Get user's agent role for turbo mode and role
@@ -169,21 +183,35 @@ def project_chat(request, project_id):
 def show_conversation(request, conversation_id):
     """Show a specific conversation."""
     conversation = get_object_or_404(Conversation, id=conversation_id, user=request.user)
-    
+
     # Check if this conversation is linked to any project
     project = None
     if hasattr(conversation, 'projects'):
-        projects = conversation.projects.all()
-        if projects.exists():
-            project = projects.first()
-    
+        conv_projects = conversation.projects.all()
+        if conv_projects.exists():
+            project = conv_projects.first()
+
+    # Get all projects for the sidebar dropdown
+    owned_projects = Project.objects.filter(owner=request.user)
+    try:
+        from projects.models import ProjectMember
+        member_projects = Project.objects.filter(
+            members__user=request.user,
+            members__status='active'
+        ).exclude(owner=request.user)
+    except Exception:
+        member_projects = Project.objects.none()
+    all_projects = list(owned_projects) + list(member_projects)
+
     context = {
-        'conversation_id': conversation.id
+        'conversation_id': conversation.id,
+        'projects': all_projects
     }
-    
+
     if project:
         context['project'] = project
         context['project_id'] = str(project.project_id)
+        context['current_project'] = project
     
     # Get user's agent role for turbo mode and role
     agent_role, created = AgentRole.objects.get_or_create(
