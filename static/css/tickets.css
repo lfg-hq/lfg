@@ -449,61 +449,100 @@
     gap: 0.75rem;
 }
 
-.drawer-pin-btn {
-    padding: 0.5rem;
-    background: rgba(255, 255, 255, 0.05);
-    color: var(--text-secondary);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: var(--radius-md);
-    font-size: 0.875rem;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 2.25rem;
-    height: 2.25rem;
-    transition: all 0.2s ease;
-}
-
-.drawer-pin-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: var(--text-color);
-}
-
-.drawer-pin-btn.pinned {
-    background: var(--primary-color);
-    color: white;
-    border-color: var(--primary-color);
-    transform: rotate(45deg);
-}
-
-.drawer-pin-btn.pinned:hover {
-    background: var(--primary-hover);
-}
-
-.drawer-execute-btn {
-    padding: 0.5rem 1rem;
-    background: var(--primary-color);
-    color: white;
-    border: none;
-    border-radius: var(--radius-md);
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
+.drawer-actions {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+}
+
+.drawer-server-btn {
+    padding: 0.2rem 0.65rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-secondary);
+    font-size: 0.7rem;
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3rem;
+    min-height: 1.65rem;
+    line-height: 1;
     transition: all 0.2s ease;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+}
+
+.drawer-server-btn:hover:not(:disabled) {
+    color: var(--text-primary);
+    border-color: rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.08);
+    transform: translateY(-1px);
+}
+
+.drawer-server-btn:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+}
+
+.drawer-open-url-btn {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 0.8rem;
+}
+
+.drawer-open-url-btn:hover:not(:disabled) {
+    color: var(--text-primary);
+    border-color: rgba(255, 255, 255, 0.35);
+    background: rgba(255, 255, 255, 0.1);
+    transform: translateY(-1px);
+}
+
+.drawer-open-url-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.drawer-execute-btn {
+    padding: 0.35rem 0.75rem;
+    background: linear-gradient(135deg, var(--primary-color), #8b5cf6);
+    color: white;
+    border: none;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: 1.85rem;
+    line-height: 1;
+    transition: all 0.2s ease;
+    box-shadow: 0 8px 18px rgba(139, 92, 246, 0.3);
 }
 
 .drawer-execute-btn:hover:not(:disabled) {
-    background: var(--primary-hover);
+    background: linear-gradient(135deg, var(--primary-hover), #a855f7);
     transform: translateY(-1px);
 }
 
 .drawer-execute-btn:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+}
+
+.drawer-execute-btn i {
+    font-size: 0.75rem;
 }
 
 .drawer-execute-btn i.fa-spinner {
@@ -556,17 +595,25 @@
 
 .drawer-close {
     background: none;
-    border: none;
+    border: 1px solid rgba(255, 255, 255, 0.18);
     color: var(--text-secondary);
-    font-size: 1.25rem;
+    font-size: 0.9rem;
     cursor: pointer;
-    padding: 0.25rem;
-    transition: color 0.2s ease;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 50%;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     line-height: 1;
+    transition: all 0.2s ease;
 }
 
 .drawer-close:hover {
-    color: var(--text-color);
+    color: var(--text-primary);
+    border-color: rgba(255, 255, 255, 0.35);
+    background: rgba(255, 255, 255, 0.06);
 }
 
 .drawer-body {

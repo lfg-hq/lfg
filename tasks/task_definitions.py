@@ -1478,10 +1478,10 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
 
             ticket.status = 'failed'
             ticket.notes = (ticket.notes or "") + f"""
----
-[{datetime.now().strftime('%Y-%m-%d %H:%M')}] EXECUTION FAILED
-Error: {error_msg}
-"""
+            ---
+            [{datetime.now().strftime('%Y-%m-%d %H:%M')}] EXECUTION FAILED
+            Error: {error_msg}
+            """
             ticket.save(update_fields=['status', 'notes'])
 
             broadcast_ticket_notification(conversation_id, {
@@ -1575,76 +1575,76 @@ Error: {error_msg}
         git_error_context = ""
         if git_setup_error:
             git_error_context = f"""
-⚠️ GIT SETUP ISSUE DETECTED:
-Repository: {git_setup_error['repo']}
-Target Branch: {git_setup_error['branch']}
-Error: {git_setup_error['message']}
+                ⚠️ GIT SETUP ISSUE DETECTED:
+                Repository: {git_setup_error['repo']}
+                Target Branch: {git_setup_error['branch']}
+                Error: {git_setup_error['message']}
 
-🔧 BEFORE implementing the ticket, you MUST fix this git issue:
-1. Check the current git status: cd /workspace/nextjs-app && git status
-2. If there are merge conflicts, resolve them:
-   - Check conflicted files
-   - Resolve conflicts by editing files
-   - Stage resolved files: git add <files>
-   - Complete merge: git commit -m "Resolve merge conflicts"
-3. If there are uncommitted changes, either commit or stash them
-4. Checkout the correct branch: git checkout {git_setup_error['branch']}
-5. Verify you're on the right branch: git branch --show-current
+                🔧 BEFORE implementing the ticket, you MUST fix this git issue:
+                1. Check the current git status: cd /workspace/nextjs-app && git status
+                2. If there are merge conflicts, resolve them:
+                - Check conflicted files
+                - Resolve conflicts by editing files
+                - Stage resolved files: git add <files>
+                - Complete merge: git commit -m "Resolve merge conflicts"
+                3. If there are uncommitted changes, either commit or stash them
+                4. Checkout the correct branch: git checkout {git_setup_error['branch']}
+                5. Verify you're on the right branch: git branch --show-current
 
-Only AFTER fixing the git issue should you proceed with ticket implementation.
-"""
+                Only AFTER fixing the git issue should you proceed with ticket implementation.
+                """
 
         implementation_prompt = f"""
-You are implementing ticket #{ticket.id}: {ticket.name}
+            You are implementing ticket #{ticket.id}: {ticket.name}
 
-TICKET DESCRIPTION:
-{ticket.description}
+            TICKET DESCRIPTION:
+            {ticket.description}
 
-PROJECT PATH: nextjs-app
-{project_context}
-{git_error_context}
+            PROJECT PATH: nextjs-app
+            {project_context}
+            {git_error_context}
 
-ATTACHMENTS:
-{attachments_summary}
+            ATTACHMENTS:
+            {attachments_summary}
 
-✅ Success case: "IMPLEMENTATION_STATUS: COMPLETE - [brief summary of what you did]"
-❌ Failure case: "IMPLEMENTATION_STATUS: FAILED - [reason]"
-"""
+            ✅ Success case: "IMPLEMENTATION_STATUS: COMPLETE - [brief summary of what you did]"
+            ❌ Failure case: "IMPLEMENTATION_STATUS: FAILED - [reason]"
+            """
         system_prompt = """
-You are expert developer assigned to work on a development ticket.
+            You are expert developer assigned to work on a development ticket.
 
-COMMUNICATION PROTOCOL - VERY IMPORTANT:
-1. IMMEDIATELY call broadcast_to_user(status="progress", message="Starting work on: [ticket name]...")
-2. Work SILENTLY - do NOT output explanatory text like "Let me check...", "Perfect!", "Now I'll..."
-3. Just execute tools directly without narration
-4. At the END, call broadcast_to_user(status="complete", message="[summary of what was done]")
-5. If blocked or need help, call broadcast_to_user(status="blocked", message="[what's wrong]")
+            COMMUNICATION PROTOCOL - VERY IMPORTANT:
+            1. IMMEDIATELY call broadcast_to_user(status="progress", message="Starting work on: [ticket name]...")
+            2. Work SILENTLY - do NOT output explanatory text like "Let me check...", "Perfect!", "Now I'll..."
+            3. Just execute tools directly without narration
+            4. At the END, call broadcast_to_user(status="complete", message="[summary of what was done]")
+            5. If blocked or need help, call broadcast_to_user(status="blocked", message="[what's wrong]")
 
-The user only sees broadcast_to_user messages clearly. All other text output clutters the logs.
+            The user only sees broadcast_to_user messages clearly. All other text output clutters the logs.
 
-WORKFLOW:
-1. Broadcast that you're starting
-2. Check if todos exist - if no, create them. If yes, continue from pending ones.
-3. Check agent.md for project state. Update it with important changes.
-4. Execute todos one by one SILENTLY (batch shell commands: ls -la && cat ... && grep ...)
-5. Mark each todo as `Success` when complete
-6. Install libraries as needed
-7. Broadcast final summary
+            WORKFLOW:
+            1. Broadcast that you're starting
+            2. Check if todos exist - if no, create them. If yes, continue from pending ones.
+            3. Check agent.md for project state. Update it with important changes.
+            4. Execute todos one by one SILENTLY (batch shell commands: ls -la && cat ... && grep ...)
+            5. Mark each todo as `Success` when complete
+            6. Install libraries as needed
+            7. Broadcast final summary
 
-🎯 COMPLETION CRITERIA:
-- Project runs with `npm run dev` (DO NOT BUILD)
-- All todos marked `Success`
+            🎯 COMPLETION CRITERIA:
+            - Project runs with `npm run dev` (DO NOT BUILD)
+            - All todos marked `Success`
 
-IMPORTANT:
-- DO NOT RE-CREATE the project. Modify existing files.
-- DO NOT verify extensively or test in loops.
-- DO NOT create documentation files (*.md) except agent.md
-- When done, update todos and broadcast completion
+            IMPORTANT:
+            - DO NOT RE-CREATE the project. Modify existing files.
+            - DO NOT verify extensively or test in loops.
+            - DO NOT create documentation files (*.md) except agent.md
+            - When done, update todos and broadcast completion
 
-MANDATORY: You MUST end your response with one of these exact status lines (required for tracking):
-- "IMPLEMENTATION_STATUS: COMPLETE - [changes]"
-- "IMPLEMENTATION_STATUS: FAILED - [reason]"
-        """
+            MANDATORY: You MUST end your response with one of these exact status lines (required for tracking):
+            - "IMPLEMENTATION_STATUS: COMPLETE - [changes]"
+            - "IMPLEMENTATION_STATUS: FAILED - [reason]"
+                    """
 
         logger.info(f"\n[STEP 6/6] Calling AI for ticket implementation...")
         logger.info(f"[STEP 6/6] Max execution time: {max_execution_time}s | Elapsed: {time.time() - start_time:.1f}s")
@@ -1796,13 +1796,13 @@ MANDATORY: You MUST end your response with one of these exact status lines (requ
                         git_info += f"\nlfg-agent Branch: {lfg_agent_url}"
 
             ticket.notes = (ticket.notes or "") + f"""
----
-[{datetime.now().strftime('%Y-%m-%d %H:%M')}] IMPLEMENTATION COMPLETED
-Time: {execution_time:.2f} seconds
-Files created: {len(files_created)}
-Dependencies: {', '.join(set(dependencies))}{git_info}
-Status: ✓ Complete
-"""
+                ---
+                [{datetime.now().strftime('%Y-%m-%d %H:%M')}] IMPLEMENTATION COMPLETED
+                Time: {execution_time:.2f} seconds
+                Files created: {len(files_created)}
+                Dependencies: {', '.join(set(dependencies))}{git_info}
+                Status: ✓ Complete
+                """
             ticket.save(update_fields=['status', 'notes'])
             
             broadcast_ticket_notification(conversation_id, {
@@ -1854,15 +1854,15 @@ Status: ✓ Complete
 
             ticket.status = 'failed'
             ticket.notes = (ticket.notes or "") + f"""
----
-[{datetime.now().strftime('%Y-%m-%d %H:%M')}] IMPLEMENTATION FAILED
-Time: {execution_time:.2f} seconds
-Tool calls: ~{tool_calls_count}
-Files attempted: {len(files_created)}
-Error: {error_reason}
-Workspace: {workspace_id}
-Manual intervention required
-"""
+                ---
+                [{datetime.now().strftime('%Y-%m-%d %H:%M')}] IMPLEMENTATION FAILED
+                Time: {execution_time:.2f} seconds
+                Tool calls: ~{tool_calls_count}
+                Files attempted: {len(files_created)}
+                Error: {error_reason}
+                Workspace: {workspace_id}
+                Manual intervention required
+                """
             ticket.save(update_fields=['status', 'notes'])
 
             broadcast_ticket_notification(conversation_id, {
@@ -1900,13 +1900,13 @@ Manual intervention required
             # Mark ticket as failed - no retry logic
             ticket.status = 'failed'
             ticket.notes = (ticket.notes or "") + f"""
----
-[{datetime.now().strftime('%Y-%m-%d %H:%M')}] EXECUTION FAILED
-Error: {error_msg}
-Time: {execution_time:.2f}s
-Workspace: {workspace_id or 'N/A'}
-Manual intervention required
-"""
+            ---
+            [{datetime.now().strftime('%Y-%m-%d %H:%M')}] EXECUTION FAILED
+            Error: {error_msg}
+            Time: {execution_time:.2f}s
+            Workspace: {workspace_id or 'N/A'}
+            Manual intervention required
+            """
             ticket.save(update_fields=['status', 'notes'])
 
             broadcast_ticket_notification(conversation_id, {
@@ -2295,6 +2295,7 @@ def continue_ticket_with_message(ticket_id: int, project_id: int, user_message: 
         Dict with execution results and status
     """
     logger.info(f"\n{'='*80}\n[TICKET CHAT] Processing message for ticket #{ticket_id}\n{'='*80}")
+    logger.info(f"[TICKET CHAT] Input params: ticket_id={ticket_id}, project_id={project_id}, user_id={user_id}")
 
     start_time = time.time()
     workspace_id = None
@@ -2306,7 +2307,7 @@ def continue_ticket_with_message(ticket_id: int, project_id: int, user_message: 
 
         # Set the ticket ID context for lazy workspace initialization
         current_ticket_id.set(ticket_id)
-        logger.info(f"[TICKET CHAT] Set current_ticket_id context: {ticket_id}")
+        logger.info(f"[TICKET CHAT] Context set: ticket_id={ticket_id}, project.project_id={project.project_id}")
 
         logger.info(f"[TICKET CHAT] Ticket: '{ticket.name}' | Project: '{project.name}'")
         logger.info(f"[TICKET CHAT] User message: {user_message[:200]}...")
@@ -2400,72 +2401,71 @@ def continue_ticket_with_message(ticket_id: int, project_id: int, user_message: 
         workspace_info = ""
         if workspace_id:
             workspace_info = """
-You have full access to the workspace and can:
-1. Execute commands to inspect or modify code
-2. Make changes requested by the user
-3. Answer questions about the current state
-4. Continue implementation if needed"""
-        else:
-            workspace_info = """
-NOTE: No active workspace is currently running, but one will be created automatically when you use the ssh_command tool.
-You can:
-1. Execute commands using ssh_command - workspace will be provisioned on-demand
-2. Answer questions about the ticket based on the description and logs
-3. Make code changes as requested by the user
+                You have full access to the workspace and can:
+                1. Execute commands to inspect or modify code
+                2. Make changes requested by the user
+                3. Answer questions about the current state
+                4. Continue implementation if needed"""
+            else:
+                workspace_info = """
+                    NOTE: No active workspace is currently running, but one will be created automatically when you use the ssh_command tool.
+                    You can:
+                    1. Execute commands using ssh_command - workspace will be provisioned on-demand
+                    2. Answer questions about the ticket based on the description and logs
+                    3. Make code changes as requested by the user
 
-When you call ssh_command for the first time, the workspace will be automatically initialized."""
+                    When you call ssh_command for the first time, the workspace will be automatically initialized."""
 
-        continuation_prompt = f"""
-USER REQUEST:
-{user_message}
+            continuation_prompt = f"""
+                USER REQUEST:
+                {user_message}
 
-TICKET CONTEXT:
-Ticket #{ticket.id}: {ticket.name}
-Description: {ticket.description}
-Status: {ticket.status}
-{todos_context}
-{conversation_history}
-{logs_context}
-{attachments_context}
+                TICKET CONTEXT:
+                Ticket #{ticket.id}: {ticket.name}
+                Description: {ticket.description}
+                Status: {ticket.status}
+                {todos_context}
+                {conversation_history}
+                {logs_context}
+                {attachments_context}
 
-PROJECT PATH: nextjs-app
-{workspace_info}
+                PROJECT PATH: nextjs-app
+                {workspace_info}
 
-After completing the user's request:
-- If changes were made: "IMPLEMENTATION_STATUS: COMPLETE - [brief summary]"
-- If answering a question: "IMPLEMENTATION_STATUS: COMPLETE - Answered user's question"
-- If unable to complete: "IMPLEMENTATION_STATUS: FAILED - [reason]"
-"""
+                After completing the user's request:
+                - If changes were made: "IMPLEMENTATION_STATUS: COMPLETE - [brief summary]"
+                - If answering a question: "IMPLEMENTATION_STATUS: COMPLETE - Answered user's question"
+                - If unable to complete: "IMPLEMENTATION_STATUS: FAILED - [reason]"
+            """
 
         system_prompt = """
-You are an expert developer continuing work on a ticket based on user feedback.
+            You are an expert developer continuing work on a ticket based on user feedback.
 
-COMMUNICATION PROTOCOL - VERY IMPORTANT:
-1. IMMEDIATELY call broadcast_to_user(status="progress", message="I'll help you with [brief description]...") to acknowledge the request
-2. Work SILENTLY - do NOT output explanatory text like "Let me check...", "Perfect!", "Now I'll..."
-3. Just execute tools directly without narration
-4. At the END, call broadcast_to_user(status="complete", message="[summary of what was done]") with your final summary
-5. If blocked or need help, call broadcast_to_user(status="blocked", message="[what's wrong]")
+            COMMUNICATION PROTOCOL - VERY IMPORTANT:
+            1. IMMEDIATELY call broadcast_to_user(status="progress", message="I'll help you with [brief description]...") to acknowledge the request
+            2. Work SILENTLY - do NOT output explanatory text like "Let me check...", "Perfect!", "Now I'll..."
+            3. Just execute tools directly without narration
+            4. At the END, call broadcast_to_user(status="complete", message="[summary of what was done]") with your final summary
+            5. If blocked or need help, call broadcast_to_user(status="blocked", message="[what's wrong]")
 
-The user only sees broadcast_to_user messages clearly. All other text output clutters the logs.
+            WORKFLOW:
+            1. Broadcast acknowledgment FIRST
+            2. If new task: create Todos, execute them silently one by one
+            3. If question: look into codebase if needed
+            4. Mark todos as done when complete
+            5. Broadcast final summary
 
-WORKFLOW:
-1. Broadcast acknowledgment FIRST
-2. If new task: create Todos, execute them silently one by one
-3. If question: look into codebase if needed
-4. Mark todos as done when complete
-5. Broadcast final summary
+            IMPORTANT:
+            - DO NOT RE-CREATE the project. Modify existing files.
+            - DO NOT verify extensively or test in loops.
+            - DO NOT create documentation files (*.md) except agent.md
+            - CREATE new TODO list if there are new changes to be made. This will allow user to track the progress being made
+            - When done, update todos and broadcast completion
 
-IMPORTANT:
-- DO NOT RE-CREATE the project. Modify existing files.
-- DO NOT verify extensively or test in loops.
-- DO NOT create documentation files (*.md) except agent.md
-- When done, update todos and broadcast completion
-
-MANDATORY: You MUST end your response with one of these exact status lines (required for tracking):
-- "IMPLEMENTATION_STATUS: COMPLETE - [changes]"
-- "IMPLEMENTATION_STATUS: FAILED - [reason]"
-"""
+            MANDATORY: You MUST end your response with one of these exact status lines (required for tracking):
+            - "IMPLEMENTATION_STATUS: COMPLETE - [changes]"
+            - "IMPLEMENTATION_STATUS: FAILED - [reason]"
+            """
 
         # 6. CALL AI
         logger.info(f"[TICKET CHAT] Calling AI to process user message...")
@@ -2485,40 +2485,12 @@ MANDATORY: You MUST end your response with one of these exact status lines (requ
         content = ai_response.get('content', '') if ai_response else ''
         execution_time = time.time() - start_time
 
-        # 7. SAVE AI RESPONSE TO LOG
-        if content:
-            from projects.models import TicketLog
-            from projects.websocket_utils import send_ticket_log_notification
-
-            # Extract a summary from the AI response (first paragraph or up to 500 chars)
-            summary = content.split('\n\n')[0][:500] if content else 'AI response'
-
-            ai_log = TicketLog.objects.create(
-                ticket=ticket,
-                log_type='ai_response',
-                command=summary,  # Brief summary in command field
-                explanation='AI Agent Response',
-                output=content  # Full response in output field
-            )
-
-            # Send WebSocket notification
-            send_ticket_log_notification(ticket.id, {
-                'id': ai_log.id,
-                'log_type': 'ai_response',
-                'command': summary,
-                'explanation': ai_log.explanation,
-                'output': content,
-                'exit_code': None,
-                'created_at': ai_log.created_at.isoformat()
-            })
-
-            logger.info(f"[TICKET CHAT] Saved AI response as log {ai_log.id}")
-
-            # Clear the AI processing flag
-            from django.core.cache import cache
-            ai_processing_key = f'ticket_ai_processing_{ticket_id}'
-            cache.delete(ai_processing_key)
-            logger.info(f"[TICKET CHAT] Cleared AI processing flag for ticket #{ticket_id}")
+        # 7. CLEAR AI PROCESSING FLAG
+        # Note: AI response is NOT saved to TicketLog - AI communicates via broadcast_to_user tool only
+        from django.core.cache import cache
+        ai_processing_key = f'ticket_ai_processing_{ticket_id}'
+        cache.delete(ai_processing_key)
+        logger.info(f"[TICKET CHAT] Cleared AI processing flag for ticket #{ticket_id}")
 
         # 8. CHECK COMPLETION STATUS
         completed = 'IMPLEMENTATION_STATUS: COMPLETE' in content
@@ -2526,13 +2498,32 @@ MANDATORY: You MUST end your response with one of these exact status lines (requ
 
         # Re-fetch workspace in case it was created during AI execution (lazy initialization)
         if not workspace_id:
-            workspace = MagpieWorkspace.objects.filter(
-                project=project,
-                status='ready'
-            ).order_by('-updated_at').first()
-            if workspace:
-                workspace_id = workspace.workspace_id
-                logger.info(f"[TICKET CHAT] Workspace was created during execution: {workspace_id}")
+            # First check context variable (set by tools during AI execution)
+            context_workspace_id = current_workspace_id.get()
+            if context_workspace_id:
+                workspace_id = context_workspace_id
+                logger.info(f"[TICKET CHAT] Got workspace from context variable: {workspace_id}")
+            else:
+                # Fall back to database query - check 'ready' first, then any usable workspace
+                workspace = MagpieWorkspace.objects.filter(
+                    project=project,
+                    status='ready'
+                ).order_by('-updated_at').first()
+
+                if not workspace:
+                    # Also check for workspaces in 'error' or 'provisioning' state - they might still be usable
+                    workspace = MagpieWorkspace.objects.filter(
+                        project=project,
+                        status__in=['error', 'provisioning']
+                    ).order_by('-updated_at').first()
+                    if workspace:
+                        logger.warning(f"[TICKET CHAT] Using workspace in '{workspace.status}' state: {workspace.workspace_id}")
+
+                if workspace:
+                    workspace_id = workspace.workspace_id
+                    logger.info(f"[TICKET CHAT] Workspace found in DB: {workspace_id}")
+                else:
+                    logger.warning(f"[TICKET CHAT] No workspace found for project")
 
         # 9. COMMIT CHANGES AND UPDATE STATUS IF COMPLETE
         commit_sha = None

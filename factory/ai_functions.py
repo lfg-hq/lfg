@@ -3337,50 +3337,94 @@ async def record_ticket_summary_tool(function_args, project_id, conversation_id)
 
 async def broadcast_to_user_tool(function_args, project_id, conversation_id):
     """
-    Broadcast a message to the user without triggering agent follow-up.
-    This is one-way communication for progress updates and completion signals.
-
-    Key: Returns a notification WITHOUT message_to_agent, so no follow-up loop is triggered.
+    Broadcast a message to the user DIRECTLY via WebSocket AND save to database.
+    This sends the message immediately, not through the LLM notification harness.
+    Returns a simple confirmation to the agent.
     """
-    logger.info("Broadcast to user tool called")
-    logger.debug(f"Function arguments: {function_args}")
+    from tasks.task_definitions import current_ticket_id, current_workspace_id
+    from channels.layers import get_channel_layer
+    from asgiref.sync import sync_to_async
+
+    logger.info(f"[BROADCAST] Tool called - project_id={project_id}, conversation_id={conversation_id}")
+
+    # Get ticket_id and workspace_id from context
+    ticket_id = current_ticket_id.get()
+    workspace_id = current_workspace_id.get()
+    logger.info(f"[BROADCAST] Context - ticket_id={ticket_id}, workspace_id={workspace_id}")
 
     message = function_args.get('message', '')
     status = function_args.get('status', 'progress')
     summary = function_args.get('summary', {})
 
     if not message:
-        # Even for errors, don't include message_to_agent to avoid triggering continuation
-        return {
-            "is_notification": True,
-            "notification_type": "broadcast",
-            "status": "error",
-            "message": "Error: message is required for broadcast"
-            # NO message_to_agent - prevents follow-up loop
-        }
+        return "Error: message is required for broadcast"
 
     if status not in ['progress', 'complete', 'blocked', 'error']:
         status = 'progress'
 
-    logger.info(f"Broadcasting to user: status={status}, message={message[:100]}...")
+    logger.info(f"[BROADCAST] Sending to user: status={status}, message={message[:100]}...")
 
-    # Build notification for user (goes through WebSocket)
-    notification = {
-        "is_notification": True,
-        "notification_type": "broadcast",
-        "status": status,
-        "message": message,
-        # NO message_to_agent - this is the key to preventing follow-up loops
-    }
+    log_data = None
 
-    # Add structured summary if provided
-    if summary:
-        if isinstance(summary, dict):
-            notification["completed_tasks"] = summary.get('completed_tasks', [])
-            notification["pending_issues"] = summary.get('pending_issues', [])
-            notification["files_modified"] = summary.get('files_modified', [])
+    # Save to database for persistence (so message survives tab switch)
+    try:
+        if ticket_id:
+            from projects.models import Ticket, TicketLog
+            from django.db import transaction
 
-    return notification
+            def _save_broadcast_log():
+                with transaction.atomic():
+                    ticket = Ticket.objects.get(id=ticket_id)
+                    log = TicketLog.objects.create(
+                        ticket=ticket,
+                        log_type='ai_response',
+                        command=f'[{status.upper()}]',
+                        explanation='AI Agent Broadcast',
+                        output=message
+                    )
+                    logger.info(f"[BROADCAST] Created TicketLog {log.id} in DB")
+                    return log
+
+            ai_log = await sync_to_async(_save_broadcast_log, thread_sensitive=True)()
+            log_data = {
+                'id': ai_log.id,
+                'log_type': 'ai_response',
+                'command': f'[{status.upper()}]',
+                'output': message,
+                'exit_code': None,
+                'created_at': ai_log.created_at.isoformat()
+            }
+            logger.info(f"[BROADCAST] ✓ Saved to DB as log {ai_log.id}")
+    except Exception as e:
+        logger.error(f"[BROADCAST] Error saving to DB: {e}")
+        # Still continue to send WebSocket even if DB save fails
+        log_data = {
+            'log_type': 'ai_response',
+            'command': f'[{status.upper()}]',
+            'output': message,
+            'exit_code': None,
+        }
+
+    # Send WebSocket notification DIRECTLY to the user as an AI response (chat message style)
+    try:
+        channel_layer = get_channel_layer()
+        if channel_layer and ticket_id and log_data:
+            group_name = f'ticket_logs_{ticket_id}'
+            await channel_layer.group_send(
+                group_name,
+                {
+                    'type': 'ticket_log_created',
+                    'log_data': log_data
+                }
+            )
+            logger.info(f"[BROADCAST] ✓ Sent via WebSocket to ticket_logs_{ticket_id}")
+        else:
+            logger.warning(f"[BROADCAST] Could not send - channel_layer={bool(channel_layer)}, ticket_id={ticket_id}")
+    except Exception as e:
+        logger.error(f"[BROADCAST] Error sending WebSocket notification: {e}")
+
+    # Return simple confirmation to agent (no notification dict, no message_to_agent)
+    return f"Message broadcast to user successfully (status: {status})"
 
 
 async def run_code_server_tool(function_args, project_id, conversation_id):

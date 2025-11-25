@@ -248,7 +248,7 @@
             gap: 0.4rem;
             background: var(--surface-secondary, #111111);
             border: 1px solid rgba(148, 163, 184, 0.25);
-            border-radius: 18px;
+            border-radius: 12px;
             padding: 0.2rem 0.45rem 0.2rem 0.3rem;
         }
 
@@ -1134,12 +1134,17 @@
                 <h3 class="drawer-title" id="drawerTicketTitle"></h3>
             </div>
             <div class="drawer-header-right">
-                <button class="drawer-pin-btn" onclick="toggleDrawerPin()" id="drawerPinBtn" title="Pin drawer">
-                    <i class="fas fa-thumbtack"></i>
-                </button>
-                <button class="drawer-execute-btn" onclick="executeTicket()" id="executeTicketBtn">
-                    <i class="fas fa-play"></i> Execute
-                </button>
+                <div class="drawer-actions">
+                    <button type="button" class="drawer-server-btn" id="restartServerBtn">
+                        Restart Server
+                    </button>
+                    <button class="drawer-open-url-btn" onclick="openPreviewInNewTab()" id="openPreviewBtn" title="Preview not available yet" disabled>
+                        <i class="fas fa-arrow-up-right-from-square"></i>
+                    </button>
+                    <button class="drawer-execute-btn" onclick="executeTicket()" id="executeTicketBtn">
+                        <i class="fas fa-hammer"></i> Build Ticket
+                    </button>
+                </div>
                 <button class="drawer-close" onclick="closeTicketDrawer()">
                     <i class="fas fa-times"></i>
                 </button>
@@ -1781,7 +1786,6 @@
         let currentTicket = null;
         let currentProjectId = null;
         let currentTab = 'details';
-        let drawerPinned = false;
         let ticketLogsWebSocket = null;
         let reconnectAttempts = 0;
         let isAiProcessing = false;
@@ -2703,8 +2707,6 @@
         }
 
         function closeTicketDrawer() {
-            if (drawerPinned) return; // Don't close if pinned
-
             // Disconnect WebSocket when closing drawer
             disconnectTicketLogsWebSocket();
             pendingLogs = [];
@@ -2719,25 +2721,7 @@
         }
 
         function handleOverlayClick() {
-            if (!drawerPinned) {
-                closeTicketDrawer();
-            }
-        }
-
-        function toggleDrawerPin() {
-            drawerPinned = !drawerPinned;
-            const pinBtn = document.getElementById('drawerPinBtn');
-            const drawer = document.getElementById('ticketDrawer');
-
-            if (drawerPinned) {
-                pinBtn.classList.add('pinned');
-                pinBtn.title = 'Unpin drawer';
-                drawer.classList.add('pinned');
-            } else {
-                pinBtn.classList.remove('pinned');
-                pinBtn.title = 'Pin drawer';
-                drawer.classList.remove('pinned');
-            }
+            closeTicketDrawer();
         }
 
         function closeTicketModal() {
@@ -2872,7 +2856,7 @@
 
             // Disable button and show loading state
             btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Executing...';
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Building...';
 
             try {
                 const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
@@ -2896,14 +2880,14 @@
                     alert('Failed to execute ticket: ' + (data.error || 'Unknown error'));
                     // Re-enable button
                     btn.disabled = false;
-                    btn.innerHTML = '<i class="fas fa-play"></i> Execute Ticket';
+                    btn.innerHTML = '<i class="fas fa-hammer"></i> Build Ticket';
                 }
             } catch (error) {
                 console.error('Error executing ticket:', error);
                 alert('Error executing ticket: ' + error.message);
                 // Re-enable button
                 btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-play"></i> Execute Ticket';
+                btn.innerHTML = '<i class="fas fa-hammer"></i> Build Ticket';
             }
         }
 
@@ -2971,57 +2955,58 @@
         }
 
         let previewContent = null; // Cache the preview content
+        let shouldAutoStartPreview = true;
+        let lastDevServerUrl = null;
+
+        function getPreviewLoadingMarkup(primaryText = 'Loading preview...', secondaryText = "We'll automatically restart the dev server if needed.") {
+            return `
+                <div class="preview-loading-state" style="
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    height: 100%;
+                    color: var(--text-secondary);
+                    text-align: center;
+                    padding: 2rem;
+                ">
+                    <i class="fas fa-spinner fa-spin" style="font-size: 1.75rem; opacity: 0.7; margin-bottom: 1rem; color: var(--primary-color, #8b5cf6);"></i>
+                    <p style="font-size: 0.95rem; margin: 0;">${primaryText}</p>
+                    <p style="font-size: 0.8rem; opacity: 0.65; margin-top: 0.35rem;">${secondaryText}</p>
+                </div>
+            `;
+        }
 
         async function showPreviewTab(body) {
-            // If we already have preview content, just restore it
             if (previewContent && isServerRunning) {
                 body.innerHTML = previewContent;
+                shouldAutoStartPreview = true;
+                updatePreviewLaunchButton(isServerRunning && !!lastDevServerUrl);
                 return;
             }
 
-            // Otherwise, show initial state with manual start option
             body.innerHTML = `
                 <div class="drawer-tab-content" style="height: 100%; display: flex; flex-direction: column; padding: 0;">
                     <div class="preview-container" style="height: 100%; display: flex; flex-direction: column;">
                         <div class="preview-body" id="previewBody" style="flex: 1; position: relative; background: var(--surface-primary, #0d0d0d);">
-                            <div class="preview-placeholder" style="
-                                display: flex;
-                                flex-direction: column;
-                                align-items: center;
-                                justify-content: center;
-                                height: 100%;
-                                color: var(--text-secondary);
-                            ">
-                                <i class="fas fa-desktop" style="font-size: 3rem; opacity: 0.3; margin-bottom: 1rem;"></i>
-                                <p style="font-size: 1rem; margin: 0;">Dev server not running</p>
-                                <button
-                                    onclick="startDevServer()"
-                                    style="
-                                        background: var(--accent-color, #4A90E2);
-                                        color: white;
-                                        border: none;
-                                        padding: 0.75rem 1.5rem;
-                                        border-radius: 6px;
-                                        cursor: pointer;
-                                        font-size: 0.875rem;
-                                        margin-top: 1.5rem;
-                                        display: flex;
-                                        align-items: center;
-                                        gap: 0.5rem;
-                                    "
-                                >
-                                    <i class="fas fa-play"></i> Start Dev Server
-                                </button>
-                            </div>
+                            ${getPreviewLoadingMarkup()}
                         </div>
                     </div>
                 </div>
             `;
+
+            if (shouldAutoStartPreview) {
+                startDevServer();
+            }
+            shouldAutoStartPreview = true;
+            updatePreviewLaunchButton(false);
         }
 
         let devServerProcess = null;
 
         let isServerRunning = false;
+        let isStartingDevServer = false;
+        let isRestartingDevServer = false;
 
         async function startDevServer() {
             if (!currentTicket || !currentProjectId) {
@@ -3029,7 +3014,17 @@
                 return;
             }
 
+            if (isStartingDevServer) {
+                return;
+            }
+            isStartingDevServer = true;
+
             const previewBody = document.getElementById('previewBody');
+            updatePreviewLaunchButton(false);
+
+            if (previewBody) {
+                previewBody.innerHTML = getPreviewLoadingMarkup('Starting dev server...', 'This usually takes about 20 seconds.');
+            }
 
             try {
                 // Kill existing npm processes and start dev server
@@ -3057,6 +3052,13 @@
                 console.log('Dev server started at:', devServerUrl);
 
                 isServerRunning = true;
+                lastDevServerUrl = devServerUrl;
+                updatePreviewLaunchButton(true);
+
+                if (!previewBody) {
+                    console.warn('Preview body element is missing; skipping preview render.');
+                    return;
+                }
 
                 // Show iframe with preview
                 previewBody.innerHTML = `
@@ -3078,7 +3080,7 @@
                                     font-family: monospace;
                                     outline: none;
                                 "
-                                onkeypress="if(event.key === 'Enter') { const iframe = document.getElementById('previewIframe'); iframe.src = this.value; }"
+                                onkeypress="if(event.key === 'Enter') { const iframe = document.getElementById('previewIframe'); iframe.src = this.value; lastDevServerUrl = this.value; updatePreviewLaunchButton(true); }"
                             />
                             <button onclick="document.getElementById('previewIframe').contentWindow.location.reload()" style="
                                 background: none;
@@ -3204,6 +3206,8 @@
                         const iframeUrl = iframe.contentWindow.location.href;
                         if (iframeUrl && iframeUrl !== 'about:blank') {
                             urlInput.value = iframeUrl;
+                            lastDevServerUrl = iframeUrl;
+                            updatePreviewLaunchButton(true);
                         }
                     } catch (e) {
                         // Cross-origin or security error - can't read URL
@@ -3222,6 +3226,8 @@
                         if (currentUrl !== lastUrl && currentUrl !== 'about:blank') {
                             lastUrl = currentUrl;
                             urlInput.value = currentUrl;
+                            lastDevServerUrl = currentUrl;
+                            updatePreviewLaunchButton(true);
                         }
                     } catch (e) {
                         // Ignore cross-origin errors
@@ -3238,13 +3244,60 @@
                 console.error('Error starting dev server:', error);
                 isServerRunning = false;
 
-                previewBody.innerHTML = `
-                    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--error-color, #ff4444);">
-                        <i class="fas fa-exclamation-triangle" style="font-size: 2rem; margin-bottom: 1rem;"></i>
-                        <p>Failed to start dev server</p>
-                        <p style="font-size: 0.875rem; opacity: 0.7;">${error.message}</p>
-                    </div>
-                `;
+                if (previewBody) {
+                    previewBody.innerHTML = `
+                        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--error-color, #ff4444);">
+                            <i class="fas fa-exclamation-triangle" style="font-size: 2rem; margin-bottom: 1rem;"></i>
+                            <p>Failed to start dev server</p>
+                            <p style="font-size: 0.875rem; opacity: 0.7;">${error.message}</p>
+                        </div>
+                    `;
+                }
+            } finally {
+                isStartingDevServer = false;
+                updatePreviewLaunchButton(isServerRunning && !!lastDevServerUrl);
+            }
+        }
+
+        async function restartDevServer() {
+            if (!currentTicket || !currentProjectId || isRestartingDevServer || isStartingDevServer) {
+                return;
+            }
+
+            const restartBtn = document.getElementById('restartServerBtn');
+            const defaultLabel = 'Restart Server';
+
+            isRestartingDevServer = true;
+
+            if (restartBtn) {
+                restartBtn.classList.add('loading');
+                restartBtn.innerHTML = '<span class="label-dot"></span> Restarting...';
+            }
+
+            if (currentTab !== 'preview') {
+                shouldAutoStartPreview = false;
+                switchDrawerTab('preview');
+            }
+
+            const previewBody = document.getElementById('previewBody');
+            if (previewBody) {
+                previewBody.innerHTML = getPreviewLoadingMarkup('Restarting dev server...', "We'll bring the browser view back as soon as it is ready.");
+            }
+            updatePreviewLaunchButton(false);
+
+            try {
+                if (isServerRunning) {
+                    await stopDevServer();
+                }
+                await startDevServer();
+            } catch (error) {
+                console.error('Error restarting dev server:', error);
+            } finally {
+                isRestartingDevServer = false;
+                if (restartBtn) {
+                    restartBtn.classList.remove('loading');
+                    restartBtn.innerHTML = defaultLabel;
+                }
             }
         }
 
@@ -3253,6 +3306,24 @@
                 await stopDevServer();
             } else {
                 await startDevServer();
+            }
+        }
+
+        function updatePreviewLaunchButton(isEnabled) {
+            const btn = document.getElementById('openPreviewBtn');
+            if (!btn) return;
+            btn.disabled = !isEnabled;
+            btn.title = isEnabled ? 'Open preview in a new tab' : 'Preview not available yet';
+        }
+
+        function openPreviewInNewTab() {
+            const fallbackInput = document.getElementById('previewUrlInput');
+            const targetUrl = lastDevServerUrl || (fallbackInput ? fallbackInput.value : '');
+
+            if (targetUrl) {
+                window.open(targetUrl, '_blank', 'noopener,noreferrer');
+            } else {
+                alert('Preview URL is not available yet. Restart the server first.');
             }
         }
 
@@ -3280,6 +3351,7 @@
 
                 isServerRunning = false;
                 previewContent = null; // Clear cached content when server stops
+                updatePreviewLaunchButton(false);
 
                 if (serverToggleBtn) {
                     serverToggleBtn.innerHTML = '<i class="fas fa-play"></i>';
@@ -3293,7 +3365,7 @@
                         <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-secondary);">
                             <i class="fas fa-desktop" style="font-size: 3rem; opacity: 0.3; margin-bottom: 1rem;"></i>
                             <p>Dev server stopped</p>
-                            <p style="font-size: 0.875rem; opacity: 0.7;">Click the play button in the URL bar to restart</p>
+                            <p style="font-size: 0.875rem; opacity: 0.7;">Use the Restart Server control above to bring it back.</p>
                         </div>
                     `;
                 }
