@@ -44,8 +44,8 @@
         }
 
         .execution-log-entry {
-            padding: 0.15rem 0;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            /* padding: 0.15rem 0; */
+            /* border-bottom: 1px solid rgba(255, 255, 255, 0.05); */
         }
 
         .execution-log-entry:last-child {
@@ -150,6 +150,25 @@
             flex: 1;
             overflow-y: auto;
             padding-bottom: 100px; /* Space for fixed chat input */
+            scrollbar-width: thin;
+            scrollbar-color: transparent transparent;
+        }
+
+        .logs-tab-content .execution-logs-container::-webkit-scrollbar {
+            width: 10px;
+        }
+
+        .logs-tab-content .execution-logs-container::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .logs-tab-content .execution-logs-container::-webkit-scrollbar-thumb {
+            background-color: transparent;
+            border-radius: 999px;
+        }
+
+        .logs-tab-content .execution-logs-container:hover::-webkit-scrollbar-thumb {
+            background-color: rgba(255, 255, 255, 0.08);
         }
 
         /* Chat input container - fixed at bottom */
@@ -168,7 +187,7 @@
             display: flex;
             align-items: center;
             gap: 0.5rem;
-            padding: 0.75rem 0;
+            /* padding: 0.75rem 0; */
             margin: 0.25rem 0 0.5rem;
             border-left: none;
             background: transparent;
@@ -382,7 +401,7 @@
 
         /* AI response in logs - slightly different shade */
         .execution-log-entry.ai-response {
-            border-left: 3px solid #a78bfa;
+            border-left: 3px solid #34d399;
             margin: 1rem 0;
             padding: 0.75rem 1rem;
             background: rgba(167, 139, 250, 0.05);
@@ -1135,7 +1154,7 @@
             </div>
             <div class="drawer-header-right">
                 <div class="drawer-actions">
-                    <button type="button" class="drawer-server-btn" id="restartServerBtn">
+                    <button type="button" class="drawer-server-btn" id="restartServerBtn" onclick="restartDevServer()">
                         Restart Server
                     </button>
                     <button class="drawer-open-url-btn" onclick="openPreviewInNewTab()" id="openPreviewBtn" title="Preview not available yet" disabled>
@@ -1884,8 +1903,7 @@
                     <div class="execution-log-entry ai-response" data-cmd-index="${index}" data-log-id="${log.id}" data-log-type="ai_response">
                         <div class="log-header">
                             <div style="display: flex; align-items: flex-start; gap: 0.625rem; flex: 1;">
-                                <i class="fas fa-robot ai-response-icon" style="font-size: 0.875rem; margin-top: 3px;"></i>
-                                <span style="color: #a78bfa; font-weight: 500; font-size: 0.8rem;">AI Assistant</span>
+                                <span style="color: #a78bfa; font-weight: 500; font-size: 0.8rem;">🚀 Agent</span>
                             </div>
                             <span class="log-timestamp" style="white-space: nowrap; margin-left: 1rem;">${timestamp}</span>
                         </div>
@@ -2899,7 +2917,13 @@
         function formatDate(dateString) {
             if (!dateString) return '—';
             const date = new Date(dateString);
-            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            return date.toLocaleString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+                second: '2-digit'
+            });
         }
 
         function formatFileSizeHuman(bytes) {

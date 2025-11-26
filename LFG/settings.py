@@ -360,15 +360,36 @@ K8S_DEFAULT_NAMESPACE = "lfg"
 SSH_USERNAME=os.getenv('SSH_USERNAME', 'root')
 SSH_KEY_STRING=os.getenv('SSH_KEY_STRING', None)
 
+# Q_CLUSTER = {
+#         'name': 'LFG_Tasks',
+#         'workers': 3,  # Optimal for 2CPU/4GB: I/O-bound tasks can over-subscribe CPUs
+#         'recycle': 100,  # Reduced recycle count
+#         'timeout': 1500,   # 25 minutes task timeout
+#         # 'retry': 1800,     # 30 minutes - MUST be larger than timeout to prevent re-triggering
+#         'queue_limit': 10,  # Reduced queue limit
+#         'bulk': 1,       # Single task processing (maintains sequential execution within groups)
+#         'orm': 'default',
+#         'guard_cycle': 10,  # Longer guard cycle
+#         'daemonize_workers': False,  # Disable daemon mode
+#         'max_attempts': 1,
+#         'sync': False,   # Keep async for production
+#         'redis': {
+#             'host': os.getenv('REDIS_HOST', 'localhost'),
+#             'port': int(os.getenv('REDIS_PORT', 6379)),
+#             'db': int(os.getenv('REDIS_DB', 0)),
+#             'password': os.getenv('REDIS_PASSWORD', None),
+#         }
+#     }
+
 Q_CLUSTER = {
         'name': 'LFG_Tasks',
-        'workers': 3,  # Optimal for 2CPU/4GB: I/O-bound tasks can over-subscribe CPUs
+        'workers': 1,  # Reduced to single worker to prevent timer conflicts
         'recycle': 100,  # Reduced recycle count
         'timeout': 1500,   # Reduced timeout
-        # 'retry': 60,     # Reduced retry time
+        'retry': 1800,     # Reduced retry time
         'queue_limit': 10,  # Reduced queue limit
-        'bulk': 1,       # Single task processing (maintains sequential execution within groups)
-        'orm': 'default',
+        'bulk': 1,       # Single task processing
+        # 'orm': 'default',
         'guard_cycle': 10,  # Longer guard cycle
         'daemonize_workers': False,  # Disable daemon mode
         'max_attempts': 1,

@@ -537,6 +537,19 @@ class ProjectTicketViewSet(viewsets.ReadOnlyModelViewSet):
 
         try:
             from tasks.task_manager import TaskManager
+            from django.core.cache import cache
+
+            # Check if ticket is already queued (prevent duplicates)
+            ai_processing_key = f'ticket_ai_processing_{ticket.id}'
+            if cache.get(ai_processing_key):
+                return Response({
+                    'status': 'already_queued',
+                    'message': f'Ticket #{ticket.id} is already queued or in progress',
+                    'ticket_id': ticket.id
+                }, status=status.HTTP_200_OK)
+
+            # Set AI processing flag BEFORE queueing to prevent race conditions
+            cache.set(ai_processing_key, True, timeout=7200)
 
             # Queue the ticket execution with project-based group
             # Tasks in the same group execute sequentially, different groups execute in parallel
@@ -549,11 +562,6 @@ class ProjectTicketViewSet(viewsets.ReadOnlyModelViewSet):
                 group=f'project_{project.id}',  # ← Key: Group by project ID
                 timeout=7200  # 2 hour timeout
             )
-
-            # Set AI processing flag in cache (expires in 2 hours to match task timeout)
-            from django.core.cache import cache
-            ai_processing_key = f'ticket_ai_processing_{ticket.id}'
-            cache.set(ai_processing_key, True, timeout=7200)
 
             return Response({
                 'status': 'queued',

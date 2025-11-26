@@ -935,7 +935,8 @@ def auth_status(request):
     """Check if user is authenticated"""
     return JsonResponse({
         'authenticated': request.user.is_authenticated,
-        'username': request.user.username if request.user.is_authenticated else None
+        'username': request.user.username if request.user.is_authenticated else None,
+        'email_verified': request.user.profile.email_verified if request.user.is_authenticated else False
     })
 
 

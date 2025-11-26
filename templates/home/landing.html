@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LFG 🚀 | The AI Software Factory</title>
     <meta name="description" content="Software factory that ideates, plans, and builds.">
+    <link rel="icon" type="image/x-icon" href="/static/images/favicon.ico">
     
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -101,7 +102,7 @@
     <nav id="navbar" class="fixed top-0 left-0 right-0 z-50 transition-all duration-300 bg-transparent py-5">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center">
         <!-- Logo -->
-        <a href="#" class="flex items-center gap-2 group">
+        <a href="/" class="flex items-center gap-2 group">
           <div class="bg-indigo-600 text-white p-1.5 rounded-lg transform group-hover:rotate-12 transition-transform">
             <i data-lucide="rocket" class="w-5 h-5"></i>
           </div>
@@ -111,19 +112,17 @@
         </a>
 
         <!-- Desktop Nav -->
-        <div class="hidden md:flex items-center gap-8">
-          <a href="#process" class="text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">How it Works</a>
-          <a href="#hybrid" class="text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">Hybrid Model</a>
-          <a href="#agents" class="text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">Agents</a>
-          <a href="#terminal" class="text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">Developers</a>
+        <div class="hidden md:flex items-center gap-6">
+          <a href="/#process" class="text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">How it Works</a>
+          <a href="/services/" class="text-sm font-medium bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-4 py-2 rounded-full transition-colors">Let us build for you</a>
           
-          <div class="flex items-center gap-4 ml-4">
+          <div class="flex items-center gap-4 ml-2">
             <a href="https://github.com/lfg-hq/lfg" target="_blank" rel="noopener noreferrer" class="text-slate-500 hover:text-slate-900 transition-colors">
               <i data-lucide="github" class="w-5 h-5"></i>
             </a>
-            <button onclick="openModal()" class="bg-slate-900 hover:bg-indigo-600 text-white px-5 py-2 rounded-full text-sm font-semibold transition-all shadow-lg hover:shadow-indigo-500/25 active:scale-95">
+            <a href="/accounts/auth/" class="bg-slate-900 hover:bg-indigo-600 text-white px-5 py-2 rounded-full text-sm font-semibold transition-all shadow-lg hover:shadow-indigo-500/25 active:scale-95">
               Launch App
-            </button>
+            </a>
           </div>
         </div>
 
@@ -137,13 +136,11 @@
 
       <!-- Mobile Menu -->
       <div id="mobile-menu" class="hidden md:hidden absolute top-full left-0 w-full bg-white border-b border-slate-200 p-4 flex-col gap-4 shadow-xl">
-        <a href="#process" class="text-base font-medium text-slate-600 py-2 mobile-link">How it Works</a>
-        <a href="#hybrid" class="text-base font-medium text-slate-600 py-2 mobile-link">Hybrid Model</a>
-        <a href="#agents" class="text-base font-medium text-slate-600 py-2 mobile-link">Agents</a>
-        <a href="#terminal" class="text-base font-medium text-slate-600 py-2 mobile-link">Developers</a>
-        <button onclick="openModal()" class="bg-indigo-600 text-white w-full py-3 rounded-lg font-semibold">
+        <a href="/#process" class="text-base font-medium text-slate-600 py-2 mobile-link">How it Works</a>
+        <a href="/services/" class="text-base font-medium text-slate-600 py-2 mobile-link">Let us build for you</a>
+        <a href="/accounts/auth/" class="bg-indigo-600 text-white w-full py-3 rounded-lg font-semibold text-center block">
           Launch App
-        </button>
+        </a>
       </div>
     </nav>
 
@@ -163,7 +160,7 @@
                         <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
                         <span class="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
                     </span>
-                    <span class="text-sm font-semibold text-slate-600">Beta</span>
+                    <span class="text-sm font-semibold text-slate-600">v1.0 Beta</span>
                 </div>
 
                 <!-- Headline -->
@@ -214,7 +211,7 @@
                         <span>Powered by Agents</span>
                     </div>
                     <div class="flex items-center gap-2">
-                        <div class="text-indigo-500 font-bold">HITL</div>
+                        <i data-lucide="zap" class="w-4 h-4 text-indigo-500 fill-indigo-500"></i>
                         <span>Human in the loop</span>
                     </div>
                 </div>
@@ -287,12 +284,12 @@
                         Hybrid Delivery Model
                     </div>
                     <h2 class="font-display font-bold text-3xl md:text-5xl mb-6">
-                        AI handles the <span class="text-indigo-400">80%</span>.<br />
-                        Experts handle the <span class="text-pink-400">20%</span>.
+                        Velocity of <span class="text-indigo-400">AI</span>.<br />
+                        Precision of <span class="text-pink-400">Experts</span>.
                     </h2>
                     <p class="text-slate-400 text-lg max-w-2xl mx-auto">
-                        LFG isn't just a tool; it's a service. Our assembly line plans, codes, and tests on autopilot 
-                        so our senior human team only dives in for the high-value architecture and edge cases.
+                        We've decoupled the predictable from the complex. Our autonomous agents handle the heavy lifting, 
+                        while senior engineers handle the architecture, security, and final polish.
                     </p>
                 </div>
 
@@ -352,7 +349,7 @@
                             </div>
                         </div>
                         <p class="text-slate-600 mb-8 h-20">
-                            Senior engineers parachute in only for the moments that demand taste, judgment, security auditing, and complex integrations.
+                            Senior engineers step in precisely when it matters—focusing on high-stakes architectural decisions, security auditing, and complex system integrations.
                         </p>
                         <ul class="space-y-4">
                             <li class="flex items-start gap-3">
@@ -387,8 +384,8 @@
                             <p class="text-sm text-slate-400">Predictable AI throughput sprinting nonstop.</p>
                         </div>
                         <div class="bg-white/5 border border-white/10 p-4 rounded-lg text-center hover:bg-white/10 transition-colors">
-                            <h4 class="font-bold text-white mb-1">Metered Humans</h4>
-                            <p class="text-sm text-slate-400">Approve or pause expert blocks whenever needed.</p>
+                            <h4 class="font-bold text-white mb-1">On-Demand Experts</h4>
+                            <p class="text-sm text-slate-400">Scale senior engineering involvement up or down instantly.</p>
                         </div>
                         <div class="bg-white/5 border border-white/10 p-4 rounded-lg text-center hover:bg-white/10 transition-colors">
                             <h4 class="font-bold text-white mb-1">Profit Share</h4>
@@ -399,6 +396,88 @@
                     <button onclick="openModal()" class="bg-white text-slate-900 hover:bg-indigo-50 px-8 py-4 rounded-full font-bold text-lg transition-all flex items-center gap-2 shadow-xl shadow-indigo-500/20 hover:scale-105">
                         Start Your Hybrid Project <i data-lucide="arrow-right" class="w-5 h-5"></i>
                     </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Documentation Section -->
+        <section class="py-24 bg-white">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="grid lg:grid-cols-2 gap-12 items-center">
+                    <div class="space-y-6">
+                        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-600 text-xs font-bold uppercase tracking-wider">
+                            <span class="w-2 h-2 rounded-full bg-indigo-600 animate-pulse"></span>
+                            Live Documentation
+                        </div>
+                        <h2 class="font-display font-bold text-3xl md:text-4xl text-slate-900">
+                            Stop building from vague ideas.
+                        </h2>
+                        <p class="text-slate-600 text-lg leading-relaxed">
+                            LFG doesn't just write code. It acts as your Technical Product Manager, turning raw thoughts into engineering-ready artifacts.
+                        </p>
+                        <ul class="space-y-4 mt-4">
+                            <li class="flex items-start gap-3">
+                                <div class="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 shrink-0 mt-0.5">
+                                    <i data-lucide="file-text" class="w-3 h-3"></i>
+                                </div>
+                                <div>
+                                    <strong class="text-slate-900">Comprehensive PRDs</strong>
+                                    <p class="text-sm text-slate-500">Problem statements, success metrics, and user flows generated instantly.</p>
+                                </div>
+                            </li>
+                            <li class="flex items-start gap-3">
+                                <div class="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 shrink-0 mt-0.5">
+                                    <i data-lucide="cpu" class="w-3 h-3"></i>
+                                </div>
+                                <div>
+                                    <strong class="text-slate-900">Technical Analysis</strong>
+                                    <p class="text-sm text-slate-500">Database schema design, API contracts, and system architecture planning.</p>
+                                </div>
+                            </li>
+                            <li class="flex items-start gap-3">
+                                <div class="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 shrink-0 mt-0.5">
+                                    <i data-lucide="ticket" class="w-3 h-3"></i>
+                                </div>
+                                <div>
+                                    <strong class="text-slate-900">User Stories & Tickets</strong>
+                                    <p class="text-sm text-slate-500">Epics broken down into atomic, developer-ready tasks.</p>
+                                </div>
+                            </li>
+                        </ul>
+                        <div class="pt-4">
+                            <a href="/docs/" class="text-indigo-600 font-semibold hover:text-indigo-700 flex items-center gap-2">
+                                See more <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                            </a>
+                        </div>
+                    </div>
+                    <div class="relative">
+                        <!-- Decorative / Image placeholder -->
+                        <div class="absolute -inset-4 bg-gradient-to-r from-indigo-50 to-pink-50 rounded-full blur-3xl opacity-50"></div>
+                        <div class="relative bg-slate-50 border border-slate-200 rounded-2xl p-6 shadow-xl">
+                            <!-- Mockup of PRD -->
+                            <div class="space-y-4">
+                                <div class="flex items-center justify-between border-b border-slate-200 pb-4">
+                                    <div class="h-4 w-1/3 bg-slate-300 rounded"></div>
+                                    <div class="h-4 w-8 bg-indigo-100 rounded-full"></div>
+                                </div>
+                                <div class="space-y-2">
+                                    <div class="h-2 w-full bg-slate-200 rounded"></div>
+                                    <div class="h-2 w-5/6 bg-slate-200 rounded"></div>
+                                    <div class="h-2 w-4/6 bg-slate-200 rounded"></div>
+                                </div>
+                                <div class="p-4 bg-white rounded-xl border border-slate-200 mt-4 shadow-sm">
+                                    <div class="flex items-center gap-3 mb-2">
+                                        <div class="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-600">
+                                            <i data-lucide="check-square" class="w-4 h-4"></i>
+                                        </div>
+                                        <span class="font-mono text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded">TICKET-128</span>
+                                    </div>
+                                    <div class="h-3 w-3/4 bg-slate-800 rounded mb-2"></div>
+                                    <div class="h-2 w-full bg-slate-100 rounded"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </section>
@@ -419,7 +498,7 @@
                         </div>
                         <h3 class="font-display font-bold text-xl mb-3">Model Agnostic</h3>
                         <p class="text-slate-600">
-                            Bring your own keys. Works with Gemini 1.5 Pro, OpenAI GPT-4o, Anthropic Claude 3.5 Sonnet, and local LLMs via Ollama. We don't lock you into a single provider.
+                            Bring your own keys. Works with the latest models from Gemini, OpenAI and Anthropic. We don't lock you into a single provider.
                         </p>
                     </div>
 
@@ -499,18 +578,85 @@
                         </div>
                     </div>
                     <!-- QA -->
-                    <div class="group bg-slate-50 rounded-2xl p-1 overflow-hidden hover:bg-white hover:shadow-xl transition-all duration-300 border border-slate-100">
+                    <div class="relative group bg-slate-50/50 rounded-2xl p-1 overflow-hidden border border-slate-100 opacity-70 grayscale">
+                        <div class="absolute top-4 right-4">
+                            <span class="bg-slate-200 text-slate-600 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wide">Coming Soon</span>
+                        </div>
                         <div class="h-full p-6 flex flex-col items-center text-center">
-                            <div class="w-20 h-20 rounded-full text-red-600 bg-red-50 flex items-center justify-center mb-6 transition-transform group-hover:scale-110">
+                            <div class="w-20 h-20 rounded-full text-slate-400 bg-slate-100 flex items-center justify-center mb-6">
                                 <i data-lucide="bug" class="w-8 h-8"></i>
                             </div>
-                            <h3 class="font-display font-bold text-xl text-slate-900 mb-1">QA Engineer</h3>
-                            <span class="inline-block px-3 py-1 bg-white border border-slate-200 rounded-full text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">
+                            <h3 class="font-display font-bold text-xl text-slate-700 mb-1">QA Engineer</h3>
+                            <span class="inline-block px-3 py-1 bg-white border border-slate-200 rounded-full text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">
                                 Quality
                             </span>
-                            <p class="text-slate-500 leading-relaxed text-sm">
+                            <p class="text-slate-400 leading-relaxed text-sm">
                                 Writes unit tests, integration tests, and validates that the implemented code meets acceptance criteria.
                             </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Services Promo -->
+        <section class="py-24 bg-white border-t border-slate-100">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="bg-indigo-900 rounded-3xl p-8 md:p-12 shadow-2xl overflow-hidden relative">
+                    <!-- Background Accents -->
+                    <div class="absolute top-0 right-0 w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+                    <div class="absolute bottom-0 left-0 w-64 h-64 bg-pink-600/20 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2"></div>
+
+                    <div class="relative z-10 grid lg:grid-cols-2 gap-12 items-center">
+                        <div class="space-y-6">
+                            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-800/50 border border-indigo-700 text-indigo-300 text-xs font-bold uppercase tracking-wider">
+                                <span class="w-2 h-2 rounded-full bg-pink-500 animate-pulse"></span>
+                                New Service
+                            </div>
+                            <h2 class="font-display font-bold text-3xl md:text-5xl text-white">
+                                Need us to build it?
+                            </h2>
+                            <p class="text-indigo-100 text-lg leading-relaxed max-w-xl">
+                                Skip the hiring headache. Our expert team + agent swarm will ship your MVP, mobile app, or complex feature in weeks, not months.
+                            </p>
+                            <div class="flex flex-wrap items-center gap-4 pt-2">
+                                <a href="/services/" class="px-8 py-4 rounded-full bg-white text-indigo-900 font-bold hover:bg-indigo-50 transition-colors shadow-lg shadow-indigo-900/50 flex items-center gap-2">
+                                    Claim the $999 offer <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                                </a>
+                                <a href="/services/" class="text-indigo-200 font-semibold hover:text-white transition-colors">
+                                    Learn more about services
+                                </a>
+                            </div>
+                        </div>
+
+                        <div class="grid gap-4">
+                            <div class="bg-indigo-800/50 backdrop-blur-sm border border-indigo-700/50 p-5 rounded-xl flex items-start gap-4 hover:bg-indigo-800/70 transition-colors">
+                                <div class="w-10 h-10 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-300 shrink-0">
+                                    <i data-lucide="layout" class="w-5 h-5"></i>
+                                </div>
+                                <div>
+                                    <h3 class="font-bold text-white mb-1">Web Apps</h3>
+                                    <p class="text-sm text-indigo-200">Dashboards, SaaS platforms, and AI tools built with Next.js & Python.</p>
+                                </div>
+                            </div>
+                            <div class="bg-indigo-800/50 backdrop-blur-sm border border-indigo-700/50 p-5 rounded-xl flex items-start gap-4 hover:bg-indigo-800/70 transition-colors">
+                                <div class="w-10 h-10 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-300 shrink-0">
+                                    <i data-lucide="smartphone" class="w-5 h-5"></i>
+                                </div>
+                                <div>
+                                    <h3 class="font-bold text-white mb-1">Mobile Apps</h3>
+                                    <p class="text-sm text-indigo-200">Native-feel iOS and Android apps with offline sync and clean UX.</p>
+                                </div>
+                            </div>
+                            <div class="bg-indigo-800/50 backdrop-blur-sm border border-indigo-700/50 p-5 rounded-xl flex items-start gap-4 hover:bg-indigo-800/70 transition-colors">
+                                <div class="w-10 h-10 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-300 shrink-0">
+                                    <i data-lucide="cloud" class="w-5 h-5"></i>
+                                </div>
+                                <div>
+                                    <h3 class="font-bold text-white mb-1">Cloud & Delivery</h3>
+                                    <p class="text-sm text-indigo-200">We handle the unglamorous bits: CI/CD, security, and deployments.</p>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -558,42 +704,42 @@
         </section>
     </main>
 
-    <footer class="bg-slate-50 border-t border-slate-200 pt-16 pb-8">
+    <footer class="bg-slate-900 border-t border-slate-800 pt-16 pb-8">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
                 <div class="col-span-1 md:col-span-2">
-                    <div class="flex items-center gap-2 mb-4 text-slate-900 font-bold text-xl">
-                        <i data-lucide="rocket" class="w-6 h-6 text-indigo-600"></i>
+                    <div class="flex items-center gap-2 mb-4 text-white font-bold text-xl">
+                        <i data-lucide="rocket" class="w-6 h-6 text-indigo-500"></i>
                         <span>LFG</span>
                     </div>
-                    <p class="text-slate-500 max-w-sm leading-relaxed">
-                        Building the future of software development, one ticket at a time. 
-                        Combining AI speed with human expertise.
+                    <p class="text-slate-400 max-w-sm leading-relaxed">
+                        Software factory that ideates, plans, and builds. And let humans take over as required.
                     </p>
                 </div>
                 
                 <div>
-                    <h4 class="font-bold text-slate-900 mb-4 uppercase text-xs tracking-wider">Product</h4>
-                    <ul class="space-y-3 text-sm text-slate-500">
-                        <li><a href="#process" class="hover:text-indigo-600 transition-colors">Features</a></li>
-                        <li><a href="#hybrid" class="hover:text-indigo-600 transition-colors">Hybrid Model</a></li>
-                        <li><a href="#agents" class="hover:text-indigo-600 transition-colors">Agents</a></li>
-                        <li><a href="#terminal" class="hover:text-indigo-600 transition-colors">Download</a></li>
+                    <h4 class="font-bold text-white mb-4 uppercase text-xs tracking-wider">Product</h4>
+                    <ul class="space-y-3 text-sm text-slate-400">
+                        <li><a href="/#process" class="hover:text-indigo-400 transition-colors">Features</a></li>
+                        <li><a href="/#hybrid" class="hover:text-indigo-400 transition-colors">Hybrid Model</a></li>
+                        <li><a href="/#agents" class="hover:text-indigo-400 transition-colors">Agents</a></li>
+                        <li><a href="/#terminal" class="hover:text-indigo-400 transition-colors">Download</a></li>
+                        <li><a href="/docs/" class="hover:text-indigo-400 transition-colors">Docs & PRDs</a></li>
                     </ul>
                 </div>
 
                 <div>
-                    <h4 class="font-bold text-slate-900 mb-4 uppercase text-xs tracking-wider">Community</h4>
-                    <ul class="space-y-3 text-sm text-slate-500">
-                        <li><a href="#" class="hover:text-indigo-600 transition-colors flex items-center gap-2"><i data-lucide="github" class="w-4 h-4"></i> GitHub</a></li>
-                        <li><a href="#" class="hover:text-indigo-600 transition-colors flex items-center gap-2"><i data-lucide="disc" class="w-4 h-4"></i> Discord</a></li>
-                        <li><a href="#" class="hover:text-indigo-600 transition-colors flex items-center gap-2"><i data-lucide="twitter" class="w-4 h-4"></i> Twitter</a></li>
+                    <h4 class="font-bold text-white mb-4 uppercase text-xs tracking-wider">Community</h4>
+                    <ul class="space-y-3 text-sm text-slate-400">
+                        <li><a href="https://github.com/lfg-hq/lfg" target="_blank" rel="noopener noreferrer" class="hover:text-indigo-400 transition-colors flex items-center gap-2"><i data-lucide="github" class="w-4 h-4"></i> GitHub</a></li>
+                        <li><a href="#" class="hover:text-indigo-400 transition-colors flex items-center gap-2"><i data-lucide="disc" class="w-4 h-4"></i> Discord</a></li>
+                        <li><a href="#" class="hover:text-indigo-400 transition-colors flex items-center gap-2"><i data-lucide="twitter" class="w-4 h-4"></i> Twitter</a></li>
                     </ul>
                 </div>
             </div>
             
-            <div class="border-t border-slate-200 pt-8 text-center text-sm text-slate-400">
-                &copy; 2024 LFG Inc. Open Source Apache 2.0.
+            <div class="border-t border-slate-800 pt-8 text-center text-sm text-slate-500">
+                &copy; 2025 LFG Inc. Open Source Apache 2.0.
             </div>
         </div>
     </footer>
@@ -621,12 +767,10 @@
                     <div class="step-indicator w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors bg-indigo-600 border-indigo-600 text-white" id="indicator-1">1</div>
                     <div class="step-indicator w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors bg-white border-slate-200 text-slate-300" id="indicator-2">2</div>
                     <div class="step-indicator w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors bg-white border-slate-200 text-slate-300" id="indicator-3">3</div>
-                    <div class="step-indicator w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors bg-white border-slate-200 text-slate-300" id="indicator-4">4</div>
                 </div>
                 <div class="flex justify-between text-[10px] uppercase font-bold text-slate-400 mt-2">
                     <span>Account</span>
                     <span>Verify</span>
-                    <span>API Keys</span>
                     <span>Project</span>
                 </div>
             </div>
@@ -635,62 +779,113 @@
             <div class="p-8 overflow-y-auto">
                 <!-- Step 1 -->
                 <div id="step-1" class="modal-step-content animate-fade-in">
-                    <h2 class="text-2xl font-bold text-slate-900 mb-2">Create your account</h2>
-                    <p class="text-slate-500 mb-6 text-sm">Join the factory to start building.</p>
+                    <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                        <div>
+                            <h2 class="text-2xl font-bold text-slate-900">Create your account</h2>
+                            <p class="text-slate-500 text-sm">Join the factory to start building.</p>
+                        </div>
+                        <div class="flex items-center bg-slate-100 rounded-lg p-1">
+                            <button type="button" class="auth-tab register-tab px-3 py-1.5 text-xs font-semibold rounded-md bg-white shadow-sm text-slate-900" onclick="switchAuthTab('register')">
+                                Register
+                            </button>
+                            <button type="button" class="auth-tab login-tab px-3 py-1.5 text-xs font-semibold rounded-md text-slate-500 hover:text-slate-900" onclick="switchAuthTab('login')">
+                                Login
+                            </button>
+                        </div>
+                    </div>
                     
-                    <button class="w-full flex items-center justify-center gap-3 bg-white border border-slate-200 p-3 rounded-lg text-slate-700 font-medium hover:bg-slate-50 transition-colors mb-4">
-                        <img src="https://www.google.com/favicon.ico" alt="Google" class="w-5 h-5" />
-                        Continue with Google
-                    </button>
-                    
-                    <div class="relative my-6">
-                        <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-slate-200"></div></div>
-                        <div class="relative flex justify-center text-xs uppercase"><span class="bg-white px-2 text-slate-400">Or</span></div>
+                    <div class="auth-forms space-y-6">
+                        <div class="auth-form register-form space-y-4">
+                            <a href="{% url 'accounts:google_login' %}?from_landing=true" onclick="handleGoogleLogin()" class="w-full flex items-center justify-center gap-3 bg-white border border-slate-200 p-3 rounded-lg text-slate-700 font-medium hover:bg-slate-50 transition-colors">
+                                <img src="https://www.google.com/favicon.ico" alt="Google" class="w-5 h-5" />
+                                Sign up with Google
+                            </a>
+
+                            <div class="relative">
+                                <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-slate-200"></div></div>
+                                <div class="relative flex justify-center text-xs uppercase"><span class="bg-white px-2 text-slate-400">Or continue with email</span></div>
+                            </div>
+
+                            <form id="quick-register-form" class="space-y-4">
+                                <input id="register-email" type="email" placeholder="Email address" class="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none" required />
+                                <input id="register-password1" type="password" placeholder="Create a password" class="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none" required />
+                                <input id="register-password2" type="password" placeholder="Confirm password" class="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none" required />
+                                <button type="submit" class="w-full bg-indigo-600 text-white p-3 rounded-lg font-bold hover:bg-indigo-700 transition-colors">
+                                    Create Account
+                                </button>
+                            </form>
+                        </div>
+
+                        <div class="auth-form login-form hidden space-y-4">
+                            <a href="{% url 'accounts:google_login' %}?from_landing=true" onclick="handleGoogleLogin()" class="w-full flex items-center justify-center gap-3 bg-white border border-slate-200 p-3 rounded-lg text-slate-700 font-medium hover:bg-slate-50 transition-colors">
+                                <img src="https://www.google.com/favicon.ico" alt="Google" class="w-5 h-5" />
+                                Sign in with Google
+                            </a>
+
+                            <div class="relative">
+                                <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-slate-200"></div></div>
+                                <div class="relative flex justify-center text-xs uppercase"><span class="bg-white px-2 text-slate-400">Or continue with email</span></div>
+                            </div>
+
+                            <form id="quick-login-form" class="space-y-4">
+                                <input id="login-email" type="email" placeholder="Email address" class="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none" required />
+                                <input id="login-password" type="password" placeholder="Password" class="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none" required />
+                                <div class="flex items-center justify-between text-xs text-slate-500">
+                                    <label class="flex items-center gap-2">
+                                        <input type="checkbox" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                                        <span>Remember me</span>
+                                    </label>
+                                    <a href="/accounts/password-reset/" target="_blank" class="hover:text-indigo-600 font-semibold">Forgot password?</a>
+                                </div>
+                                <button type="submit" class="w-full bg-slate-900 text-white p-3 rounded-lg font-bold hover:bg-slate-800 transition-colors">
+                                    Sign In
+                                </button>
+                            </form>
+                        </div>
                     </div>
 
-                    <form class="space-y-4" onsubmit="event.preventDefault(); setStep(2);">
-                        <input type="email" placeholder="Email address" class="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none" required />
-                        <input type="password" placeholder="Password" class="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none" required />
-                        <button type="submit" class="w-full bg-indigo-600 text-white p-3 rounded-lg font-bold hover:bg-indigo-700 transition-colors">
-                            Create Account
-                        </button>
-                    </form>
+                    <p class="text-xs text-slate-400 mt-6 text-center">
+                        By continuing, you agree to LFG's Terms of Service and Privacy Policy.
+                    </p>
                 </div>
 
                 <!-- Step 2 -->
-                <div id="step-2" class="modal-step-content hidden text-center animate-fade-in">
-                    <div class="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <i data-lucide="check" class="w-8 h-8"></i>
+                <div id="step-2" class="modal-step-content hidden animate-fade-in">
+                    <div class="text-center mb-6">
+                        <div class="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <i data-lucide="mail" class="w-7 h-7"></i>
+                        </div>
+                        <h2 class="text-2xl font-bold text-slate-900 mb-1">Verify your email</h2>
+                        <p class="text-slate-500 text-sm">Enter the 6-digit code we sent to <span class="font-semibold text-slate-700" id="verification-email"></span></p>
                     </div>
-                    <h2 class="text-2xl font-bold text-slate-900 mb-2">Email Verified</h2>
-                    <p class="text-slate-500 mb-6 text-sm">Your account has been created successfully (Demo mode).</p>
-                    <button onclick="setStep(3)" class="w-full bg-indigo-600 text-white p-3 rounded-lg font-bold hover:bg-indigo-700 transition-colors">
-                        Continue to Setup
-                    </button>
+                    <form id="verification-form" class="space-y-4">
+                        <div class="flex justify-center gap-3">
+                            <input type="text" maxlength="1" inputmode="numeric" class="code-input w-12 h-12 text-center text-xl font-bold border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none" />
+                            <input type="text" maxlength="1" inputmode="numeric" class="code-input w-12 h-12 text-center text-xl font-bold border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none" />
+                            <input type="text" maxlength="1" inputmode="numeric" class="code-input w-12 h-12 text-center text-xl font-bold border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none" />
+                            <input type="text" maxlength="1" inputmode="numeric" class="code-input w-12 h-12 text-center text-xl font-bold border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none" />
+                            <input type="text" maxlength="1" inputmode="numeric" class="code-input w-12 h-12 text-center text-xl font-bold border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none" />
+                            <input type="text" maxlength="1" inputmode="numeric" class="code-input w-12 h-12 text-center text-xl font-bold border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none" />
+                        </div>
+                        <div class="verification-error text-red-500 text-sm text-center hidden"></div>
+                        <div class="flex items-center justify-between">
+                            <button type="button" onclick="resendVerificationCode(event)" class="text-sm font-semibold text-indigo-600 hover:text-indigo-700">Resend code</button>
+                            <button type="submit" class="bg-indigo-600 text-white px-6 py-2.5 rounded-lg font-semibold hover:bg-indigo-700 transition-colors">Verify & Continue</button>
+                        </div>
+                    </form>
                 </div>
 
                 <!-- Step 3 -->
-                <div id="step-3" class="modal-step-content hidden text-center animate-fade-in py-8">
-                    <div class="animate-spin-slow text-indigo-600 mx-auto mb-4 flex justify-center">
-                        <i data-lucide="loader-2" class="w-12 h-12"></i>
-                    </div>
-                    <h2 class="text-xl font-bold text-slate-900 mb-2">Checking Environment...</h2>
-                    <p class="text-slate-500 text-sm">Verifying API keys and local configuration.</p>
-                </div>
-
-                <!-- Step 4 -->
-                <div id="step-4" class="modal-step-content hidden animate-fade-in">
+                <div id="step-3" class="modal-step-content hidden animate-fade-in">
                     <h2 class="text-2xl font-bold text-slate-900 mb-2">Ready to Build</h2>
                     <p class="text-slate-500 mb-6 text-sm">Confirm your project details.</p>
                     
                     <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6">
                         <label class="block text-xs font-bold text-slate-500 uppercase mb-2">Project Requirement</label>
-                        <div id="project-requirement-display" class="text-slate-900 font-medium">
-                            A new SaaS platform for...
-                        </div>
+                        <textarea id="project-requirement-display" class="w-full p-3 rounded-lg border border-slate-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none bg-white text-slate-900 font-medium min-h-[120px]" placeholder="Describe what you want to build..."></textarea>
                     </div>
 
-                    <button onclick="closeModal()" class="w-full bg-gradient-to-r from-indigo-600 to-pink-600 text-white p-4 rounded-lg font-bold hover:opacity-90 transition-opacity shadow-lg shadow-indigo-500/30">
+                    <button onclick="handleLaunchProject(this)" class="w-full bg-gradient-to-r from-indigo-600 to-pink-600 text-white p-4 rounded-lg font-bold hover:opacity-90 transition-opacity shadow-lg shadow-indigo-500/30">
                         🚀 Launch Project
                     </button>
                 </div>
@@ -700,8 +895,14 @@
 
     <!-- JavaScript Logic -->
     <script>
-        // Initialize Icons
         lucide.createIcons();
+
+        let userRequirements = '';
+        let isAuthenticated = false;
+        let emailVerified = false;
+        let isRegistering = false;
+        let environment = '{{ ENVIRONMENT|default:"local" }}';
+        let userProjects = [];
 
         // Navbar Scroll Logic
         window.addEventListener('scroll', () => {
@@ -735,6 +936,44 @@
         // Form Logic
         const heroForm = document.getElementById('hero-form');
         const heroInput = document.getElementById('hero-input');
+        const modal = document.getElementById('onboarding-modal');
+        const requirementDisplay = document.getElementById('project-requirement-display');
+
+        requirementDisplay.addEventListener('input', () => {
+            const val = requirementDisplay.value.trim();
+            if (val) {
+                userRequirements = val;
+                sessionStorage.setItem('pendingRequirements', val);
+            }
+        });
+
+        window.addEventListener('load', () => {
+            const storedRequirements = sessionStorage.getItem('pendingRequirements');
+            if (storedRequirements) {
+                userRequirements = storedRequirements;
+            }
+
+            refreshAuthStatus();
+            setupVerificationInputs();
+        });
+
+        function refreshAuthStatus() {
+            fetch('/accounts/api/auth/status/', {
+                credentials: 'include',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                }
+            }).then(res => res.json())
+            .then(data => {
+                isAuthenticated = data.authenticated || false;
+                emailVerified = data.email_verified || false;
+            })
+            .catch(() => {
+                isAuthenticated = false;
+                emailVerified = false;
+            });
+        }
 
         function setInput(text) {
             heroInput.value = text;
@@ -744,22 +983,34 @@
         heroForm.addEventListener('submit', (e) => {
             e.preventDefault();
             const val = heroInput.value.trim();
-            if (val) openModal(val);
+            if (val) {
+                userRequirements = val;
+                sessionStorage.setItem('pendingRequirements', userRequirements);
+                openModal(val);
+            }
         });
 
         // Modal Logic
-        const modal = document.getElementById('onboarding-modal');
-        const requirementDisplay = document.getElementById('project-requirement-display');
-
         function openModal(prompt = '') {
             modal.classList.remove('hidden');
             document.body.style.overflow = 'hidden';
+            const heroVal = heroInput.value.trim();
             if(prompt) {
-                requirementDisplay.textContent = prompt;
-            } else if (heroInput.value.trim()) {
-                requirementDisplay.textContent = heroInput.value.trim();
+                requirementDisplay.value = prompt;
+                userRequirements = prompt;
+            } else if (heroVal) {
+                requirementDisplay.value = heroVal;
+                userRequirements = heroVal;
+            } else if (userRequirements) {
+                requirementDisplay.value = userRequirements;
             }
-            setStep(1);
+            switchAuthTab('register');
+            // If logged in but not verified, go to verification. If verified, go to project. Otherwise start at account.
+            if (isAuthenticated) {
+                setStep(emailVerified ? 3 : 2);
+            } else {
+                setStep(1);
+            }
         }
 
         function closeModal() {
@@ -774,25 +1025,331 @@
             document.getElementById(`step-${step}`).classList.remove('hidden');
             
             // Update Indicators
-            for (let i = 1; i <= 4; i++) {
+            for (let i = 1; i <= 3; i++) {
                 const el = document.getElementById(`indicator-${i}`);
-                if (i < step) {
-                    el.className = 'step-indicator w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors bg-indigo-600 border-indigo-600 text-white';
-                    el.innerHTML = '<i data-lucide="check" class="w-3 h-3"></i>';
-                } else if (i === step) {
-                    el.className = 'step-indicator w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors bg-indigo-600 border-indigo-600 text-white';
-                    el.innerHTML = i;
-                } else {
-                    el.className = 'step-indicator w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors bg-white border-slate-200 text-slate-300';
-                    el.innerHTML = i;
-                }
+                const isActive = i === step;
+                el.className = isActive
+                    ? 'step-indicator w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors bg-indigo-600 border-indigo-600 text-white'
+                    : 'step-indicator w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors bg-white border-slate-200 text-slate-300';
+                el.innerHTML = i;
             }
             lucide.createIcons();
+        }
 
-            // Auto advance step 3
-            if (step === 3) {
-                setTimeout(() => setStep(4), 2000);
+        function switchAuthTab(tab) {
+            const loginTab = document.querySelector('.login-tab');
+            const registerTab = document.querySelector('.register-tab');
+            const loginForm = document.querySelector('.login-form');
+            const registerForm = document.querySelector('.register-form');
+
+            if (tab === 'login') {
+                loginTab.classList.add('bg-white', 'text-slate-900', 'shadow-sm');
+                loginTab.classList.remove('text-slate-500');
+                registerTab.classList.add('text-slate-500');
+                registerTab.classList.remove('bg-white', 'text-slate-900', 'shadow-sm');
+                loginForm.classList.remove('hidden');
+                registerForm.classList.add('hidden');
+            } else {
+                registerTab.classList.add('bg-white', 'text-slate-900', 'shadow-sm');
+                registerTab.classList.remove('text-slate-500');
+                loginTab.classList.add('text-slate-500');
+                loginTab.classList.remove('bg-white', 'text-slate-900', 'shadow-sm');
+                registerForm.classList.remove('hidden');
+                loginForm.classList.add('hidden');
             }
+        }
+
+        function handleGoogleLogin() {
+            if (heroInput.value.trim()) {
+                sessionStorage.setItem('pendingRequirements', heroInput.value.trim());
+            }
+        }
+
+        function handlePostAuth() {
+            setStep(3);
+        }
+
+        document.getElementById('quick-login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+
+            try {
+                const response = await fetch('/accounts/auth/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: `form_type=login&username=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`,
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    await refreshAuthStatus();
+                    isAuthenticated = true;
+                    isRegistering = false;
+                    userRequirements = heroInput.value.trim() || userRequirements;
+                    if (!emailVerified && environment !== 'local') {
+                        setStep(2);
+                    } else {
+                        handlePostAuth();
+                    }
+                } else {
+                    alert('Login failed. Please check your credentials.');
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                alert('An error occurred. Please try again.');
+            }
+        });
+
+        document.getElementById('quick-register-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('register-email').value;
+            const password1 = document.getElementById('register-password1').value;
+            const password2 = document.getElementById('register-password2').value;
+
+            if (password1 !== password2) {
+                alert('Passwords do not match.');
+                return;
+            }
+
+            try {
+                const response = await fetch('/accounts/auth/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: `form_type=register&email=${encodeURIComponent(email)}&password1=${encodeURIComponent(password1)}&password2=${encodeURIComponent(password2)}`,
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    await refreshAuthStatus();
+                    isAuthenticated = true;
+                    isRegistering = true;
+                    emailVerified = environment === 'local' ? true : false;
+                    userRequirements = heroInput.value.trim() || userRequirements;
+
+                    if (environment === 'local') {
+                        handlePostAuth();
+                    } else {
+                        document.getElementById('verification-email').textContent = email;
+                        setStep(2);
+                    }
+                } else {
+                    alert('Registration failed. The email may already be in use or password requirements not met.');
+                }
+            } catch (error) {
+                console.error('Registration error:', error);
+                alert('An error occurred. Please try again.');
+            }
+        });
+
+        document.getElementById('verification-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const inputs = document.querySelectorAll('.code-input');
+            const code = Array.from(inputs).map(input => input.value).join('');
+
+            if (code.length !== 6) {
+                showVerificationError('Please enter all 6 digits');
+                return;
+            }
+
+            try {
+                const response = await fetch('/accounts/verify-email-code/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: JSON.stringify({ code }),
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    emailVerified = true;
+                    handlePostAuth();
+                } else {
+                    showVerificationError('Invalid code. Please try again.');
+                }
+            } catch (error) {
+                console.error('Verification error:', error);
+                showVerificationError('An error occurred. Please try again.');
+            }
+        });
+
+        function showVerificationError(message) {
+            const errorDiv = document.querySelector('.verification-error');
+            if (errorDiv) {
+                errorDiv.textContent = message;
+                errorDiv.classList.remove('hidden');
+                setTimeout(() => errorDiv.classList.add('hidden'), 4000);
+            }
+        }
+
+        async function resendVerificationCode(e) {
+            const button = e.target;
+            button.disabled = true;
+            try {
+                const response = await fetch('/accounts/resend-verification-code/', {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': getCookie('csrftoken') },
+                    credentials: 'include'
+                });
+                if (response.ok) {
+                    button.textContent = 'Code Sent!';
+                    setTimeout(() => {
+                        button.textContent = 'Resend code';
+                        button.disabled = false;
+                    }, 2500);
+                } else {
+                    alert('Failed to resend code. Please try again.');
+                    button.disabled = false;
+                }
+            } catch (error) {
+                console.error('Resend error:', error);
+                alert('An error occurred. Please try again.');
+                button.disabled = false;
+            }
+        }
+
+        function setupVerificationInputs() {
+            const inputs = document.querySelectorAll('.code-input');
+            inputs.forEach((input, index) => {
+                input.addEventListener('input', (e) => {
+                    const value = e.target.value.replace(/\D/g, '');
+                    e.target.value = value.slice(0, 1);
+                    if (value && index < inputs.length - 1) {
+                        inputs[index + 1].focus();
+                    }
+                });
+
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Backspace' && !e.target.value && index > 0) {
+                        inputs[index - 1].focus();
+                    }
+                });
+
+                input.addEventListener('paste', (e) => {
+                    e.preventDefault();
+                    const pasted = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '').slice(0, 6);
+                    pasted.split('').forEach((digit, i) => {
+                        if (inputs[i]) {
+                            inputs[i].value = digit;
+                        }
+                    });
+                    if (pasted.length > 0 && inputs[Math.min(pasted.length - 1, inputs.length - 1)]) {
+                        inputs[Math.min(pasted.length - 1, inputs.length - 1)].focus();
+                    }
+                });
+            });
+        }
+
+        async function checkExistingProjects() {
+            try {
+                const response = await fetch('/projects/api/create/', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: JSON.stringify({ check_existing: true })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.projects) {
+                        userProjects = data.projects;
+                    }
+                    return Boolean(data.has_existing_projects);
+                }
+            } catch (error) {
+                console.error('Error checking existing projects:', error);
+            }
+            return false;
+        }
+
+        async function createProjectAndRedirect() {
+            const req = requirementDisplay.value.trim() || userRequirements || heroInput.value.trim() || '';
+            userRequirements = req;
+            try {
+                const response = await fetch('/projects/api/create/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: JSON.stringify({
+                        name: 'First Project',
+                        description: 'Created from landing modal',
+                        requirements: req
+                    }),
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    redirectToChat(data.project_id);
+                } else {
+                    window.location.href = '/accounts/integrations/';
+                }
+            } catch (error) {
+                console.error('Error creating project:', error);
+                window.location.href = '/accounts/integrations/';
+            }
+        }
+
+        function redirectToChat(projectId) {
+            const requirements = requirementDisplay.value.trim() || userRequirements || heroInput.value.trim() || sessionStorage.getItem('pendingRequirements') || '';
+            const encodedRequirements = encodeURIComponent(requirements);
+            sessionStorage.removeItem('pendingRequirements');
+            window.location.href = `/chat/project/${projectId}/?requirements=${encodedRequirements}`;
+        }
+
+        async function handleLaunchProject(btn) {
+            const reqVal = requirementDisplay.value.trim();
+            if (reqVal) {
+                userRequirements = reqVal;
+                sessionStorage.setItem('pendingRequirements', reqVal);
+            }
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = 'Launching...';
+            }
+            try {
+                const hasProjects = await checkExistingProjects();
+                if (hasProjects && userProjects.length) {
+                    redirectToChat(userProjects[0].id);
+                    return;
+                }
+                await createProjectAndRedirect();
+            } catch (error) {
+                console.error('Launch error:', error);
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = '🚀 Launch Project';
+                }
+                alert('Unable to launch project. Please try again.');
+            }
+        }
+
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
         }
 
         // Clipboard Logic

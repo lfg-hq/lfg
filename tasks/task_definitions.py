@@ -593,7 +593,7 @@ def push_template_and_create_branch(workspace_id: str, owner: str, repo_name: st
     try:
         current_branch = None
         for i, cmd in enumerate(commands):
-            result = _run_magpie_ssh(client, workspace_id, cmd, timeout=60, with_node_env=False)
+            result = _run_magpie_ssh(client, workspace_id, cmd, timeout=120, with_node_env=False)
             logger.info(f"[Template Push {i+1}/{len(commands)}] {cmd}")
 
             stdout = result.get('stdout', '').strip()
@@ -691,7 +691,7 @@ git branch --show-current
     try:
         current_branch = None
         for i, cmd in enumerate(commands):
-            result = _run_magpie_ssh(client, workspace_id, cmd, timeout=60, with_node_env=False)
+            result = _run_magpie_ssh(client, workspace_id, cmd, timeout=120, with_node_env=False)
             logger.info(f"[Git Setup {i+1}/{len(commands)}] {cmd}")
 
             stdout = result.get('stdout', '').strip()
@@ -1016,7 +1016,7 @@ def commit_and_push_changes(workspace_id: str, branch_name: str, commit_message:
         changes_detected = False
 
         for i, cmd in enumerate(commands):
-            result = _run_magpie_ssh(client, workspace_id, cmd, timeout=60, with_node_env=False)
+            result = _run_magpie_ssh(client, workspace_id, cmd, timeout=120, with_node_env=False)
             logger.info(f"[Git Commit {i+1}/{len(commands)}] {cmd}")
 
             stdout = result.get('stdout', '').strip()
@@ -1381,7 +1381,11 @@ def setup_ticket_workspace(
             workspace.metadata = workspace.metadata or {}
             workspace.metadata['git_configured'] = True
             workspace.metadata['git_branch'] = result['feature_branch']
-            workspace.save(update_fields=['metadata'])
+            # Reset workspace status to 'ready' after successful operations
+            if workspace.status != 'ready':
+                logger.info(f"[WORKSPACE SETUP] Resetting workspace status from '{workspace.status}' to 'ready'")
+                workspace.status = 'ready'
+            workspace.save(update_fields=['metadata', 'status'])
         else:
             # Git setup failed - capture error for AI to fix
             error_msg = git_setup_result.get('message', 'Unknown git setup error')
@@ -1507,6 +1511,9 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
         workspace_id = setup_result['workspace_id']
         feature_branch_name = setup_result['feature_branch']
         git_setup_error = setup_result.get('git_setup_error')
+        github_owner = setup_result.get('github_owner')
+        github_repo = setup_result.get('github_repo')
+        github_token = get_github_token(project.owner)
 
         logger.info(f"[STEP 3/6] ✓ Workspace setup complete: {workspace_id}")
 
@@ -2406,37 +2413,37 @@ def continue_ticket_with_message(ticket_id: int, project_id: int, user_message: 
                 2. Make changes requested by the user
                 3. Answer questions about the current state
                 4. Continue implementation if needed"""
-            else:
-                workspace_info = """
-                    NOTE: No active workspace is currently running, but one will be created automatically when you use the ssh_command tool.
-                    You can:
-                    1. Execute commands using ssh_command - workspace will be provisioned on-demand
-                    2. Answer questions about the ticket based on the description and logs
-                    3. Make code changes as requested by the user
+        else:
+            workspace_info = """
+                NOTE: No active workspace is currently running, but one will be created automatically when you use the ssh_command tool.
+                You can:
+                1. Execute commands using ssh_command - workspace will be provisioned on-demand
+                2. Answer questions about the ticket based on the description and logs
+                3. Make code changes as requested by the user
 
-                    When you call ssh_command for the first time, the workspace will be automatically initialized."""
+                When you call ssh_command for the first time, the workspace will be automatically initialized."""
 
-            continuation_prompt = f"""
-                USER REQUEST:
-                {user_message}
+        continuation_prompt = f"""
+            USER REQUEST:
+            {user_message}
 
-                TICKET CONTEXT:
-                Ticket #{ticket.id}: {ticket.name}
-                Description: {ticket.description}
-                Status: {ticket.status}
-                {todos_context}
-                {conversation_history}
-                {logs_context}
-                {attachments_context}
+            TICKET CONTEXT:
+            Ticket #{ticket.id}: {ticket.name}
+            Description: {ticket.description}
+            Status: {ticket.status}
+            {todos_context}
+            {conversation_history}
+            {logs_context}
+            {attachments_context}
 
-                PROJECT PATH: nextjs-app
-                {workspace_info}
+            PROJECT PATH: nextjs-app
+            {workspace_info}
 
-                After completing the user's request:
-                - If changes were made: "IMPLEMENTATION_STATUS: COMPLETE - [brief summary]"
-                - If answering a question: "IMPLEMENTATION_STATUS: COMPLETE - Answered user's question"
-                - If unable to complete: "IMPLEMENTATION_STATUS: FAILED - [reason]"
-            """
+            After completing the user's request:
+            - If changes were made: "IMPLEMENTATION_STATUS: COMPLETE - [brief summary]"
+            - If answering a question: "IMPLEMENTATION_STATUS: COMPLETE - Answered user's question"
+            - If unable to complete: "IMPLEMENTATION_STATUS: FAILED - [reason]"
+        """
 
         system_prompt = """
             You are an expert developer continuing work on a ticket based on user feedback.

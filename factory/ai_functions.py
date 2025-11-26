@@ -3343,7 +3343,7 @@ async def broadcast_to_user_tool(function_args, project_id, conversation_id):
     """
     from tasks.task_definitions import current_ticket_id, current_workspace_id
     from channels.layers import get_channel_layer
-    from asgiref.sync import sync_to_async
+    from channels.db import database_sync_to_async
 
     logger.info(f"[BROADCAST] Tool called - project_id={project_id}, conversation_id={conversation_id}")
 
@@ -3369,12 +3369,12 @@ async def broadcast_to_user_tool(function_args, project_id, conversation_id):
     # Save to database for persistence (so message survives tab switch)
     try:
         if ticket_id:
-            from projects.models import Ticket, TicketLog
+            from projects.models import ProjectTicket, TicketLog
             from django.db import transaction
 
             def _save_broadcast_log():
                 with transaction.atomic():
-                    ticket = Ticket.objects.get(id=ticket_id)
+                    ticket = ProjectTicket.objects.get(id=ticket_id)
                     log = TicketLog.objects.create(
                         ticket=ticket,
                         log_type='ai_response',
@@ -3385,7 +3385,7 @@ async def broadcast_to_user_tool(function_args, project_id, conversation_id):
                     logger.info(f"[BROADCAST] Created TicketLog {log.id} in DB")
                     return log
 
-            ai_log = await sync_to_async(_save_broadcast_log, thread_sensitive=True)()
+            ai_log = await database_sync_to_async(_save_broadcast_log)()
             log_data = {
                 'id': ai_log.id,
                 'log_type': 'ai_response',
@@ -3396,7 +3396,8 @@ async def broadcast_to_user_tool(function_args, project_id, conversation_id):
             }
             logger.info(f"[BROADCAST] ✓ Saved to DB as log {ai_log.id}")
     except Exception as e:
-        logger.error(f"[BROADCAST] Error saving to DB: {e}")
+        import traceback
+        logger.error(f"[BROADCAST] Error saving to DB: {e}\n{traceback.format_exc()}")
         # Still continue to send WebSocket even if DB save fails
         log_data = {
             'log_type': 'ai_response',
@@ -3424,7 +3425,11 @@ async def broadcast_to_user_tool(function_args, project_id, conversation_id):
         logger.error(f"[BROADCAST] Error sending WebSocket notification: {e}")
 
     # Return simple confirmation to agent (no notification dict, no message_to_agent)
-    return f"Message broadcast to user successfully (status: {status})"
+    # return f"Message broadcast to user successfully (status: {status})"
+    return {
+        "is_notification": False,
+        "message_to_agent": "User notified. Continue with next step"
+    }
 
 
 async def run_code_server_tool(function_args, project_id, conversation_id):
