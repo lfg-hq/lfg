@@ -282,7 +282,16 @@ class StreamingTagHandler:
         elif "</lfg-plan>" in self.buffer:
             # Convert old closing implementation tag
             self.buffer = self.buffer.replace("</lfg-plan>", "</lfg-file>")
-        
+
+        # Handle lfg-info tags - status messages that should have line breaks after
+        elif "</lfg-info>" in self.buffer and self.current_mode != "file":
+            # Process complete lfg-info tags - strip tags and add line breaks
+            self.buffer = re.sub(r'<lfg-info>', '', self.buffer)
+            self.buffer = self.buffer.replace('</lfg-info>', '\n\n')
+            # Output processed content
+            output_text = self.buffer
+            self.buffer = ""
+
         # Handle content based on current mode
         elif self.current_mode == "file":
             # When in file mode, we need to handle the buffer differently
@@ -402,14 +411,18 @@ class StreamingTagHandler:
         """Clean XML fragments from text"""
         if not text:
             return text
-        
-        # Remove complete lfg tags
-        text = re.sub(r'</?lfg[^>]*>', '', text)
+
+        # Handle lfg-info tags specially - replace closing tag with line breaks
+        text = re.sub(r'<lfg-info>', '', text)
+        text = re.sub(r'</lfg-info>', '\n\n', text)
+
+        # Remove complete lfg tags (but not lfg-info which we handled above)
+        text = re.sub(r'</?lfg(?!-info)[^>]*>', '', text)
         # Remove incomplete lfg tags at the end
         text = re.sub(r'</?lfg[^>]*$', '', text)
         # Remove priority tags
         text = re.sub(r'</?priority[^>]*>', '', text)
-        
+
         return text
     
     def flush_buffer(self) -> str:

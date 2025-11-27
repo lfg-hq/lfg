@@ -198,7 +198,7 @@ class AnthropicProvider(BaseLLMProvider):
                     logger.debug("web_search tool already present, skipping addition")
                 
                 # Log available tools
-                logger.debug(f"Available tools for Claude: {[tool['name'] for tool in claude_tools]}")
+                # logger.debug(f"Available tools for Claude: {[tool['name'] for tool in claude_tools]}")
                 
                 # Extract system message if present
                 system_message = None
@@ -278,6 +278,7 @@ class AnthropicProvider(BaseLLMProvider):
                             elif event.content_block.type == "tool_use":
                                 # Tool use block started
                                 logger.debug(f"Tool use started: {event.content_block.name}")
+
                                 current_tool_use = {
                                     "id": event.content_block.id,
                                     "type": "function",
@@ -293,21 +294,21 @@ class AnthropicProvider(BaseLLMProvider):
                                 notification_type = get_notification_type_for_tool(function_name)
                                 
                                 # Skip early notification for stream_prd_content and stream_implementation_content since we need the actual content
-                                if function_name not in ["stream_prd_content", "stream_implementation_content"]:
-                                    # Send early notification for other tool uses
-                                    logger.info(f"SENDING EARLY NOTIFICATION FOR {function_name}")
-                                    early_notification = {
-                                        "is_notification": True,
-                                        "notification_type": notification_type or "tool",
-                                        "early_notification": True,
-                                        "function_name": function_name,
-                                        "notification_marker": "__NOTIFICATION__"
-                                    }
-                                    notification_json = json.dumps(early_notification)
-                                    logger.info(f"Early notification JSON: {notification_json}")
-                                    yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
-                                else:
-                                    logger.info(f"Skipping early notification for {function_name} - will send with content later")
+                                # if function_name not in ["stream_prd_content", "stream_implementation_content"]:
+                                #     # Send early notification for other tool uses
+                                #     logger.info(f"SENDING EARLY NOTIFICATION FOR {function_name}")
+                                #     early_notification = {
+                                #         "is_notification": True,
+                                #         "notification_type": notification_type or "tool",
+                                #         "early_notification": True,
+                                #         "function_name": function_name,
+                                #         "notification_marker": "__NOTIFICATION__"
+                                #     }
+                                #     notification_json = json.dumps(early_notification)
+                                #     logger.info(f"Early notification JSON: {notification_json}")
+                                #     yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                # else:
+                                #     logger.info(f"Skipping early notification for {function_name} - will send with content later")
                         
                         elif event.type == "content_block_delta":
                             if event.delta.type == "text_delta":

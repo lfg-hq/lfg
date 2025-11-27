@@ -1199,7 +1199,6 @@ tools_product = [get_file_list, get_codebase_summary, search_existing_code, get_
                  get_linear_issues, get_linear_issue_details]
 
 tools_turbo = [
-    get_prd,
     get_file_list,
     get_file_content,
     create_tickets,
@@ -1214,7 +1213,6 @@ tools_turbo = [
 ]
 
 tools_builder = [
-    get_prd,
     get_file_list,
     get_file_content,
     get_pending_tickets,
