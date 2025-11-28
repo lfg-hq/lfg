@@ -1261,7 +1261,7 @@
 
 /* Turbo Mode Slide Switch Styles */
 .turbo-switch-container {
-    display: flex;
+    display: none;
     align-items: center;
     gap: 6px;
     margin: 0 8px 0 0;
