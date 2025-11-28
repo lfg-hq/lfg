@@ -1194,9 +1194,23 @@ tools_code = [get_prd, start_server, \
               connect_notion, search_notion, get_notion_page, list_notion_databases, query_notion_database, \
               get_linear_issues, get_linear_issue_details, queue_ticket_execution]
 
-tools_product = [get_file_list, get_codebase_summary, search_existing_code, get_file_content, create_tickets, get_pending_tickets, \
+tools_product_ = [get_file_list, get_codebase_summary, search_existing_code, get_file_content, create_tickets, get_pending_tickets, \
                  connect_notion, search_notion, get_notion_page, list_notion_databases, query_notion_database, \
                  get_linear_issues, get_linear_issue_details]
+
+tools_product = [
+    get_file_list,
+    get_file_content,
+    create_tickets,
+    search_existing_code,
+    get_pending_tickets,
+    update_ticket,
+    update_all_tickets,
+    # provision_workspace,
+    # ssh_command,
+    # new_dev_sandbox,
+    queue_ticket_execution
+]
 
 tools_turbo = [
     get_file_list,

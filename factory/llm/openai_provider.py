@@ -403,8 +403,21 @@ class OpenAIProvider(BaseLLMProvider):
                 yield f"Error: {self.model} requires your own OpenAI API key. Please add API key [here](/settings/) to use advanced models."
             return
             
-        current_messages = list(messages) # Work on a copy
-        
+        # Sanitize messages for Responses API format
+        # Remove any fields that aren't supported (like tool_calls from Chat Completions format)
+        current_messages = []
+        for msg in messages:
+            if msg.get("type") == "function_call_output":
+                # Keep function_call_output messages as-is
+                current_messages.append(msg)
+            elif msg.get("role") in ("user", "assistant", "system"):
+                # For regular messages, only keep role and content
+                sanitized = {"role": msg["role"], "content": msg.get("content", "")}
+                current_messages.append(sanitized)
+            else:
+                # Pass through other message types
+                current_messages.append(msg)
+
         # Use the user, project, and conversation from the instance
         # These are already set in the __init__ method of the base class
         user = self.user
@@ -433,18 +446,28 @@ class OpenAIProvider(BaseLLMProvider):
         # This provides real-time web search capabilities without custom implementation
         converted_tools.append({"type": "web_search_preview"})
 
+        # Track response ID for multi-turn tool calls
+        previous_response_id = None
+
         while True: # Loop to handle potential multi-turn tool calls
             try:
                 params = {
                     "model": self.model,
-                    "input": current_messages,
                     "stream": True,
+                    "reasoning": {"effort": "medium"},
                     "tool_choice": "auto",
                     "tools": converted_tools,
-                    # Note: Responses API doesn't support stream_options - usage is estimated via tiktoken
                 }
-                
-                logger.debug(f"Making API call with {len(current_messages)} messages.")
+
+                # If we have a previous response (from tool calls), use previous_response_id
+                # Otherwise, send the full message history as input
+                if previous_response_id:
+                    params["previous_response_id"] = previous_response_id
+                    params["input"] = current_messages  # This will contain function_call_output items
+                else:
+                    params["input"] = current_messages
+
+                logger.debug(f"Making API call with {len(current_messages)} messages, previous_response_id={previous_response_id}")
                 
                 # Run the blocking API call in a thread
                 response_stream = await asyncio.to_thread(
@@ -453,7 +476,7 @@ class OpenAIProvider(BaseLLMProvider):
                 
                 # Variables for this specific API call
                 tool_calls_requested = [] # Stores {id, function_name, function_args_str}
-                full_assistant_message = {"role": "assistant", "content": None, "tool_calls": []} # To store the complete assistant turn
+                full_assistant_message = {"role": "assistant", "content": None} # To store the complete assistant turn
                 agent_followup_messages = []  # Messages we need to feed back to the model
                 agent_followup_counter = 0
 
@@ -587,6 +610,12 @@ class OpenAIProvider(BaseLLMProvider):
                         # Response completed - extract usage and determine finish reason
                         response_obj = getattr(event, 'response', None)
                         if response_obj:
+                            # Extract response ID for multi-turn tool calls
+                            response_id = getattr(response_obj, 'id', None)
+                            if response_id:
+                                previous_response_id = response_id
+                                logger.info(f"Extracted response_id for multi-turn: {response_id}")
+
                             # Extract usage data
                             usage_obj = getattr(response_obj, 'usage', None)
                             if usage_obj:
@@ -605,7 +634,7 @@ class OpenAIProvider(BaseLLMProvider):
                         else:
                             finish_reason = "stop"
 
-                        logger.debug(f"Response completed, finish_reason={finish_reason}")
+                        logger.debug(f"Response completed, finish_reason={finish_reason}, previous_response_id={previous_response_id}")
 
                         # Flush any remaining buffer content
                         flushed_output = tag_handler.flush_buffer()
@@ -652,14 +681,9 @@ class OpenAIProvider(BaseLLMProvider):
 
                 # --- Handle finish reason after event loop ---
                 if finish_reason == "tool_calls" and tool_calls_requested:
-                    # Process tool calls
-                    full_assistant_message["tool_calls"] = tool_calls_requested
-                    if full_assistant_message["content"] is None:
-                        full_assistant_message.pop("content", None)
-
-                    current_messages.append(full_assistant_message)
-
-                    # Execute tools
+                    # Execute tools and collect results
+                    # Note: In Responses API, we don't append assistant's tool_calls message back
+                    # We only provide function_call_output items
                     tool_results_messages = []
                     for tool_call_to_execute in tool_calls_requested:
                         tool_call_id = tool_call_to_execute["id"]
@@ -695,12 +719,18 @@ class OpenAIProvider(BaseLLMProvider):
                                 notification_json = json.dumps(notification)
                                 yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
 
-                    current_messages.extend(tool_results_messages)
+                    # In Responses API with previous_response_id, we only send tool outputs as input
+                    # The API already has the context from the previous response
+                    current_messages = tool_results_messages
+                    logger.info(f"Set current_messages to {len(tool_results_messages)} function_call_output items for next turn")
 
                     # Track token usage for tool calls
                     await self._track_usage_if_available(
-                        user, project, conversation, current_messages, total_assistant_output, usage_data
+                        user, project, conversation, messages, total_assistant_output, usage_data
                     )
+
+                    # Reset tool calls for next iteration
+                    tool_calls_requested = []
 
                     # Continue the loop to process tool results
                     continue
@@ -746,8 +776,8 @@ class OpenAIProvider(BaseLLMProvider):
                     
                     if agent_followup_messages:
                         logger.info("[OPENAI] Agent follow-up messages detected; continuing conversation for handoff")
-                        if full_assistant_message.get("content") or full_assistant_message.get("tool_calls"):
-                            current_messages.append({k: v for k, v in full_assistant_message.items() if v})
+                        if full_assistant_message.get("content"):
+                            current_messages.append({"role": "assistant", "content": full_assistant_message["content"]})
                         current_messages.extend(agent_followup_messages)
                         continue
 
