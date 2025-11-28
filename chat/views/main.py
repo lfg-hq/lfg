@@ -1,7 +1,7 @@
 import json
 import openai
 import os
-from django.shortcuts import render, get_object_or_404
+from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse, StreamingHttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
@@ -27,89 +27,19 @@ from factory.llm_config import get_llm_model_config, get_model_label
 
 @login_required
 def index(request):
-    """Render the main chat interface."""
-    context = {}
-    
+    """Redirect to the user's default project chat."""
     # Ensure user has a default project
     if not request.user.projects.exists():
         default_project = Project.get_or_create_default_project(request.user)
-        context['project'] = default_project
-        context['project_id'] = str(default_project.project_id)  # Use project_id instead of id
     else:
         # Get the most recent project or the default one
         default_project = request.user.projects.filter(name="Untitled Project").first()
         if not default_project:
             default_project = request.user.projects.order_by('-updated_at').first()
-        context['project'] = default_project
-        context['project_id'] = str(default_project.project_id)  # Use project_id instead of id
-    
-    # Get user's agent role for turbo mode and role
-    agent_role, created = AgentRole.objects.get_or_create(
-        user=request.user,
-        defaults={'name': 'product_analyst', 'turbo_mode': False}
-    )
-    context['turbo_mode'] = agent_role.turbo_mode
-    context['role_key'] = agent_role.name
-    
-    # Get user's model selection
-    model_selection, created = ModelSelection.objects.get_or_create(
-        user=request.user,
-        defaults={'selected_model': ModelSelection.DEFAULT_MODEL_KEY}
-    )
-    
-    # Force free tier users to use o4-mini
-    if hasattr(request.user, 'credit'):
-        user_credit = request.user.credit
-        if user_credit.is_free_tier and model_selection.selected_model != 'gpt-5-mini':
-            model_selection.selected_model = 'gpt-5-mini'
-            model_selection.save()
-    
-    context['model_key'] = model_selection.selected_model
-    context['current_model_label'] = get_model_label(model_selection.selected_model)
-    
-    # Get or create ApplicationState for sidebar and other UI state
-    app_state, created = ApplicationState.objects.get_or_create(
-        user=request.user,
-        defaults={
-            'sidebar_minimized': False,
-            'last_selected_model': model_selection.selected_model,
-            'last_selected_role': agent_role.name,
-            'turbo_mode_enabled': agent_role.turbo_mode
-        }
-    )
-    context['sidebar_minimized'] = app_state.sidebar_minimized
-    
-    # Check user's subscription status for popups
-    user_credit, created = UserCredit.objects.get_or_create(user=request.user)
-    
-    # Check if we should show upgrade popup (free tier users who haven't upgraded)
-    show_upgrade_popup = False
-    if user_credit.is_free_tier:
-        # Check if user has been shown the popup recently (stored in session)
-        last_upgrade_popup = request.session.get('last_upgrade_popup_shown')
-        if not last_upgrade_popup:
-            show_upgrade_popup = True
-            request.session['last_upgrade_popup_shown'] = timezone.now().isoformat()
-    
-    # Check if tokens are exhausted
-    show_tokens_exhausted_popup = False
-    if user_credit.get_remaining_tokens() <= 0:
-        show_tokens_exhausted_popup = True
-    
-    context['show_upgrade_popup'] = show_upgrade_popup
-    context['show_tokens_exhausted_popup'] = show_tokens_exhausted_popup
-    context['is_free_tier'] = user_credit.is_free_tier
-    context['remaining_tokens'] = user_credit.get_remaining_tokens()
-    context['total_tokens_limit'] = (
-        FREE_TIER_TOKEN_LIMIT if user_credit.is_free_tier else PRO_MONTHLY_TOKEN_LIMIT
-    )
-    context['llm_model_config'] = get_llm_model_config()
 
-    # Check if user should see onboarding modal (first-time users only)
-    profile = request.user.profile
-    context['show_onboarding'] = not profile.has_seen_onboarding
+    # Redirect to the project chat URL
+    return redirect(f'/chat/project/{default_project.project_id}/')
 
-    return render(request, 'chat/main.html', context)
 
 @login_required
 def project_chat(request, project_id):

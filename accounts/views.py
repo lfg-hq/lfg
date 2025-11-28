@@ -505,6 +505,7 @@ def integrations(request):
     from subscriptions.models import PaymentPlan, Transaction
     import os
     payment_plans = PaymentPlan.objects.filter(is_active=True)
+    additional_credits_plan = PaymentPlan.objects.filter(name='Additional Credits', is_active=True).first()
     transactions = Transaction.objects.filter(user=request.user).order_by('-created_at')[:5]
     stripe_public_key = os.environ.get('STRIPE_PUBLIC_KEY', '')
     
@@ -538,6 +539,7 @@ def integrations(request):
         'free_tokens_remaining': free_tokens_remaining,
         # Subscription data
         'payment_plans': payment_plans,
+        'additional_credits_plan': additional_credits_plan,
         'transactions': transactions,
         'STRIPE_PUBLIC_KEY': stripe_public_key,
         'monthly_usage_percentage': round(monthly_usage_percentage, 1),

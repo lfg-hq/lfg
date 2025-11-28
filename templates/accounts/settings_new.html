@@ -1634,7 +1634,7 @@
 <!-- Subscriptions Section -->
         <div id="subscriptions" class="settings-section">
             <h2 class="section-heading">Subscription & Billing</h2>
-            
+
             <style>
                 /* Full subscriptions dashboard styles */
                 /* Main subscription cards grid */
@@ -2277,19 +2277,23 @@
                     }
                 }
             </style>
-            
+
             <div class="subscription-cards-grid">
             <!-- Current Plan Card -->
-            <div class="subscription-plan-card">
+            <div class="subscription-plan-card" style="position: relative;">
+                <span style="position: absolute; top: -10px; right: 24px; background: #1a1a1a; color: #a78bfa; border: 1px solid rgba(167, 139, 250, 0.4); padding: 4px 12px; border-radius: 999px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">
+                    {% if user_credit.is_free_tier %}Free Tier{% else %}Pro Monthly{% endif %}
+                </span>
                 <div class="subscription-plan-header">
                     <div>
-                        <div class="subscription-plan-badge{% if not user_credit.is_free_tier %} pro{% endif %}">
-                            <i class="fas fa-{% if user_credit.is_free_tier %}user{% else %}crown{% endif %}"></i>
-                            {% if user_credit.is_free_tier %}Free Tier{% else %}Pro Monthly{% endif %}
-                        </div>
-                        <div style="color: #6b7280; font-size: 12px; margin-top: 8px;">
+                        {% if additional_credits_plan %}
+                        <a href="{% url 'subscriptions:checkout' additional_credits_plan.id %}" style="display: inline-flex; align-items: center; gap: 6px; padding: 10px 20px; font-size: 14px; font-weight: 500; color: white; background: linear-gradient(135deg, #8B5CF6, #A855F7); border-radius: 8px; text-decoration: none; transition: all 0.2s ease; box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);" onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 6px 16px rgba(139, 92, 246, 0.35)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 12px rgba(139, 92, 246, 0.25)';">
+                            <i class="fas fa-plus" style="font-size: 12px;"></i> Buy Credits
+                        </a>
+                        {% endif %}
+                        <div style="color: #6b7280; font-size: 12px; margin-top: 12px;">
                             {% if user_credit.is_free_tier %}
-                                {{ free_tier_token_limit|intcomma }} lifetime tokens • gpt-5-mini only
+                                {{ free_tier_token_limit|intcomma }} onetime tokens • gpt-5-mini only
                             {% else %}
                                 {{ pro_monthly_token_limit|intcomma }} tokens per month • All AI models
                             {% endif %}
@@ -2410,9 +2414,9 @@
                         
                         <ul class="subscription-plan-features">
                             {% if plan.name == 'Free Tier' %}
-                                <li><i class="fas fa-check"></i> {{ free_tier_token_limit|intcomma }} lifetime tokens</li>
-                                <li><i class="fas fa-check"></i> GPT-5-mini model only</li>
-                                <li><i class="fas fa-check"></i> Basic features</li>
+                                <li><i class="fas fa-check"></i> {{ free_tier_token_limit|intcomma }} one-time tokens</li>
+                                <li><i class="fas fa-check"></i> Low tier models (GPT-5-mini and Haiku)</li>
+                                <li><i class="fas fa-check"></i> Limited documents and </li>
                                 <li><i class="fas fa-check"></i> Community support</li>
                             {% elif plan.name == 'Pro Monthly' %}
                                 <li><i class="fas fa-check"></i> {{ pro_monthly_token_limit|intcomma }} tokens per month</li>

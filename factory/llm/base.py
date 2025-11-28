@@ -110,9 +110,9 @@ class BaseLLMProvider(ABC):
             remaining_tokens = user_credit.get_remaining_tokens()
             if remaining_tokens <= 0:
                 if user_credit.is_free_tier:
-                    return False, "You have reached your free tier limit of 100,000 tokens. Please upgrade to Pro for 300,000 tokens per month.", 0
+                    return False, "You have reached your free tier limit of 100,000 tokens. Please upgrade to Pro for additional tokens or to use your LLM provider. <a href='/settings/#subscriptions'>Upgrade plan</a>.", 0
                 else:
-                    return False, "You have reached your monthly token limit of 1,000,000 tokens. Additional tokens can be purchased.", 0
+                    return False, "You have reached your monthly token limit of 1,000,000 tokens.\n\n1. <a href='/settings/#subscriptions'>Buy more tokens</a>\n2. <a href='/settings/#llm-keys'>Use your own API keys</a>", 0
 
             return True, "", remaining_tokens
 

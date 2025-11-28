@@ -15,7 +15,7 @@ DEFAULT_PAYMENT_PLANS = [
         "name": "Free Tier",
         "price": Decimal("0.00"),
         "credits": FREE_TIER_TOKEN_LIMIT,
-        "description": "Free tier with 100,000 tokens lifetime limit. Only supports gpt-5-mini model.",
+        "description": "Free tier with 100,000 tokens (one-time limit). Low tier models like gpt-5-mini only.",
         "is_subscription": False,
     },
     {
@@ -29,7 +29,7 @@ DEFAULT_PAYMENT_PLANS = [
         "name": "Additional Credits",
         "price": Decimal("5.00"),
         "credits": ADDITIONAL_CREDIT_TOKENS,
-        "description": "Get 1,000,000 more tokens for $5 (one-time purchase).",
+        "description": "Buy 1,000,000 more tokens for $5.",
         "is_subscription": False,
     },
 ]
