@@ -1076,6 +1076,7 @@
                                 <th>Ticket</th>
                                 <th>Status</th>
                                 <th>Priority</th>
+                                <th>Queue</th>
                             </tr>
                         </thead>
                         <tbody id="ticketsTableBody">
@@ -1115,6 +1116,27 @@
                                                 <option value="Medium" {% if ticket.priority == 'Medium' %}selected{% endif %}>Medium</option>
                                                 <option value="High" {% if ticket.priority == 'High' %}selected{% endif %}>High</option>
                                             </select>
+                                        </td>
+                                        <td>
+                                            <div class="queue-status-cell"
+                                                 data-ticket-id="{{ ticket.id }}"
+                                                 data-project-id="{{ ticket.project.project_id }}"
+                                                 data-queue-status="{{ ticket.queue_status }}">
+                                                {% if ticket.queue_status == 'queued' %}
+                                                    <span class="queue-badge queued">
+                                                        <i class="fas fa-clock"></i> Queued
+                                                    </span>
+                                                    <button class="queue-cancel-btn" onclick="cancelFromQueue({{ ticket.id }}, '{{ ticket.project.project_id }}')" title="Remove from queue">
+                                                        <i class="fas fa-times"></i>
+                                                    </button>
+                                                {% elif ticket.queue_status == 'executing' %}
+                                                    <span class="queue-badge executing">
+                                                        <i class="fas fa-spinner fa-spin"></i> Executing
+                                                    </span>
+                                                {% else %}
+                                                    <span class="queue-badge none">-</span>
+                                                {% endif %}
+                                            </div>
                                         </td>
                                     </tr>
                                 {% endfor %}
@@ -1435,9 +1457,20 @@
             });
             priorityCell.appendChild(prioritySelect);
 
+            // Queue status cell
+            const queueCell = document.createElement('td');
+            const queueDiv = document.createElement('div');
+            queueDiv.className = 'queue-status-cell';
+            queueDiv.dataset.ticketId = ticket.id;
+            queueDiv.dataset.projectId = ticket.project_id || '';
+            queueDiv.dataset.queueStatus = ticket.queue_status || 'none';
+            queueDiv.innerHTML = '<span class="queue-badge none">-</span>';
+            queueCell.appendChild(queueDiv);
+
             row.appendChild(ticketCell);
             row.appendChild(statusCell);
             row.appendChild(priorityCell);
+            row.appendChild(queueCell);
             tbody.prepend(row);
 
             filterTickets();
@@ -2746,6 +2779,70 @@
             closeTicketDrawer();
         }
 
+        async function cancelFromQueue(ticketId, projectId) {
+            if (!confirm('Remove this ticket from the execution queue?')) {
+                return;
+            }
+
+            try {
+                const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+                const response = await fetch(`/projects/${projectId}/api/tickets/${ticketId}/cancel-queue/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    }
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    // Update the queue status cell in the table
+                    const queueCell = document.querySelector(`.queue-status-cell[data-ticket-id="${ticketId}"]`);
+                    if (queueCell) {
+                        queueCell.dataset.queueStatus = 'none';
+                        queueCell.innerHTML = '<span class="queue-badge none">-</span>';
+                    }
+
+                    // Show success notification if available
+                    if (typeof showNotification === 'function') {
+                        showNotification('Ticket removed from queue', 'success');
+                    }
+                } else {
+                    alert('Failed to remove from queue: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error canceling from queue:', error);
+                alert('Error removing ticket from queue');
+            }
+        }
+
+        function updateQueueStatusUI(ticketId, queueStatus) {
+            const queueCell = document.querySelector(`.queue-status-cell[data-ticket-id="${ticketId}"]`);
+            if (!queueCell) return;
+
+            queueCell.dataset.queueStatus = queueStatus;
+            const projectId = queueCell.dataset.projectId;
+
+            if (queueStatus === 'queued') {
+                queueCell.innerHTML = `
+                    <span class="queue-badge queued">
+                        <i class="fas fa-clock"></i> Queued
+                    </span>
+                    <button class="queue-cancel-btn" onclick="cancelFromQueue(${ticketId}, '${projectId}')" title="Remove from queue">
+                        <i class="fas fa-times"></i>
+                    </button>
+                `;
+            } else if (queueStatus === 'executing') {
+                queueCell.innerHTML = `
+                    <span class="queue-badge executing">
+                        <i class="fas fa-spinner fa-spin"></i> Executing
+                    </span>
+                `;
+            } else {
+                queueCell.innerHTML = '<span class="queue-badge none">-</span>';
+            }
+        }
+
         async function updateTicketFromTable(selectElement, field) {
             const ticketId = selectElement.dataset.ticketId;
             const projectId = selectElement.dataset.projectId;
@@ -2892,6 +2989,8 @@
 
                 const data = await response.json();
                 if (data.success) {
+                    // Update queue status in the table
+                    updateQueueStatusUI(currentTicket.id, data.queue_status || 'queued');
                     // Switch to Logs tab to show execution progress
                     switchDrawerTab('logs');
                 } else {

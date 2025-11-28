@@ -396,11 +396,18 @@ Q_CLUSTER = {
         'sync': False,   # Keep async for production
         'redis': {
             'host': os.getenv('REDIS_HOST', 'localhost'),
-            'port': int(os.getenv('REDIS_PORT', 6379)),
-            'db': int(os.getenv('REDIS_DB', 0)),
-            'password': os.getenv('REDIS_PASSWORD', None),
+            'port': int(os.getenv('REDIS_PORT') or 6379),
+            'db': int(os.getenv('REDIS_DB') or 0),
+            'password': os.getenv('REDIS_PASSWORD') or None,
         }
     }
+
+# Async Executor Configuration
+# Settings for the parallel ticket executor service
+ASYNC_EXECUTOR = {
+    'max_concurrent_projects': int(os.getenv('EXECUTOR_MAX_CONCURRENT', 200)),
+    'lock_ttl': int(os.getenv('EXECUTOR_LOCK_TTL', 7200)),  # 2 hours default
+}
 
 # Cache Configuration
 # Use Redis cache when available, otherwise use local memory

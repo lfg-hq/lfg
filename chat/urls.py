@@ -1,6 +1,6 @@
 from django.urls import path
 from . import views
-from .views.main import user_agent_role, user_model_selection, available_models, latest_conversation, daily_token_usage, user_turbo_mode
+from .views.main import user_agent_role, user_model_selection, available_models, latest_conversation, daily_token_usage, user_turbo_mode, complete_onboarding
 from .views.files_extra import get_file_url
 from .views.transcribe_fixed import transcribe_file
 
@@ -35,4 +35,7 @@ urlpatterns = [
     
     # Daily token usage API
     path('api/daily-token-usage/', daily_token_usage, name='daily_token_usage'),
+
+    # Onboarding API
+    path('api/complete-onboarding/', complete_onboarding, name='complete_onboarding'),
 ] 

@@ -2159,9 +2159,9 @@ def ticket_chat_api(request, project_id, ticket_id):
 @login_required
 @require_http_methods(["POST"])
 def execute_ticket_api(request, project_id, ticket_id):
-    """API endpoint to execute a ticket using the Claude Agent SDK"""
+    """API endpoint to execute a ticket using the parallel executor system"""
     import json
-    from django_q.tasks import async_task
+    from tasks.dispatch import dispatch_tickets
 
     try:
         data = json.loads(request.body.decode('utf-8'))
@@ -2184,29 +2184,137 @@ def execute_ticket_api(request, project_id, ticket_id):
             'error': 'Ticket is already completed'
         }, status=400)
 
-    try:
-        # Import the executor function
-        from tasks.task_definitions import execute_ticket_implementation
+    # Check if ticket is already queued or executing
+    if ticket.queue_status in ['queued', 'executing']:
+        return JsonResponse({
+            'success': False,
+            'error': f'Ticket is already {ticket.queue_status}'
+        }, status=400)
 
-        # Queue the ticket execution as a background task
-        task_id = async_task(
-            execute_ticket_implementation,
-            ticket_id=ticket.id,
+    try:
+        # Dispatch ticket to the parallel executor queue
+        success = dispatch_tickets(
             project_id=project.id,
-            conversation_id=conversation_id or 0,
+            ticket_ids=[ticket.id],
+            conversation_id=conversation_id or 0
         )
 
-        logger.info(f"Queued ticket execution: ticket_id={ticket_id}, task_id={task_id}")
-
-        return JsonResponse({
-            'success': True,
-            'message': 'Ticket execution started',
-            'ticket_id': ticket_id,
-            'task_id': task_id
-        })
+        if success:
+            logger.info(f"Queued ticket execution: ticket_id={ticket_id}")
+            return JsonResponse({
+                'success': True,
+                'message': 'Ticket queued for execution',
+                'ticket_id': ticket_id,
+                'queue_status': 'queued'
+            })
+        else:
+            return JsonResponse({
+                'success': False,
+                'error': 'Failed to queue ticket'
+            }, status=500)
 
     except Exception as e:
         logger.error(f"Error starting ticket execution: {str(e)}", exc_info=True)
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def cancel_ticket_queue_api(request, project_id, ticket_id):
+    """API endpoint to remove a ticket from the execution queue"""
+    from tasks.dispatch import remove_from_queue
+
+    # Get project and ticket
+    project = get_object_or_404(Project, project_id=project_id)
+    ticket = get_object_or_404(ProjectTicket, id=ticket_id, project=project)
+
+    # Check if user has permission to manage tickets
+    if not project.can_user_manage_tickets(request.user):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    # Check if ticket is in queue
+    if ticket.queue_status == 'none':
+        return JsonResponse({
+            'success': False,
+            'error': 'Ticket is not in queue'
+        }, status=400)
+
+    # Check if ticket is already executing (can't cancel)
+    if ticket.queue_status == 'executing':
+        return JsonResponse({
+            'success': False,
+            'error': 'Cannot cancel ticket that is currently executing'
+        }, status=400)
+
+    try:
+        # Remove from queue
+        removed = remove_from_queue(project.id, ticket.id)
+
+        if removed:
+            return JsonResponse({
+                'success': True,
+                'message': 'Ticket removed from queue',
+                'ticket_id': ticket_id
+            })
+        else:
+            # Ticket not found in queue, update status anyway
+            ticket.queue_status = 'none'
+            ticket.queued_at = None
+            ticket.queue_task_id = None
+            ticket.save(update_fields=['queue_status', 'queued_at', 'queue_task_id'])
+
+            return JsonResponse({
+                'success': True,
+                'message': 'Ticket queue status cleared',
+                'ticket_id': ticket_id
+            })
+
+    except Exception as e:
+        logger.error(f"Error canceling ticket from queue: {str(e)}", exc_info=True)
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+@require_http_methods(["GET"])
+def project_queue_status_api(request, project_id):
+    """API endpoint to get queue status for a project"""
+    from tasks.dispatch import get_project_queue_info
+
+    # Get project
+    project = get_object_or_404(Project, project_id=project_id)
+
+    # Check if user has permission to view this project
+    if not (project.owner == request.user or project.members.filter(user=request.user, status='active').exists()):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    try:
+        # Get queue info from Redis
+        queue_info = get_project_queue_info(project.id)
+
+        # Get ticket statuses from database
+        queued_tickets = ProjectTicket.objects.filter(
+            project=project,
+            queue_status__in=['queued', 'executing']
+        ).values('id', 'title', 'queue_status', 'queued_at')
+
+        return JsonResponse({
+            'success': True,
+            'project_id': project_id,
+            'is_executing': queue_info.get('is_executing', False),
+            'queue_position': queue_info.get('queue_position'),
+            'total_queued': queue_info.get('total_queued', 0),
+            'queued_ticket_ids': queue_info.get('queued_ticket_ids', []),
+            'tickets': list(queued_tickets)
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting project queue status: {str(e)}", exc_info=True)
         return JsonResponse({
             'success': False,
             'error': str(e)

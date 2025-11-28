@@ -265,7 +265,31 @@ class ProjectTicket(models.Model):
     linear_assignee_id = models.CharField(max_length=255, blank=True, null=True, help_text="Linear user ID of assignee")
     linear_synced_at = models.DateTimeField(blank=True, null=True, help_text="Last time this ticket was synced with Linear")
     linear_sync_enabled = models.BooleanField(default=True, help_text="Whether to sync this specific ticket with Linear")
-    
+
+    # Queue status tracking (for parallel executor)
+    QUEUE_STATUS_CHOICES = [
+        ('none', 'Not Queued'),
+        ('queued', 'Queued'),
+        ('executing', 'Executing'),
+    ]
+    queue_status = models.CharField(
+        max_length=20,
+        choices=QUEUE_STATUS_CHOICES,
+        default='none',
+        help_text='Current queue status for execution'
+    )
+    queued_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When the ticket was added to the execution queue'
+    )
+    queue_task_id = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        help_text='Task ID for tracking in the execution queue'
+    )
+
     def __str__(self):
         return f"{self.project.name} - {self.name}"
 

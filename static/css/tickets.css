@@ -1199,3 +1199,61 @@
         grid-template-columns: 1fr;
     }
 }
+
+/* Queue Status Styles */
+.queue-status-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.queue-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.queue-badge.none {
+    color: var(--text-secondary, #888);
+}
+
+.queue-badge.queued {
+    background-color: rgba(251, 191, 36, 0.15);
+    color: #fbbf24;
+    border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.queue-badge.executing {
+    background-color: rgba(59, 130, 246, 0.15);
+    color: #3b82f6;
+    border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.queue-cancel-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: none;
+    background-color: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 0.65rem;
+}
+
+.queue-cancel-btn:hover {
+    background-color: rgba(239, 68, 68, 0.25);
+    transform: scale(1.1);
+}
+
+.queue-cancel-btn:active {
+    transform: scale(0.95);
+}

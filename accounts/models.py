@@ -233,6 +233,7 @@ class Profile(models.Model):
     avatar = models.ImageField(upload_to='avatars/', null=True, blank=True)
     sidebar_collapsed = models.BooleanField(default=False)
     email_verified = models.BooleanField(default=False)
+    has_seen_onboarding = models.BooleanField(default=False)
     
     # Organization context
     current_organization = models.ForeignKey(

@@ -92,21 +92,7 @@ def auth(request):
                     return redirect('accounts:email_verification_required')
                 
                 login(request, user)
-                
-                # Check if user has required API keys set up
-                try:
-                    llm_keys = LLMApiKeys.objects.get(user=user)
-                    openai_key_missing = not bool(llm_keys.openai_api_key)
-                    anthropic_key_missing = not bool(llm_keys.anthropic_api_key)
-                except LLMApiKeys.DoesNotExist:
-                    openai_key_missing = True
-                    anthropic_key_missing = True
-                
-                # If both OpenAI and Anthropic keys are missing, redirect to integrations
-                if openai_key_missing and anthropic_key_missing:
-                    messages.success(request, 'Please set up OpenAI or Anthropic API keys to get started.')
-                    return redirect('accounts:integrations')
-                
+
                 # Redirect to the chat page or next parameter if provided
                 next_url = request.GET.get('next')
                 if next_url:
@@ -618,25 +604,11 @@ def email_verification_required(request):
     """Show email verification required page"""
     user = request.user
     profile = user.profile
-    
-    # Check if already verified
+
+    # Check if already verified - redirect to chat page
     if profile.email_verified:
-        # Check if user has required API keys set up
-        try:
-            llm_keys = LLMApiKeys.objects.get(user=request.user)
-            openai_key_missing = not bool(llm_keys.openai_api_key)
-            anthropic_key_missing = not bool(llm_keys.anthropic_api_key)
-        except LLMApiKeys.DoesNotExist:
-            openai_key_missing = True
-            anthropic_key_missing = True
-        
-        # If both OpenAI and Anthropic keys are missing, redirect to integrations
-        if openai_key_missing and anthropic_key_missing:
-            messages.success(request, 'Please set up OpenAI or Anthropic API keys to get started.')
-            return redirect('accounts:integrations')
-        
-        return redirect('projects:project_list')
-    
+        return redirect('index')
+
     context = {
         'email': user.email,
     }
@@ -670,44 +642,30 @@ def verify_email(request, token):
     try:
         # Find the token
         verification_token = EmailVerificationToken.objects.get(token=token)
-        
+
         # Check if token is valid
         if not verification_token.is_valid():
             messages.error(request, 'This verification link has expired or been used already.')
             return redirect('login')
-        
+
         # Mark email as verified
         user = verification_token.user
         profile = user.profile
         profile.email_verified = True
         profile.save()
-        
+
         # Mark token as used
         verification_token.used = True
         verification_token.save()
-        
+
         messages.success(request, 'Your email has been verified successfully!')
-        
-        # If user is logged in, redirect to appropriate page
+
+        # If user is logged in, redirect to chat page
         if request.user.is_authenticated:
-            # Check if user has required API keys set up
-            try:
-                llm_keys = LLMApiKeys.objects.get(user=request.user)
-                openai_key_missing = not bool(llm_keys.openai_api_key)
-                anthropic_key_missing = not bool(llm_keys.anthropic_api_key)
-            except LLMApiKeys.DoesNotExist:
-                openai_key_missing = True
-                anthropic_key_missing = True
-            
-            # If both keys are missing, redirect to integrations
-            if openai_key_missing and anthropic_key_missing:
-                messages.success(request, 'Please set up OpenAI or Anthropic API keys to get started.')
-                return redirect('accounts:integrations')
-            
-            return redirect('projects:project_list')
+            return redirect('index')
         else:
             return redirect('login')
-            
+
     except EmailVerificationToken.DoesNotExist:
         messages.error(request, 'Invalid verification link.')
         return redirect('login')
@@ -900,27 +858,13 @@ def google_callback(request):
         
         # Check if this was from the landing page onboarding flow
         from_landing_onboarding = request.session.pop('from_landing_onboarding', False)
-        
+
         if from_landing_onboarding:
             # Redirect back to landing page with a flag to continue onboarding at step 3
             return redirect('/?onboarding=true&step=3')
-        
-        # Check if user has required API keys set up
-        try:
-            llm_keys = LLMApiKeys.objects.get(user=user)
-            openai_key_missing = not bool(llm_keys.openai_api_key)
-            anthropic_key_missing = not bool(llm_keys.anthropic_api_key)
-        except LLMApiKeys.DoesNotExist:
-            openai_key_missing = True
-            anthropic_key_missing = True
-        
-        # If both keys are missing, redirect to integrations (for both new and existing users)
-        if openai_key_missing and anthropic_key_missing:
-            messages.info(request, 'Please set up OpenAI or Anthropic API keys to get started.')
-            return redirect('accounts:integrations')
-        
-        # Otherwise redirect to projects page (matching the regular registration flow)
-        return redirect('projects:project_list')
+
+        # Redirect to chat page
+        return redirect('index')
         
     except requests.exceptions.RequestException as e:
         messages.error(request, f'Error communicating with Google: {str(e)}')

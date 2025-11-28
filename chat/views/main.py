@@ -104,7 +104,11 @@ def index(request):
         FREE_TIER_TOKEN_LIMIT if user_credit.is_free_tier else PRO_MONTHLY_TOKEN_LIMIT
     )
     context['llm_model_config'] = get_llm_model_config()
-    
+
+    # Check if user should see onboarding modal (first-time users only)
+    profile = request.user.profile
+    context['show_onboarding'] = not profile.has_seen_onboarding
+
     return render(request, 'chat/main.html', context)
 
 @login_required
@@ -176,7 +180,11 @@ def project_chat(request, project_id):
         FREE_TIER_TOKEN_LIMIT if user_credit.is_free_tier else PRO_MONTHLY_TOKEN_LIMIT
     )
     context['llm_model_config'] = get_llm_model_config()
-        
+
+    # Check if user should see onboarding modal (first-time users only)
+    profile = request.user.profile
+    context['show_onboarding'] = not profile.has_seen_onboarding
+
     return render(request, 'chat/main.html', context)
 
 @login_required
@@ -248,7 +256,7 @@ def show_conversation(request, conversation_id):
         }
     )
     context['sidebar_minimized'] = app_state.sidebar_minimized
-    
+
     # Add subscription context for UI filtering
     user_credit, created = UserCredit.objects.get_or_create(user=request.user)
     context['is_free_tier'] = user_credit.is_free_tier
@@ -257,7 +265,11 @@ def show_conversation(request, conversation_id):
         FREE_TIER_TOKEN_LIMIT if user_credit.is_free_tier else PRO_MONTHLY_TOKEN_LIMIT
     )
     context['llm_model_config'] = get_llm_model_config()
-        
+
+    # Check if user should see onboarding modal (first-time users only)
+    profile = request.user.profile
+    context['show_onboarding'] = not profile.has_seen_onboarding
+
     return render(request, 'chat/main.html', context)
 
 
@@ -708,4 +720,38 @@ def daily_token_usage(request):
         'tokens': daily_tokens,
         'remaining_tokens': remaining_tokens,
         'date': today.isoformat()
-    }) 
+    })
+
+
+@login_required
+@require_http_methods(["POST"])
+@csrf_exempt
+def complete_onboarding(request):
+    """Mark onboarding as complete for the current user."""
+    try:
+        data = json.loads(request.body) if request.body else {}
+        project_name = data.get('project_name')
+
+        # Update project name if provided
+        if project_name:
+            project = request.user.projects.filter(name="Untitled Project").first()
+            if not project:
+                project = request.user.projects.order_by('-updated_at').first()
+            if project:
+                project.name = project_name
+                project.save()
+
+        # Mark onboarding as seen
+        profile = request.user.profile
+        profile.has_seen_onboarding = True
+        profile.save()
+
+        return JsonResponse({
+            'success': True,
+            'message': 'Onboarding completed'
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
