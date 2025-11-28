@@ -146,7 +146,7 @@
 
     <main>
         <!-- Hero Section -->
-        <section class="relative pt-32 pb-20 overflow-hidden">
+        <section class="relative pt-24 sm:pt-32 pb-16 sm:pb-20 overflow-hidden">
             <!-- Background Elements -->
             <div class="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full max-w-7xl pointer-events-none">
                 <div class="absolute top-[10%] left-[10%] w-96 h-96 bg-indigo-400/20 rounded-full blur-3xl mix-blend-multiply animate-pulse"></div>
@@ -164,14 +164,14 @@
                 </div>
 
                 <!-- Headline -->
-                <h1 class="font-display font-bold text-5xl md:text-7xl leading-[1.1] mb-6 text-slate-900 tracking-tight">
-                    Software factory that <br />
+                <h1 class="font-display font-bold text-4xl sm:text-5xl md:text-7xl leading-[1.1] mb-6 text-slate-900 tracking-tight">
+                    Software factory that <br class="hidden sm:block" />
                     <span class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-pink-500">
                         ideates, plans, and builds.
                     </span>
                 </h1>
-                
-                <p class="text-lg md:text-xl text-slate-500 mb-10 max-w-2xl mx-auto leading-relaxed">
+
+                <p class="text-base sm:text-lg md:text-xl text-slate-500 mb-8 sm:mb-10 max-w-2xl mx-auto leading-relaxed px-2 sm:px-0">
                     Stop making MVPs and running into dead ends. With LFG, you play the orchestra while a team of agents and real-humans builds awesome products for you.
                 </p>
 
@@ -181,12 +181,14 @@
                     <form id="hero-form" class="relative bg-white rounded-xl shadow-2xl border border-slate-100 p-2">
                         <textarea
                             id="hero-input"
-                            placeholder="Describe your app idea... (e.g. 'A real-time kanban board with AI summarization')"
-                            class="w-full resize-none border-none focus:ring-0 outline-none text-lg text-slate-800 placeholder:text-slate-400 p-4 min-h-[80px] bg-transparent font-medium"
+                            placeholder="Describe your idea..."
+                            data-placeholder-mobile="Describe your idea..."
+                            data-placeholder-desktop="Describe your app idea... (e.g. 'A real-time kanban board with AI summarization')"
+                            class="w-full resize-none border-none focus:ring-0 outline-none text-base sm:text-lg text-slate-800 placeholder:text-slate-400 p-4 min-h-[70px] sm:min-h-[80px] bg-transparent font-medium"
                             required
                         ></textarea>
-                        <div class="flex justify-between items-center px-4 pb-2 pt-2 border-t border-slate-50 bg-slate-50/50 rounded-b-lg -mx-2 -mb-2">
-                            <div class="flex gap-2 overflow-x-auto no-scrollbar py-1 max-w-[60%]">
+                        <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 px-4 pb-3 pt-3 border-t border-slate-50 bg-slate-50/50 rounded-b-lg -mx-2 -mb-2">
+                            <div class="hidden sm:flex gap-2 overflow-x-auto no-scrollbar py-1">
                                 <button type="button" onclick="setInput('📸 A CRM for freelance photographers')" class="whitespace-nowrap text-xs font-medium px-3 py-1.5 bg-white border border-slate-200 rounded-md text-slate-500 hover:border-indigo-300 hover:text-indigo-600 transition-colors">
                                     📸 A CRM for...
                                 </button>
@@ -197,7 +199,7 @@
                                     🎮 Habit tracking...
                                 </button>
                             </div>
-                            <button type="submit" class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg font-semibold transition-all active:scale-95">
+                            <button type="submit" class="w-full sm:w-auto flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 sm:py-2.5 rounded-lg font-semibold transition-all active:scale-95">
                                 <i data-lucide="sparkles" class="w-4 h-4"></i>
                                 <span>Generate</span>
                             </button>
@@ -205,7 +207,7 @@
                     </form>
                 </div>
 
-                <div class="mt-12 flex justify-center gap-8 text-slate-400 text-sm font-medium">
+                <div class="mt-8 sm:mt-12 flex flex-col sm:flex-row justify-center items-center gap-4 sm:gap-8 text-slate-400 text-sm font-medium">
                     <div class="flex items-center gap-2">
                         <i data-lucide="zap" class="w-4 h-4 text-yellow-500 fill-yellow-500"></i>
                         <span>Powered by Agents</span>
@@ -896,6 +898,19 @@
     <!-- JavaScript Logic -->
     <script>
         lucide.createIcons();
+
+        // Responsive placeholder for hero input
+        function updateHeroPlaceholder() {
+            const heroInput = document.getElementById('hero-input');
+            if (heroInput) {
+                const isMobile = window.innerWidth < 640; // sm breakpoint
+                heroInput.placeholder = isMobile
+                    ? heroInput.dataset.placeholderMobile
+                    : heroInput.dataset.placeholderDesktop;
+            }
+        }
+        updateHeroPlaceholder();
+        window.addEventListener('resize', updateHeroPlaceholder);
 
         let userRequirements = '';
         let isAuthenticated = false;
