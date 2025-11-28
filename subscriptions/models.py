@@ -79,7 +79,7 @@ class UserCredit(models.Model):
         """Check if user can use a model with platform-provided API key"""
         # Platform only provides gpt-5-mini for all tiers (free and paid)
         # All other models require user's own API keys
-        return model_name == 'gpt-5-mini'
+        return model_name in ('gpt-5-mini', 'gpt-5.1')
 
 class PaymentPlan(models.Model):
     name = models.CharField(max_length=100)

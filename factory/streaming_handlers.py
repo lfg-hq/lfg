@@ -285,9 +285,13 @@ class StreamingTagHandler:
 
         # Handle lfg-info tags - status messages that should have line breaks after
         elif "</lfg-info>" in self.buffer and self.current_mode != "file":
-            # Process complete lfg-info tags - strip tags and add line breaks
-            self.buffer = re.sub(r'<lfg-info>', '', self.buffer)
-            self.buffer = self.buffer.replace('</lfg-info>', '\n\n')
+            # Process complete lfg-info tags - wrap in styled indicator
+            self.buffer = re.sub(
+                r'<lfg-info>(.*?)</lfg-info>',
+                r'<div class="agent-status-indicator">\1</div>',
+                self.buffer,
+                flags=re.DOTALL
+            )
             # Output processed content
             output_text = self.buffer
             self.buffer = ""
@@ -412,9 +416,13 @@ class StreamingTagHandler:
         if not text:
             return text
 
-        # Handle lfg-info tags specially - replace closing tag with line breaks
-        text = re.sub(r'<lfg-info>', '', text)
-        text = re.sub(r'</lfg-info>', '\n\n', text)
+        # Handle lfg-info tags specially - wrap in styled indicator
+        text = re.sub(
+            r'<lfg-info>(.*?)</lfg-info>',
+            r'<div class="agent-status-indicator">\1</div>',
+            text,
+            flags=re.DOTALL
+        )
 
         # Remove complete lfg tags (but not lfg-info which we handled above)
         text = re.sub(r'</?lfg(?!-info)[^>]*>', '', text)

@@ -472,6 +472,7 @@ def integrations(request):
         monthly_usage_percentage = 0
         additional_credits_usage_percentage = 0
         total_additional_credits_purchased = 0
+        additional_credits_consumed = 0
     else:
         # Pro tier calculations
         monthly_limit = PRO_MONTHLY_TOKEN_LIMIT
@@ -545,6 +546,7 @@ def integrations(request):
         'monthly_usage_percentage': round(monthly_usage_percentage, 1),
         'additional_credits_usage_percentage': round(additional_credits_usage_percentage, 1) if not user_credit.is_free_tier else 0,
         'total_additional_credits_purchased': total_additional_credits_purchased if not user_credit.is_free_tier else 0,
+        'additional_credits_consumed': additional_credits_consumed,
         'free_tier_token_limit': FREE_TIER_TOKEN_LIMIT,
         'pro_monthly_token_limit': PRO_MONTHLY_TOKEN_LIMIT,
     }

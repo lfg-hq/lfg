@@ -3379,6 +3379,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function showConnectionStatus(status, current = 0, max = 0) {
+        return;
         let statusElement = document.querySelector('.connection-status');
         if (!statusElement) {
             statusElement = document.createElement('div');

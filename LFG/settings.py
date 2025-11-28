@@ -100,6 +100,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'subscriptions.context_processors.user_credits',
+                'projects.context_processors.sidebar_projects',
             ],
         },
     },

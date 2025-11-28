@@ -100,11 +100,11 @@ class BaseLLMProvider(ABC):
 
             # Check if user can use this model with platform-provided API key
             if not user_credit.can_use_platform_model(self.selected_model):
-                return False, f"Platform only provides gpt-5-mini. Please add your own API key in settings to use {self.selected_model}.", 0
+                return False, f"This model is not provided by the platform. You can use your by bringing your own tokens. \n\n<a href='/settings/#llm-keys'>Use your own API keys</a>.", 0
 
             # Check if user can use this model based on their subscription tier
             if not user_credit.can_use_model(self.selected_model):
-                return False, f"Free tier users can only use gpt-5-mini model. Please upgrade to Pro to use {self.selected_model}.", 0
+                return False, f"Free tier users can only use gpt-5-mini model. Please upgrade. \n2. <a href='/settings/#subscriptions'>Upgrade</a>.", 0
 
             # Check token limits
             remaining_tokens = user_credit.get_remaining_tokens()

@@ -3,17 +3,17 @@
   "providers": {
     "anthropic": {
       "label": "Claude",
-      "default_model": "claude_4_sonnet",
+      "default_model": "claude_4.5_sonnet",
       "models": [
         {
-          "key": "claude_4_sonnet",
-          "label": "Sonnet 4",
+          "key": "claude_4.5_sonnet",
+          "label": "Sonnet 4.5",
           "provider_model": "claude-sonnet-4-5-20250929",
           "requires_pro": true
         },
         {
-          "key": "claude_4_haiku",
-          "label": "Haiku 4",
+          "key": "claude_4.5_haiku",
+          "label": "Haiku 4.5",
           "provider_model": "claude-haiku-4-5",
           "requires_pro": true
         }
@@ -24,9 +24,9 @@
       "default_model": "gpt-5-mini",
       "models": [
         {
-          "key": "gpt-5",
-          "label": "GPT-5",
-          "provider_model": "gpt-5",
+          "key": "gpt-5.1",
+          "label": "GPT-5.1",
+          "provider_model": "gpt-5.1",
           "requires_pro": true
         },
         {
@@ -39,12 +39,12 @@
     },
     "google": {
       "label": "Google",
-      "default_model": "gemini_2.5_pro",
+      "default_model": "gemini_3_pro",
       "models": [
         {
-          "key": "gemini_2.5_pro",
-          "label": "Gemini 2.5 Pro",
-          "provider_model": "models/gemini-2.5-pro",
+          "key": "gemini_3_pro",
+          "label": "Gemini 3 Pro",
+          "provider_model": "models/gemini-3-pro",
           "requires_pro": true
         },
         {
