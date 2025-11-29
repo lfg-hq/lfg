@@ -652,38 +652,24 @@ class ChatConsumer(AsyncWebsocketConsumer):
         try:
             # Generate streaming response
             full_response = ""
-            
-            # Process the stream in an async context
+
+            # Process the stream in an async context - yield instantly for smoothest streaming
             async for content in self.process_ai_stream(provider, messages, project_id, tools, mentioned_files):
-                logger.debug(f"Content from process_ai_stream: {content[:100] if isinstance(content, str) else content}")
                 
                 # Check if generation should stop
                 if self.should_stop_generation:
-                    # Add a note to the response that generation was stopped
-                    stop_message = "\n\n*Generation stopped by user*"
-                    
-                    # Send the stop message as the final chunk
+                    # Send stop message immediately
                     try:
-                        if hasattr(self, 'using_groups') and self.using_groups:
-                            await self.channel_layer.group_send(
-                                self.room_group_name,
-                                {
-                                    'type': 'ai_response_chunk',
-                                    'chunk': stop_message,
-                                    'is_final': False
-                                }
-                            )
-                        else:
-                            await self.send(text_data=json.dumps({
-                                'type': 'ai_chunk',
-                                'chunk': stop_message,
-                                'is_final': False
-                            }))
+                        await self.send(text_data=json.dumps({
+                            'type': 'ai_chunk',
+                            'chunk': "\n\n*Generation stopped by user*",
+                            'is_final': False
+                        }))
                     except Exception as e:
-                        logger.error(f"Error sending stop message chunk: {str(e)}")
+                        logger.error(f"Error sending stop message: {str(e)}")
                     
                     # Add the stop message to the full response
-                    full_response += stop_message
+                    full_response += "\n\n*Generation stopped by user*"
                     
                     # Break out of the loop
                     break
@@ -694,9 +680,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     try:
                         notification_json = content[len("__NOTIFICATION__"):-len("__NOTIFICATION__")]
                         notification_data = json.loads(notification_json)
-                        logger.info(f"[CONSUMER] NOTIFICATION DETECTED: data={notification_data}, type={notification_data.get('notification_type')}, has_file_id={bool(notification_data.get('file_id'))}")
-                        if notification_data.get('file_id'):
-                            logger.info(f"[CONSUMER] SAVE NOTIFICATION: file_id={notification_data.get('file_id')}, file_type={notification_data.get('file_type')}, file_name={notification_data.get('file_name')}")
                         
                         # Send notification to client
                         notification_message = {
@@ -713,12 +696,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             notification_message['file_id'] = notification_data.get('file_id')
                             notification_message['file_name'] = notification_data.get('file_name', '')
                             notification_message['file_type'] = notification_data.get('file_type', '')
-                            logger.info(f"[CONSUMER] Including file_id in notification_message: {notification_data.get('file_id')}")
-                        
+
                         # Pass through project_id if present
                         if notification_data.get('project_id'):
                             notification_message['project_id'] = notification_data.get('project_id')
-                            logger.info(f"[CONSUMER] Including project_id in notification_message: {notification_data.get('project_id')}")
                         
                         # Add additional fields for file_stream notifications
                         if notification_data.get('notification_type') == 'file_stream':
@@ -728,70 +709,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             notification_message['file_name'] = notification_data.get('file_name', '')
                             if notification_data.get('file_id'):
                                 notification_message['file_id'] = notification_data.get('file_id')
-                                logger.info(f"[FILE_STREAM] Including file_id: {notification_data.get('file_id')} in completion notification")
-                            
-                            # CONSOLE OUTPUT FOR FILE STREAMING
-                            if notification_data.get('content_chunk'):
-                                content_preview = notification_data['content_chunk'][:200]
-                                logger.info(f"Stream Content: {content_preview}{'...' if len(notification_data['content_chunk']) > 200 else ''}")
                         
-                        # Pass through file_id if present (for save notifications)
-                        if notification_data.get('file_id'):
-                            notification_message['file_id'] = notification_data.get('file_id')
-                            notification_message['file_name'] = notification_data.get('file_name', '')
-                            notification_message['file_type'] = notification_data.get('file_type', '')
-                            logger.info(f"[SAVE NOTIFICATION] Sending save notification with file_id: {notification_data.get('file_id')}, type: {notification_data.get('notification_type')}")
-                        
-                        logger.info(f"SENDING NOTIFICATION MESSAGE: {notification_message}")
-                        
-                        if hasattr(self, 'using_groups') and self.using_groups:
-                            logger.info(f"Sending via group to {self.room_group_name}")
-                            # Create complete message for group send
-                            group_message = {
-                                'type': 'ai_response_chunk',
-                                'chunk': '',
-                                'is_final': False,
-                                'is_notification': notification_data.get('is_notification'),
-                                'notification_type': notification_data.get('notification_type', ''),
-                                'early_notification': notification_data.get('early_notification', False),
-                                'function_name': notification_data.get('function_name', '')
-                            }
-                            
-                            # Add additional fields for file_stream notifications
-                            if notification_data.get('notification_type') == 'file_stream':
-                                group_message['content_chunk'] = notification_data.get('content_chunk', '')
-                                group_message['is_complete'] = notification_data.get('is_complete', False)
-                                group_message['file_type'] = notification_data.get('file_type', '')
-                                group_message['file_name'] = notification_data.get('file_name', '')
-                                if notification_data.get('file_id'):
-                                    group_message['file_id'] = notification_data.get('file_id')
-                            
-                            # Pass through file_id if present (for save notifications)
-                            if notification_data.get('file_id'):
-                                group_message['file_id'] = notification_data.get('file_id')
-                                group_message['file_name'] = notification_data.get('file_name', '')
-                                group_message['file_type'] = notification_data.get('file_type', '')
-                            
-                            # Pass through project_id if present
-                            if notification_data.get('project_id'):
-                                group_message['project_id'] = notification_data.get('project_id')
-                            
-                            logger.info(f"[CONSUMER GROUP] Group message being sent: {group_message}")
-                            logger.info(f"[CONSUMER GROUP] Group message has file_id: {'file_id' in group_message}")
-                            if 'file_id' in group_message:
-                                logger.info(f"[CONSUMER GROUP] Group file_id value: {group_message['file_id']}")
-                            await self.channel_layer.group_send(self.room_group_name, group_message)
-                        else:
-                            logger.info("Sending directly via WebSocket")
-                            ws_message = {
-                                'type': 'ai_chunk',
-                                **notification_message
-                            }
-                            logger.info(f"[CONSUMER] WebSocket message being sent: {ws_message}")
-                            logger.info(f"[CONSUMER] WebSocket message has file_id: {'file_id' in ws_message}")
-                            if 'file_id' in ws_message:
-                                logger.info(f"[CONSUMER] WebSocket file_id value: {ws_message['file_id']}")
-                            await self.send(text_data=json.dumps(ws_message))
+                        # Send notification directly via WebSocket (lower latency)
+                        ws_message = {
+                            'type': 'ai_chunk',
+                            **notification_message
+                        }
+                        await self.send(text_data=json.dumps(ws_message))
                         
                         # Continue without adding to full_response
                         continue
@@ -810,29 +734,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
                         pass  # Not JSON, treat as normal content
                 
                 full_response += content
-                
-                # Send each chunk to the client
+
+                # Send chunk instantly - no batching for smoothest streaming
                 try:
-                    if hasattr(self, 'using_groups') and self.using_groups:
-                        await self.channel_layer.group_send(
-                            self.room_group_name,
-                            {
-                                'type': 'ai_response_chunk',
-                                'chunk': content,
-                                'is_final': False
-                            }
-                        )
-                    else:
-                        await self.send(text_data=json.dumps({
-                            'type': 'ai_chunk',
-                            'chunk': content,
-                            'is_final': False
-                        }))
+                    await self.send(text_data=json.dumps({
+                        'type': 'ai_chunk',
+                        'chunk': content,
+                        'is_final': False
+                    }))
                 except Exception as e:
                     logger.error(f"Error sending AI chunk: {str(e)}")
-                
-                # Removed artificial delay so chunks reach clients immediately
-            
+
             # Finalize any partial message or save the complete message
             if full_response:
                 await self.finalize_streaming_message(full_response)
@@ -851,60 +763,33 @@ class ChatConsumer(AsyncWebsocketConsumer):
             if not project_id and self.conversation:
                 project_id = await self.get_project_id()
                 
-            # Send message complete signal
+            # Send message complete signal (direct send for lower latency)
             try:
                 # Only send the final message if generation wasn't stopped
-                # This prevents empty messages from being created after stopping
                 if not self.should_stop_generation:
-                    if hasattr(self, 'using_groups') and self.using_groups:
-                        await self.channel_layer.group_send(
-                            self.room_group_name,
-                            {
-                                'type': 'ai_response_chunk',
-                                'chunk': '',
-                                'is_final': True,
-                                'conversation_id': self.conversation.id if self.conversation else None,
-                                'provider': provider_name,
-                                'project_id': project_id
-                            }
-                        )
-                    else:
-                        await self.send(text_data=json.dumps({
-                            'type': 'ai_chunk',
-                            'chunk': '',
-                            'is_final': True,
-                            'conversation_id': self.conversation.id if self.conversation else None,
-                            'provider': provider_name,
-                            'project_id': project_id
-                        }))
-                        
+                    await self.send(text_data=json.dumps({
+                        'type': 'ai_chunk',
+                        'chunk': '',
+                        'is_final': True,
+                        'conversation_id': self.conversation.id if self.conversation else None,
+                        'provider': provider_name,
+                        'project_id': project_id
+                    }))
+
                     # Send token usage update notification
                     await self.send(text_data=json.dumps({
                         'type': 'token_usage_updated'
                     }))
                 else:
-                    # For stopped generation, just send conversation metadata without creating a new message
-                    if hasattr(self, 'using_groups') and self.using_groups:
-                        await self.channel_layer.group_send(
-                            self.room_group_name,
-                            {
-                                'type': 'ai_response_chunk',
-                                'chunk': None,  # Using None instead of empty string to distinguish
-                                'is_final': True,
-                                'conversation_id': self.conversation.id if self.conversation else None,
-                                'provider': provider_name,
-                                'project_id': project_id
-                            }
-                        )
-                    else:
-                        await self.send(text_data=json.dumps({
-                            'type': 'ai_chunk',
-                            'chunk': None,  # Using None instead of empty string to distinguish
-                            'is_final': True,
-                            'conversation_id': self.conversation.id if self.conversation else None,
-                            'provider': provider_name,
-                            'project_id': project_id
-                        }))
+                    # For stopped generation, just send conversation metadata
+                    await self.send(text_data=json.dumps({
+                        'type': 'ai_chunk',
+                        'chunk': None,
+                        'is_final': True,
+                        'conversation_id': self.conversation.id if self.conversation else None,
+                        'provider': provider_name,
+                        'project_id': project_id
+                    }))
             except Exception as e:
                 logger.error(f"Error sending completion signal: {str(e)}")
             
@@ -924,53 +809,22 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     logger.error(f"Error saving error message: {save_error}")
             
             try:
-                # First send the error message as a chunk
-                if hasattr(self, 'using_groups') and self.using_groups:
-                    await self.channel_layer.group_send(
-                        self.room_group_name,
-                        {
-                            'type': 'ai_response_chunk',
-                            'chunk': error_message,
-                            'is_final': False
-                        }
-                    )
-                else:
-                    await self.send(text_data=json.dumps({
-                        'type': 'ai_chunk',
-                        'chunk': error_message,
-                        'is_final': False
-                    }))
-                
+                # First send the error message as a chunk (direct send for lower latency)
+                await self.send(text_data=json.dumps({
+                    'type': 'ai_chunk',
+                    'chunk': error_message,
+                    'is_final': False
+                }))
+
                 # Then send the final signal to reset UI state
-                if hasattr(self, 'using_groups') and self.using_groups:
-                    await self.channel_layer.group_send(
-                        self.room_group_name,
-                        {
-                            'type': 'ai_response_chunk',
-                            'chunk': '',
-                            'is_final': True,
-                            'conversation_id': self.conversation.id if self.conversation else None,
-                            'provider': provider_name,
-                            'project_id': project_id
-                        }
-                    )
-                    
-                    # Send token usage update notification for group sends
-                    await self.channel_layer.group_send(
-                        self.room_group_name,
-                        {
-                            'type': 'token_update_notification'
-                        }
-                    )
-                else:
-                    await self.send(text_data=json.dumps({
-                        'type': 'ai_chunk',
-                        'chunk': '',
-                        'is_final': True,
-                        'conversation_id': self.conversation.id if self.conversation else None,
-                        'provider': provider_name,
-                        'project_id': project_id
-                    }))
+                await self.send(text_data=json.dumps({
+                    'type': 'ai_chunk',
+                    'chunk': '',
+                    'is_final': True,
+                    'conversation_id': self.conversation.id if self.conversation else None,
+                    'provider': provider_name,
+                    'project_id': project_id
+                }))
             except Exception as inner_e:
                 logger.error(f"Error sending error message: {str(inner_e)}")
                 await self.send_error(error_message)
@@ -1010,10 +864,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     else:
                         processed_messages.insert(0, file_context_message)
             
-            # Initialize message accumulator for auto-save
+            # Accumulate content - we save only after streaming completes for best performance
             accumulated_content = ""
-            last_save_length = 0
-            save_threshold = 100  # Save every 100 characters (reduced from 500)
             
             # Stream content directly from the now-async provider
             async for content in provider.generate_stream(processed_messages, project_id, conversation_id, tools):
@@ -1119,15 +971,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 # Normal text chunk - accumulate and yield it
                 accumulated_content += content
                 
-                # Store as pending message for disconnect handling
+                # Store as pending message for disconnect handling (saved only at end)
                 self.pending_message = accumulated_content
-                
-                # Auto-save periodically during streaming
-                if len(accumulated_content) - last_save_length >= save_threshold:
-                    logger.info(f"[STREAM] Calling auto_save_streaming_message at position {len(accumulated_content)}")
-                    await self.auto_save_streaming_message(accumulated_content)
-                    last_save_length = len(accumulated_content)
-                
+
                 # Yield the content for streaming
                 yield content
                 
@@ -1695,8 +1541,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """Force save the pending message (used on disconnect)"""
         if self.pending_message and self.conversation:
             try:
-                await self.finalize_message()
+                await self.save_message('assistant', self.pending_message)
                 logger.info(f"Force saved message on disconnect: {len(self.pending_message)} chars")
+                self.pending_message = None
             except Exception as e:
                 logger.error(f"Error force saving message: {e}")
     
@@ -1740,46 +1587,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 logger.error(f"Error auto-saving streaming message: {e}")
     
     async def finalize_streaming_message(self, full_content):
-        """Finalize the streaming message - convert partial to complete"""
-        logger.info(f"[FINALIZE] Starting finalize_streaming_message for conversation {self.conversation.id if self.conversation else 'None'}, content length: {len(full_content)}")
-        
+        """Save the complete AI response after streaming finishes"""
         if self.conversation and full_content:
             try:
-                # Find any partial message
-                @database_sync_to_async
-                def get_partial_message_to_finalize():
-                    return Message.objects.filter(
-                        conversation=self.conversation,
-                        role='assistant',
-                        is_partial=True
-                    ).order_by('-created_at').first()
-                
-                partial_message = await get_partial_message_to_finalize()
-                
-                logger.info(f"[FINALIZE] Found partial message ID: {partial_message.id if partial_message else 'None'}")
-                
-                if partial_message:
-                    # Update and finalize the partial message
-                    logger.info(f"[FINALIZE] Updating final message")
-                    partial_message.content = full_content
-                    partial_message.is_partial = False
-                    await database_sync_to_async(partial_message.save)()
-                    logger.debug(f"Finalized streaming message: {len(full_content)} chars")
-                else:
-                    # No partial message exists, create a complete one
-                    logger.info(f"[FINALIZE] Creating final message")
-                    await self.save_message('assistant', full_content)
-                    logger.debug(f"Created final message (no partial found): {len(full_content)} chars")
-                
+                await self.save_message('assistant', full_content)
                 # Clear the pending message to prevent duplicate saves on disconnect
                 self.pending_message = None
-                    
             except Exception as e:
-                logger.error(f"Error finalizing streaming message: {e}")
-                # Fallback to regular save
-                try:
-                    await self.save_message('assistant', full_content)
-                except Exception as fallback_error:
-                    logger.error(f"Fallback save also failed: {fallback_error}")
-                # Clear pending message even in error case
+                logger.error(f"Error saving streaming message: {e}")
                 self.pending_message = None 

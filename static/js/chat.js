@@ -1146,13 +1146,13 @@ document.addEventListener('DOMContentLoaded', () => {
                             addMessageToChat(msg.role, msg.content, null, null, msg.is_partial);
                         }
                     });
-                    scrollToBottom();
+                    scrollToBottom(true); // Force scroll when loading history
                     break;
-                    
+
                 case 'message':
                     // Handle complete message
                     addMessageToChat(data.sender, data.message);
-                    scrollToBottom();
+                    scrollToBottom(true); // Force scroll for complete messages
                     break;
                     
                 case 'ai_chunk':
@@ -2540,13 +2540,13 @@ document.addEventListener('DOMContentLoaded', () => {
             messageContainer.appendChild(typingIndicator);
             console.log('sendMessageToServer: Added typing indicator');
         }
-        
-        // Scroll to bottom
-        scrollToBottom();
-        
+
+        // Force scroll to bottom when user sends a message (they expect to see response)
+        scrollToBottom(true);
+
         // Disable input while waiting for response (if not already disabled)
         chatInput.disabled = true;
-        
+
         // Show stop button since we're about to start streaming
         showStopButton();
         
@@ -3281,9 +3281,51 @@ document.addEventListener('DOMContentLoaded', () => {
         messageContainer.innerHTML = '';
     }
     
+    // Smart scroll management - tracks user intent
+    let userScrolledUp = false;
+    let lastScrollTop = 0;
+    let scrollPending = false;
+    const SCROLL_THRESHOLD = 100;
+
+    // Detect user scroll intent
+    chatMessages.addEventListener('scroll', function() {
+        const currentScrollTop = chatMessages.scrollTop;
+        const distanceFromBottom = chatMessages.scrollHeight - currentScrollTop - chatMessages.clientHeight;
+
+        // User scrolled UP (away from bottom)
+        if (currentScrollTop < lastScrollTop && distanceFromBottom > SCROLL_THRESHOLD) {
+            userScrolledUp = true;
+        }
+        // User scrolled back to bottom
+        else if (distanceFromBottom < 50) {
+            userScrolledUp = false;
+        }
+
+        lastScrollTop = currentScrollTop;
+    });
+
     // Function to scroll to the bottom of the chat
-    function scrollToBottom() {
-        chatMessages.scrollTop = chatMessages.scrollHeight;
+    function scrollToBottom(force = false) {
+        if (force) {
+            userScrolledUp = false;
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            lastScrollTop = chatMessages.scrollTop;
+            return;
+        }
+
+        if (userScrolledUp || scrollPending) {
+            return;
+        }
+
+        // Batch scroll updates to once per frame for smoothness
+        scrollPending = true;
+        requestAnimationFrame(() => {
+            if (!userScrolledUp) {
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+                lastScrollTop = chatMessages.scrollTop;
+            }
+            scrollPending = false;
+        });
     }
     
     // Function to handle tool progress updates
@@ -3725,9 +3767,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 window.history.pushState({}, '', url);
             }
-            
-            // Scroll to bottom
-            scrollToBottom();
+
+            // Force scroll to bottom when loading conversation
+            scrollToBottom(true);
         } catch (error) {
             console.error('Error loading conversation:', error);
         }

@@ -3,6 +3,7 @@ import logging
 import asyncio
 import traceback
 import openai
+from openai import AsyncOpenAI
 import tiktoken
 import os
 from typing import List, Dict, Any, Optional, AsyncGenerator
@@ -87,9 +88,10 @@ class OpenAIProvider(BaseLLMProvider):
             else:
                 logger.warning("No platform OpenAI API key found in environment")
         
-        # Initialize client
+        # Initialize both sync and async clients
         if self.api_key:
             self.client = openai.OpenAI(api_key=self.api_key)
+            self.async_client = AsyncOpenAI(api_key=self.api_key)
         else:
             logger.warning("No OpenAI API key available (neither user nor platform)")
     
@@ -396,7 +398,7 @@ class OpenAIProvider(BaseLLMProvider):
         await self._ensure_client()
         
         # Check if client is initialized
-        if not self.client:
+        if not self.async_client:
             if self.model == 'gpt-5-mini':
                 yield "Error: Platform OpenAI API key not available. Please contact support."
             else:
@@ -468,11 +470,9 @@ class OpenAIProvider(BaseLLMProvider):
                     params["input"] = current_messages
 
                 logger.debug(f"Making API call with {len(current_messages)} messages, previous_response_id={previous_response_id}")
-                
-                # Run the blocking API call in a thread
-                response_stream = await asyncio.to_thread(
-                    self.client.responses.create, **params
-                )
+
+                # Use native async streaming with AsyncOpenAI client
+                response_stream = await self.async_client.responses.create(**params)
                 
                 # Variables for this specific API call
                 tool_calls_requested = [] # Stores {id, function_name, function_args_str}
@@ -509,13 +509,14 @@ class OpenAIProvider(BaseLLMProvider):
                 current_function_call = {"id": None, "name": None, "arguments": ""}
 
                 # --- Process the stream from the API (Responses API event-based) ---
+                # Native async iteration - no wrapper needed with AsyncOpenAI
                 event_count = 0
-                async for event in self._process_stream_async(response_stream):
+                async for event in response_stream:
                     event_count += 1
                     event_type = getattr(event, 'type', None)
 
-                    # Debug log events
-                    if event_count <= 5:
+                    # Debug log events periodically to reduce logging overhead
+                    if event_count <= 3 or event_count % 100 == 0:
                         logger.debug(f"Event {event_count}: type={event_type}")
 
                     # Handle different Responses API event types
@@ -524,10 +525,8 @@ class OpenAIProvider(BaseLLMProvider):
                         text = getattr(event, 'delta', '')
                         if text:
                             append_assistant_text(text)
-                            logger.debug(f"Captured {len(text)} chars of assistant output, total: {len(total_assistant_output)}")
 
                             # Process text through tag handler
-                            logger.debug(f"[OPENAI] Calling process_text_chunk with project_id: {project_id}")
                             output_text, notification, mode_message = await tag_handler.process_text_chunk(text, project_id)
 
                             # Yield mode message if entering a special mode
@@ -548,10 +547,7 @@ class OpenAIProvider(BaseLLMProvider):
 
                             # Check for immediate notifications to yield
                             immediate_notifications = tag_handler.get_immediate_notifications()
-                            if immediate_notifications:
-                                logger.info(f"[OPENAI] Found {len(immediate_notifications)} immediate notifications")
                             for immediate_notification in immediate_notifications:
-                                logger.info(f"[OPENAI] Yielding immediate notification: {immediate_notification.get('notification_type')}")
                                 if isinstance(immediate_notification, dict):
                                     message_to_agent = immediate_notification.get("message_to_agent")
                                     if message_to_agent:

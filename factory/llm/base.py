@@ -69,11 +69,14 @@ class BaseLLMProvider(ABC):
             return ''
 
     async def _process_stream_async(self, response_stream):
-        """Process the response stream asynchronously by yielding control back to event loop"""
+        """Process the response stream asynchronously by yielding control back to event loop periodically"""
+        chunk_count = 0
         for chunk in response_stream:
             yield chunk
-            # Yield control back to the event loop periodically
-            await asyncio.sleep(0)
+            chunk_count += 1
+            # Yield control back to event loop every 10 chunks to reduce overhead
+            if chunk_count % 10 == 0:
+                await asyncio.sleep(0)
     
     @database_sync_to_async
     def check_token_limits(self) -> tuple[bool, str, int]:
