@@ -1183,6 +1183,27 @@ get_linear_issue_details = {
     }
 }
 
+# Technology lookup tool
+lookup_technology_specs = {
+    "type": "function",
+    "function": {
+        "name": "lookup_technology_specs",
+        # "description": "Look up technology specifications before creating technical analysis. Returns tech name, provider, description, documentation URL, and rationale. Available categories: image_generation, text_generation, embeddings, payments, authentication, database, vector_database, file_storage, cdn, hosting_frontend, hosting_backend, containers, orchestration, analytics, email_transactional, email_marketing, framework_frontend, framework_backend, realtime, search, monitoring, cache, queue. Use 'all' to get everything.",
+        "description": "Look up technology specifications before creating technical analysis. Use this to call web search and look up more information",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string",
+                    "description": "The technology category to look up (e.g., 'payments', 'file_storage', 'database'). Use 'all' to get all categories."
+                }
+            },
+            "required": ["category"],
+            "additionalProperties": False,
+        }
+    }
+}
+
 # Main tool lists
 tools_code = [get_prd, start_server, \
               get_github_access_token, \
@@ -1192,7 +1213,7 @@ tools_code = [get_prd, start_server, \
               stream_document_content, copy_boilerplate_code, capture_name, \
               index_repository, get_codebase_context, search_existing_code, get_repository_insights, get_codebase_summary, \
               connect_notion, search_notion, get_notion_page, list_notion_databases, query_notion_database, \
-              get_linear_issues, get_linear_issue_details, queue_ticket_execution]
+              get_linear_issues, get_linear_issue_details, queue_ticket_execution, lookup_technology_specs]
 
 tools_product_ = [get_file_list, get_codebase_summary, search_existing_code, get_file_content, create_tickets, get_pending_tickets, \
                  connect_notion, search_notion, get_notion_page, list_notion_databases, query_notion_database, \
@@ -1209,7 +1230,8 @@ tools_product = [
     # provision_workspace,
     # ssh_command,
     # new_dev_sandbox,
-    queue_ticket_execution
+    queue_ticket_execution,
+    lookup_technology_specs
 ]
 
 tools_turbo = [
@@ -1223,7 +1245,8 @@ tools_turbo = [
     # provision_workspace,
     # ssh_command,
     # new_dev_sandbox,
-    queue_ticket_execution
+    queue_ticket_execution,
+    lookup_technology_specs
 ]
 
 tools_builder = [

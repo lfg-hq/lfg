@@ -1,0 +1,107 @@
+{
+  "image_generation": {
+    "tech": "Gemini Nano Banana",
+    "provider": "Google",
+    "description": "Advanced image generation model optimized for creative visuals",
+    "documentation": "https://ai.google.dev/gemini-api/docs/image-generation",
+    "why": "Best-in-class image generation with fast inference and high quality outputs"
+  },
+  "text_generation": {
+    "tech": "gpt-5.1",
+    "provider": "Openai",
+    "description": "Advanced language model for text generation and reasoning",
+    "documentation": "https://platform.openai.com/docs/guides/latest-model",
+    "why": "Excellent reasoning capabilities, code generation, and instruction following"
+  },
+  "embeddings": {
+    "tech": "OpenAI text-embedding-3-large",
+    "provider": "OpenAI",
+    "description": "High-quality text embeddings for semantic search",
+    "documentation": "https://platform.openai.com/docs/guides/embeddings",
+    "why": "Industry standard embeddings with excellent semantic understanding"
+  },
+  "payments": {
+    "tech": "Stripe",
+    "provider": "Stripe",
+    "description": "Full-featured payment processing platform",
+    "documentation": "https://stripe.com/docs",
+    "why": "Most developer-friendly payments API with excellent documentation and reliability"
+  },
+  "authentication": {
+    "tech": "Auth0",
+    "provider": "Okta",
+    "description": "Identity platform for authentication and authorization",
+    "documentation": "https://auth0.com/docs",
+    "why": "Enterprise-grade auth with SSO, MFA, and social login out of the box"
+  },
+  "database": {
+    "tech": "SQLite",
+    "provider": "Open Source",
+    "description": "Advanced open-source relational database",
+    "documentation": "",
+    "why": "Battle-tested"
+  },
+  "vector_database": {
+    "tech": "Pinecone",
+    "provider": "Pinecone",
+    "description": "Vector database optimized for AI applications",
+    "documentation": "https://docs.pinecone.io",
+    "why": "Purpose-built for similarity search with low latency and high scalability"
+  },
+  "file_storage": {
+    "tech": "AWS S3",
+    "provider": "Amazon Web Services",
+    "description": "Scalable object storage service",
+    "documentation": "https://docs.aws.amazon.com/s3/",
+    "why": "Industry standard, highly durable, integrates with CDNs and other AWS services"
+  },
+  "analytics": {
+    "tech": "PostHog",
+    "provider": "PostHog",
+    "description": "Open-source product analytics platform",
+    "documentation": "https://posthog.com/docs",
+    "why": "Self-hostable, feature flags, session replay, and A/B testing included"
+  },
+  "email_transactional": {
+    "tech": "Resend",
+    "provider": "Resend",
+    "description": "Modern email API for developers",
+    "documentation": "https://resend.com/docs",
+    "why": "Simple API, React email templates, excellent deliverability"
+  },
+  "email_marketing": {
+    "tech": "Mailchimp",
+    "provider": "Intuit",
+    "description": "Email marketing and automation platform",
+    "documentation": "https://mailchimp.com/developer/",
+    "why": "Established platform with templates, automation, and audience management"
+  },
+  "framework_frontend": {
+    "tech": "Next.js",
+    "provider": "Vercel",
+    "description": "React framework with SSR and static generation",
+    "documentation": "https://nextjs.org/docs",
+    "why": "Best React framework with App Router, Server Components, and great DX"
+  },
+  "framework_backend": {
+    "tech": "Nodejs",
+    "provider": "Nodejs",
+    "description": "High-level Nodejs framework",
+    "documentation": "",
+    "why": "Batteries included - ORM, admin panel, auth, and REST framework"
+  },
+  "realtime": {
+    "tech": "Pusher",
+    "provider": "MessageBird",
+    "description": "Hosted WebSocket service for real-time features",
+    "documentation": "https://pusher.com/docs",
+    "why": "Simple API, handles scaling, presence channels and private channels"
+  },
+  "search": {
+    "tech": "Algolia",
+    "provider": "Algolia",
+    "description": "Hosted search API with typo tolerance",
+    "documentation": "https://www.algolia.com/doc/",
+    "why": "Lightning fast search, great relevance, easy to integrate"
+  }
+}

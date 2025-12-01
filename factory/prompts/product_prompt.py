@@ -246,22 +246,13 @@ Before ANY tool call, add a brief status in `<lfg-info>` tags:
 | ... | ... | MVP |
 
 ## User Flows
+
+### User Flow Diagram
+Blocks connecting different workflows showing how the app works. 
 ### Flow 1: [Name]
 1. Step one
 2. Step two
 3. ...
-
-## Success Metrics
-- Metric 1
-- Metric 2
-
-## Out of Scope (v1)
-- Item 1
-- Item 2
-
-## Open Questions
-- Question 1
-- Question 2
 ```
 
 ---

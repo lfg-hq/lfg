@@ -282,7 +282,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const pathParts = window.location.pathname.split('/').filter(part => part);
         if (pathParts.length >= 3 && pathParts[0] === 'chat' && pathParts[1] === 'project') {
             const projectId = pathParts[2];
-            console.log('[ArtifactsLoader] Found project ID in URL path:', projectId);
             return projectId;
         }
         
@@ -319,7 +318,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Initialize the artifact loaders immediately
-    console.log('[ArtifactsLoader] Initializing ArtifactsLoader');
     window.ArtifactsLoader = {
         /**
          * Get the current project ID from various sources
@@ -915,11 +913,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
                     if (modalElements.logsBtn) {
                         modalElements.logsBtn.addEventListener('click', function() {
-                            console.log('[TicketModal] Logs button clicked');
                             const ticket = helpers.getCurrentTicket();
-                            console.log('[TicketModal] Current ticket:', ticket);
                             if (modalState.onViewLogs) {
-                                console.log('[TicketModal] Calling onViewLogs handler');
                                 modalState.onViewLogs(ticket, helpers);
                             } else {
                                 console.warn('[TicketModal] No onViewLogs handler registered');
@@ -1011,7 +1006,6 @@ document.addEventListener('DOMContentLoaded', function() {
          * @param {number} projectId - The ID of the current project
          */
         loadFeatures: function(projectId) {
-            console.log(`[ArtifactsLoader] loadFeatures called with project ID: ${projectId}`);
             
             if (!projectId) {
                 console.warn('[ArtifactsLoader] No project ID provided for loading features');
@@ -1026,30 +1020,24 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             // Show loading state
-            console.log('[ArtifactsLoader] Showing loading state');
             featuresTab.innerHTML = '<div class="loading-state"><div class="spinner"></div><div>Loading features...</div></div>';
             
             // Fetch features from API
             const url = `/projects/${projectId}/api/features/`;
-            console.log(`[ArtifactsLoader] Fetching features from API: ${url}`);
             
             fetch(url)
                 .then(response => {
-                    console.log(`[ArtifactsLoader] API response received, status: ${response.status}`);
                     if (!response.ok) {
                         throw new Error(`Network response was not ok: ${response.status} ${response.statusText}`);
                     }
                     return response.json();
                 })
                 .then(data => {
-                    console.log('[ArtifactsLoader] API data received:', data);
                     // Process features data
                     const features = data.features || [];
-                    console.log(`[ArtifactsLoader] Found ${features.length} features`);
                     
                     if (features.length === 0) {
                         // Show empty state if no features found
-                        console.log('[ArtifactsLoader] No features found, showing empty state');
                         featuresTab.innerHTML = `
                             <div class="empty-state">
                                 <div class="empty-state-icon">
@@ -1064,7 +1052,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                     
                     // Create features content
-                    console.log('[ArtifactsLoader] Rendering features to UI');
                     let featuresHtml = '<div class="features-list">';
                     
                     features.forEach(feature => {
@@ -1107,7 +1094,6 @@ document.addEventListener('DOMContentLoaded', function() {
          * @param {number} projectId - The ID of the current project
          */
         loadPersonas: function(projectId) {
-            console.log(`[ArtifactsLoader] loadPersonas called with project ID: ${projectId}`);
             
             if (!projectId) {
                 console.warn('[ArtifactsLoader] No project ID provided for loading personas');
@@ -1122,30 +1108,24 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             // Show loading state
-            console.log('[ArtifactsLoader] Showing loading state for personas');
             personasTab.innerHTML = '<div class="loading-state"><div class="spinner"></div><div>Loading personas...</div></div>';
             
             // Fetch personas from API
             const url = `/projects/${projectId}/api/personas/`;
-            console.log(`[ArtifactsLoader] Fetching personas from API: ${url}`);
             
             fetch(url)
                 .then(response => {
-                    console.log(`[ArtifactsLoader] Personas API response received, status: ${response.status}`);
                     if (!response.ok) {
                         throw new Error(`Network response was not ok: ${response.status} ${response.statusText}`);
                     }
                     return response.json();
                 })
                 .then(data => {
-                    console.log('[ArtifactsLoader] Personas API data received:', data);
                     // Process personas data
                     const personas = data.personas || [];
-                    console.log(`[ArtifactsLoader] Found ${personas.length} personas`);
                     
                     if (personas.length === 0) {
                         // Show empty state if no personas found
-                        console.log('[ArtifactsLoader] No personas found, showing empty state');
                         personasTab.innerHTML = `
                             <div class="empty-state">
                                 <div class="empty-state-icon">
@@ -1160,7 +1140,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                     
                     // Create personas content
-                    console.log('[ArtifactsLoader] Rendering personas to UI');
                     let personasHtml = '<div class="personas-list">';
                     
                     personas.forEach(persona => {
@@ -1201,7 +1180,6 @@ document.addEventListener('DOMContentLoaded', function() {
          * @param {string} prdName - Optional PRD name to load (defaults to currently selected)
          */
         loadPRD: function(projectId, prdName = null) {
-            console.log(`[ArtifactsLoader] loadPRD called with project ID: ${projectId}, PRD name: ${prdName}`);
             
             if (!projectId) {
                 console.warn('[ArtifactsLoader] No project ID provided for loading PRD');
@@ -1210,7 +1188,6 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Check if we're currently streaming PRD content
             if (window.prdStreamingState && window.prdStreamingState.isStreaming) {
-                console.log('[ArtifactsLoader] PRD is currently streaming, skipping loadPRD');
                 return;
             }
             
@@ -1238,7 +1215,6 @@ document.addEventListener('DOMContentLoaded', function() {
             if (emptyState) emptyState.style.display = 'none';
             
             // Show loading state using the existing streaming status element
-            console.log('[ArtifactsLoader] Showing loading state for PRD');
             if (prdContainer && streamingStatus) {
                 prdContainer.style.display = 'block';
                 streamingStatus.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Loading PRDs...';
@@ -1247,12 +1223,10 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // First fetch the list of PRDs
             const listUrl = `/projects/${projectId}/api/prd/?list=1`;
-            console.log(`[ArtifactsLoader] Fetching PRD list from API: ${listUrl}`);
             
             fetch(listUrl)
                 .then(response => response.json())
                 .then(listData => {
-                    console.log('[ArtifactsLoader] PRD list received:', listData);
                     const prds = listData.prds || [];
                     
                     // Update PRD selector
@@ -1280,11 +1254,9 @@ document.addEventListener('DOMContentLoaded', function() {
                                 ).join('');
                             }
                             
-                            console.log(`[ArtifactsLoader] Showing PRD selector with ${prds.length} PRDs`);
                         } else {
                             // Hide selector if only one PRD
                             if (selectorWrapper) selectorWrapper.style.display = 'none';
-                            console.log('[ArtifactsLoader] Hiding PRD selector - only one PRD exists');
                         }
                         
                         // Set the current PRD name
@@ -1300,25 +1272,21 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     // Now fetch the specific PRD content
                     const url = `/projects/${projectId}/api/prd/?prd_name=${encodeURIComponent(prdName || 'Main PRD')}`;
-                    console.log(`[ArtifactsLoader] Fetching PRD from API: ${url}`);
                     
                     return fetch(url);
                 })
                 .then(response => {
-                    console.log(`[ArtifactsLoader] PRD API response received, status: ${response.status}`);
                     if (!response.ok) {
                         throw new Error(`Network response was not ok: ${response.status} ${response.statusText}`);
                     }
                     return response.json();
                 })
                 .then(data => {
-                    console.log('[ArtifactsLoader] PRD API data received:', data);
                     // Process PRD data
                     const prdContent = data.content || '';
                     
                     if (!prdContent) {
                         // Show empty state if no PRD found
-                        console.log('[ArtifactsLoader] No PRD found, showing empty state');
                         const emptyState = document.getElementById('prd-empty-state');
                         const prdContainer = document.getElementById('prd-container');
                         
@@ -1386,11 +1354,9 @@ document.addEventListener('DOMContentLoaded', function() {
                                         xhtml: false        // Don't use XHTML compatible tags
                                     });
                                     window.markedConfigured = true;
-                                    console.log('[ArtifactsLoader] Marked.js configured for PRD rendering');
                                 }
                                 
                                 parsedContent = marked.parse(prdContent);
-                                console.log('[ArtifactsLoader] PRD markdown parsed successfully');
                             } catch (e) {
                                 console.error('[ArtifactsLoader] Error parsing PRD markdown:', e);
                                 // Fallback to basic line break conversion
@@ -1504,7 +1470,6 @@ document.addEventListener('DOMContentLoaded', function() {
          * @param {number} fileId - The file ID (optional, provided when document is saved)
          */
         streamDocumentContent: function(contentChunk, isComplete, projectId, documentType, documentName) {
-            console.log(`[ArtifactsLoader] streamDocumentContent called`);
             console.log(`  Type: ${documentType}, Name: ${documentName}`);
             console.log(`  Chunk length: ${contentChunk ? contentChunk.length : 0}, isComplete: ${isComplete}`);
             console.log(`  Project ID: ${projectId}`);
@@ -1514,7 +1479,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const filebrowserTab = document.querySelector('.tab-button[data-tab="filebrowser"]');
             const filebrowserPane = document.getElementById('filebrowser');
             if (filebrowserTab && !filebrowserTab.classList.contains('active')) {
-                console.log('[ArtifactsLoader] Activating filebrowser tab for streaming');
                 document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
                 document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
                 filebrowserTab.classList.add('active');
@@ -1593,7 +1557,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Open artifacts panel if not already open
                 if (window.ArtifactsPanel && !window.ArtifactsPanel.isOpen()) {
                     window.ArtifactsPanel.open();
-                    console.log('[ArtifactsLoader] Opened artifacts panel for document streaming');
                 }
             }
             
@@ -1622,7 +1585,6 @@ document.addEventListener('DOMContentLoaded', function() {
                             const before = viewerMarkdown.scrollTop;
                             const scrollHeight = viewerMarkdown.scrollHeight;
                             viewerMarkdown.scrollTop = scrollHeight;
-                            console.log(`[Stream Scroll] Before: ${before}, Height: ${scrollHeight}, After: ${viewerMarkdown.scrollTop}`);
                         });
                     });
                 }
@@ -1636,36 +1598,21 @@ document.addEventListener('DOMContentLoaded', function() {
                 documentType: documentType,
                 viewerTitle: `${documentType.toUpperCase()} - ${documentName}`
             };
-            console.log(`[ArtifactsLoader] Stored streaming info for ${documentType}:`, window[`${documentType}StreamingInfo`]);
         },
         
         /**
          * Handle save notification after document is saved
          */
         handleDocumentSaved: function(notification) {
-            console.log('[ArtifactsLoader] ==========================================');
-            console.log('[ArtifactsLoader] DOCUMENT SAVED NOTIFICATION RECEIVED!');
-            console.log('[ArtifactsLoader] Notification:', notification);
-            console.log('[ArtifactsLoader] File ID:', notification.file_id);
-            console.log('[ArtifactsLoader] File Type:', notification.file_type);
-            console.log('[ArtifactsLoader] File Name:', notification.file_name);
-            console.log('[ArtifactsLoader] Notification Type:', notification.notification_type);
-            console.log('[ArtifactsLoader] Current Project ID:', window.currentProjectId);
-            console.log('[ArtifactsLoader] ==========================================');
             
             const documentType = notification.file_type || notification.notification_type;
-            console.log('[ArtifactsLoader] Looking for streaming info for type:', documentType);
             console.log('[ArtifactsLoader] Available streaming info keys:', Object.keys(window).filter(k => k.includes('StreamingInfo')));
             
             // Also check for all possible streaming info variations
-            console.log('[ArtifactsLoader] Checking window.prdStreamingInfo:', window.prdStreamingInfo);
-            console.log('[ArtifactsLoader] Checking window.implementationStreamingInfo:', window.implementationStreamingInfo);
             
             const streamingInfo = window[`${documentType}StreamingInfo`];
             
             if (!streamingInfo) {
-                console.log('[ArtifactsLoader] No streaming info found for type:', documentType);
-                console.log('[ArtifactsLoader] Will still try to load the file using file_id');
                 // Don't return, continue to load the file
             }
             
@@ -1688,14 +1635,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
             
-            console.log(`[ArtifactsLoader] Loading saved document with ID: ${fileId}`);
-            console.log(`[ArtifactsLoader] Making API call to: /projects/${projectId}/api/files/${fileId}/content/`);
             
             // Ensure the viewFileContent function is available globally
             if (window.viewFileContent) {
                 // Add a small delay to ensure UI is ready after streaming completes
                 setTimeout(() => {
-                    console.log(`[ArtifactsLoader] Calling viewFileContent after delay`);
                     window.viewFileContent(fileId, documentName);
                 }, 100);
             } else {
@@ -1796,7 +1740,6 @@ document.addEventListener('DOMContentLoaded', function() {
          * @param {number} projectId - The ID of the current project
          */
         loadImplementation: function(projectId) {
-            console.log(`[ArtifactsLoader] loadImplementation called with project ID: ${projectId}`);
             
             if (!projectId) {
                 console.warn('[ArtifactsLoader] No project ID provided for loading implementation');
@@ -1811,29 +1754,24 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             // Show loading state
-            console.log('[ArtifactsLoader] Showing loading state for implementation');
             implementationTab.innerHTML = '<div class="loading-state"><div class="spinner"></div><div>Loading implementation...</div></div>';
             
             // Fetch implementation from API
             const url = `/projects/${projectId}/api/implementation/`;
-            console.log(`[ArtifactsLoader] Fetching implementation from API: ${url}`);
             
             fetch(url)
                 .then(response => {
-                    console.log(`[ArtifactsLoader] Implementation API response received, status: ${response.status}`);
                     if (!response.ok) {
                         throw new Error(`Network response was not ok: ${response.status} ${response.statusText}`);
                     }
                     return response.json();
                 })
                 .then(data => {
-                    console.log('[ArtifactsLoader] Implementation API data received:', data);
                     // Process implementation data
                     const implementationContent = data.content || '';
                     
                     if (!implementationContent) {
                         // Show empty state if no implementation found
-                        console.log('[ArtifactsLoader] No implementation found, showing empty state');
                         implementationTab.innerHTML = `
                             <div class="empty-state">
                                 <div class="empty-state-icon">
@@ -1948,7 +1886,6 @@ document.addEventListener('DOMContentLoaded', function() {
          * @param {number} projectId - The ID of the current project
          */
         loadTickets: function(projectId) {
-            console.log(`[ArtifactsLoader] loadTickets called with project ID: ${projectId}`);
 
             if (!projectId) {
                 console.warn('[ArtifactsLoader] No project ID provided for loading tickets');
@@ -2008,24 +1945,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
             };
 
-            console.log('[ArtifactsLoader] Showing loading state for tickets');
             ticketsTab.innerHTML = '<div class="loading-state"><div class="spinner"></div><div>Loading tickets...</div></div>';
 
             const url = `/projects/${projectId}/api/checklist/`;
-            console.log(`[ArtifactsLoader] Fetching tickets from API: ${url}`);
 
             fetch(url)
                 .then(response => {
-                    console.log(`[ArtifactsLoader] Tickets API response received, status: ${response.status}`);
                     if (!response.ok) {
                         throw new Error(`Network response was not ok: ${response.status} ${response.statusText}`);
                     }
                     return response.json();
                 })
                 .then(data => {
-                    console.log('[ArtifactsLoader] Tickets API data received:', data);
                     const tickets = data.tickets || [];
-                    console.log(`[ArtifactsLoader] Found ${tickets.length} tickets`);
 
                     if (tickets.length === 0) {
                         ticketsTab.innerHTML = `
@@ -2280,7 +2212,6 @@ document.addEventListener('DOMContentLoaded', function() {
          * @param {number} projectId - The ID of the current project
          */
         loadDesignSchema: function(projectId) {
-            console.log(`[ArtifactsLoader] loadDesignSchema called with project ID: ${projectId}`);
             
             if (!projectId) {
                 console.warn('[ArtifactsLoader] No project ID provided for loading design schema');
@@ -2295,29 +2226,24 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             // Show loading state
-            console.log('[ArtifactsLoader] Showing loading state for design schema');
             designTab.innerHTML = '<div class="loading-state"><div class="spinner"></div><div>Loading design schema...</div></div>';
             
             // Fetch design schema from API
             const url = `/projects/${projectId}/api/design-schema/`;
-            console.log(`[ArtifactsLoader] Fetching design schema from API: ${url}`);
             
             fetch(url)
                 .then(response => {
-                    console.log(`[ArtifactsLoader] Design schema API response received, status: ${response.status}`);
                     if (!response.ok) {
                         throw new Error(`Network response was not ok: ${response.status} ${response.statusText}`);
                     }
                     return response.json();
                 })
                 .then(data => {
-                    console.log('[ArtifactsLoader] Design schema API data received:', data);
                     // Process design schema data
                     const designSchemaContent = data.content || '';
                     
                     if (!designSchemaContent) {
                         // Show empty state if no design schema found
-                        console.log('[ArtifactsLoader] No design schema found, showing empty state');
                         designTab.innerHTML = `
                             <div class="empty-state">
                                 <div class="empty-state-icon">
@@ -2366,9 +2292,6 @@ document.addEventListener('DOMContentLoaded', function() {
          * @param {number} projectId - The ID of the current project
          */
         loadCodebase: function(projectId) {
-            console.log(`[ArtifactsLoader] loadCodebase called with project ID: ${projectId}`);
-            console.log(`[ArtifactsLoader] Project ID type: ${typeof projectId}`);
-            console.log(`[ArtifactsLoader] Project ID truthy: ${!!projectId}`);
             
             if (!projectId) {
                 console.warn('[ArtifactsLoader] No project ID provided for loading codebase');
@@ -2401,14 +2324,12 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             // Show loading state
-            console.log('[ArtifactsLoader] Showing loading state for codebase');
             codebaseLoading.style.display = 'block';
             codebaseEmpty.style.display = 'none';
             codebaseFrameContainer.style.display = 'none';
             
             // Get conversation ID using the helper function
             const conversationId = getCurrentConversationId();
-            console.log(`[ArtifactsLoader] Conversation ID: ${conversationId}`);
             
             // Build the editor URL with appropriate parameters
             let editorUrl = `/development/editor/?project_id=${projectId}`;
@@ -2416,19 +2337,14 @@ document.addEventListener('DOMContentLoaded', function() {
             // Add conversation ID if available
             if (conversationId) {
                 editorUrl += `&conversation_id=${conversationId}`;
-                console.log(`[ArtifactsLoader] Including conversation ID: ${conversationId}`);
             }
             
-            console.log(`[ArtifactsLoader] Loading codebase explorer from URL: ${editorUrl}`);
-            console.log(`[ArtifactsLoader] About to set iframe.src - this should trigger network request`);
             
             // Set up iframe event handlers
             codebaseIframe.onload = function() {
                 // Hide loading and show iframe when loaded
                 codebaseLoading.style.display = 'none';
                 codebaseFrameContainer.style.display = 'block';
-                console.log('[ArtifactsLoader] Codebase iframe loaded successfully');
-                console.log('[ArtifactsLoader] Iframe content window:', codebaseIframe.contentWindow);
             };
             
             codebaseIframe.onerror = function() {
@@ -2449,9 +2365,7 @@ document.addEventListener('DOMContentLoaded', function() {
             };
             
             // Set the iframe source to load the editor
-            console.log('[ArtifactsLoader] Setting iframe src now...');
             codebaseIframe.src = editorUrl;
-            console.log('[ArtifactsLoader] Iframe src set to:', codebaseIframe.src);
         },
         
         /**
@@ -2489,7 +2403,6 @@ document.addEventListener('DOMContentLoaded', function() {
          * @param {number} projectId - The ID of the current project
          */
         loadChecklist: function(projectId) {
-            console.log(`[ArtifactsLoader] loadChecklist called with project ID: ${projectId}`);
             
             if (!projectId) {
                 console.warn('[ArtifactsLoader] No project ID provided for loading checklist');
@@ -2504,33 +2417,27 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             // Show loading state
-            console.log('[ArtifactsLoader] Showing loading state for checklist');
             checklistTab.innerHTML = '<div class="loading-state"><div class="spinner"></div><div>Loading checklist...</div></div>';
             
             // Fetch checklist from API
             const checklistUrl = `/projects/${projectId}/api/checklist/`;
-            console.log(`[ArtifactsLoader] Fetching checklist from API: ${checklistUrl}`);
             
             fetch(checklistUrl)
                 .then(response => {
-                    console.log(`[ArtifactsLoader] Checklist API response received, status: ${response.status}`);
                     if (!response.ok) {
                         throw new Error(`Network response was not ok: ${response.status} ${response.statusText}`);
                     }
                     return response.json();
                 })
                 .then(data => {
-                    console.log('[ArtifactsLoader] Checklist API data received:', data);
                     // Process checklist data
                     const checklist = data.tickets || [];
-                    console.log(`[ArtifactsLoader] Found ${checklist.length} checklist items`);
 
                     const modalHelpers = this.getTicketModalHelpers();
                     modalHelpers.setProjectId(projectId);
                     
                     if (checklist.length === 0) {
                         // Show empty state if no checklist items found
-                        console.log('[ArtifactsLoader] No checklist items found, showing empty state');
                         checklistTab.innerHTML = `
                             <div class="checklist-empty-state">
                                 <div class="empty-state-icon">
@@ -2876,7 +2783,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
                     // Function to update checklist item status
                     const updateChecklistItemStatus = (itemId, newStatus, oldStatus) => {
-                        console.log(`[ArtifactsLoader] Updating checklist item ${itemId} status from ${oldStatus} to ${newStatus}`);
                         const projectId = getCurrentProjectId();
                         if (!projectId) {
                             console.warn('[ArtifactsLoader] No project ID available for status update');
@@ -2929,7 +2835,6 @@ document.addEventListener('DOMContentLoaded', function() {
                                         statusIcon.className = `${newIconClass} status-icon`;
                                     }
                                 }
-                                console.log(`[ArtifactsLoader] Status updated successfully to: ${newStatus}`);
                                 showStatusUpdateSuccess(newStatus);
                             } else {
                                 showStatusUpdateError(data.error || 'Failed to update status');
@@ -2950,7 +2855,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
                     // Function to update checklist item role/assignment
                     const updateChecklistItemRole = (itemId, newRole, oldRole) => {
-                        console.log(`[ArtifactsLoader] Updating checklist item ${itemId} role from ${oldRole} to ${newRole}`);
                         const projectId = getCurrentProjectId();
                         if (!projectId) {
                             console.warn('[ArtifactsLoader] No project ID available for role update');
@@ -2996,7 +2900,6 @@ document.addEventListener('DOMContentLoaded', function() {
                                         roleBadge.textContent = newRole.charAt(0).toUpperCase() + newRole.slice(1);
                                     }
                                 }
-                                console.log(`[ArtifactsLoader] Role updated successfully to: ${newRole}`);
                                 showRoleUpdateSuccess(newRole);
                             } else {
                                 showRoleUpdateError(data.error || 'Failed to update role');
@@ -3569,7 +3472,6 @@ document.addEventListener('DOMContentLoaded', function() {
          * @param {number} conversationId - Optional conversation ID (not used for ServerConfig)
          */
         loadAppPreview: function(projectId, conversationId) {
-            console.log(`[ArtifactsLoader] loadAppPreview called with project ID: ${projectId}, conversation ID: ${conversationId}`);
 
             if (!projectId) {
                 console.warn('[ArtifactsLoader] No project ID provided for loading app preview');
@@ -3595,45 +3497,36 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Fetch server configs from API
             const serverConfigsUrl = `/projects/${projectId}/api/server-configs/`;
-            console.log(`[ArtifactsLoader] Fetching server configs from API: ${serverConfigsUrl}`);
             
             fetch(serverConfigsUrl)
                 .then(response => {
-                    console.log(`[ArtifactsLoader] Server configs API response received, status: ${response.status}`);
                     if (!response.ok) {
                         throw new Error(`Network response was not ok: ${response.status} ${response.statusText}`);
                     }
                     return response.json();
                 })
                 .then(data => {
-                    console.log('[ArtifactsLoader] Server configs API data received:', data);
                     
                     // Process server configs
                     const serverConfigs = data.server_configs || [];
-                    console.log(`[ArtifactsLoader] Found ${serverConfigs.length} server configurations`);
                     
                     if (serverConfigs.length === 0) {
                         // Show empty state if no server configs found
-                        console.log('[ArtifactsLoader] No server configs found, showing empty state');
                         showEmptyState("No application servers found. Start a server using the chat interface by running commands like 'npm start' or 'python manage.py runserver'.");
                         return;
                     }
                     
                     // Find the first application server or use the first config
                     let selectedConfig = serverConfigs.find(config => config.type === 'application') || serverConfigs[0];
-                    console.log(`[ArtifactsLoader] Selected server config:`, selectedConfig);
                     
                     // If there are multiple configs, you could potentially show a selector here
                     if (serverConfigs.length > 1) {
-                        console.log(`[ArtifactsLoader] Multiple server configs available, using: ${selectedConfig.type} on port ${selectedConfig.port}`);
                     }
                     
                     // Construct the URL for the iframe using localhost and the configured port
                     const appUrl = `http://localhost:${selectedConfig.port}/`;
-                    console.log(`[ArtifactsLoader] Loading app from URL: ${appUrl}`);
                     
                     // First, check if the server is actually running by testing the URL
-                    console.log(`[ArtifactsLoader] Testing server connectivity at: ${appUrl}`);
                     
                     // Test server connectivity before loading iframe
                     fetch(appUrl, {
@@ -3642,7 +3535,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         cache: 'no-cache'
                     })
                     .then(() => {
-                        console.log(`[ArtifactsLoader] Server connectivity test passed for ${appUrl}`);
                         loadIframeApp(appUrl, selectedConfig);
                     })
                     .catch((error) => {
@@ -3652,7 +3544,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     // Function to load the app in iframe after connectivity is confirmed
                     function loadIframeApp(iframeUrl, config) {
-                        console.log(`[ArtifactsLoader] Loading verified server in iframe: ${iframeUrl}`);
                         
                         // Use setTimeout to ensure DOM is ready
                         setTimeout(() => {
@@ -3663,7 +3554,6 @@ document.addEventListener('DOMContentLoaded', function() {
                             const restartServerBtn = document.getElementById('app-restart-server-btn');
                             
                             if (urlPanel && urlInput) {
-                                console.log('[ArtifactsLoader] Setting URL in panel to:', iframeUrl);
                                 urlPanel.style.display = 'block';
                                 urlInput.value = iframeUrl;
                             
@@ -3672,7 +3562,6 @@ document.addEventListener('DOMContentLoaded', function() {
                                 if (e.key === 'Enter') {
                                     const newUrl = this.value.trim();
                                     if (newUrl) {
-                                        console.log('[ArtifactsLoader] Navigating to:', newUrl);
                                         appIframe.src = newUrl;
                                     }
                                 }
@@ -3689,7 +3578,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         // Set up refresh button
                         if (refreshBtn) {
                             refreshBtn.onclick = function() {
-                                console.log('[ArtifactsLoader] Refreshing iframe');
                                 // Force reload by clearing and resetting src
                                 const currentSrc = appIframe.src;
                                 appIframe.src = '';
@@ -3710,7 +3598,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         // Set up restart server button
                         if (restartServerBtn) {
                             restartServerBtn.onclick = function() {
-                                console.log('[ArtifactsLoader] Restarting server');
                                 // Disable button and show loading state
                                 this.disabled = true;
                                 this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Restarting...';
@@ -3737,13 +3624,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         
                         // Set up iframe event handlers
                         appIframe.onload = function() {
-                            console.log('[ArtifactsLoader] Iframe onload event triggered');
                             hasLoaded = true;
                             clearTimeout(timeoutId);
                             
                             appLoading.style.display = 'none';
                             appFrameContainer.style.display = 'flex';
-                            console.log('[ArtifactsLoader] App iframe loaded successfully');
                         };
                         
                         appIframe.onerror = function(e) {
@@ -4085,7 +3970,6 @@ document.addEventListener('DOMContentLoaded', function() {
          * @param {number} projectId - The ID of the current project
          */
         checkAndRestartServers: function(projectId) {
-            console.log(`[ArtifactsLoader] checkAndRestartServers called with project ID: ${projectId}`);
             
             if (!projectId) {
                 console.warn('[ArtifactsLoader] No project ID provided for checking servers');
@@ -4112,7 +3996,6 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Call the new check servers API
             const url = `/projects/${projectId}/api/check-servers/`;
-            console.log(`[ArtifactsLoader] Calling server check API: ${url}`);
             
             fetch(url, {
                 method: 'GET',
@@ -4122,19 +4005,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             })
             .then(response => {
-                console.log(`[ArtifactsLoader] Server check API response received, status: ${response.status}`);
                 if (!response.ok) {
                     throw new Error(`Network response was not ok: ${response.status} ${response.statusText}`);
                 }
                 return response.json();
             })
             .then(data => {
-                console.log('[ArtifactsLoader] Server check API data received:', data);
                 
                 // Check the overall status
                 if (data.status === 'all_running') {
                     // All servers are running, reload the app preview
-                    console.log('[ArtifactsLoader] All servers running, reloading app preview');
                     setTimeout(() => {
                         this.loadAppPreview(projectId);
                     }, 1000); // Small delay to ensure servers are fully ready
@@ -4286,7 +4166,6 @@ document.addEventListener('DOMContentLoaded', function() {
          * @param {number} port - The port number
          */
         openAppInArtifacts: function(appUrl, workspaceId, port) {
-            console.log(`[ArtifactsLoader] openAppInArtifacts called with URL: ${appUrl}`);
 
             if (!appUrl) {
                 console.error('[ArtifactsLoader] No app URL provided');
@@ -4340,7 +4219,6 @@ document.addEventListener('DOMContentLoaded', function() {
             let timeoutId = null;
 
             appIframe.onload = function() {
-                console.log('[ArtifactsLoader] App iframe loaded successfully');
                 hasLoaded = true;
                 clearTimeout(timeoutId);
 
@@ -4371,14 +4249,12 @@ document.addEventListener('DOMContentLoaded', function() {
             }, 15000); // 15 second timeout
 
             // Load the app in the iframe
-            console.log('[ArtifactsLoader] Loading app in iframe:', appUrl);
             appIframe.src = appUrl;
 
             // Set up refresh button
             const refreshBtn = document.getElementById('app-refresh-btn');
             if (refreshBtn) {
                 refreshBtn.onclick = function() {
-                    console.log('[ArtifactsLoader] Refreshing app');
                     appIframe.src = appIframe.src; // Reload iframe
                 };
             }
@@ -4387,7 +4263,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const restartBtn = document.getElementById('app-restart-server-btn');
             if (restartBtn) {
                 restartBtn.onclick = function() {
-                    console.log('[ArtifactsLoader] Restart server requested');
                     // TODO: Implement server restart logic
                     if (window.showToast) {
                         window.showToast('Server restart functionality coming soon', 'info');
@@ -4401,7 +4276,6 @@ document.addEventListener('DOMContentLoaded', function() {
          * @param {number} projectId - The project ID
          */
         loadToolHistory: function(projectId) {
-            console.log(`[ArtifactsLoader] Loading tool history for project ${projectId}`);
             
             const toolhistoryContainer = document.getElementById('toolhistory');
             const toolhistoryLoading = document.getElementById('toolhistory-loading');
@@ -4547,7 +4421,6 @@ document.addEventListener('DOMContentLoaded', function() {
          * @returns {string} - The ID of the pending element
          */
         addPendingToolCall: function(toolName, toolInput) {
-            console.log(`[ArtifactsLoader] Adding pending tool call: ${toolName}`);
             
             const toolhistoryList = document.getElementById('toolhistory-list');
             const toolhistoryEmpty = document.getElementById('toolhistory-empty');
@@ -4606,7 +4479,6 @@ document.addEventListener('DOMContentLoaded', function() {
          * @param {number} ticketId - The ID of the ticket to execute
          */
         executeTicket: function(ticketId) {
-            console.log(`[ArtifactsLoader] Executing ticket ${ticketId}`);
 
             // Find the ticket data
             const projectId = this.getCurrentProjectId();
@@ -4646,7 +4518,6 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(response => response.json())
             .then(data => {
                 if (data.status === 'queued') {
-                    console.log(`[ArtifactsLoader] Ticket ${ticketId} queued successfully. Task ID: ${data.task_id}`);
 
                     // Show success feedback
                     if (executeBtn) {
@@ -4699,10 +4570,8 @@ document.addEventListener('DOMContentLoaded', function() {
          * @param {number} ticketId - The ID of the ticket to show logs for
          */
         showTicketLogs: function(ticketId) {
-            console.log(`[ArtifactsLoader] showTicketLogs called with ticketId:`, ticketId);
 
             const projectId = this.getCurrentProjectId();
-            console.log(`[ArtifactsLoader] Current project ID:`, projectId);
             if (!projectId) {
                 console.error('[ArtifactsLoader] No project ID found');
                 return;
@@ -5014,7 +4883,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // Function to load/reload logs
             const loadLogs = () => {
-                console.log('[ArtifactsLoader] Loading logs for ticket:', ticketId);
                 const content = drawer.querySelector('#logs-tab-content');
                 const refreshBtn = drawer.querySelector('.logs-drawer-refresh');
 
@@ -5031,17 +4899,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     refreshBtn.classList.add('refreshing');
                 }
 
-                console.log(`[ArtifactsLoader] Fetching logs from: /api/v1/project-tickets/${ticketId}/logs/`);
                 fetch(`/api/v1/project-tickets/${ticketId}/logs/`)
                 .then(response => {
-                    console.log('[ArtifactsLoader] Response status:', response.status);
                     if (!response.ok) {
                         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                     }
                     return response.json();
                 })
                 .then(data => {
-                    console.log('[ArtifactsLoader] Logs data received:', data);
 
                     // Update drawer header with ticket name
                     const header = drawer.querySelector('.logs-drawer-header h3');
@@ -5142,7 +5007,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // Function to load/reload tasks
             const loadTasks = () => {
-                console.log('[ArtifactsLoader] Loading tasks for ticket:', ticketId);
                 const tasksContent = drawer.querySelector('#tasks-tab-content');
                 const refreshBtn = drawer.querySelector('.logs-drawer-refresh');
 
@@ -5168,7 +5032,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         return response.json();
                     })
                     .then(data => {
-                        console.log('[ArtifactsLoader] Tasks loaded:', data);
 
                         if (!data.tasks || data.tasks.length === 0) {
                             tasksContent.innerHTML = '<div class="logs-empty"><i class="fas fa-info-circle" style="font-size: 32px; margin-bottom: 12px; color: #888;"></i><p>No tasks defined for this ticket yet.</p></div>';
@@ -5230,7 +5093,6 @@ document.addEventListener('DOMContentLoaded', function() {
             drawer.querySelectorAll('.logs-tab-btn').forEach(btn => {
                 btn.addEventListener('click', () => {
                     const tab = btn.dataset.tab;
-                    console.log('[ArtifactsLoader] Switching to tab:', tab);
 
                     // Update active states
                     drawer.querySelectorAll('.logs-tab-btn').forEach(b => b.classList.remove('active'));
@@ -5271,7 +5133,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         return;
                     }
                     const activeTab = activeTabBtn.dataset.tab;
-                    console.log('[ArtifactsLoader] Refresh button clicked for tab:', activeTab);
 
                     if (activeTab === 'logs') {
                         loadLogs();
@@ -5299,7 +5160,6 @@ document.addEventListener('DOMContentLoaded', function() {
          * @param {string} content - The markdown content
          */
         downloadFileAsPDF: function(projectId, title, content) {
-            console.log('[ArtifactsLoader] downloadFileAsPDF called');
             
             // Check if jsPDF is available
             if (typeof window.jspdf === 'undefined' || typeof window.jspdf.jsPDF === 'undefined') {
@@ -5844,7 +5704,6 @@ document.addEventListener('DOMContentLoaded', function() {
          * @param {string} options.openFileName - File name to open after loading
          */
         loadFileBrowser: function(projectId, options = {}) {
-            console.log(`[ArtifactsLoader] Loading file browser for project ${projectId}`, options);
             
             // Store project ID for use in file operations
             window.currentFileBrowserProjectId = projectId;
@@ -6129,10 +5988,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         
                         // Auto-open file if specified
                         if (options.openFileId && options.openFileName) {
-                            console.log(`[ArtifactsLoader] Auto-opening file: ${options.openFileId} - ${options.openFileName}`);
                             // Directly call the API to load the file content
                             setTimeout(() => {
-                                console.log('[ArtifactsLoader] Loading file content via API');
                                 
                                 // Call the file content API directly
                                 fetch(`/projects/${projectId}/api/files/${options.openFileId}/content/`, {
@@ -6212,7 +6069,6 @@ document.addEventListener('DOMContentLoaded', function() {
                                         `;
                                     }
                                     
-                                    console.log('[ArtifactsLoader] File content loaded and displayed');
                                 })
                                 .catch(error => {
                                     console.error('[ArtifactsLoader] Error loading file content:', error);
@@ -6434,14 +6290,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     return;
                 }
                 
-                console.log('[ArtifactsLoader] Viewing file:', { fileId, fileName, projectId });
                 
                 // Ensure artifacts panel is open and documents tab is active
                 const artifactsPanel = document.getElementById('artifacts-panel');
                 const isArtifactsPanelOpen = artifactsPanel && artifactsPanel.classList.contains('expanded');
                 
                 if (!isArtifactsPanelOpen) {
-                    console.log('[ArtifactsLoader] Opening artifacts panel');
                     if (window.ArtifactsPanel && typeof window.ArtifactsPanel.toggle === 'function') {
                         window.ArtifactsPanel.toggle(true); // Force open
                     }
@@ -6450,14 +6304,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Switch to filebrowser tab instead of documents
                 const filebrowserTab = document.querySelector('[data-tab="filebrowser"]');
                 if (filebrowserTab && !filebrowserTab.classList.contains('active')) {
-                    console.log('[ArtifactsLoader] Switching to filebrowser tab');
                     
                     // Try multiple methods to switch tab
                     if (window.switchTab) {
                         window.switchTab('filebrowser');
                     } else {
                         // Fallback: manually trigger tab switch
-                        console.log('[ArtifactsLoader] Using fallback tab switch method');
                         
                         // Remove active class from all tabs and panes
                         document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
@@ -6603,18 +6455,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Render markdown content
                     const content = data.content || 'No content available';
 
-                    console.log('[ArtifactsLoader] Getting Viewer Actions');
                     
                     // Create compact action buttons
                     const viewerActions = document.getElementById('viewer-actions');
 
-                    console.log('[ArtifactsLoader] Getting Viewer Actions', viewerActions);
 
                     if (viewerActions) {
                         // Clear existing buttons
                         viewerActions.innerHTML = '';
 
-                        console.log('[ArtifactsLoader] Viewer Actions', viewerActions);
                         
                         // Common button style
                         const buttonStyle = `
@@ -6630,7 +6479,6 @@ document.addEventListener('DOMContentLoaded', function() {
                             justify-content: center;
                         `;
                         
-                        console.log('[ArtifactsLoader] Button Style', buttonStyle);
 
                         // Edit button with full text
                         const editButton = document.createElement('button');
@@ -6871,7 +6719,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         versionOption.addEventListener('click', () => {
                             dropdownMenu.style.display = 'none';
                             const currentFileId = window.currentFileData ? window.currentFileData.fileId : fileId;
-                            console.log('[VersionButton] Clicked for fileId:', currentFileId);
                             showVersionHistory(currentFileId);
                         });
                         
@@ -6904,7 +6751,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         
                         // Ensure viewer actions are always visible
                         viewerActions.style.display = 'flex';
-                        console.log('[ArtifactsLoader] Viewer actions display set to flex');
                     }
                     
                     // Configure marked if not already configured
@@ -6997,7 +6843,6 @@ document.addEventListener('DOMContentLoaded', function() {
             // Function to perform auto-save
             const performAutoSave = async () => {
                 if (hasUnsavedChanges && window.currentWysiwygEditor) {
-                    console.log('[AutoSave] Performing auto-save...');
                     await saveFileContent(true); // true indicates auto-save
                     hasUnsavedChanges = false;
                 }
@@ -7305,7 +7150,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Start auto-save timer
                 startAutoSave();
-                console.log('[AutoSave] Auto-save timer started');
                 
                 // Reset unsaved changes flag
                 hasUnsavedChanges = false;
@@ -7671,7 +7515,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                     
                     const { fileId, fileName, type } = window.currentFileData;
-                    console.log('[ArtifactsLoader] Saving file:', { fileId, fileName, type, projectId });
                     
                     // Determine the correct API endpoint based on file type
                     let url, method, body;
@@ -7693,8 +7536,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         body = JSON.stringify({ content: content });
                     }
                     
-                    console.log('[ArtifactsLoader] Request URL:', url);
-                    console.log('[ArtifactsLoader] Request method:', method);
                     
                     const response = await fetch(url, {
                         method: method,
@@ -7705,12 +7546,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         body: body
                     });
                     
-                    console.log('[ArtifactsLoader] Response status:', response.status);
                     
                     let data;
                     try {
                         data = await response.json();
-                        console.log('[ArtifactsLoader] Response data:', data);
                     } catch (e) {
                         console.error('[ArtifactsLoader] Failed to parse response:', e);
                         data = { success: false, error: 'Failed to parse server response' };
@@ -7727,7 +7566,6 @@ document.addEventListener('DOMContentLoaded', function() {
                                     autoSaveIndicator.style.display = 'none';
                                 }, 2000);
                             }
-                            console.log('[AutoSave] File auto-saved successfully');
                         } else {
                             // For manual save, show toast
                             if (typeof showToast === 'function') {
@@ -7816,7 +7654,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Stop auto-save timer
                 stopAutoSave();
-                console.log('[AutoSave] Auto-save timer stopped');
                 
                 // Clear reference
                 if (window.currentWysiwygEditor) {
@@ -7889,7 +7726,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         throw new Error(data.error || 'Failed to load versions');
                     }
                     
-                    console.log('[VersionHistory] API Response for file', fileId, ':', data);
                     
                     // Get filename from current file data
                     const fileName = window.currentFileData ? window.currentFileData.fileName : 'Unknown File';
@@ -7905,7 +7741,6 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Create version history drawer
             const createVersionHistoryDrawer = (fileId, fileName, versions) => {
-                console.log('[VersionDrawer] Creating drawer for file:', { fileId, fileName, versionCount: versions.length });
                 
                 // Remove existing drawer and overlay if any
                 const existingDrawer = document.querySelector('.version-drawer');
@@ -8033,7 +7868,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Store current file ID in drawer for verification
                 drawer.dataset.fileId = String(fileId);
-                console.log('[VersionDrawer] Drawer created with fileId:', drawer.dataset.fileId);
                 
                 // Close drawer function
                 const closeDrawer = () => {
@@ -8510,7 +8344,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Check if we're in edit mode with unsaved changes
                     if (window.currentWysiwygEditor && hasUnsavedChanges) {
                         // Auto-save before going back
-                        console.log('[FileBrowser] Auto-saving before navigating back...');
                         await saveFileContent(true); // true for auto-save
                     }
                     
@@ -8571,7 +8404,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }; // End of ArtifactsLoader object
 
     // ArtifactsLoader is now ready to use
-    console.log('[ArtifactsLoader] Loaded and ready');
     
     // Add event handlers for custom PRD selector
     setTimeout(() => {
@@ -8630,7 +8462,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 
                 if (projectId && selectedValue) {
-                    console.log(`[ArtifactsLoader] PRD selection changed to: ${selectedValue} for project: ${projectId}`);
                     window.ArtifactsLoader.loadPRD(projectId, selectedValue);
                 }
             }

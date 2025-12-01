@@ -3,24 +3,17 @@ document.addEventListener('DOMContentLoaded', () => {
     window.FILE_STREAM_DEBUG = true;
     window.FILE_STREAM_CHUNKS = [];
     window.FILE_STREAM_CONTENT = '';
-    console.log('🎯 FILE STREAMING DEBUG MODE ENABLED');
-    console.log('🎯 File content will be logged to console automatically');
-    console.log('🎯 Access chunks: window.FILE_STREAM_CHUNKS');
-    console.log('🎯 Access full content: window.FILE_STREAM_CONTENT');
     
     // Check if the artifacts panel is in the DOM
     const artifactsPanel = document.getElementById('artifacts-panel');
     if (artifactsPanel) {
-        console.log('✅ Artifacts panel found in DOM');
     } else {
         console.error('❌ Artifacts panel NOT found in DOM! This will cause issues with notifications.');
     }
     
     // Check if the ArtifactsPanel API is available
     if (window.ArtifactsPanel && typeof window.ArtifactsPanel.toggle === 'function') {
-        console.log('✅ ArtifactsPanel API is available');
     } else {
-        console.log('❌ ArtifactsPanel API is NOT available yet. This may be a timing issue.');
         // We'll check again after a delay to see if it's a timing issue
         setTimeout(() => {
             if (window.ArtifactsPanel && typeof window.ArtifactsPanel.toggle === 'function') {
@@ -768,7 +761,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                         
                         if (!recordingIndicator || !mediaRecorder || mediaRecorder.state !== 'recording') {
-                            console.log('❌ Animation stopped - missing requirements');
                             animationRunning = false;
                             return;
                         }
@@ -819,7 +811,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     
                     // Start the animation loop
-                    console.log('🎯 Starting waveform animation...');
                     
                     // Add test function to window for debugging
                     window.testAudioLevel = () => {
@@ -1053,12 +1044,6 @@ document.addEventListener('DOMContentLoaded', () => {
             // AUTOMATIC LOGGING FOR ALL FILE NOTIFICATIONS AT WEBSOCKET LEVEL
             if (data.notification_type === 'file_stream' || (data.is_notification && data.notification_type === 'file_stream')) {
                 console.log('\n' + '🔴'.repeat(50));
-                console.log('🔴🔴🔴 RAW WEBSOCKET FILE MESSAGE RECEIVED! 🔴🔴🔴');
-                console.log('🔴 Type:', data.type);
-                console.log('🔴 Notification type:', data.notification_type);
-                console.log('🔴 Has content_chunk:', 'content_chunk' in data);
-                console.log('🔴 Content length:', data.content_chunk ? data.content_chunk.length : 0);
-                console.log('🔴 Is complete:', data.is_complete);
                 console.log('🔴 FULL RAW DATA:', JSON.stringify(data, null, 2));
                 console.log('🔴'.repeat(50) + '\n');
             }
@@ -1386,11 +1371,6 @@ document.addEventListener('DOMContentLoaded', () => {
         // AUTOMATIC FILE CONSOLE LOGGING
         if (data.notification_type === 'file_stream' && data.file_type === 'prd') {
             console.log('\n' + '🎯'.repeat(50));
-            console.log('🎯🎯🎯 PRD STREAM CONTENT RECEIVED IN BROWSER! 🎯🎯🎯');
-            console.log('🎯 Has content_chunk:', 'content_chunk' in data);
-            console.log('🎯 Content length:', data.content_chunk ? data.content_chunk.length : 0);
-            console.log('🎯 Is complete:', data.is_complete);
-            console.log('🎯 PRD CONTENT:');
             console.log('---START OF PRD CHUNK---');
             console.log(data.content_chunk || '[NO CONTENT]');
             console.log('---END OF PRD CHUNK---');
@@ -1412,10 +1392,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     is_complete: data.is_complete
                 });
             }
-            console.log('🎯 Total file content so far:', window.FILE_STREAM_CONTENT.length, 'chars');
-            console.log('🎯 Total chunks received:', window.FILE_STREAM_CHUNKS.length);
-            console.log('🎯 Access full content: window.FILE_STREAM_CONTENT');
-            console.log('🎯 Access all chunks: window.FILE_STREAM_CHUNKS');
         }
         
         // AUTOMATIC FILE CONSOLE LOGGING
@@ -1585,17 +1561,11 @@ document.addEventListener('DOMContentLoaded', () => {
             // Check if this is ANY notification with file_id (for debugging)
             if (data.file_id) {
                 console.log('==================================================');
-                console.log('[Chat] NOTIFICATION WITH FILE_ID DETECTED!');
-                console.log('[Chat] Type:', data.notification_type);
-                console.log('[Chat] File ID:', data.file_id);
-                console.log('[Chat] File Name:', data.file_name);
-                console.log('[Chat] Full data:', data);
                 console.log('==================================================');
             }
             
             // Handle open_app notification
             if (data.notification_type === 'open_app' && data.app_url) {
-                console.log('[Chat] Open app notification received:', data);
 
                 // Switch to apps tab
                 if (window.loadTabData) {
@@ -1630,7 +1600,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     appIframe.onload = function() {
                         if (appLoading) appLoading.style.display = 'none';
                         if (appFrameContainer) appFrameContainer.style.display = 'flex';
-                        console.log('[Chat] App iframe loaded successfully');
                     };
 
                     appIframe.onerror = function(e) {
@@ -1651,7 +1620,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     appIframe.src = data.app_url;
 
-                    console.log('[Chat] App URL loaded:', data.app_url);
                 }
 
                 return; // Don't process further
@@ -1661,15 +1629,12 @@ document.addEventListener('DOMContentLoaded', () => {
             // Handle any notification with a file_id as a potential document save, except for non-document types
             const nonDocumentTypes = ['features', 'personas', 'execute_command', 'command_output', 'start_server', 'checklist', 'file_stream', 'open_app'];
             if (data.file_id && !nonDocumentTypes.includes(data.notification_type)) {
-                console.log('[Chat] This is a document save notification');
 
                 if (window.ArtifactsLoader && typeof window.ArtifactsLoader.handleDocumentSaved === 'function') {
-                    console.log('[Chat] Calling ArtifactsLoader.handleDocumentSaved');
                     window.ArtifactsLoader.handleDocumentSaved(data);
                     return; // Don't process further
                 } else {
                     console.error('[Chat] ArtifactsLoader.handleDocumentSaved not available!');
-                    console.log('[Chat] window.ArtifactsLoader exists:', !!window.ArtifactsLoader);
                     console.log('[Chat] handleDocumentSaved exists:', !!(window.ArtifactsLoader && window.ArtifactsLoader.handleDocumentSaved));
                 }
             }
@@ -1970,8 +1935,6 @@ document.addEventListener('DOMContentLoaded', () => {
                                 console.log('Streaming file content with project ID:', projectIdForStreaming);
                                 // Debug log the data object
                                 if (data.is_complete) {
-                                    console.log('[DEBUG] PRD streaming complete, data object:', data);
-                                    console.log('[DEBUG] file_id in data:', data.file_id);
                                 }
                                 window.ArtifactsLoader.streamDocumentContent(
                                     data.content_chunk, 

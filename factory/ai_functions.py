@@ -625,6 +625,11 @@ async def app_functions(function_name, function_args, project_id, conversation_i
             issue_id = function_args.get('issue_id')
             return await get_linear_issue_details(project_id, conversation_id, issue_id)
 
+        # Technology lookup function
+        case "lookup_technology_specs":
+            category = function_args.get('category', 'all')
+            return await lookup_technology_specs(category)
+
         # case "implement_ticket_async":
         #     ticket_id = function_args.get('ticket_id')
         #     return await implement_ticket_async(ticket_id, project_id, conversation_id)
@@ -5950,4 +5955,61 @@ async def get_linear_issue_details(project_id, conversation_id, issue_id):
         return {
             "is_notification": False,
             "message_to_agent": f"Error fetching Linear issue details: {str(e)}"
+        }
+
+
+# ============================================================================
+# TECHNOLOGY SPECS LOOKUP
+# ============================================================================
+
+async def lookup_technology_specs(category: str = 'all'):
+    """
+    Look up technology specifications from the JSON configuration file.
+
+    Args:
+        category: The technology category to look up (e.g., 'payments', 'file_storage', 'database') or 'all'
+
+    Returns:
+        dict: Technology specifications with tech, provider, description, documentation, and why
+    """
+    logger.info(f"Technology specs lookup called - category: {category}")
+
+    try:
+        specs_file_path = Path(__file__).parent / 'technology_specs.json'
+
+        if not specs_file_path.exists():
+            return {
+                "is_notification": False,
+                "message_to_agent": "Error: technology_specs.json not found in factory directory."
+            }
+
+        with open(specs_file_path, 'r') as f:
+            tech_specs = json.load(f)
+
+        # Return all specs
+        if category == 'all':
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Technology specifications: {json.dumps(tech_specs, indent=2)}"
+            }
+
+        # Return specific category
+        if category in tech_specs:
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Technology spec for '{category}': {json.dumps(tech_specs[category], indent=2)}. \nPlease web search and collect more information"
+            }
+
+        # Category not found
+        available = list(tech_specs.keys())
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Category '{category}' not found. Available: {', '.join(available)}"
+        }
+
+    except Exception as e:
+        logger.error(f"Error looking up technology specs: {e}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: {str(e)}"
         }
