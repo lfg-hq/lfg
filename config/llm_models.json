@@ -44,7 +44,7 @@
         {
           "key": "gemini_3_pro",
           "label": "Gemini 3 Pro",
-          "provider_model": "models/gemini-3-pro",
+          "provider_model": "models/gemini-3-pro-preview",
           "requires_pro": true
         },
         {

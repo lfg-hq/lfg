@@ -8,6 +8,7 @@ from .models import (
     ProjectPersona,
     ProjectFile,
     ProjectDesignSchema,
+    ProjectDesignFeature,
     ProjectTicket,
     ProjectTicketAttachment,
     ToolCallHistory,
@@ -2415,3 +2416,80 @@ def ticket_tasks_api(request, project_id, ticket_id):
         'ticket_id': ticket_id,
         'total_tasks': len(tasks)
     })
+
+
+@login_required
+@require_http_methods(["GET"])
+def design_features_api(request, project_id):
+    """API endpoint to get design features for the canvas."""
+    project = get_object_or_404(Project, project_id=project_id)
+
+    # Check if user has permission to view this project
+    if not (project.owner == request.user or project.members.filter(user=request.user, status='active').exists()):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    # Get all design features from the dedicated model
+    design_features = ProjectDesignFeature.objects.filter(project=project).order_by('-updated_at')
+
+    features = []
+    for df in design_features:
+        # Mark entry pages
+        pages = df.pages or []
+        for page in pages:
+            page['is_entry'] = page.get('page_id') == df.entry_page_id
+
+        features.append({
+            'feature_id': df.id,  # Use db id as feature_id for JS compatibility
+            'feature_name': df.feature_name,
+            'feature_description': df.feature_description,
+            'explainer': df.explainer,
+            'css_style': df.css_style,
+            'pages': pages,
+            'entry_page_id': df.entry_page_id,
+            'feature_connections': df.feature_connections or [],
+            'canvas_position': df.canvas_position or {'x': 100, 'y': 100},
+            'created_at': df.created_at.isoformat(),
+            'updated_at': df.updated_at.isoformat()
+        })
+
+    return JsonResponse({
+        'success': True,
+        'features': features
+    })
+
+
+@login_required
+@csrf_exempt
+@require_http_methods(["POST"])
+def design_positions_api(request, project_id):
+    """API endpoint to save feature positions on the canvas"""
+    project = get_object_or_404(Project, project_id=project_id)
+
+    # Check if user has permission to edit this project
+    if not (project.owner == request.user or project.members.filter(user=request.user, status='active').exists()):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    try:
+        data = json.loads(request.body)
+        positions = data.get('positions', {})
+
+        updated_count = 0
+        for feature_id, position in positions.items():
+            # Update the design feature's canvas position using db id
+            updated = ProjectDesignFeature.objects.filter(
+                project=project,
+                id=feature_id
+            ).update(canvas_position=position)
+
+            if updated:
+                updated_count += 1
+
+        return JsonResponse({
+            'success': True,
+            'updated_count': updated_count
+        })
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        logger.error(f"Error saving design positions: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)

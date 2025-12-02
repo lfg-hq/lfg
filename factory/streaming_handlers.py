@@ -446,12 +446,12 @@ class StreamingTagHandler:
     
     def get_immediate_notifications(self) -> list:
         """Get and clear any immediate notifications that need to be yielded"""
-        logger.info(f"[GET_IMMEDIATE_NOTIFICATIONS] Called, queue size: {len(self.immediate_notifications)}")
+        # logger.info(f"[GET_IMMEDIATE_NOTIFICATIONS] Called, queue size: {len(self.immediate_notifications)}")
         if self.immediate_notifications:
             logger.info(f"[GET_IMMEDIATE_NOTIFICATIONS] Queue contents: {self.immediate_notifications}")
         notifications = list(self.immediate_notifications)
         self.immediate_notifications = []
-        logger.info(f"[GET_IMMEDIATE_NOTIFICATIONS] Returning {len(notifications)} notifications")
+        # logger.info(f"[GET_IMMEDIATE_NOTIFICATIONS] Returning {len(notifications)} notifications")
         return notifications
     
     async def save_captured_data(self, project_id: str) -> list:

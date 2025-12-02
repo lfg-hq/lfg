@@ -54,16 +54,25 @@ class GoogleGeminiProvider(BaseLLMProvider):
         else:
             logger.warning("No Google API key found")
     
+    def _is_thinking_model(self) -> bool:
+        """Check if the current model requires thought signatures (Gemini 2.5+, 3+)"""
+        thinking_model_patterns = ["gemini-3", "gemini-2.5", "gemini-2.0-flash-thinking"]
+        return any(pattern in self.model.lower() for pattern in thinking_model_patterns)
+
     def _convert_messages_to_provider_format(self, messages: List[Dict[str, Any]]) -> tuple:
         """Convert messages to Google Gemini format
         Returns: (system_instruction, contents)
         """
         system_instruction = ""
         contents = []
-        
+        requires_thought_signatures = self._is_thinking_model()
+
+        # Track tool call IDs that were converted to text (no thought_signature)
+        text_converted_tool_ids = set()
+
         for msg in messages:
             role = msg["role"]
-            
+
             if role == "system":
                 # Google Gemini handles system messages as system_instruction
                 system_instruction = msg["content"]
@@ -72,24 +81,42 @@ class GoogleGeminiProvider(BaseLLMProvider):
                 parts = []
                 if msg.get("content"):
                     parts.append({"text": msg["content"]})
-                
+
                 # Handle tool calls
                 if msg.get("tool_calls"):
                     for tc in msg["tool_calls"]:
-                        parts.append({
-                            "function_call": {
-                                "name": tc["function"]["name"],
-                                "args": json.loads(tc["function"]["arguments"])
+                        has_thought_sig = tc.get("thought_signature")
+
+                        # For thinking models, tool calls without thought_signature
+                        # must be converted to text to avoid API errors
+                        if requires_thought_signatures and not has_thought_sig:
+                            # Convert to text description instead of function_call
+                            tool_name = tc["function"]["name"]
+                            tool_args = tc["function"]["arguments"]
+                            text_converted_tool_ids.add(tc.get("id"))
+                            parts.append({
+                                "text": f"[Called function {tool_name} with args: {tool_args}]"
+                            })
+                            logger.debug(f"Converted tool call {tool_name} to text (no thought_signature)")
+                        else:
+                            part = {
+                                "function_call": {
+                                    "name": tc["function"]["name"],
+                                    "args": json.loads(tc["function"]["arguments"])
+                                }
                             }
-                        })
-                
+                            # Include thought_signature if present (required for Gemini 2.5+)
+                            if has_thought_sig:
+                                part["thought_signature"] = tc["thought_signature"]
+                            parts.append(part)
+
                 if parts:
                     contents.append({"role": "model", "parts": parts})
-                    
+
             elif role == "user":
                 # Handle both string content and array content (for files)
                 parts = []
-                
+
                 if isinstance(msg.get("content"), list):
                     # Content is already in array format (with files)
                     for item in msg["content"]:
@@ -107,21 +134,32 @@ class GoogleGeminiProvider(BaseLLMProvider):
                 else:
                     # Legacy string format
                     parts.append({"text": msg["content"]})
-                
+
                 contents.append({"role": "user", "parts": parts})
-                
+
             elif role == "tool":
-                # Convert tool results
-                contents.append({
-                    "role": "function",
-                    "parts": [{
-                        "function_response": {
-                            "name": msg.get("name", ""),  # Tool name should be in the message
-                            "response": {"result": msg["content"]}
-                        }
-                    }]
-                })
-        
+                tool_call_id = msg.get("tool_call_id")
+
+                # If this tool result corresponds to a text-converted call, convert to user message
+                if tool_call_id in text_converted_tool_ids:
+                    tool_name = msg.get("name", "unknown")
+                    contents.append({
+                        "role": "user",
+                        "parts": [{"text": f"[Result of {tool_name}: {msg['content']}]"}]
+                    })
+                    logger.debug(f"Converted tool result {tool_name} to user message")
+                else:
+                    # Convert tool results normally
+                    contents.append({
+                        "role": "function",
+                        "parts": [{
+                            "function_response": {
+                                "name": msg.get("name", ""),  # Tool name should be in the message
+                                "response": {"result": msg["content"]}
+                            }
+                        }]
+                    })
+
         return system_instruction, contents
     
     def _convert_tools_to_provider_format(self, tools: List[Dict[str, Any]]) -> List[Tool]:
@@ -413,12 +451,12 @@ class GoogleGeminiProvider(BaseLLMProvider):
                                             if not hasattr(fc, 'name') or not fc.name:
                                                 logger.warning("Function call missing name attribute")
                                                 continue
-                                            
+
                                             # Extract arguments safely
                                             args = {}
                                             if hasattr(fc, 'args'):
                                                 args = fc.args if fc.args else {}
-                                            
+
                                             tool_call = {
                                                 "id": f"call_{len(tool_calls_requested)}",
                                                 "type": "function",
@@ -427,6 +465,12 @@ class GoogleGeminiProvider(BaseLLMProvider):
                                                     "arguments": json.dumps(args)
                                                 }
                                             }
+
+                                            # Capture thought_signature if present (required for Gemini 2.5+)
+                                            if hasattr(part, 'thought_signature') and part.thought_signature:
+                                                tool_call["thought_signature"] = part.thought_signature
+                                                logger.debug(f"Captured thought_signature for function call: {fc.name}")
+
                                             tool_calls_requested.append(tool_call)
                                             
                                             # Send early notification

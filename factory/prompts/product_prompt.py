@@ -113,10 +113,10 @@ Before creating any document:
 
 2. **Create Technical Spec**
    - Architecture overview
-   - Database schema
-   - API routes
+   - Database schema [in table format]
+   - API routes [in table format]
    - UI component structure
-   - Third-party integrations
+   - Third-party integrations [look up the detailed documentation on this]
    - NO actual code — just specifications
 
 ---

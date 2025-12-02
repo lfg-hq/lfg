@@ -27,6 +27,10 @@ urlpatterns = [
     path('<str:project_id>/api/prd/', views.project_prd_api, name='project_prd_api'),
     path('<str:project_id>/api/implementation/', views.project_implementation_api, name='project_implementation_api'),
     path('<str:project_id>/api/design-schema/', views.project_design_schema_api, name='project_design_schema_api'),
+
+    # Design Canvas APIs
+    path('<str:project_id>/api/design-features/', views.design_features_api, name='design_features_api'),
+    path('<str:project_id>/api/design-positions/', views.design_positions_api, name='design_positions_api'),
     # Removed - use project_checklist_api instead
     path('<str:project_id>/api/checklist/', views.project_checklist_api, name='project_checklist_api'),
     path('<str:project_id>/api/checklist/create/', views.create_checklist_item_api, name='create_checklist_item_api'),

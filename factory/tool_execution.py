@@ -18,6 +18,17 @@ logger = logging.getLogger(__name__)
 MAX_TOOL_OUTPUT_SIZE = 50 * 1024
 
 
+def sanitize_for_postgres(obj):
+    """Recursively sanitize data to remove null characters that PostgreSQL cannot store."""
+    if isinstance(obj, str):
+        return obj.replace('\x00', '').replace('\u0000', '')
+    elif isinstance(obj, dict):
+        return {k: sanitize_for_postgres(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_for_postgres(item) for item in obj]
+    return obj
+
+
 async def _get_selected_model_for_user(user) -> str:
     """Return the selected model for a user, falling back to default."""
     default_model = ModelSelection.DEFAULT_MODEL_KEY
@@ -165,6 +176,7 @@ def get_notification_type_for_tool(tool_name: str) -> Optional[str]:
         "create_tickets": "checklist",  # Add this mapping
         "update_ticket": "checklist",
         "implement_ticket": "implementation",  # Implementation tasks go to implementation tab
+        "generate_design_preview": "design_preview",  # Design preview goes to design tab
         # "save_project_name": "toolhistory",  # Project name saving goes to tool history
     }
     
@@ -197,6 +209,7 @@ def map_notification_type_to_tab(notification_type: str) -> str:
         # "project_name_saved": "toolhistory",
         "prd_stream": "prd_stream",  # Map prd_stream to prd tab
         "implementation_stream": "implementation_stream",  # Map implementation_stream to implementation tab
+        "design_preview": "design_preview",  # Map design_preview for design previews
         # Add more custom mappings as needed
     }
     
@@ -532,24 +545,27 @@ async def execute_tool_call(
                 except:
                     pass
             
-            # Create the tool call history record
+            # Create the tool call history record (sanitize to remove null chars)
+            sanitized_tool_input = sanitize_for_postgres(parsed_args if 'parsed_args' in locals() else {})
+            sanitized_result = sanitize_for_postgres(result_content) if isinstance(result_content, str) else result_content
+
             tool_history = await asyncio.to_thread(
                 ToolCallHistory.objects.create,
                 project=project,
                 conversation=conversation,
                 message=message,
                 tool_name=tool_call_name,
-                tool_input=parsed_args if 'parsed_args' in locals() else {},
-                generated_content=result_content,
+                tool_input=sanitized_tool_input,
+                generated_content=sanitized_result,
                 content_type='text',
                 metadata={
-                    'notification_data': notification_data,
-                    'yielded_content': yield_chunks,
+                    'notification_data': sanitize_for_postgres(notification_data),
+                    'yielded_content': sanitize_for_postgres(yield_chunks),
                     'has_error': status == 'failed',
                     'tool_execution_id': tool_execution_id,
                     'started_at': start_time.isoformat() + "Z",
                     'completed_at': completed_at.isoformat() + "Z",
-                    'tool_input_preview': tool_input_preview,
+                    'tool_input_preview': sanitize_for_postgres(tool_input_preview) if tool_input_preview else None,
                     'ticket_context': ticket_context,
                     'status': status
                 }

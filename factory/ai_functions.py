@@ -11,7 +11,8 @@ from pathlib import Path
 from asgiref.sync import sync_to_async
 from projects.models import Project, ProjectFeature, ProjectPersona, \
                             ProjectPRD, ProjectDesignSchema, ProjectTicket, \
-                            ProjectImplementation, ProjectFile, ProjectTodoList, TicketLog
+                            ProjectImplementation, ProjectFile, ProjectTodoList, TicketLog, \
+                            ProjectDesignFeature
 from projects.websocket_utils import async_send_ticket_log_notification
 
 from development.models import ServerConfig, MagpieWorkspace
@@ -629,6 +630,10 @@ async def app_functions(function_name, function_args, project_id, conversation_i
         case "lookup_technology_specs":
             category = function_args.get('category', 'all')
             return await lookup_technology_specs(category)
+
+        # Design preview generation
+        case "generate_design_preview":
+            return await generate_design_preview(function_args, project_id, conversation_id)
 
         # case "implement_ticket_async":
         #     ticket_id = function_args.get('ticket_id')
@@ -6012,4 +6017,148 @@ async def lookup_technology_specs(category: str = 'all'):
         return {
             "is_notification": False,
             "message_to_agent": f"Error: {str(e)}"
+        }
+
+
+async def generate_design_preview(function_args, project_id, conversation_id=None):
+    """
+    Generate a design preview for a feature with multiple pages/screens.
+    Stores data in ProjectDesignFeature model with proper JSONFields.
+
+    Args:
+        function_args: Dictionary containing:
+            - feature_name: Name of the feature
+            - feature_description: Brief description of the feature
+            - explainer: Detailed explanation of the feature
+            - css_style: Complete CSS stylesheet
+            - pages: Array of page objects with connections
+            - feature_connections: Array of cross-feature navigation links
+            - entry_page_id: The entry point page for this feature
+            - canvas_position: Optional position on the design canvas
+        project_id: The project ID
+        conversation_id: Optional conversation ID
+
+    Returns:
+        Dictionary with notification data and message for the agent
+    """
+    import uuid
+
+    logger.info(f"Generate design preview called for project: {project_id}")
+
+    # Validate project
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+
+    # Validate required arguments
+    required_fields = ['feature_name', 'feature_description', 'explainer', 'css_style', 'pages', 'entry_page_id']
+    validation_error = validate_function_args(function_args, required_fields)
+    if validation_error:
+        return validation_error
+
+    feature_name = function_args.get('feature_name')
+    feature_description = function_args.get('feature_description')
+    explainer = function_args.get('explainer')
+    css_style = function_args.get('css_style')
+    pages = function_args.get('pages', [])
+    feature_connections = function_args.get('feature_connections', [])
+    entry_page_id = function_args.get('entry_page_id')
+    canvas_position = function_args.get('canvas_position', {'x': 0, 'y': 0})
+
+    # Validate pages structure
+    if not isinstance(pages, list) or len(pages) == 0:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: pages must be a non-empty array of page objects"
+        }
+
+    # Helper to sanitize null characters that PostgreSQL cannot store
+    def sanitize_text(text):
+        if isinstance(text, str):
+            return text.replace('\x00', '').replace('\u0000', '')
+        return text
+
+    try:
+        project = await sync_to_async(Project.objects.get)(project_id=project_id)
+
+        # Get conversation if provided
+        conversation = None
+        if conversation_id:
+            try:
+                conversation = await sync_to_async(Conversation.objects.get)(id=conversation_id)
+            except Conversation.DoesNotExist:
+                logger.warning(f"Conversation {conversation_id} not found, proceeding without linking")
+
+        # Sanitize text fields
+        feature_name = sanitize_text(feature_name)
+        feature_description = sanitize_text(feature_description)
+        explainer = sanitize_text(explainer)
+        css_style = sanitize_text(css_style)
+
+        # Build pages array for JSONField with sanitized content
+        pages_data = [
+            {
+                "page_id": page.get('page_id'),
+                "page_name": sanitize_text(page.get('page_name', '')),
+                "page_type": page.get('page_type', 'screen'),
+                "html_content": sanitize_text(page.get('html_content', '')),
+                "navigates_to": page.get('navigates_to', [])
+            }
+            for page in pages
+        ]
+
+        # Create or update the design feature (identified by project + feature_name)
+        design_feature, created = await sync_to_async(ProjectDesignFeature.objects.update_or_create)(
+            project=project,
+            feature_name=feature_name,
+            defaults={
+                'conversation': conversation,
+                'feature_description': feature_description,
+                'explainer': explainer,
+                'css_style': css_style,
+                'pages': pages_data,
+                'entry_page_id': entry_page_id,
+                'feature_connections': feature_connections,
+                'canvas_position': canvas_position
+            }
+        )
+        logger.info(f"Saved design feature to database: id={design_feature.id}, feature_name={feature_name}")
+
+        # Build success message
+        pages_summary = ', '.join([p.get('page_name', p.get('page_id')) for p in pages])
+        connections_count = len(feature_connections)
+        internal_nav_count = sum(len(p.get('navigates_to', [])) for p in pages)
+
+        success_message = (
+            f"Design preview generated successfully for feature '{feature_name}'!\n\n"
+            f"**Feature Details:**\n"
+            f"- Entry Point: {entry_page_id}\n"
+            f"- Pages: {pages_summary}\n"
+            f"- Internal navigations: {internal_nav_count}\n"
+            f"- Cross-feature connections: {connections_count}\n\n"
+            f"**Saved to Database:**\n"
+            f"- Record ID: {design_feature.id}"
+        )
+
+        return {
+            "is_notification": True,
+            "notification_type": "design_preview",
+            "message_to_agent": success_message,
+            "data": {
+                "feature_name": feature_name,
+                "record_id": design_feature.id,
+                "conversation_id": conversation_id
+            }
+        }
+
+    except Project.DoesNotExist:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Project with ID {project_id} not found."
+        }
+    except Exception as e:
+        logger.error(f"Error generating design preview: {e}", exc_info=True)
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error generating design preview: {str(e)}"
         }

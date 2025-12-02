@@ -190,8 +190,38 @@ class ProjectDesignSchema(models.Model):
 
     def get_design_schema(self):
         return self.design_schema
-    
-    
+
+
+class ProjectDesignFeature(models.Model):
+    """Model to store design features with pages, navigation, and styling as JSON"""
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='design_features')
+    conversation = models.ForeignKey('chat.Conversation', on_delete=models.SET_NULL, null=True, blank=True, related_name='design_features')
+    feature_name = models.CharField(max_length=255)
+    feature_description = models.TextField(blank=True, default='')
+    explainer = models.TextField(blank=True, default='')
+
+    # All design data stored as JSON
+    css_style = models.TextField(blank=True, default='')
+    pages = models.JSONField(default=list)  # Array of page objects with html_content, navigates_to, etc.
+    entry_page_id = models.CharField(max_length=100, blank=True, default='')
+    feature_connections = models.JSONField(default=list)  # Cross-feature navigation links
+    canvas_position = models.JSONField(default=dict)  # {x: 0, y: 0}
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+        unique_together = ['project', 'feature_name']
+        indexes = [
+            models.Index(fields=['project', '-updated_at']),
+            models.Index(fields=['project', 'feature_name']),
+        ]
+
+    def __str__(self):
+        return f"{self.project.name} - {self.feature_name}"
+
+
 class ProjectTicket(models.Model):
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="tickets")
     name = models.CharField(max_length=255)

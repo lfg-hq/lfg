@@ -1204,6 +1204,128 @@ lookup_technology_specs = {
     }
 }
 
+generate_design_preview = {
+    "type": "function",
+    "function": {
+        "name": "generate_design_preview",
+        "description": "Generate a design preview for a feature with multiple screens/pages. Creates an explainer, CSS styles, and HTML pages organized by feature. Pages are connected to show navigation flow, and features are connected to show the overall user journey.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "feature_name": {
+                    "type": "string",
+                    "description": "Name of the feature being designed (e.g., 'Authentication', 'Dashboard', 'User Profile', 'Settings')"
+                },
+                "feature_description": {
+                    "type": "string",
+                    "description": "Brief description of what this feature does and its purpose in the application"
+                },
+                "explainer": {
+                    "type": "string",
+                    "description": "Detailed explanation of how the feature works, including user interactions, navigation flow, and key functionality. List the screens needed for this feature"
+                },
+                "css_style": {
+                    "type": "string",
+                    "description": "Complete CSS stylesheet for the design. Include all necessary styles, responsive breakpoints, and theme variables"
+                },
+                "pages": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "page_id": {
+                                "type": "string",
+                                "description": "Unique identifier for this page (e.g., 'login', 'register', 'forgot-password')"
+                            },
+                            "page_name": {
+                                "type": "string",
+                                "description": "Display name of the page (e.g., 'Login Page', 'Registration Form')"
+                            },
+                            "html_content": {
+                                "type": "string",
+                                "description": "Complete HTML content for the page."
+                            },
+                            "page_type": {
+                                "type": "string",
+                                "enum": ["screen", "modal", "drawer", "popup", "toast"],
+                                "description": "Type of UI component this page represents"
+                            },
+                            "navigates_to": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "target_page_id": {
+                                            "type": "string",
+                                            "description": "The page_id this navigation leads to"
+                                        },
+                                        "trigger": {
+                                            "type": "string",
+                                            "description": "What triggers this navigation (e.g., 'Click Submit button', 'Click Forgot Password link')"
+                                        },
+                                        "condition": {
+                                            "type": "string",
+                                            "description": "Optional condition for this navigation (e.g., 'On successful login', 'If validation fails')"
+                                        }
+                                    },
+                                    "required": ["target_page_id", "trigger"]
+                                },
+                                "description": "List of pages this page can navigate to within the same feature"
+                            }
+                        },
+                        "required": ["page_id", "page_name", "html_content", "page_type"]
+                    },
+                    "description": "Array of pages that make up this feature. Think of as many screens as you can for this feature."
+                },
+                "feature_connections": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "from_page_id": {
+                                "type": "string",
+                                "description": "The page_id where navigation starts"
+                            },
+                            "to_feature": {
+                                "type": "string",
+                                "description": "The feature_name this navigation leads to (e.g., 'Dashboard', 'Settings')"
+                            },
+                            "to_page_id": {
+                                "type": "string",
+                                "description": "Optional: specific page_id in the target feature to navigate to"
+                            },
+                            "trigger": {
+                                "type": "string",
+                                "description": "What triggers this cross-feature navigation"
+                            },
+                            "condition": {
+                                "type": "string",
+                                "description": "Optional condition for this navigation"
+                            }
+                        },
+                        "required": ["from_page_id", "to_feature", "trigger"]
+                    },
+                    "description": "List of connections from this feature to other features in the application"
+                },
+                "entry_page_id": {
+                    "type": "string",
+                    "description": "The page_id that serves as the entry point for this feature"
+                },
+                "canvas_position": {
+                    "type": "object",
+                    "properties": {
+                        "x": {"type": "number", "description": "X position on the design canvas"},
+                        "y": {"type": "number", "description": "Y position on the design canvas"}
+                    },
+                    "description": "Optional: suggested position for this feature on the design canvas"
+                }
+            },
+            "required": ["feature_name", "feature_description", "explainer", "css_style", "pages", "entry_page_id"],
+            "additionalProperties": False,
+        }
+    }
+}
+
 # Main tool lists
 tools_code = [get_prd, start_server, \
               get_github_access_token, \
@@ -1234,7 +1356,7 @@ tools_product = [
     lookup_technology_specs
 ]
 
-tools_turbo = [
+tools_turbo_ = [
     get_file_list,
     get_file_content,
     create_tickets,
@@ -1263,4 +1385,15 @@ tools_builder = [
     broadcast_to_user
 ]
 
-tools_design = [get_prd, execute_command, start_server, get_github_access_token]
+tools_turbo = [
+    get_file_content,
+    get_pending_tickets,
+    generate_design_preview
+]
+
+tools_design = [
+    get_prd,
+    execute_command,
+    start_server,
+    generate_design_preview
+]
