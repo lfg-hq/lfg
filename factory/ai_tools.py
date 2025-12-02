@@ -1385,6 +1385,58 @@ tools_builder = [
     broadcast_to_user
 ]
 
+# Anthropic native format for direct API calls
+edit_design_screen_anthropic = {
+    "name": "edit_design_screen",
+    "description": "Edit a specific screen's HTML content based on user's change request. Use this to modify the design of a single screen within a feature.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "updated_html": {
+                "type": "string",
+                "description": "The complete updated HTML content for the screen with the requested changes applied. Must be valid HTML."
+            },
+            "updated_css": {
+                "type": "string",
+                "description": "Optional: Updated CSS if the changes require new styles. Only include if CSS changes are needed."
+            },
+            "change_summary": {
+                "type": "string",
+                "description": "Brief summary of what was changed in the design"
+            }
+        },
+        "required": ["updated_html", "change_summary"]
+    }
+}
+
+# OpenAI format (kept for compatibility)
+edit_design_screen = {
+    "type": "function",
+    "function": {
+        "name": "edit_design_screen",
+        "description": "Edit a specific screen's HTML content based on user's change request. Use this to modify the design of a single screen within a feature.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "updated_html": {
+                    "type": "string",
+                    "description": "The complete updated HTML content for the screen with the requested changes applied. Must be valid HTML."
+                },
+                "updated_css": {
+                    "type": "string",
+                    "description": "Optional: Updated CSS if the changes require new styles. Only include if CSS changes are needed."
+                },
+                "change_summary": {
+                    "type": "string",
+                    "description": "Brief summary of what was changed in the design"
+                }
+            },
+            "required": ["updated_html", "change_summary"],
+            "additionalProperties": False,
+        }
+    }
+}
+
 tools_turbo = [
     get_file_content,
     get_pending_tickets,
@@ -1396,4 +1448,8 @@ tools_design = [
     execute_command,
     start_server,
     generate_design_preview
+]
+
+tools_design_chat = [
+    edit_design_screen_anthropic
 ]

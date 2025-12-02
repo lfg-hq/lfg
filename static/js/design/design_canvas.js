@@ -586,6 +586,8 @@ class DesignCanvas {
         // Store current context
         panel.dataset.featureId = feature.feature_id;
         panel.dataset.pageId = page.page_id;
+        panel.dataset.cssStyle = feature.css_style || '';
+        panel.dataset.htmlContent = page.html_content || '';
 
         // Show panel
         panel.classList.add('active');
@@ -596,12 +598,23 @@ class DesignCanvas {
         }, 100);
     }
 
-    sendAIChatMessage() {
+    async sendAIChatMessage() {
         const input = document.getElementById('ai-chat-input');
         const messagesContainer = document.getElementById('ai-chat-messages');
+        const panel = document.getElementById('design-ai-chat-panel');
+        const sendBtn = document.getElementById('ai-chat-send');
         const message = input?.value?.trim();
 
         if (!message) return;
+
+        const featureId = panel?.dataset.featureId;
+        const pageId = panel?.dataset.pageId;
+        const projectId = this.getProjectId();
+
+        if (!featureId || !pageId || !projectId) {
+            console.error('Missing context for AI chat');
+            return;
+        }
 
         // Add user message
         const userMsg = document.createElement('div');
@@ -609,13 +622,15 @@ class DesignCanvas {
         userMsg.innerHTML = `<p>${this.escapeHtml(message)}</p>`;
         messagesContainer?.appendChild(userMsg);
 
-        // Clear input
+        // Clear input and disable send button
         if (input) input.value = '';
+        if (sendBtn) sendBtn.disabled = true;
+        if (input) input.disabled = true;
 
         // Add loading message
         const loadingMsg = document.createElement('div');
         loadingMsg.className = 'ai-chat-message assistant loading';
-        loadingMsg.innerHTML = `<p><i class="fas fa-circle-notch fa-spin"></i> Thinking...</p>`;
+        loadingMsg.innerHTML = `<p><i class="fas fa-circle-notch fa-spin"></i> Updating design...</p>`;
         messagesContainer?.appendChild(loadingMsg);
 
         // Scroll to bottom
@@ -623,18 +638,144 @@ class DesignCanvas {
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
 
-        // TODO: Send to AI backend
-        // For now, show a placeholder response
-        setTimeout(() => {
+        try {
+            const response = await fetch(`/projects/${projectId}/api/design-chat/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCSRFToken()
+                },
+                body: JSON.stringify({
+                    feature_id: featureId,
+                    page_id: pageId,
+                    message: message
+                })
+            });
+
+            const data = await response.json();
+
+            // Remove loading message
             loadingMsg.remove();
-            const assistantMsg = document.createElement('div');
-            assistantMsg.className = 'ai-chat-message assistant';
-            assistantMsg.innerHTML = `<p>This feature is coming soon! You'll be able to edit screens with natural language commands.</p>`;
-            messagesContainer?.appendChild(assistantMsg);
+
+            if (data.success) {
+                // Show success message
+                const assistantMsg = document.createElement('div');
+                assistantMsg.className = 'ai-chat-message assistant success';
+                assistantMsg.innerHTML = `
+                    <p><i class="fas fa-check-circle"></i> ${this.escapeHtml(data.change_summary || 'Design updated successfully!')}</p>
+                    ${data.assistant_message && data.assistant_message !== data.change_summary ? `<p class="ai-detail">${this.escapeHtml(data.assistant_message)}</p>` : ''}
+                `;
+                messagesContainer?.appendChild(assistantMsg);
+
+                // Update the stored HTML content
+                if (data.updated_html) {
+                    panel.dataset.htmlContent = data.updated_html;
+                }
+                if (data.updated_css) {
+                    panel.dataset.cssStyle = data.updated_css;
+                }
+
+                // Update the screen card thumbnail
+                this.updateScreenCard(featureId, pageId, data.updated_html, data.updated_css);
+
+                // If preview modal is open, update it too
+                if (this.previewModal?.classList.contains('active')) {
+                    this.updatePreviewContent(data.updated_html, data.updated_css || panel.dataset.cssStyle);
+                }
+
+            } else {
+                // Show error message
+                const assistantMsg = document.createElement('div');
+                assistantMsg.className = 'ai-chat-message assistant error';
+                assistantMsg.innerHTML = `
+                    <p><i class="fas fa-exclamation-circle"></i> ${this.escapeHtml(data.error || 'Failed to update design')}</p>
+                    ${data.assistant_message ? `<p class="ai-detail">${this.escapeHtml(data.assistant_message)}</p>` : ''}
+                `;
+                messagesContainer?.appendChild(assistantMsg);
+            }
+
+        } catch (error) {
+            console.error('Error sending AI chat message:', error);
+            loadingMsg.remove();
+
+            const errorMsg = document.createElement('div');
+            errorMsg.className = 'ai-chat-message assistant error';
+            errorMsg.innerHTML = `<p><i class="fas fa-exclamation-circle"></i> Connection error. Please try again.</p>`;
+            messagesContainer?.appendChild(errorMsg);
+        } finally {
+            // Re-enable input
+            if (sendBtn) sendBtn.disabled = false;
+            if (input) {
+                input.disabled = false;
+                input.focus();
+            }
+
+            // Scroll to bottom
             if (messagesContainer) {
                 messagesContainer.scrollTop = messagesContainer.scrollHeight;
             }
-        }, 1500);
+        }
+    }
+
+    updateScreenCard(featureId, pageId, newHtml, newCss) {
+        // Find the screen card
+        const card = document.getElementById(`screen-${featureId}-${pageId}`);
+        if (!card) return;
+
+        // Get the feature for CSS (try both string and number keys)
+        let feature = this.features.get(featureId) || this.features.get(parseInt(featureId));
+        const cssContent = newCss || feature?.css_style || '';
+
+        // Update the thumbnail iframe
+        const thumbnailContainer = card.querySelector('.screen-thumbnail');
+        if (thumbnailContainer && newHtml) {
+            const fullHtml = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <style>
+                        ${cssContent}
+                        body { margin: 0; transform-origin: top left; overflow: hidden; }
+                    </style>
+                </head>
+                <body>${newHtml}</body>
+                </html>
+            `.replace(/"/g, '&quot;');
+
+            thumbnailContainer.innerHTML = `<iframe class="thumbnail-iframe" srcdoc="${fullHtml}" scrolling="no" sandbox="allow-same-origin"></iframe>`;
+        }
+
+        // Update the feature's page data in memory
+        if (feature) {
+            const pages = feature.pages || [];
+            const page = pages.find(p => p.page_id === pageId);
+            if (page) {
+                page.html_content = newHtml;
+            }
+            if (newCss) {
+                feature.css_style = newCss;
+            }
+        }
+    }
+
+    updatePreviewContent(newHtml, cssContent) {
+        const iframe = document.getElementById('preview-iframe');
+        if (!iframe) return;
+
+        const fullHtml = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <style>${cssContent}</style>
+            </head>
+            <body>${newHtml}</body>
+            </html>
+        `;
+
+        iframe.srcdoc = fullHtml;
     }
 
     openPreview(feature, page) {

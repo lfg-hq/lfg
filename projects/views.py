@@ -2493,3 +2493,133 @@ def design_positions_api(request, project_id):
     except Exception as e:
         logger.error(f"Error saving design positions: {e}")
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@csrf_exempt
+@require_http_methods(["POST"])
+def design_chat_api(request, project_id):
+    """API endpoint for AI-powered design editing chat"""
+    import anthropic
+    from factory.ai_tools import tools_design_chat
+
+    project = get_object_or_404(Project, project_id=project_id)
+
+    # Check permission
+    if not (project.owner == request.user or project.members.filter(user=request.user, status='active').exists()):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    try:
+        data = json.loads(request.body)
+        feature_id = data.get('feature_id')  # This is the db id
+        page_id = data.get('page_id')
+        user_message = data.get('message', '')
+
+        if not feature_id or not page_id or not user_message:
+            return JsonResponse({'success': False, 'error': 'Missing required fields'}, status=400)
+
+        # Get the design feature
+        design_feature = ProjectDesignFeature.objects.filter(project=project, id=feature_id).first()
+        if not design_feature:
+            return JsonResponse({'success': False, 'error': 'Design feature not found'}, status=404)
+
+        # Find the specific page
+        pages = design_feature.pages or []
+        page_index = None
+        current_page = None
+        for i, page in enumerate(pages):
+            if page.get('page_id') == page_id:
+                page_index = i
+                current_page = page
+                break
+
+        if current_page is None:
+            return JsonResponse({'success': False, 'error': 'Page not found'}, status=404)
+
+        # Build the prompt for the AI
+        system_prompt = """You are a UI/UX design assistant that helps modify HTML designs based on user requests.
+You will be given the current HTML and CSS of a screen, and a user request for changes.
+Your job is to modify the HTML to implement the requested changes while maintaining the overall design style and structure.
+
+IMPORTANT:
+- Keep the same design language and style as the original
+- Only modify what's necessary to fulfill the request
+- Ensure the HTML remains valid and well-structured
+- Preserve all existing functionality unless explicitly asked to change it"""
+
+        user_prompt = f"""Current Screen: {current_page.get('page_name', 'Unknown')}
+Feature: {design_feature.feature_name}
+
+Current CSS:
+```css
+{design_feature.css_style or 'No CSS defined'}
+```
+
+Current HTML:
+```html
+{current_page.get('html_content', '')}
+```
+
+User Request: {user_message}
+
+Please use the edit_design_screen tool to provide the updated HTML with the requested changes."""
+
+        # Call Anthropic API
+        client = anthropic.Anthropic()
+
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=8000,
+            system=system_prompt,
+            tools=tools_design_chat,
+            messages=[
+                {"role": "user", "content": user_prompt}
+            ]
+        )
+
+        # Process the response
+        updated_html = None
+        updated_css = None
+        change_summary = None
+        assistant_message = ""
+
+        for block in response.content:
+            if block.type == "text":
+                assistant_message = block.text
+            elif block.type == "tool_use" and block.name == "edit_design_screen":
+                tool_input = block.input
+                updated_html = tool_input.get('updated_html')
+                updated_css = tool_input.get('updated_css')
+                change_summary = tool_input.get('change_summary', 'Design updated')
+
+        if updated_html:
+            # Update the page's HTML content
+            pages[page_index]['html_content'] = updated_html
+
+            # Update CSS if provided
+            if updated_css:
+                design_feature.css_style = updated_css
+
+            # Save to database
+            design_feature.pages = pages
+            design_feature.save()
+
+            return JsonResponse({
+                'success': True,
+                'updated_html': updated_html,
+                'updated_css': updated_css,
+                'change_summary': change_summary,
+                'assistant_message': assistant_message or change_summary
+            })
+        else:
+            return JsonResponse({
+                'success': False,
+                'error': 'AI did not return updated HTML',
+                'assistant_message': assistant_message
+            }, status=400)
+
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        logger.error(f"Error in design chat: {e}", exc_info=True)
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
