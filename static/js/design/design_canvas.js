@@ -16,6 +16,11 @@ class DesignCanvas {
         this.features = new Map();
         this.pageElements = new Map();
 
+        // Canvas management
+        this.canvases = [];
+        this.currentCanvas = null;
+        this.currentCanvasId = null;
+
         this.zoom = 0.7;
         this.targetZoom = 0.7;
         this.panX = 0;
@@ -40,9 +45,316 @@ class DesignCanvas {
         this.init();
     }
 
-    init() {
+    async init() {
+        this.createCanvasSelector();
         this.bindEvents();
+        this.listenForDesignUpdates();
+        await this.loadCanvases();
         this.loadFeatures();
+    }
+
+    listenForDesignUpdates() {
+        // Listen for design preview notifications to auto-refresh
+        document.addEventListener('designPreviewGenerated', () => {
+            console.log('Design preview generated, refreshing canvas...');
+            this.loadCanvases().then(() => this.loadFeatures());
+        });
+
+        // Also listen for WebSocket notifications
+        if (window.notificationHandler) {
+            const originalHandler = window.notificationHandler;
+            window.notificationHandler = (notification) => {
+                if (notification?.type === 'design_preview') {
+                    console.log('Design preview notification received, refreshing...');
+                    setTimeout(() => {
+                        this.loadCanvases().then(() => this.loadFeatures());
+                    }, 500);
+                }
+                originalHandler(notification);
+            };
+        }
+    }
+
+    createCanvasSelector() {
+        // Find or create the canvas selector in the toolbar
+        const toolbarRight = document.querySelector('.design-canvas-toolbar .toolbar-right');
+        if (!toolbarRight) return;
+
+        // Create canvas selector container
+        const selectorContainer = document.createElement('div');
+        selectorContainer.className = 'canvas-selector-container';
+        selectorContainer.innerHTML = `
+            <select class="canvas-selector" id="canvas-selector" title="Select Canvas">
+                <option value="">Loading...</option>
+            </select>
+            <button class="toolbar-btn canvas-btn" id="canvas-save" title="Save Canvas">
+                <i class="fas fa-save"></i>
+            </button>
+            <button class="toolbar-btn canvas-btn" id="canvas-new" title="New Canvas">
+                <i class="fas fa-plus"></i>
+            </button>
+            <button class="toolbar-btn canvas-btn" id="canvas-delete" title="Delete Canvas">
+                <i class="fas fa-trash"></i>
+            </button>
+        `;
+
+        // Insert before the refresh button
+        const refreshBtn = document.getElementById('canvas-refresh');
+        if (refreshBtn) {
+            toolbarRight.insertBefore(selectorContainer, refreshBtn);
+        } else {
+            toolbarRight.prepend(selectorContainer);
+        }
+
+        // Bind canvas selector events
+        document.getElementById('canvas-selector')?.addEventListener('change', (e) => {
+            this.switchCanvas(e.target.value);
+        });
+        document.getElementById('canvas-save')?.addEventListener('click', () => this.saveCurrentCanvas());
+        document.getElementById('canvas-new')?.addEventListener('click', () => this.createNewCanvas());
+        document.getElementById('canvas-delete')?.addEventListener('click', () => this.deleteCurrentCanvas());
+    }
+
+    async loadCanvases() {
+        const projectId = this.getProjectId();
+        if (!projectId) return;
+
+        try {
+            const response = await fetch(`/projects/${projectId}/api/canvases/`);
+            if (!response.ok) throw new Error('Failed to load canvases');
+
+            const data = await response.json();
+            this.canvases = data.canvases || [];
+
+            // If no canvases exist, create a default one
+            if (this.canvases.length === 0) {
+                await this.createDefaultCanvas();
+                return;  // createDefaultCanvas will call loadCanvases again
+            }
+
+            // Update selector
+            this.updateCanvasSelector();
+
+            // Select default canvas or first one
+            const defaultCanvas = this.canvases.find(c => c.is_default) || this.canvases[0];
+            if (defaultCanvas) {
+                this.currentCanvas = defaultCanvas;
+                this.currentCanvasId = defaultCanvas.id;
+                window.currentDesignCanvasId = defaultCanvas.id;  // Store globally
+                const selector = document.getElementById('canvas-selector');
+                if (selector) selector.value = defaultCanvas.id;
+            }
+
+        } catch (error) {
+            console.error('Error loading canvases:', error);
+        }
+    }
+
+    async createDefaultCanvas() {
+        const projectId = this.getProjectId();
+        if (!projectId) return;
+
+        try {
+            const response = await fetch(`/projects/${projectId}/api/canvases/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCSRFToken()
+                },
+                body: JSON.stringify({
+                    name: 'Canvas 1',
+                    feature_positions: {},
+                    is_default: true
+                })
+            });
+
+            if (response.ok) {
+                // Reload canvases
+                await this.loadCanvases();
+            }
+        } catch (error) {
+            console.error('Error creating default canvas:', error);
+        }
+    }
+
+    updateCanvasSelector() {
+        const selector = document.getElementById('canvas-selector');
+        if (!selector) return;
+
+        if (this.canvases.length === 0) {
+            selector.innerHTML = '<option value="">No canvases</option>';
+        } else {
+            selector.innerHTML = this.canvases.map(c =>
+                `<option value="${c.id}" ${c.is_default ? 'data-default="true"' : ''}>${c.name}${c.is_default ? ' (default)' : ''}</option>`
+            ).join('');
+        }
+
+        // Update delete button state
+        const deleteBtn = document.getElementById('canvas-delete');
+        if (deleteBtn) {
+            deleteBtn.disabled = this.canvases.length <= 1;
+        }
+    }
+
+    async switchCanvas(canvasId) {
+        if (!canvasId) return;
+
+        const canvas = this.canvases.find(c => c.id == canvasId);
+        if (!canvas) return;
+
+        this.currentCanvas = canvas;
+        this.currentCanvasId = canvas.id;
+
+        // Store globally for design agent to use
+        window.currentDesignCanvasId = canvas.id;
+
+        // Re-render with canvas positions
+        this.render();
+        setTimeout(() => this.fitToScreen(), 50);
+    }
+
+    async saveCurrentCanvas() {
+        if (!this.currentCanvasId) {
+            // No canvas selected, create a new one
+            return this.createNewCanvas();
+        }
+
+        const projectId = this.getProjectId();
+        if (!projectId) return;
+
+        // Collect current positions
+        const positions = {};
+        this.pageElements.forEach((el, pageId) => {
+            const featureId = el.dataset.featureId;
+            const key = `${featureId}_${pageId}`;
+            positions[key] = {
+                x: parseFloat(el.style.left) || 0,
+                y: parseFloat(el.style.top) || 0
+            };
+        });
+
+        try {
+            const response = await fetch(`/projects/${projectId}/api/canvases/${this.currentCanvasId}/positions/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCSRFToken()
+                },
+                body: JSON.stringify({ positions })
+            });
+
+            if (response.ok) {
+                // Update local canvas data
+                this.currentCanvas.feature_positions = positions;
+                this.showToast('Canvas saved successfully!');
+            } else {
+                throw new Error('Failed to save');
+            }
+        } catch (error) {
+            console.error('Error saving canvas:', error);
+            this.showToast('Failed to save canvas', 'error');
+        }
+    }
+
+    async createNewCanvas() {
+        const name = prompt('Enter canvas name:', `Canvas ${this.canvases.length + 1}`);
+        if (!name) return;
+
+        const projectId = this.getProjectId();
+        if (!projectId) return;
+
+        try {
+            const response = await fetch(`/projects/${projectId}/api/canvases/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCSRFToken()
+                },
+                body: JSON.stringify({
+                    name,
+                    feature_positions: {},  // Empty - no screens
+                    visible_features: [],   // Empty - no screens visible
+                    is_default: this.canvases.length === 0
+                })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                this.canvases.push(data.canvas);
+                this.currentCanvas = data.canvas;
+                this.currentCanvasId = data.canvas.id;
+                this.updateCanvasSelector();
+                document.getElementById('canvas-selector').value = data.canvas.id;
+                this.render();  // Re-render to show empty canvas
+                this.showToast(`Canvas "${name}" created!`);
+            } else {
+                const errData = await response.json();
+                throw new Error(errData.error || 'Failed to create');
+            }
+        } catch (error) {
+            console.error('Error creating canvas:', error);
+            this.showToast(error.message || 'Failed to create canvas', 'error');
+        }
+    }
+
+    async deleteCurrentCanvas() {
+        if (!this.currentCanvasId || this.canvases.length <= 1) {
+            this.showToast('Cannot delete the only canvas', 'error');
+            return;
+        }
+
+        if (!confirm(`Delete canvas "${this.currentCanvas.name}"?`)) return;
+
+        const projectId = this.getProjectId();
+        if (!projectId) return;
+
+        try {
+            const response = await fetch(`/projects/${projectId}/api/canvases/${this.currentCanvasId}/`, {
+                method: 'DELETE',
+                headers: {
+                    'X-CSRFToken': this.getCSRFToken()
+                }
+            });
+
+            if (response.ok) {
+                // Remove from list
+                this.canvases = this.canvases.filter(c => c.id !== this.currentCanvasId);
+
+                // Switch to first available canvas
+                const firstCanvas = this.canvases[0];
+                this.currentCanvas = firstCanvas;
+                this.currentCanvasId = firstCanvas?.id || null;
+
+                this.updateCanvasSelector();
+                if (firstCanvas) {
+                    document.getElementById('canvas-selector').value = firstCanvas.id;
+                    this.render();
+                }
+                this.showToast('Canvas deleted');
+            } else {
+                throw new Error('Failed to delete');
+            }
+        } catch (error) {
+            console.error('Error deleting canvas:', error);
+            this.showToast('Failed to delete canvas', 'error');
+        }
+    }
+
+    showToast(message, type = 'success') {
+        // Create toast element
+        const toast = document.createElement('div');
+        toast.className = `canvas-toast ${type}`;
+        toast.textContent = message;
+        document.body.appendChild(toast);
+
+        // Animate in
+        setTimeout(() => toast.classList.add('show'), 10);
+
+        // Remove after delay
+        setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
     }
 
     bindEvents() {
@@ -231,6 +543,7 @@ class DesignCanvas {
     toggleFullscreen() {
         this.isFullscreen = !this.isFullscreen;
         this.container.classList.toggle('fullscreen', this.isFullscreen);
+        document.body.classList.toggle('design-fullscreen-active', this.isFullscreen);
 
         const btn = document.getElementById('canvas-fullscreen');
         if (btn) {
@@ -357,10 +670,43 @@ class DesignCanvas {
     render() {
         this.featuresContainer.innerHTML = '';
         this.pageElements.clear();
+        this.hideEmptyCanvasState();
+
+        // Get saved positions from current canvas
+        const savedPositions = this.currentCanvas?.feature_positions || {};
+        const isDefaultCanvas = this.currentCanvas?.is_default === true;
+
+        // For default canvas: show all screens
+        // For non-default canvas: show only screens with saved positions
+        const hasPositions = Object.keys(savedPositions).length > 0;
+
+        // Check if we have any screens at all
+        if (this.features.size === 0) {
+            this.showEmpty(true);
+            return;
+        }
+
+        // For non-default empty canvas, show empty state
+        if (!isDefaultCanvas && !hasPositions) {
+            this.showEmptyCanvasState();
+            return;
+        }
 
         let currentY = 50;
+        let hasVisibleScreens = false;
 
         this.features.forEach((feature) => {
+            const pages = feature.pages || [];
+
+            // Filter pages based on canvas type
+            const visiblePages = isDefaultCanvas ? pages : pages.filter(page => {
+                const positionKey = `${feature.feature_id}_${page.page_id}`;
+                return savedPositions[positionKey];
+            });
+
+            if (visiblePages.length === 0) return;
+            hasVisibleScreens = true;
+
             // Add feature section header
             const sectionHeader = document.createElement('div');
             sectionHeader.className = 'feature-section-header';
@@ -368,21 +714,31 @@ class DesignCanvas {
             sectionHeader.style.top = `${currentY}px`;
             sectionHeader.innerHTML = `
                 <span class="feature-section-title">${this.escapeHtml(feature.feature_name)}</span>
-                <span class="feature-section-count">${feature.pages?.length || 0} screens</span>
+                <span class="feature-section-count">${visiblePages.length} screens</span>
             `;
             this.featuresContainer.appendChild(sectionHeader);
 
             currentY += 50;
 
-            // Render all screens as individual cards in a grid
-            const pages = feature.pages || [];
-            const columns = Math.min(4, Math.max(3, Math.ceil(Math.sqrt(pages.length))));
+            const columns = Math.min(4, Math.max(3, Math.ceil(Math.sqrt(visiblePages.length))));
 
-            pages.forEach((page, index) => {
-                const col = index % columns;
-                const row = Math.floor(index / columns);
-                const x = 50 + col * (this.cardWidth + this.cardGap);
-                const y = currentY + row * (this.cardHeight + this.cardGap);
+            visiblePages.forEach((page, index) => {
+                // Check for saved position in current canvas
+                const positionKey = `${feature.feature_id}_${page.page_id}`;
+                const savedPos = savedPositions[positionKey];
+
+                let x, y;
+                if (savedPos) {
+                    // Use saved position
+                    x = savedPos.x;
+                    y = savedPos.y;
+                } else {
+                    // Calculate default grid position
+                    const col = index % columns;
+                    const row = Math.floor(index / columns);
+                    x = 50 + col * (this.cardWidth + this.cardGap);
+                    y = currentY + row * (this.cardHeight + this.cardGap);
+                }
 
                 const card = this.createScreenCard(feature, page, x, y);
                 this.featuresContainer.appendChild(card);
@@ -391,15 +747,203 @@ class DesignCanvas {
                 this.pageElements.set(pageKey, card);
             });
 
-            // Move to next section
-            const rows = Math.ceil(pages.length / columns);
+            // Move to next section (only for calculating header position)
+            const rows = Math.ceil(visiblePages.length / columns);
             currentY += rows * (this.cardHeight + this.cardGap) + 80;
         });
+
+        // Show empty state if no visible screens
+        if (!hasVisibleScreens) {
+            this.showEmptyCanvasState();
+            return;
+        }
+
+        // Hide empty state if showing screens
+        this.hideEmptyCanvasState();
 
         // Fit to screen after render
         requestAnimationFrame(() => {
             setTimeout(() => this.fitToScreen(), 50);
         });
+    }
+
+    showEmptyCanvasState() {
+        // Hide the features container
+        if (this.featuresContainer) {
+            this.featuresContainer.style.display = 'none';
+        }
+
+        // Create or show empty canvas state
+        let emptyState = document.getElementById('empty-canvas-state');
+        if (!emptyState) {
+            emptyState = document.createElement('div');
+            emptyState.id = 'empty-canvas-state';
+            emptyState.className = 'empty-canvas-state';
+            emptyState.innerHTML = `
+                <div class="empty-canvas-icon"><i class="fas fa-layer-group"></i></div>
+                <div class="empty-canvas-title">Empty Canvas</div>
+                <div class="empty-canvas-subtitle">Add screens to this canvas to get started</div>
+                <button class="add-screens-btn" id="add-screens-btn">
+                    <i class="fas fa-plus"></i> Add Screens
+                </button>
+            `;
+            this.wrapper?.appendChild(emptyState);
+
+            // Bind add screens button
+            document.getElementById('add-screens-btn')?.addEventListener('click', () => {
+                this.showScreenPicker();
+            });
+        }
+        emptyState.style.display = 'flex';
+    }
+
+    hideEmptyCanvasState() {
+        const emptyState = document.getElementById('empty-canvas-state');
+        if (emptyState) {
+            emptyState.style.display = 'none';
+        }
+        if (this.featuresContainer) {
+            this.featuresContainer.style.display = 'block';
+        }
+    }
+
+    showScreenPicker() {
+        // Create screen picker modal
+        let picker = document.getElementById('screen-picker-modal');
+        if (picker) picker.remove();
+
+        picker = document.createElement('div');
+        picker.id = 'screen-picker-modal';
+        picker.className = 'screen-picker-modal';
+
+        // Get current visible screens
+        const savedPositions = this.currentCanvas?.feature_positions || {};
+        const currentlyVisible = new Set(Object.keys(savedPositions));
+
+        let screensHtml = '';
+        this.features.forEach((feature) => {
+            const pages = feature.pages || [];
+            if (pages.length === 0) return;
+
+            screensHtml += `<div class="picker-feature-group">
+                <div class="picker-feature-header">
+                    <span class="picker-feature-name">${this.escapeHtml(feature.feature_name)}</span>
+                    <button class="picker-add-all" data-feature-id="${feature.feature_id}">Add All</button>
+                </div>
+                <div class="picker-screens">`;
+
+            pages.forEach(page => {
+                const key = `${feature.feature_id}_${page.page_id}`;
+                const isAdded = currentlyVisible.has(key);
+                screensHtml += `
+                    <div class="picker-screen ${isAdded ? 'added' : ''}"
+                         data-key="${key}"
+                         data-feature-id="${feature.feature_id}"
+                         data-page-id="${page.page_id}">
+                        <span class="picker-screen-name">${this.escapeHtml(page.page_name)}</span>
+                        <button class="picker-toggle-btn">${isAdded ? '<i class="fas fa-check"></i>' : '<i class="fas fa-plus"></i>'}</button>
+                    </div>`;
+            });
+
+            screensHtml += '</div></div>';
+        });
+
+        picker.innerHTML = `
+            <div class="screen-picker-content">
+                <div class="screen-picker-header">
+                    <span>Add Screens to Canvas</span>
+                    <button class="screen-picker-close" id="screen-picker-close"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="screen-picker-body">
+                    ${screensHtml || '<p class="no-screens">No screens available</p>'}
+                </div>
+                <div class="screen-picker-footer">
+                    <button class="picker-done-btn" id="picker-done-btn">Done</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(picker);
+
+        // Bind events
+        document.getElementById('screen-picker-close')?.addEventListener('click', () => picker.remove());
+        document.getElementById('picker-done-btn')?.addEventListener('click', () => {
+            picker.remove();
+            this.render();
+            setTimeout(() => this.fitToScreen(), 100);
+        });
+
+        // Toggle individual screens
+        picker.querySelectorAll('.picker-screen').forEach(el => {
+            el.addEventListener('click', () => this.toggleScreenInCanvas(el));
+        });
+
+        // Add all screens in a feature
+        picker.querySelectorAll('.picker-add-all').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const featureId = btn.dataset.featureId;
+                picker.querySelectorAll(`.picker-screen[data-feature-id="${featureId}"]`).forEach(el => {
+                    if (!el.classList.contains('added')) {
+                        this.toggleScreenInCanvas(el);
+                    }
+                });
+            });
+        });
+
+        // Close on backdrop click
+        picker.addEventListener('click', (e) => {
+            if (e.target === picker) picker.remove();
+        });
+    }
+
+    toggleScreenInCanvas(el) {
+        const key = el.dataset.key;
+        const featureId = el.dataset.featureId;
+        const pageId = el.dataset.pageId;
+        const isAdded = el.classList.contains('added');
+
+        if (!this.currentCanvas) return;
+
+        // Initialize if needed
+        if (!this.currentCanvas.feature_positions) {
+            this.currentCanvas.feature_positions = {};
+        }
+
+        if (isAdded) {
+            // Remove from canvas
+            delete this.currentCanvas.feature_positions[key];
+            el.classList.remove('added');
+            el.querySelector('.picker-toggle-btn').innerHTML = '<i class="fas fa-plus"></i>';
+        } else {
+            // Add to canvas with default position
+            this.currentCanvas.feature_positions[key] = { x: 50, y: 50 };
+            el.classList.add('added');
+            el.querySelector('.picker-toggle-btn').innerHTML = '<i class="fas fa-check"></i>';
+        }
+
+        // Save to server
+        this.saveCanvasToServer();
+    }
+
+    async saveCanvasToServer() {
+        if (!this.currentCanvasId || !this.currentCanvas) return;
+
+        const projectId = this.getProjectId();
+        if (!projectId) return;
+
+        try {
+            await fetch(`/projects/${projectId}/api/canvases/${this.currentCanvasId}/positions/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCSRFToken()
+                },
+                body: JSON.stringify({ positions: this.currentCanvas.feature_positions })
+            });
+        } catch (error) {
+            console.error('Error saving canvas:', error);
+        }
     }
 
     createScreenCard(feature, page, x, y) {
@@ -477,6 +1021,72 @@ class DesignCanvas {
         return card;
     }
 
+    /**
+     * Compose full page HTML by combining page content with applicable common elements
+     */
+    composePageHtml(feature, page) {
+        const commonElements = feature.common_elements || [];
+        const pageContent = page.html_content || '';
+        const pageId = page.page_id;
+
+        if (!commonElements.length) {
+            return pageContent;
+        }
+
+        // Filter common elements that apply to this page
+        const applicableElements = commonElements.filter(elem => {
+            const appliesTo = elem.applies_to || [];
+            const excludeFrom = elem.exclude_from || [];
+
+            const applies = appliesTo.includes('all') || appliesTo.includes(pageId);
+            const excluded = excludeFrom.includes(pageId);
+
+            return applies && !excluded;
+        });
+
+        // Sort by position
+        const positionOrder = { 'fixed-top': 0, 'top': 1, 'left': 2, 'right': 3, 'bottom': 4, 'fixed-bottom': 5 };
+        applicableElements.sort((a, b) => (positionOrder[a.position] || 1) - (positionOrder[b.position] || 1));
+
+        // Build composed HTML
+        const topElements = [];
+        const leftElements = [];
+        const rightElements = [];
+        const bottomElements = [];
+
+        applicableElements.forEach(elem => {
+            const pos = elem.position || 'top';
+            const html = elem.html_content || '';
+            if (pos === 'top' || pos === 'fixed-top') {
+                topElements.push(html);
+            } else if (pos === 'left') {
+                leftElements.push(html);
+            } else if (pos === 'right') {
+                rightElements.push(html);
+            } else if (pos === 'bottom' || pos === 'fixed-bottom') {
+                bottomElements.push(html);
+            }
+        });
+
+        // Compose the full page
+        let composed = '';
+        composed += topElements.join('\n');
+
+        if (leftElements.length || rightElements.length) {
+            composed += '<div class="layout-wrapper">';
+            composed += leftElements.join('\n');
+            composed += `<div class="main-content">${pageContent}</div>`;
+            composed += rightElements.join('\n');
+            composed += '</div>';
+        } else {
+            composed += pageContent;
+        }
+
+        composed += bottomElements.join('\n');
+
+        return composed;
+    }
+
     createThumbnail(feature, page) {
         const cssContent = feature.css_style || '';
         const htmlContent = page.html_content || '';
@@ -484,6 +1094,9 @@ class DesignCanvas {
         if (!htmlContent) {
             return `<div class="empty-thumbnail"><i class="fas fa-desktop"></i></div>`;
         }
+
+        // Compose full HTML with common elements (header, footer, sidebar)
+        const composedHtml = this.composePageHtml(feature, page);
 
         const fullHtml = `
             <!DOCTYPE html>
@@ -495,7 +1108,7 @@ class DesignCanvas {
                     body { margin: 0; transform-origin: top left; overflow: hidden; }
                 </style>
             </head>
-            <body>${htmlContent}</body>
+            <body>${composedHtml}</body>
             </html>
         `.replace(/"/g, '&quot;');
 
@@ -675,12 +1288,27 @@ class DesignCanvas {
                     panel.dataset.cssStyle = data.updated_css;
                 }
 
-                // Update the screen card thumbnail
-                this.updateScreenCard(featureId, pageId, data.updated_html, data.updated_css);
+                // Update the screen card thumbnail (pass edit_target and element_id)
+                this.updateScreenCard(
+                    featureId,
+                    pageId,
+                    data.updated_html,
+                    data.updated_css,
+                    data.edit_target || 'page_content',
+                    data.element_id
+                );
 
-                // If preview modal is open, update it too
+                // If preview modal is open, update it too with composed HTML
                 if (this.previewModal?.classList.contains('active')) {
-                    this.updatePreviewContent(data.updated_html, data.updated_css || panel.dataset.cssStyle);
+                    // Get the feature and page to compose HTML
+                    const feature = this.features.get(featureId) || this.features.get(parseInt(featureId));
+                    if (feature) {
+                        const page = (feature.pages || []).find(p => p.page_id === pageId);
+                        if (page) {
+                            const composedHtml = this.composePageHtml(feature, page);
+                            this.updatePreviewContent(composedHtml, data.updated_css || feature.css_style);
+                        }
+                    }
                 }
 
             } else {
@@ -717,18 +1345,49 @@ class DesignCanvas {
         }
     }
 
-    updateScreenCard(featureId, pageId, newHtml, newCss) {
+    updateScreenCard(featureId, pageId, newHtml, newCss, editTarget = 'page_content', elementId = null) {
         // Find the screen card
         const card = document.getElementById(`screen-${featureId}-${pageId}`);
         if (!card) return;
 
         // Get the feature for CSS (try both string and number keys)
         let feature = this.features.get(featureId) || this.features.get(parseInt(featureId));
-        const cssContent = newCss || feature?.css_style || '';
+        if (!feature) return;
+
+        const cssContent = newCss || feature.css_style || '';
+
+        // Update in-memory data based on edit target
+        if (editTarget === 'common_element' && elementId) {
+            // Update a common element
+            const commonElements = feature.common_elements || [];
+            const elemIndex = commonElements.findIndex(e => e.element_id === elementId);
+            if (elemIndex >= 0) {
+                commonElements[elemIndex].html_content = newHtml;
+            }
+        } else {
+            // Update page content
+            const pages = feature.pages || [];
+            const page = pages.find(p => p.page_id === pageId);
+            if (page) {
+                page.html_content = newHtml;
+            }
+        }
+
+        if (newCss) {
+            feature.css_style = newCss;
+        }
+
+        // Get the current page for composing
+        const pages = feature.pages || [];
+        const page = pages.find(p => p.page_id === pageId);
+        if (!page) return;
+
+        // Compose full HTML with common elements
+        const composedHtml = this.composePageHtml(feature, page);
 
         // Update the thumbnail iframe
         const thumbnailContainer = card.querySelector('.screen-thumbnail');
-        if (thumbnailContainer && newHtml) {
+        if (thumbnailContainer) {
             const fullHtml = `
                 <!DOCTYPE html>
                 <html>
@@ -739,23 +1398,11 @@ class DesignCanvas {
                         body { margin: 0; transform-origin: top left; overflow: hidden; }
                     </style>
                 </head>
-                <body>${newHtml}</body>
+                <body>${composedHtml}</body>
                 </html>
             `.replace(/"/g, '&quot;');
 
             thumbnailContainer.innerHTML = `<iframe class="thumbnail-iframe" srcdoc="${fullHtml}" scrolling="no" sandbox="allow-same-origin"></iframe>`;
-        }
-
-        // Update the feature's page data in memory
-        if (feature) {
-            const pages = feature.pages || [];
-            const page = pages.find(p => p.page_id === pageId);
-            if (page) {
-                page.html_content = newHtml;
-            }
-            if (newCss) {
-                feature.css_style = newCss;
-            }
         }
     }
 
@@ -800,7 +1447,8 @@ class DesignCanvas {
         this.updatePreviewNavigation();
 
         const cssContent = feature.css_style || '';
-        const htmlContent = page.html_content || '';
+        // Compose full HTML with common elements (header, footer, sidebar)
+        const composedHtml = this.composePageHtml(feature, page);
 
         const fullHtml = `
             <!DOCTYPE html>
@@ -810,7 +1458,7 @@ class DesignCanvas {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <style>${cssContent}</style>
             </head>
-            <body>${htmlContent}</body>
+            <body>${composedHtml}</body>
             </html>
         `;
 
@@ -855,7 +1503,8 @@ class DesignCanvas {
         // Update iframe content
         const iframe = document.getElementById('preview-iframe');
         const cssContent = this.currentPreviewFeature.css_style || '';
-        const htmlContent = page.html_content || '';
+        // Compose full HTML with common elements (header, footer, sidebar)
+        const composedHtml = this.composePageHtml(this.currentPreviewFeature, page);
 
         const fullHtml = `
             <!DOCTYPE html>
@@ -865,7 +1514,7 @@ class DesignCanvas {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <style>${cssContent}</style>
             </head>
-            <body>${htmlContent}</body>
+            <body>${composedHtml}</body>
             </html>
         `;
 
@@ -880,27 +1529,53 @@ class DesignCanvas {
     }
 
     async savePositions() {
-        const positions = {};
+        const projectId = this.getProjectId();
+        if (!projectId) return;
 
+        // Collect positions with feature_id included for canvas storage
+        const positions = {};
         this.pageElements.forEach((el, pageId) => {
-            positions[pageId] = {
+            const featureId = el.dataset.featureId;
+            const key = `${featureId}_${pageId}`;
+            positions[key] = {
                 x: parseFloat(el.style.left) || 0,
                 y: parseFloat(el.style.top) || 0
             };
         });
 
         try {
-            const projectId = this.getProjectId();
-            if (!projectId) return;
-
-            await fetch(`/projects/${projectId}/api/design-positions/`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': this.getCSRFToken()
-                },
-                body: JSON.stringify({ positions })
-            });
+            // If a canvas is selected, save to that canvas
+            if (this.currentCanvasId) {
+                await fetch(`/projects/${projectId}/api/canvases/${this.currentCanvasId}/positions/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': this.getCSRFToken()
+                    },
+                    body: JSON.stringify({ positions })
+                });
+                // Update local canvas data
+                if (this.currentCanvas) {
+                    this.currentCanvas.feature_positions = positions;
+                }
+            } else {
+                // Fallback to legacy positions API
+                const legacyPositions = {};
+                this.pageElements.forEach((el, pageId) => {
+                    legacyPositions[pageId] = {
+                        x: parseFloat(el.style.left) || 0,
+                        y: parseFloat(el.style.top) || 0
+                    };
+                });
+                await fetch(`/projects/${projectId}/api/design-positions/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': this.getCSRFToken()
+                    },
+                    body: JSON.stringify({ positions: legacyPositions })
+                });
+            }
         } catch (error) {
             console.error('Error saving positions:', error);
         }
@@ -949,6 +1624,28 @@ function initDesignCanvas() {
 window.DesignCanvas = DesignCanvas;
 window.initDesignCanvas = initDesignCanvas;
 window.refreshDesignCanvas = () => designCanvas?.refresh();
+
+// Add screen to current canvas (called when design agent generates a new screen)
+window.addScreenToCurrentCanvas = (featureId, pageId) => {
+    if (!designCanvas || !designCanvas.currentCanvas) return;
+
+    const key = `${featureId}_${pageId}`;
+    if (!designCanvas.currentCanvas.feature_positions) {
+        designCanvas.currentCanvas.feature_positions = {};
+    }
+
+    // Add with default position
+    designCanvas.currentCanvas.feature_positions[key] = { x: 50, y: 50 };
+
+    // Save to server and refresh
+    designCanvas.saveCanvasToServer();
+    designCanvas.loadFeatures();
+};
+
+// Get current canvas ID
+window.getCurrentDesignCanvasId = () => {
+    return designCanvas?.currentCanvasId || window.currentDesignCanvasId || null;
+};
 
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initDesignCanvas);

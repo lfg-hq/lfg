@@ -32,6 +32,12 @@ urlpatterns = [
     path('<str:project_id>/api/design-features/', views.design_features_api, name='design_features_api'),
     path('<str:project_id>/api/design-positions/', views.design_positions_api, name='design_positions_api'),
     path('<str:project_id>/api/design-chat/', views.design_chat_api, name='design_chat_api'),
+
+    # Design Canvas Management APIs
+    path('<str:project_id>/api/canvases/', views.design_canvases_api, name='design_canvases_api'),
+    path('<str:project_id>/api/canvases/<int:canvas_id>/', views.design_canvas_detail_api, name='design_canvas_detail_api'),
+    path('<str:project_id>/api/canvases/<int:canvas_id>/positions/', views.design_canvas_save_positions_api, name='design_canvas_save_positions_api'),
+    path('<str:project_id>/api/canvases/<int:canvas_id>/set-default/', views.design_canvas_set_default_api, name='design_canvas_set_default_api'),
     # Removed - use project_checklist_api instead
     path('<str:project_id>/api/checklist/', views.project_checklist_api, name='project_checklist_api'),
     path('<str:project_id>/api/checklist/create/', views.create_checklist_item_api, name='create_checklist_item_api'),

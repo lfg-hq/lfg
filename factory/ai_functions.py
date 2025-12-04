@@ -6060,6 +6060,7 @@ async def generate_design_preview(function_args, project_id, conversation_id=Non
     feature_description = function_args.get('feature_description')
     explainer = function_args.get('explainer')
     css_style = function_args.get('css_style')
+    common_elements = function_args.get('common_elements', [])
     pages = function_args.get('pages', [])
     feature_connections = function_args.get('feature_connections', [])
     entry_page_id = function_args.get('entry_page_id')
@@ -6102,10 +6103,25 @@ async def generate_design_preview(function_args, project_id, conversation_id=Non
                 "page_name": sanitize_text(page.get('page_name', '')),
                 "page_type": page.get('page_type', 'screen'),
                 "html_content": sanitize_text(page.get('html_content', '')),
+                "include_common_elements": page.get('include_common_elements', True),
                 "navigates_to": page.get('navigates_to', [])
             }
             for page in pages
         ]
+
+        # Build common_elements array for JSONField with sanitized content
+        common_elements_data = [
+            {
+                "element_id": elem.get('element_id'),
+                "element_type": elem.get('element_type', 'header'),
+                "element_name": sanitize_text(elem.get('element_name', '')),
+                "html_content": sanitize_text(elem.get('html_content', '')),
+                "position": elem.get('position', 'top'),
+                "applies_to": elem.get('applies_to', ['all']),
+                "exclude_from": elem.get('exclude_from', [])
+            }
+            for elem in common_elements
+        ] if common_elements else []
 
         # Create or update the design feature (identified by project + feature_name)
         design_feature, created = await sync_to_async(ProjectDesignFeature.objects.update_or_create)(
@@ -6116,6 +6132,7 @@ async def generate_design_preview(function_args, project_id, conversation_id=Non
                 'feature_description': feature_description,
                 'explainer': explainer,
                 'css_style': css_style,
+                'common_elements': common_elements_data,
                 'pages': pages_data,
                 'entry_page_id': entry_page_id,
                 'feature_connections': feature_connections,
@@ -6124,16 +6141,58 @@ async def generate_design_preview(function_args, project_id, conversation_id=Non
         )
         logger.info(f"Saved design feature to database: id={design_feature.id}, feature_name={feature_name}")
 
+        # Auto-add screens to the current/default canvas
+        try:
+            from projects.models import DesignCanvas
+            from factory.tool_execution import get_current_canvas_id
+
+            # Get canvas_id from context (set by consumer from user's selection)
+            canvas_id = get_current_canvas_id()
+
+            if canvas_id:
+                # Use the specifically selected canvas
+                canvas = await sync_to_async(
+                    lambda: DesignCanvas.objects.filter(id=canvas_id, project=project).first()
+                )()
+            else:
+                # Fallback to most recently updated canvas or default canvas
+                canvas = await sync_to_async(
+                    lambda: DesignCanvas.objects.filter(project=project).order_by('-is_default', '-updated_at').first()
+                )()
+
+            if canvas:
+                # Add each page to the canvas positions
+                positions = canvas.feature_positions or {}
+                y_offset = 50
+                for idx, page in enumerate(pages_data):
+                    page_key = f"{design_feature.id}_{page['page_id']}"
+                    if page_key not in positions:
+                        # Calculate position - stack new screens vertically
+                        col = idx % 4
+                        row = idx // 4
+                        positions[page_key] = {
+                            'x': 50 + col * 320,
+                            'y': y_offset + row * 280
+                        }
+
+                canvas.feature_positions = positions
+                await sync_to_async(canvas.save)()
+                logger.info(f"Added {len(pages_data)} screens to canvas {canvas.id}")
+        except Exception as canvas_error:
+            logger.warning(f"Could not auto-add screens to canvas: {canvas_error}")
+
         # Build success message
         pages_summary = ', '.join([p.get('page_name', p.get('page_id')) for p in pages])
         connections_count = len(feature_connections)
         internal_nav_count = sum(len(p.get('navigates_to', [])) for p in pages)
+        common_elements_count = len(common_elements_data)
 
         success_message = (
             f"Design preview generated successfully for feature '{feature_name}'!\n\n"
             f"**Feature Details:**\n"
             f"- Entry Point: {entry_page_id}\n"
             f"- Pages: {pages_summary}\n"
+            f"- Common Elements: {common_elements_count} (header, footer, sidebar, etc.)\n"
             f"- Internal navigations: {internal_nav_count}\n"
             f"- Cross-feature connections: {connections_count}\n\n"
             f"**Saved to Database:**\n"

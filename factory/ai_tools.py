@@ -1208,7 +1208,7 @@ generate_design_preview = {
     "type": "function",
     "function": {
         "name": "generate_design_preview",
-        "description": "Generate a design preview for a feature with multiple screens/pages. Creates an explainer, CSS styles, and HTML pages organized by feature. Pages are connected to show navigation flow, and features are connected to show the overall user journey.",
+        "description": "Generate a design preview for a feature with multiple screens/pages. Creates an explainer, CSS styles, common layout elements (header, footer, sidebar), and HTML page partials. Common elements are shared across pages and rendered separately from main content. Pages contain only the main content partial - headers, footers, sidebars are defined in common_elements.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -1226,7 +1226,49 @@ generate_design_preview = {
                 },
                 "css_style": {
                     "type": "string",
-                    "description": "Complete CSS stylesheet for the design. Include all necessary styles, responsive breakpoints, and theme variables"
+                    "description": "Complete CSS stylesheet for the design. Include all necessary styles, responsive breakpoints, and theme variables. Include styles for common elements (header, footer, sidebar) and main content area."
+                },
+                "common_elements": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "element_id": {
+                                "type": "string",
+                                "description": "Unique identifier for this element (e.g., 'main-header', 'main-footer', 'left-sidebar', 'top-nav')"
+                            },
+                            "element_type": {
+                                "type": "string",
+                                "enum": ["header", "footer", "sidebar", "nav", "logo", "banner", "breadcrumb", "toolbar"],
+                                "description": "Type of common element"
+                            },
+                            "element_name": {
+                                "type": "string",
+                                "description": "Display name for this element (e.g., 'Main Header', 'Footer Navigation', 'Left Sidebar')"
+                            },
+                            "html_content": {
+                                "type": "string",
+                                "description": "HTML content for this common element. Should be a self-contained component."
+                            },
+                            "position": {
+                                "type": "string",
+                                "enum": ["top", "bottom", "left", "right", "fixed-top", "fixed-bottom"],
+                                "description": "Where this element is positioned in the layout"
+                            },
+                            "applies_to": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "List of page_ids this element applies to. Use ['all'] to apply to all pages, or specific page_ids like ['dashboard', 'settings']"
+                            },
+                            "exclude_from": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Optional: List of page_ids to exclude this element from (e.g., exclude header from login page)"
+                            }
+                        },
+                        "required": ["element_id", "element_type", "element_name", "html_content", "position", "applies_to"]
+                    },
+                    "description": "Array of common/shared elements like header, footer, sidebar, navigation that are reused across pages. These are rendered separately and composed with page content."
                 },
                 "pages": {
                     "type": "array",
@@ -1243,12 +1285,16 @@ generate_design_preview = {
                             },
                             "html_content": {
                                 "type": "string",
-                                "description": "Complete HTML content for the page."
+                                "description": "Main content partial HTML ONLY. Do NOT include header, footer, or sidebar - those are defined in common_elements. This should be the unique content for this page wrapped in a <main> or content container."
                             },
                             "page_type": {
                                 "type": "string",
                                 "enum": ["screen", "modal", "drawer", "popup", "toast"],
                                 "description": "Type of UI component this page represents"
+                            },
+                            "include_common_elements": {
+                                "type": "boolean",
+                                "description": "Whether to include common elements (header, footer, etc.) for this page. Default true. Set false for modals, popups, or standalone pages."
                             },
                             "navigates_to": {
                                 "type": "array",
@@ -1275,7 +1321,7 @@ generate_design_preview = {
                         },
                         "required": ["page_id", "page_name", "html_content", "page_type"]
                     },
-                    "description": "Array of pages that make up this feature. Think of as many screens as you can for this feature."
+                    "description": "Array of page content partials. Each page contains only the main content - common elements are composed automatically based on common_elements configuration."
                 },
                 "feature_connections": {
                     "type": "array",
@@ -1320,7 +1366,7 @@ generate_design_preview = {
                     "description": "Optional: suggested position for this feature on the design canvas"
                 }
             },
-            "required": ["feature_name", "feature_description", "explainer", "css_style", "pages", "entry_page_id"],
+            "required": ["feature_name", "feature_description", "explainer", "css_style", "common_elements", "pages", "entry_page_id"],
             "additionalProperties": False,
         }
     }
@@ -1388,13 +1434,22 @@ tools_builder = [
 # Anthropic native format for direct API calls
 edit_design_screen_anthropic = {
     "name": "edit_design_screen",
-    "description": "Edit a specific screen's HTML content based on user's change request. Use this to modify the design of a single screen within a feature.",
+    "description": "Edit a specific component of the design. Can edit either a page's main content partial OR a common element (header, footer, sidebar). Use edit_target to specify what you're editing.",
     "input_schema": {
         "type": "object",
         "properties": {
+            "edit_target": {
+                "type": "string",
+                "enum": ["page_content", "common_element"],
+                "description": "What type of component you're editing: 'page_content' for the page's main content partial, 'common_element' for shared elements like header/footer/sidebar"
+            },
+            "element_id": {
+                "type": "string",
+                "description": "Required when edit_target is 'common_element'. The element_id of the common element to edit (e.g., 'main-header', 'main-footer', 'left-sidebar')"
+            },
             "updated_html": {
                 "type": "string",
-                "description": "The complete updated HTML content for the screen with the requested changes applied. Must be valid HTML."
+                "description": "The complete updated HTML content. For page_content: the main content partial only (no header/footer). For common_element: the updated common element HTML."
             },
             "updated_css": {
                 "type": "string",
@@ -1405,7 +1460,7 @@ edit_design_screen_anthropic = {
                 "description": "Brief summary of what was changed in the design"
             }
         },
-        "required": ["updated_html", "change_summary"]
+        "required": ["edit_target", "updated_html", "change_summary"]
     }
 }
 
@@ -1414,13 +1469,22 @@ edit_design_screen = {
     "type": "function",
     "function": {
         "name": "edit_design_screen",
-        "description": "Edit a specific screen's HTML content based on user's change request. Use this to modify the design of a single screen within a feature.",
+        "description": "Edit a specific component of the design. Can edit either a page's main content partial OR a common element (header, footer, sidebar). Use edit_target to specify what you're editing.",
         "parameters": {
             "type": "object",
             "properties": {
+                "edit_target": {
+                    "type": "string",
+                    "enum": ["page_content", "common_element"],
+                    "description": "What type of component you're editing: 'page_content' for the page's main content partial, 'common_element' for shared elements like header/footer/sidebar"
+                },
+                "element_id": {
+                    "type": "string",
+                    "description": "Required when edit_target is 'common_element'. The element_id of the common element to edit (e.g., 'main-header', 'main-footer', 'left-sidebar')"
+                },
                 "updated_html": {
                     "type": "string",
-                    "description": "The complete updated HTML content for the screen with the requested changes applied. Must be valid HTML."
+                    "description": "The complete updated HTML content. For page_content: the main content partial only (no header/footer). For common_element: the updated common element HTML."
                 },
                 "updated_css": {
                     "type": "string",
@@ -1431,7 +1495,7 @@ edit_design_screen = {
                     "description": "Brief summary of what was changed in the design"
                 }
             },
-            "required": ["updated_html", "change_summary"],
+            "required": ["edit_target", "updated_html", "change_summary"],
             "additionalProperties": False,
         }
     }

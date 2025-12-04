@@ -216,6 +216,7 @@ Before ANY tool call, add a brief status in `<lfg-info>` tags:
 ```
 
 ### Edit Existing File
+Edit or update an existing file with this below format. ALWAYS DO THIS.
 ```
 <lfg-file mode="edit" file_id="123" type="prd" name="Project Name PRD">
 [Complete updated content — full replacement]

@@ -9,6 +9,7 @@ from .models import (
     ProjectFile,
     ProjectDesignSchema,
     ProjectDesignFeature,
+    DesignCanvas,
     ProjectTicket,
     ProjectTicketAttachment,
     ToolCallHistory,
@@ -2444,6 +2445,7 @@ def design_features_api(request, project_id):
             'feature_description': df.feature_description,
             'explainer': df.explainer,
             'css_style': df.css_style,
+            'common_elements': df.common_elements or [],
             'pages': pages,
             'entry_page_id': df.entry_page_id,
             'feature_connections': df.feature_connections or [],
@@ -2536,33 +2538,65 @@ def design_chat_api(request, project_id):
         if current_page is None:
             return JsonResponse({'success': False, 'error': 'Page not found'}, status=404)
 
+        # Get common elements
+        common_elements = design_feature.common_elements or []
+
+        # Build common elements context for the AI
+        common_elements_text = ""
+        if common_elements:
+            common_elements_text = "\n\nCommon Elements (header, footer, sidebar, etc.):\n"
+            for elem in common_elements:
+                common_elements_text += f"""
+--- {elem.get('element_name', 'Unknown')} ({elem.get('element_type', 'unknown')}) ---
+Element ID: {elem.get('element_id')}
+Position: {elem.get('position', 'unknown')}
+HTML:
+```html
+{elem.get('html_content', '')}
+```
+"""
+
         # Build the prompt for the AI
         system_prompt = """You are a UI/UX design assistant that helps modify HTML designs based on user requests.
-You will be given the current HTML and CSS of a screen, and a user request for changes.
-Your job is to modify the HTML to implement the requested changes while maintaining the overall design style and structure.
+You will be given the current screen design which consists of:
+1. Page Content Partial - the main content area (does NOT include header/footer/sidebar)
+2. Common Elements - shared components like header, footer, sidebar that are rendered separately
 
-IMPORTANT:
+IMPORTANT ARCHITECTURE:
+- Pages contain ONLY the main content partial (wrapped in <main> or content container)
+- Common elements (header, footer, sidebar) are SEPARATE and composed during rendering
+- When editing, you MUST specify edit_target:
+  - Use "page_content" to edit the main content partial
+  - Use "common_element" to edit a shared element (must also provide element_id)
+
+RULES:
 - Keep the same design language and style as the original
 - Only modify what's necessary to fulfill the request
 - Ensure the HTML remains valid and well-structured
+- If user asks to change header/footer/sidebar, use edit_target="common_element" with the correct element_id
+- If user asks to change main content, use edit_target="page_content"
 - Preserve all existing functionality unless explicitly asked to change it"""
 
         user_prompt = f"""Current Screen: {current_page.get('page_name', 'Unknown')}
 Feature: {design_feature.feature_name}
 
-Current CSS:
+Current CSS (shared across all elements):
 ```css
 {design_feature.css_style or 'No CSS defined'}
 ```
 
-Current HTML:
+Page Content Partial (main content only, no header/footer):
 ```html
 {current_page.get('html_content', '')}
 ```
+{common_elements_text}
 
 User Request: {user_message}
 
-Please use the edit_design_screen tool to provide the updated HTML with the requested changes."""
+Please use the edit_design_screen tool to provide the updated HTML with the requested changes.
+Remember to set edit_target correctly:
+- "page_content" for main content changes
+- "common_element" (with element_id) for header/footer/sidebar changes"""
 
         # Call Anthropic API
         client = anthropic.Anthropic()
@@ -2581,6 +2615,8 @@ Please use the edit_design_screen tool to provide the updated HTML with the requ
         updated_html = None
         updated_css = None
         change_summary = None
+        edit_target = None
+        element_id = None
         assistant_message = ""
 
         for block in response.content:
@@ -2591,23 +2627,52 @@ Please use the edit_design_screen tool to provide the updated HTML with the requ
                 updated_html = tool_input.get('updated_html')
                 updated_css = tool_input.get('updated_css')
                 change_summary = tool_input.get('change_summary', 'Design updated')
+                edit_target = tool_input.get('edit_target', 'page_content')
+                element_id = tool_input.get('element_id')
 
         if updated_html:
-            # Update the page's HTML content
-            pages[page_index]['html_content'] = updated_html
+            # Determine what to update based on edit_target
+            if edit_target == 'common_element' and element_id:
+                # Update a common element
+                element_updated = False
+                for i, elem in enumerate(common_elements):
+                    if elem.get('element_id') == element_id:
+                        common_elements[i]['html_content'] = updated_html
+                        element_updated = True
+                        break
+
+                if not element_updated:
+                    return JsonResponse({
+                        'success': False,
+                        'error': f'Common element with id "{element_id}" not found'
+                    }, status=404)
+
+                design_feature.common_elements = common_elements
+            else:
+                # Update the page's HTML content (default behavior)
+                pages[page_index]['html_content'] = updated_html
+                design_feature.pages = pages
 
             # Update CSS if provided
             if updated_css:
                 design_feature.css_style = updated_css
 
             # Save to database
-            design_feature.pages = pages
             design_feature.save()
+
+            # Build the composed HTML for preview (page content + common elements)
+            composed_html = _compose_page_html(current_page, common_elements, page_id)
+            if edit_target == 'common_element':
+                # Re-compose with updated common elements
+                composed_html = _compose_page_html(current_page, common_elements, page_id)
 
             return JsonResponse({
                 'success': True,
                 'updated_html': updated_html,
-                'updated_css': updated_css,
+                'updated_css': updated_css or design_feature.css_style,
+                'composed_html': composed_html,
+                'edit_target': edit_target,
+                'element_id': element_id,
                 'change_summary': change_summary,
                 'assistant_message': assistant_message or change_summary
             })
@@ -2623,3 +2688,278 @@ Please use the edit_design_screen tool to provide the updated HTML with the requ
     except Exception as e:
         logger.error(f"Error in design chat: {e}", exc_info=True)
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+def _compose_page_html(page, common_elements, page_id):
+    """Compose a full page HTML by combining page content with applicable common elements."""
+    if not common_elements:
+        return page.get('html_content', '')
+
+    # Filter common elements that apply to this page
+    applicable_elements = []
+    for elem in common_elements:
+        applies_to = elem.get('applies_to', [])
+        exclude_from = elem.get('exclude_from', [])
+
+        # Check if element applies to this page
+        if 'all' in applies_to or page_id in applies_to:
+            if page_id not in exclude_from:
+                applicable_elements.append(elem)
+
+    # Sort by position for proper ordering
+    position_order = {'fixed-top': 0, 'top': 1, 'left': 2, 'right': 3, 'bottom': 4, 'fixed-bottom': 5}
+    applicable_elements.sort(key=lambda x: position_order.get(x.get('position', 'top'), 1))
+
+    # Build composed HTML
+    top_elements = []
+    left_elements = []
+    right_elements = []
+    bottom_elements = []
+
+    for elem in applicable_elements:
+        pos = elem.get('position', 'top')
+        html = elem.get('html_content', '')
+        if pos in ['top', 'fixed-top']:
+            top_elements.append(html)
+        elif pos == 'left':
+            left_elements.append(html)
+        elif pos == 'right':
+            right_elements.append(html)
+        elif pos in ['bottom', 'fixed-bottom']:
+            bottom_elements.append(html)
+
+    # Compose the full page
+    composed = ""
+    composed += "\n".join(top_elements)
+
+    if left_elements or right_elements:
+        composed += '<div class="layout-wrapper">'
+        composed += "\n".join(left_elements)
+        composed += f'<div class="main-content">{page.get("html_content", "")}</div>'
+        composed += "\n".join(right_elements)
+        composed += '</div>'
+    else:
+        composed += page.get('html_content', '')
+
+    composed += "\n".join(bottom_elements)
+
+    return composed
+
+
+# ============== Design Canvas API Endpoints ==============
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def design_canvases_api(request, project_id):
+    """API endpoint to list and create design canvases."""
+    project = get_object_or_404(Project, project_id=project_id)
+
+    # Check permission
+    if not (project.owner == request.user or project.members.filter(user=request.user, status='active').exists()):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    if request.method == 'GET':
+        # List all canvases for this project
+        canvases = DesignCanvas.objects.filter(project=project).order_by('-is_default', '-updated_at')
+
+        canvas_list = []
+        for canvas in canvases:
+            canvas_list.append({
+                'id': canvas.id,
+                'name': canvas.name,
+                'description': canvas.description,
+                'is_default': canvas.is_default,
+                'feature_positions': canvas.feature_positions,
+                'visible_features': canvas.visible_features,
+                'created_at': canvas.created_at.isoformat(),
+                'updated_at': canvas.updated_at.isoformat()
+            })
+
+        return JsonResponse({
+            'success': True,
+            'canvases': canvas_list
+        })
+
+    elif request.method == 'POST':
+        # Create a new canvas
+        try:
+            data = json.loads(request.body)
+            name = data.get('name', '').strip()
+            description = data.get('description', '')
+            is_default = data.get('is_default', False)
+            feature_positions = data.get('feature_positions', {})
+            visible_features = data.get('visible_features', [])
+
+            if not name:
+                return JsonResponse({'success': False, 'error': 'Canvas name is required'}, status=400)
+
+            # Check if canvas with same name exists
+            if DesignCanvas.objects.filter(project=project, name=name).exists():
+                return JsonResponse({'success': False, 'error': 'A canvas with this name already exists'}, status=400)
+
+            canvas = DesignCanvas.objects.create(
+                project=project,
+                name=name,
+                description=description,
+                is_default=is_default,
+                feature_positions=feature_positions,
+                visible_features=visible_features
+            )
+
+            return JsonResponse({
+                'success': True,
+                'canvas': {
+                    'id': canvas.id,
+                    'name': canvas.name,
+                    'description': canvas.description,
+                    'is_default': canvas.is_default,
+                    'feature_positions': canvas.feature_positions,
+                    'visible_features': canvas.visible_features,
+                    'created_at': canvas.created_at.isoformat(),
+                    'updated_at': canvas.updated_at.isoformat()
+                }
+            })
+
+        except json.JSONDecodeError:
+            return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            logger.error(f"Error creating canvas: {e}", exc_info=True)
+            return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@csrf_exempt
+@require_http_methods(["GET", "PUT", "DELETE"])
+def design_canvas_detail_api(request, project_id, canvas_id):
+    """API endpoint to get, update, or delete a specific canvas."""
+    project = get_object_or_404(Project, project_id=project_id)
+
+    # Check permission
+    if not (project.owner == request.user or project.members.filter(user=request.user, status='active').exists()):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    canvas = get_object_or_404(DesignCanvas, id=canvas_id, project=project)
+
+    if request.method == 'GET':
+        return JsonResponse({
+            'success': True,
+            'canvas': {
+                'id': canvas.id,
+                'name': canvas.name,
+                'description': canvas.description,
+                'is_default': canvas.is_default,
+                'feature_positions': canvas.feature_positions,
+                'visible_features': canvas.visible_features,
+                'created_at': canvas.created_at.isoformat(),
+                'updated_at': canvas.updated_at.isoformat()
+            }
+        })
+
+    elif request.method == 'PUT':
+        try:
+            data = json.loads(request.body)
+
+            if 'name' in data:
+                name = data['name'].strip()
+                if not name:
+                    return JsonResponse({'success': False, 'error': 'Canvas name cannot be empty'}, status=400)
+                # Check if another canvas has this name
+                if DesignCanvas.objects.filter(project=project, name=name).exclude(id=canvas_id).exists():
+                    return JsonResponse({'success': False, 'error': 'A canvas with this name already exists'}, status=400)
+                canvas.name = name
+
+            if 'description' in data:
+                canvas.description = data['description']
+
+            if 'is_default' in data:
+                canvas.is_default = data['is_default']
+
+            if 'feature_positions' in data:
+                canvas.feature_positions = data['feature_positions']
+
+            if 'visible_features' in data:
+                canvas.visible_features = data['visible_features']
+
+            canvas.save()
+
+            return JsonResponse({
+                'success': True,
+                'canvas': {
+                    'id': canvas.id,
+                    'name': canvas.name,
+                    'description': canvas.description,
+                    'is_default': canvas.is_default,
+                    'feature_positions': canvas.feature_positions,
+                    'visible_features': canvas.visible_features,
+                    'created_at': canvas.created_at.isoformat(),
+                    'updated_at': canvas.updated_at.isoformat()
+                }
+            })
+
+        except json.JSONDecodeError:
+            return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            logger.error(f"Error updating canvas: {e}", exc_info=True)
+            return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+    elif request.method == 'DELETE':
+        canvas_name = canvas.name
+        canvas.delete()
+        return JsonResponse({
+            'success': True,
+            'message': f'Canvas "{canvas_name}" deleted successfully'
+        })
+
+
+@login_required
+@csrf_exempt
+@require_http_methods(["POST"])
+def design_canvas_save_positions_api(request, project_id, canvas_id):
+    """API endpoint to save feature positions for a canvas."""
+    project = get_object_or_404(Project, project_id=project_id)
+
+    # Check permission
+    if not (project.owner == request.user or project.members.filter(user=request.user, status='active').exists()):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    canvas = get_object_or_404(DesignCanvas, id=canvas_id, project=project)
+
+    try:
+        data = json.loads(request.body)
+        positions = data.get('positions', {})
+
+        # Merge with existing positions
+        canvas.feature_positions.update(positions)
+        canvas.save()
+
+        return JsonResponse({
+            'success': True,
+            'feature_positions': canvas.feature_positions
+        })
+
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        logger.error(f"Error saving canvas positions: {e}", exc_info=True)
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@csrf_exempt
+@require_http_methods(["POST"])
+def design_canvas_set_default_api(request, project_id, canvas_id):
+    """API endpoint to set a canvas as the default."""
+    project = get_object_or_404(Project, project_id=project_id)
+
+    # Check permission
+    if not (project.owner == request.user or project.members.filter(user=request.user, status='active').exists()):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    canvas = get_object_or_404(DesignCanvas, id=canvas_id, project=project)
+    canvas.is_default = True
+    canvas.save()  # The model's save() method will unset other defaults
+
+    return JsonResponse({
+        'success': True,
+        'message': f'Canvas "{canvas.name}" is now the default'
+    })

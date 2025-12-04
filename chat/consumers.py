@@ -297,6 +297,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 mentioned_files = text_data_json.get('mentioned_files', {})  # Get mentioned files
                 user_role = text_data_json.get('user_role')  # Get user role if present
                 turbo_mode = text_data_json.get('turbo_mode', False)  # Get turbo mode state
+                canvas_id = text_data_json.get('canvas_id')  # Get canvas ID for design features
                 # file_id = text_data_json.get('file_id')  # Get file_id if present
 
                 
@@ -355,7 +356,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 # Generate AI response in background task
                 # Store the task so we can cancel it if needed
                 self.active_generation_task = asyncio.create_task(
-                    self.generate_ai_response(user_message, provider_name, project_id, user_role, turbo_mode, mentioned_files)
+                    self.generate_ai_response(user_message, provider_name, project_id, user_role, turbo_mode, mentioned_files, canvas_id)
                 )
             
             elif message_type == 'stop_generation':
@@ -544,10 +545,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
         except Exception as e:
             logger.error(f"Error joining conversation group {group_name}: {e}")
     
-    async def generate_ai_response(self, user_message, provider_name, project_id=None, user_role=None, turbo_mode=False, mentioned_files=None):
+    async def generate_ai_response(self, user_message, provider_name, project_id=None, user_role=None, turbo_mode=False, mentioned_files=None, canvas_id=None):
         """
         Generate response from AI
         """
+        # Store canvas_id for tool execution using context variable
+        from factory.tool_execution import set_current_canvas_id
+        self.canvas_id = canvas_id
+        set_current_canvas_id(canvas_id)
         try:
             # Clean up stale connections at the start of AI generation
             await database_sync_to_async(close_old_connections)()

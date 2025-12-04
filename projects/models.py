@@ -202,6 +202,7 @@ class ProjectDesignFeature(models.Model):
 
     # All design data stored as JSON
     css_style = models.TextField(blank=True, default='')
+    common_elements = models.JSONField(default=list)  # Array of common elements (header, footer, sidebar)
     pages = models.JSONField(default=list)  # Array of page objects with html_content, navigates_to, etc.
     entry_page_id = models.CharField(max_length=100, blank=True, default='')
     feature_connections = models.JSONField(default=list)  # Cross-feature navigation links
@@ -220,6 +221,40 @@ class ProjectDesignFeature(models.Model):
 
     def __str__(self):
         return f"{self.project.name} - {self.feature_name}"
+
+
+class DesignCanvas(models.Model):
+    """Model to store named design canvases with feature positions"""
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='design_canvases')
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default='')
+    is_default = models.BooleanField(default=False)
+
+    # Store positions for each feature on this canvas: {feature_id: {x: 0, y: 0}}
+    feature_positions = models.JSONField(default=dict)
+
+    # Store which features are visible on this canvas (empty = all features)
+    visible_features = models.JSONField(default=list)  # List of feature IDs to show
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+        unique_together = ['project', 'name']
+        indexes = [
+            models.Index(fields=['project', '-updated_at']),
+            models.Index(fields=['project', 'is_default']),
+        ]
+
+    def __str__(self):
+        return f"{self.project.name} - {self.name}"
+
+    def save(self, *args, **kwargs):
+        # Ensure only one default canvas per project
+        if self.is_default:
+            DesignCanvas.objects.filter(project=self.project, is_default=True).exclude(pk=self.pk).update(is_default=False)
+        super().save(*args, **kwargs)
 
 
 class ProjectTicket(models.Model):

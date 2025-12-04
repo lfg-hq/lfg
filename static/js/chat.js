@@ -1649,9 +1649,15 @@ document.addEventListener('DOMContentLoaded', () => {
                                data.notification_type === 'prd' ? 'create_prd' :
                                data.notification_type === 'file_stream' ? 'stream_file_content' :
                                data.notification_type === 'design' ? 'design_schema' :
+                               data.notification_type === 'design_preview' ? 'generate_design_preview' :
                                data.notification_type === 'tickets' ? 'generate_tickets' :
                                data.notification_type === 'checklist' ? 'checklist_tickets' :
                                data.function_name || data.notification_type;
+
+            // Dispatch event for design preview to refresh canvas
+            if (data.notification_type === 'design_preview') {
+                document.dispatchEvent(new CustomEvent('designPreviewGenerated', { detail: data }));
+            }
             
             // Remove any previous function call indicators
             removeFunctionCallIndicator();
@@ -2551,6 +2557,11 @@ document.addEventListener('DOMContentLoaded', () => {
             messageData.mentioned_files = window.mentionedFiles;
             // Clear mentioned files after adding to message
             window.mentionedFiles = {};
+        }
+
+        // Add current design canvas ID if available
+        if (window.currentDesignCanvasId) {
+            messageData.canvas_id = window.currentDesignCanvasId;
         }
         
         console.log('sendMessageToServer: Message data:', messageData);

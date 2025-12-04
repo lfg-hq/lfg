@@ -6,6 +6,7 @@ import json
 import logging
 import asyncio
 import uuid
+from contextvars import ContextVar
 from datetime import datetime
 from typing import Tuple, Optional, Dict, Any, List
 
@@ -13,6 +14,19 @@ from projects.models import Project, ToolCallHistory
 from chat.models import Conversation, ModelSelection
 
 logger = logging.getLogger(__name__)
+
+# Context variable to store canvas_id across async calls
+current_canvas_id: ContextVar[Optional[int]] = ContextVar('current_canvas_id', default=None)
+
+
+def set_current_canvas_id(canvas_id: Optional[int]):
+    """Set the current canvas ID for tool execution context."""
+    current_canvas_id.set(canvas_id)
+
+
+def get_current_canvas_id() -> Optional[int]:
+    """Get the current canvas ID from tool execution context."""
+    return current_canvas_id.get()
 
 # Maximum tool output size (50KB)
 MAX_TOOL_OUTPUT_SIZE = 50 * 1024
