@@ -37,7 +37,8 @@ class Conversation(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     project = models.ForeignKey('projects.Project', on_delete=models.SET_NULL, related_name='direct_conversations', null=True, blank=True)
-    
+    design_canvas = models.ForeignKey('projects.DesignCanvas', on_delete=models.SET_NULL, related_name='conversations', null=True, blank=True)
+
     def __str__(self):
         return self.title or f"Conversation {self.id}"
 

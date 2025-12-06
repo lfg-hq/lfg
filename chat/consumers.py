@@ -553,6 +553,19 @@ class ChatConsumer(AsyncWebsocketConsumer):
         from factory.tool_execution import set_current_canvas_id
         self.canvas_id = canvas_id
         set_current_canvas_id(canvas_id)
+
+        # Also update conversation's design_canvas if canvas_id is provided
+        if canvas_id and self.conversation:
+            try:
+                from projects.models import DesignCanvas
+                canvas = await database_sync_to_async(
+                    lambda: DesignCanvas.objects.filter(id=canvas_id).first()
+                )()
+                if canvas:
+                    self.conversation.design_canvas = canvas
+                    await database_sync_to_async(self.conversation.save)()
+            except Exception as e:
+                logger.warning(f"Could not link canvas to conversation: {e}")
         try:
             # Clean up stale connections at the start of AI generation
             await database_sync_to_async(close_old_connections)()
@@ -618,6 +631,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 # "content": await get_system_prompt()
                 "content": system_prompt
             })
+
+        # Inject existing designs context for design-related agents
+        if canvas_id and (user_role in ["designer", "product_analyst"] or (agent_role and agent_role.turbo_mode)):
+            existing_designs_context = await self.get_existing_designs_context(canvas_id)
+            if existing_designs_context:
+                # Add design context after system message
+                messages.insert(1, {
+                    "role": "system",
+                    "content": existing_designs_context
+                })
+                logger.debug(f"Injected existing designs context for canvas {canvas_id}")
 
         try:
             model_selection = await database_sync_to_async(ModelSelection.objects.get)(user=self.user)
@@ -1317,7 +1341,118 @@ class ChatConsumer(AsyncWebsocketConsumer):
             formatted_messages.append(message_data)
         
         return formatted_messages
-    
+
+    @database_sync_to_async
+    def get_existing_designs_context(self, canvas_id):
+        """
+        Get existing designs from the canvas to provide context to AI.
+        This allows AI to modify existing designs instead of recreating them.
+        """
+        if not canvas_id or not self.conversation:
+            return None
+
+        try:
+            from projects.models import DesignCanvas, ProjectDesignFeature
+
+            # Get the canvas
+            canvas = DesignCanvas.objects.filter(id=canvas_id).first()
+            if not canvas:
+                return None
+
+            # Get feature positions from canvas - keys are like "feature_id_page_id"
+            feature_positions = canvas.feature_positions or {}
+            if not feature_positions:
+                return None
+
+            # Extract unique feature IDs from positions
+            feature_ids = set()
+            for key in feature_positions.keys():
+                parts = key.split('_')
+                if len(parts) >= 2:
+                    try:
+                        feature_ids.add(int(parts[0]))
+                    except ValueError:
+                        continue
+
+            if not feature_ids:
+                return None
+
+            # Get the design features
+            design_features = ProjectDesignFeature.objects.filter(
+                id__in=feature_ids,
+                project=canvas.project
+            )
+
+            if not design_features.exists():
+                return None
+
+            # Build context string
+            context_parts = []
+            context_parts.append("## EXISTING DESIGNS ON CURRENT CANVAS")
+            context_parts.append("The following designs already exist on the user's current canvas. When the user asks for modifications, update these existing designs rather than creating new ones.\n")
+
+            for feature in design_features:
+                context_parts.append(f"### Feature: {feature.feature_name} (ID: {feature.id})")
+                context_parts.append(f"Description: {feature.feature_description or 'No description'}")
+
+                # Include CSS style summary
+                css_style = feature.css_style or ''
+                if css_style:
+                    # Include first 500 chars of CSS to show style context
+                    css_preview = css_style[:500] + ('...' if len(css_style) > 500 else '')
+                    context_parts.append(f"CSS Style Preview:\n```css\n{css_preview}\n```")
+
+                # Common elements
+                common_elements = feature.common_elements or []
+                if common_elements:
+                    context_parts.append(f"Common Elements ({len(common_elements)}):")
+                    for elem in common_elements:
+                        elem_type = elem.get('element_type', 'unknown')
+                        elem_id = elem.get('element_id', 'unknown')
+                        elem_html = elem.get('html_content', '')
+                        # Show a preview of the element
+                        html_preview = elem_html[:300] + ('...' if len(elem_html) > 300 else '') if elem_html else 'No content'
+                        context_parts.append(f"  - {elem_type} (element_id: {elem_id})")
+                        context_parts.append(f"    ```html\n    {html_preview}\n    ```")
+
+                # List pages with HTML previews
+                pages = feature.pages or []
+                if pages:
+                    context_parts.append(f"Pages ({len(pages)}):")
+                    for page in pages:
+                        page_id = page.get('page_id', 'unknown')
+                        page_name = page.get('page_name', 'Unnamed')
+                        page_type = page.get('page_type', 'screen')
+                        html_content = page.get('html_content', '')
+                        navigates_to = page.get('navigates_to', [])
+
+                        context_parts.append(f"  - {page_name} (page_id: {page_id}, type: {page_type})")
+                        if navigates_to:
+                            context_parts.append(f"    Navigation: {', '.join(str(n) for n in navigates_to[:5])}")
+
+                        # Include HTML preview for understanding the page content
+                        if html_content:
+                            # Get first 400 chars to show structure
+                            html_preview = html_content[:400] + ('...' if len(html_content) > 400 else '')
+                            context_parts.append(f"    HTML Preview:\n    ```html\n    {html_preview}\n    ```")
+
+                context_parts.append("")  # Empty line between features
+
+            context_parts.append("\n## MODIFICATION INSTRUCTIONS")
+            context_parts.append("When the user asks for changes to existing designs:")
+            context_parts.append("1. Use the SAME feature_name to update an existing feature (this will update, not create)")
+            context_parts.append("2. Keep the SAME page_id values to maintain page identity")
+            context_parts.append("3. Preserve the CSS style unless specifically asked to change it")
+            context_parts.append("4. Only modify the specific elements the user mentions")
+            context_parts.append("5. Keep common elements (header, footer, sidebar) unless asked to change them")
+            context_parts.append("\nDo NOT create new designs from scratch when modifications are requested.")
+
+            return "\n".join(context_parts)
+
+        except Exception as e:
+            logger.error(f"Error getting existing designs context: {e}")
+            return None
+
     @database_sync_to_async
     def get_chat_history(self):
         """

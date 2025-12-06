@@ -135,18 +135,45 @@ class DesignCanvas {
             // Update selector
             this.updateCanvasSelector();
 
-            // Select default canvas or first one
-            const defaultCanvas = this.canvases.find(c => c.is_default) || this.canvases[0];
-            if (defaultCanvas) {
-                this.currentCanvas = defaultCanvas;
-                this.currentCanvasId = defaultCanvas.id;
-                window.currentDesignCanvasId = defaultCanvas.id;  // Store globally
+            // Try to load the canvas linked to the current conversation
+            const linkedCanvasId = await this.getConversationLinkedCanvas();
+            let selectedCanvas = null;
+
+            if (linkedCanvasId) {
+                selectedCanvas = this.canvases.find(c => c.id == linkedCanvasId);
+            }
+
+            // Fall back to default canvas or first one
+            if (!selectedCanvas) {
+                selectedCanvas = this.canvases.find(c => c.is_default) || this.canvases[0];
+            }
+
+            if (selectedCanvas) {
+                this.currentCanvas = selectedCanvas;
+                this.currentCanvasId = selectedCanvas.id;
+                window.currentDesignCanvasId = selectedCanvas.id;  // Store globally
                 const selector = document.getElementById('canvas-selector');
-                if (selector) selector.value = defaultCanvas.id;
+                if (selector) selector.value = selectedCanvas.id;
             }
 
         } catch (error) {
             console.error('Error loading canvases:', error);
+        }
+    }
+
+    async getConversationLinkedCanvas() {
+        const conversationId = this.getConversationId();
+        if (!conversationId) return null;
+
+        try {
+            const response = await fetch(`/api/conversations/${conversationId}/`);
+            if (!response.ok) return null;
+
+            const data = await response.json();
+            return data.design_canvas_id || null;
+        } catch (error) {
+            console.error('Error fetching conversation canvas:', error);
+            return null;
         }
     }
 
@@ -208,9 +235,43 @@ class DesignCanvas {
         // Store globally for design agent to use
         window.currentDesignCanvasId = canvas.id;
 
+        // Link canvas to current conversation
+        this.linkCanvasToConversation(canvas.id);
+
         // Re-render with canvas positions
         this.render();
         setTimeout(() => this.fitToScreen(), 50);
+    }
+
+    async linkCanvasToConversation(canvasId) {
+        // Get current conversation ID from URL or global
+        const conversationId = this.getConversationId();
+        if (!conversationId) return;
+
+        try {
+            await fetch(`/api/conversations/${conversationId}/`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCSRFToken()
+                },
+                body: JSON.stringify({ design_canvas_id: canvasId })
+            });
+            console.log(`Canvas ${canvasId} linked to conversation ${conversationId}`);
+        } catch (error) {
+            console.error('Error linking canvas to conversation:', error);
+        }
+    }
+
+    getConversationId() {
+        // Try to get from URL
+        const urlMatch = window.location.href.match(/conversation_id=(\d+)/);
+        if (urlMatch) return parseInt(urlMatch[1]);
+
+        // Try to get from global
+        if (window.currentConversationId) return window.currentConversationId;
+
+        return null;
     }
 
     async saveCurrentCanvas() {
@@ -283,8 +344,13 @@ class DesignCanvas {
                 this.canvases.push(data.canvas);
                 this.currentCanvas = data.canvas;
                 this.currentCanvasId = data.canvas.id;
+                window.currentDesignCanvasId = data.canvas.id;  // Store globally
                 this.updateCanvasSelector();
                 document.getElementById('canvas-selector').value = data.canvas.id;
+
+                // Link new canvas to conversation
+                await this.linkCanvasToConversation(data.canvas.id);
+
                 this.render();  // Re-render to show empty canvas
                 this.showToast(`Canvas "${name}" created!`);
             } else {

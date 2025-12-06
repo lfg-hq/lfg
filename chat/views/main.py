@@ -238,20 +238,50 @@ def conversation_list(request, project_id):
     
     return JsonResponse(data, safe=False)
 
-@require_http_methods(["GET", "DELETE"])
+@require_http_methods(["GET", "DELETE", "PUT", "PATCH"])
 @login_required
 def conversation_detail(request, conversation_id):
-    """Return messages for a specific conversation or delete the conversation."""
+    """Return messages for a specific conversation, update, or delete the conversation."""
     conversation = get_object_or_404(Conversation, id=conversation_id, user=request.user)
-    
+
     # Handle DELETE request
     if request.method == "DELETE":
         conversation.delete()
         return JsonResponse({"status": "success", "message": "Conversation deleted successfully"})
-    
+
+    # Handle PUT/PATCH request for updating conversation (e.g., linking canvas)
+    if request.method in ["PUT", "PATCH"]:
+        try:
+            data = json.loads(request.body)
+
+            # Update design_canvas if provided
+            if 'design_canvas_id' in data:
+                canvas_id = data.get('design_canvas_id')
+                if canvas_id:
+                    from projects.models import DesignCanvas
+                    # Verify canvas belongs to the conversation's project
+                    canvas = DesignCanvas.objects.filter(
+                        id=canvas_id,
+                        project=conversation.project
+                    ).first()
+                    if canvas:
+                        conversation.design_canvas = canvas
+                        conversation.save()
+                else:
+                    # Unlink canvas
+                    conversation.design_canvas = None
+                    conversation.save()
+
+            return JsonResponse({
+                "status": "success",
+                "design_canvas_id": conversation.design_canvas_id
+            })
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=400)
+
     # Handle GET request
     messages = conversation.messages.all()
-    
+
     # Check if this conversation is linked to any project
     project_info = None
     if hasattr(conversation, 'projects'):
@@ -263,12 +293,13 @@ def conversation_detail(request, conversation_id):
                 'name': project.name,
                 'icon': project.icon
             }
-    
+
     data = {
         'id': conversation.id,
         'title': conversation.title,
         'created_at': conversation.created_at.isoformat(),
         'project': project_info,
+        'design_canvas_id': conversation.design_canvas_id,
         'messages': [
             {
                 'id': msg.id,
@@ -280,7 +311,7 @@ def conversation_detail(request, conversation_id):
             for msg in messages
         ]
     }
-    
+
     return JsonResponse(data)
 
 @require_http_methods(["POST"])

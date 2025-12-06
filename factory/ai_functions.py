@@ -6149,6 +6149,10 @@ async def generate_design_preview(function_args, project_id, conversation_id=Non
             # Get canvas_id from context (set by consumer from user's selection)
             canvas_id = get_current_canvas_id()
 
+            # If no canvas_id from context, try to get from conversation
+            if not canvas_id and conversation:
+                canvas_id = await sync_to_async(lambda: conversation.design_canvas_id)()
+
             if canvas_id:
                 # Use the specifically selected canvas
                 canvas = await sync_to_async(
