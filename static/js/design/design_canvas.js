@@ -42,6 +42,10 @@ class DesignCanvas {
         // Smooth zoom animation
         this.zoomAnimationId = null;
 
+        // Tools panel state
+        this.currentTool = 'select';
+        this.selectedScreens = new Set();
+
         this.init();
     }
 
@@ -433,6 +437,9 @@ class DesignCanvas {
         document.getElementById('canvas-fit')?.addEventListener('click', () => this.fitToScreen());
         document.getElementById('canvas-refresh')?.addEventListener('click', () => this.loadFeatures());
 
+        // Tools panel buttons
+        this.bindToolsPanelEvents();
+
         // Fullscreen toggle
         const fullscreenBtn = document.getElementById('canvas-fullscreen');
         if (fullscreenBtn) {
@@ -558,7 +565,167 @@ class DesignCanvas {
                 e.preventDefault();
                 this.animateZoom(1);
             }
+            // Tool shortcuts
+            if (e.key === 'v' || e.key === 'V') {
+                this.setActiveTool('select');
+            }
+            if (e.key === 'a' || e.key === 'A') {
+                this.addEmptyScreen();
+            }
+            if ((e.key === 'Delete' || e.key === 'Backspace') && this.selectedScreens.size > 0) {
+                e.preventDefault();
+                this.deleteSelectedScreens();
+            }
+            if (e.key === 'h' || e.key === 'H') {
+                this.setActiveTool('hand');
+            }
         });
+    }
+
+    bindToolsPanelEvents() {
+        // Tool buttons
+        document.getElementById('tool-select')?.addEventListener('click', () => this.setActiveTool('select'));
+        document.getElementById('tool-add-screen')?.addEventListener('click', () => this.addEmptyScreen());
+        document.getElementById('tool-delete')?.addEventListener('click', () => this.deleteSelectedScreens());
+        document.getElementById('tool-annotate')?.addEventListener('click', () => this.setActiveTool('annotate'));
+        document.getElementById('tool-text')?.addEventListener('click', () => this.setActiveTool('text'));
+        document.getElementById('tool-arrow')?.addEventListener('click', () => this.setActiveTool('arrow'));
+        document.getElementById('tool-hand')?.addEventListener('click', () => this.setActiveTool('hand'));
+
+        // Set default tool
+        this.setActiveTool('select');
+        this.updateDeleteButtonState();
+    }
+
+    setActiveTool(tool) {
+        this.currentTool = tool;
+
+        // Update UI
+        document.querySelectorAll('.tool-btn[data-tool]').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.tool === tool);
+        });
+
+        // Update cursor based on tool
+        const wrapper = this.wrapper;
+        if (wrapper) {
+            switch (tool) {
+                case 'hand':
+                    wrapper.style.cursor = 'grab';
+                    break;
+                case 'select':
+                    wrapper.style.cursor = 'default';
+                    break;
+                default:
+                    wrapper.style.cursor = 'crosshair';
+            }
+        }
+    }
+
+    updateDeleteButtonState() {
+        const deleteBtn = document.getElementById('tool-delete');
+        if (deleteBtn) {
+            deleteBtn.disabled = this.selectedScreens.size === 0;
+        }
+    }
+
+    toggleScreenSelection(card, addToSelection = false) {
+        const screenKey = `${card.dataset.featureId}_${card.dataset.pageId}`;
+
+        if (!addToSelection) {
+            // Clear other selections
+            this.selectedScreens.forEach(key => {
+                const otherCard = document.querySelector(`[data-feature-id="${key.split('_')[0]}"][data-page-id="${key.split('_').slice(1).join('_')}"]`);
+                otherCard?.classList.remove('selected');
+            });
+            this.selectedScreens.clear();
+        }
+
+        if (this.selectedScreens.has(screenKey)) {
+            this.selectedScreens.delete(screenKey);
+            card.classList.remove('selected');
+        } else {
+            this.selectedScreens.add(screenKey);
+            card.classList.add('selected');
+        }
+
+        this.updateDeleteButtonState();
+    }
+
+    clearSelection() {
+        this.selectedScreens.forEach(key => {
+            const [featureId, ...pageIdParts] = key.split('_');
+            const pageId = pageIdParts.join('_');
+            const card = document.querySelector(`[data-feature-id="${featureId}"][data-page-id="${pageId}"]`);
+            card?.classList.remove('selected');
+        });
+        this.selectedScreens.clear();
+        this.updateDeleteButtonState();
+    }
+
+    async deleteSelectedScreens() {
+        if (this.selectedScreens.size === 0) {
+            this.showToast('No screens selected. Click on a screen to select it first.', 'error');
+            return;
+        }
+
+        const count = this.selectedScreens.size;
+        const confirmMsg = count === 1
+            ? 'Are you sure you want to delete this screen?'
+            : `Are you sure you want to delete ${count} screens?`;
+
+        if (!confirm(confirmMsg)) return;
+
+        const projectId = this.getProjectId();
+        if (!projectId) return;
+
+        // Group deletions by feature
+        const deletionsByFeature = new Map();
+        this.selectedScreens.forEach(key => {
+            const [featureId, ...pageIdParts] = key.split('_');
+            const pageId = pageIdParts.join('_');
+            if (!deletionsByFeature.has(featureId)) {
+                deletionsByFeature.set(featureId, []);
+            }
+            deletionsByFeature.get(featureId).push(pageId);
+        });
+
+        try {
+            // Delete screens via API
+            for (const [featureId, pageIds] of deletionsByFeature) {
+                const response = await fetch(`/projects/${projectId}/api/delete-screens/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': this.getCSRFToken()
+                    },
+                    body: JSON.stringify({
+                        feature_id: featureId,
+                        page_ids: pageIds
+                    })
+                });
+
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.error || 'Failed to delete screens');
+                }
+            }
+
+            // Also remove from canvas positions
+            if (this.currentCanvas) {
+                this.selectedScreens.forEach(key => {
+                    delete this.currentCanvas.feature_positions[key];
+                });
+                await this.saveCanvasToServer();
+            }
+
+            this.showToast(`Deleted ${count} screen${count > 1 ? 's' : ''}`);
+            this.clearSelection();
+            await this.loadFeatures();
+
+        } catch (error) {
+            console.error('Error deleting screens:', error);
+            this.showToast(error.message || 'Failed to delete screens', 'error');
+        }
     }
 
     animateZoom(targetZoom) {
@@ -1075,13 +1242,30 @@ class DesignCanvas {
             };
         });
 
-        // Click to preview - only if not dragged
+        // Click handler - selection or preview depending on modifier keys
         card.addEventListener('click', (e) => {
             if (e.target.closest('.ai-edit-btn')) return;
-            if (!this.hasDragged) {
+            if (this.hasDragged) {
+                this.hasDragged = false;
+                return;
+            }
+
+            // Shift+click or Ctrl/Cmd+click for multi-select
+            if (e.shiftKey || e.ctrlKey || e.metaKey) {
+                this.toggleScreenSelection(card, true);
+            } else if (this.selectedScreens.size > 0) {
+                // If there are selected screens, toggle selection
+                this.toggleScreenSelection(card, false);
+            } else {
+                // No selections - open preview
                 this.openPreview(feature, page);
             }
-            this.hasDragged = false;
+        });
+
+        // Double-click always opens preview
+        card.addEventListener('dblclick', (e) => {
+            if (e.target.closest('.ai-edit-btn')) return;
+            this.openPreview(feature, page);
         });
 
         return card;
@@ -1671,6 +1855,381 @@ class DesignCanvas {
         const div = document.createElement('div');
         div.textContent = text || '';
         return div.innerHTML;
+    }
+
+    addEmptyScreen() {
+        // Check if we have any features to add screens to
+        if (this.features.size === 0) {
+            this.showToast('No design features available. Generate a design preview first.', 'error');
+            return;
+        }
+
+        // Get the first feature (or we could let user choose)
+        const firstFeature = this.features.values().next().value;
+        const featureId = firstFeature.feature_id;
+
+        // Generate a unique placeholder ID
+        const placeholderId = `placeholder-${Date.now()}`;
+
+        // Calculate position for new screen - find the lowest point and add below
+        const existingCards = this.featuresContainer?.querySelectorAll('.screen-card') || [];
+        let maxY = 0;
+        let maxRowX = 0;
+
+        existingCards.forEach(card => {
+            const cardY = parseInt(card.style.top) || 0;
+            const cardX = parseInt(card.style.left) || 0;
+            if (cardY > maxY) {
+                maxY = cardY;
+                maxRowX = cardX;
+            } else if (cardY === maxY && cardX > maxRowX) {
+                maxRowX = cardX;
+            }
+        });
+
+        // Position: same row if space, otherwise new row below
+        let x, y;
+        const nextXInRow = maxRowX + this.cardWidth + this.cardGap;
+        const maxCardsPerRow = 4;
+        const rowWidth = maxCardsPerRow * (this.cardWidth + this.cardGap);
+
+        if (existingCards.length === 0) {
+            x = 50;
+            y = 100;
+        } else if (nextXInRow < rowWidth) {
+            // Add to same row
+            x = nextXInRow;
+            y = maxY;
+        } else {
+            // Start new row below
+            x = 50;
+            y = maxY + this.cardHeight + this.cardGap;
+        }
+
+        // Create an empty placeholder card
+        const card = this.createEmptyScreenCard(featureId, placeholderId, x, y);
+        this.featuresContainer?.appendChild(card);
+
+        // Add to canvas positions
+        if (this.currentCanvas) {
+            const key = `${featureId}_${placeholderId}`;
+            if (!this.currentCanvas.feature_positions) {
+                this.currentCanvas.feature_positions = {};
+            }
+            this.currentCanvas.feature_positions[key] = { x, y };
+        }
+
+        // Don't auto-open chat - user will click on the placeholder to open it
+    }
+
+    createEmptyScreenCard(featureId, placeholderId, x, y) {
+        const card = document.createElement('div');
+        card.className = 'screen-card empty-placeholder';
+        card.id = `screen-${featureId}-${placeholderId}`;
+        card.dataset.featureId = featureId;
+        card.dataset.pageId = placeholderId;
+        card.dataset.isPlaceholder = 'true';
+        card.style.left = `${x}px`;
+        card.style.top = `${y}px`;
+        card.style.width = `${this.cardWidth}px`;
+
+        card.innerHTML = `
+            <div class="screen-thumbnail empty-thumbnail">
+                <div class="empty-placeholder-content">
+                    <i class="fas fa-plus-circle"></i>
+                    <span>Click to describe</span>
+                </div>
+            </div>
+            <div class="screen-info">
+                <div class="screen-name-row">
+                    <div class="screen-name">New Screen</div>
+                    <button class="remove-placeholder-btn" title="Remove">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="screen-meta">
+                    <span class="screen-type placeholder">placeholder</span>
+                </div>
+            </div>
+        `;
+
+        // Remove button
+        const removeBtn = card.querySelector('.remove-placeholder-btn');
+        removeBtn?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.removePlaceholder(card, featureId, placeholderId);
+        });
+
+        // Click to open generation chat
+        card.addEventListener('click', (e) => {
+            if (e.target.closest('.remove-placeholder-btn')) return;
+            this.openGenerationChat(featureId, placeholderId, card);
+        });
+
+        // Make it draggable
+        card.addEventListener('mousedown', (e) => {
+            if (e.target.closest('.remove-placeholder-btn')) return;
+
+            e.stopPropagation();
+            this.isDragging = true;
+            this.hasDragged = false;
+            this.dragTarget = card;
+            this.dragStartPos = { x: e.clientX, y: e.clientY };
+            card.classList.add('dragging');
+
+            const rect = card.getBoundingClientRect();
+            this.dragOffset = {
+                x: (e.clientX - rect.left) / this.zoom,
+                y: (e.clientY - rect.top) / this.zoom
+            };
+        });
+
+        return card;
+    }
+
+    removePlaceholder(card, featureId, placeholderId) {
+        card.remove();
+
+        // Remove from canvas positions
+        if (this.currentCanvas) {
+            const key = `${featureId}_${placeholderId}`;
+            delete this.currentCanvas.feature_positions[key];
+            this.saveCanvasToServer();
+        }
+
+        // Close chat panel if open for this placeholder
+        const panel = document.getElementById('design-ai-chat-panel');
+        if (panel?.dataset.pageId === placeholderId) {
+            panel.classList.remove('active');
+        }
+    }
+
+    openGenerationChat(featureId, placeholderId, card) {
+        // Get the feature for context
+        const feature = this.features.get(featureId) || this.features.get(parseInt(featureId));
+
+        // Create or show the AI chat panel
+        let panel = document.getElementById('design-ai-chat-panel');
+
+        if (!panel) {
+            panel = document.createElement('div');
+            panel.id = 'design-ai-chat-panel';
+            panel.className = 'design-ai-chat-panel';
+            panel.innerHTML = `
+                <div class="ai-chat-header">
+                    <div class="ai-chat-title">
+                        <i class="fas fa-magic"></i>
+                        <span>Create Screen</span>
+                    </div>
+                    <button class="ai-chat-close" id="ai-chat-close">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="ai-chat-screen-info" id="ai-chat-screen-info"></div>
+                <div class="ai-chat-messages" id="ai-chat-messages">
+                    <div class="ai-chat-welcome">
+                        <i class="fas fa-sparkles"></i>
+                        <p>Describe the screen you want to create</p>
+                        <p class="ai-chat-hint">E.g., "A settings page with profile editing, password change, and notification preferences"</p>
+                    </div>
+                </div>
+                <div class="ai-chat-input-container">
+                    <textarea class="ai-chat-input" id="ai-chat-input" placeholder="Describe what you want on this screen..."></textarea>
+                    <button class="ai-chat-send" id="ai-chat-send">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+            `;
+            document.body.appendChild(panel);
+
+            // Bind close button
+            document.getElementById('ai-chat-close')?.addEventListener('click', () => {
+                panel.classList.remove('active');
+            });
+
+            // Bind send button
+            document.getElementById('ai-chat-send')?.addEventListener('click', () => {
+                this.generateScreenFromChat();
+            });
+
+            // Bind enter key
+            document.getElementById('ai-chat-input')?.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    this.generateScreenFromChat();
+                }
+            });
+        }
+
+        // Update for generation mode vs edit mode
+        const titleEl = panel.querySelector('.ai-chat-title span');
+        if (titleEl) titleEl.textContent = 'Create Screen';
+
+        // Update screen info
+        const screenInfo = document.getElementById('ai-chat-screen-info');
+        if (screenInfo) {
+            screenInfo.innerHTML = `
+                <span class="ai-screen-label">Feature:</span>
+                <span class="ai-screen-name">${this.escapeHtml(feature?.feature_name || 'Unknown')}</span>
+            `;
+        }
+
+        // Clear previous messages
+        const messagesContainer = document.getElementById('ai-chat-messages');
+        if (messagesContainer) {
+            messagesContainer.innerHTML = `
+                <div class="ai-chat-welcome">
+                    <i class="fas fa-sparkles"></i>
+                    <p>Describe the screen you want to create</p>
+                    <p class="ai-chat-hint">E.g., "A settings page with profile editing, password change, and notification preferences"</p>
+                </div>
+            `;
+        }
+
+        // Store context
+        panel.dataset.featureId = featureId;
+        panel.dataset.pageId = placeholderId;
+        panel.dataset.isGenerating = 'true';
+        panel.dataset.cardElement = card.id;
+
+        // Show panel
+        panel.classList.add('active');
+
+        // Focus input
+        setTimeout(() => {
+            document.getElementById('ai-chat-input')?.focus();
+        }, 100);
+    }
+
+    async generateScreenFromChat() {
+        const input = document.getElementById('ai-chat-input');
+        const messagesContainer = document.getElementById('ai-chat-messages');
+        const panel = document.getElementById('design-ai-chat-panel');
+        const sendBtn = document.getElementById('ai-chat-send');
+        const description = input?.value?.trim();
+
+        if (!description) return;
+
+        const featureId = panel?.dataset.featureId;
+        const placeholderId = panel?.dataset.pageId;
+        const isGenerating = panel?.dataset.isGenerating === 'true';
+        const projectId = this.getProjectId();
+
+        if (!featureId || !projectId) {
+            this.showToast('Missing context for generation', 'error');
+            return;
+        }
+
+        // If this is editing an existing screen, use the edit flow
+        if (!isGenerating) {
+            return this.sendAIChatMessage();
+        }
+
+        // Add user message
+        const userMsg = document.createElement('div');
+        userMsg.className = 'ai-chat-message user';
+        userMsg.innerHTML = `<p>${this.escapeHtml(description)}</p>`;
+        messagesContainer?.appendChild(userMsg);
+
+        // Clear input and disable
+        if (input) input.value = '';
+        if (sendBtn) sendBtn.disabled = true;
+        if (input) input.disabled = true;
+
+        // Add loading message
+        const loadingMsg = document.createElement('div');
+        loadingMsg.className = 'ai-chat-message assistant loading';
+        loadingMsg.innerHTML = `<p><i class="fas fa-circle-notch fa-spin"></i> Generating screen...</p>`;
+        messagesContainer?.appendChild(loadingMsg);
+
+        // Scroll to bottom
+        if (messagesContainer) {
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        try {
+            const response = await fetch(`/projects/${projectId}/api/generate-screen/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCSRFToken()
+                },
+                body: JSON.stringify({
+                    feature_id: featureId,
+                    description: description
+                })
+            });
+
+            const data = await response.json();
+
+            // Remove loading message
+            loadingMsg.remove();
+
+            if (data.success) {
+                // Show success message
+                const assistantMsg = document.createElement('div');
+                assistantMsg.className = 'ai-chat-message assistant success';
+                assistantMsg.innerHTML = `
+                    <p><i class="fas fa-check-circle"></i> Created: ${this.escapeHtml(data.page?.page_name || 'New Screen')}</p>
+                `;
+                messagesContainer?.appendChild(assistantMsg);
+
+                // Remove the placeholder card
+                const placeholderCard = document.getElementById(`screen-${featureId}-${placeholderId}`);
+                if (placeholderCard) {
+                    placeholderCard.remove();
+                }
+
+                // Remove placeholder from canvas positions
+                if (this.currentCanvas) {
+                    const oldKey = `${featureId}_${placeholderId}`;
+                    const oldPos = this.currentCanvas.feature_positions[oldKey];
+                    delete this.currentCanvas.feature_positions[oldKey];
+
+                    // Add the new screen with the same position
+                    if (data.page) {
+                        const newKey = `${featureId}_${data.page.page_id}`;
+                        this.currentCanvas.feature_positions[newKey] = oldPos || { x: 50, y: 100 };
+                    }
+                    await this.saveCanvasToServer();
+                }
+
+                // Close panel after a moment
+                setTimeout(() => {
+                    panel.classList.remove('active');
+                    this.loadFeatures();
+                }, 1000);
+
+            } else {
+                const assistantMsg = document.createElement('div');
+                assistantMsg.className = 'ai-chat-message assistant error';
+                assistantMsg.innerHTML = `
+                    <p><i class="fas fa-exclamation-circle"></i> ${this.escapeHtml(data.error || 'Failed to generate screen')}</p>
+                `;
+                messagesContainer?.appendChild(assistantMsg);
+
+                // Re-enable input
+                if (sendBtn) sendBtn.disabled = false;
+                if (input) input.disabled = false;
+            }
+
+        } catch (error) {
+            console.error('Error generating screen:', error);
+            loadingMsg.remove();
+
+            const errorMsg = document.createElement('div');
+            errorMsg.className = 'ai-chat-message assistant error';
+            errorMsg.innerHTML = `<p><i class="fas fa-exclamation-circle"></i> Connection error. Please try again.</p>`;
+            messagesContainer?.appendChild(errorMsg);
+
+            if (sendBtn) sendBtn.disabled = false;
+            if (input) input.disabled = false;
+        }
+
+        // Scroll to bottom
+        if (messagesContainer) {
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
     }
 
     refresh() {

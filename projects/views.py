@@ -2963,3 +2963,214 @@ def design_canvas_set_default_api(request, project_id, canvas_id):
         'success': True,
         'message': f'Canvas "{canvas.name}" is now the default'
     })
+
+
+@login_required
+@csrf_exempt
+@require_http_methods(["POST"])
+def generate_single_screen_api(request, project_id):
+    """API endpoint for generating a single screen from a description using AI."""
+    import anthropic
+    from factory.ai_tools import tools_generate_single_screen
+
+    project = get_object_or_404(Project, project_id=project_id)
+
+    # Check permission
+    if not (project.owner == request.user or project.members.filter(user=request.user, status='active').exists()):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    try:
+        data = json.loads(request.body)
+        feature_id = data.get('feature_id')  # The design feature to add the screen to
+        description = data.get('description', '')  # User's description of the screen
+
+        if not feature_id or not description:
+            return JsonResponse({'success': False, 'error': 'Missing required fields (feature_id, description)'}, status=400)
+
+        # Get the design feature
+        design_feature = ProjectDesignFeature.objects.filter(project=project, id=feature_id).first()
+        if not design_feature:
+            return JsonResponse({'success': False, 'error': 'Design feature not found'}, status=404)
+
+        # Get existing pages to avoid duplicate IDs
+        existing_pages = design_feature.pages or []
+        existing_page_ids = [p.get('page_id') for p in existing_pages]
+        existing_page_names = [p.get('page_name') for p in existing_pages]
+
+        # Get common elements for context
+        common_elements = design_feature.common_elements or []
+        common_elements_text = ""
+        if common_elements:
+            common_elements_text = "\n\nExisting Common Elements (already applied to pages):\n"
+            for elem in common_elements:
+                common_elements_text += f"- {elem.get('element_name', 'Unknown')} ({elem.get('element_type', 'unknown')}) - Position: {elem.get('position', 'unknown')}\n"
+
+        # Build the prompt for AI
+        system_prompt = """You are a UI/UX design assistant that creates HTML designs based on user descriptions.
+You will be given context about an existing feature and asked to create a new screen for it.
+
+IMPORTANT ARCHITECTURE:
+- Pages contain ONLY the main content partial (wrapped in <main> or content container)
+- Common elements (header, footer, sidebar) are SEPARATE and will be composed automatically
+- DO NOT include header, footer, or sidebar in your HTML - only the main content area
+
+DESIGN GUIDELINES:
+- Match the existing design language and style from the CSS provided
+- Create semantic, accessible HTML
+- Use the existing CSS classes where appropriate
+- Keep the design clean and professional
+- The content should be wrapped in a semantic container like <main> or a div with appropriate class"""
+
+        user_prompt = f"""Feature: {design_feature.feature_name}
+Feature Description: {design_feature.feature_description}
+
+Current CSS (you can add to this if needed):
+```css
+{design_feature.css_style or 'No CSS defined yet'}
+```
+{common_elements_text}
+
+Existing pages in this feature (avoid duplicate IDs):
+{', '.join(existing_page_ids) if existing_page_ids else 'No existing pages'}
+
+User's description for the new screen:
+{description}
+
+Please use the generate_single_screen tool to create this screen. Make sure to:
+1. Use a unique page_id that doesn't conflict with existing pages
+2. Create appropriate HTML content matching the user's description
+3. Add any necessary CSS additions for this specific page"""
+
+        # Call Anthropic API
+        client = anthropic.Anthropic()
+
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=8000,
+            system=system_prompt,
+            tools=tools_generate_single_screen,
+            messages=[
+                {"role": "user", "content": user_prompt}
+            ]
+        )
+
+        # Process the response
+        page_id = None
+        page_name = None
+        html_content = None
+        page_type = None
+        css_additions = None
+        assistant_message = ""
+
+        for block in response.content:
+            if block.type == "text":
+                assistant_message = block.text
+            elif block.type == "tool_use" and block.name == "generate_single_screen":
+                tool_input = block.input
+                page_id = tool_input.get('page_id')
+                page_name = tool_input.get('page_name')
+                html_content = tool_input.get('html_content')
+                page_type = tool_input.get('page_type', 'screen')
+                css_additions = tool_input.get('css_additions')
+
+        if not page_id or not html_content:
+            return JsonResponse({
+                'success': False,
+                'error': 'AI did not return valid screen data',
+                'assistant_message': assistant_message
+            }, status=400)
+
+        # Ensure unique page_id
+        original_page_id = page_id
+        counter = 1
+        while page_id in existing_page_ids:
+            page_id = f"{original_page_id}-{counter}"
+            counter += 1
+
+        # Create the new page object
+        new_page = {
+            'page_id': page_id,
+            'page_name': page_name,
+            'html_content': html_content,
+            'page_type': page_type,
+            'navigates_to': []
+        }
+
+        # Add to the feature's pages
+        pages = design_feature.pages or []
+        pages.append(new_page)
+        design_feature.pages = pages
+
+        # Add CSS additions if provided
+        if css_additions:
+            current_css = design_feature.css_style or ''
+            design_feature.css_style = current_css + '\n\n/* Styles for ' + page_name + ' */\n' + css_additions
+
+        design_feature.save()
+
+        return JsonResponse({
+            'success': True,
+            'page': new_page,
+            'feature_id': feature_id,
+            'css_style': design_feature.css_style,
+            'assistant_message': assistant_message or f'Created new screen: {page_name}'
+        })
+
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        logger.error(f"Error generating single screen: {e}", exc_info=True)
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@csrf_exempt
+@require_http_methods(["POST"])
+def delete_screens_api(request, project_id):
+    """API endpoint for deleting screens from a design feature."""
+    project = get_object_or_404(Project, project_id=project_id)
+
+    # Check permission
+    if not (project.owner == request.user or project.members.filter(user=request.user, status='active').exists()):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    try:
+        data = json.loads(request.body)
+        feature_id = data.get('feature_id')
+        page_ids = data.get('page_ids', [])
+
+        if not feature_id or not page_ids:
+            return JsonResponse({'success': False, 'error': 'Missing required fields (feature_id, page_ids)'}, status=400)
+
+        # Get the design feature
+        design_feature = ProjectDesignFeature.objects.filter(project=project, id=feature_id).first()
+        if not design_feature:
+            return JsonResponse({'success': False, 'error': 'Design feature not found'}, status=404)
+
+        # Remove pages from the feature
+        pages = design_feature.pages or []
+        original_count = len(pages)
+
+        # Filter out the pages to delete
+        pages = [p for p in pages if p.get('page_id') not in page_ids]
+
+        deleted_count = original_count - len(pages)
+
+        if deleted_count == 0:
+            return JsonResponse({'success': False, 'error': 'No matching pages found to delete'}, status=404)
+
+        # Update the feature
+        design_feature.pages = pages
+        design_feature.save()
+
+        return JsonResponse({
+            'success': True,
+            'deleted_count': deleted_count,
+            'remaining_pages': len(pages)
+        })
+
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        logger.error(f"Error deleting screens: {e}", exc_info=True)
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)

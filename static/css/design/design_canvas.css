@@ -1113,6 +1113,191 @@ body.design-fullscreen-active .design-canvas-container.fullscreen {
     padding: 40px 20px;
 }
 
+/* Left Tools Panel */
+.design-tools-panel {
+    position: absolute;
+    left: 12px;
+    top: 60px;
+    background: #1e1e2e;
+    border: 1px solid #2d2d44;
+    border-radius: 10px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    z-index: 100;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.tools-panel-section {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.tools-panel-divider {
+    height: 1px;
+    background: #2d2d44;
+    margin: 4px 0;
+}
+
+.tool-btn {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    color: #9ca3af;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-size: 16px;
+}
+
+.tool-btn:hover {
+    background: #2d2d44;
+    color: #f3f4f6;
+}
+
+.tool-btn.active {
+    background: #8b5cf6;
+    color: white;
+}
+
+.tool-btn.active:hover {
+    background: #7c3aed;
+}
+
+.tool-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.tool-btn:disabled:hover {
+    background: transparent;
+    color: #9ca3af;
+}
+
+/* Tool-specific colors */
+#tool-delete:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+}
+
+#tool-add-screen:hover {
+    background: rgba(139, 92, 246, 0.2);
+    color: #8b5cf6;
+}
+
+/* Screen card selection state */
+.screen-card.selected {
+    outline: 2px solid #8b5cf6;
+    outline-offset: 2px;
+}
+
+.screen-card.selected::after {
+    content: '';
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 20px;
+    height: 20px;
+    background: #8b5cf6;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.screen-card.selected::before {
+    content: '✓';
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 20px;
+    height: 20px;
+    color: white;
+    font-size: 12px;
+    font-weight: bold;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Empty Placeholder Screen Card */
+.screen-card.empty-placeholder {
+    border: 2px dashed #3d3d5c;
+    background: rgba(139, 92, 246, 0.05);
+}
+
+.screen-card.empty-placeholder:hover {
+    border-color: #8b5cf6;
+    background: rgba(139, 92, 246, 0.1);
+}
+
+.screen-card.empty-placeholder .screen-thumbnail.empty-thumbnail {
+    background: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 160px;
+}
+
+.empty-placeholder-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    color: #6b7280;
+    transition: all 0.2s;
+}
+
+.screen-card.empty-placeholder:hover .empty-placeholder-content {
+    color: #8b5cf6;
+}
+
+.empty-placeholder-content i {
+    font-size: 32px;
+}
+
+.empty-placeholder-content span {
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.remove-placeholder-btn {
+    background: transparent;
+    border: none;
+    color: #6b7280;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.remove-placeholder-btn:hover {
+    background: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+}
+
+.screen-type.placeholder {
+    background: rgba(139, 92, 246, 0.2);
+    color: #8b5cf6;
+}
+
+/* AI Chat hint text */
+.ai-chat-hint {
+    font-size: 12px;
+    color: #6b7280;
+    margin-top: 8px;
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
     .design-canvas-toolbar {

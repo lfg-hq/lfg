@@ -1501,6 +1501,39 @@ edit_design_screen = {
     }
 }
 
+# Tool for generating a single screen from a description
+generate_single_screen_anthropic = {
+    "name": "generate_single_screen",
+    "description": "Generate a single new screen/page for an existing feature on the design canvas. Use this to add a new page to an existing feature based on user description.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "page_id": {
+                "type": "string",
+                "description": "Unique identifier for this page (e.g., 'settings-page', 'user-profile', 'analytics-dashboard')"
+            },
+            "page_name": {
+                "type": "string",
+                "description": "Display name of the page (e.g., 'Settings Page', 'User Profile', 'Analytics Dashboard')"
+            },
+            "html_content": {
+                "type": "string",
+                "description": "Main content partial HTML ONLY. Do NOT include header, footer, or sidebar - those are inherited from the feature. This should be the unique content for this page wrapped in a <main> or content container."
+            },
+            "page_type": {
+                "type": "string",
+                "enum": ["screen", "modal", "drawer", "popup", "toast"],
+                "description": "Type of UI component this page represents"
+            },
+            "css_additions": {
+                "type": "string",
+                "description": "Optional: Additional CSS styles specific to this page. Will be appended to the feature's existing CSS."
+            }
+        },
+        "required": ["page_id", "page_name", "html_content", "page_type"]
+    }
+}
+
 tools_turbo = [
     get_file_content,
     get_pending_tickets,
@@ -1516,4 +1549,8 @@ tools_design = [
 
 tools_design_chat = [
     edit_design_screen_anthropic
+]
+
+tools_generate_single_screen = [
+    generate_single_screen_anthropic
 ]

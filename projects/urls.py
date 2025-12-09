@@ -38,6 +38,11 @@ urlpatterns = [
     path('<str:project_id>/api/canvases/<int:canvas_id>/', views.design_canvas_detail_api, name='design_canvas_detail_api'),
     path('<str:project_id>/api/canvases/<int:canvas_id>/positions/', views.design_canvas_save_positions_api, name='design_canvas_save_positions_api'),
     path('<str:project_id>/api/canvases/<int:canvas_id>/set-default/', views.design_canvas_set_default_api, name='design_canvas_set_default_api'),
+
+    # Generate single screen API
+    path('<str:project_id>/api/generate-screen/', views.generate_single_screen_api, name='generate_single_screen_api'),
+    # Delete screens API
+    path('<str:project_id>/api/delete-screens/', views.delete_screens_api, name='delete_screens_api'),
     # Removed - use project_checklist_api instead
     path('<str:project_id>/api/checklist/', views.project_checklist_api, name='project_checklist_api'),
     path('<str:project_id>/api/checklist/create/', views.create_checklist_item_api, name='create_checklist_item_api'),
