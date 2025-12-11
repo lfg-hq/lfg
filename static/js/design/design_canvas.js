@@ -156,8 +156,11 @@ class DesignCanvas {
                 this.currentCanvas = selectedCanvas;
                 this.currentCanvasId = selectedCanvas.id;
                 window.currentDesignCanvasId = selectedCanvas.id;  // Store globally
+                console.log('[DesignCanvas] init - Set currentDesignCanvasId:', selectedCanvas.id, 'canvas name:', selectedCanvas.name, 'is_default:', selectedCanvas.is_default);
                 const selector = document.getElementById('canvas-selector');
                 if (selector) selector.value = selectedCanvas.id;
+            } else {
+                console.log('[DesignCanvas] init - No canvas selected');
             }
 
         } catch (error) {
@@ -228,16 +231,21 @@ class DesignCanvas {
     }
 
     async switchCanvas(canvasId) {
+        console.log('[DesignCanvas] switchCanvas called with:', canvasId);
         if (!canvasId) return;
 
         const canvas = this.canvases.find(c => c.id == canvasId);
-        if (!canvas) return;
+        if (!canvas) {
+            console.log('[DesignCanvas] switchCanvas - canvas not found');
+            return;
+        }
 
         this.currentCanvas = canvas;
         this.currentCanvasId = canvas.id;
 
         // Store globally for design agent to use
         window.currentDesignCanvasId = canvas.id;
+        console.log('[DesignCanvas] switchCanvas - Set window.currentDesignCanvasId:', canvas.id, 'name:', canvas.name);
 
         // Link canvas to current conversation
         this.linkCanvasToConversation(canvas.id);
@@ -728,6 +736,46 @@ class DesignCanvas {
         }
     }
 
+    async deleteScreen(featureId, pageId, pageName) {
+        if (!confirm(`Delete "${pageName}"?`)) return;
+
+        const projectId = this.getProjectId();
+        if (!projectId) return;
+
+        try {
+            const response = await fetch(`/projects/${projectId}/api/delete-screens/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCSRFToken()
+                },
+                body: JSON.stringify({
+                    feature_id: featureId,
+                    page_ids: [pageId]
+                })
+            });
+
+            if (!response.ok) {
+                const data = await response.json();
+                throw new Error(data.error || 'Failed to delete screen');
+            }
+
+            // Remove from canvas positions
+            if (this.currentCanvas) {
+                const key = `${featureId}_${pageId}`;
+                delete this.currentCanvas.feature_positions[key];
+                await this.saveCanvasToServer();
+            }
+
+            this.showToast('Screen deleted');
+            await this.loadFeatures();
+
+        } catch (error) {
+            console.error('Error deleting screen:', error);
+            this.showToast(error.message || 'Failed to delete screen', 'error');
+        }
+    }
+
     animateZoom(targetZoom) {
         targetZoom = Math.max(0.2, Math.min(1.5, targetZoom));
         this.targetZoom = targetZoom;
@@ -859,35 +907,45 @@ class DesignCanvas {
     }
 
     async loadFeatures() {
+        console.log('[DesignCanvas] loadFeatures called');
         this.showLoading(true);
 
         try {
             const projectId = this.getProjectId();
+            console.log('[DesignCanvas] projectId:', projectId);
             if (!projectId) {
+                console.log('[DesignCanvas] No projectId, showing empty');
                 this.showEmpty(true);
                 return;
             }
 
             const response = await fetch(`/projects/${projectId}/api/design-features/`);
+            console.log('[DesignCanvas] API response status:', response.status);
             if (!response.ok) throw new Error('Failed to load features');
 
             const data = await response.json();
+            console.log('[DesignCanvas] API response data:', data);
+            console.log('[DesignCanvas] Features count:', data.features?.length || 0);
             this.features.clear();
 
             if (!data.features || data.features.length === 0) {
+                console.log('[DesignCanvas] No features found, showing empty');
                 this.showEmpty(true);
                 return;
             }
 
             data.features.forEach((feature) => {
+                console.log('[DesignCanvas] Adding feature:', feature.feature_id, feature.feature_name, 'pages:', feature.pages?.length || 0);
                 this.features.set(feature.feature_id, feature);
             });
 
+            console.log('[DesignCanvas] Total features in map:', this.features.size);
+            console.log('[DesignCanvas] Current canvas:', this.currentCanvas);
             this.render();
             this.showEmpty(false);
 
         } catch (error) {
-            console.error('Error loading features:', error);
+            console.error('[DesignCanvas] Error loading features:', error);
             this.showEmpty(true);
         } finally {
             this.showLoading(false);
@@ -901,6 +959,7 @@ class DesignCanvas {
     }
 
     render() {
+        console.log('[DesignCanvas] render() called');
         this.featuresContainer.innerHTML = '';
         this.pageElements.clear();
         this.hideEmptyCanvasState();
@@ -908,22 +967,27 @@ class DesignCanvas {
         // Get saved positions from current canvas
         const savedPositions = this.currentCanvas?.feature_positions || {};
         const isDefaultCanvas = this.currentCanvas?.is_default === true;
+        console.log('[DesignCanvas] render - currentCanvas:', this.currentCanvas);
+        console.log('[DesignCanvas] render - savedPositions:', Object.keys(savedPositions).length, 'items');
+        console.log('[DesignCanvas] render - isDefaultCanvas:', isDefaultCanvas);
+        console.log('[DesignCanvas] render - features.size:', this.features.size);
 
-        // For default canvas: show all screens
-        // For non-default canvas: show only screens with saved positions
+        // For default canvas OR canvas with no positions yet: show all screens
+        // For non-default canvas with positions: show only screens with saved positions
         const hasPositions = Object.keys(savedPositions).length > 0;
+        console.log('[DesignCanvas] render - hasPositions:', hasPositions);
 
         // Check if we have any screens at all
         if (this.features.size === 0) {
+            console.log('[DesignCanvas] render - No features, showing empty');
             this.showEmpty(true);
             return;
         }
 
-        // For non-default empty canvas, show empty state
-        if (!isDefaultCanvas && !hasPositions) {
-            this.showEmptyCanvasState();
-            return;
-        }
+        // Show all screens if: default canvas OR canvas has no positions yet (new canvas)
+        // This way new canvases show all screens until user customizes them
+        const showAllScreens = isDefaultCanvas || !hasPositions;
+        console.log('[DesignCanvas] render - showAllScreens:', showAllScreens);
 
         let currentY = 50;
         let hasVisibleScreens = false;
@@ -932,7 +996,8 @@ class DesignCanvas {
             const pages = feature.pages || [];
 
             // Filter pages based on canvas type
-            const visiblePages = isDefaultCanvas ? pages : pages.filter(page => {
+            // Show all pages if: default canvas OR new canvas with no positions
+            const visiblePages = showAllScreens ? pages : pages.filter(page => {
                 const positionKey = `${feature.feature_id}_${page.page_id}`;
                 return savedPositions[positionKey];
             });
@@ -945,8 +1010,12 @@ class DesignCanvas {
             sectionHeader.className = 'feature-section-header';
             sectionHeader.style.left = '50px';
             sectionHeader.style.top = `${currentY}px`;
+            const platformBadge = feature.platform === 'mobile'
+                ? '<span class="platform-badge mobile"><i class="fas fa-mobile-alt"></i> iOS</span>'
+                : '<span class="platform-badge web"><i class="fas fa-desktop"></i> Web</span>';
             sectionHeader.innerHTML = `
                 <span class="feature-section-title">${this.escapeHtml(feature.feature_name)}</span>
+                ${platformBadge}
                 <span class="feature-section-count">${visiblePages.length} screens</span>
             `;
             this.featuresContainer.appendChild(sectionHeader);
@@ -1001,33 +1070,17 @@ class DesignCanvas {
     }
 
     showEmptyCanvasState() {
-        // Hide the features container
+        // For empty canvas, just show the features container (which will be empty)
+        // Users can click the + button in the toolbar to add screens
         if (this.featuresContainer) {
-            this.featuresContainer.style.display = 'none';
+            this.featuresContainer.style.display = 'block';
         }
 
-        // Create or show empty canvas state
-        let emptyState = document.getElementById('empty-canvas-state');
-        if (!emptyState) {
-            emptyState = document.createElement('div');
-            emptyState.id = 'empty-canvas-state';
-            emptyState.className = 'empty-canvas-state';
-            emptyState.innerHTML = `
-                <div class="empty-canvas-icon"><i class="fas fa-layer-group"></i></div>
-                <div class="empty-canvas-title">Empty Canvas</div>
-                <div class="empty-canvas-subtitle">Add screens to this canvas to get started</div>
-                <button class="add-screens-btn" id="add-screens-btn">
-                    <i class="fas fa-plus"></i> Add Screens
-                </button>
-            `;
-            this.wrapper?.appendChild(emptyState);
-
-            // Bind add screens button
-            document.getElementById('add-screens-btn')?.addEventListener('click', () => {
-                this.showScreenPicker();
-            });
+        // Remove any existing empty canvas state UI
+        const existingEmptyState = document.getElementById('empty-canvas-state');
+        if (existingEmptyState) {
+            existingEmptyState.remove();
         }
-        emptyState.style.display = 'flex';
     }
 
     hideEmptyCanvasState() {
@@ -1202,9 +1255,14 @@ class DesignCanvas {
             <div class="screen-info">
                 <div class="screen-name-row">
                     <div class="screen-name">${this.escapeHtml(page.page_name)}</div>
-                    <button class="ai-edit-btn" title="Edit with AI">
-                        <i class="fas fa-magic"></i>
-                    </button>
+                    <div class="screen-actions">
+                        <button class="ai-edit-btn" title="Edit with AI">
+                            <i class="fas fa-magic"></i>
+                        </button>
+                        <button class="screen-delete-btn" title="Delete Screen">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                    </div>
                 </div>
                 <div class="screen-meta">
                     <span class="screen-type ${page.page_type || 'screen'}">${page.page_type || 'screen'}</span>
@@ -1221,10 +1279,18 @@ class DesignCanvas {
             this.openAIChat(feature, page);
         });
 
+        // Delete button click
+        const deleteBtn = card.querySelector('.screen-delete-btn');
+        deleteBtn?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            this.deleteScreen(feature.feature_id, page.page_id, page.page_name);
+        });
+
         // Drag to reposition
         card.addEventListener('mousedown', (e) => {
-            // Don't start drag if clicking AI button
-            if (e.target.closest('.ai-edit-btn')) return;
+            // Don't start drag if clicking action buttons
+            if (e.target.closest('.ai-edit-btn') || e.target.closest('.screen-delete-btn')) return;
 
             e.stopPropagation();
             e.preventDefault();
@@ -1244,7 +1310,7 @@ class DesignCanvas {
 
         // Click handler - selection or preview depending on modifier keys
         card.addEventListener('click', (e) => {
-            if (e.target.closest('.ai-edit-btn')) return;
+            if (e.target.closest('.ai-edit-btn') || e.target.closest('.screen-delete-btn')) return;
             if (this.hasDragged) {
                 this.hasDragged = false;
                 return;
@@ -1264,7 +1330,7 @@ class DesignCanvas {
 
         // Double-click always opens preview
         card.addEventListener('dblclick', (e) => {
-            if (e.target.closest('.ai-edit-btn')) return;
+            if (e.target.closest('.ai-edit-btn') || e.target.closest('.screen-delete-btn')) return;
             this.openPreview(feature, page);
         });
 

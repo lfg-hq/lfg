@@ -194,11 +194,17 @@ class ProjectDesignSchema(models.Model):
 
 class ProjectDesignFeature(models.Model):
     """Model to store design features with pages, navigation, and styling as JSON"""
+    PLATFORM_CHOICES = [
+        ('web', 'Web (Responsive)'),
+        ('mobile', 'Mobile (iOS)'),
+    ]
+
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='design_features')
     conversation = models.ForeignKey('chat.Conversation', on_delete=models.SET_NULL, null=True, blank=True, related_name='design_features')
     feature_name = models.CharField(max_length=255)
     feature_description = models.TextField(blank=True, default='')
     explainer = models.TextField(blank=True, default='')
+    platform = models.CharField(max_length=10, choices=PLATFORM_CHOICES, default='web')
 
     # All design data stored as JSON
     css_style = models.TextField(blank=True, default='')

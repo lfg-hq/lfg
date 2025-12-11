@@ -6043,19 +6043,23 @@ async def generate_design_preview(function_args, project_id, conversation_id=Non
     """
     import uuid
 
-    logger.info(f"Generate design preview called for project: {project_id}")
+    logger.info(f"[generate_design_preview] Called for project: {project_id}, conversation: {conversation_id}")
+    logger.info(f"[generate_design_preview] Function args keys: {list(function_args.keys())}")
 
     # Validate project
     error_response = validate_project_id(project_id)
     if error_response:
+        logger.error(f"[generate_design_preview] Project validation failed: {error_response}")
         return error_response
 
     # Validate required arguments
     required_fields = ['feature_name', 'feature_description', 'explainer', 'css_style', 'pages', 'entry_page_id']
     validation_error = validate_function_args(function_args, required_fields)
     if validation_error:
+        logger.error(f"[generate_design_preview] Argument validation failed: {validation_error}")
         return validation_error
 
+    platform = function_args.get('platform', 'web')  # Default to 'web' for backwards compatibility
     feature_name = function_args.get('feature_name')
     feature_description = function_args.get('feature_description')
     explainer = function_args.get('explainer')
@@ -6065,6 +6069,8 @@ async def generate_design_preview(function_args, project_id, conversation_id=Non
     feature_connections = function_args.get('feature_connections', [])
     entry_page_id = function_args.get('entry_page_id')
     canvas_position = function_args.get('canvas_position', {'x': 0, 'y': 0})
+
+    logger.info(f"[generate_design_preview] feature_name={feature_name}, platform={platform}, pages_count={len(pages)}, common_elements_count={len(common_elements)}")
 
     # Validate pages structure
     if not isinstance(pages, list) or len(pages) == 0:
@@ -6129,6 +6135,7 @@ async def generate_design_preview(function_args, project_id, conversation_id=Non
             feature_name=feature_name,
             defaults={
                 'conversation': conversation,
+                'platform': platform,
                 'feature_description': feature_description,
                 'explainer': explainer,
                 'css_style': css_style,
@@ -6148,25 +6155,30 @@ async def generate_design_preview(function_args, project_id, conversation_id=Non
 
             # Get canvas_id from context (set by consumer from user's selection)
             canvas_id = get_current_canvas_id()
+            logger.info(f"[generate_design_preview] Canvas ID from context: {canvas_id}")
 
             # If no canvas_id from context, try to get from conversation
             if not canvas_id and conversation:
                 canvas_id = await sync_to_async(lambda: conversation.design_canvas_id)()
+                logger.info(f"[generate_design_preview] Canvas ID from conversation: {canvas_id}")
 
             if canvas_id:
                 # Use the specifically selected canvas
                 canvas = await sync_to_async(
                     lambda: DesignCanvas.objects.filter(id=canvas_id, project=project).first()
                 )()
+                logger.info(f"[generate_design_preview] Using specified canvas: {canvas.id if canvas else 'None'}")
             else:
                 # Fallback to most recently updated canvas or default canvas
                 canvas = await sync_to_async(
                     lambda: DesignCanvas.objects.filter(project=project).order_by('-is_default', '-updated_at').first()
                 )()
+                logger.info(f"[generate_design_preview] Using fallback canvas: {canvas.id if canvas else 'None'}")
 
             if canvas:
                 # Add each page to the canvas positions
                 positions = canvas.feature_positions or {}
+                logger.info(f"[generate_design_preview] Existing positions count: {len(positions)}")
                 y_offset = 50
                 for idx, page in enumerate(pages_data):
                     page_key = f"{design_feature.id}_{page['page_id']}"
@@ -6178,12 +6190,15 @@ async def generate_design_preview(function_args, project_id, conversation_id=Non
                             'x': 50 + col * 320,
                             'y': y_offset + row * 280
                         }
+                        logger.info(f"[generate_design_preview] Added position for {page_key}")
 
                 canvas.feature_positions = positions
                 await sync_to_async(canvas.save)()
-                logger.info(f"Added {len(pages_data)} screens to canvas {canvas.id}")
+                logger.info(f"[generate_design_preview] Saved canvas with {len(positions)} positions to canvas {canvas.id}")
+            else:
+                logger.warning(f"[generate_design_preview] No canvas found for project {project_id}")
         except Exception as canvas_error:
-            logger.warning(f"Could not auto-add screens to canvas: {canvas_error}")
+            logger.error(f"[generate_design_preview] Could not auto-add screens to canvas: {canvas_error}", exc_info=True)
 
         # Build success message
         pages_summary = ', '.join([p.get('page_name', p.get('page_id')) for p in pages])

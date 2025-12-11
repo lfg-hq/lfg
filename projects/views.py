@@ -2423,7 +2423,11 @@ def ticket_tasks_api(request, project_id, ticket_id):
 @require_http_methods(["GET"])
 def design_features_api(request, project_id):
     """API endpoint to get design features for the canvas."""
+    import logging
+    logger = logging.getLogger(__name__)
+
     project = get_object_or_404(Project, project_id=project_id)
+    logger.info(f"[design_features_api] Fetching design features for project: {project_id}")
 
     # Check if user has permission to view this project
     if not (project.owner == request.user or project.members.filter(user=request.user, status='active').exists()):
@@ -2431,19 +2435,29 @@ def design_features_api(request, project_id):
 
     # Get all design features from the dedicated model
     design_features = ProjectDesignFeature.objects.filter(project=project).order_by('-updated_at')
+    logger.info(f"[design_features_api] Found {design_features.count()} design features")
 
     features = []
     for df in design_features:
+        logger.info(f"[design_features_api] Processing feature: id={df.id}, name={df.feature_name}, pages_count={len(df.pages or [])}")
+
         # Mark entry pages
         pages = df.pages or []
         for page in pages:
             page['is_entry'] = page.get('page_id') == df.entry_page_id
+
+        # Safely get platform field (might not exist if migration hasn't run)
+        try:
+            platform = df.platform
+        except AttributeError:
+            platform = 'web'  # Default fallback
 
         features.append({
             'feature_id': df.id,  # Use db id as feature_id for JS compatibility
             'feature_name': df.feature_name,
             'feature_description': df.feature_description,
             'explainer': df.explainer,
+            'platform': platform,
             'css_style': df.css_style,
             'common_elements': df.common_elements or [],
             'pages': pages,
@@ -2454,6 +2468,7 @@ def design_features_api(request, project_id):
             'updated_at': df.updated_at.isoformat()
         })
 
+    logger.info(f"[design_features_api] Returning {len(features)} features")
     return JsonResponse({
         'success': True,
         'features': features

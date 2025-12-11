@@ -1208,10 +1208,15 @@ generate_design_preview = {
     "type": "function",
     "function": {
         "name": "generate_design_preview",
-        "description": "Generate a design preview for a feature with multiple screens/pages. Creates an explainer, CSS styles, common layout elements (header, footer, sidebar), and HTML page partials. Common elements are shared across pages and rendered separately from main content. Pages contain only the main content partial - headers, footers, sidebars are defined in common_elements.",
+        "description": "Generate a rich, visually polished design preview for a feature. Creates professional-quality mockups with modern UI patterns, smooth animations, and proper responsive behavior. For web: fully responsive from mobile to desktop. For mobile (iOS): native iPhone app styling with iOS design patterns.",
         "parameters": {
             "type": "object",
             "properties": {
+                "platform": {
+                    "type": "string",
+                    "enum": ["web", "mobile"],
+                    "description": "Target platform. 'web' = responsive website (mobile-first, works on all screen sizes). 'mobile' = native iOS iPhone app design (fixed 390x844 viewport, iOS design patterns, SF Pro font, native iOS components)."
+                },
                 "feature_name": {
                     "type": "string",
                     "description": "Name of the feature being designed (e.g., 'Authentication', 'Dashboard', 'User Profile', 'Settings')"
@@ -1226,7 +1231,7 @@ generate_design_preview = {
                 },
                 "css_style": {
                     "type": "string",
-                    "description": "Complete CSS stylesheet for the design. Include all necessary styles, responsive breakpoints, and theme variables. Include styles for common elements (header, footer, sidebar) and main content area."
+                    "description": "Complete, production-quality CSS stylesheet. MUST include: (1) CSS custom properties for colors, spacing, typography (2) Modern design tokens with cohesive color palette (3) For web: mobile-first responsive breakpoints (@media min-width: 640px, 768px, 1024px, 1280px) (4) For mobile: iOS-specific styling with -webkit prefixes, safe-area-inset padding (5) Smooth transitions and micro-animations (transform, opacity transitions) (6) Box shadows, border-radius, gradients for depth (7) Proper typography scale with font-weights (8) Hover/focus/active states for interactive elements (9) Flexbox/Grid layouts"
                 },
                 "common_elements": {
                     "type": "array",
@@ -1235,20 +1240,20 @@ generate_design_preview = {
                         "properties": {
                             "element_id": {
                                 "type": "string",
-                                "description": "Unique identifier for this element (e.g., 'main-header', 'main-footer', 'left-sidebar', 'top-nav')"
+                                "description": "Unique identifier for this element (e.g., 'main-header', 'main-footer', 'left-sidebar', 'top-nav', 'tab-bar' for mobile)"
                             },
                             "element_type": {
                                 "type": "string",
-                                "enum": ["header", "footer", "sidebar", "nav", "logo", "banner", "breadcrumb", "toolbar"],
-                                "description": "Type of common element"
+                                "enum": ["header", "footer", "sidebar", "nav", "logo", "banner", "breadcrumb", "toolbar", "tab-bar", "status-bar"],
+                                "description": "Type of common element. For mobile: use 'tab-bar' for bottom navigation, 'status-bar' for iOS status bar"
                             },
                             "element_name": {
                                 "type": "string",
-                                "description": "Display name for this element (e.g., 'Main Header', 'Footer Navigation', 'Left Sidebar')"
+                                "description": "Display name for this element (e.g., 'Main Header', 'Footer Navigation', 'Left Sidebar', 'iOS Tab Bar')"
                             },
                             "html_content": {
                                 "type": "string",
-                                "description": "HTML content for this common element. Should be a self-contained component."
+                                "description": "Rich, polished HTML content. Include: SVG icons (inline or from a CDN like Heroicons/Lucide), proper semantic HTML, ARIA labels for accessibility, realistic placeholder content. For mobile: use iOS-style components (large titles, rounded cards, SF Symbols-style icons)."
                             },
                             "position": {
                                 "type": "string",
@@ -1285,12 +1290,12 @@ generate_design_preview = {
                             },
                             "html_content": {
                                 "type": "string",
-                                "description": "Main content partial HTML ONLY. Do NOT include header, footer, or sidebar - those are defined in common_elements. This should be the unique content for this page wrapped in a <main> or content container."
+                                "description": "Rich, visually polished main content HTML. MUST include: (1) Realistic placeholder content (real names, descriptions, not 'Lorem ipsum') (2) SVG icons from Heroicons/Lucide or inline SVGs (3) Proper semantic HTML (section, article, nav, etc.) (4) Visual hierarchy with headings, subtext, badges (5) Cards with shadows and rounded corners (6) Buttons with proper styling and icons (7) Form inputs with labels, placeholders, validation states (8) Images using placeholder services (picsum.photos, ui-avatars.com) (9) Grid/flex layouts for responsive content. Do NOT include header/footer - those are in common_elements."
                             },
                             "page_type": {
                                 "type": "string",
-                                "enum": ["screen", "modal", "drawer", "popup", "toast"],
-                                "description": "Type of UI component this page represents"
+                                "enum": ["screen", "modal", "drawer", "popup", "toast", "sheet"],
+                                "description": "Type of UI component. For mobile: 'sheet' for iOS bottom sheets, 'modal' for centered modals"
                             },
                             "include_common_elements": {
                                 "type": "boolean",
@@ -1366,7 +1371,7 @@ generate_design_preview = {
                     "description": "Optional: suggested position for this feature on the design canvas"
                 }
             },
-            "required": ["feature_name", "feature_description", "explainer", "css_style", "common_elements", "pages", "entry_page_id"],
+            "required": ["platform", "feature_name", "feature_description", "explainer", "css_style", "common_elements", "pages", "entry_page_id"],
             "additionalProperties": False,
         }
     }
@@ -1504,7 +1509,7 @@ edit_design_screen = {
 # Tool for generating a single screen from a description
 generate_single_screen_anthropic = {
     "name": "generate_single_screen",
-    "description": "Generate a single new screen/page for an existing feature on the design canvas. Use this to add a new page to an existing feature based on user description.",
+    "description": "Generate a rich, visually polished single screen/page for an existing feature. Match the existing feature's design language and platform (web/mobile). Create professional-quality mockup with modern UI patterns.",
     "input_schema": {
         "type": "object",
         "properties": {
@@ -1518,16 +1523,16 @@ generate_single_screen_anthropic = {
             },
             "html_content": {
                 "type": "string",
-                "description": "Main content partial HTML ONLY. Do NOT include header, footer, or sidebar - those are inherited from the feature. This should be the unique content for this page wrapped in a <main> or content container."
+                "description": "Rich, visually polished main content HTML matching the feature's existing style. MUST include: (1) Realistic placeholder content (2) SVG icons (Heroicons/Lucide) (3) Proper semantic HTML (4) Visual hierarchy with headings, subtext, badges (5) Cards with shadows and rounded corners (6) Styled buttons with icons (7) Form inputs with proper styling (8) Images from placeholder services (9) Grid/flex layouts. Do NOT include header/footer."
             },
             "page_type": {
                 "type": "string",
-                "enum": ["screen", "modal", "drawer", "popup", "toast"],
-                "description": "Type of UI component this page represents"
+                "enum": ["screen", "modal", "drawer", "popup", "toast", "sheet"],
+                "description": "Type of UI component. For mobile: 'sheet' for iOS bottom sheets"
             },
             "css_additions": {
                 "type": "string",
-                "description": "Optional: Additional CSS styles specific to this page. Will be appended to the feature's existing CSS."
+                "description": "Optional: Additional CSS styles specific to this page. Include transitions, hover states, and responsive adjustments. Will be appended to the feature's existing CSS."
             }
         },
         "required": ["page_id", "page_name", "html_content", "page_type"]

@@ -122,6 +122,33 @@
     border-radius: 12px;
 }
 
+/* Platform Badge */
+.platform-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.platform-badge.web {
+    background: rgba(59, 130, 246, 0.15);
+    color: #60a5fa;
+}
+
+.platform-badge.mobile {
+    background: rgba(168, 85, 247, 0.15);
+    color: #c084fc;
+}
+
+.platform-badge i {
+    font-size: 10px;
+}
+
 /* Screen Card */
 .screen-card {
     position: absolute;
@@ -239,6 +266,45 @@
 
 .ai-edit-btn i {
     font-size: 12px;
+}
+
+/* Screen Actions Container */
+.screen-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+/* Screen Delete Button */
+.screen-delete-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    color: #f87171;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    opacity: 0;
+}
+
+.screen-card:hover .screen-delete-btn {
+    opacity: 1;
+}
+
+.screen-delete-btn:hover {
+    background: rgba(239, 68, 68, 0.3);
+    border-color: #ef4444;
+    color: #fff;
+    transform: scale(1.1);
+}
+
+.screen-delete-btn i {
+    font-size: 11px;
 }
 
 .screen-meta {

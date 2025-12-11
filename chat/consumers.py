@@ -298,6 +298,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 user_role = text_data_json.get('user_role')  # Get user role if present
                 turbo_mode = text_data_json.get('turbo_mode', False)  # Get turbo mode state
                 canvas_id = text_data_json.get('canvas_id')  # Get canvas ID for design features
+                logger.info(f"[receive] Message received - canvas_id: {canvas_id}, turbo_mode: {turbo_mode}")
                 # file_id = text_data_json.get('file_id')  # Get file_id if present
 
                 
@@ -553,6 +554,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         from factory.tool_execution import set_current_canvas_id
         self.canvas_id = canvas_id
         set_current_canvas_id(canvas_id)
+        logger.info(f"[generate_ai_response] Setting canvas_id: {canvas_id}")
 
         # Also update conversation's design_canvas if canvas_id is provided
         if canvas_id and self.conversation:
