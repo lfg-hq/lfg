@@ -2456,9 +2456,21 @@ document.addEventListener('DOMContentLoaded', function() {
                     const roles = [...new Set(checklist.map(item => item.role || 'user'))].sort();
 
                     // Create container with filters
+                    // Check current theme for styling
+                    const isLightTheme = document.documentElement.getAttribute('data-theme') === 'light';
+                    const headerBtnBg = isLightTheme ? '#f1f5f9' : 'rgba(40, 40, 40, 0.8)';
+                    const headerBtnColor = isLightTheme ? '#64748b' : '#888';
+                    const headerBtnBorder = isLightTheme ? '1px solid #e2e8f0' : '1px solid rgba(255, 255, 255, 0.08)';
+                    const headerBtnHoverBg = isLightTheme ? '#e2e8f0' : 'rgba(60, 60, 60, 0.9)';
+                    const dropdownBg = isLightTheme ? '#ffffff' : '#1e1e2e';
+                    const dropdownBorder = isLightTheme ? '1px solid #e2e8f0' : '1px solid #313244';
+                    const dropdownItemColor = isLightTheme ? '#374151' : '#cdd6f4';
+                    const dropdownItemHoverBg = isLightTheme ? '#f1f5f9' : '#313244';
+                    const dropdownDividerBg = isLightTheme ? '#e2e8f0' : '#313244';
+
                     let checklistHTML = `
                         <div class="checklist-wrapper">
-                            <div class="checklist-header" style="display: flex; align-items: center; justify-content: flex-end; padding: 12px 16px;">
+                            <div class="checklist-header" style="display: flex; align-items: center; justify-content: flex-end; padding: 12px 16px; background: transparent; border: none;">
                                 <div class="checklist-filters" style="margin-right: 12px;">
                                     <div class="filter-options">
                                         <div class="filter-group">
@@ -2477,19 +2489,19 @@ document.addEventListener('DOMContentLoaded', function() {
                                     </div>
                                 </div>
                                 <div class="dropdown" style="position: relative;">
-                                    <button class="dropdown-toggle" id="checklist-actions-dropdown" style="background: rgba(40, 40, 40, 0.8); color: #888; border: 1px solid rgba(255, 255, 255, 0.08); width: 24px; height: 24px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s ease; padding: 0;"
-                                            onmouseover="this.style.background='rgba(60, 60, 60, 0.9)'; this.style.color='#8b5cf6'; this.style.transform='scale(1.05)';" 
-                                            onmouseout="this.style.background='rgba(40, 40, 40, 0.8)'; this.style.color='#888'; this.style.transform='scale(1)';">
+                                    <button class="dropdown-toggle" id="checklist-actions-dropdown" style="background: ${headerBtnBg}; color: ${headerBtnColor}; border: ${headerBtnBorder}; width: 24px; height: 24px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s ease; padding: 0;"
+                                            onmouseover="this.style.background='${headerBtnHoverBg}'; this.style.color='#8b5cf6'; this.style.transform='scale(1.05)';"
+                                            onmouseout="this.style.background='${headerBtnBg}'; this.style.color='${headerBtnColor}'; this.style.transform='scale(1)';">
                                         <i class="fas fa-ellipsis-v" style="font-size: 9px;"></i>
                                     </button>
-                                    <div class="dropdown-menu" id="checklist-actions-menu" style="display: none; position: absolute; top: 100%; right: 0; background: #1e1e2e; border: 1px solid #313244; border-radius: 8px; min-width: 180px; box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3); z-index: 1000; margin-top: 8px; overflow: hidden;">
-                                        <button id="sync-checklist-linear" class="dropdown-item" style="display: block; width: 100%; text-align: left; padding: 12px 16px; background: none; border: none; color: #cdd6f4; cursor: pointer; transition: all 0.2s; font-size: 14px;" 
-                                                onmouseover="this.style.background='#313244'; this.style.color='#b4befe';" onmouseout="this.style.background='none'; this.style.color='#cdd6f4';">
+                                    <div class="dropdown-menu" id="checklist-actions-menu" style="display: none; position: absolute; top: 100%; right: 0; background: ${dropdownBg}; border: ${dropdownBorder}; border-radius: 8px; min-width: 180px; box-shadow: 0 8px 16px rgba(0, 0, 0, ${isLightTheme ? '0.1' : '0.3'}); z-index: 1000; margin-top: 8px; overflow: hidden;">
+                                        <button id="sync-checklist-linear" class="dropdown-item" style="display: block; width: 100%; text-align: left; padding: 12px 16px; background: none; border: none; color: ${dropdownItemColor}; cursor: pointer; transition: all 0.2s; font-size: 14px;"
+                                                onmouseover="this.style.background='${dropdownItemHoverBg}'; this.style.color='${isLightTheme ? '#7c3aed' : '#b4befe'}';" onmouseout="this.style.background='none'; this.style.color='${dropdownItemColor}';">
                                             <i class="fas fa-sync" style="margin-right: 10px; width: 14px; text-align: center; color: #8b5cf6;"></i> Sync with Linear
                                         </button>
-                                        <div style="height: 1px; background: #313244;"></div>
-                                        <button id="delete-all-checklist" class="dropdown-item" style="display: block; width: 100%; text-align: left; padding: 12px 16px; background: none; border: none; color: #f38ba8; cursor: pointer; transition: all 0.2s; font-size: 14px;"
-                                                onmouseover="this.style.background='#313244'; this.style.color='#eba0ac';" onmouseout="this.style.background='none'; this.style.color='#f38ba8';">
+                                        <div style="height: 1px; background: ${dropdownDividerBg};"></div>
+                                        <button id="delete-all-checklist" class="dropdown-item" style="display: block; width: 100%; text-align: left; padding: 12px 16px; background: none; border: none; color: ${isLightTheme ? '#dc2626' : '#f38ba8'}; cursor: pointer; transition: all 0.2s; font-size: 14px;"
+                                                onmouseover="this.style.background='${isLightTheme ? '#fef2f2' : '#313244'}'; this.style.color='${isLightTheme ? '#b91c1c' : '#eba0ac'}';" onmouseout="this.style.background='none'; this.style.color='${isLightTheme ? '#dc2626' : '#f38ba8'}';">
                                             <i class="fas fa-trash-alt" style="margin-right: 10px; width: 14px; text-align: center;"></i> Delete All
                                         </button>
                                     </div>

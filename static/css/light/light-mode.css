@@ -1,0 +1,3526 @@
+/*
+ * Light Mode Overrides
+ * This file contains all the specific overrides needed for light mode
+ * It works in conjunction with theme-variables.css
+ */
+
+/* =================================================================
+   ROOT VARIABLE OVERRIDES - These override common.css variables
+   ================================================================= */
+
+[data-theme="light"] {
+    /* Override styles.css dark theme variables */
+    --bg-color: #f8fafc !important;
+    --hover-color: #e2e8f0 !important;
+    --shadow: 0 4px 6px rgba(0, 0, 0, 0.07) !important;
+
+    /* Override common.css dark theme variables */
+    --primary-color: #7c3aed;
+    --primary-color-rgb: 124, 58, 237;
+    --primary-hover: rgba(124, 58, 237, 0.8);
+    --secondary-color: #0891b2;
+    --secondary-hover: rgba(8, 145, 178, 0.8);
+    --text-color: #1e293b;
+    --text-light: #64748b;
+    --text-secondary: #475569;
+    --light-bg: #f1f5f9;
+    --border-color: #e2e8f0;
+    --success-color: #10b981;
+    --danger-color: #ef4444;
+    --warning-color: #f59e0b;
+    --info-color: #3b82f6;
+    --card-bg: #ffffff;
+    --body-bg: #f8fafc;
+    --header-bg: #ffffff;
+    --footer-bg: #ffffff;
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+
+    /* Theme variables */
+    --background-color: #f8fafc;
+    --background-alt: #f1f5f9;
+    --background-surface: #e2e8f0;
+    --text-primary: #1e293b;
+    --text-muted: #94a3b8;
+    --text-inverse: #ffffff;
+    --panel-bg: #ffffff;
+    --input-bg: #ffffff;
+    --input-bg-focus: #ffffff;
+    --input-border: #cbd5e1;
+    --input-border-focus: #7c3aed;
+    --input-placeholder: #94a3b8;
+    --border-light: #f1f5f9;
+    --scrollbar-track: #f1f5f9;
+    --scrollbar-thumb: #cbd5e1;
+    --scrollbar-thumb-hover: #94a3b8;
+    --code-bg: #f1f5f9;
+    --code-text: #1e293b;
+    --code-border: #e2e8f0;
+    --success-bg: rgba(16, 185, 129, 0.1);
+    --error-bg: rgba(239, 68, 68, 0.1);
+    --warning-bg: rgba(245, 158, 11, 0.1);
+    --primary-gradient: linear-gradient(135deg, #7c3aed 0%, #6366f1 100%);
+    --btn-primary-text: #ffffff;
+    --btn-primary-hover: linear-gradient(135deg, #6d28d9 0%, #4f46e5 100%);
+    --btn-secondary-bg: #ffffff;
+    --btn-secondary-border: #e2e8f0;
+    --btn-secondary-text: #475569;
+    --btn-secondary-hover-bg: #f8fafc;
+    --card-bg-hover: #f8fafc;
+}
+
+/* =================================================================
+   HTML & BODY - Critical for page background
+   ================================================================= */
+
+[data-theme="light"],
+[data-theme="light"] html,
+html[data-theme="light"] {
+    background-color: #f8fafc !important;
+}
+
+[data-theme="light"] body,
+body[data-theme="light"] {
+    background-color: #f8fafc !important;
+    color: #1e293b !important;
+}
+
+/* =================================================================
+   APP CONTAINER & MAIN CONTENT
+   ================================================================= */
+
+[data-theme="light"] .app-container {
+    background-color: #f8fafc !important;
+}
+
+[data-theme="light"] .main-content,
+[data-theme="light"] .main-content-with-sidebar {
+    background-color: #f8fafc !important;
+}
+
+[data-theme="light"] .container {
+    background-color: transparent;
+}
+
+/* =================================================================
+   SIDEBAR
+   ================================================================= */
+
+[data-theme="light"] .sidebar {
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
+    border-right: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .sidebar-header {
+    border-bottom: 1px solid #e2e8f0;
+}
+
+[data-theme="light"] .logo-text {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .sidebar-section-title {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .nav-link {
+    color: #475569 !important;
+}
+
+[data-theme="light"] .nav-link:hover {
+    background-color: rgba(124, 58, 237, 0.08) !important;
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .nav-link.active {
+    background-color: rgba(124, 58, 237, 0.12) !important;
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .nav-text {
+    color: inherit !important;
+}
+
+[data-theme="light"] .conversation-item {
+    color: #475569 !important;
+}
+
+[data-theme="light"] .conversation-item:hover {
+    background-color: rgba(124, 58, 237, 0.08) !important;
+}
+
+[data-theme="light"] .conversation-item.active {
+    background-color: rgba(124, 58, 237, 0.12) !important;
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .new-chat-link {
+    background: transparent !important;
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .new-chat-link:hover {
+    background: rgba(124, 58, 237, 0.08) !important;
+    color: #6d28d9 !important;
+}
+
+[data-theme="light"] .user-info-button {
+    color: #475569 !important;
+}
+
+[data-theme="light"] .user-info-button:hover {
+    background-color: rgba(124, 58, 237, 0.08) !important;
+}
+
+[data-theme="light"] .user-dropdown {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1) !important;
+}
+
+[data-theme="light"] .dropdown-item {
+    color: #475569 !important;
+}
+
+[data-theme="light"] .dropdown-item:hover {
+    background-color: #f1f5f9 !important;
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .dropdown-divider {
+    border-color: #e2e8f0 !important;
+}
+
+[data-theme="light"] .project-dropdown-trigger {
+    color: #475569 !important;
+}
+
+[data-theme="light"] .project-dropdown-trigger:hover {
+    background-color: rgba(124, 58, 237, 0.08) !important;
+}
+
+[data-theme="light"] .nav-dropdown {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1) !important;
+}
+
+[data-theme="light"] .nav-dropdown-item {
+    color: #475569 !important;
+}
+
+[data-theme="light"] .nav-dropdown-item:hover {
+    background-color: #f1f5f9 !important;
+}
+
+[data-theme="light"] .nav-dropdown-item.active {
+    background-color: rgba(124, 58, 237, 0.12) !important;
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .token-display {
+    color: #64748b !important;
+}
+
+[data-theme="light"] #minimize-btn {
+    color: #64748b !important;
+}
+
+[data-theme="light"] #minimize-btn:hover {
+    background-color: rgba(124, 58, 237, 0.08) !important;
+    color: #7c3aed !important;
+}
+
+/* =================================================================
+   CHAT INTERFACE - Critical for chat page
+   ================================================================= */
+
+[data-theme="light"] .chat-container {
+    background-color: #f8fafc !important;
+}
+
+[data-theme="light"] .chat-header {
+    background-color: #ffffff !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .chat-header h1,
+[data-theme="light"] .chat-header .project-name {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .messages-area,
+[data-theme="light"] .chat-messages,
+[data-theme="light"] #messages {
+    background-color: #f8fafc !important;
+}
+
+[data-theme="light"] .message-container {
+    background-color: transparent !important;
+}
+
+/* User messages - keep purple */
+[data-theme="light"] .message.user {
+    background-color: #7c3aed !important;
+    color: #ffffff !important;
+}
+
+/* Assistant messages - white card on light gray */
+[data-theme="light"] .message.assistant {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #1e293b !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+[data-theme="light"] .message.assistant .message-content {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .message.assistant .message-content * {
+    color: inherit !important;
+}
+
+[data-theme="light"] .message.assistant .message-content code {
+    background-color: #f1f5f9 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .message.assistant .message-content pre {
+    background-color: #1e293b !important;
+    color: #e2e8f0 !important;
+}
+
+[data-theme="light"] .message.assistant .message-content pre code {
+    background-color: transparent !important;
+    color: inherit !important;
+}
+
+/* System messages */
+[data-theme="light"] .message.system {
+    background-color: rgba(245, 158, 11, 0.1) !important;
+    border: 1px solid rgba(245, 158, 11, 0.3) !important;
+    color: #92400e !important;
+}
+
+/* Chat input area */
+[data-theme="light"] .chat-input-container,
+[data-theme="light"] .input-container {
+    background-color: #f8fafc !important;
+    border-top: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .chat-input-wrapper {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] #chat-input,
+[data-theme="light"] .chat-input,
+[data-theme="light"] textarea.chat-input {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] #chat-input:focus,
+[data-theme="light"] .chat-input:focus {
+    border-color: #7c3aed !important;
+    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1) !important;
+}
+
+[data-theme="light"] #chat-input::placeholder,
+[data-theme="light"] .chat-input::placeholder {
+    color: #94a3b8 !important;
+}
+
+[data-theme="light"] .send-button,
+[data-theme="light"] #send-btn {
+    background: linear-gradient(135deg, #7c3aed 0%, #6366f1 100%) !important;
+    color: #ffffff !important;
+}
+
+[data-theme="light"] .send-button:hover,
+[data-theme="light"] #send-btn:hover {
+    background: linear-gradient(135deg, #6d28d9 0%, #4f46e5 100%) !important;
+}
+
+/* Model selector and other controls */
+[data-theme="light"] .model-selector,
+[data-theme="light"] .mode-selector {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #475569 !important;
+}
+
+[data-theme="light"] .model-selector:hover,
+[data-theme="light"] .mode-selector:hover {
+    border-color: #7c3aed !important;
+}
+
+[data-theme="light"] .input-actions button {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .input-actions button:hover {
+    color: #7c3aed !important;
+    background-color: rgba(124, 58, 237, 0.08) !important;
+}
+
+/* Welcome message */
+[data-theme="light"] .welcome-message {
+    color: #475569 !important;
+}
+
+[data-theme="light"] .welcome-message h2 {
+    color: #7c3aed !important;
+}
+
+/* Streaming indicator */
+[data-theme="light"] .streaming-indicator,
+[data-theme="light"] .typing-indicator {
+    color: #64748b !important;
+}
+
+/* =================================================================
+   ARTIFACTS PANEL
+   ================================================================= */
+
+[data-theme="light"] .artifacts-container,
+[data-theme="light"] .artifacts-panel {
+    background-color: #ffffff !important;
+    border-left: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .artifacts-header {
+    background-color: #f8fafc !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .artifacts-tabs {
+    background-color: #f8fafc !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .tab-button {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .tab-button:hover {
+    color: #1e293b !important;
+    background-color: rgba(124, 58, 237, 0.08) !important;
+}
+
+[data-theme="light"] .tab-button.active {
+    color: #7c3aed !important;
+    border-bottom-color: #7c3aed !important;
+    background-color: rgba(124, 58, 237, 0.08) !important;
+}
+
+[data-theme="light"] .tab-content,
+[data-theme="light"] .tab-pane {
+    background-color: #ffffff !important;
+}
+
+/* =================================================================
+   CARDS
+   ================================================================= */
+
+[data-theme="light"] .card,
+[data-theme="light"] .project-card,
+[data-theme="light"] .stat-card,
+[data-theme="light"] .integration-card,
+[data-theme="light"] .ticket-card {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
+}
+
+[data-theme="light"] .card:hover,
+[data-theme="light"] .project-card:hover,
+[data-theme="light"] .ticket-card:hover {
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07) !important;
+    border-color: #cbd5e1 !important;
+}
+
+[data-theme="light"] .ticket-card-header {
+    background-color: #f8fafc !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .card-title,
+[data-theme="light"] .ticket-card-title {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .card-body,
+[data-theme="light"] .ticket-card-body {
+    color: #475569 !important;
+}
+
+/* =================================================================
+   BUTTONS
+   ================================================================= */
+
+[data-theme="light"] .btn-primary,
+[data-theme="light"] .submit-btn,
+[data-theme="light"] .auth-submit-btn {
+    background: linear-gradient(135deg, #7c3aed 0%, #6366f1 100%) !important;
+    color: #ffffff !important;
+    border: none !important;
+}
+
+[data-theme="light"] .btn-primary:hover {
+    background: linear-gradient(135deg, #6d28d9 0%, #4f46e5 100%) !important;
+}
+
+[data-theme="light"] .btn-secondary,
+[data-theme="light"] .btn-outline {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #475569 !important;
+}
+
+[data-theme="light"] .btn-secondary:hover,
+[data-theme="light"] .btn-outline:hover {
+    background: #f8fafc !important;
+    border-color: #7c3aed !important;
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .icon-btn {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .icon-btn:hover {
+    background-color: rgba(124, 58, 237, 0.08) !important;
+    color: #7c3aed !important;
+}
+
+/* =================================================================
+   FORMS & INPUTS
+   ================================================================= */
+
+[data-theme="light"] input,
+[data-theme="light"] textarea,
+[data-theme="light"] select,
+[data-theme="light"] .form-control,
+[data-theme="light"] .form-input {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] input:focus,
+[data-theme="light"] textarea:focus,
+[data-theme="light"] select:focus,
+[data-theme="light"] .form-control:focus {
+    background-color: #ffffff !important;
+    border-color: #7c3aed !important;
+    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1) !important;
+}
+
+[data-theme="light"] input::placeholder,
+[data-theme="light"] textarea::placeholder {
+    color: #94a3b8 !important;
+}
+
+[data-theme="light"] .form-label,
+[data-theme="light"] label {
+    color: #1e293b !important;
+}
+
+/* =================================================================
+   FILE BROWSER
+   ================================================================= */
+
+[data-theme="light"] .file-browser {
+    background-color: #ffffff !important;
+}
+
+[data-theme="light"] .file-table-header {
+    background-color: #f8fafc !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+    color: #64748b !important;
+}
+
+[data-theme="light"] .file-list-item {
+    border-bottom: 1px solid #f1f5f9 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .file-list-item:hover {
+    background-color: rgba(124, 58, 237, 0.05) !important;
+}
+
+[data-theme="light"] .file-name {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .file-icon {
+    color: #64748b !important;
+}
+
+/* =================================================================
+   MODALS & DRAWERS
+   ================================================================= */
+
+[data-theme="light"] .modal-overlay {
+    background-color: rgba(0, 0, 0, 0.4) !important;
+}
+
+[data-theme="light"] .modal-content,
+[data-theme="light"] .drawer-content {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15) !important;
+}
+
+[data-theme="light"] .modal-header,
+[data-theme="light"] .drawer-header {
+    background-color: #f8fafc !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .modal-body,
+[data-theme="light"] .drawer-body {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .modal-footer,
+[data-theme="light"] .drawer-footer {
+    background-color: #f8fafc !important;
+    border-top: 1px solid #e2e8f0 !important;
+}
+
+/* =================================================================
+   DROPDOWNS & MENUS
+   ================================================================= */
+
+[data-theme="light"] .dropdown-menu {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1) !important;
+}
+
+[data-theme="light"] .dropdown-item {
+    color: #475569 !important;
+}
+
+[data-theme="light"] .dropdown-item:hover {
+    background-color: #f1f5f9 !important;
+    color: #7c3aed !important;
+}
+
+/* =================================================================
+   BADGES & TAGS
+   ================================================================= */
+
+[data-theme="light"] .badge {
+    background-color: #f1f5f9 !important;
+    color: #475569 !important;
+}
+
+[data-theme="light"] .badge.primary {
+    background-color: rgba(124, 58, 237, 0.1) !important;
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .badge.success {
+    background-color: rgba(16, 185, 129, 0.1) !important;
+    color: #10b981 !important;
+}
+
+[data-theme="light"] .badge.warning {
+    background-color: rgba(245, 158, 11, 0.1) !important;
+    color: #f59e0b !important;
+}
+
+[data-theme="light"] .badge.danger,
+[data-theme="light"] .badge.error {
+    background-color: rgba(239, 68, 68, 0.1) !important;
+    color: #ef4444 !important;
+}
+
+/* =================================================================
+   CODE BLOCKS
+   ================================================================= */
+
+[data-theme="light"] code {
+    background-color: #f1f5f9 !important;
+    color: #1e293b !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] pre {
+    background-color: #1e293b !important;
+    color: #e2e8f0 !important;
+    border: 1px solid #334155 !important;
+}
+
+[data-theme="light"] pre code {
+    background-color: transparent !important;
+    color: inherit !important;
+    border: none !important;
+}
+
+/* =================================================================
+   TABLES
+   ================================================================= */
+
+[data-theme="light"] table {
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] th {
+    background-color: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] td {
+    border: 1px solid #e2e8f0 !important;
+    color: #475569 !important;
+}
+
+[data-theme="light"] tr:hover {
+    background-color: #f8fafc !important;
+}
+
+[data-theme="light"] tr:nth-child(even) {
+    background-color: #fafafa !important;
+}
+
+/* =================================================================
+   SCROLLBARS
+   ================================================================= */
+
+[data-theme="light"] ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+[data-theme="light"] ::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 4px;
+}
+
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+/* =================================================================
+   SETTINGS & INTEGRATIONS
+   ================================================================= */
+
+[data-theme="light"] .settings-container {
+    background-color: #f8fafc !important;
+}
+
+[data-theme="light"] .settings-section {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .section-heading {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .integration-card {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .integration-name {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .integration-description {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .integration-status {
+    background-color: #f1f5f9 !important;
+    color: #64748b !important;
+}
+
+[data-theme="light"] .integration-status.connected {
+    background-color: rgba(16, 185, 129, 0.1) !important;
+    color: #10b981 !important;
+}
+
+/* =================================================================
+   ALERTS & NOTIFICATIONS
+   ================================================================= */
+
+[data-theme="light"] .alert {
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .alert-success {
+    background-color: rgba(16, 185, 129, 0.1) !important;
+    border-color: rgba(16, 185, 129, 0.3) !important;
+    color: #065f46 !important;
+}
+
+[data-theme="light"] .alert-danger,
+[data-theme="light"] .alert-error {
+    background-color: rgba(239, 68, 68, 0.1) !important;
+    border-color: rgba(239, 68, 68, 0.3) !important;
+    color: #991b1b !important;
+}
+
+[data-theme="light"] .alert-warning {
+    background-color: rgba(245, 158, 11, 0.1) !important;
+    border-color: rgba(245, 158, 11, 0.3) !important;
+    color: #92400e !important;
+}
+
+[data-theme="light"] .alert-info {
+    background-color: rgba(59, 130, 246, 0.1) !important;
+    border-color: rgba(59, 130, 246, 0.3) !important;
+    color: #1e40af !important;
+}
+
+/* Toast notifications */
+[data-theme="light"] .toast,
+[data-theme="light"] #toast-container .alert {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #1e293b !important;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* =================================================================
+   CONNECTION STATUS
+   ================================================================= */
+
+[data-theme="light"] .connection-status {
+    background-color: #f1f5f9 !important;
+    color: #64748b !important;
+}
+
+[data-theme="light"] .connection-status.connected {
+    background-color: rgba(16, 185, 129, 0.1) !important;
+    color: #10b981 !important;
+}
+
+[data-theme="light"] .connection-status.disconnected,
+[data-theme="light"] .connection-status.error {
+    background-color: rgba(239, 68, 68, 0.1) !important;
+    color: #ef4444 !important;
+}
+
+/* =================================================================
+   MISC ELEMENTS
+   ================================================================= */
+
+[data-theme="light"] .divider,
+[data-theme="light"] hr {
+    border-color: #e2e8f0 !important;
+}
+
+[data-theme="light"] .empty-state {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .empty-state i {
+    color: #94a3b8 !important;
+}
+
+[data-theme="light"] .tooltip {
+    background-color: #1e293b !important;
+    color: #ffffff !important;
+}
+
+[data-theme="light"] .loading-spinner {
+    border-color: #e2e8f0 !important;
+    border-top-color: #7c3aed !important;
+}
+
+/* Progress bars */
+[data-theme="light"] .progress-bar {
+    background-color: #e2e8f0 !important;
+}
+
+[data-theme="light"] .progress-fill {
+    background-color: #7c3aed !important;
+}
+
+/* Links */
+[data-theme="light"] a {
+    color: #7c3aed;
+}
+
+[data-theme="light"] a:hover {
+    color: #6d28d9;
+}
+
+/* =================================================================
+   DESIGN TOGGLE
+   ================================================================= */
+
+[data-theme="light"] .design-toggle {
+    background-color: #f1f5f9 !important;
+}
+
+[data-theme="light"] .design-toggle.active {
+    background: linear-gradient(135deg, #7c3aed 0%, #6366f1 100%) !important;
+}
+
+/* =================================================================
+   SIDEBAR ICONS - Fix white icons on light background
+   ================================================================= */
+
+[data-theme="light"] .sidebar i,
+[data-theme="light"] .sidebar .fa,
+[data-theme="light"] .sidebar .fas,
+[data-theme="light"] .sidebar .far,
+[data-theme="light"] .sidebar .fab {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .sidebar .nav-link:hover i,
+[data-theme="light"] .sidebar .nav-link.active i {
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .sidebar .new-chat-link i {
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .sidebar .logo-icon {
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .sidebar .conversation-item i {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .sidebar .conversation-item:hover i,
+[data-theme="light"] .sidebar .conversation-item.active i {
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .sidebar .user-info i,
+[data-theme="light"] .sidebar .user-info-button i {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .sidebar .dropdown-icon {
+    color: #94a3b8 !important;
+}
+
+/* =================================================================
+   ADDITIONAL BACKGROUND FIXES
+   ================================================================= */
+
+/* Force light background on all major containers */
+[data-theme="light"] .chat-wrapper,
+[data-theme="light"] .chat-main,
+[data-theme="light"] .content-area,
+[data-theme="light"] .main-area {
+    background-color: #f8fafc !important;
+}
+
+/* Fix specific dark backgrounds in chat */
+[data-theme="light"] .welcome-container,
+[data-theme="light"] .empty-chat {
+    background-color: #f8fafc !important;
+}
+
+/* Override any inline rgba dark backgrounds */
+[data-theme="light"] [style*="background"] {
+    background-color: inherit;
+}
+
+/* Fix conversation list items */
+[data-theme="light"] .conversation-list {
+    background-color: transparent !important;
+}
+
+[data-theme="light"] .conversation-item {
+    background-color: transparent !important;
+}
+
+[data-theme="light"] .conversation-item:hover {
+    background-color: rgba(124, 58, 237, 0.08) !important;
+}
+
+[data-theme="light"] .conversation-item.active {
+    background-color: rgba(124, 58, 237, 0.12) !important;
+}
+
+/* Fix sidebar bottom section */
+[data-theme="light"] .sidebar-bottom-content {
+    background-color: transparent !important;
+    border-top: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .bottom-nav {
+    background-color: transparent !important;
+}
+
+/* Fix user info section */
+[data-theme="light"] .user-info {
+    border-top: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .avatar-text {
+    background-color: #7c3aed !important;
+    color: #ffffff !important;
+}
+
+/* =================================================================
+   FIX MINIMIZED SIDEBAR IN LIGHT MODE
+   ================================================================= */
+
+[data-theme="light"] .sidebar.minimized {
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
+}
+
+[data-theme="light"] .sidebar.minimized .nav-link {
+    color: #475569 !important;
+}
+
+[data-theme="light"] .sidebar.minimized .nav-link:hover {
+    background-color: rgba(124, 58, 237, 0.08) !important;
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .sidebar.minimized i {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .sidebar.minimized .nav-link:hover i,
+[data-theme="light"] .sidebar.minimized .nav-link.active i {
+    color: #7c3aed !important;
+}
+
+/* =================================================================
+   PROJECT SELECTOR DROPDOWN LIGHT MODE
+   ================================================================= */
+
+[data-theme="light"] .project-name-text {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .nav-dropdown-divider {
+    border-color: #e2e8f0 !important;
+}
+
+/* =================================================================
+   ENSURE MAIN CONTENT BACKGROUNDS ARE LIGHT
+   ================================================================= */
+
+[data-theme="light"] #messages,
+[data-theme="light"] .messages,
+[data-theme="light"] .message-list {
+    background-color: #f8fafc !important;
+}
+
+/* The main scrollable area */
+[data-theme="light"] .chat-container > *:not(.chat-input-container) {
+    background-color: #f8fafc !important;
+}
+
+/* =================================================================
+   SETTINGS PAGE - Fix dark cards
+   ================================================================= */
+
+[data-theme="light"] .settings-page,
+[data-theme="light"] .settings-content {
+    background-color: #f8fafc !important;
+}
+
+[data-theme="light"] .settings-sidebar,
+[data-theme="light"] .settings-nav,
+[data-theme="light"] .settings-menu {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .settings-nav-item,
+[data-theme="light"] .settings-menu-item {
+    color: #475569 !important;
+}
+
+[data-theme="light"] .settings-nav-item:hover,
+[data-theme="light"] .settings-menu-item:hover {
+    background-color: rgba(124, 58, 237, 0.08) !important;
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .settings-nav-item.active,
+[data-theme="light"] .settings-menu-item.active {
+    background-color: rgba(124, 58, 237, 0.12) !important;
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .settings-nav-item i,
+[data-theme="light"] .settings-menu-item i {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .settings-nav-item:hover i,
+[data-theme="light"] .settings-nav-item.active i {
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .settings-panel,
+[data-theme="light"] .settings-card,
+[data-theme="light"] .api-keys-section,
+[data-theme="light"] .subscription-section {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .settings-panel h2,
+[data-theme="light"] .settings-panel h3,
+[data-theme="light"] .settings-card h2,
+[data-theme="light"] .settings-card h3 {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .settings-panel p,
+[data-theme="light"] .settings-card p {
+    color: #475569 !important;
+}
+
+[data-theme="light"] .api-key-row,
+[data-theme="light"] .key-input-group {
+    background-color: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .api-key-input,
+[data-theme="light"] .key-input {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .byok-toggle,
+[data-theme="light"] .toggle-section {
+    background-color: #f1f5f9 !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .byok-toggle h4,
+[data-theme="light"] .toggle-section h4 {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .byok-toggle p,
+[data-theme="light"] .toggle-section p {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .plan-info,
+[data-theme="light"] .subscription-info {
+    background-color: #f1f5f9 !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .plan-info h4,
+[data-theme="light"] .subscription-info h4 {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .plan-info p,
+[data-theme="light"] .subscription-info p {
+    color: #64748b !important;
+}
+
+/* =================================================================
+   SETTINGS PAGE - Comprehensive fix for all dark backgrounds
+   ================================================================= */
+
+/* Settings container and main areas */
+[data-theme="light"] .settings-container {
+    background-color: #f8fafc !important;
+}
+
+/* Integration cards - the main content cards */
+[data-theme="light"] .integration-card {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    background-image: none !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
+}
+
+[data-theme="light"] .integration-card::before {
+    display: none !important;
+}
+
+[data-theme="light"] .integration-card:hover {
+    border-color: #7c3aed !important;
+    box-shadow: 0 4px 12px rgba(124, 58, 237, 0.1) !important;
+}
+
+/* Integration card content */
+[data-theme="light"] .integration-card h3,
+[data-theme="light"] .integration-card h4,
+[data-theme="light"] .integration-title {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .integration-card p,
+[data-theme="light"] .integration-description,
+[data-theme="light"] .integration-card .description {
+    color: #64748b !important;
+}
+
+/* Integration inputs */
+[data-theme="light"] .integration-card input,
+[data-theme="light"] .integration-card .api-input,
+[data-theme="light"] .integration-input {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .integration-card input:focus,
+[data-theme="light"] .integration-input:focus {
+    border-color: #7c3aed !important;
+    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1) !important;
+}
+
+[data-theme="light"] .integration-card input::placeholder {
+    color: #94a3b8 !important;
+}
+
+/* Integrations grid */
+[data-theme="light"] .integrations-grid {
+    background: transparent !important;
+}
+
+/* Section headings */
+[data-theme="light"] .section-heading {
+    color: #1e293b !important;
+}
+
+/* LLM section specific */
+[data-theme="light"] .llm-section .integration-card {
+    background: #ffffff !important;
+}
+
+/* Subscription card and payment sections */
+[data-theme="light"] .subscription-card,
+[data-theme="light"] .payment-methods,
+[data-theme="light"] .usage-card {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .subscription-card h3,
+[data-theme="light"] .payment-methods h3 {
+    color: #1e293b !important;
+}
+
+/* Payment method items */
+[data-theme="light"] .payment-method-item {
+    background: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .payment-method-item:hover {
+    border-color: #cbd5e1 !important;
+}
+
+/* Usage stats */
+[data-theme="light"] .usage-stats,
+[data-theme="light"] .monthly-usage {
+    background: #f8fafc !important;
+}
+
+[data-theme="light"] .usage-label {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .usage-value {
+    color: #1e293b !important;
+}
+
+/* Connected status */
+[data-theme="light"] .connected-status {
+    color: #059669 !important;
+}
+
+[data-theme="light"] .disconnect-btn {
+    color: #dc2626 !important;
+    border-color: #fecaca !important;
+    background: #fef2f2 !important;
+}
+
+[data-theme="light"] .disconnect-btn:hover {
+    background: #fee2e2 !important;
+}
+
+/* GitHub card specific */
+[data-theme="light"] .github-card,
+[data-theme="light"] .github-section {
+    background: #ffffff !important;
+}
+
+/* Notion and Linear icons background fix */
+[data-theme="light"] .integration-icon-wrapper {
+    background: #f1f5f9 !important;
+}
+
+/* =================================================================
+   SETTINGS NEW PAGE - Override embedded dark styles
+   ================================================================= */
+
+/* Main settings content area */
+[data-theme="light"] .settings-content {
+    background: #f8fafc !important;
+}
+
+/* Subscription plan cards */
+[data-theme="light"] .subscription-plan-card {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .subscription-plan-card h3 {
+    color: #1e293b !important;
+}
+
+/* Only target the PRO MONTHLY badge span, not all spans */
+[data-theme="light"] .subscription-plan-card > span[style*="position: absolute"] {
+    background: #ffffff !important;
+    color: #7c3aed !important;
+    border-color: rgba(124, 58, 237, 0.3) !important;
+}
+
+/* Subscription cards grid */
+[data-theme="light"] .subscription-cards-grid {
+    background: transparent !important;
+}
+
+/* Subscription payment methods card */
+[data-theme="light"] .subscription-payment-methods-card {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+/* Subscription transactions card */
+[data-theme="light"] .subscription-transactions-card {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .subscription-transactions-table thead {
+    border-bottom: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .subscription-transactions-table th {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .subscription-transactions-table td {
+    color: #1e293b !important;
+    border-bottom: 1px solid #f1f5f9 !important;
+}
+
+/* Subscription usage stats */
+[data-theme="light"] .subscription-usage-stats {
+    border-top: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .subscription-stat-item {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .subscription-stat-label {
+    color: #64748b !important;
+}
+
+/* Subscription breakdown */
+[data-theme="light"] .subscription-breakdown-item {
+    color: #64748b !important;
+}
+
+/* LLM Integration cards */
+[data-theme="light"] .llm-integration-card {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .llm-integration-card h4 {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .llm-integration-card p {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .llm-api-key-input-section {
+    border-top: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .llm-api-key-input {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .llm-api-key-input:focus {
+    border-color: #7c3aed !important;
+}
+
+[data-theme="light"] .llm-api-key-input::placeholder {
+    color: #94a3b8 !important;
+}
+
+/* Settings section and content */
+[data-theme="light"] .settings-section {
+    background: #ffffff !important;
+}
+
+[data-theme="light"] .settings-section.active {
+    background: #ffffff !important;
+}
+
+[data-theme="light"] .section-heading {
+    color: #1e293b !important;
+}
+
+/* Payment method items in settings */
+[data-theme="light"] .payment-method-item,
+[data-theme="light"] [class*="payment-method"] {
+    background: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .payment-method-item:hover {
+    border-color: #cbd5e1 !important;
+}
+
+/* Card number display */
+[data-theme="light"] .card-number,
+[data-theme="light"] [class*="card-last4"] {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .card-expiry {
+    color: #64748b !important;
+}
+
+/* Add payment method button */
+[data-theme="light"] .add-payment-btn,
+[data-theme="light"] [class*="add-payment"] {
+    background: transparent !important;
+    border: 1px dashed #cbd5e1 !important;
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .add-payment-btn:hover {
+    border-color: #7c3aed !important;
+    background: rgba(124, 58, 237, 0.05) !important;
+}
+
+/* Progress bar container - should be transparent, bar inside has the gray bg */
+[data-theme="light"] .subscription-usage-progress {
+    background: transparent !important;
+}
+
+/* Pro Monthly badge override */
+[data-theme="light"] .subscription-plan-card > span[style*="background"] {
+    background: #f8fafc !important;
+}
+
+/* Fix inline styles with important overrides */
+[data-theme="light"] [style*="background: #1a1a1a"],
+[data-theme="light"] [style*="background:#1a1a1a"],
+[data-theme="light"] [style*="background-color: #1a1a1a"],
+[data-theme="light"] [style*="background-color:#1a1a1a"] {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+}
+
+[data-theme="light"] [style*="border: 1px solid #2a2a2a"],
+[data-theme="light"] [style*="border:1px solid #2a2a2a"],
+[data-theme="light"] [style*="border-color: #2a2a2a"] {
+    border-color: #e2e8f0 !important;
+}
+
+[data-theme="light"] [style*="border-top: 1px solid #2a2a2a"] {
+    border-top-color: #e2e8f0 !important;
+}
+
+[data-theme="light"] [style*="color: #e5e7eb"],
+[data-theme="light"] [style*="color:#e5e7eb"] {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] [style*="color: #6b7280"],
+[data-theme="light"] [style*="color:#6b7280"] {
+    color: #64748b !important;
+}
+
+/* =================================================================
+   DESIGN CANVAS - Fix black background
+   ================================================================= */
+
+[data-theme="light"] .design-canvas,
+[data-theme="light"] .canvas-container,
+[data-theme="light"] .design-panel,
+[data-theme="light"] .design-area,
+[data-theme="light"] .canvas-wrapper {
+    background-color: #f1f5f9 !important;
+}
+
+[data-theme="light"] .design-toolbar,
+[data-theme="light"] .canvas-toolbar {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .design-toolbar button,
+[data-theme="light"] .canvas-toolbar button {
+    color: #475569 !important;
+    background-color: transparent !important;
+}
+
+[data-theme="light"] .design-toolbar button:hover,
+[data-theme="light"] .canvas-toolbar button:hover {
+    background-color: rgba(124, 58, 237, 0.08) !important;
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .design-toolbar button.active,
+[data-theme="light"] .canvas-toolbar button.active {
+    background-color: rgba(124, 58, 237, 0.12) !important;
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .canvas-header {
+    background-color: #ffffff !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .canvas-header button {
+    color: #475569 !important;
+}
+
+[data-theme="light"] .canvas-header button:hover {
+    color: #7c3aed !important;
+}
+
+/* The actual canvas drawing area - keep it light gray for contrast */
+[data-theme="light"] .excalidraw,
+[data-theme="light"] .excalidraw-container,
+[data-theme="light"] [class*="excalidraw"] {
+    background-color: #f8fafc !important;
+}
+
+/* =================================================================
+   TICKETS PAGE - Fix black background
+   ================================================================= */
+
+[data-theme="light"] .tickets-page,
+[data-theme="light"] .tickets-container,
+[data-theme="light"] .tickets-content {
+    background-color: #f8fafc !important;
+}
+
+[data-theme="light"] .tickets-header {
+    background-color: #f8fafc !important;
+}
+
+[data-theme="light"] .tickets-filters {
+    background-color: transparent !important;
+}
+
+[data-theme="light"] .filter-select,
+[data-theme="light"] .tickets-search input {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .tickets-list,
+[data-theme="light"] .ticket-list {
+    background-color: transparent !important;
+}
+
+[data-theme="light"] .ticket-item,
+[data-theme="light"] .ticket-row {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .ticket-item:hover,
+[data-theme="light"] .ticket-row:hover {
+    background-color: #f8fafc !important;
+    border-color: #7c3aed !important;
+}
+
+[data-theme="light"] .empty-tickets,
+[data-theme="light"] .no-tickets {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #475569 !important;
+}
+
+[data-theme="light"] .empty-tickets i,
+[data-theme="light"] .no-tickets i {
+    color: #94a3b8 !important;
+}
+
+/* =================================================================
+   ASSISTANT MESSAGE - Fix double border/outline
+   ================================================================= */
+
+[data-theme="light"] .message.assistant {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
+    outline: none !important;
+}
+
+/* Remove any extra borders from message content */
+[data-theme="light"] .message.assistant .message-content {
+    border: none !important;
+    outline: none !important;
+}
+
+/* Fix streaming message indicators */
+[data-theme="light"] .message.assistant.streaming {
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .streaming-indicator {
+    background-color: transparent !important;
+    color: #7c3aed !important;
+}
+
+/* =================================================================
+   ARTIFACTS TABS - Fix dark backgrounds
+   ================================================================= */
+
+[data-theme="light"] .artifacts-tabs-container {
+    background-color: #f8fafc !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .artifacts-tab {
+    color: #64748b !important;
+    background-color: transparent !important;
+}
+
+[data-theme="light"] .artifacts-tab:hover {
+    color: #1e293b !important;
+    background-color: rgba(124, 58, 237, 0.05) !important;
+}
+
+[data-theme="light"] .artifacts-tab.active {
+    color: #7c3aed !important;
+    background-color: #ffffff !important;
+    border-bottom: 2px solid #7c3aed !important;
+}
+
+/* =================================================================
+   SELECT DROPDOWNS / FILTERS
+   ================================================================= */
+
+[data-theme="light"] select,
+[data-theme="light"] .select-wrapper select,
+[data-theme="light"] .filter-dropdown {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] select:focus {
+    border-color: #7c3aed !important;
+    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1) !important;
+}
+
+[data-theme="light"] select option {
+    background-color: #ffffff !important;
+    color: #1e293b !important;
+}
+
+/* =================================================================
+   PROJECT HEADER - Fix dark background
+   ================================================================= */
+
+[data-theme="light"] .project-header,
+[data-theme="light"] .page-header {
+    background-color: #f8fafc !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .project-header h1,
+[data-theme="light"] .page-header h1 {
+    color: #1e293b !important;
+}
+
+/* =================================================================
+   FIX DARK CONTENT AREAS
+   ================================================================= */
+
+/* Main content areas that might still be dark */
+[data-theme="light"] main,
+[data-theme="light"] .main,
+[data-theme="light"] .content,
+[data-theme="light"] .page-content {
+    background-color: #f8fafc !important;
+}
+
+/* Ensure all sections have light background */
+[data-theme="light"] section {
+    background-color: transparent;
+}
+
+/* Fix any remaining dark panels */
+[data-theme="light"] .panel,
+[data-theme="light"] .panel-body {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+/* =================================================================
+   SEARCH INPUTS
+   ================================================================= */
+
+[data-theme="light"] .search-input,
+[data-theme="light"] .search-box input,
+[data-theme="light"] input[type="search"] {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .search-icon {
+    color: #94a3b8 !important;
+}
+
+/* =================================================================
+   FIX NEW TICKET BUTTON
+   ================================================================= */
+
+[data-theme="light"] .new-ticket-btn,
+[data-theme="light"] .btn-new-ticket {
+    background: linear-gradient(135deg, #7c3aed 0%, #6366f1 100%) !important;
+    color: #ffffff !important;
+}
+
+/* =================================================================
+   DESIGN CANVAS - Specific overrides for design_canvas.css
+   ================================================================= */
+
+[data-theme="light"] .design-canvas-container {
+    background: #f1f5f9 !important;
+}
+
+[data-theme="light"] .design-canvas-toolbar {
+    background: #ffffff !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .toolbar-btn {
+    background: transparent !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #475569 !important;
+}
+
+[data-theme="light"] .toolbar-btn:hover {
+    background: rgba(124, 58, 237, 0.08) !important;
+    border-color: #7c3aed !important;
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .toolbar-btn.active {
+    background: rgba(124, 58, 237, 0.12) !important;
+    border-color: #7c3aed !important;
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .zoom-level {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .canvas-title {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .design-canvas-wrapper {
+    background: #f8fafc !important;
+}
+
+[data-theme="light"] .design-canvas {
+    background: #ffffff !important;
+}
+
+[data-theme="light"] .design-tools {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05) !important;
+}
+
+[data-theme="light"] .tool-btn {
+    color: #475569 !important;
+    background: transparent !important;
+}
+
+[data-theme="light"] .tool-btn:hover {
+    background: rgba(124, 58, 237, 0.08) !important;
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .tool-btn.active {
+    background: rgba(124, 58, 237, 0.12) !important;
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .tool-btn i {
+    color: inherit !important;
+}
+
+/* Canvas grid dots for light mode */
+[data-theme="light"] .design-canvas-wrapper {
+    background:
+        radial-gradient(circle at 50% 50%, rgba(124, 58, 237, 0.03) 0%, transparent 50%) !important;
+}
+
+/* =================================================================
+   TICKETS CSS OVERRIDES
+   ================================================================= */
+
+[data-theme="light"] .tickets-page .main-content,
+[data-theme="light"] .main-content.tickets-page {
+    background-color: #f8fafc !important;
+}
+
+[data-theme="light"] .empty-state-card {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .empty-state-card h3 {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .empty-state-card p {
+    color: #64748b !important;
+}
+
+/* =================================================================
+   FIX MESSAGE BORDERS - Remove double borders
+   ================================================================= */
+
+[data-theme="light"] .message {
+    outline: none !important;
+}
+
+[data-theme="light"] .message.assistant {
+    border: 1px solid #e2e8f0 !important;
+}
+
+/* Fix any wrapper that might add extra borders */
+[data-theme="light"] .message-wrapper,
+[data-theme="light"] .message-bubble {
+    border: none !important;
+    outline: none !important;
+}
+
+/* =================================================================
+   NEW CHAT LINK - Fix selection and styling (NO background)
+   ================================================================= */
+
+[data-theme="light"] .new-chat-section {
+    background: none !important;
+    background-color: transparent !important;
+    border: none !important;
+}
+
+[data-theme="light"] .new-chat-link {
+    background: none !important;
+    background-color: transparent !important;
+    color: #7c3aed !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+[data-theme="light"] .new-chat-link:hover {
+    background: none !important;
+    background-color: transparent !important;
+    opacity: 0.7 !important;
+}
+
+[data-theme="light"] .new-chat-link i {
+    color: #7c3aed !important;
+    background: none !important;
+}
+
+/* =================================================================
+   SIDEBAR NAV - Fix active states and backgrounds
+   ================================================================= */
+
+[data-theme="light"] .sidebar-nav {
+    background: none !important;
+    background-color: transparent !important;
+}
+
+[data-theme="light"] .sidebar-nav .nav-link {
+    background: none !important;
+    background-color: transparent !important;
+}
+
+[data-theme="light"] .sidebar-nav .nav-link.active {
+    background: rgba(124, 58, 237, 0.08) !important;
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .sidebar-nav .nav-link:hover:not(.active) {
+    background: rgba(0, 0, 0, 0.04) !important;
+}
+
+/* =================================================================
+   USER INFO & TOKEN DISPLAY - Fix bottom left styling
+   ================================================================= */
+
+[data-theme="light"] .user-info-button {
+    background: transparent !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .user-info-button:hover {
+    background-color: rgba(124, 58, 237, 0.08) !important;
+}
+
+[data-theme="light"] .username {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .user-avatar {
+    background-color: rgba(124, 58, 237, 0.15) !important;
+}
+
+[data-theme="light"] .avatar-text {
+    color: #7c3aed !important;
+    background: transparent !important;
+}
+
+[data-theme="light"] .dropdown-icon {
+    color: #64748b !important;
+}
+
+/* Token display fix */
+[data-theme="light"] .nav-link.token-display {
+    color: #475569 !important;
+}
+
+[data-theme="light"] .nav-link.token-display i {
+    color: #64748b !important;
+}
+
+[data-theme="light"] #daily-tokens {
+    color: #475569 !important;
+}
+
+[data-theme="light"] .token-label {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .minimized-tokens {
+    color: #64748b !important;
+}
+
+/* Token display tooltip */
+[data-theme="light"] .nav-link.token-display::before {
+    background: #1e293b !important;
+    color: #ffffff !important;
+}
+
+/* =================================================================
+   CHAT OPTIONS DROPDOWN - Fix dark backgrounds
+   ================================================================= */
+
+[data-theme="light"] .settings-dropdown {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1) !important;
+}
+
+[data-theme="light"] .settings-menu {
+    background: #ffffff !important;
+}
+
+[data-theme="light"] .menu-item {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .menu-item:hover {
+    background: rgba(124, 58, 237, 0.08) !important;
+}
+
+[data-theme="light"] .menu-item i:first-child {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .menu-item .submenu-arrow {
+    color: #94a3b8 !important;
+}
+
+[data-theme="light"] .submenu {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1) !important;
+}
+
+[data-theme="light"] .submenu-group {
+    color: #64748b !important;
+    border-top-color: #e2e8f0 !important;
+}
+
+[data-theme="light"] .submenu-option {
+    color: #1e293b !important;
+    background: transparent !important;
+}
+
+[data-theme="light"] .submenu-option:hover {
+    background: rgba(124, 58, 237, 0.08) !important;
+}
+
+[data-theme="light"] .submenu-option.selected {
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .submenu-option i {
+    color: #7c3aed !important;
+}
+
+/* Custom dropdown in chat */
+[data-theme="light"] .custom-dropdown-button {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .custom-dropdown-button:hover {
+    background: #f8fafc !important;
+    border-color: #cbd5e1 !important;
+}
+
+[data-theme="light"] .custom-dropdown-button.active {
+    border-color: #7c3aed !important;
+}
+
+[data-theme="light"] .custom-dropdown-button::after {
+    border-top-color: #64748b !important;
+}
+
+[data-theme="light"] .custom-dropdown-menu {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1) !important;
+}
+
+[data-theme="light"] .custom-dropdown-item {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .custom-dropdown-item:hover {
+    background: rgba(124, 58, 237, 0.08) !important;
+}
+
+[data-theme="light"] .custom-dropdown-item.selected {
+    background: rgba(124, 58, 237, 0.12) !important;
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .dropdown-group-label {
+    color: #64748b !important;
+    border-bottom-color: #e2e8f0 !important;
+}
+
+/* Settings dropdown in chat input */
+[data-theme="light"] .settings-dropdown .custom-dropdown-button {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .settings-dropdown .custom-dropdown-button:hover {
+    background: #f8fafc !important;
+    border-color: #cbd5e1 !important;
+}
+
+[data-theme="light"] .settings-dropdown .custom-dropdown-menu {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+/* =================================================================
+   MINIMIZED SIDEBAR ICONS - Fix visibility
+   ================================================================= */
+
+[data-theme="light"] .sidebar.minimized .logo-icon {
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .sidebar.minimized .new-chat-link i {
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .sidebar.minimized .nav-link i {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .sidebar.minimized .nav-link:hover i {
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .sidebar.minimized .user-avatar {
+    background-color: rgba(124, 58, 237, 0.15) !important;
+}
+
+[data-theme="light"] .sidebar.minimized .avatar-text {
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .sidebar.minimized .logo-section::after {
+    color: #7c3aed !important;
+}
+
+/* =================================================================
+   SETTINGS PAGE OPTIONS - Fix dark backgrounds
+   ================================================================= */
+
+[data-theme="light"] .settings-nav-link,
+[data-theme="light"] .settings-link {
+    color: #475569 !important;
+    background: transparent !important;
+}
+
+[data-theme="light"] .settings-nav-link:hover,
+[data-theme="light"] .settings-link:hover {
+    background: rgba(124, 58, 237, 0.08) !important;
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .settings-nav-link.active,
+[data-theme="light"] .settings-link.active {
+    background: rgba(124, 58, 237, 0.12) !important;
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .settings-nav-link i,
+[data-theme="light"] .settings-link i {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .settings-nav-link:hover i,
+[data-theme="light"] .settings-nav-link.active i,
+[data-theme="light"] .settings-link:hover i,
+[data-theme="light"] .settings-link.active i {
+    color: #7c3aed !important;
+}
+
+/* Settings section cards */
+[data-theme="light"] .settings-section-card,
+[data-theme="light"] .settings-option {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .settings-section-card:hover,
+[data-theme="light"] .settings-option:hover {
+    border-color: #cbd5e1 !important;
+}
+
+[data-theme="light"] .settings-section-title,
+[data-theme="light"] .settings-option-title {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .settings-section-description,
+[data-theme="light"] .settings-option-description {
+    color: #64748b !important;
+}
+
+/* =================================================================
+   NEW TICKET CREATION - Fix styling
+   ================================================================= */
+
+[data-theme="light"] .create-ticket-btn,
+[data-theme="light"] .new-ticket-button,
+[data-theme="light"] .btn-create-ticket {
+    background: linear-gradient(135deg, #7c3aed 0%, #6366f1 100%) !important;
+    color: #ffffff !important;
+    border: none !important;
+}
+
+[data-theme="light"] .create-ticket-btn:hover,
+[data-theme="light"] .new-ticket-button:hover,
+[data-theme="light"] .btn-create-ticket:hover {
+    background: linear-gradient(135deg, #6d28d9 0%, #4f46e5 100%) !important;
+}
+
+/* Ticket modal */
+[data-theme="light"] .ticket-modal,
+[data-theme="light"] .create-ticket-modal {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .ticket-modal-header,
+[data-theme="light"] .create-ticket-modal-header {
+    background: #f8fafc !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .ticket-form-group label {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .ticket-form-input,
+[data-theme="light"] .ticket-form-textarea,
+[data-theme="light"] .ticket-form-select {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .ticket-form-input:focus,
+[data-theme="light"] .ticket-form-textarea:focus,
+[data-theme="light"] .ticket-form-select:focus {
+    border-color: #7c3aed !important;
+    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1) !important;
+}
+
+/* =================================================================
+   BOTTOM NAV BORDER FIX
+   ================================================================= */
+
+[data-theme="light"] .bottom-nav {
+    border-bottom: 1px solid #e2e8f0 !important;
+}
+
+/* =================================================================
+   ROLE & MODEL DROPDOWNS IN CHAT
+   ================================================================= */
+
+[data-theme="light"] .role-dropdown,
+[data-theme="light"] .model-dropdown {
+    background-color: rgba(124, 58, 237, 0.1) !important;
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .role-dropdown:hover,
+[data-theme="light"] .model-dropdown:hover {
+    background-color: rgba(124, 58, 237, 0.15) !important;
+}
+
+[data-theme="light"] .role-dropdown:focus,
+[data-theme="light"] .model-dropdown:focus {
+    box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.2) !important;
+}
+
+/* =================================================================
+   ACTION BUTTONS IN CHAT INPUT
+   ================================================================= */
+
+[data-theme="light"] .action-btn {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .action-btn:hover {
+    background-color: rgba(124, 58, 237, 0.08) !important;
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .settings-btn-styled {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .settings-btn-styled:hover {
+    background-color: rgba(124, 58, 237, 0.08) !important;
+    color: #7c3aed !important;
+}
+
+/* =================================================================
+   STATUS INDICATORS
+   ================================================================= */
+
+[data-theme="light"] .role-status span {
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .model-status span {
+    color: #3b82f6 !important;
+}
+
+[data-theme="light"] .status-divider {
+    color: #94a3b8 !important;
+}
+
+[data-theme="light"] .settings-status {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .settings-status #current-role {
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .settings-status #current-model {
+    color: #3b82f6 !important;
+}
+
+/* =================================================================
+   TURBO MODE SWITCH
+   ================================================================= */
+
+[data-theme="light"] .turbo-slider {
+    background-color: rgba(148, 163, 184, 0.3) !important;
+    border: 1px solid rgba(148, 163, 184, 0.5) !important;
+}
+
+[data-theme="light"] .turbo-slider:before {
+    background-color: #64748b !important;
+}
+
+[data-theme="light"] input:checked + .turbo-slider {
+    background-color: rgba(124, 58, 237, 0.5) !important;
+    border-color: #7c3aed !important;
+}
+
+[data-theme="light"] input:checked + .turbo-slider:before {
+    background-color: #7c3aed !important;
+}
+
+[data-theme="light"] .turbo-label {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .turbo-switch-container:hover .turbo-label {
+    color: #475569 !important;
+}
+
+[data-theme="light"] .turbo-switch-container:has(input:checked) .turbo-label {
+    color: #7c3aed !important;
+}
+
+/* =================================================================
+   DESIGN CANVAS TOOLS PANEL - Fix dark background
+   ================================================================= */
+
+[data-theme="light"] .design-tools-panel {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08) !important;
+}
+
+[data-theme="light"] .tools-panel-divider {
+    background: #e2e8f0 !important;
+}
+
+[data-theme="light"] .tool-btn {
+    color: #64748b !important;
+    background: transparent !important;
+}
+
+[data-theme="light"] .tool-btn:hover {
+    background: rgba(124, 58, 237, 0.08) !important;
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .tool-btn.active {
+    background: #7c3aed !important;
+    color: #ffffff !important;
+}
+
+[data-theme="light"] .tool-btn.active:hover {
+    background: #6d28d9 !important;
+}
+
+[data-theme="light"] #tool-delete:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.1) !important;
+    color: #ef4444 !important;
+}
+
+[data-theme="light"] #tool-add-screen:hover {
+    background: rgba(124, 58, 237, 0.1) !important;
+    color: #7c3aed !important;
+}
+
+/* =================================================================
+   CHAT INPUT BOX - Fix outline sharpness and separator line
+   ================================================================= */
+
+/* Remove/hide the separator line between input and messages */
+[data-theme="light"] .message-container:after {
+    display: none !important;
+    opacity: 0 !important;
+}
+
+[data-theme="light"] .chat-input-container {
+    background: transparent !important;
+    border-top: none !important;
+}
+
+/* Softer, more subtle input box styling */
+[data-theme="light"] #chat-input-box {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #1e293b !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04) !important;
+    border-radius: 16px !important;
+}
+
+[data-theme="light"] #chat-input-box:focus,
+[data-theme="light"] #chat-input-box:focus-within {
+    border-color: rgba(124, 58, 237, 0.4) !important;
+    box-shadow: 0 2px 12px rgba(124, 58, 237, 0.08) !important;
+    outline: none !important;
+}
+
+/* Inner text area should have no border */
+[data-theme="light"] #chat-input {
+    background: transparent !important;
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] #chat-input:focus {
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+}
+
+[data-theme="light"] #chat-input::placeholder {
+    color: #94a3b8 !important;
+}
+
+/* Remove any gradient connector/separator */
+[data-theme="light"] .message-container::after,
+[data-theme="light"] #messages::after,
+[data-theme="light"] .messages-area::after {
+    display: none !important;
+    content: none !important;
+}
+
+/* =================================================================
+   ARTIFACTS BUTTON - Remove circle completely, icon only
+   ================================================================= */
+
+[data-theme="light"] .artifacts-button {
+    background: none !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: #64748b !important;
+}
+
+[data-theme="light"] .artifacts-button:hover {
+    background: none !important;
+    border: none !important;
+    color: #7c3aed !important;
+    transform: scale(1.1) !important;
+    box-shadow: none !important;
+}
+
+[data-theme="light"] .artifacts-button i {
+    color: inherit !important;
+}
+
+[data-theme="light"] .artifacts-button.active {
+    background: none !important;
+    border: none !important;
+    color: #7c3aed !important;
+}
+
+/* Artifacts toggle button (different element) */
+[data-theme="light"] .artifacts-toggle {
+    background: none !important;
+    border: none !important;
+    color: #64748b !important;
+}
+
+[data-theme="light"] .artifacts-toggle:hover {
+    color: #7c3aed !important;
+}
+
+/* =================================================================
+   SETTINGS NEW PAGE - Additional subscription and plan card fixes
+   ================================================================= */
+
+/* Subscription plan badge */
+[data-theme="light"] .subscription-plan-badge {
+    background: #e2e8f0 !important;
+    color: #64748b !important;
+}
+
+[data-theme="light"] .subscription-plan-badge.pro {
+    background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%) !important;
+    color: #e9d5ff !important;
+}
+
+/* Subscription progress bar */
+[data-theme="light"] .subscription-progress-bar-container {
+    background: #e2e8f0 !important;
+}
+
+[data-theme="light"] .subscription-progress-title {
+    color: #1e293b !important;
+}
+
+/* Subscription stat values */
+[data-theme="light"] .subscription-stat-value {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .subscription-stat-value.limit {
+    color: #64748b !important;
+}
+
+/* Subscription card icon */
+[data-theme="light"] .subscription-card-icon {
+    background: #94a3b8 !important;
+}
+
+[data-theme="light"] .subscription-card-number {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .subscription-card-expiry {
+    color: #64748b !important;
+}
+
+/* Subscription plan button secondary */
+[data-theme="light"] .subscription-plan-button.secondary {
+    background: #e2e8f0 !important;
+    color: #64748b !important;
+}
+
+/* Card icon */
+[data-theme="light"] .card-icon {
+    background: #94a3b8 !important;
+}
+
+/* Subscription pricing cards */
+[data-theme="light"] .subscription-pricing-card {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .subscription-pricing-card.recommended {
+    border-color: rgba(124, 58, 237, 0.4) !important;
+}
+
+[data-theme="light"] .subscription-plan-name {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .subscription-plan-price {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .subscription-plan-price span {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .subscription-plan-description {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .subscription-plan-features {
+    color: #475569 !important;
+}
+
+[data-theme="light"] .subscription-plan-features li {
+    color: #475569 !important;
+}
+
+/* Subscription usage breakdown */
+[data-theme="light"] .subscription-usage-breakdown {
+    border-color: #e2e8f0 !important;
+}
+
+[data-theme="light"] .subscription-breakdown-item {
+    color: #64748b !important;
+}
+
+/* LLM availability note */
+[data-theme="light"] .llm-availability-note {
+    background: rgba(15, 118, 110, 0.08) !important;
+    border-color: rgba(45, 212, 191, 0.25) !important;
+    color: #0d9488 !important;
+}
+
+/* Help modal styles for light mode (applied via JavaScript class) */
+[data-theme="light"] .help-modal > div {
+    background: #ffffff !important;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15) !important;
+}
+
+[data-theme="light"] .help-modal h3,
+[data-theme="light"] .help-modal h4 {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .help-modal p,
+[data-theme="light"] .help-modal li {
+    color: #475569 !important;
+}
+
+/* Subscription payment method items */
+[data-theme="light"] .subscription-payment-method-item {
+    background: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .subscription-payment-method-item:hover {
+    border-color: #cbd5e1 !important;
+}
+
+/* =================================================================
+   SETTINGS INTEGRATION CARDS - Fix dark backgrounds
+   ================================================================= */
+
+/* Integration item cards (LLM Keys, Project Management, GitHub) */
+[data-theme="light"] .integration-item {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .integration-item:hover {
+    background: rgba(124, 58, 237, 0.05) !important;
+    border-color: rgba(124, 58, 237, 0.3) !important;
+}
+
+[data-theme="light"] .integration-name {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .integration-description {
+    color: #64748b !important;
+}
+
+/* BYOK controls section */
+[data-theme="light"] .llm-byok-controls {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .llm-byok-title {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .llm-byok-copy {
+    color: #64748b !important;
+}
+
+/* LLM Keys table */
+[data-theme="light"] .llm-keys-table {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .llm-keys-row {
+    border-bottom-color: #e2e8f0 !important;
+}
+
+[data-theme="light"] .llm-row-title {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .llm-row-subtitle {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .llm-row-status {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .llm-row-input input {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .llm-row-input input:focus {
+    border-color: #7c3aed !important;
+}
+
+[data-theme="light"] .llm-row-input input::placeholder {
+    color: #94a3b8 !important;
+}
+
+/* API input fields */
+[data-theme="light"] .api-input {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .api-input:focus {
+    border-color: #7c3aed !important;
+}
+
+[data-theme="light"] .api-input::placeholder {
+    color: #94a3b8 !important;
+}
+
+/* LLM availability note */
+[data-theme="light"] .llm-availability-note {
+    background: #f0fdf4 !important;
+    border: 1px solid #bbf7d0 !important;
+    color: #166534 !important;
+}
+
+[data-theme="light"] .llm-availability-note i {
+    color: #22c55e !important;
+}
+
+/* =================================================================
+   TICKET MODAL - Create Ticket dialog light mode fixes
+   ================================================================= */
+
+/* Modal dialog background */
+[data-theme="light"] .modal-dialog {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15) !important;
+}
+
+/* Modal header */
+[data-theme="light"] .modal-header {
+    border-bottom: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .modal-header h3 {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .modal-close-btn {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .modal-close-btn:hover {
+    color: #1e293b !important;
+}
+
+/* Modal body labels */
+[data-theme="light"] .modal-body label {
+    color: #475569 !important;
+}
+
+/* Modal body inputs */
+[data-theme="light"] .modal-body input,
+[data-theme="light"] .modal-body select,
+[data-theme="light"] .modal-body textarea {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .modal-body input:focus,
+[data-theme="light"] .modal-body select:focus,
+[data-theme="light"] .modal-body textarea:focus {
+    border-color: #7c3aed !important;
+    outline: none !important;
+}
+
+[data-theme="light"] .modal-body input::placeholder,
+[data-theme="light"] .modal-body textarea::placeholder {
+    color: #94a3b8 !important;
+}
+
+/* Modal context (PROJECT section) */
+[data-theme="light"] .modal-context {
+    background: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .modal-context-label {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .modal-context-value {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .modal-context-hint {
+    color: #64748b !important;
+}
+
+/* Modal actions footer */
+[data-theme="light"] .modal-actions {
+    border-top: 1px solid #e2e8f0 !important;
+    background: #f8fafc !important;
+}
+
+/* Modal checkbox */
+[data-theme="light"] .modal-checkbox {
+    color: #475569 !important;
+}
+
+/* File upload hint */
+[data-theme="light"] .file-upload-hint {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .attachment-preview-empty {
+    color: #64748b !important;
+}
+
+/* File input - Choose Files button */
+[data-theme="light"] .modal-body input[type="file"] {
+    background: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #475569 !important;
+}
+
+[data-theme="light"] .modal-body input[type="file"]::file-selector-button {
+    background: #e2e8f0 !important;
+    border: 1px solid #cbd5e1 !important;
+    color: #1e293b !important;
+    padding: 0.5rem 1rem !important;
+    border-radius: 6px !important;
+    cursor: pointer !important;
+    margin-right: 0.75rem !important;
+}
+
+[data-theme="light"] .modal-body input[type="file"]::file-selector-button:hover {
+    background: #cbd5e1 !important;
+}
+
+/* Modal error message */
+[data-theme="light"] .modal-error {
+    color: #ef4444 !important;
+}
+
+/* =================================================================
+   ARTIFACTS PANEL - Refresh buttons and other elements
+   ================================================================= */
+
+/* Refresh button in Documents/Filebrowser panel */
+[data-theme="light"] #refresh-filebrowser {
+    background: #e2e8f0 !important;
+    color: #1e293b !important;
+    border: 1px solid #cbd5e1 !important;
+}
+
+[data-theme="light"] #refresh-filebrowser:hover {
+    background: #cbd5e1 !important;
+}
+
+/* Refresh button in App panel */
+[data-theme="light"] #app-refresh-btn {
+    background: #e2e8f0 !important;
+    color: #1e293b !important;
+    border: 1px solid #cbd5e1 !important;
+}
+
+[data-theme="light"] #app-refresh-btn:hover {
+    background: #cbd5e1 !important;
+}
+
+/* Refresh button in Tool History panel */
+[data-theme="light"] #refresh-toolhistory {
+    background: #7c3aed !important;
+    color: #ffffff !important;
+}
+
+/* File type filter dropdown */
+[data-theme="light"] #file-type-filter {
+    background: #ffffff !important;
+    color: #1e293b !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+/* File search input */
+[data-theme="light"] #file-search {
+    background: #ffffff !important;
+    color: #1e293b !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] #file-search::placeholder {
+    color: #94a3b8 !important;
+}
+
+/* Tool filter input */
+[data-theme="light"] #tool-filter {
+    background: #ffffff !important;
+    color: #1e293b !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] #tool-filter::placeholder {
+    color: #94a3b8 !important;
+}
+
+/* =================================================================
+   ARTIFACTS PANEL - Document/PRD content and markdown styling
+   ================================================================= */
+
+/* Markdown content text colors */
+[data-theme="light"] .markdown-content {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .markdown-content h1,
+[data-theme="light"] .markdown-content h2,
+[data-theme="light"] .markdown-content h3,
+[data-theme="light"] .markdown-content h4 {
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .markdown-content h1 {
+    border-bottom-color: #e2e8f0 !important;
+}
+
+[data-theme="light"] .markdown-content p,
+[data-theme="light"] .markdown-content li,
+[data-theme="light"] .markdown-content td {
+    color: #374151 !important;
+}
+
+[data-theme="light"] .markdown-content strong {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .markdown-content blockquote {
+    color: #475569 !important;
+    border-left-color: #7c3aed !important;
+}
+
+[data-theme="light"] .markdown-content code {
+    background-color: #f1f5f9 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .markdown-content pre {
+    background-color: #f1f5f9 !important;
+}
+
+/* PRD and document content */
+[data-theme="light"] .prd-content,
+[data-theme="light"] .implementation-content {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .prd-meta,
+[data-theme="light"] .implementation-meta {
+    color: #64748b !important;
+}
+
+/* Document header */
+[data-theme="light"] .doc-header h2,
+[data-theme="light"] .prd-header h2,
+[data-theme="light"] .implementation-header h2 {
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .implementation-header {
+    border-bottom-color: #e2e8f0 !important;
+}
+
+/* Table styling in markdown */
+[data-theme="light"] .markdown-content table {
+    border-color: #e2e8f0 !important;
+}
+
+[data-theme="light"] .markdown-content th {
+    background-color: #f8fafc !important;
+    color: #1e293b !important;
+    border-color: #e2e8f0 !important;
+}
+
+[data-theme="light"] .markdown-content td {
+    border-color: #e2e8f0 !important;
+}
+
+[data-theme="light"] .markdown-content tr:hover {
+    background-color: #f8fafc !important;
+}
+
+/* Task List / Checklist tab */
+[data-theme="light"] #checklist {
+    background: #ffffff !important;
+}
+
+[data-theme="light"] .checklist-item,
+[data-theme="light"] .task-item {
+    background: #ffffff !important;
+    border-color: #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .checklist-item:hover,
+[data-theme="light"] .task-item:hover {
+    background: #f8fafc !important;
+}
+
+/* Empty state text */
+[data-theme="light"] .empty-state-text {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .empty-state-icon {
+    color: #94a3b8 !important;
+}
+
+/* Document title in Generating state */
+[data-theme="light"] .doc-title,
+[data-theme="light"] .generating-title {
+    color: #1e293b !important;
+}
+
+/* File browser table header */
+[data-theme="light"] .file-table-header {
+    background: #f8fafc !important;
+    color: #64748b !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .file-table-header div {
+    color: #64748b !important;
+}
+
+/* File rows */
+[data-theme="light"] .file-row {
+    border-bottom-color: #f1f5f9 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .file-row:hover {
+    background: #f8fafc !important;
+}
+
+[data-theme="light"] .file-name,
+[data-theme="light"] #filebrowser .file-list-item .file-name,
+[data-theme="light"] .file-list-item .file-name {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .file-type-badge {
+    background: #e2e8f0 !important;
+    color: #475569 !important;
+}
+
+/* =================================================================
+   CHECKLIST/TASK LIST - Header and filters
+   ================================================================= */
+
+/* Checklist header bar */
+[data-theme="light"] .checklist-header {
+    background-color: transparent !important;
+    border-bottom: none !important;
+}
+
+/* Checklist filter dropdowns */
+[data-theme="light"] .checklist-filter-dropdown {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .checklist-filter-dropdown:hover {
+    background-color: #f8fafc !important;
+    border-color: #cbd5e1 !important;
+}
+
+[data-theme="light"] .checklist-filter-dropdown:focus {
+    border-color: #7c3aed !important;
+    box-shadow: 0 0 0 1px rgba(124, 58, 237, 0.3) !important;
+}
+
+/* Clear filters button */
+[data-theme="light"] .checklist-filters .clear-filters-btn {
+    background-color: #f1f5f9 !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #64748b !important;
+}
+
+[data-theme="light"] .checklist-filters .clear-filters-btn:hover {
+    background-color: #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+/* Checklist menu button */
+[data-theme="light"] .checklist-menu-btn {
+    background-color: #f1f5f9 !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #64748b !important;
+}
+
+[data-theme="light"] .checklist-menu-btn:hover {
+    background-color: #e2e8f0 !important;
+}
+
+/* =================================================================
+   TICKET MODAL - Detail view popup
+   ================================================================= */
+
+/* Ticket modal background */
+[data-theme="light"] .ticket-modal {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 28px 60px rgba(0, 0, 0, 0.15) !important;
+    color: #1e293b !important;
+}
+
+/* Modal header nav buttons */
+[data-theme="light"] .ticket-modal-nav-btn,
+[data-theme="light"] .ticket-modal-close {
+    background: #f1f5f9 !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #64748b !important;
+}
+
+[data-theme="light"] .ticket-modal-nav-btn:hover,
+[data-theme="light"] .ticket-modal-close:hover {
+    background: #e2e8f0 !important;
+    border-color: #7c3aed !important;
+    color: #7c3aed !important;
+}
+
+/* Modal context/subtitle text */
+[data-theme="light"] .ticket-modal-context {
+    color: #64748b !important;
+}
+
+/* Modal title */
+[data-theme="light"] .ticket-modal-name {
+    color: #1e293b !important;
+}
+
+/* Modal subtitle */
+[data-theme="light"] .ticket-modal-subtitle {
+    color: #64748b !important;
+}
+
+/* Ticket chips */
+[data-theme="light"] .ticket-chip {
+    background: #f1f5f9 !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #475569 !important;
+}
+
+/* Ticket meta info section */
+[data-theme="light"] .ticket-modal-meta {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .ticket-modal-meta-label {
+    color: #94a3b8 !important;
+}
+
+[data-theme="light"] .ticket-modal-meta-value {
+    color: #1e293b !important;
+}
+
+/* Description section */
+[data-theme="light"] .ticket-modal-section {
+    background: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .ticket-modal-section-header {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .ticket-modal-description {
+    color: #374151 !important;
+}
+
+/* Modal action buttons */
+[data-theme="light"] .ticket-modal-actions .btn-secondary,
+[data-theme="light"] .ticket-modal-btn-secondary {
+    background: #f1f5f9 !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #475569 !important;
+}
+
+[data-theme="light"] .ticket-modal-actions .btn-secondary:hover {
+    background: #e2e8f0 !important;
+}
+
+/* Ticket modal footer buttons - Edit, View Logs, Delete */
+[data-theme="light"] .ticket-modal-secondary {
+    background: #f1f5f9 !important;
+    color: #475569 !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .ticket-modal-secondary:hover {
+    background: #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .ticket-modal-info {
+    background: rgba(59, 130, 246, 0.1) !important;
+    color: #2563eb !important;
+    border: 1px solid rgba(59, 130, 246, 0.3) !important;
+}
+
+[data-theme="light"] .ticket-modal-info:hover {
+    background: rgba(59, 130, 246, 0.15) !important;
+    color: #1d4ed8 !important;
+}
+
+[data-theme="light"] .ticket-modal-danger {
+    background: rgba(239, 68, 68, 0.1) !important;
+    color: #dc2626 !important;
+    border: 1px solid rgba(239, 68, 68, 0.3) !important;
+}
+
+[data-theme="light"] .ticket-modal-danger:hover {
+    background: rgba(239, 68, 68, 0.15) !important;
+    color: #b91c1c !important;
+}
+
+/* Ticket details drawer */
+[data-theme="light"] .ticket-details-drawer {
+    background-color: #ffffff !important;
+    border-left: 1px solid #e2e8f0 !important;
+}
+
+/* Ticket drawer header */
+[data-theme="light"] .ticket-drawer-header {
+    background: #f8fafc !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .ticket-drawer-header h3 {
+    color: #1e293b !important;
+}
+
+/* Drawer content */
+[data-theme="light"] .ticket-drawer-content {
+    color: #1e293b !important;
+}
+
+/* =================================================================
+   FILEBROWSER/DOCUMENTS - Header and inline styles override
+   ================================================================= */
+
+/* Documents heading - override inline style */
+[data-theme="light"] #filebrowser h3,
+[data-theme="light"] .filebrowser-header h3,
+[data-theme="light"] #filebrowser-main h3 {
+    color: #1e293b !important;
+}
+
+/* Filebrowser header container - override inline border */
+[data-theme="light"] .filebrowser-header {
+    border-bottom: 1px solid #e2e8f0 !important;
+}
+
+/* File type filter select - override inline styles */
+[data-theme="light"] #file-type-filter {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+/* File search input - override inline styles */
+[data-theme="light"] #file-search {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] #file-search::placeholder {
+    color: #94a3b8 !important;
+}
+
+/* Search icon */
+[data-theme="light"] #filebrowser .fa-search {
+    color: #64748b !important;
+}
+
+/* Filebrowser pagination - override inline border */
+[data-theme="light"] #filebrowser-pagination {
+    border-top: 1px solid #e2e8f0 !important;
+}
+
+/* Viewer markdown content - override inline color */
+[data-theme="light"] #viewer-markdown {
+    color: #1e293b !important;
+}
+
+/* =================================================================
+   TASK LIST - Priority and Role Badges (light mode colors)
+   ================================================================= */
+
+/* Priority badge - HIGH */
+[data-theme="light"] .priority-badge.high,
+[data-theme="light"] .checklist-card .priority-badge.high,
+[data-theme="light"] .feature-tag.high-priority {
+    background: rgba(239, 68, 68, 0.15) !important;
+    color: #dc2626 !important;
+    border-color: rgba(239, 68, 68, 0.3) !important;
+}
+
+/* Priority badge - MEDIUM */
+[data-theme="light"] .priority-badge.medium,
+[data-theme="light"] .checklist-card .priority-badge.medium,
+[data-theme="light"] .feature-tag.medium-priority {
+    background: rgba(245, 158, 11, 0.15) !important;
+    color: #d97706 !important;
+    border-color: rgba(245, 158, 11, 0.3) !important;
+}
+
+/* Priority badge - LOW */
+[data-theme="light"] .priority-badge.low,
+[data-theme="light"] .checklist-card .priority-badge.low,
+[data-theme="light"] .feature-tag.low-priority {
+    background: rgba(34, 197, 94, 0.15) !important;
+    color: #16a34a !important;
+    border-color: rgba(34, 197, 94, 0.3) !important;
+}
+
+/* Role badge - AGENT */
+[data-theme="light"] .role-badge.agent,
+[data-theme="light"] .checklist-card .role-badge.agent,
+[data-theme="light"] .checklist-details-drawer .role-badge.agent {
+    background: rgba(139, 92, 246, 0.15) !important;
+    color: #7c3aed !important;
+    border-color: rgba(139, 92, 246, 0.3) !important;
+}
+
+/* Role badge - USER */
+[data-theme="light"] .role-badge.user,
+[data-theme="light"] .checklist-card .role-badge.user,
+[data-theme="light"] .checklist-details-drawer .role-badge.user {
+    background: rgba(59, 130, 246, 0.15) !important;
+    color: #2563eb !important;
+    border-color: rgba(59, 130, 246, 0.3) !important;
+}
+
+/* Status badges */
+[data-theme="light"] .status-tag.status-open {
+    background-color: rgba(52, 152, 219, 0.15) !important;
+    color: #2563eb !important;
+}
+
+[data-theme="light"] .status-tag.status-in_progress {
+    background-color: rgba(243, 156, 18, 0.15) !important;
+    color: #d97706 !important;
+}
+
+[data-theme="light"] .status-tag.status-agent {
+    background-color: rgba(155, 89, 182, 0.15) !important;
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .status-tag.status-closed {
+    background-color: rgba(46, 204, 113, 0.15) !important;
+    color: #16a34a !important;
+}
+
+/* =================================================================
+   CHECKLIST ACTIONS DROPDOWN MENU
+   ================================================================= */
+
+/* Dropdown menu - override inline styles from artifacts-loader.js */
+[data-theme="light"] #checklist-actions-menu,
+[data-theme="light"] .dropdown-menu {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Dropdown menu divider */
+[data-theme="light"] #checklist-actions-menu > div[style*="background: #313244"],
+[data-theme="light"] .dropdown-menu > div[style*="height: 1px"] {
+    background: #e2e8f0 !important;
+}
+
+/* Dropdown items */
+[data-theme="light"] #checklist-actions-menu .dropdown-item,
+[data-theme="light"] .dropdown-menu .dropdown-item {
+    color: #374151 !important;
+    background: transparent !important;
+}
+
+[data-theme="light"] #checklist-actions-menu .dropdown-item:hover,
+[data-theme="light"] .dropdown-menu .dropdown-item:hover {
+    background: #f1f5f9 !important;
+    color: #7c3aed !important;
+}
+
+/* Delete item in dropdown (keep red) */
+[data-theme="light"] #delete-all-checklist {
+    color: #dc2626 !important;
+}
+
+[data-theme="light"] #delete-all-checklist:hover {
+    background: #fef2f2 !important;
+    color: #b91c1c !important;
+}
+
+/* Three-dot menu button */
+[data-theme="light"] .checklist-header-right button[style*="border-radius: 50%"],
+[data-theme="light"] button[style*="fa-ellipsis-v"] {
+    background: #f1f5f9 !important;
+    border-color: #e2e8f0 !important;
+    color: #64748b !important;
+}
+
+/* =================================================================
+   CHECKLIST CONTAINER - Background fix
+   ================================================================= */
+
+[data-theme="light"] .checklist-container {
+    background: transparent !important;
+}
+
+[data-theme="light"] .checklist-container::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.05) !important;
+}
+
+[data-theme="light"] .checklist-container::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.15) !important;
+}
+
+[data-theme="light"] .checklist-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.25) !important;
+}
+
+/* =================================================================
+   CHECKLIST CARDS - Light mode separator lines and text colors
+   ================================================================= */
+
+/* Card separator line - more visible in light mode */
+[data-theme="light"] .checklist-card {
+    border-bottom: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .checklist-card:hover {
+    background: rgba(0, 0, 0, 0.02) !important;
+    border-color: #cbd5e1 !important;
+}
+
+/* Card title text */
+[data-theme="light"] .checklist-card .card-title {
+    color: #1e293b !important;
+}
+
+/* Card description */
+[data-theme="light"] .checklist-card .card-description {
+    color: #475569 !important;
+    background: rgba(0, 0, 0, 0.02) !important;
+}
+
+/* Card meta text */
+[data-theme="light"] .checklist-card .card-meta small {
+    color: #64748b !important;
+}
+
+/* Action buttons */
+[data-theme="light"] .checklist-card .action-btn {
+    background: rgba(0, 0, 0, 0.05) !important;
+    color: #64748b !important;
+}
+
+[data-theme="light"] .checklist-card .action-btn:hover {
+    background: rgba(0, 0, 0, 0.1) !important;
+    color: #1e293b !important;
+}
+
+/* Expand indicator arrow */
+[data-theme="light"] .checklist-card .card-header::after {
+    color: #94a3b8 !important;
+}
+
+/* =================================================================
+   TICKET MODAL - Meta labels and values (ASSIGNEE, WORKTREE, etc.)
+   ================================================================= */
+
+/* Meta inline container items */
+[data-theme="light"] .ticket-meta-inline-item {
+    background: rgba(0, 0, 0, 0.03) !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+/* Meta labels (ASSIGNEE, WORKTREE, PRIORITY) */
+[data-theme="light"] .ticket-meta-inline-label {
+    color: #64748b !important;
+}
+
+/* Meta values (Agent, Required, High) */
+[data-theme="light"] .ticket-meta-inline-value {
+    color: #1e293b !important;
+}
+
+/* Ticket subtitle (Ticket #2) */
+[data-theme="light"] .ticket-modal-subtitle {
+    color: #64748b !important;
+}
+
+/* Ticket complexity chip backgrounds in light mode */
+[data-theme="light"] .ticket-complexity-chip[data-level="low"] {
+    background: rgba(34, 197, 94, 0.1) !important;
+    border-color: rgba(34, 197, 94, 0.3) !important;
+    color: #16a34a !important;
+}
+
+[data-theme="light"] .ticket-complexity-chip[data-level="medium"] {
+    background: rgba(245, 158, 11, 0.1) !important;
+    border-color: rgba(245, 158, 11, 0.3) !important;
+    color: #d97706 !important;
+}
+
+[data-theme="light"] .ticket-complexity-chip[data-level="high"] {
+    background: rgba(239, 68, 68, 0.1) !important;
+    border-color: rgba(239, 68, 68, 0.3) !important;
+    color: #dc2626 !important;
+}
+
+/* =================================================================
+   CHECKLIST HEADER - Filters bar background
+   ================================================================= */
+
+/* The header filters section - transparent to match main background */
+[data-theme="light"] .checklist-filters {
+    background: transparent !important;
+    border-bottom: none !important;
+}
+
+/* Checklist wrapper header - remove background completely - use ID for higher specificity */
+[data-theme="light"] #checklist .checklist-header,
+[data-theme="light"] #checklist .checklist-wrapper .checklist-header,
+[data-theme="light"] .checklist-wrapper .checklist-header {
+    background: transparent !important;
+    background-color: transparent !important;
+    border-bottom: none !important;
+    border: none !important;
+}
+
+/* Three-dot menu button - override inline styles with ID for specificity */
+[data-theme="light"] #checklist-actions-dropdown {
+    background: #f1f5f9 !important;
+    background-color: #f1f5f9 !important;
+    color: #64748b !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+/* Also target by class with high specificity */
+[data-theme="light"] #checklist .dropdown .dropdown-toggle,
+[data-theme="light"] .checklist-header .dropdown .dropdown-toggle {
+    background: #f1f5f9 !important;
+    background-color: #f1f5f9 !important;
+    color: #64748b !important;
+    border: 1px solid #e2e8f0 !important;
+}

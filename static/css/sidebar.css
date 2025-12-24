@@ -983,3 +983,74 @@
         display: block !important;
     }
 }
+/* =================================================================
+   Theme Toggle Button in Sidebar
+   ================================================================= */
+
+.theme-toggle-sidebar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary, #94a3b8);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    width: 100%;
+    text-align: left;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+}
+
+.theme-toggle-sidebar:hover {
+    background: rgba(187, 134, 252, 0.1);
+    color: var(--primary-color, #bb86fc);
+}
+
+/* Icon switching - show sun in dark mode, moon in light mode */
+.theme-toggle-sidebar .theme-icon-light {
+    display: inline-block !important;
+}
+
+.theme-toggle-sidebar .theme-icon-dark {
+    display: none !important;
+}
+
+[data-theme="light"] .theme-toggle-sidebar .theme-icon-light {
+    display: none !important;
+}
+
+[data-theme="light"] .theme-toggle-sidebar .theme-icon-dark {
+    display: inline-block !important;
+}
+
+/* Text label - updated dynamically by JavaScript */
+.theme-toggle-sidebar .nav-text {
+    /* Text content is set by theme-switcher.js */
+}
+
+/* Minimized sidebar - hide text, center icon */
+.sidebar.minimized .theme-toggle-sidebar {
+    justify-content: center;
+    padding: 10px;
+}
+
+.sidebar.minimized .theme-toggle-sidebar .nav-text {
+    display: none;
+}
+
+.sidebar.minimized .theme-toggle-sidebar i {
+    font-size: 18px;
+}
+
+/* Light mode specific styling */
+[data-theme="light"] .theme-toggle-sidebar {
+    color: #475569;
+}
+
+[data-theme="light"] .theme-toggle-sidebar:hover {
+    background: rgba(124, 58, 237, 0.1);
+    color: #7c3aed;
+}

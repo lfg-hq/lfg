@@ -527,15 +527,506 @@
     .organization-card {
         padding: 1rem;
     }
-    
+
     .org-header {
         flex-direction: column;
         text-align: center;
     }
-    
+
     .current-badge {
         position: static;
         margin-top: 0.5rem;
         align-self: center;
+    }
+}
+
+/* =================================================================
+   Organization Dashboard Styles
+   (Previously inline in organization_dashboard.html)
+   ================================================================= */
+
+/* Dashboard Header */
+.org-dashboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 2rem;
+    margin-bottom: 2rem;
+    padding-bottom: 2rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.org-dashboard-info {
+    display: flex;
+    gap: 1rem;
+    flex: 1;
+}
+
+.org-dashboard-avatar, .org-dashboard-avatar-placeholder {
+    width: 80px;
+    height: 80px;
+    border-radius: 12px;
+    flex-shrink: 0;
+}
+
+.org-dashboard-avatar-placeholder {
+    background: var(--primary-color);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 2rem;
+}
+
+.org-dashboard-info h1 {
+    margin: 0 0 0.5rem 0;
+    color: var(--text-primary);
+}
+
+.org-dashboard-info p {
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+}
+
+.org-dashboard-meta {
+    display: flex;
+    gap: 1rem;
+}
+
+.meta-item {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.org-dashboard-actions {
+    display: flex;
+    gap: 0.75rem;
+}
+
+/* Dashboard Grid Layout */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 2rem;
+}
+
+.stats-section,
+.members-section,
+.invitations-section,
+.billing-section {
+    background: var(--card-background);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 2rem;
+}
+
+/* Section Headers */
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.section-header h3 {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0;
+    color: var(--text-primary);
+}
+
+.section-header h3 i {
+    color: var(--primary-color);
+}
+
+/* Stats Grid */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1rem;
+}
+
+.stats-section .stat-card {
+    text-align: center;
+    padding: 1.5rem 1rem;
+    background: var(--background-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.stats-section .stat-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    margin-bottom: 0.5rem;
+}
+
+.stats-section .stat-label {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+/* Members List */
+.members-list {
+    display: grid;
+    gap: 1rem;
+}
+
+.member-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    background: var(--background-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.member-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.member-avatar img,
+.member-avatar .avatar-placeholder {
+    width: 50px;
+    height: 50px;
+    border-radius: 8px;
+}
+
+.avatar-placeholder {
+    background: var(--primary-color);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 1.25rem;
+}
+
+.member-details h4 {
+    margin: 0 0 0.25rem 0;
+    color: var(--text-primary);
+}
+
+.member-details p {
+    margin: 0 0 0.5rem 0;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.member-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+/* Role Badges */
+.role-badge {
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.role-owner {
+    background: rgba(220, 53, 69, 0.1);
+    color: #dc3545;
+}
+
+.role-admin {
+    background: rgba(255, 193, 7, 0.1);
+    color: #ffc107;
+}
+
+.role-member {
+    background: rgba(40, 167, 69, 0.1);
+    color: #28a745;
+}
+
+.join-date {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+/* Dropdown Menu */
+.dropdown {
+    position: relative;
+}
+
+.dropdown-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: var(--card-background);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    min-width: 160px;
+    z-index: 1000;
+    display: none;
+}
+
+.dropdown:hover .dropdown-menu {
+    display: block;
+}
+
+.dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border: none;
+    background: none;
+    text-align: left;
+    color: var(--text-primary);
+    text-decoration: none;
+    font-size: 0.875rem;
+}
+
+.dropdown-item:hover {
+    background: var(--background-color);
+}
+
+.dropdown-item.text-danger {
+    color: #dc3545;
+}
+
+/* Invitations List */
+.invitations-list {
+    display: grid;
+    gap: 1rem;
+}
+
+.invitation-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    background: var(--background-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.invitation-info h4 {
+    margin: 0 0 0.25rem 0;
+    color: var(--text-primary);
+}
+
+.invitation-info p {
+    margin: 0 0 0.5rem 0;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+/* Status Badge - org dashboard specific */
+.org-status-badge {
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.status-pending {
+    background: rgba(255, 193, 7, 0.1);
+    color: #ffc107;
+}
+
+/* Text Utilities */
+.text-success {
+    color: #28a745;
+}
+
+.text-muted {
+    color: var(--text-muted);
+}
+
+/* Billing Section */
+.billing-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+.current-plan {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem;
+    background: rgba(40, 167, 69, 0.1);
+    border: 1px solid rgba(40, 167, 69, 0.2);
+    border-radius: 8px;
+}
+
+.plan-info h4 {
+    margin: 0 0 0.5rem 0;
+    color: var(--text-primary);
+}
+
+.plan-info p {
+    margin: 0 0 1rem 0;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.plan-features {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.feature-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.feature-item i {
+    color: #28a745;
+    width: 16px;
+}
+
+.plan-cost {
+    text-align: right;
+}
+
+.cost-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--primary-color);
+}
+
+.cost-label {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.upgrade-prompt {
+    padding: 2rem;
+    background: rgba(139, 92, 246, 0.05);
+    border: 1px solid rgba(139, 92, 246, 0.1);
+    border-radius: 12px;
+    text-align: center;
+}
+
+.prompt-content h4 {
+    margin: 0 0 1rem 0;
+    color: var(--text-primary);
+    font-size: 1.25rem;
+}
+
+.prompt-content p {
+    margin: 0 0 1.5rem 0;
+    color: var(--text-secondary);
+}
+
+.plan-benefits {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+    margin: 1.5rem 0;
+    text-align: left;
+}
+
+.benefit-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    background: var(--background-color);
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+}
+
+.benefit-item i {
+    color: var(--primary-color);
+    width: 20px;
+    text-align: center;
+}
+
+.benefit-item span {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.cost-preview {
+    font-size: 1rem;
+    color: var(--text-secondary);
+    margin-top: 1.5rem;
+}
+
+.cost-preview strong {
+    color: var(--primary-color);
+    font-size: 1.125rem;
+}
+
+.usage-section {
+    margin-top: 1rem;
+}
+
+.usage-section h5 {
+    margin: 0 0 1rem 0;
+    color: var(--text-primary);
+    font-size: 1rem;
+}
+
+.usage-bar {
+    width: 100%;
+    height: 8px;
+    background: var(--border-color);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+}
+
+.usage-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #28a745, #20c997);
+    transition: width 0.3s ease;
+}
+
+.usage-stats {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+/* Dashboard Responsive */
+@media (max-width: 768px) {
+    .org-dashboard-header {
+        flex-direction: column;
+    }
+
+    .org-dashboard-actions {
+        width: 100%;
+    }
+
+    .org-dashboard-actions .btn {
+        flex: 1;
+    }
+
+    .current-plan {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+
+    .plan-benefits {
+        grid-template-columns: 1fr;
+    }
+
+    .plan-cost {
+        text-align: left;
     }
 }
