@@ -268,6 +268,7 @@
     font-size: 12px;
 }
 
+<<<<<<< Updated upstream
 /* Screen Actions Container */
 .screen-actions {
     display: flex;
@@ -284,12 +285,29 @@
     background: rgba(239, 68, 68, 0.1);
     border: 1px solid rgba(239, 68, 68, 0.2);
     color: #f87171;
+=======
+/* Screen Delete Button */
+.screen-delete-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: rgba(239, 68, 68, 0.9);
+    border: 1px solid rgba(239, 68, 68, 0.5);
+    color: #fff;
+>>>>>>> Stashed changes
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     transition: all 0.2s ease;
     opacity: 0;
+<<<<<<< Updated upstream
+=======
+    z-index: 10;
+>>>>>>> Stashed changes
 }
 
 .screen-card:hover .screen-delete-btn {
@@ -297,9 +315,14 @@
 }
 
 .screen-delete-btn:hover {
+<<<<<<< Updated upstream
     background: rgba(239, 68, 68, 0.3);
     border-color: #ef4444;
     color: #fff;
+=======
+    background: rgba(220, 38, 38, 1);
+    border-color: #dc2626;
+>>>>>>> Stashed changes
     transform: scale(1.1);
 }
 
@@ -773,6 +796,147 @@
 .design-canvas-empty .empty-subtext {
     color: #6b7280;
     font-size: 14px;
+}
+
+/* Load URL Modal */
+.load-url-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.load-url-modal-content {
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-radius: 12px;
+    width: 420px;
+    max-width: 90%;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.load-url-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid #2a2a2a;
+    color: #e2e8f0;
+    font-weight: 500;
+    font-size: 15px;
+}
+
+.load-url-modal-close {
+    background: none;
+    border: none;
+    color: #6b7280;
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.load-url-modal-close:hover {
+    color: #e2e8f0;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.load-url-modal-body {
+    padding: 20px;
+}
+
+.load-url-modal-body label {
+    display: block;
+    color: #9ca3af;
+    font-size: 13px;
+    margin-bottom: 8px;
+}
+
+.load-url-modal-body .load-url-input {
+    width: 100%;
+    padding: 12px 14px;
+    border-radius: 8px;
+    border: 1px solid #2a2a2a;
+    background: #0d0d0d;
+    color: #e2e8f0;
+    font-size: 14px;
+    outline: none;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+}
+
+.load-url-modal-body .load-url-input:focus {
+    border-color: #8b5cf6;
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15);
+}
+
+.load-url-modal-body .load-url-input::placeholder {
+    color: #4b5563;
+}
+
+.load-url-modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 16px 20px;
+    border-top: 1px solid #2a2a2a;
+}
+
+.load-url-cancel-btn {
+    padding: 10px 16px;
+    border-radius: 8px;
+    border: 1px solid #2a2a2a;
+    background: transparent;
+    color: #9ca3af;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.load-url-cancel-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: #e2e8f0;
+}
+
+.load-url-submit-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 18px;
+    border-radius: 8px;
+    border: none;
+    background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.load-url-submit-btn:hover {
+    background: linear-gradient(135deg, #7c3aed, #6d28d9);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+}
+
+.load-url-submit-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.load-url-submit-btn i {
+    font-size: 12px;
 }
 
 /* Loading State */

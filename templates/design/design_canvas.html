@@ -43,6 +43,9 @@
             <button class="tool-btn" id="tool-add-screen" title="Add Screen (A)">
                 <i class="fas fa-plus-square"></i>
             </button>
+            <button class="tool-btn" id="tool-load-url" title="Load Website (W)">
+                <i class="fas fa-globe"></i>
+            </button>
             <button class="tool-btn" id="tool-delete" title="Delete Selected (Del)" data-tool="delete">
                 <i class="fas fa-trash-alt"></i>
             </button>
@@ -127,6 +130,27 @@
         </div>
         <div class="empty-text">No design features yet</div>
         <div class="empty-subtext">Generate design previews to see them here</div>
+    </div>
+
+    <!-- Load URL Modal -->
+    <div class="load-url-modal" id="load-url-modal" style="display: none;">
+        <div class="load-url-modal-content">
+            <div class="load-url-modal-header">
+                <span>Load Website</span>
+                <button class="load-url-modal-close" id="load-url-modal-close"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="load-url-modal-body">
+                <label for="load-url-input">Enter website URL</label>
+                <input type="url" class="load-url-input" id="load-url-input" placeholder="https://example.com" />
+            </div>
+            <div class="load-url-modal-footer">
+                <button class="load-url-cancel-btn" id="load-url-cancel">Cancel</button>
+                <button class="load-url-submit-btn" id="load-url-submit">
+                    <i class="fas fa-globe"></i>
+                    <span>Load</span>
+                </button>
+            </div>
+        </div>
     </div>
 
     <!-- Loading State -->

@@ -13,8 +13,7 @@ create_prd = {
                     }
                 },
                 "required": ["prd"],
-                "additionalProperties": False,
-            }
+                            }
         }
 }
 
@@ -48,8 +47,7 @@ stream_prd_content = {
                 }
             },
             "required": ["content_chunk", "is_complete"],
-            "additionalProperties": False,
-        }
+                    }
     }
 }
 
@@ -71,8 +69,7 @@ stream_implementation_content = {
                 }
             },
             "required": ["content_chunk", "is_complete"],
-            "additionalProperties": False,
-        }
+                    }
     }
 }
 
@@ -102,8 +99,7 @@ stream_document_content = {
                 }
             },
             "required": ["content_chunk", "is_complete", "document_type", "document_name"],
-            "additionalProperties": False,
-        }
+                    }
     }
 }
 
@@ -121,8 +117,7 @@ create_implementation = {
                 }
             },
             "required": ["implementation"],
-            "additionalProperties": False,
-        }
+                    }
     }
 }
 
@@ -161,8 +156,7 @@ update_implementation = {
                 }
             },
             "required": ["update_type", "update_content", "update_summary"],
-            "additionalProperties": False,
-        }
+                    }
     }
 }
 
@@ -283,8 +277,7 @@ design_schema = {
                     }
                 },
                 "required": ["user_input"],
-                "additionalProperties": False,
-        }
+                        }
     }
 }
 
@@ -495,8 +488,7 @@ generate_code = {
                 }
             },
             "required": ["user_input"],
-            "additionalProperties": False,
-        }
+                    }
     }
 }
 
@@ -582,8 +574,7 @@ ssh_command = {
                 }
             },
             "required": ["command", "explanation"],
-            "additionalProperties": False,
-        }
+                    }
     }
 }
 
@@ -609,8 +600,7 @@ new_dev_sandbox = {
                 }
             },
             "required": ["workspace_id"],
-            "additionalProperties": False,
-        }
+                    }
     }
 }
 
@@ -629,8 +619,7 @@ queue_ticket_execution = {
                 }
             },
             "required": ["ticket_ids"],
-            "additionalProperties": False,
-        }
+                    }
     }
 }
 
@@ -657,8 +646,7 @@ update_todo_status = {
                 }
             },
             "required": ["ticket_id", "todo_id", "status"],
-            "additionalProperties": False,
-        }
+                    }
     }
 }
 
@@ -690,8 +678,7 @@ create_ticket_todos = {
                 }
             },
             "required": ["ticket_id", "todos"],
-            "additionalProperties": False,
-        }
+                    }
     }
 }
 
@@ -709,8 +696,7 @@ get_ticket_todos = {
                 }
             },
             "required": ["ticket_id"],
-            "additionalProperties": False,
-        }
+                    }
     }
 }
 
@@ -745,8 +731,7 @@ record_ticket_summary = {
                 }
             },
             "required": ["ticket_id", "summary"],
-            "additionalProperties": False,
-        }
+                    }
     }
 }
 
@@ -790,8 +775,7 @@ broadcast_to_user = {
                 }
             },
             "required": ["message", "status"],
-            "additionalProperties": False,
-        }
+                    }
     }
 }
 
@@ -817,8 +801,7 @@ run_code_server = {
                 }
             },
             "required": [],
-            "additionalProperties": False,
-        }
+                    }
     }
 }
 
@@ -888,8 +871,7 @@ capture_name = {
                 }
             },
             "required": ["action"],
-            "additionalProperties": False,
-        }
+                    }
     }
 }
 
@@ -953,8 +935,7 @@ index_repository = {
                 }
             },
             "required": ["github_url"],
-            "additionalProperties": False,
-        }
+                    }
     }
 }
 
@@ -977,8 +958,7 @@ get_codebase_context = {
                 }
             },
             "required": ["feature_description"],
-            "additionalProperties": False,
-        }
+                    }
     }
 }
 
@@ -1004,8 +984,7 @@ search_existing_code = {
                 }
             },
             "required": ["functionality"],
-            "additionalProperties": False,
-        }
+                    }
     }
 }
 
@@ -1017,8 +996,7 @@ get_repository_insights = {
         "parameters": {
             "type": "object",
             "properties": {},
-            "additionalProperties": False,
-        }
+                    }
     }
 }
 
@@ -1030,7 +1008,33 @@ get_codebase_summary = {
         "parameters": {
             "type": "object",
             "properties": {},
-            "additionalProperties": False,
+                    }
+    }
+}
+
+ask_codebase = {
+    "type": "function",
+    "function": {
+        "name": "ask_codebase",
+        "description": "Ask questions about the indexed codebase or get detailed context for creating tickets. Use this to: (1) Answer user questions about how something works in the codebase, (2) Find where specific functionality is implemented, (3) Get detailed context to create specific and accurate tickets, (4) Understand code patterns and architecture. Returns relevant code snippets, file paths, function names, and implementation details.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string",
+                    "description": "The question to ask about the codebase (e.g., 'How does authentication work?', 'Where is the payment processing implemented?', 'What API endpoints exist for user management?')"
+                },
+                "intent": {
+                    "type": "string",
+                    "enum": ["answer_question", "ticket_context", "find_implementation"],
+                    "description": "The purpose of the query: 'answer_question' to answer a user's question about the code, 'ticket_context' to get detailed context for creating a ticket, 'find_implementation' to locate where something is implemented. Defaults to 'answer_question'."
+                },
+                "include_code_snippets": {
+                    "type": "boolean",
+                    "description": "Whether to include actual code snippets in the response (default: true)"
+                }
+            },
+            "required": ["question"]
         }
     }
 }
@@ -1049,8 +1053,7 @@ connect_notion = {
         "parameters": {
             "type": "object",
             "properties": {},
-            "additionalProperties": False,
-        }
+                    }
     }
 }
 
@@ -1073,8 +1076,7 @@ search_notion = {
                     "default": 10
                 }
             },
-            "additionalProperties": False,
-        }
+                    }
     }
 }
 
@@ -1092,8 +1094,7 @@ get_notion_page = {
                 }
             },
             "required": ["page_id"],
-            "additionalProperties": False,
-        }
+                    }
     }
 }
 
@@ -1111,8 +1112,7 @@ list_notion_databases = {
                     "default": 10
                 }
             },
-            "additionalProperties": False,
-        }
+                    }
     }
 }
 
@@ -1135,8 +1135,7 @@ query_notion_database = {
                 }
             },
             "required": ["database_id"],
-            "additionalProperties": False,
-        }
+                    }
     }
 }
 
@@ -1159,8 +1158,7 @@ get_linear_issues = {
                     "description": "Optional team ID to filter issues by specific team"
                 }
             },
-            "additionalProperties": False,
-        }
+                    }
     }
 }
 
@@ -1178,8 +1176,7 @@ get_linear_issue_details = {
                 }
             },
             "required": ["issue_id"],
-            "additionalProperties": False,
-        }
+                    }
     }
 }
 
@@ -1199,8 +1196,7 @@ lookup_technology_specs = {
                 }
             },
             "required": ["category"],
-            "additionalProperties": False,
-        }
+                    }
     }
 }
 
@@ -1372,8 +1368,7 @@ generate_design_preview = {
                 }
             },
             "required": ["platform", "feature_name", "feature_description", "explainer", "css_style", "common_elements", "pages", "entry_page_id"],
-            "additionalProperties": False,
-        }
+                    }
     }
 }
 
@@ -1397,6 +1392,8 @@ tools_product = [
     get_file_content,
     create_tickets,
     search_existing_code,
+    get_codebase_summary,
+    ask_codebase,
     get_pending_tickets,
     update_ticket,
     update_all_tickets,
@@ -1501,8 +1498,7 @@ edit_design_screen = {
                 }
             },
             "required": ["edit_target", "updated_html", "change_summary"],
-            "additionalProperties": False,
-        }
+                    }
     }
 }
 

@@ -81,7 +81,7 @@ class AsyncTicketExecutor:
         Returns:
             Dict with execution result
         """
-        from tasks.dispatch import update_ticket_queue_status
+        from tasks.dispatch import update_ticket_queue_status_async
 
         project_sem = await self.get_project_semaphore(project_id)
 
@@ -94,7 +94,7 @@ class AsyncTicketExecutor:
 
                 # Update status to executing
                 try:
-                    update_ticket_queue_status(ticket_id, 'executing')
+                    await update_ticket_queue_status_async(ticket_id, 'executing')
                 except Exception as e:
                     logger.warning(f"[EXECUTOR] Failed to update queue status: {e}")
 
@@ -131,7 +131,7 @@ class AsyncTicketExecutor:
                 finally:
                     # Update status to not queued
                     try:
-                        update_ticket_queue_status(ticket_id, 'none')
+                        await update_ticket_queue_status_async(ticket_id, 'none')
                     except Exception as e:
                         logger.warning(f"[EXECUTOR] Failed to clear queue status: {e}")
 

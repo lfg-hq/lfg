@@ -6,6 +6,12 @@
       "default_model": "claude_4.5_sonnet",
       "models": [
         {
+          "key": "claude_4.5_opus",
+          "label": "Opus 4.5",
+          "provider_model": "claude-opus-4-5-20251101",
+          "requires_pro": true
+        },
+        {
           "key": "claude_4.5_sonnet",
           "label": "Sonnet 4.5",
           "provider_model": "claude-sonnet-4-5-20250929",
@@ -24,9 +30,9 @@
       "default_model": "gpt-5-mini",
       "models": [
         {
-          "key": "gpt-5.1",
-          "label": "GPT-5.1",
-          "provider_model": "gpt-5.1",
+          "key": "gpt-5.2",
+          "label": "GPT-5.2",
+          "provider_model": "gpt-5.2",
           "requires_pro": true
         },
         {

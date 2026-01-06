@@ -51,7 +51,7 @@ try:
     CODEBASE_INDEX_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"Codebase indexing not available: {e}")
-CODEBASE_INDEX_AVAILABLE = False
+    CODEBASE_INDEX_AVAILABLE = False
 
 
 # ============================================================================
@@ -593,6 +593,12 @@ async def app_functions(function_name, function_args, project_id, conversation_i
 
         case "get_codebase_summary":
             return await get_codebase_summary(project_id)
+
+        case "ask_codebase":
+            question = function_args.get('question')
+            intent = function_args.get('intent', 'answer_question')
+            include_code_snippets = function_args.get('include_code_snippets', True)
+            return await ask_codebase(project_id, question, intent, include_code_snippets)
 
         # Notion integration functions
         case "connect_notion":
@@ -5343,6 +5349,205 @@ async def get_codebase_summary(project_id):
         return {
             "is_notification": False,
             "message_to_agent": f"Error retrieving codebase summary: {str(e)}"
+        }
+
+
+async def ask_codebase(project_id, question, intent='answer_question', include_code_snippets=True):
+    """
+    Ask questions about the indexed codebase or get detailed context for creating tickets.
+
+    This function provides a Q&A interface to the codebase, allowing the AI to:
+    - Answer user questions about how something works in the codebase
+    - Find where specific functionality is implemented
+    - Get detailed context to create specific and accurate tickets
+    - Understand code patterns and architecture
+
+    Args:
+        project_id: Project UUID
+        question: The question to ask about the codebase
+        intent: 'answer_question', 'ticket_context', or 'find_implementation'
+        include_code_snippets: Whether to include actual code snippets in the response
+
+    Returns:
+        dict with is_notification and message_to_agent containing the answer
+    """
+    logger.info(f"[ASK_CODEBASE] === FUNCTION CALLED ===")
+    logger.info(f"[ASK_CODEBASE] project_id: {project_id}")
+    logger.info(f"[ASK_CODEBASE] question: {question}")
+    logger.info(f"[ASK_CODEBASE] intent: {intent}")
+    logger.info(f"[ASK_CODEBASE] include_code_snippets: {include_code_snippets}")
+
+    if not CODEBASE_INDEX_AVAILABLE:
+        logger.warning(f"[ASK_CODEBASE] Codebase indexing not available")
+        return {
+            "is_notification": False,
+            "message_to_agent": "Codebase indexing is not available."
+        }
+
+    error_response = validate_project_id(project_id)
+    if error_response:
+        logger.warning(f"[ASK_CODEBASE] Invalid project_id: {project_id}")
+        return error_response
+
+    if not question:
+        logger.warning(f"[ASK_CODEBASE] No question provided")
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: question is required"
+        }
+
+    project = await get_project(project_id)
+    if not project:
+        logger.warning(f"[ASK_CODEBASE] Project not found: {project_id}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Project with ID {project_id} does not exist"
+        }
+
+    logger.info(f"[ASK_CODEBASE] Found project: {project.name}")
+
+    try:
+        # Check if repository is indexed (must use sync_to_async for ORM access)
+        def get_indexed_repo():
+            try:
+                return project.indexed_repository
+            except IndexedRepository.DoesNotExist:
+                return None
+
+        indexed_repo = await sync_to_async(get_indexed_repo)()
+
+        if not indexed_repo:
+            logger.warning(f"[ASK_CODEBASE] No indexed repository for project: {project.name}")
+            return {
+                "is_notification": False,
+                "message_to_agent": "No repository has been indexed for this project yet. Please index a repository first using the Codebase tab."
+            }
+
+        logger.info(f"[ASK_CODEBASE] Found indexed repo: {indexed_repo.github_repo_name}, status: {indexed_repo.status}")
+
+        if indexed_repo.status != 'completed':
+            logger.warning(f"[ASK_CODEBASE] Repo indexing not complete: {indexed_repo.status}")
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Repository indexing is not complete (status: {indexed_repo.status}). Please wait for indexing to finish."
+            }
+
+        # Get codebase context for the question
+        logger.info(f"[ASK_CODEBASE] Fetching codebase context...")
+        context_result = await sync_to_async(get_codebase_context_for_feature)(
+            str(project_id), question, project.owner
+        )
+        logger.info(f"[ASK_CODEBASE] Context result - error: {context_result.get('error')}, files: {len(context_result.get('relevant_files', []))}")
+
+        # Also search for specific implementations
+        logger.info(f"[ASK_CODEBASE] Searching similar implementations...")
+        implementations = await sync_to_async(search_similar_implementations)(
+            str(project_id), question, project.owner
+        )
+        logger.info(f"[ASK_CODEBASE] Found {len(implementations)} implementations")
+
+        # Build response based on intent
+        response_parts = []
+
+        if intent == 'answer_question':
+            response_parts.append(f"## Answer to: {question}\n")
+
+            if context_result.get('error'):
+                response_parts.append(f"Limited context available: {context_result.get('context', 'No context found')}\n")
+            else:
+                # Add context overview
+                response_parts.append("### Relevant Context from Codebase\n")
+                response_parts.append(context_result.get('context', 'No relevant context found.'))
+                response_parts.append("\n")
+
+                # Add suggestions if available
+                if context_result.get('suggestions'):
+                    response_parts.append("\n### Insights\n")
+                    for suggestion in context_result['suggestions'][:3]:
+                        response_parts.append(f"- **{suggestion['title']}**: {suggestion['description']}\n")
+
+        elif intent == 'ticket_context':
+            response_parts.append(f"## Ticket Context for: {question}\n")
+            response_parts.append("Use this context to create accurate, specific tickets.\n\n")
+
+            # Add relevant files that should be modified
+            if context_result.get('relevant_files'):
+                response_parts.append("### Files to Consider Modifying\n")
+                for file_info in context_result['relevant_files'][:8]:
+                    functions = ', '.join(file_info.get('functions', [])[:4])
+                    response_parts.append(f"- `{file_info['path']}` ({file_info['language']})")
+                    if functions:
+                        response_parts.append(f" - Functions: {functions}")
+                    response_parts.append("\n")
+                response_parts.append("\n")
+
+            # Add implementation suggestions
+            if context_result.get('suggestions'):
+                response_parts.append("### Implementation Guidance\n")
+                for suggestion in context_result['suggestions']:
+                    response_parts.append(f"- {suggestion['description']}\n")
+                response_parts.append("\n")
+
+            # Add similar implementations for reference
+            if implementations:
+                response_parts.append("### Existing Similar Implementations (for reference)\n")
+                for impl in implementations[:5]:
+                    response_parts.append(
+                        f"- **{impl['function_name']}** in `{impl['file_path']}` "
+                        f"(relevance: {impl['relevance_score']:.0%})\n"
+                    )
+                response_parts.append("\n")
+
+        elif intent == 'find_implementation':
+            response_parts.append(f"## Implementation Search: {question}\n")
+
+            if implementations:
+                response_parts.append(f"Found {len(implementations)} relevant implementations:\n\n")
+                for impl in implementations:
+                    response_parts.append(
+                        f"### {impl['function_name']}\n"
+                        f"- **File**: `{impl['file_path']}`\n"
+                        f"- **Type**: {impl['chunk_type']}\n"
+                        f"- **Complexity**: {impl['complexity']}\n"
+                        f"- **Relevance**: {impl['relevance_score']:.0%}\n"
+                    )
+                    if include_code_snippets and impl.get('content_preview'):
+                        response_parts.append(f"\n```\n{impl['content_preview']}\n```\n\n")
+            else:
+                response_parts.append("No existing implementations found for this functionality.\n")
+
+            # Also add relevant files from context
+            if context_result.get('relevant_files'):
+                response_parts.append("\n### Other Relevant Files\n")
+                for file_info in context_result['relevant_files'][:5]:
+                    response_parts.append(f"- `{file_info['path']}` ({file_info['language']})\n")
+
+        # Add code snippets section if requested and available
+        if include_code_snippets and intent != 'find_implementation':
+            if implementations:
+                response_parts.append("\n### Code Examples\n")
+                for impl in implementations[:3]:
+                    if impl.get('content_preview'):
+                        response_parts.append(f"**{impl['function_name']}** (`{impl['file_path']}`):\n")
+                        response_parts.append(f"```\n{impl['content_preview']}\n```\n\n")
+
+        final_response = ''.join(response_parts)
+        logger.info(f"[ASK_CODEBASE] Response built successfully, length: {len(final_response)} chars")
+        logger.info(f"[ASK_CODEBASE] === FUNCTION COMPLETE ===")
+
+        return {
+            "is_notification": False,
+            "notification_type": "codebase_qa",
+            "message_to_agent": final_response
+        }
+
+    except Exception as e:
+        logger.error(f"[ASK_CODEBASE] ERROR: {e}")
+        import traceback
+        logger.error(f"[ASK_CODEBASE] Traceback: {traceback.format_exc()}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error querying codebase: {str(e)}"
         }
 
 

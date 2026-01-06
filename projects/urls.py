@@ -43,6 +43,8 @@ urlpatterns = [
     path('<str:project_id>/api/generate-screen/', views.generate_single_screen_api, name='generate_single_screen_api'),
     # Delete screens API
     path('<str:project_id>/api/delete-screens/', views.delete_screens_api, name='delete_screens_api'),
+    # Load external URL API
+    path('<str:project_id>/api/load-external-url/', views.load_external_url_api, name='load_external_url_api'),
     # Removed - use project_checklist_api instead
     path('<str:project_id>/api/checklist/', views.project_checklist_api, name='project_checklist_api'),
     path('<str:project_id>/api/checklist/create/', views.create_checklist_item_api, name='create_checklist_item_api'),
@@ -89,6 +91,12 @@ urlpatterns = [
 
     # Ticket queue cancel API
     path('<str:project_id>/api/tickets/<int:ticket_id>/cancel-queue/', views.cancel_ticket_queue_api, name='cancel_ticket_queue_api'),
+
+    # Ticket queue force reset API (for stuck tickets)
+    path('<str:project_id>/api/tickets/<int:ticket_id>/force-reset-queue/', views.force_reset_ticket_queue_api, name='force_reset_ticket_queue_api'),
+
+    # Ticket restart API (force reset + re-queue)
+    path('<str:project_id>/api/tickets/<int:ticket_id>/restart-queue/', views.restart_ticket_queue_api, name='restart_ticket_queue_api'),
 
     # Project queue status API
     path('<str:project_id>/api/queue-status/', views.project_queue_status_api, name='project_queue_status_api'),

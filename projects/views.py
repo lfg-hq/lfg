@@ -2283,6 +2283,132 @@ def cancel_ticket_queue_api(request, project_id, ticket_id):
 
 
 @login_required
+@require_http_methods(["POST"])
+def force_reset_ticket_queue_api(request, project_id, ticket_id):
+    """
+    API endpoint to force reset a ticket's queue status.
+
+    Use when a ticket is stuck in 'queued' or 'executing' state
+    due to executor crash or other issues.
+    """
+    from tasks.dispatch import force_reset_ticket_queue_status
+
+    # Get project and ticket
+    project = get_object_or_404(Project, project_id=project_id)
+    ticket = get_object_or_404(ProjectTicket, id=ticket_id, project=project)
+
+    # Check if user has permission to manage tickets
+    if not project.can_user_manage_tickets(request.user):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    # Only allow force reset for queued or executing tickets
+    if ticket.queue_status == 'none':
+        return JsonResponse({
+            'success': False,
+            'error': 'Ticket is not in queue'
+        }, status=400)
+
+    try:
+        # Force reset the ticket
+        result = force_reset_ticket_queue_status(project.id, ticket.id)
+
+        if result.get('error'):
+            return JsonResponse({
+                'success': False,
+                'error': result['error']
+            }, status=500)
+
+        logger.info(f"Force reset ticket queue status: ticket_id={ticket_id}, result={result}")
+        return JsonResponse({
+            'success': True,
+            'message': 'Ticket queue status reset',
+            'ticket_id': ticket_id,
+            'details': result
+        })
+
+    except Exception as e:
+        logger.error(f"Error force resetting ticket queue: {str(e)}", exc_info=True)
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def restart_ticket_queue_api(request, project_id, ticket_id):
+    """
+    API endpoint to restart a stuck ticket.
+
+    This will force reset the ticket and re-queue it for execution.
+    Use when a ticket is stuck in 'queued' or 'executing' state.
+    """
+    import json
+    from tasks.dispatch import force_reset_ticket_queue_status, dispatch_tickets
+
+    # Get project and ticket
+    project = get_object_or_404(Project, project_id=project_id)
+    ticket = get_object_or_404(ProjectTicket, id=ticket_id, project=project)
+
+    # Check if user has permission to manage tickets
+    if not project.can_user_manage_tickets(request.user):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    # Get conversation_id from request body if provided
+    try:
+        data = json.loads(request.body.decode('utf-8')) if request.body else {}
+        conversation_id = data.get('conversation_id', 0)
+    except:
+        conversation_id = 0
+
+    # Check if ticket is already done
+    if ticket.status == 'done':
+        return JsonResponse({
+            'success': False,
+            'error': 'Ticket is already completed'
+        }, status=400)
+
+    try:
+        # Step 1: Force reset if currently queued or executing
+        if ticket.queue_status in ['queued', 'executing']:
+            reset_result = force_reset_ticket_queue_status(project.id, ticket.id)
+            if reset_result.get('error'):
+                return JsonResponse({
+                    'success': False,
+                    'error': f"Reset failed: {reset_result['error']}"
+                }, status=500)
+            logger.info(f"Reset ticket before restart: ticket_id={ticket_id}")
+
+        # Step 2: Re-queue the ticket
+        success = dispatch_tickets(
+            project_id=project.id,
+            ticket_ids=[ticket.id],
+            conversation_id=conversation_id
+        )
+
+        if success:
+            logger.info(f"Restarted ticket execution: ticket_id={ticket_id}")
+            return JsonResponse({
+                'success': True,
+                'message': 'Ticket restarted and queued for execution',
+                'ticket_id': ticket_id,
+                'queue_status': 'queued'
+            })
+        else:
+            return JsonResponse({
+                'success': False,
+                'error': 'Failed to queue ticket after reset'
+            }, status=500)
+
+    except Exception as e:
+        logger.error(f"Error restarting ticket: {str(e)}", exc_info=True)
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
 @require_http_methods(["GET"])
 def project_queue_status_api(request, project_id):
     """API endpoint to get queue status for a project"""
@@ -3188,4 +3314,109 @@ def delete_screens_api(request, project_id):
         return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
     except Exception as e:
         logger.error(f"Error deleting screens: {e}", exc_info=True)
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def load_external_url_api(request, project_id):
+    """API endpoint for loading an external URL as a design feature."""
+    project = get_object_or_404(Project, project_id=project_id)
+
+    # Check permission
+    if not (project.owner == request.user or project.members.filter(user=request.user, status='active').exists()):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    try:
+        data = json.loads(request.body)
+        url = data.get('url', '').strip()
+
+        if not url:
+            return JsonResponse({'success': False, 'error': 'URL is required'}, status=400)
+
+        # Parse the URL to get domain name for feature name
+        from urllib.parse import urlparse
+        parsed_url = urlparse(url)
+        domain = parsed_url.netloc or parsed_url.path.split('/')[0]
+        feature_name = f"Live: {domain}"
+
+        # Create a new design feature with an iframe pointing to the URL
+        # The iframe will be rendered in the canvas
+        html_content = f'''<div class="external-app-container" style="width: 100%; height: 100vh; display: flex; flex-direction: column;">
+    <div class="external-app-header" style="padding: 8px 16px; background: #1a1a1a; border-bottom: 1px solid #2a2a2a; display: flex; align-items: center; gap: 8px;">
+        <i class="fas fa-external-link-alt" style="color: #8b5cf6;"></i>
+        <span style="color: #e2e8f0; font-size: 12px;">{url}</span>
+    </div>
+    <iframe src="{url}" style="flex: 1; width: 100%; border: none;" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+</div>'''
+
+        # Create or get the design feature
+        design_feature, created = ProjectDesignFeature.objects.get_or_create(
+            project=project,
+            feature_name=feature_name,
+            defaults={
+                'feature_description': f'External app loaded from {url}',
+                'pages': [{
+                    'page_id': 'home',
+                    'page_name': domain,
+                    'page_type': 'screen',
+                    'html_content': html_content,
+                    'is_entry': True,
+                    'navigates_to': []
+                }],
+                'entry_page_id': 'home',
+                'css_style': '',
+                'common_elements': [],
+                'canvas_position': {'x': 50, 'y': 50}
+            }
+        )
+
+        if not created:
+            # Update existing feature
+            design_feature.pages = [{
+                'page_id': 'home',
+                'page_name': domain,
+                'page_type': 'screen',
+                'html_content': html_content,
+                'is_entry': True,
+                'navigates_to': []
+            }]
+            design_feature.save()
+
+        # Add the screen to the specified canvas (or default/first canvas)
+        from projects.models import DesignCanvas
+        canvas_id = data.get('canvas_id')
+        canvas = None
+        if canvas_id:
+            canvas = DesignCanvas.objects.filter(project=project, id=canvas_id).first()
+        if not canvas:
+            canvas = DesignCanvas.objects.filter(project=project, is_default=True).first()
+        if not canvas:
+            canvas = DesignCanvas.objects.filter(project=project).first()
+
+        if canvas:
+            # Add position for this screen on the canvas
+            screen_key = f"{design_feature.id}_home"
+            positions = canvas.feature_positions or {}
+            if screen_key not in positions:
+                # Find a good position (offset from existing screens)
+                max_x = 50
+                for key, pos in positions.items():
+                    if pos.get('x', 0) + 320 > max_x:
+                        max_x = pos.get('x', 0) + 320
+                positions[screen_key] = {'x': max_x, 'y': 50}
+                canvas.feature_positions = positions
+                canvas.save()
+
+        return JsonResponse({
+            'success': True,
+            'feature_id': design_feature.id,
+            'feature_name': feature_name,
+            'created': created
+        })
+
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        logger.error(f"Error loading external URL: {e}", exc_info=True)
         return JsonResponse({'success': False, 'error': str(e)}, status=500)

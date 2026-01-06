@@ -1137,10 +1137,19 @@
                                                     <button class="queue-cancel-btn" onclick="cancelFromQueue({{ ticket.id }}, '{{ ticket.project.project_id }}')" title="Remove from queue">
                                                         <i class="fas fa-times"></i>
                                                     </button>
+                                                    <button class="queue-restart-btn" onclick="restartFromQueue({{ ticket.id }}, '{{ ticket.project.project_id }}')" title="Restart ticket">
+                                                        <i class="fas fa-redo"></i>
+                                                    </button>
                                                 {% elif ticket.queue_status == 'executing' %}
                                                     <span class="queue-badge executing">
                                                         <i class="fas fa-spinner fa-spin"></i> Executing
                                                     </span>
+                                                    <button class="queue-force-stop-btn" onclick="forceStopFromQueue({{ ticket.id }}, '{{ ticket.project.project_id }}')" title="Force stop (use if stuck)">
+                                                        <i class="fas fa-stop"></i>
+                                                    </button>
+                                                    <button class="queue-restart-btn" onclick="restartFromQueue({{ ticket.id }}, '{{ ticket.project.project_id }}')" title="Force restart">
+                                                        <i class="fas fa-redo"></i>
+                                                    </button>
                                                 {% else %}
                                                     <span class="queue-badge none">-</span>
                                                 {% endif %}
@@ -2824,6 +2833,75 @@
             }
         }
 
+        async function forceStopFromQueue(ticketId, projectId) {
+            if (!confirm('Force stop this ticket? Use this if the ticket is stuck and the executor has crashed.')) {
+                return;
+            }
+
+            try {
+                const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+                const response = await fetch(`/projects/${projectId}/api/tickets/${ticketId}/force-reset-queue/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    }
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    // Update the queue status cell in the table
+                    updateQueueStatusUI(ticketId, 'none');
+
+                    // Show success notification if available
+                    if (typeof showNotification === 'function') {
+                        showNotification('Ticket force stopped', 'success');
+                    }
+                } else {
+                    alert('Failed to force stop: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error force stopping ticket:', error);
+                alert('Error force stopping ticket');
+            }
+        }
+
+        async function restartFromQueue(ticketId, projectId) {
+            if (!confirm('Restart this ticket? This will reset its queue status and re-queue it for execution.')) {
+                return;
+            }
+
+            try {
+                const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+                const response = await fetch(`/projects/${projectId}/api/tickets/${ticketId}/restart-queue/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({
+                        conversation_id: 0
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    // Update the queue status cell in the table
+                    updateQueueStatusUI(ticketId, data.queue_status || 'queued');
+
+                    // Show success notification if available
+                    if (typeof showNotification === 'function') {
+                        showNotification('Ticket restarted and queued', 'success');
+                    }
+                } else {
+                    alert('Failed to restart ticket: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error restarting ticket:', error);
+                alert('Error restarting ticket');
+            }
+        }
+
         function updateQueueStatusUI(ticketId, queueStatus) {
             const queueCell = document.querySelector(`.queue-status-cell[data-ticket-id="${ticketId}"]`);
             if (!queueCell) return;
@@ -2839,12 +2917,21 @@
                     <button class="queue-cancel-btn" onclick="cancelFromQueue(${ticketId}, '${projectId}')" title="Remove from queue">
                         <i class="fas fa-times"></i>
                     </button>
+                    <button class="queue-restart-btn" onclick="restartFromQueue(${ticketId}, '${projectId}')" title="Restart ticket">
+                        <i class="fas fa-redo"></i>
+                    </button>
                 `;
             } else if (queueStatus === 'executing') {
                 queueCell.innerHTML = `
                     <span class="queue-badge executing">
                         <i class="fas fa-spinner fa-spin"></i> Executing
                     </span>
+                    <button class="queue-force-stop-btn" onclick="forceStopFromQueue(${ticketId}, '${projectId}')" title="Force stop (use if stuck)">
+                        <i class="fas fa-stop"></i>
+                    </button>
+                    <button class="queue-restart-btn" onclick="restartFromQueue(${ticketId}, '${projectId}')" title="Force restart">
+                        <i class="fas fa-redo"></i>
+                    </button>
                 `;
             } else {
                 queueCell.innerHTML = '<span class="queue-badge none">-</span>';

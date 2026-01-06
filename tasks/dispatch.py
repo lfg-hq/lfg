@@ -355,6 +355,44 @@ def update_ticket_queue_status(
         logger.error(f"[DISPATCH] Error updating ticket status: {e}", exc_info=True)
 
 
+async def update_ticket_queue_status_async(
+    ticket_id: int,
+    status: str,
+    task_id: Optional[str] = None
+):
+    """
+    Async version of update_ticket_queue_status for use in async contexts.
+
+    Args:
+        ticket_id: The ticket ID
+        status: New status ('none', 'queued', 'executing')
+        task_id: Optional task ID (for 'queued' status)
+    """
+    from asgiref.sync import sync_to_async
+
+    @sync_to_async
+    def _update():
+        from projects.models import ProjectTicket
+
+        updates = {'queue_status': status}
+
+        if status == 'queued':
+            updates['queued_at'] = timezone.now()
+            if task_id:
+                updates['queue_task_id'] = task_id
+        elif status == 'none':
+            updates['queued_at'] = None
+            updates['queue_task_id'] = None
+
+        ProjectTicket.objects.filter(id=ticket_id).update(**updates)
+        logger.debug(f"[DISPATCH] Updated ticket #{ticket_id} queue_status={status}")
+
+    try:
+        await _update()
+    except Exception as e:
+        logger.error(f"[DISPATCH] Error updating ticket status (async): {e}", exc_info=True)
+
+
 def get_executor_status() -> Dict[str, Any]:
     """
     Get overall executor status.
@@ -368,3 +406,88 @@ def get_executor_status() -> Dict[str, Any]:
         'executing_projects': get_executing_projects(),
         'executing_count': len(get_executing_projects())
     }
+
+
+def force_reset_ticket_queue_status(project_id: int, ticket_id: int) -> Dict[str, Any]:
+    """
+    Force reset a ticket's queue status, regardless of current state.
+
+    Use this when a ticket is stuck in 'queued' or 'executing' state
+    due to executor crash or other issues.
+
+    This will:
+    1. Remove the ticket from Redis queue if present
+    2. Reset the ticket's queue_status to 'none' in database
+    3. Optionally release project lock if no other tickets are executing
+
+    Args:
+        project_id: The project database ID
+        ticket_id: The ticket ID to reset
+
+    Returns:
+        Dict with operation results
+    """
+    result = {
+        'ticket_id': ticket_id,
+        'removed_from_redis': False,
+        'db_status_reset': False,
+        'lock_released': False,
+        'error': None
+    }
+
+    try:
+        client = get_redis_client()
+
+        # Step 1: Try to remove from Redis queue if present
+        items = client.lrange(QUEUE_KEY, 0, -1)
+        for item in items:
+            data = json.loads(item)
+            if (data.get('project_id') == project_id and
+                ticket_id in data.get('ticket_ids', [])):
+
+                # Remove ticket from batch
+                data['ticket_ids'].remove(ticket_id)
+                client.lrem(QUEUE_KEY, 1, item)
+
+                # Re-add batch if other tickets remain
+                if data['ticket_ids']:
+                    client.rpush(QUEUE_KEY, json.dumps(data))
+
+                result['removed_from_redis'] = True
+                logger.info(f"[DISPATCH] Force removed ticket #{ticket_id} from Redis queue")
+                break
+
+        # Step 2: Reset database status
+        from projects.models import ProjectTicket
+        updated = ProjectTicket.objects.filter(id=ticket_id).update(
+            queue_status='none',
+            queued_at=None,
+            queue_task_id=None
+        )
+        result['db_status_reset'] = updated > 0
+
+        # Step 3: Check if we should release project lock
+        # Only release if no other tickets are queued/executing for this project
+        other_active = ProjectTicket.objects.filter(
+            project_id=project_id,
+            queue_status__in=['queued', 'executing']
+        ).exclude(id=ticket_id).exists()
+
+        if not other_active:
+            lock_key = f"{LOCK_PREFIX}{project_id}"
+            if client.exists(lock_key):
+                client.delete(lock_key)
+                result['lock_released'] = True
+                logger.info(f"[DISPATCH] Released project lock for project {project_id}")
+
+        logger.info(
+            f"[DISPATCH] Force reset ticket #{ticket_id}: "
+            f"redis={result['removed_from_redis']}, db={result['db_status_reset']}, "
+            f"lock={result['lock_released']}"
+        )
+
+    except Exception as e:
+        logger.error(f"[DISPATCH] Error force resetting ticket: {e}", exc_info=True)
+        result['error'] = str(e)
+
+    return result

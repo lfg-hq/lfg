@@ -445,6 +445,9 @@ class DesignCanvas {
         document.getElementById('canvas-fit')?.addEventListener('click', () => this.fitToScreen());
         document.getElementById('canvas-refresh')?.addEventListener('click', () => this.loadFeatures());
 
+        // Load URL functionality
+        this.bindLoadUrlEvents();
+
         // Tools panel buttons
         this.bindToolsPanelEvents();
 
@@ -580,6 +583,9 @@ class DesignCanvas {
             if (e.key === 'a' || e.key === 'A') {
                 this.addEmptyScreen();
             }
+            if (e.key === 'w' || e.key === 'W') {
+                this.showLoadUrlModal();
+            }
             if ((e.key === 'Delete' || e.key === 'Backspace') && this.selectedScreens.size > 0) {
                 e.preventDefault();
                 this.deleteSelectedScreens();
@@ -603,6 +609,119 @@ class DesignCanvas {
         // Set default tool
         this.setActiveTool('select');
         this.updateDeleteButtonState();
+    }
+
+    bindLoadUrlEvents() {
+        // Tool button to open modal
+        document.getElementById('tool-load-url')?.addEventListener('click', () => this.showLoadUrlModal());
+
+        // Modal close buttons
+        document.getElementById('load-url-modal-close')?.addEventListener('click', () => this.hideLoadUrlModal());
+        document.getElementById('load-url-cancel')?.addEventListener('click', () => this.hideLoadUrlModal());
+
+        // Submit button
+        document.getElementById('load-url-submit')?.addEventListener('click', () => this.loadExternalUrl());
+
+        // Enter key in input
+        document.getElementById('load-url-input')?.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                this.loadExternalUrl();
+            }
+        });
+
+        // Close modal on background click
+        document.getElementById('load-url-modal')?.addEventListener('click', (e) => {
+            if (e.target.id === 'load-url-modal') {
+                this.hideLoadUrlModal();
+            }
+        });
+    }
+
+    showLoadUrlModal() {
+        const modal = document.getElementById('load-url-modal');
+        const input = document.getElementById('load-url-input');
+        console.log('showLoadUrlModal called, modal:', modal);
+        if (modal) {
+            modal.style.display = 'flex';
+            if (input) {
+                input.value = '';
+                input.focus();
+            }
+        } else {
+            console.error('Load URL modal not found in DOM');
+            this.showToast('Modal not available. Please refresh the page.', 'error');
+        }
+    }
+
+    hideLoadUrlModal() {
+        const modal = document.getElementById('load-url-modal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    }
+
+    async loadExternalUrl() {
+        const input = document.getElementById('load-url-input');
+        const btn = document.getElementById('load-url-submit');
+        const url = input?.value?.trim();
+
+        if (!url) {
+            this.showToast('Please enter a URL', 'error');
+            return;
+        }
+
+        // Validate URL format
+        try {
+            new URL(url);
+        } catch {
+            this.showToast('Please enter a valid URL', 'error');
+            return;
+        }
+
+        // Show loading state
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Loading...</span>';
+        }
+
+        try {
+            const projectId = this.getProjectId();
+            if (!projectId) {
+                throw new Error('Project not found');
+            }
+
+            // Create a new design feature with the URL
+            const response = await fetch(`/projects/${projectId}/api/load-external-url/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCSRFToken()
+                },
+                body: JSON.stringify({ url, canvas_id: this.currentCanvasId })
+            });
+
+            if (!response.ok) {
+                const data = await response.json();
+                throw new Error(data.error || 'Failed to load URL');
+            }
+
+            const data = await response.json();
+            this.showToast('Website loaded successfully');
+            this.hideLoadUrlModal();
+
+            // Refresh features to show the new screen
+            await this.loadFeatures();
+
+        } catch (error) {
+            console.error('Error loading external URL:', error);
+            this.showToast(error.message || 'Failed to load URL', 'error');
+        } finally {
+            // Reset button state
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-globe"></i><span>Load</span>';
+            }
+        }
     }
 
     setActiveTool(tool) {
@@ -736,8 +855,13 @@ class DesignCanvas {
         }
     }
 
+<<<<<<< Updated upstream
     async deleteScreen(featureId, pageId, pageName) {
         if (!confirm(`Delete "${pageName}"?`)) return;
+=======
+    async deleteScreen(featureId, pageId) {
+        if (!confirm('Are you sure you want to delete this screen?')) return;
+>>>>>>> Stashed changes
 
         const projectId = this.getProjectId();
         if (!projectId) return;
@@ -760,10 +884,17 @@ class DesignCanvas {
                 throw new Error(data.error || 'Failed to delete screen');
             }
 
+<<<<<<< Updated upstream
             // Remove from canvas positions
             if (this.currentCanvas) {
                 const key = `${featureId}_${pageId}`;
                 delete this.currentCanvas.feature_positions[key];
+=======
+            // Also remove from canvas positions
+            const screenKey = `${featureId}_${pageId}`;
+            if (this.currentCanvas) {
+                delete this.currentCanvas.feature_positions[screenKey];
+>>>>>>> Stashed changes
                 await this.saveCanvasToServer();
             }
 
@@ -1252,6 +1383,9 @@ class DesignCanvas {
             <div class="screen-thumbnail">
                 ${thumbnailHtml}
             </div>
+            <button class="screen-delete-btn" title="Delete Screen">
+                <i class="fas fa-trash-alt"></i>
+            </button>
             <div class="screen-info">
                 <div class="screen-name-row">
                     <div class="screen-name">${this.escapeHtml(page.page_name)}</div>
@@ -1284,12 +1418,20 @@ class DesignCanvas {
         deleteBtn?.addEventListener('click', (e) => {
             e.stopPropagation();
             e.preventDefault();
+<<<<<<< Updated upstream
             this.deleteScreen(feature.feature_id, page.page_id, page.page_name);
+=======
+            this.deleteScreen(feature.feature_id, page.page_id);
+>>>>>>> Stashed changes
         });
 
         // Drag to reposition
         card.addEventListener('mousedown', (e) => {
+<<<<<<< Updated upstream
             // Don't start drag if clicking action buttons
+=======
+            // Don't start drag if clicking buttons
+>>>>>>> Stashed changes
             if (e.target.closest('.ai-edit-btn') || e.target.closest('.screen-delete-btn')) return;
 
             e.stopPropagation();

@@ -1819,6 +1819,304 @@ body[data-theme="light"] {
     color: #64748b !important;
 }
 
+/* Tickets Table */
+[data-theme="light"] .tickets-table-wrapper {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .tickets-table thead {
+    background-color: #f8fafc !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .tickets-table th {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .tickets-table tbody tr {
+    border-bottom: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .tickets-table tbody tr:hover {
+    background-color: #f8fafc !important;
+}
+
+[data-theme="light"] .ticket-name {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .ticket-id {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .ticket-description {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .ticket-date {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .project-badge {
+    background-color: #f1f5f9 !important;
+}
+
+[data-theme="light"] .project-name {
+    color: #1e293b !important;
+}
+
+/* Filter Search Input */
+[data-theme="light"] .filter-search {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .filter-search:focus {
+    border-color: #7c3aed !important;
+    background-color: #ffffff !important;
+}
+
+[data-theme="light"] .filter-search::placeholder {
+    color: #94a3b8 !important;
+}
+
+/* Action Buttons */
+[data-theme="light"] .action-btn {
+    background: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #64748b !important;
+}
+
+[data-theme="light"] .action-btn:hover {
+    background: rgba(124, 58, 237, 0.08) !important;
+    border-color: #7c3aed !important;
+    color: #7c3aed !important;
+}
+
+/* Empty State */
+[data-theme="light"] .empty-state {
+    background-color: #ffffff !important;
+    border: 1px dashed #e2e8f0 !important;
+}
+
+[data-theme="light"] .empty-state-title {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .empty-state-text {
+    color: #64748b !important;
+}
+
+/* Ticket Drawer */
+[data-theme="light"] .drawer {
+    background-color: #ffffff !important;
+    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.1) !important;
+}
+
+[data-theme="light"] .drawer-header {
+    background: #f8fafc !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .drawer-title {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .drawer-close {
+    border: 1px solid #e2e8f0 !important;
+    color: #64748b !important;
+}
+
+[data-theme="light"] .drawer-close:hover {
+    color: #1e293b !important;
+    border-color: #cbd5e1 !important;
+    background: #f1f5f9 !important;
+}
+
+/* Drawer Tabs */
+[data-theme="light"] .drawer-tabs {
+    border-bottom: 1px solid #e2e8f0 !important;
+    background: #fafafa !important;
+}
+
+[data-theme="light"] .drawer-tab {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .drawer-tab:hover {
+    color: #1e293b !important;
+    background: rgba(124, 58, 237, 0.05) !important;
+}
+
+[data-theme="light"] .drawer-tab.active {
+    color: #7c3aed !important;
+    border-bottom-color: #7c3aed !important;
+}
+
+/* Drawer Body */
+[data-theme="light"] .drawer-body {
+    background-color: #ffffff !important;
+}
+
+[data-theme="light"] .drawer-tab-content {
+    color: #1e293b !important;
+}
+
+/* Detail Sections */
+[data-theme="light"] .detail-section {
+    background-color: #f8fafc !important;
+}
+
+[data-theme="light"] .detail-section h4 {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .detail-section p {
+    color: #1e293b !important;
+}
+
+/* Detail Items */
+[data-theme="light"] .detail-item {
+    background-color: #f8fafc !important;
+}
+
+[data-theme="light"] .detail-item label {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .detail-item span {
+    color: #1e293b !important;
+}
+
+/* Detail Meta Row */
+[data-theme="light"] .detail-meta-row {
+    border-bottom: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .detail-meta-badge {
+    background: #f1f5f9 !important;
+    color: #64748b !important;
+}
+
+/* Compact Select */
+[data-theme="light"] .compact-select {
+    background: #f8fafc !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .compact-select:hover {
+    background-color: #f1f5f9 !important;
+}
+
+/* Table Select */
+[data-theme="light"] .table-select {
+    background: #f8fafc !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .table-select:hover {
+    background-color: #f1f5f9 !important;
+}
+
+/* Edit Select */
+[data-theme="light"] .edit-select {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .edit-select:hover {
+    background-color: #f8fafc !important;
+}
+
+/* Drawer Server Button */
+[data-theme="light"] .drawer-server-btn {
+    border: 1px solid #e2e8f0 !important;
+    background: #f8fafc !important;
+    color: #64748b !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08) !important;
+}
+
+[data-theme="light"] .drawer-server-btn:hover:not(:disabled) {
+    color: #1e293b !important;
+    border-color: #cbd5e1 !important;
+    background: #f1f5f9 !important;
+}
+
+/* Drawer Open URL Button */
+[data-theme="light"] .drawer-open-url-btn {
+    border: 1px solid #e2e8f0 !important;
+    background: #f8fafc !important;
+    color: #64748b !important;
+}
+
+[data-theme="light"] .drawer-open-url-btn:hover:not(:disabled) {
+    color: #1e293b !important;
+    border-color: #cbd5e1 !important;
+    background: #f1f5f9 !important;
+}
+
+/* Command History / Logs Tab */
+[data-theme="light"] .empty-logs {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .empty-logs i {
+    color: #94a3b8 !important;
+}
+
+/* Tasks List */
+[data-theme="light"] .task-item:hover {
+    background: #f8fafc !important;
+    border-color: #e2e8f0 !important;
+}
+
+[data-theme="light"] .task-label {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .criteria-list li {
+    color: #1e293b !important;
+}
+
+/* Ticket Chat Styles */
+[data-theme="light"] .ticket-chat-messages {
+    background: #fafafa !important;
+}
+
+[data-theme="light"] .ticket-assistant-message .ticket-message-text {
+    background: #ffffff !important;
+    color: #1e293b !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .ticket-chat-input-container {
+    border-top: 1px solid #e2e8f0 !important;
+    background: #f8fafc !important;
+}
+
+[data-theme="light"] .ticket-chat-input {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .ticket-chat-input:focus {
+    border-color: #7c3aed !important;
+    background: #ffffff !important;
+}
+
+[data-theme="light"] .ticket-chat-input::placeholder {
+    color: #94a3b8 !important;
+}
+
+/* Queue Status */
+[data-theme="light"] .queue-badge.none {
+    color: #64748b !important;
+}
+
 /* =================================================================
    FIX MESSAGE BORDERS - Remove double borders
    ================================================================= */

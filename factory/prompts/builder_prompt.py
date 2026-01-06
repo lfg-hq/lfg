@@ -16,8 +16,6 @@ You can run commands to install libraries and run the application.
 
 Make sure the code is executed in /workspace folder. 
 
-Your preferred tech stack is Next.js, Tailwind CSS, Shadcn/UI, Prisma, SQLite.
-
 You can use ssh_command() to execute commands
 
 Update the ticket status to in-review when done.
