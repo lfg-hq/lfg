@@ -25,14 +25,14 @@
             </div>
         </div>
         <div class="project-header-actions">
-            <a href="{% url 'create_conversation' project.project_id %}" class="btn btn-primary">
-                <i class="fas fa-plus"></i> New Chat
+            <a href="{% url 'create_conversation' project.project_id %}" class="btn btn-primary" style="display: inline-flex; align-items: center; gap: 6px;">
+                <i class="fas fa-plus"></i> <span>New Chat</span>
             </a>
-            <a href="{% url 'projects:project_terminal' project.project_id %}" class="btn btn-outline">
-                <i class="fas fa-terminal"></i> Terminal
+            <a href="{% url 'projects:project_terminal' project.project_id %}" class="btn btn-outline" style="display: inline-flex; align-items: center; gap: 6px;">
+                <i class="fas fa-terminal"></i> <span>Terminal</span>
             </a>
-            <button type="button" class="btn btn-outline" onclick="openCodebaseSidebar()">
-                <i class="fas fa-code-branch"></i> Codebase
+            <button type="button" class="btn btn-outline" onclick="openCodebaseSidebar()" style="display: inline-flex; align-items: center; gap: 6px;">
+                <i class="fas fa-code-branch"></i> <span>Codebase</span>
             </button>
         </div>
     </div>
@@ -177,8 +177,8 @@
                             </div>
                         </div>
                         <div class="conversation-actions">
-                            <a href="{% url 'conversation_detail' conversation.id %}" class="btn btn-sm btn-outline">
-                                <i class="fas fa-external-link-alt"></i> Open
+                            <a href="{% url 'conversation_detail' conversation.id %}" class="btn btn-sm btn-outline" style="display: inline-flex; align-items: center; gap: 6px;">
+                                <i class="fas fa-external-link-alt"></i> <span>Open</span>
                             </a>
                         </div>
                     </div>
@@ -295,8 +295,8 @@
         <div class="section-header">
             <h2 class="section-title">Codebase Management</h2>
             {% if project.indexed_repository %}
-            <button class="btn btn-outline btn-sm" onclick="reindexRepository({{ project.indexed_repository.id }})">
-                <i class="fas fa-sync"></i> Re-index
+            <button class="btn btn-outline btn-sm" onclick="reindexRepository({{ project.indexed_repository.id }})" style="display: inline-flex; align-items: center; gap: 6px;">
+                <i class="fas fa-sync"></i> <span>Re-index</span>
             </button>
             {% endif %}
         </div>
@@ -343,11 +343,11 @@
                     </div>
                     
                     <div class="codebase-actions">
-                        <a href="{% url 'codebase_index:repository_detail' project.indexed_repository.id %}" class="btn btn-outline">
-                            <i class="fas fa-chart-bar"></i> View Analytics
+                        <a href="{% url 'codebase_index:repository_detail' project.indexed_repository.id %}" class="btn btn-outline" style="display: inline-flex; align-items: center; gap: 6px;">
+                            <i class="fas fa-chart-bar"></i> <span>View Analytics</span>
                         </a>
-                        <button class="btn btn-outline-danger" onclick="disconnectRepository()">
-                            <i class="fas fa-unlink"></i> Disconnect
+                        <button class="btn btn-outline-danger" onclick="disconnectRepository()" style="display: inline-flex; align-items: center; gap: 6px;">
+                            <i class="fas fa-unlink"></i> <span>Disconnect</span>
                         </button>
                     </div>
                 </div>
@@ -356,8 +356,8 @@
                 <div class="codebase-summary-container" style="margin-top: 2rem;" data-repository-id="{{ project.indexed_repository.id }}">
                     <div class="codebase-summary-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
                         <h3 style="margin: 0;"><i class="fas fa-book-open"></i> AI-Generated Codebase Summary</h3>
-                        <button class="btn btn-sm btn-outline" id="refreshSummaryBtn" onclick="loadCodebaseSummary()">
-                            <i class="fas fa-sync"></i> Refresh
+                        <button class="btn btn-sm btn-outline" id="refreshSummaryBtn" onclick="loadCodebaseSummary()" style="display: inline-flex; align-items: center; gap: 6px;">
+                            <i class="fas fa-sync"></i> <span>Refresh</span>
                         </button>
                     </div>
                     <div id="codebaseSummaryContent" class="codebase-summary-content" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 0.5rem; padding: 1.5rem; min-height: 200px;">
@@ -445,8 +445,8 @@
                         </div>
                     </div>
                     
-                    <button class="btn btn-primary" onclick="showCodebaseModal()">
-                        <i class="fas fa-plus" style="margin-right: 10px;"></i>Connect Repository
+                    <button class="btn btn-primary" onclick="showCodebaseModal()" style="display: inline-flex; align-items: center; gap: 8px;">
+                        <i class="fas fa-plus"></i> <span>Connect Repository</span>
                     </button>
                 </div>
             </div>
@@ -531,8 +531,8 @@
                     </div>
                     <form action="{% url 'projects:delete_project' project.project_id %}" method="post" class="d-inline">
                         {% csrf_token %}
-                        <button type="submit" class="btn btn-danger btn-sm delete-project-btn" data-project-name="{{ project.name }}">
-                            <i class="fas fa-trash-alt"></i> Delete Project
+                        <button type="submit" class="btn btn-danger btn-sm delete-project-btn" data-project-name="{{ project.name }}" style="display: inline-flex; align-items: center; gap: 6px;">
+                            <i class="fas fa-trash-alt"></i> <span>Delete Project</span>
                         </button>
                     </form>
                 </div>
@@ -583,8 +583,8 @@
         </div>
         <div class="modal-footer">
             <button type="button" class="btn btn-outline" onclick="closeCodebaseModal()">Cancel</button>
-            <button type="button" class="btn btn-primary" onclick="linkRepository()">
-                <i class="fas fa-link"></i> Link Repository
+            <button type="button" class="btn btn-primary" onclick="linkRepository()" style="display: inline-flex; align-items: center; gap: 6px;">
+                <i class="fas fa-link"></i> <span>Link Repository</span>
             </button>
         </div>
     </div>

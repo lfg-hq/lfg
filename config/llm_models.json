@@ -48,9 +48,9 @@
           "requires_pro": true
         },
         {
-          "key": "gemini_2.5_flash",
-          "label": "Gemini 2.5 Flash",
-          "provider_model": "models/gemini-2.5-flash",
+          "key": "gemini_3_flash",
+          "label": "Gemini 3 Flash",
+          "provider_model": "models/gemini-3-flash-preview",
           "requires_pro": true
         },
         {
