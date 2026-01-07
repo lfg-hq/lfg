@@ -2302,6 +2302,30 @@
         function handleStatusChange(status, ticketId) {
             console.log(`Ticket ${ticketId} status changed to: ${status}`);
 
+            // Update the queue status in the table
+            updateQueueStatusUI(ticketId, status === 'done' ? 'none' : status);
+
+            // Update the execute button if this is the currently viewed ticket
+            if (currentTicket && currentTicket.id === ticketId) {
+                const executeBtn = document.getElementById('executeTicketBtn');
+                if (executeBtn) {
+                    if (status === 'done' || status === 'none') {
+                        executeBtn.disabled = false;
+                        executeBtn.innerHTML = '<i class="fas fa-hammer"></i> Build Ticket';
+                        // Update currentTicket's queue_status
+                        currentTicket.queue_status = 'none';
+                    } else if (status === 'executing') {
+                        executeBtn.disabled = true;
+                        executeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Building...';
+                        currentTicket.queue_status = 'executing';
+                    } else if (status === 'queued') {
+                        executeBtn.disabled = true;
+                        executeBtn.innerHTML = '<i class="fas fa-clock"></i> Queued';
+                        currentTicket.queue_status = 'queued';
+                    }
+                }
+            }
+
             // Find the logs container
             const logsContainer = document.querySelector('.execution-logs-container');
             if (!logsContainer) {
@@ -2745,6 +2769,22 @@
             currentTab = 'details';
             setAiProcessingState(false);
 
+            // Reset the execute button state based on this ticket's queue status
+            const executeBtn = document.getElementById('executeTicketBtn');
+            if (executeBtn) {
+                const queueStatus = ticket.queue_status || 'none';
+                if (queueStatus === 'executing') {
+                    executeBtn.disabled = true;
+                    executeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Building...';
+                } else if (queueStatus === 'queued') {
+                    executeBtn.disabled = true;
+                    executeBtn.innerHTML = '<i class="fas fa-clock"></i> Queued';
+                } else {
+                    executeBtn.disabled = false;
+                    executeBtn.innerHTML = '<i class="fas fa-hammer"></i> Build Ticket';
+                }
+            }
+
             const drawer = document.getElementById('ticketDrawer');
             const overlay = document.getElementById('ticketDrawerOverlay');
             const title = document.getElementById('drawerTicketTitle');
@@ -3085,7 +3125,20 @@
                 const data = await response.json();
                 if (data.success) {
                     // Update queue status in the table
-                    updateQueueStatusUI(currentTicket.id, data.queue_status || 'queued');
+                    const queueStatus = data.queue_status || 'queued';
+                    updateQueueStatusUI(currentTicket.id, queueStatus);
+
+                    // Update button to reflect actual queue status
+                    if (queueStatus === 'executing') {
+                        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Building...';
+                    } else if (queueStatus === 'queued') {
+                        btn.innerHTML = '<i class="fas fa-clock"></i> Queued';
+                    }
+                    // Keep button disabled since ticket is now queued/executing
+
+                    // Update currentTicket's queue_status so it persists when reopening
+                    currentTicket.queue_status = queueStatus;
+
                     // Switch to Logs tab to show execution progress
                     switchDrawerTab('logs');
                 } else {

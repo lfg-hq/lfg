@@ -1141,7 +1141,30 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         file_id = file_data.get('id')
 
-        file_obj = ChatFile.objects.get(id=file_id)
+        # Validate file_id exists
+        if not file_id:
+            logger.error(f"No file_id provided in file_data: {file_data}")
+            # Fall back to saving message without file
+            if self.conversation:
+                return Message.objects.create(
+                    conversation=self.conversation,
+                    role=role,
+                    content=content
+                )
+            return None
+
+        try:
+            file_obj = ChatFile.objects.get(id=file_id)
+        except ChatFile.DoesNotExist:
+            logger.error(f"ChatFile with id={file_id} does not exist")
+            # Fall back to saving message without file
+            if self.conversation:
+                return Message.objects.create(
+                    conversation=self.conversation,
+                    role=role,
+                    content=content
+                )
+            return None
 
         # Construct the full file path by joining MEDIA_ROOT with the relative file path
         full_file_path = os.path.join(settings.MEDIA_ROOT, str(file_obj.file))

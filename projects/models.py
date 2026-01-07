@@ -858,6 +858,14 @@ class ProjectEnvironmentVariable(models.Model):
         default=True,
         help_text="If true, value is masked in UI"
     )
+    is_required = models.BooleanField(
+        default=False,
+        help_text="If true, this variable is required but may not have a value yet"
+    )
+    has_value = models.BooleanField(
+        default=True,
+        help_text="If false, the variable needs a value to be provided by user"
+    )
     description = models.CharField(
         max_length=500,
         blank=True,

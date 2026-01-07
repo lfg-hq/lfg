@@ -1419,6 +1419,55 @@ tools_turbo_ = [
     lookup_technology_specs
 ]
 
+# Tool for registering required environment variables (OpenAI format)
+register_required_env_vars = {
+    "type": "function",
+    "function": {
+        "name": "register_required_env_vars",
+        "description": "Register required environment variables that the application needs to run. Use this when you detect that new environment variables are needed (e.g., from package installation, config files, API integrations). This will create placeholder entries in the project's environment settings (marked as missing) and create a ticket to remind the user to provide values.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "env_vars": {
+                    "type": "array",
+                    "description": "List of environment variables that are required",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "key": {
+                                "type": "string",
+                                "description": "Environment variable name (e.g., DATABASE_URL, API_KEY, AUTH_SECRET)"
+                            },
+                            "description": {
+                                "type": "string",
+                                "description": "Description of what this variable is for and how to obtain it"
+                            },
+                            "example": {
+                                "type": "string",
+                                "description": "Example value format (e.g., 'postgresql://user:pass@host/db', 'sk-xxxx')"
+                            },
+                            "is_secret": {
+                                "type": "boolean",
+                                "description": "Whether this is a sensitive value that should be masked. Default true."
+                            }
+                        },
+                        "required": ["key", "description"]
+                    }
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "Brief explanation of why these environment variables are needed (e.g., 'Required for NextAuth.js authentication', 'Needed for Stripe payment integration')"
+                },
+                "create_ticket": {
+                    "type": "boolean",
+                    "description": "Whether to create a ticket reminding the user to provide values. Default true."
+                }
+            },
+            "required": ["env_vars", "reason"]
+        }
+    }
+}
+
 tools_builder = [
     get_file_list,
     get_file_content,
@@ -1430,7 +1479,8 @@ tools_builder = [
     update_todo_status,
     run_code_server,
     record_ticket_summary,
-    broadcast_to_user
+    broadcast_to_user,
+    register_required_env_vars
 ]
 
 # Anthropic native format for direct API calls

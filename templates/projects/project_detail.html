@@ -1356,11 +1356,14 @@ async function loadEnvVars() {
 
         if (data.success && data.env_vars.length > 0) {
             listEl.innerHTML = data.env_vars.map(env => `
-                <div class="env-var-item" data-key="${env.key}">
+                <div class="env-var-item ${!env.has_value ? 'env-var-missing' : ''}" data-key="${env.key}">
                     <div>
                         <span class="env-var-key">${env.key}</span>
                         ${env.is_secret ? '<span class="env-var-secret-badge">secret</span>' : ''}
-                        <span class="env-var-value">${env.masked_value}</span>
+                        ${!env.has_value ? '<span class="env-var-missing-badge">missing value</span>' : ''}
+                        ${env.is_required && !env.has_value ? '<span class="env-var-required-badge">required</span>' : ''}
+                        <span class="env-var-value">${env.has_value ? env.masked_value : '(no value set)'}</span>
+                        ${env.description ? `<div class="env-var-description">${env.description}</div>` : ''}
                     </div>
                     <div class="env-var-actions">
                         <button type="button" class="env-var-delete-btn" onclick="deleteEnvVar('${env.key}')" title="Delete">
@@ -1576,6 +1579,43 @@ document.addEventListener('DOMContentLoaded', function() {
     padding: 0.15rem 0.4rem;
     border-radius: 4px;
     margin-left: 0.5rem;
+}
+/* Missing env var styles */
+.env-var-missing {
+    background: rgba(239, 68, 68, 0.08);
+    border-left: 3px solid #ef4444;
+}
+.env-var-missing .env-var-key {
+    color: #ef4444;
+}
+.env-var-missing .env-var-value {
+    color: #ef4444;
+    font-style: italic;
+}
+.env-var-missing-badge {
+    font-size: 0.7em;
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    margin-left: 0.5rem;
+    font-weight: 600;
+}
+.env-var-required-badge {
+    font-size: 0.7em;
+    background: rgba(239, 68, 68, 0.25);
+    color: #dc2626;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    margin-left: 0.5rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+.env-var-description {
+    font-size: 0.85em;
+    color: var(--text-secondary);
+    margin-top: 0.25rem;
+    font-style: italic;
 }
 </style>
 

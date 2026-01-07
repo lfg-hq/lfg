@@ -918,6 +918,8 @@ def project_env_vars_api(request, project_id):
                 'key': env_var.key,
                 'masked_value': env_var.get_masked_value(),
                 'is_secret': env_var.is_secret,
+                'is_required': env_var.is_required,
+                'has_value': env_var.has_value,
                 'description': env_var.description,
                 'created_at': env_var.created_at.isoformat(),
                 'updated_at': env_var.updated_at.isoformat(),
@@ -968,6 +970,9 @@ def project_env_vars_api(request, project_id):
         env_var.set_value(value)
         env_var.is_secret = is_secret
         env_var.description = description
+        # Mark as having a value if value is non-empty
+        if value:
+            env_var.has_value = True
         env_var.save()
 
         return JsonResponse({

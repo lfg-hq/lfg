@@ -1,14 +1,16 @@
-from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404
 from django.conf import settings
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, authentication_classes, permission_classes
+from rest_framework.authentication import SessionAuthentication
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from chat.models import ChatFile
 
 
 @api_view(['GET'])
-@login_required
+@authentication_classes([SessionAuthentication])
+@permission_classes([IsAuthenticated])
 def get_file_url(request, file_id):
     """
     Get a presigned URL for a specific file.

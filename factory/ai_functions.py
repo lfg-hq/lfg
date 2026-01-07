@@ -583,6 +583,9 @@ async def app_functions(function_name, function_args, project_id, conversation_i
         case "run_code_server":
             return await run_code_server_tool(function_args, project_id, conversation_id)
 
+        case "register_required_env_vars":
+            return await register_required_env_vars_tool(function_args, project_id, conversation_id)
+
         case "start_server":
             command = function_args.get('start_server_command', '')
             application_port = function_args.get('application_port', '')
@@ -3511,6 +3514,142 @@ async def broadcast_to_user_tool(function_args, project_id, conversation_id):
     return {
         "is_notification": False,
         "message_to_agent": "User notified. Continue with next step"
+    }
+
+
+async def register_required_env_vars_tool(function_args, project_id, conversation_id):
+    """
+    Register required environment variables for a project.
+    Creates empty placeholder entries marked as 'missing' and optionally creates a ticket.
+    """
+    from projects.models import Project, ProjectEnvironmentVariable, ProjectTicket
+    from asgiref.sync import sync_to_async
+
+    logger.info(f"[ENV_VARS] Registering required env vars for project {project_id}")
+
+    env_vars = function_args.get('env_vars', [])
+    reason = function_args.get('reason', 'Required by application')
+    create_ticket = function_args.get('create_ticket', True)
+
+    if not env_vars:
+        return {
+            "is_notification": False,
+            "message_to_agent": "No environment variables specified to register."
+        }
+
+    # Get the project
+    project = await get_project(project_id)
+    if not project:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Project with ID {project_id} not found."
+        }
+
+    created_vars = []
+    existing_vars = []
+
+    @sync_to_async
+    def _register_env_vars():
+        nonlocal created_vars, existing_vars
+        from projects.utils.encryption import encrypt_value
+
+        for var in env_vars:
+            key = var.get('key', '').upper().strip()
+            description = var.get('description', '')
+            example = var.get('example', '')
+            is_secret = var.get('is_secret', True)
+
+            if not key:
+                continue
+
+            # Build description with example if provided
+            full_description = description
+            if example:
+                full_description += f" (Example: {example})"
+
+            # Check if variable already exists
+            existing = ProjectEnvironmentVariable.objects.filter(
+                project=project,
+                key=key
+            ).first()
+
+            if existing:
+                # If exists and has a value, skip
+                if existing.has_value:
+                    existing_vars.append(key)
+                    continue
+                # If exists but no value, update description if provided
+                if full_description:
+                    existing.description = full_description
+                    existing.save()
+                existing_vars.append(key)
+            else:
+                # Create new empty placeholder
+                env_var = ProjectEnvironmentVariable(
+                    project=project,
+                    key=key,
+                    encrypted_value=encrypt_value(''),  # Empty value
+                    is_secret=is_secret,
+                    is_required=True,
+                    has_value=False,  # Mark as missing
+                    description=full_description
+                )
+                env_var.save()
+                created_vars.append(key)
+                logger.info(f"[ENV_VARS] Created required env var: {key}")
+
+    await _register_env_vars()
+
+    # Create a ticket if requested and we created new vars
+    ticket_id = None
+    if create_ticket and created_vars:
+        @sync_to_async
+        def _create_ticket():
+            # Build ticket description
+            var_list = "\n".join([f"- `{key}`" for key in created_vars])
+            ticket_description = f"""## Required Environment Variables
+
+The following environment variables are required for the application to run properly:
+
+{var_list}
+
+**Reason:** {reason}
+
+### Action Required
+Please go to Project Settings → Environment tab and provide values for the missing environment variables (shown in red).
+"""
+
+            # Create the ticket
+            ticket = ProjectTicket.objects.create(
+                project=project,
+                name="⚠️ Configure Required Environment Variables",
+                description=ticket_description,
+                status='pending',
+                priority='high',
+                ticket_type='task'
+            )
+            logger.info(f"[ENV_VARS] Created ticket #{ticket.id} for missing env vars")
+            return ticket.id
+
+        ticket_id = await _create_ticket()
+
+    # Build response message
+    message_parts = []
+    if created_vars:
+        message_parts.append(f"Created {len(created_vars)} required environment variable(s): {', '.join(created_vars)}")
+    if existing_vars:
+        message_parts.append(f"Skipped {len(existing_vars)} existing variable(s): {', '.join(existing_vars)}")
+    if ticket_id:
+        message_parts.append(f"Created ticket #{ticket_id} to remind user to provide values.")
+
+    return {
+        "is_notification": True,
+        "notification_type": "env_vars_registered",
+        "notification_marker": "__NOTIFICATION__",
+        "created_vars": created_vars,
+        "existing_vars": existing_vars,
+        "ticket_id": ticket_id,
+        "message_to_agent": " ".join(message_parts) if message_parts else "No changes made."
     }
 
 
