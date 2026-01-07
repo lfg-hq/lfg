@@ -29,15 +29,15 @@ import json
 import mimetypes
 import os
 
-# Import ServerConfig from development app
-from development.models import ServerConfig
+# Import ServerConfig and MagpieWorkspace from development app
+from development.models import ServerConfig, MagpieWorkspace
 from accounts.models import LLMApiKeys, ExternalServicesAPIKeys
 import logging
 
 logger = logging.getLogger(__name__)
 
 # Import the functions from ai_functions
-from factory.ai_functions import execute_local_command, restart_server_from_config
+from factory.ai_functions import execute_local_command, restart_server_from_config, get_magpie_client, _run_magpie_ssh
 from factory.llm_config import get_llm_model_config
 from chat.models import ModelSelection
 from accounts.models import ApplicationState
@@ -1053,6 +1053,79 @@ def project_terminal(request, project_id):
     
     return render(request, 'projects/terminal.html', context)
 
+
+@login_required
+def app_preview(request, project_id):
+    """
+    View for the app preview page - allows users to preview their running application
+    with viewport toggle, console capture, and server controls.
+    """
+    project = get_object_or_404(Project, project_id=project_id)
+
+    # Check if user has access to this project
+    if not project.can_user_access(request.user):
+        raise PermissionDenied("You don't have permission to access this project.")
+
+    # Get all projects where user has access (for the project dropdown)
+    owned_projects = Project.objects.filter(owner=request.user)
+    try:
+        member_projects = Project.objects.filter(
+            members__user=request.user,
+            members__status='active'
+        ).exclude(owner=request.user)
+    except Exception:
+        member_projects = Project.objects.none()
+
+    all_projects = list(owned_projects) + list(member_projects)
+
+    # Get server configurations for this project
+    server_configs = ServerConfig.objects.filter(project=project).order_by('port')
+
+    # Convert server configs to list of dicts for JSON serialization
+    server_configs_data = [
+        {
+            'id': config.id,
+            'port': config.port,
+            'type': config.type,
+            'command': config.start_server_command or config.command,
+        }
+        for config in server_configs
+    ]
+
+    # Get Magpie workspace for this project (any workspace with an IPv6 address)
+    workspace = MagpieWorkspace.objects.filter(
+        project=project,
+        ipv6_address__isnull=False
+    ).exclude(ipv6_address='').order_by('-updated_at').first()
+
+    workspace_data = None
+    if workspace:
+        ipv6 = workspace.ipv6_address.strip('[]') if workspace.ipv6_address else None
+        workspace_data = {
+            'id': workspace.id,
+            'workspace_id': workspace.workspace_id,
+            'status': workspace.status,
+            'ipv6_address': ipv6,
+            'preview_url': f"http://[{ipv6}]:3000" if ipv6 else None,
+        }
+
+    # Get sidebar state
+    app_state = ApplicationState.objects.filter(user=request.user).first()
+    sidebar_minimized = app_state.sidebar_minimized if app_state else False
+
+    context = {
+        'project': project,
+        'current_project': project,
+        'projects': all_projects,
+        'server_configs': json.dumps(server_configs_data),
+        'workspace': workspace_data,
+        'workspace_json': json.dumps(workspace_data) if workspace_data else 'null',
+        'sidebar_minimized': sidebar_minimized,
+    }
+
+    return render(request, 'projects/app_preview.html', context)
+
+
 @login_required
 def project_implementation_api(request, project_id):
     """API view to get or update implementation for a project"""
@@ -1193,6 +1266,147 @@ def project_files_api(request, project_id):
             return JsonResponse({'success': False, 'error': str(e)}, status=400)
     
     return JsonResponse({'error': 'Invalid request method'}, status=405)
+
+@login_required
+@require_http_methods(["POST"])
+def start_dev_server_api(request, project_id):
+    """Start a dev server on the Magpie workspace for the project"""
+    project = get_object_or_404(Project, project_id=project_id)
+
+    # Check access
+    if not project.can_user_access(request.user):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    try:
+        data = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        data = {}
+
+    port = data.get('port', 3000)
+
+    try:
+        # Find the Magpie workspace for this project (any workspace with IPv6)
+        workspace = MagpieWorkspace.objects.filter(
+            project=project,
+            ipv6_address__isnull=False
+        ).exclude(ipv6_address='').order_by('-updated_at').first()
+
+        if not workspace:
+            return JsonResponse({
+                'success': False,
+                'error': 'No workspace found. Please run a ticket build first to set up the project environment.'
+            })
+
+        if not workspace.ipv6_address:
+            return JsonResponse({
+                'success': False,
+                'error': 'Workspace IPv6 address not available. The workspace may still be provisioning.'
+            })
+
+        # Get Magpie client
+        client = get_magpie_client()
+        if not client:
+            return JsonResponse({
+                'success': False,
+                'error': 'Magpie client not configured. Check server settings.'
+            })
+
+        # Kill any existing process on the port and start dev server
+        # Use --hostname :: to listen on all interfaces (required for IPv6 access)
+        start_command = f"""
+cd /workspace/nextjs-app
+if [ -f .devserver_pid ]; then
+  old_pid=$(cat .devserver_pid)
+  if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
+    kill "$old_pid" || true
+  fi
+fi
+: > /workspace/nextjs-app/dev.log
+nohup npm run dev -- --hostname :: --port {port} > /workspace/nextjs-app/dev.log 2>&1 &
+pid=$!
+echo "$pid" > .devserver_pid
+echo "PID:$pid"
+sleep 5
+cat /workspace/nextjs-app/dev.log | tail -30
+"""
+
+        result = _run_magpie_ssh(client, workspace.job_id, start_command, timeout=30, project_id=project.id)
+
+        # Build the preview URL
+        ipv6 = workspace.ipv6_address.strip('[]')
+        preview_url = f"http://[{ipv6}]:{port}"
+
+        return JsonResponse({
+            'success': True,
+            'status': 'running',
+            'url': preview_url,
+            'port': port,
+            'workspace_id': workspace.workspace_id,
+            'message': f'Server started on {preview_url}',
+            'log': result.get('stdout', '')[:500]
+        })
+
+    except Exception as e:
+        logger.exception("Error starting dev server")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def stop_dev_server_api(request, project_id):
+    """Stop the dev server on the Magpie workspace"""
+    project = get_object_or_404(Project, project_id=project_id)
+
+    if not project.can_user_access(request.user):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    try:
+        # Find the Magpie workspace for this project (any workspace with IPv6)
+        workspace = MagpieWorkspace.objects.filter(
+            project=project,
+            ipv6_address__isnull=False
+        ).exclude(ipv6_address='').order_by('-updated_at').first()
+
+        if not workspace:
+            return JsonResponse({
+                'success': False,
+                'error': 'No workspace found.'
+            })
+
+        # Get Magpie client
+        client = get_magpie_client()
+        if not client:
+            return JsonResponse({
+                'success': False,
+                'error': 'Magpie client not configured.'
+            })
+
+        # Kill the dev server process using PID file
+        stop_command = """
+cd /workspace/nextjs-app
+if [ -f .devserver_pid ]; then
+  pid=$(cat .devserver_pid)
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+    kill "$pid" || true
+    echo "Killed server PID: $pid"
+  fi
+  rm -f .devserver_pid
+fi
+pkill -f "next dev" 2>/dev/null || true
+echo "Server stopped"
+"""
+
+        result = _run_magpie_ssh(client, workspace.job_id, stop_command, timeout=10, project_id=project.id)
+
+        return JsonResponse({
+            'success': True,
+            'message': 'Server stopped',
+            'output': result.get('stdout', '')
+        })
+    except Exception as e:
+        logger.exception("Error stopping dev server")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
 
 @login_required
 def check_server_status_api(request, project_id):

@@ -18,6 +18,7 @@ urlpatterns = [
     path('api/update-name/', views.update_project_name, name='update_project_name'),
     path('<str:project_id>/delete/', views.delete_project, name='delete_project'),
     path('<str:project_id>/terminal/', views.project_terminal, name='project_terminal'),
+    path('<str:project_id>/preview/', views.app_preview, name='app_preview'),
     # path('<str:project_id>/api/features/', views.project_features_api, name='project_features_api'),
     # path('<str:project_id>/api/personas/', views.project_personas_api, name='project_personas_api'),
     # Unified file API
@@ -52,6 +53,8 @@ urlpatterns = [
     path('<str:project_id>/api/checklist/<int:item_id>/delete/', views.delete_checklist_item_api, name='delete_checklist_item_api'),
     path('<str:project_id>/api/server-configs/', views.project_server_configs_api, name='project_server_configs_api'),
     path('<str:project_id>/api/check-servers/', views.check_server_status_api, name='check_server_status_api'),
+    path('<str:project_id>/api/start-dev-server/', views.start_dev_server_api, name='start_dev_server_api'),
+    path('<str:project_id>/api/stop-dev-server/', views.stop_dev_server_api, name='stop_dev_server_api'),
 
     # Environment variables API
     path('<str:project_id>/api/env-vars/', views.project_env_vars_api, name='project_env_vars_api'),

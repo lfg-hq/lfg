@@ -51,6 +51,10 @@
                 <i class="fas fa-tasks"></i>
                 <span class="nav-text">Tickets</span>
             </a>
+            <a href="{% url 'projects:app_preview' project_id=current_project.project_id %}" class="nav-link{% if request.resolver_match.url_name == 'app_preview' %} active{% endif %}" title="Preview">
+                <i class="fas fa-eye"></i>
+                <span class="nav-text">Preview</span>
+            </a>
             {% else %}
             <a href="{% url 'projects:tickets_list' %}" class="nav-link{% if request.resolver_match.url_name == 'tickets_list' %} active{% endif %}" title="Tickets">
                 <i class="fas fa-tasks"></i>

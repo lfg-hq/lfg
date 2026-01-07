@@ -1,0 +1,1838 @@
+{% extends 'projects/base_with_sidebar.html' %}
+
+{% block title %}Preview - {{ project.name }} - LFG{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Override main content styling for full-height preview */
+    .main-content-with-sidebar {
+        padding: 0 !important;
+        overflow: hidden;
+    }
+
+    .main-content-with-sidebar .container {
+        max-width: 100%;
+        padding: 0;
+        height: 100vh;
+    }
+
+    /* Preview page container */
+    .preview-page-container {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        background: var(--surface-primary, #0d0d0d);
+    }
+
+    /* Preview header */
+    .preview-header {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 0.75rem 1rem;
+        background: var(--surface-secondary, #1a1a1a);
+        border-bottom: 1px solid var(--border-color, #333);
+        flex-shrink: 0;
+    }
+
+    /* Server status */
+    .server-status {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 0.75rem;
+        background: var(--surface-primary);
+        border-radius: 6px;
+        border: 1px solid var(--border-color);
+    }
+
+    .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #888;
+        transition: all 0.3s ease;
+    }
+
+    .status-dot.running {
+        background: #22c55e;
+        box-shadow: 0 0 6px #22c55e;
+    }
+
+    .status-dot.stopped {
+        background: #ef4444;
+    }
+
+    .status-dot.loading {
+        background: #f59e0b;
+        animation: pulse 1s infinite;
+    }
+
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+
+    .status-text {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+    }
+
+    /* URL bar */
+    .url-bar {
+        flex: 1;
+        display: flex;
+        gap: 0.5rem;
+        max-width: 600px;
+    }
+
+    .url-bar input {
+        flex: 1;
+        background: var(--surface-primary, #0d0d0d);
+        border: 1px solid var(--border-color, #333);
+        color: var(--text-primary);
+        padding: 0.5rem 0.75rem;
+        border-radius: 6px;
+        font-family: monospace;
+        font-size: 0.8rem;
+    }
+
+    .url-bar button {
+        padding: 0.5rem 0.75rem;
+        background: transparent;
+        border: 1px solid var(--border-color);
+        color: var(--text-secondary);
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .url-bar button:hover {
+        background: var(--surface-secondary);
+        color: var(--text-primary);
+    }
+
+    /* Viewport toggle */
+    .viewport-toggle {
+        display: flex;
+        background: var(--surface-primary);
+        border-radius: 6px;
+        overflow: hidden;
+        border: 1px solid var(--border-color);
+    }
+
+    .viewport-toggle button {
+        padding: 0.5rem 0.75rem;
+        background: transparent;
+        border: none;
+        color: var(--text-secondary);
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .viewport-toggle button:hover {
+        color: var(--text-primary);
+    }
+
+    .viewport-toggle button.active {
+        background: var(--accent-purple, #8B5CF6);
+        color: white;
+    }
+
+    /* Server controls */
+    .server-controls {
+        display: flex;
+        gap: 0.25rem;
+    }
+
+    .server-controls button {
+        padding: 0.5rem 0.75rem;
+        background: transparent;
+        border: 1px solid var(--border-color);
+        color: var(--text-secondary);
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .server-controls button:hover:not(:disabled) {
+        background: var(--surface-secondary);
+        color: var(--text-primary);
+    }
+
+    .server-controls button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .server-controls button.btn-start:hover:not(:disabled) {
+        border-color: #22c55e;
+        color: #22c55e;
+    }
+
+    .server-controls button.btn-stop:hover:not(:disabled) {
+        border-color: #ef4444;
+        color: #ef4444;
+    }
+
+    .server-controls button.btn-restart:hover:not(:disabled) {
+        border-color: #f59e0b;
+        color: #f59e0b;
+    }
+
+    /* Open in new tab button */
+    .open-tab-btn {
+        padding: 0.5rem 0.75rem;
+        background: transparent;
+        border: 1px solid var(--border-color);
+        color: var(--text-secondary);
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .open-tab-btn:hover {
+        background: var(--surface-secondary);
+        color: var(--text-primary);
+    }
+
+    /* Console toggle in header */
+    .console-toggle-btn {
+        padding: 0.5rem 0.75rem;
+        background: transparent;
+        border: 1px solid var(--border-color);
+        color: var(--text-secondary);
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s;
+        position: relative;
+    }
+
+    .console-toggle-btn:hover {
+        background: var(--surface-secondary);
+        color: var(--text-primary);
+    }
+
+    .console-toggle-btn.has-errors {
+        border-color: #ef4444;
+        color: #ef4444;
+    }
+
+    .console-badge {
+        position: absolute;
+        top: -4px;
+        right: -4px;
+        background: #ef4444;
+        color: white;
+        font-size: 0.65rem;
+        padding: 0.1rem 0.35rem;
+        border-radius: 10px;
+        min-width: 16px;
+        text-align: center;
+    }
+
+    /* Iframe container */
+    .preview-iframe-container {
+        flex: 1;
+        overflow: hidden;
+        background: #1a1a1a;
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        padding: 0;
+    }
+
+    .iframe-wrapper {
+        height: 100%;
+        background: white;
+        transition: all 0.3s ease;
+        overflow: hidden;
+    }
+
+    .iframe-wrapper.desktop-view {
+        width: 100%;
+    }
+
+    .iframe-wrapper.mobile-view {
+        width: 375px;
+        max-height: calc(100% - 40px);
+        box-shadow: 0 0 40px rgba(0,0,0,0.5);
+        border-radius: 24px;
+        margin: 20px 0;
+        position: relative;
+    }
+
+    .iframe-wrapper.mobile-view::before {
+        content: '';
+        position: absolute;
+        top: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 60px;
+        height: 4px;
+        background: #333;
+        border-radius: 2px;
+        z-index: 10;
+    }
+
+    .iframe-wrapper.mobile-view iframe {
+        border-radius: 24px;
+    }
+
+    .preview-iframe {
+        width: 100%;
+        height: 100%;
+        border: none;
+        background: white;
+    }
+
+    .iframe-placeholder {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: var(--text-secondary);
+        text-align: center;
+        padding: 2rem;
+    }
+
+    .iframe-placeholder i {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        opacity: 0.5;
+    }
+
+    .iframe-placeholder p {
+        margin-bottom: 1rem;
+    }
+
+    .iframe-placeholder button {
+        padding: 0.75rem 1.5rem;
+        background: var(--accent-purple, #8B5CF6);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 500;
+        transition: all 0.2s;
+    }
+
+    .iframe-placeholder button:hover {
+        background: var(--accent-purple-hover, #7C3AED);
+    }
+
+    /* Console panel */
+    .preview-console-panel {
+        height: 200px;
+        min-height: 40px;
+        max-height: 50vh;
+        background: var(--surface-primary, #0d0d0d);
+        border-top: 1px solid var(--border-color, #333);
+        display: flex;
+        flex-direction: column;
+        transition: height 0.3s ease;
+        flex-shrink: 0;
+    }
+
+    .preview-console-panel.collapsed {
+        height: 40px;
+        min-height: 40px;
+    }
+
+    .console-resize-handle {
+        height: 4px;
+        background: transparent;
+        cursor: ns-resize;
+        transition: background 0.2s;
+    }
+
+    .console-resize-handle:hover {
+        background: var(--accent-purple);
+    }
+
+    .console-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.5rem 1rem;
+        border-bottom: 1px solid var(--border-color);
+        background: var(--surface-secondary);
+        flex-shrink: 0;
+    }
+
+    .console-title {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-weight: 500;
+        font-size: 0.875rem;
+    }
+
+    .console-title i {
+        color: var(--accent-purple);
+    }
+
+    .log-count {
+        color: var(--text-secondary);
+        font-size: 0.75rem;
+    }
+
+    .console-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .console-actions button {
+        padding: 0.35rem 0.6rem;
+        background: transparent;
+        border: 1px solid var(--border-color);
+        color: var(--text-secondary);
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.75rem;
+        transition: all 0.2s;
+    }
+
+    .console-actions button:hover:not(:disabled) {
+        background: var(--surface-primary);
+        color: var(--text-primary);
+    }
+
+    .console-actions button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .console-actions .btn-create-ticket {
+        background: var(--accent-purple);
+        border-color: var(--accent-purple);
+        color: white;
+    }
+
+    .console-actions .btn-create-ticket:hover:not(:disabled) {
+        background: var(--accent-purple-hover, #7C3AED);
+    }
+
+    .console-logs {
+        flex: 1;
+        overflow-y: auto;
+        padding: 0.5rem;
+        font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+        font-size: 0.75rem;
+        line-height: 1.4;
+    }
+
+    .console-placeholder {
+        color: var(--text-secondary);
+        font-style: italic;
+        padding: 1rem;
+        text-align: center;
+    }
+
+    .console-entry {
+        padding: 0.25rem 0.5rem;
+        border-radius: 3px;
+        margin-bottom: 2px;
+        display: flex;
+        gap: 0.5rem;
+        align-items: flex-start;
+    }
+
+    .console-entry:hover {
+        background: rgba(255, 255, 255, 0.03);
+    }
+
+    .console-entry.console-error {
+        background: rgba(239, 68, 68, 0.1);
+    }
+
+    .console-entry.console-warn {
+        background: rgba(245, 158, 11, 0.1);
+    }
+
+    .console-timestamp {
+        color: var(--text-secondary);
+        opacity: 0.6;
+        flex-shrink: 0;
+        font-size: 0.7rem;
+    }
+
+    .console-type {
+        flex-shrink: 0;
+        font-weight: 600;
+        font-size: 0.7rem;
+    }
+
+    .console-message {
+        flex: 1;
+        word-break: break-word;
+        white-space: pre-wrap;
+    }
+
+    /* Console selection highlighting */
+    .console-logs ::selection {
+        background: var(--accent-purple);
+        color: white;
+    }
+
+    /* Create ticket modal */
+    .modal-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.7);
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+    }
+
+    .modal-overlay.active {
+        display: flex;
+    }
+
+    .modal-content {
+        background: var(--surface-secondary, #1a1a1a);
+        border-radius: 12px;
+        width: 90%;
+        max-width: 500px;
+        max-height: 80vh;
+        overflow-y: auto;
+        border: 1px solid var(--border-color);
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .modal-header h3 {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 1rem;
+        font-weight: 600;
+        margin: 0;
+    }
+
+    .modal-header h3 i {
+        color: var(--accent-purple);
+    }
+
+    .modal-close-btn {
+        background: transparent;
+        border: none;
+        color: var(--text-secondary);
+        cursor: pointer;
+        padding: 0.5rem;
+        border-radius: 4px;
+        transition: all 0.2s;
+    }
+
+    .modal-close-btn:hover {
+        background: var(--surface-primary);
+        color: var(--text-primary);
+    }
+
+    .modal-body {
+        padding: 1.25rem;
+    }
+
+    .form-group {
+        margin-bottom: 1rem;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: 500;
+        font-size: 0.875rem;
+    }
+
+    .form-group input,
+    .form-group textarea {
+        width: 100%;
+        background: var(--surface-primary);
+        border: 1px solid var(--border-color);
+        color: var(--text-primary);
+        padding: 0.75rem;
+        border-radius: 6px;
+        font-size: 0.875rem;
+        font-family: inherit;
+    }
+
+    .form-group input:focus,
+    .form-group textarea:focus {
+        outline: none;
+        border-color: var(--accent-purple);
+    }
+
+    .form-group textarea {
+        min-height: 150px;
+        resize: vertical;
+    }
+
+    .modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.75rem;
+        padding: 1rem 1.25rem;
+        border-top: 1px solid var(--border-color);
+    }
+
+    .btn-secondary {
+        padding: 0.6rem 1rem;
+        background: transparent;
+        border: 1px solid var(--border-color);
+        color: var(--text-secondary);
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 500;
+        transition: all 0.2s;
+    }
+
+    .btn-secondary:hover {
+        background: var(--surface-primary);
+        color: var(--text-primary);
+    }
+
+    .btn-primary {
+        padding: 0.6rem 1rem;
+        background: var(--accent-purple, #8B5CF6);
+        border: none;
+        color: white;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 500;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .btn-primary:hover {
+        background: var(--accent-purple-hover, #7C3AED);
+    }
+
+    /* Notification toast */
+    .notification-toast {
+        position: fixed;
+        bottom: 2rem;
+        right: 2rem;
+        padding: 0.75rem 1.25rem;
+        border-radius: 8px;
+        font-size: 0.875rem;
+        font-weight: 500;
+        z-index: 2000;
+        animation: slideInUp 0.3s ease;
+    }
+
+    .notification-toast.success {
+        background: #22c55e;
+        color: white;
+    }
+
+    .notification-toast.error {
+        background: #ef4444;
+        color: white;
+    }
+
+    @keyframes slideInUp {
+        from {
+            transform: translateY(20px);
+            opacity: 0;
+        }
+        to {
+            transform: translateY(0);
+            opacity: 1;
+        }
+    }
+
+    /* Screenshot capture overlay */
+    .screenshot-overlay {
+        display: none;
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.3);
+        cursor: crosshair;
+        z-index: 100;
+    }
+
+    .screenshot-overlay.active {
+        display: block;
+    }
+
+    .screenshot-selection {
+        position: absolute;
+        border: 2px dashed var(--accent-purple);
+        background: rgba(139, 92, 246, 0.1);
+        pointer-events: none;
+    }
+
+    .screenshot-hint {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: var(--surface-secondary);
+        color: var(--text-primary);
+        padding: 1rem 1.5rem;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        text-align: center;
+        pointer-events: none;
+    }
+
+    .screenshot-hint i {
+        display: block;
+        font-size: 1.5rem;
+        margin-bottom: 0.5rem;
+        color: var(--accent-purple);
+    }
+
+    /* Screenshot modal */
+    .screenshot-preview-container {
+        max-height: 300px;
+        overflow: auto;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        margin-bottom: 1rem;
+        background: #000;
+    }
+
+    .screenshot-preview-container img {
+        max-width: 100%;
+        display: block;
+    }
+
+    .screenshot-actions {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+    }
+
+    .screenshot-actions button {
+        padding: 0.4rem 0.8rem;
+        font-size: 0.75rem;
+        background: var(--surface-primary);
+        border: 1px solid var(--border-color);
+        color: var(--text-secondary);
+        border-radius: 4px;
+        cursor: pointer;
+    }
+
+    .screenshot-actions button:hover {
+        background: var(--surface-secondary);
+        color: var(--text-primary);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+{% csrf_token %}
+<div class="preview-page-container">
+    <!-- Preview Header -->
+    <div class="preview-header">
+        <!-- Server Status -->
+        <div class="server-status">
+            <span class="status-dot" id="serverStatusDot"></span>
+            <span class="status-text" id="serverStatusText">Checking...</span>
+        </div>
+
+        <!-- URL Bar -->
+        <div class="url-bar">
+            <input type="text" id="previewUrlInput" placeholder="Enter URL or start server..." onkeydown="handleUrlKeydown(event)">
+            <button onclick="loadManualUrl()" title="Go" id="goBtn">
+                <i class="fas fa-arrow-right"></i>
+            </button>
+            <button onclick="reloadPreview()" title="Reload" id="reloadBtn" disabled>
+                <i class="fas fa-redo"></i>
+            </button>
+        </div>
+
+        <!-- Viewport Toggle -->
+        <div class="viewport-toggle">
+            <button id="desktopViewBtn" class="active" onclick="setViewport('desktop')" title="Desktop View">
+                <i class="fas fa-desktop"></i>
+            </button>
+            <button id="mobileViewBtn" onclick="setViewport('mobile')" title="Mobile View">
+                <i class="fas fa-mobile-alt"></i>
+            </button>
+        </div>
+
+        <!-- Server Controls -->
+        <div class="server-controls">
+            <button class="btn-start" onclick="startServer()" title="Start Server" id="startServerBtn">
+                <i class="fas fa-play"></i>
+            </button>
+            <button class="btn-stop" onclick="stopServer()" title="Stop Server" id="stopServerBtn" disabled>
+                <i class="fas fa-stop"></i>
+            </button>
+            <button class="btn-restart" onclick="restartServer()" title="Restart Server" id="restartServerBtn" disabled>
+                <i class="fas fa-sync-alt"></i>
+            </button>
+        </div>
+
+        <!-- Screenshot Capture -->
+        <button class="console-toggle-btn" onclick="startScreenshotCapture()" title="Capture Screenshot" id="screenshotBtn">
+            <i class="fas fa-camera"></i>
+        </button>
+
+        <!-- Console Toggle -->
+        <button class="console-toggle-btn" onclick="toggleConsole()" title="Toggle Console" id="consoleToggleBtn">
+            <i class="fas fa-terminal"></i>
+            <span class="console-badge" id="consoleBadge" style="display: none;">0</span>
+        </button>
+
+        <!-- Open in New Tab -->
+        <button class="open-tab-btn" onclick="openInNewTab()" title="Open in New Tab" id="openTabBtn" disabled>
+            <i class="fas fa-external-link-alt"></i>
+        </button>
+    </div>
+
+    <!-- Preview Iframe Container -->
+    <div class="preview-iframe-container" id="iframeContainer" style="position: relative;">
+        <!-- Screenshot Overlay -->
+        <div class="screenshot-overlay" id="screenshotOverlay">
+            <div class="screenshot-hint" id="screenshotHint">
+                <i class="fas fa-crop-alt"></i>
+                Drag to select area<br>
+                <small>Press ESC to cancel</small>
+            </div>
+            <div class="screenshot-selection" id="screenshotSelection"></div>
+        </div>
+        <div class="iframe-wrapper desktop-view" id="iframeWrapper">
+            <div class="iframe-placeholder" id="iframePlaceholder">
+                {% if workspace %}
+                <i class="fas fa-server"></i>
+                <p>Workspace Ready</p>
+                <p style="font-size: 0.875rem; opacity: 0.7;">Start the dev server to preview your application</p>
+                <button onclick="startServer()">
+                    <i class="fas fa-play"></i> Start Server
+                </button>
+                {% else %}
+                <i class="fas fa-exclamation-triangle" style="color: #f59e0b;"></i>
+                <p>No Workspace Found</p>
+                <p style="font-size: 0.875rem; opacity: 0.7;">Run a ticket build first to set up the project environment</p>
+                <a href="{% url 'projects:project_tickets_list' project_id=project.project_id %}" style="padding: 0.75rem 1.5rem; background: var(--accent-purple, #8B5CF6); color: white; border: none; border-radius: 8px; text-decoration: none; font-weight: 500;">
+                    <i class="fas fa-tasks"></i> Go to Tickets
+                </a>
+                {% endif %}
+            </div>
+            <iframe
+                id="previewIframe"
+                class="preview-iframe"
+                sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-top-navigation allow-top-navigation-by-user-activation"
+                style="display: none;"
+            ></iframe>
+        </div>
+    </div>
+
+    <!-- Console Panel -->
+    <div class="preview-console-panel" id="consolePanel">
+        <div class="console-resize-handle" id="consoleResizeHandle"></div>
+        <div class="console-header">
+            <div class="console-title">
+                <i class="fas fa-terminal"></i>
+                <span>Console</span>
+                <span class="log-count" id="logCount">(0)</span>
+            </div>
+            <div class="console-actions">
+                <button onclick="clearConsole()" title="Clear Console">
+                    <i class="fas fa-trash"></i> Clear
+                </button>
+                <button class="btn-create-ticket" onclick="openCreateTicketModal()" title="Create Ticket from Selected Text" id="createTicketBtn" disabled>
+                    <i class="fas fa-ticket-alt"></i> Create Ticket
+                </button>
+                <button onclick="toggleConsole()" title="Collapse Console">
+                    <i class="fas fa-chevron-down" id="consoleToggleIcon"></i>
+                </button>
+            </div>
+        </div>
+        <div class="console-logs" id="consoleLogs">
+            <div class="console-placeholder">Console logs will appear here when the app runs...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Ticket Modal -->
+<div class="modal-overlay" id="consoleTicketModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3><i class="fas fa-ticket-alt"></i> Create Ticket from Console</h3>
+            <button class="modal-close-btn" onclick="closeCreateTicketModal()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <form id="consoleTicketForm" onsubmit="handleCreateTicket(event)">
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="ticketName">Ticket Name</label>
+                    <input type="text" id="ticketName" name="name" required placeholder="Brief description of the issue">
+                </div>
+                <div class="form-group">
+                    <label for="ticketDescription">Description</label>
+                    <textarea id="ticketDescription" name="description" required placeholder="Detailed description..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" onclick="closeCreateTicketModal()">Cancel</button>
+                <button type="submit" class="btn-primary">
+                    <i class="fas fa-plus"></i> Create Ticket
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Screenshot Ticket Modal -->
+<div class="modal-overlay" id="screenshotTicketModal">
+    <div class="modal-content" style="max-width: 600px;">
+        <div class="modal-header">
+            <h3><i class="fas fa-camera"></i> Create Ticket from Screenshot</h3>
+            <button class="modal-close-btn" onclick="closeScreenshotModal()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <form id="screenshotTicketForm" onsubmit="handleCreateScreenshotTicket(event)">
+            <div class="modal-body">
+                <div class="screenshot-preview-container">
+                    <img id="screenshotPreviewImg" src="" alt="Screenshot preview">
+                </div>
+                <div class="screenshot-actions">
+                    <button type="button" onclick="retakeScreenshot()">
+                        <i class="fas fa-redo"></i> Retake
+                    </button>
+                    <button type="button" onclick="downloadScreenshot()">
+                        <i class="fas fa-download"></i> Download
+                    </button>
+                </div>
+                <div class="form-group">
+                    <label for="screenshotTicketName">Ticket Name</label>
+                    <input type="text" id="screenshotTicketName" name="name" required placeholder="Brief description of the issue">
+                </div>
+                <div class="form-group">
+                    <label for="screenshotTicketDescription">Comments</label>
+                    <textarea id="screenshotTicketDescription" name="description" placeholder="Add your comments about this issue..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" onclick="closeScreenshotModal()">Cancel</button>
+                <button type="submit" class="btn-primary">
+                    <i class="fas fa-plus"></i> Create Ticket
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Configuration
+    const projectId = '{{ project.project_id }}';
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    const serverConfigs = {{ server_configs|safe }};
+    const workspace = {{ workspace_json|safe }};
+
+    // State
+    let isServerRunning = false;
+    let serverStartedManually = false;  // Track if we started the server from this page
+    let currentPreviewUrl = workspace ? workspace.preview_url : '';
+    let consoleLogs = [];
+    let consoleExpanded = true;
+    let currentViewport = 'desktop';
+    let errorCount = 0;
+    let selectedConsoleText = '';
+
+    // DOM Elements
+    const iframe = document.getElementById('previewIframe');
+    const iframePlaceholder = document.getElementById('iframePlaceholder');
+    const urlInput = document.getElementById('previewUrlInput');
+    const serverStatusDot = document.getElementById('serverStatusDot');
+    const serverStatusText = document.getElementById('serverStatusText');
+    const consoleLogs_el = document.getElementById('consoleLogs');
+    const logCountEl = document.getElementById('logCount');
+    const consoleBadge = document.getElementById('consoleBadge');
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+        // Check if workspace exists
+        if (!workspace) {
+            // Disable server controls when no workspace
+            document.getElementById('startServerBtn').disabled = true;
+            document.getElementById('stopServerBtn').disabled = true;
+            document.getElementById('restartServerBtn').disabled = true;
+            serverStatusDot.className = 'status-dot stopped';
+            serverStatusText.textContent = 'No Workspace';
+        } else {
+            // If workspace has preview URL, try to load it directly
+            if (workspace.preview_url) {
+                currentPreviewUrl = workspace.preview_url;
+                urlInput.value = workspace.preview_url;
+
+                // Try to load the preview directly (server might already be running)
+                loadPreview(workspace.preview_url);
+
+                // Assume it might be running, enable controls
+                document.getElementById('stopServerBtn').disabled = false;
+                document.getElementById('restartServerBtn').disabled = false;
+                document.getElementById('reloadBtn').disabled = false;
+                document.getElementById('openTabBtn').disabled = false;
+                serverStatusDot.className = 'status-dot loading';
+                serverStatusText.textContent = 'Connecting...';
+            }
+        }
+
+        setupConsoleCapture();
+        setupTextSelection();
+        setupConsoleResize();
+    });
+
+    // Server Control Functions
+    async function checkServerStatus() {
+        if (!workspace) {
+            // No workspace - show stopped status
+            updateServerUI(false);
+            return;
+        }
+
+        // If we started the server manually from this page, don't let the check reset the UI
+        if (serverStartedManually && isServerRunning) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/projects/${projectId}/api/check-servers/`);
+            const data = await response.json();
+
+            if (data.status === 'all_running' || data.status === 'partial_running' || data.status === 'restarted') {
+                isServerRunning = true;
+                updateServerUI(true, data.servers);
+
+                // Find the frontend server URL - prefer workspace URL
+                if (workspace.preview_url && !currentPreviewUrl) {
+                    currentPreviewUrl = workspace.preview_url;
+                    loadPreview(currentPreviewUrl);
+                } else if (data.servers && data.servers.length > 0) {
+                    const frontendServer = data.servers.find(s => s.type === 'frontend' || s.type === 'application') || data.servers[0];
+                    if (frontendServer && frontendServer.url) {
+                        if (currentPreviewUrl !== frontendServer.url) {
+                            currentPreviewUrl = frontendServer.url;
+                            loadPreview(currentPreviewUrl);
+                        }
+                    }
+                }
+            } else {
+                // Server not running per API - but don't reset if we started manually
+                if (!serverStartedManually) {
+                    isServerRunning = false;
+                    updateServerUI(false);
+                    serverStatusText.textContent = 'Ready';
+                }
+            }
+        } catch (error) {
+            console.error('Error checking server status:', error);
+            if (!serverStartedManually) {
+                isServerRunning = false;
+                updateServerUI(false);
+                if (workspace) {
+                    serverStatusText.textContent = 'Ready';
+                }
+            }
+        }
+    }
+
+    function updateServerUI(running, servers = []) {
+        serverStatusDot.className = `status-dot ${running ? 'running' : 'stopped'}`;
+        serverStatusText.textContent = running ? 'Running' : 'Stopped';
+
+        document.getElementById('startServerBtn').disabled = running;
+        document.getElementById('stopServerBtn').disabled = !running;
+        document.getElementById('restartServerBtn').disabled = !running;
+        document.getElementById('reloadBtn').disabled = !running;
+        document.getElementById('openTabBtn').disabled = !running;
+
+        if (!running) {
+            iframe.style.display = 'none';
+            iframePlaceholder.style.display = 'flex';
+            urlInput.value = '';
+        }
+    }
+
+    async function startServer() {
+        if (!workspace) {
+            showNotification('No workspace available. Run a ticket build first.', 'error');
+            return;
+        }
+
+        setServerLoading(true);
+
+        try {
+            // Use the start-dev-server endpoint that runs on Magpie workspace
+            const response = await fetch(`/projects/${projectId}/api/start-dev-server/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({ port: 3000 })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                isServerRunning = true;
+                serverStartedManually = true;  // Mark that we started from this page
+                currentPreviewUrl = data.url;
+                loadPreview(data.url);
+                updateServerUI(true);
+                showNotification('Server started successfully', 'success');
+
+                // Log the startup output to console
+                if (data.log) {
+                    addConsoleEntry('info', ['Server startup log:', data.log]);
+                }
+            } else {
+                showNotification(data.error || 'Failed to start server', 'error');
+            }
+        } catch (error) {
+            console.error('Error starting server:', error);
+            showNotification('Error starting server', 'error');
+        } finally {
+            setServerLoading(false);
+        }
+    }
+
+    async function stopServer() {
+        if (!workspace) {
+            showNotification('No workspace available.', 'error');
+            return;
+        }
+
+        setServerLoading(true);
+
+        try {
+            const response = await fetch(`/projects/${projectId}/api/stop-dev-server/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({ port: 3000 })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                isServerRunning = false;
+                serverStartedManually = false;  // Reset the flag
+                updateServerUI(false);
+                showNotification('Server stopped', 'success');
+            } else {
+                showNotification(data.error || 'Failed to stop server', 'error');
+            }
+        } catch (error) {
+            console.error('Error stopping server:', error);
+            showNotification('Error stopping server', 'error');
+        } finally {
+            setServerLoading(false);
+        }
+    }
+
+    // Manual URL entry
+    function handleUrlKeydown(event) {
+        if (event.key === 'Enter') {
+            loadManualUrl();
+        }
+    }
+
+    function loadManualUrl() {
+        let url = urlInput.value.trim();
+        if (!url) return;
+
+        // Add protocol if missing
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+            url = 'http://' + url;
+            urlInput.value = url;
+        }
+
+        loadPreview(url);
+        document.getElementById('reloadBtn').disabled = false;
+        document.getElementById('openTabBtn').disabled = false;
+    }
+
+    async function restartServer() {
+        if (!workspace) {
+            showNotification('No workspace available.', 'error');
+            return;
+        }
+
+        setServerLoading(true);
+        serverStatusDot.className = 'status-dot loading';
+        serverStatusText.textContent = 'Restarting...';
+
+        try {
+            // Stop first
+            await fetch(`/projects/${projectId}/api/stop-dev-server/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({ port: 3000 })
+            });
+
+            // Wait a moment
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
+            // Start again
+            const response = await fetch(`/projects/${projectId}/api/start-dev-server/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({ port: 3000 })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                isServerRunning = true;
+                serverStartedManually = true;  // Mark that we started from this page
+                currentPreviewUrl = data.url;
+                loadPreview(data.url);
+                updateServerUI(true);
+                showNotification('Server restarted', 'success');
+            } else {
+                showNotification(data.error || 'Failed to restart server', 'error');
+            }
+        } catch (error) {
+            console.error('Error restarting server:', error);
+            showNotification('Error restarting server', 'error');
+        } finally {
+            setServerLoading(false);
+        }
+    }
+
+    function setServerLoading(loading) {
+        const buttons = document.querySelectorAll('.server-controls button');
+        buttons.forEach(btn => btn.disabled = loading);
+
+        if (loading) {
+            serverStatusDot.className = 'status-dot loading';
+            serverStatusText.textContent = 'Working...';
+        }
+    }
+
+    // Preview Functions
+    function loadPreview(url) {
+        if (!url) return;
+
+        currentPreviewUrl = url;
+        urlInput.value = url;
+
+        iframe.src = url;
+        iframe.style.display = 'block';
+        iframePlaceholder.style.display = 'none';
+
+        // Clear console on new load
+        clearConsole();
+
+        // Setup console capture after iframe loads
+        iframe.onload = () => {
+            // Server is responding - update status
+            isServerRunning = true;
+            serverStartedManually = true;  // Prevent status check from resetting
+            serverStatusDot.className = 'status-dot running';
+            serverStatusText.textContent = 'Running';
+            document.getElementById('startServerBtn').disabled = true;
+            document.getElementById('stopServerBtn').disabled = false;
+            document.getElementById('restartServerBtn').disabled = false;
+
+            setupIframeConsoleCapture();
+        };
+
+        iframe.onerror = () => {
+            // Server not responding
+            serverStatusDot.className = 'status-dot stopped';
+            serverStatusText.textContent = 'Not Running';
+            document.getElementById('startServerBtn').disabled = false;
+        };
+    }
+
+    function reloadPreview() {
+        if (iframe.src && iframe.src !== 'about:blank') {
+            iframe.src = iframe.src;
+        }
+    }
+
+    function openInNewTab() {
+        if (currentPreviewUrl) {
+            window.open(currentPreviewUrl, '_blank');
+        }
+    }
+
+    // Viewport Functions
+    function setViewport(mode) {
+        currentViewport = mode;
+        const wrapper = document.getElementById('iframeWrapper');
+        const desktopBtn = document.getElementById('desktopViewBtn');
+        const mobileBtn = document.getElementById('mobileViewBtn');
+
+        if (mode === 'mobile') {
+            wrapper.className = 'iframe-wrapper mobile-view';
+            mobileBtn.classList.add('active');
+            desktopBtn.classList.remove('active');
+        } else {
+            wrapper.className = 'iframe-wrapper desktop-view';
+            desktopBtn.classList.add('active');
+            mobileBtn.classList.remove('active');
+        }
+    }
+
+    // Console Functions
+    function setupConsoleCapture() {
+        // Initial setup - will be enhanced when iframe loads
+    }
+
+    function setupIframeConsoleCapture() {
+        try {
+            const iframeWindow = iframe.contentWindow;
+
+            if (!iframeWindow) return;
+
+            // Store original methods
+            const originalLog = iframeWindow.console.log;
+            const originalError = iframeWindow.console.error;
+            const originalWarn = iframeWindow.console.warn;
+            const originalInfo = iframeWindow.console.info;
+
+            // Override console methods
+            iframeWindow.console.log = (...args) => {
+                originalLog.apply(iframeWindow.console, args);
+                addConsoleEntry('log', args);
+            };
+
+            iframeWindow.console.error = (...args) => {
+                originalError.apply(iframeWindow.console, args);
+                addConsoleEntry('error', args);
+            };
+
+            iframeWindow.console.warn = (...args) => {
+                originalWarn.apply(iframeWindow.console, args);
+                addConsoleEntry('warn', args);
+            };
+
+            iframeWindow.console.info = (...args) => {
+                originalInfo.apply(iframeWindow.console, args);
+                addConsoleEntry('info', args);
+            };
+
+            // Capture uncaught errors
+            iframeWindow.onerror = (msg, url, line, col, error) => {
+                addConsoleEntry('error', [`Uncaught Error: ${msg} at ${url}:${line}:${col}`]);
+                return false;
+            };
+
+            // Capture unhandled promise rejections
+            iframeWindow.onunhandledrejection = (event) => {
+                addConsoleEntry('error', [`Unhandled Promise Rejection: ${event.reason}`]);
+            };
+
+        } catch (e) {
+            // Cross-origin - show warning
+            addConsoleEntry('warn', ['Console capture unavailable for cross-origin iframe']);
+        }
+    }
+
+    function addConsoleEntry(type, args) {
+        const timestamp = new Date().toLocaleTimeString();
+        const message = args.map(arg => {
+            if (typeof arg === 'object') {
+                try {
+                    return JSON.stringify(arg, null, 2);
+                } catch {
+                    return String(arg);
+                }
+            }
+            return String(arg);
+        }).join(' ');
+
+        const entry = { type, message, timestamp };
+        consoleLogs.push(entry);
+
+        if (type === 'error') {
+            errorCount++;
+            updateErrorBadge();
+        }
+
+        renderConsoleEntry(entry);
+        updateLogCount();
+    }
+
+    function renderConsoleEntry(entry) {
+        const placeholder = consoleLogs_el.querySelector('.console-placeholder');
+        if (placeholder) placeholder.remove();
+
+        const colors = {
+            log: 'var(--text-secondary)',
+            error: '#ef4444',
+            warn: '#f59e0b',
+            info: '#3b82f6'
+        };
+
+        const div = document.createElement('div');
+        div.className = `console-entry console-${entry.type}`;
+        div.innerHTML = `
+            <span class="console-timestamp">${entry.timestamp}</span>
+            <span class="console-type" style="color: ${colors[entry.type]}">[${entry.type.toUpperCase()}]</span>
+            <span class="console-message" style="color: ${colors[entry.type]}">${escapeHtml(entry.message)}</span>
+        `;
+
+        consoleLogs_el.appendChild(div);
+        consoleLogs_el.scrollTop = consoleLogs_el.scrollHeight;
+    }
+
+    function clearConsole() {
+        consoleLogs = [];
+        errorCount = 0;
+        consoleLogs_el.innerHTML = '<div class="console-placeholder">Console logs will appear here when the app runs...</div>';
+        updateLogCount();
+        updateErrorBadge();
+    }
+
+    function updateLogCount() {
+        logCountEl.textContent = `(${consoleLogs.length})`;
+    }
+
+    function updateErrorBadge() {
+        if (errorCount > 0) {
+            consoleBadge.textContent = errorCount > 99 ? '99+' : errorCount;
+            consoleBadge.style.display = 'block';
+            document.getElementById('consoleToggleBtn').classList.add('has-errors');
+        } else {
+            consoleBadge.style.display = 'none';
+            document.getElementById('consoleToggleBtn').classList.remove('has-errors');
+        }
+    }
+
+    function toggleConsole() {
+        const panel = document.getElementById('consolePanel');
+        const icon = document.getElementById('consoleToggleIcon');
+
+        consoleExpanded = !consoleExpanded;
+
+        if (consoleExpanded) {
+            panel.classList.remove('collapsed');
+            icon.className = 'fas fa-chevron-down';
+        } else {
+            panel.classList.add('collapsed');
+            icon.className = 'fas fa-chevron-up';
+        }
+    }
+
+    // Text Selection for Ticket Creation
+    function setupTextSelection() {
+        consoleLogs_el.addEventListener('mouseup', () => {
+            const selection = window.getSelection();
+            selectedConsoleText = selection.toString().trim();
+
+            const createBtn = document.getElementById('createTicketBtn');
+            createBtn.disabled = selectedConsoleText.length === 0;
+        });
+    }
+
+    // Ticket Creation Functions
+    function openCreateTicketModal() {
+        if (!selectedConsoleText) return;
+
+        // Pre-fill the form
+        const truncatedText = selectedConsoleText.substring(0, 50);
+        document.getElementById('ticketName').value = `Console Error: ${truncatedText}${selectedConsoleText.length > 50 ? '...' : ''}`;
+        document.getElementById('ticketDescription').value =
+`**Console Output:**
+\`\`\`
+${selectedConsoleText}
+\`\`\`
+
+**Steps to Reproduce:**
+1.
+
+**Expected Behavior:**
+
+**Actual Behavior:**
+The above error appeared in the console.`;
+
+        document.getElementById('consoleTicketModal').classList.add('active');
+    }
+
+    function closeCreateTicketModal() {
+        document.getElementById('consoleTicketModal').classList.remove('active');
+    }
+
+    async function handleCreateTicket(event) {
+        event.preventDefault();
+
+        const name = document.getElementById('ticketName').value.trim();
+        const description = document.getElementById('ticketDescription').value.trim();
+
+        if (!name || !description) {
+            showNotification('Please fill in all fields', 'error');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/projects/${projectId}/api/checklist/create/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({ name, description })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                closeCreateTicketModal();
+                showNotification('Ticket created successfully!', 'success');
+
+                // Clear selection
+                window.getSelection().removeAllRanges();
+                selectedConsoleText = '';
+                document.getElementById('createTicketBtn').disabled = true;
+            } else {
+                showNotification(data.error || 'Failed to create ticket', 'error');
+            }
+        } catch (error) {
+            console.error('Error creating ticket:', error);
+            showNotification('Error creating ticket', 'error');
+        }
+    }
+
+    // Console Resize
+    function setupConsoleResize() {
+        const handle = document.getElementById('consoleResizeHandle');
+        const panel = document.getElementById('consolePanel');
+        let isResizing = false;
+        let startY, startHeight;
+
+        handle.addEventListener('mousedown', (e) => {
+            isResizing = true;
+            startY = e.clientY;
+            startHeight = panel.offsetHeight;
+            document.body.style.cursor = 'ns-resize';
+            document.body.style.userSelect = 'none';
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isResizing) return;
+
+            const diff = startY - e.clientY;
+            const newHeight = Math.max(100, Math.min(window.innerHeight * 0.5, startHeight + diff));
+            panel.style.height = newHeight + 'px';
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isResizing) {
+                isResizing = false;
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+            }
+        });
+    }
+
+    // Utility Functions
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function showNotification(message, type = 'success') {
+        const existing = document.querySelector('.notification-toast');
+        if (existing) existing.remove();
+
+        const toast = document.createElement('div');
+        toast.className = `notification-toast ${type}`;
+        toast.textContent = message;
+        document.body.appendChild(toast);
+
+        setTimeout(() => toast.remove(), 3000);
+    }
+
+    // Close modal on overlay click
+    document.getElementById('consoleTicketModal').addEventListener('click', (e) => {
+        if (e.target.classList.contains('modal-overlay')) {
+            closeCreateTicketModal();
+        }
+    });
+
+    // Close modal on Escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            closeCreateTicketModal();
+            closeScreenshotModal();
+            cancelScreenshotCapture();
+        }
+    });
+
+    // ==================== SCREENSHOT CAPTURE ====================
+
+    let screenshotDataUrl = null;
+    let isCapturing = false;
+    let captureStartX = 0, captureStartY = 0;
+    let mediaStream = null;
+
+    const screenshotOverlay = document.getElementById('screenshotOverlay');
+    const screenshotSelection = document.getElementById('screenshotSelection');
+    const screenshotHint = document.getElementById('screenshotHint');
+
+    async function startScreenshotCapture() {
+        try {
+            // Request screen capture permission
+            mediaStream = await navigator.mediaDevices.getDisplayMedia({
+                video: { mediaSource: 'screen' },
+                preferCurrentTab: true
+            });
+
+            // Show the selection overlay
+            screenshotOverlay.classList.add('active');
+            screenshotHint.style.display = 'block';
+            screenshotSelection.style.display = 'none';
+
+            showNotification('Drag to select the area you want to capture', 'success');
+        } catch (err) {
+            console.error('Screen capture failed:', err);
+            showNotification('Screen capture cancelled or not supported', 'error');
+        }
+    }
+
+    function cancelScreenshotCapture() {
+        screenshotOverlay.classList.remove('active');
+        screenshotSelection.style.display = 'none';
+        isCapturing = false;
+        if (mediaStream) {
+            mediaStream.getTracks().forEach(track => track.stop());
+            mediaStream = null;
+        }
+    }
+
+    // Mouse events for selection
+    screenshotOverlay.addEventListener('mousedown', (e) => {
+        if (!mediaStream) return;
+
+        isCapturing = true;
+        const rect = screenshotOverlay.getBoundingClientRect();
+        captureStartX = e.clientX - rect.left;
+        captureStartY = e.clientY - rect.top;
+
+        screenshotHint.style.display = 'none';
+        screenshotSelection.style.display = 'block';
+        screenshotSelection.style.left = captureStartX + 'px';
+        screenshotSelection.style.top = captureStartY + 'px';
+        screenshotSelection.style.width = '0';
+        screenshotSelection.style.height = '0';
+    });
+
+    screenshotOverlay.addEventListener('mousemove', (e) => {
+        if (!isCapturing) return;
+
+        const rect = screenshotOverlay.getBoundingClientRect();
+        const currentX = e.clientX - rect.left;
+        const currentY = e.clientY - rect.top;
+
+        const width = currentX - captureStartX;
+        const height = currentY - captureStartY;
+
+        screenshotSelection.style.left = (width < 0 ? currentX : captureStartX) + 'px';
+        screenshotSelection.style.top = (height < 0 ? currentY : captureStartY) + 'px';
+        screenshotSelection.style.width = Math.abs(width) + 'px';
+        screenshotSelection.style.height = Math.abs(height) + 'px';
+    });
+
+    screenshotOverlay.addEventListener('mouseup', async (e) => {
+        if (!isCapturing || !mediaStream) return;
+        isCapturing = false;
+
+        const rect = screenshotOverlay.getBoundingClientRect();
+        const endX = e.clientX - rect.left;
+        const endY = e.clientY - rect.top;
+
+        const selectionRect = {
+            x: Math.min(captureStartX, endX),
+            y: Math.min(captureStartY, endY),
+            width: Math.abs(endX - captureStartX),
+            height: Math.abs(endY - captureStartY)
+        };
+
+        // Minimum selection size
+        if (selectionRect.width < 20 || selectionRect.height < 20) {
+            showNotification('Selection too small. Please drag a larger area.', 'error');
+            screenshotSelection.style.display = 'none';
+            screenshotHint.style.display = 'block';
+            return;
+        }
+
+        // Capture the screenshot
+        await captureScreenshot(selectionRect, rect);
+    });
+
+    async function captureScreenshot(selectionRect, overlayRect) {
+        try {
+            // Create video element to capture frame
+            const video = document.createElement('video');
+            video.srcObject = mediaStream;
+            video.autoplay = true;
+
+            await new Promise(resolve => {
+                video.onloadedmetadata = () => {
+                    video.play();
+                    resolve();
+                };
+            });
+
+            // Wait a frame for video to render
+            await new Promise(resolve => requestAnimationFrame(resolve));
+
+            // Create canvas and draw the video frame
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0);
+
+            // Calculate scale between video and overlay
+            const scaleX = video.videoWidth / window.innerWidth;
+            const scaleY = video.videoHeight / window.innerHeight;
+
+            // Calculate the actual position of the overlay in the video
+            const overlayScreenRect = screenshotOverlay.getBoundingClientRect();
+
+            // Crop to selected area
+            const cropX = (overlayScreenRect.left + selectionRect.x) * scaleX;
+            const cropY = (overlayScreenRect.top + selectionRect.y) * scaleY;
+            const cropWidth = selectionRect.width * scaleX;
+            const cropHeight = selectionRect.height * scaleY;
+
+            // Create cropped canvas
+            const croppedCanvas = document.createElement('canvas');
+            croppedCanvas.width = cropWidth;
+            croppedCanvas.height = cropHeight;
+            const croppedCtx = croppedCanvas.getContext('2d');
+            croppedCtx.drawImage(canvas, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+
+            // Get data URL
+            screenshotDataUrl = croppedCanvas.toDataURL('image/png');
+
+            // Stop media stream
+            mediaStream.getTracks().forEach(track => track.stop());
+            mediaStream = null;
+
+            // Hide overlay and show modal
+            cancelScreenshotCapture();
+            openScreenshotModal();
+
+        } catch (err) {
+            console.error('Error capturing screenshot:', err);
+            showNotification('Failed to capture screenshot', 'error');
+            cancelScreenshotCapture();
+        }
+    }
+
+    function openScreenshotModal() {
+        if (!screenshotDataUrl) return;
+
+        document.getElementById('screenshotPreviewImg').src = screenshotDataUrl;
+        document.getElementById('screenshotTicketName').value = 'UI Issue: ';
+        document.getElementById('screenshotTicketDescription').value = '';
+        document.getElementById('screenshotTicketModal').classList.add('active');
+    }
+
+    function closeScreenshotModal() {
+        document.getElementById('screenshotTicketModal').classList.remove('active');
+    }
+
+    function retakeScreenshot() {
+        closeScreenshotModal();
+        startScreenshotCapture();
+    }
+
+    function downloadScreenshot() {
+        if (!screenshotDataUrl) return;
+
+        const link = document.createElement('a');
+        link.href = screenshotDataUrl;
+        link.download = `screenshot-${Date.now()}.png`;
+        link.click();
+    }
+
+    async function handleCreateScreenshotTicket(event) {
+        event.preventDefault();
+
+        const name = document.getElementById('screenshotTicketName').value.trim();
+        const description = document.getElementById('screenshotTicketDescription').value.trim();
+
+        if (!name) {
+            showNotification('Please enter a ticket name', 'error');
+            return;
+        }
+
+        // Build description with screenshot indicator
+        const fullDescription = `${description}\n\n**Screenshot attached**\n\n![Screenshot](screenshot)`;
+
+        try {
+            // First create the ticket
+            const response = await fetch(`/projects/${projectId}/api/checklist/create/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({
+                    name,
+                    description: fullDescription || 'See attached screenshot'
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success && data.item && data.item.id) {
+                // Now upload the screenshot as attachment
+                const blob = await fetch(screenshotDataUrl).then(r => r.blob());
+                const formData = new FormData();
+                formData.append('file', blob, `screenshot-${Date.now()}.png`);
+
+                await fetch(`/projects/${projectId}/api/tickets/${data.item.id}/attachments/`, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: formData
+                });
+
+                closeScreenshotModal();
+                showNotification('Ticket created with screenshot!', 'success');
+                screenshotDataUrl = null;
+            } else {
+                showNotification(data.error || 'Failed to create ticket', 'error');
+            }
+        } catch (error) {
+            console.error('Error creating ticket:', error);
+            showNotification('Error creating ticket', 'error');
+        }
+    }
+
+    // Close screenshot modal on overlay click
+    document.getElementById('screenshotTicketModal').addEventListener('click', (e) => {
+        if (e.target.classList.contains('modal-overlay')) {
+            closeScreenshotModal();
+        }
+    });
+</script>
+{% endblock %}
