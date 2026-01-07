@@ -235,7 +235,7 @@ class AnthropicProvider(BaseLLMProvider):
                     ]
                 
                 logger.debug(f"Making Claude API call with {len(claude_messages)} messages.")
-                logger.info(f"Claude model: {self.model} - web_search is built-in for Claude Sonnet 4")
+                logger.info(f"Claude model: {self.model} - web_search is built-in")
                 
                 # Variables for this specific API call
                 tool_calls_requested = [] # Stores {id, function_name, function_args_str}

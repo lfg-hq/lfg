@@ -143,10 +143,18 @@ def _format_command_output(stdout: str, stderr: str, limit: int = 6000) -> str:
     return "\n\n".join(parts) if parts else "(no output)"
 
 
-def _run_magpie_ssh(client, job_id: str, command: str, timeout: int = 300, with_node_env: bool = True):
+def _run_magpie_ssh(client, job_id: str, command: str, timeout: int = 300, with_node_env: bool = True, project_id = None):
     env_lines = ["set -e", "cd /workspace"]
     if with_node_env:
         env_lines.extend(MAGPIE_NODE_ENV_LINES)
+
+    # Add project-specific environment variables if project_id provided
+    if project_id:
+        project_env_exports = get_project_env_exports(project_id)
+        if project_env_exports:
+            env_lines.extend(project_env_exports)
+            logger.info(f"[MAGPIE][SSH] Injecting {len(project_env_exports)} project env vars")
+
     wrapped = "\n".join(env_lines + [command])
     logger.info("[MAGPIE][SSH] job_id=%s timeout=%s command=%s", job_id, timeout, command.split('\n')[0][:120])
     print("[MAGPIE][SSH] Job prints", wrapped)
@@ -356,20 +364,76 @@ def validate_function_args(function_args, required_keys=None):
             }
     return None
 
-def execute_local_command(command: str, workspace_path: str) -> tuple[bool, str, str]:
+def get_project_env_exports(project_id) -> list[str]:
+    """
+    Get project environment variables formatted as shell export statements.
+
+    Args:
+        project_id: The project database ID (int) or project_id string
+
+    Returns:
+        List of export statements like ['export KEY=value', ...]
+    """
+    try:
+        from projects.models import ProjectEnvironmentVariable, Project
+
+        project = None
+
+        # Try to convert to int for database id lookup
+        try:
+            int_id = int(project_id)
+            project = Project.objects.filter(id=int_id).first()
+        except (ValueError, TypeError):
+            pass
+
+        # If not found, try by project_id string
+        if not project and project_id:
+            project = Project.objects.filter(project_id=str(project_id)).first()
+
+        if not project:
+            logger.debug(f"[ENV] No project found for project_id={project_id}")
+            return []
+
+        env_vars = ProjectEnvironmentVariable.get_project_env_dict(project)
+        if env_vars:
+            logger.info(f"[ENV] Found {len(env_vars)} env vars for project {project.project_id}")
+        exports = []
+        for key, value in env_vars.items():
+            # Escape single quotes in value for shell safety
+            escaped_value = value.replace("'", "'\\''")
+            exports.append(f"export {key}='{escaped_value}'")
+        return exports
+    except Exception as e:
+        logger.warning(f"[ENV] Failed to get project env vars: {e}", exc_info=True)
+        return []
+
+
+def execute_local_command(command: str, workspace_path: str, project_id: int = None) -> tuple[bool, str, str]:
     """
     Execute a command locally using subprocess.
-    
+
     Args:
         command: The command to execute
         workspace_path: The workspace directory path
-        
+        project_id: Optional project ID to inject environment variables
+
     Returns:
         Tuple of (success, stdout, stderr)
     """
     try:
+        # Get project environment variables if project_id provided
+        env_exports = []
+        if project_id:
+            env_exports = get_project_env_exports(project_id)
+
+        # Prepend env exports to command if any
+        if env_exports:
+            full_command = " && ".join(env_exports + [command])
+        else:
+            full_command = command
+
         result = subprocess.run(
-            command,
+            full_command,
             shell=True,
             cwd=workspace_path,
             capture_output=True,
@@ -2499,6 +2563,7 @@ async def ssh_command_tool(function_args, project_id, conversation_id, ticket_id
             command,
             timeout,
             with_node_env,
+            project_id,
         )
         logger.info(
             "[MAGPIE][SSH COMMAND] workspace=%s exit_code=%s",
@@ -2696,6 +2761,7 @@ async def new_dev_sandbox_tool(function_args, project_id, conversation_id):
             restart_cmd,
             240,
             True,
+            project_id,
         )
         logger.info(
             "[MAGPIE][DEV RESTART] workspace=%s exit_code=%s",
@@ -3490,19 +3556,33 @@ async def run_code_server_tool(function_args, project_id, conversation_id):
             "message_to_agent": "Workspace IPv6 address is not available. Try restarting the workspace."
         }
 
-    # Execute the command via SSH
+    # Execute the command via SSH with environment variables
     try:
         client = get_magpie_client()
+
+        # Build command with project environment variables
+        env_exports = get_project_env_exports(project_id) if project_id else []
+        if env_exports:
+            env_prefix = " && ".join(env_exports)
+            full_command = f"{env_prefix} && {command}"
+            logger.info(f"[RUN_CODE_SERVER] Injecting {len(env_exports)} env vars")
+        else:
+            full_command = command
+
         logger.info(f"Executing command on workspace: {command}")
 
-        # Execute the command in the background
-        result = await sync_to_async(client.run_command)(
-            workspace_id=workspace.workspace_id,
-            command=command,
-            timeout=10  # Short timeout as we're running in background
+        # Execute the command using _run_magpie_ssh for proper env injection
+        result = await asyncio.to_thread(
+            _run_magpie_ssh,
+            client,
+            workspace.job_id,
+            full_command,
+            30,  # Short timeout as server runs in background
+            True,  # with_node_env
+            project_id,
         )
 
-        logger.info(f"Command execution result: {result}")
+        logger.info(f"Command execution result: exit_code={result.get('exit_code')}")
 
     except Exception as exc:
         logger.error(f"Error executing command: {exc}")
@@ -3608,6 +3688,7 @@ async def open_app_in_artifacts_tool(function_args, project_id, conversation_id)
                 start_cmd,
                 120,
                 True,
+                project_id,
             )
             logger.info(
                 "[MAGPIE][START SERVER] workspace=%s exit_code=%s",
@@ -3690,8 +3771,9 @@ async def run_command_locally(command: str, project_id: int | str = None, conver
 
     try:
         # Execute the command locally using subprocess in thread pool
+        # Pass project.id to inject project environment variables
         success, stdout, stderr = await asyncio.get_event_loop().run_in_executor(
-            None, execute_local_command, command, str(workspace_path)
+            None, execute_local_command, command, str(workspace_path), project.id
         )
 
         logger.debug(f"Local Command output: {stdout}")
@@ -3732,15 +3814,19 @@ async def run_command_locally(command: str, project_id: int | str = None, conver
     }
 
 # Updated run_server_locally function
-async def run_server_locally(command: str, project_id: int | str = None, 
-                           conversation_id: int | str = None, 
-                           application_port: int | str = None, 
+async def run_server_locally(command: str, project_id: int | str = None,
+                           conversation_id: int | str = None,
+                           application_port: int | str = None,
                            type: str = None) -> dict:
     """
     Run a server command locally in background.
     """
     logger.debug(f"Local Application port: {application_port}")
     logger.debug(f"Local Type: {type}")
+
+    # Get project for env vars injection
+    project = await get_project(project_id) if project_id else None
+    db_project_id = project.id if project else None
 
     # Create workspace directory if it doesn't exist
     workspace_path = Path.home() / "LFG" / "workspace"
@@ -3784,17 +3870,27 @@ async def run_server_locally(command: str, project_id: int | str = None,
     kill_command = f"lsof -ti:{application_port} | xargs kill -9 2>/dev/null || true"
     success, stdout, stderr = execute_local_command(kill_command, str(workspace_path))
     logger.info(f"Killed existing process on port {application_port}")
-    
+
     # Wait a moment for port to be freed
     await asyncio.sleep(1)
-    
+
     # 3. Run the server command in background using nohup
     # Create a log file for the server
     log_file = workspace_path / f"server_{project_id}_{application_port}.log"
-    
+
+    # Build command with env vars if project has them
+    env_exports = get_project_env_exports(db_project_id) if db_project_id else []
+    if env_exports:
+        # Prepend env exports to the server command
+        env_prefix = " && ".join(env_exports)
+        full_server_command = f"{env_prefix} && {command}"
+        logger.info(f"[SERVER] Injecting {len(env_exports)} env vars for server start")
+    else:
+        full_server_command = command
+
     # Use nohup to run in background and redirect output to log file
-    background_command = f"nohup {command} > {log_file} 2>&1 &"
-    
+    background_command = f"nohup sh -c '{full_server_command}' > {log_file} 2>&1 &"
+
     success, stdout, stderr = execute_local_command(background_command, str(workspace_path))
     
     if not success:

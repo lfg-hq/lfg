@@ -888,6 +888,143 @@ def project_server_configs_api(request, project_id):
     
     return JsonResponse({'server_configs': configs_list})
 
+
+@login_required
+@require_http_methods(["GET", "POST", "DELETE"])
+def project_env_vars_api(request, project_id):
+    """
+    API endpoint for managing project environment variables.
+
+    GET: List all env vars (values masked)
+    POST: Create/update env vars (supports bulk import from .env content)
+    DELETE: Delete specific env var by key
+    """
+    from projects.models import ProjectEnvironmentVariable
+
+    project = get_object_or_404(Project, project_id=project_id)
+
+    # Check permissions - must be owner or admin
+    if project.owner != request.user:
+        member = project.members.filter(user=request.user, status='active').first()
+        if not member or member.role not in ['owner', 'admin']:
+            return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    if request.method == 'GET':
+        # List all env vars with masked values
+        env_vars = []
+        for env_var in ProjectEnvironmentVariable.objects.filter(project=project):
+            env_vars.append({
+                'id': env_var.id,
+                'key': env_var.key,
+                'masked_value': env_var.get_masked_value(),
+                'is_secret': env_var.is_secret,
+                'description': env_var.description,
+                'created_at': env_var.created_at.isoformat(),
+                'updated_at': env_var.updated_at.isoformat(),
+            })
+        return JsonResponse({'success': True, 'env_vars': env_vars})
+
+    elif request.method == 'POST':
+        import json
+        try:
+            data = json.loads(request.body.decode('utf-8'))
+        except:
+            return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+
+        # Check if this is a bulk import (.env content)
+        if 'env_content' in data:
+            content = data['env_content']
+            created, updated = ProjectEnvironmentVariable.bulk_set_from_env_content(
+                project, content, request.user
+            )
+            return JsonResponse({
+                'success': True,
+                'message': f'Created {created} and updated {updated} environment variables',
+                'created': created,
+                'updated': updated
+            })
+
+        # Single variable create/update
+        key = data.get('key', '').strip().upper()
+        value = data.get('value', '')
+        is_secret = data.get('is_secret', True)
+        description = data.get('description', '')
+
+        if not key:
+            return JsonResponse({'success': False, 'error': 'Key is required'}, status=400)
+
+        # Validate key format
+        if not key.replace('_', '').isalnum():
+            return JsonResponse({
+                'success': False,
+                'error': 'Key must contain only letters, numbers, and underscores'
+            }, status=400)
+
+        env_var, created = ProjectEnvironmentVariable.objects.get_or_create(
+            project=project,
+            key=key,
+            defaults={'created_by': request.user}
+        )
+        env_var.set_value(value)
+        env_var.is_secret = is_secret
+        env_var.description = description
+        env_var.save()
+
+        return JsonResponse({
+            'success': True,
+            'message': 'Created' if created else 'Updated',
+            'env_var': {
+                'id': env_var.id,
+                'key': env_var.key,
+                'masked_value': env_var.get_masked_value(),
+                'is_secret': env_var.is_secret,
+                'description': env_var.description,
+            }
+        })
+
+    elif request.method == 'DELETE':
+        import json
+        try:
+            data = json.loads(request.body.decode('utf-8'))
+        except:
+            return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+
+        key = data.get('key', '').strip().upper()
+        if not key:
+            return JsonResponse({'success': False, 'error': 'Key is required'}, status=400)
+
+        deleted, _ = ProjectEnvironmentVariable.objects.filter(
+            project=project, key=key
+        ).delete()
+
+        if deleted:
+            return JsonResponse({'success': True, 'message': f'Deleted {key}'})
+        else:
+            return JsonResponse({'success': False, 'error': 'Variable not found'}, status=404)
+
+
+@login_required
+@require_http_methods(["POST"])
+def project_env_vars_bulk_delete_api(request, project_id):
+    """Delete all environment variables for a project."""
+    from projects.models import ProjectEnvironmentVariable
+
+    project = get_object_or_404(Project, project_id=project_id)
+
+    # Check permissions - must be owner or admin
+    if project.owner != request.user:
+        member = project.members.filter(user=request.user, status='active').first()
+        if not member or member.role not in ['owner', 'admin']:
+            return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    deleted, _ = ProjectEnvironmentVariable.objects.filter(project=project).delete()
+    return JsonResponse({
+        'success': True,
+        'message': f'Deleted {deleted} environment variables',
+        'deleted': deleted
+    })
+
+
 @login_required
 def project_terminal(request, project_id):
     """

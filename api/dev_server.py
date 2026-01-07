@@ -124,7 +124,7 @@ def start_dev_server(request, ticket_id):
             echo "Cleanup completed"
         """)
 
-        cleanup_result = _run_magpie_ssh(client, job_id, cleanup_command, timeout=60, with_node_env=True)
+        cleanup_result = _run_magpie_ssh(client, job_id, cleanup_command, timeout=60, with_node_env=True, project_id=project.id)
         
         logger.info(f"[CLEANUP] Result: {cleanup_result}")
         logger.info(f"[CLEANUP] Exit code: {cleanup_result.get('exit_code')}")
@@ -159,7 +159,7 @@ def start_dev_server(request, ticket_id):
             fi
         """)
 
-        start_result = _run_magpie_ssh(client, job_id, start_command, timeout=120, with_node_env=True)
+        start_result = _run_magpie_ssh(client, job_id, start_command, timeout=120, with_node_env=True, project_id=project.id)
 
         logger.info(f"[START] Result: {start_result}")
         logger.info(f"[START] Exit code: {start_result.get('exit_code')}")
@@ -278,7 +278,7 @@ def stop_dev_server(request, ticket_id):
             echo "Dev server stopped"
         """)
 
-        stop_result = _run_magpie_ssh(client, job_id, stop_command, timeout=60, with_node_env=True)
+        stop_result = _run_magpie_ssh(client, job_id, stop_command, timeout=60, with_node_env=True, project_id=project.id)
 
         if stop_result.get('exit_code') != 0:
             logger.warning(f"Stop command had non-zero exit code: {stop_result.get('stderr')}")

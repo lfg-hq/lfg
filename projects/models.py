@@ -831,6 +831,129 @@ class ProjectInvitation(models.Model):
         self.status = 'accepted'
         self.responded_at = timezone.now()
         self.save()
-        
+
         return membership
-    
+
+
+class ProjectEnvironmentVariable(models.Model):
+    """
+    Stores encrypted environment variables for a project.
+
+    These variables are injected into workspaces when they are created
+    or when servers are started.
+    """
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name='environment_variables'
+    )
+    key = models.CharField(
+        max_length=255,
+        help_text="Environment variable name (e.g., DATABASE_URL)"
+    )
+    encrypted_value = models.TextField(
+        help_text="Encrypted value stored securely"
+    )
+    is_secret = models.BooleanField(
+        default=True,
+        help_text="If true, value is masked in UI"
+    )
+    description = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Optional description of what this variable is for"
+    )
+    created_by = models.ForeignKey(
+        'auth.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='created_env_vars'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ['project', 'key']
+        ordering = ['key']
+        verbose_name = 'Environment Variable'
+        verbose_name_plural = 'Environment Variables'
+
+    def __str__(self):
+        return f"{self.project.name}: {self.key}"
+
+    def set_value(self, plaintext: str):
+        """Encrypt and store a value."""
+        from projects.utils.encryption import encrypt_value
+        self.encrypted_value = encrypt_value(plaintext)
+
+    def get_value(self) -> str:
+        """Decrypt and return the value."""
+        from projects.utils.encryption import decrypt_value
+        return decrypt_value(self.encrypted_value)
+
+    def get_masked_value(self) -> str:
+        """Return masked value for display."""
+        from projects.utils.encryption import mask_value, decrypt_value
+        if self.is_secret:
+            try:
+                value = decrypt_value(self.encrypted_value)
+                return mask_value(value)
+            except Exception:
+                return '********'
+        return self.get_value()
+
+    @classmethod
+    def get_project_env_dict(cls, project) -> dict:
+        """
+        Get all environment variables for a project as a dictionary.
+
+        Args:
+            project: Project instance
+
+        Returns:
+            dict: Dictionary of {key: decrypted_value}
+        """
+        env_vars = {}
+        for env_var in cls.objects.filter(project=project):
+            try:
+                env_vars[env_var.key] = env_var.get_value()
+            except Exception:
+                # Skip variables that fail to decrypt
+                pass
+        return env_vars
+
+    @classmethod
+    def bulk_set_from_env_content(cls, project, content: str, user=None):
+        """
+        Parse .env file content and create/update environment variables.
+
+        Args:
+            project: Project instance
+            content: .env file content
+            user: User who is setting the variables
+
+        Returns:
+            tuple: (created_count, updated_count)
+        """
+        from projects.utils.encryption import parse_env_file
+
+        env_vars = parse_env_file(content)
+        created = 0
+        updated = 0
+
+        for key, value in env_vars.items():
+            env_var, was_created = cls.objects.get_or_create(
+                project=project,
+                key=key,
+                defaults={'created_by': user}
+            )
+            env_var.set_value(value)
+            env_var.save()
+
+            if was_created:
+                created += 1
+            else:
+                updated += 1
+
+        return created, updated
+

@@ -103,7 +103,72 @@
                     {% endif %}
                 </div>
             </div>
-            
+
+            <!-- Environment Variables Section -->
+            <div class="form-section">
+                <h3 class="form-section-title">
+                    <i class="fas fa-key"></i> Environment Variables
+                </h3>
+                <p class="form-text text-muted" style="margin-bottom: 1rem;">
+                    Configure environment variables that will be injected into your workspace when it starts.
+                    Values are encrypted and stored securely.
+                </p>
+
+                <!-- Existing Variables List -->
+                <div id="env-vars-list" class="env-vars-list" style="margin-bottom: 1.5rem;">
+                    <div class="env-vars-loading">Loading environment variables...</div>
+                </div>
+
+                <!-- Bulk Import Section -->
+                <div class="form-group">
+                    <label class="form-label">
+                        <i class="fas fa-file-import"></i> Import from .env file
+                    </label>
+                    <textarea id="env-content-input" class="form-control" rows="6"
+                              placeholder="Paste your .env file content here&#10;&#10;Example:&#10;DATABASE_URL=postgres://user:pass@host/db&#10;SECRET_KEY=your-secret-key&#10;API_KEY=abc123"></textarea>
+                    <small class="form-text text-muted">
+                        Supports KEY=value format. Comments (#) and export statements are handled.
+                    </small>
+                    <button type="button" class="btn btn-secondary" id="import-env-btn" style="margin-top: 0.5rem;">
+                        <i class="fas fa-upload"></i> Import Variables
+                    </button>
+                </div>
+
+                <!-- Add Single Variable -->
+                <div class="form-group" style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+                    <label class="form-label">
+                        <i class="fas fa-plus"></i> Add Single Variable
+                    </label>
+                    <div class="env-var-form">
+                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: flex-end;">
+                            <div style="flex: 1; min-width: 150px;">
+                                <input type="text" id="new-env-key" class="form-control" placeholder="KEY_NAME"
+                                       style="text-transform: uppercase;">
+                            </div>
+                            <div style="flex: 2; min-width: 200px;">
+                                <input type="password" id="new-env-value" class="form-control" placeholder="value">
+                            </div>
+                            <div>
+                                <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.85rem; cursor: pointer;">
+                                    <input type="checkbox" id="new-env-secret" checked>
+                                    Secret
+                                </label>
+                            </div>
+                            <button type="button" class="btn btn-secondary" id="add-env-btn">
+                                <i class="fas fa-plus"></i> Add
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Danger Zone -->
+                <div class="form-group" style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+                    <button type="button" class="btn btn-danger btn-sm" id="clear-all-env-btn">
+                        <i class="fas fa-trash"></i> Clear All Variables
+                    </button>
+                </div>
+            </div>
+
             <div class="form-actions">
                 <button type="submit" class="btn btn-primary">Update Project</button>
                 <a href="{% url 'projects:project_detail' project.project_id %}" class="btn btn-outline">Cancel</a>
@@ -114,12 +179,78 @@
 {% endblock %}
 
 {% block extra_js %}
+<style>
+.env-vars-list {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--card-bg);
+}
+.env-vars-loading {
+    padding: 1rem;
+    text-align: center;
+    color: var(--text-secondary);
+}
+.env-vars-empty {
+    padding: 1rem;
+    text-align: center;
+    color: var(--text-secondary);
+}
+.env-var-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border-color);
+}
+.env-var-item:last-child {
+    border-bottom: none;
+}
+.env-var-key {
+    font-family: monospace;
+    font-weight: 600;
+    color: var(--primary-color);
+}
+.env-var-value {
+    font-family: monospace;
+    font-size: 0.9em;
+    color: var(--text-secondary);
+    margin-left: 1rem;
+}
+.env-var-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+.env-var-delete-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    transition: all 0.15s;
+}
+.env-var-delete-btn:hover {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+}
+.env-var-secret-badge {
+    font-size: 0.7em;
+    background: rgba(251, 191, 36, 0.15);
+    color: #fbbf24;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    margin-left: 0.5rem;
+}
+</style>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    const projectId = '{{ project.project_id }}';
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
     // Handle Linear sync toggle
     const linearSyncCheckbox = document.getElementById('linear-sync-enabled');
     const linearSettings = document.getElementById('linear-settings');
-    
+
     if (linearSyncCheckbox) {
         linearSyncCheckbox.addEventListener('change', function() {
             if (this.checked) {
@@ -129,6 +260,163 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
+
+    // Environment Variables Functions
+    async function loadEnvVars() {
+        const listEl = document.getElementById('env-vars-list');
+        try {
+            const response = await fetch(`/projects/${projectId}/api/env-vars/`);
+            const data = await response.json();
+
+            if (data.success && data.env_vars.length > 0) {
+                listEl.innerHTML = data.env_vars.map(env => `
+                    <div class="env-var-item" data-key="${env.key}">
+                        <div>
+                            <span class="env-var-key">${env.key}</span>
+                            ${env.is_secret ? '<span class="env-var-secret-badge">secret</span>' : ''}
+                            <span class="env-var-value">${env.masked_value}</span>
+                        </div>
+                        <div class="env-var-actions">
+                            <button type="button" class="env-var-delete-btn" onclick="deleteEnvVar('${env.key}')" title="Delete">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+            } else {
+                listEl.innerHTML = '<div class="env-vars-empty">No environment variables configured</div>';
+            }
+        } catch (error) {
+            console.error('Error loading env vars:', error);
+            listEl.innerHTML = '<div class="env-vars-empty">Error loading variables</div>';
+        }
+    }
+
+    // Import bulk env vars
+    document.getElementById('import-env-btn').addEventListener('click', async function() {
+        const content = document.getElementById('env-content-input').value.trim();
+        if (!content) {
+            alert('Please paste your .env file content');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/projects/${projectId}/api/env-vars/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({ env_content: content })
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                alert(data.message);
+                document.getElementById('env-content-input').value = '';
+                loadEnvVars();
+            } else {
+                alert('Error: ' + (data.error || 'Failed to import'));
+            }
+        } catch (error) {
+            console.error('Error importing env vars:', error);
+            alert('Error importing environment variables');
+        }
+    });
+
+    // Add single env var
+    document.getElementById('add-env-btn').addEventListener('click', async function() {
+        const key = document.getElementById('new-env-key').value.trim().toUpperCase();
+        const value = document.getElementById('new-env-value').value;
+        const isSecret = document.getElementById('new-env-secret').checked;
+
+        if (!key) {
+            alert('Please enter a key name');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/projects/${projectId}/api/env-vars/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({ key, value, is_secret: isSecret })
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                document.getElementById('new-env-key').value = '';
+                document.getElementById('new-env-value').value = '';
+                loadEnvVars();
+            } else {
+                alert('Error: ' + (data.error || 'Failed to add'));
+            }
+        } catch (error) {
+            console.error('Error adding env var:', error);
+            alert('Error adding environment variable');
+        }
+    });
+
+    // Delete env var (global function for onclick)
+    window.deleteEnvVar = async function(key) {
+        if (!confirm(`Delete environment variable "${key}"?`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/projects/${projectId}/api/env-vars/`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({ key })
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                loadEnvVars();
+            } else {
+                alert('Error: ' + (data.error || 'Failed to delete'));
+            }
+        } catch (error) {
+            console.error('Error deleting env var:', error);
+            alert('Error deleting environment variable');
+        }
+    };
+
+    // Clear all env vars
+    document.getElementById('clear-all-env-btn').addEventListener('click', async function() {
+        if (!confirm('Are you sure you want to delete ALL environment variables? This cannot be undone.')) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/projects/${projectId}/api/env-vars/bulk-delete/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                }
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                alert(data.message);
+                loadEnvVars();
+            } else {
+                alert('Error: ' + (data.error || 'Failed to clear'));
+            }
+        } catch (error) {
+            console.error('Error clearing env vars:', error);
+            alert('Error clearing environment variables');
+        }
+    });
+
+    // Load env vars on page load
+    loadEnvVars();
 });
 </script>
 {% endblock %} 
