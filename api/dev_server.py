@@ -33,71 +33,175 @@ except ImportError:
     setup_git_in_workspace = None
 
 
-def _ensure_code_in_workspace(client, workspace, project, user):
+def _ensure_code_in_workspace(client, workspace, project, user, ticket=None):
     """
-    Ensure code exists in the workspace. If not, clone from GitHub or use template.
+    Ensure code exists in the workspace and is on the correct branch.
+    - If ticket has github_branch, use that
+    - Otherwise default to 'lfg-agent'
     Returns (success, message)
     """
     job_id = workspace.job_id
     workspace_path = "/workspace/nextjs-app"
 
-    # First, check if code already exists
+    # Determine target branch: ticket branch > lfg-agent (default)
+    target_branch = 'lfg-agent'
+    if ticket and ticket.github_branch:
+        target_branch = ticket.github_branch
+        logger.info(f"[CODE_SETUP] Using ticket branch: {target_branch}")
+
+    # Check if code already exists
     check_cmd = f"test -d {workspace_path} && test -f {workspace_path}/package.json && echo 'EXISTS' || echo 'MISSING'"
     check_result = _run_magpie_ssh(client, job_id, check_cmd, timeout=30, with_node_env=False)
 
-    if 'EXISTS' in check_result.get('stdout', ''):
-        logger.info(f"[CODE_SETUP] Code already exists in workspace")
-        return True, "Code already exists"
-
-    logger.info(f"[CODE_SETUP] Code missing, setting up...")
+    code_exists = 'EXISTS' in check_result.get('stdout', '')
 
     # Check if project has GitHub repo configured (via IndexedRepository)
     indexed_repo = getattr(project, 'indexed_repository', None)
 
     if indexed_repo and indexed_repo.github_url:
-        # Clone from GitHub
+        # Get GitHub token
         github_token_obj = GitHubToken.objects.filter(user=user).first()
         github_token = github_token_obj.access_token if github_token_obj else None
 
-        if github_token and setup_git_in_workspace:
-            owner = indexed_repo.github_owner
-            repo = indexed_repo.github_repo_name
-            branch_name = indexed_repo.github_branch or 'main'
-
-            logger.info(f"[CODE_SETUP] Cloning {owner}/{repo} branch {branch_name}")
-
-            git_result = setup_git_in_workspace(
-                workspace_id=job_id,
-                owner=owner,
-                repo_name=repo,
-                branch_name=branch_name,
-                token=github_token
-            )
-
-            if git_result.get('status') == 'success':
-                # Run npm install
-                logger.info(f"[CODE_SETUP] Running npm install...")
-                npm_result = _run_magpie_ssh(
-                    client, job_id,
-                    f"cd {workspace_path} && npm install",
-                    timeout=300, with_node_env=True
-                )
-                if npm_result.get('exit_code', 0) == 0:
-                    # Update workspace metadata
-                    metadata = workspace.metadata or {}
-                    metadata['git_configured'] = True
-                    metadata['git_branch'] = branch_name
-                    workspace.metadata = metadata
-                    workspace.save()
-                    return True, f"Cloned {owner}/{repo} and installed dependencies"
-                else:
-                    return False, f"npm install failed: {npm_result.get('stderr', '')[:200]}"
-            else:
-                return False, f"Git clone failed: {git_result.get('message', 'unknown error')}"
-        else:
+        if not github_token:
             return False, "GitHub token not configured"
+
+        owner = indexed_repo.github_owner
+        repo = indexed_repo.github_repo_name
+
+        # Build authenticated git URL
+        auth_remote_url = f"https://x-access-token:{github_token}@github.com/{owner}/{repo}.git"
+
+        if code_exists:
+            # Code exists - check if we need to switch branches and pull latest
+            logger.info(f"[CODE_SETUP] Code exists, switching to {target_branch} and pulling latest...")
+
+            # Get current branch, switch if needed, and always pull latest
+            # Note: All commands use || true to prevent set -e from causing early exit
+            switch_cmd = f'''
+cd {workspace_path}
+
+# Update remote URL with auth token for this operation
+git remote set-url origin "{auth_remote_url}" || true
+
+current_branch=$(git branch --show-current 2>/dev/null || echo "unknown")
+echo "CURRENT_BRANCH:$current_branch"
+
+# Remove untracked files that block checkout (dev server artifacts)
+echo "Cleaning up untracked files..."
+rm -f .devserver_pid dev.log 2>/dev/null || true
+
+# Fetch ALL branches from remote
+echo "Fetching all branches..."
+git fetch origin --prune 2>&1 || true
+
+# List available remote branches for debugging
+echo "Available remote branches:"
+git branch -r 2>/dev/null | head -20 || true
+
+# Stash any local changes
+echo "Stashing local changes..."
+git stash 2>/dev/null || true
+
+# Try to checkout the branch
+echo "Checking out {target_branch}..."
+
+# Method 1: Try simple checkout (if branch exists locally)
+git checkout {target_branch} 2>&1 && echo "METHOD1_SUCCESS" || true
+
+# Check if we're on the right branch now
+on_branch=$(git branch --show-current 2>/dev/null || echo "none")
+if [ "$on_branch" = "{target_branch}" ]; then
+    echo "On correct branch, pulling latest..."
+    git pull origin {target_branch} 2>&1 || true
+else
+    # Method 2: Try to create from remote tracking branch
+    echo "Method 1 failed, trying method 2..."
+    git checkout -b {target_branch} origin/{target_branch} 2>&1 && echo "METHOD2_SUCCESS" || true
+
+    on_branch=$(git branch --show-current 2>/dev/null || echo "none")
+    if [ "$on_branch" != "{target_branch}" ]; then
+        # Method 3: Fetch the specific branch and checkout
+        echo "Method 2 failed, trying method 3..."
+        git fetch origin {target_branch} 2>&1 || true
+        git checkout -B {target_branch} FETCH_HEAD 2>&1 && echo "METHOD3_SUCCESS" || true
+    fi
+fi
+
+# Final verification
+final_branch=$(git branch --show-current 2>/dev/null || echo "unknown")
+echo "FINAL_BRANCH:$final_branch"
+
+if [ "$final_branch" = "{target_branch}" ]; then
+    echo "SUCCESS: Now on branch {target_branch}"
+else
+    echo "BRANCH_SWITCH_FAILED: wanted {target_branch} but on $final_branch"
+fi
+
+# Reset remote URL to non-auth version for safety
+git remote set-url origin "https://github.com/{owner}/{repo}.git" || true
+
+echo "SWITCH_COMPLETE"
+'''
+            switch_result = _run_magpie_ssh(client, job_id, switch_cmd, timeout=120, with_node_env=False)
+            stdout = switch_result.get('stdout', '')
+            stderr = switch_result.get('stderr', '')
+            exit_code = switch_result.get('exit_code', -1)
+            logger.info(f"[CODE_SETUP] Branch switch exit_code: {exit_code}")
+            logger.info(f"[CODE_SETUP] Branch switch stdout: {stdout}")
+            if stderr:
+                logger.warning(f"[CODE_SETUP] Branch switch stderr: {stderr}")
+
+            if 'BRANCH_SWITCH_FAILED' in stdout:
+                logger.warning(f"[CODE_SETUP] Failed to switch branch, but continuing...")
+
+            # Update metadata with current branch
+            metadata = workspace.metadata or {}
+            metadata['git_branch'] = target_branch
+            workspace.metadata = metadata
+            workspace.save()
+
+            return True, f"Code ready on branch {target_branch}"
+        else:
+            # Code doesn't exist - clone the repo
+            logger.info(f"[CODE_SETUP] Code missing, cloning {owner}/{repo} branch {target_branch}")
+
+            if setup_git_in_workspace:
+                git_result = setup_git_in_workspace(
+                    workspace_id=job_id,
+                    owner=owner,
+                    repo_name=repo,
+                    branch_name=target_branch,
+                    token=github_token
+                )
+
+                if git_result.get('status') == 'success':
+                    # Run npm install
+                    logger.info(f"[CODE_SETUP] Running npm install...")
+                    npm_result = _run_magpie_ssh(
+                        client, job_id,
+                        f"cd {workspace_path} && npm install",
+                        timeout=300, with_node_env=True
+                    )
+                    if npm_result.get('exit_code', 0) == 0:
+                        # Update workspace metadata
+                        metadata = workspace.metadata or {}
+                        metadata['git_configured'] = True
+                        metadata['git_branch'] = target_branch
+                        workspace.metadata = metadata
+                        workspace.save()
+                        return True, f"Cloned {owner}/{repo} on branch {target_branch}"
+                    else:
+                        return False, f"npm install failed: {npm_result.get('stderr', '')[:200]}"
+                else:
+                    return False, f"Git clone failed: {git_result.get('message', 'unknown error')}"
+            else:
+                return False, "setup_git_in_workspace not available"
     else:
         # No GitHub repo - clone the default template
+        if code_exists:
+            return True, "Template code already exists"
+
         logger.info(f"[CODE_SETUP] No GitHub repo, cloning default template")
 
         template_cmd = '''
@@ -183,9 +287,10 @@ def start_dev_server(request, ticket_id):
         # Get Magpie client
         client = get_magpie_client()
 
-        # Step 0: Ensure code exists in workspace
+        # Step 0: Ensure code exists in workspace and is on correct branch
         logger.info(f"[DEV_SERVER] Checking workspace structure...")
-        code_success, code_message = _ensure_code_in_workspace(client, magpie_workspace, project, request.user)
+        logger.info(f"[DEV_SERVER] Ticket branch: {ticket.github_branch or 'not set (will use lfg-agent)'}")
+        code_success, code_message = _ensure_code_in_workspace(client, magpie_workspace, project, request.user, ticket=ticket)
         logger.info(f"[DEV_SERVER] Code setup result: {code_success}, {code_message}")
 
         if not code_success:

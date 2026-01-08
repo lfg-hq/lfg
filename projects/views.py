@@ -1281,7 +1281,8 @@ def project_files_api(request, project_id):
 @login_required
 @require_http_methods(["POST"])
 def start_dev_server_api(request, project_id):
-    """Start a dev server on the Magpie workspace for the project"""
+    """Start a dev server on the Magpie workspace for the project.
+    Always uses lfg-agent branch and pulls latest changes."""
     project = get_object_or_404(Project, project_id=project_id)
 
     # Check access
@@ -1294,6 +1295,7 @@ def start_dev_server_api(request, project_id):
         data = {}
 
     port = data.get('port', 3000)
+    target_branch = 'lfg-agent'  # Always use lfg-agent for preview
 
     try:
         # Find the Magpie workspace for this project (any workspace with IPv6)
@@ -1322,23 +1324,142 @@ def start_dev_server_api(request, project_id):
                 'error': 'Magpie client not configured. Check server settings.'
             })
 
-        # Kill any existing process on the port and start dev server
-        # Use --hostname :: to listen on all interfaces (required for IPv6 access)
+        workspace_path = "/workspace/nextjs-app"
+
+        # Step 1: Ensure code exists and switch to lfg-agent branch with latest changes
+        indexed_repo = getattr(project, 'indexed_repository', None)
+        if indexed_repo and indexed_repo.github_url:
+            logger.info(f"[PREVIEW] Ensuring code is on {target_branch} branch with latest changes")
+
+            # Get GitHub token for authenticated git operations
+            github_token_obj = GitHubToken.objects.filter(user=request.user).first()
+            github_token = github_token_obj.access_token if github_token_obj else None
+
+            if not github_token:
+                logger.warning("[PREVIEW] No GitHub token found, git operations may fail for private repos")
+                auth_remote_url = f"https://github.com/{indexed_repo.github_owner}/{indexed_repo.github_repo_name}.git"
+            else:
+                auth_remote_url = f"https://x-access-token:{github_token}@github.com/{indexed_repo.github_owner}/{indexed_repo.github_repo_name}.git"
+
+            owner = indexed_repo.github_owner
+            repo_name = indexed_repo.github_repo_name
+
+            # Check if code exists, switch to lfg-agent, and pull latest
+            git_sync_command = f'''
+cd /workspace
+
+# Check if code exists
+if [ ! -d nextjs-app ] || [ ! -f nextjs-app/package.json ]; then
+    echo "CODE_MISSING"
+    exit 1
+fi
+
+cd nextjs-app
+
+# Update remote URL with auth token for this operation
+git remote set-url origin "{auth_remote_url}"
+
+# Get current branch
+current_branch=$(git branch --show-current 2>/dev/null || echo "unknown")
+echo "CURRENT_BRANCH:$current_branch"
+
+# Remove untracked files that block checkout (dev server artifacts)
+echo "Cleaning up untracked files..."
+rm -f .devserver_pid dev.log 2>/dev/null || true
+
+# Fetch ALL branches from remote
+echo "Fetching all branches..."
+git fetch origin --prune 2>&1 || true
+
+# List available remote branches for debugging
+echo "Available remote branches:"
+git branch -r 2>/dev/null | head -20 || true
+
+# Stash any local changes
+echo "Stashing local changes..."
+git stash 2>/dev/null || true
+
+# Try to checkout the branch
+echo "Checking out {target_branch}..."
+
+# Method 1: Try simple checkout (if branch exists locally)
+git checkout {target_branch} 2>&1 && echo "METHOD1_SUCCESS" || true
+
+# Check if we're on the right branch now
+on_branch=$(git branch --show-current 2>/dev/null || echo "none")
+if [ "$on_branch" = "{target_branch}" ]; then
+    echo "On correct branch, pulling latest..."
+    git pull origin {target_branch} 2>&1 || true
+else
+    # Method 2: Try to create from remote tracking branch
+    echo "Method 1 failed, trying method 2..."
+    git checkout -b {target_branch} origin/{target_branch} 2>&1 && echo "METHOD2_SUCCESS" || true
+
+    on_branch=$(git branch --show-current 2>/dev/null || echo "none")
+    if [ "$on_branch" != "{target_branch}" ]; then
+        # Method 3: Fetch the specific branch and checkout
+        echo "Method 2 failed, trying method 3..."
+        git fetch origin {target_branch} 2>&1 || true
+        git checkout -B {target_branch} FETCH_HEAD 2>&1 && echo "METHOD3_SUCCESS" || true
+    fi
+fi
+
+# Final verification
+final_branch=$(git branch --show-current 2>/dev/null || echo "unknown")
+echo "FINAL_BRANCH:$final_branch"
+
+if [ "$final_branch" = "{target_branch}" ]; then
+    echo "SUCCESS: Now on branch {target_branch}"
+else
+    echo "BRANCH_SWITCH_FAILED: wanted {target_branch} but on $final_branch"
+fi
+
+# Reset remote URL to non-auth version for safety
+git remote set-url origin "https://github.com/{owner}/{repo_name}.git" || true
+
+echo "SWITCH_COMPLETE"
+'''
+            git_result = _run_magpie_ssh(client, workspace.job_id, git_sync_command, timeout=120)
+            stdout = git_result.get('stdout', '')
+            stderr = git_result.get('stderr', '')
+            logger.info(f"[PREVIEW] Git sync result: {stdout[:500]}")
+            if stderr:
+                logger.warning(f"[PREVIEW] Git sync stderr: {stderr[:500]}")
+
+            if 'CODE_MISSING' in stdout:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'No code found in workspace. Please run a ticket build first.'
+                })
+
+        # Step 2: Kill any existing process, clear cache, and start dev server
         start_command = f"""
-cd /workspace/nextjs-app
+cd {workspace_path}
+
+# Kill existing process
 if [ -f .devserver_pid ]; then
   old_pid=$(cat .devserver_pid)
   if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
     kill "$old_pid" || true
+    sleep 2
   fi
 fi
-: > /workspace/nextjs-app/dev.log
-nohup npm run dev -- --hostname :: --port {port} > /workspace/nextjs-app/dev.log 2>&1 &
+
+# Kill any remaining node processes
+pkill -f "npm run dev" 2>/dev/null || true
+pkill -f "next dev" 2>/dev/null || true
+
+# Clear Next.js cache to ensure fresh build from new branch
+rm -rf .next 2>/dev/null || true
+
+# Clear log and start dev server
+: > {workspace_path}/dev.log
+nohup npm run dev -- --hostname :: --port {port} > {workspace_path}/dev.log 2>&1 &
 pid=$!
 echo "$pid" > .devserver_pid
 echo "PID:$pid"
 sleep 5
-cat /workspace/nextjs-app/dev.log | tail -30
+cat {workspace_path}/dev.log | tail -30
 """
 
         result = _run_magpie_ssh(client, workspace.job_id, start_command, timeout=30, project_id=project.id)
@@ -1355,7 +1476,8 @@ cat /workspace/nextjs-app/dev.log | tail -30
             'url': preview_url,
             'port': port,
             'workspace_id': workspace.workspace_id,
-            'message': f'Server started on {preview_url}',
+            'branch': target_branch,
+            'message': f'Server started on {preview_url} (branch: {target_branch})',
             'log': result.get('stdout', '')[:500]
         })
 
@@ -4034,7 +4156,7 @@ def provision_workspace_api(request, project_id):
                     if github_token:
                         owner = indexed_repo.github_owner
                         repo = indexed_repo.github_repo_name
-                        branch_name = indexed_repo.github_branch or 'main'
+                        branch_name = indexed_repo.github_branch or 'lfg-agent'
                         logger.info(f"[PROVISION] Setting up git for existing workspace {owner}/{repo}")
 
                         git_result = setup_git_in_workspace(
@@ -4165,7 +4287,7 @@ fi
                 if github_token:
                     owner = indexed_repo.github_owner
                     repo = indexed_repo.github_repo_name
-                    branch_name = indexed_repo.github_branch or 'main'
+                    branch_name = indexed_repo.github_branch or 'lfg-agent'
 
                     logger.info(f"[PROVISION] Setting up git for {owner}/{repo} on branch {branch_name}")
 
