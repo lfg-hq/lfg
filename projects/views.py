@@ -32,13 +32,13 @@ import os
 
 # Import ServerConfig and MagpieWorkspace from development app
 from development.models import ServerConfig, MagpieWorkspace
-from accounts.models import LLMApiKeys, ExternalServicesAPIKeys
+from accounts.models import LLMApiKeys, ExternalServicesAPIKeys, GitHubToken
 import logging
 
 logger = logging.getLogger(__name__)
 
 # Import the functions from ai_functions
-from factory.ai_functions import execute_local_command, restart_server_from_config, get_magpie_client, _run_magpie_ssh
+from factory.ai_functions import execute_local_command, restart_server_from_config, get_magpie_client, _run_magpie_ssh, get_or_fetch_proxy_url
 from factory.llm_config import get_llm_model_config
 from chat.models import ModelSelection
 from accounts.models import ApplicationState
@@ -1108,12 +1108,16 @@ def app_preview(request, project_id):
     workspace_data = None
     if workspace:
         ipv6 = workspace.ipv6_address.strip('[]') if workspace.ipv6_address else None
+        # Use proxy URL if available, otherwise fall back to IPv6
+        preview_url = get_or_fetch_proxy_url(workspace, port=3000)
+        if not preview_url:
+            preview_url = f"http://[{ipv6}]:3000" if ipv6 else None
         workspace_data = {
             'id': workspace.id,
             'workspace_id': workspace.workspace_id,
             'status': workspace.status,
             'ipv6_address': ipv6,
-            'preview_url': f"http://[{ipv6}]:3000" if ipv6 else None,
+            'preview_url': preview_url,
         }
 
     # Get sidebar state
@@ -1339,9 +1343,11 @@ cat /workspace/nextjs-app/dev.log | tail -30
 
         result = _run_magpie_ssh(client, workspace.job_id, start_command, timeout=30, project_id=project.id)
 
-        # Build the preview URL
-        ipv6 = workspace.ipv6_address.strip('[]')
-        preview_url = f"http://[{ipv6}]:{port}"
+        # Use proxy URL if available, otherwise fall back to IPv6
+        preview_url = get_or_fetch_proxy_url(workspace, port=port, client=client)
+        if not preview_url:
+            ipv6 = workspace.ipv6_address.strip('[]')
+            preview_url = f"http://[{ipv6}]:{port}"
 
         return JsonResponse({
             'success': True,
@@ -3972,3 +3978,264 @@ def load_external_url_api(request, project_id):
     except Exception as e:
         logger.error(f"Error loading external URL: {e}", exc_info=True)
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
+@csrf_exempt
+def provision_workspace_api(request, project_id):
+    """
+    Provision a new Magpie workspace for preview when one doesn't exist.
+    This creates a workspace on-the-fly so users don't have to run a ticket build first.
+    """
+    from factory.ai_functions import MAGPIE_BOOTSTRAP_SCRIPT, _slugify_project_name, magpie_available
+    from tasks.task_definitions import setup_git_in_workspace, push_template_and_create_branch
+
+    project = get_object_or_404(Project, project_id=project_id)
+
+    # Check access
+    if not project.can_user_access(request.user):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    # Check if Magpie is available
+    if not magpie_available():
+        return JsonResponse({
+            'success': False,
+            'error': 'Magpie workspace service is not configured. Please contact support.'
+        }, status=503)
+
+    # Check if workspace already exists
+    existing_workspace = MagpieWorkspace.objects.filter(
+        project=project,
+        ipv6_address__isnull=False
+    ).exclude(ipv6_address='').order_by('-updated_at').first()
+
+    if existing_workspace:
+        ipv6 = existing_workspace.ipv6_address.strip('[]') if existing_workspace.ipv6_address else None
+        preview_url = get_or_fetch_proxy_url(existing_workspace, port=3000)
+        if not preview_url:
+            preview_url = f"http://[{ipv6}]:3000" if ipv6 else None
+
+        # Check if workspace needs code setup (no git_configured and no template_installed)
+        metadata = existing_workspace.metadata or {}
+        needs_code_setup = not metadata.get('git_configured') and not metadata.get('template_installed')
+
+        git_setup_message = None
+        if needs_code_setup:
+            try:
+                client = get_magpie_client()
+                indexed_repo = getattr(project, 'indexed_repository', None)
+
+                if indexed_repo and indexed_repo.github_url:
+                    # Has GitHub - clone the repo
+                    github_token_obj = GitHubToken.objects.filter(user=request.user).first()
+                    github_token = github_token_obj.access_token if github_token_obj else None
+
+                    if github_token:
+                        owner = indexed_repo.github_owner
+                        repo = indexed_repo.github_repo_name
+                        branch_name = indexed_repo.github_branch or 'main'
+                        logger.info(f"[PROVISION] Setting up git for existing workspace {owner}/{repo}")
+
+                        git_result = setup_git_in_workspace(
+                            workspace_id=existing_workspace.job_id,
+                            owner=owner,
+                            repo_name=repo,
+                            branch_name=branch_name,
+                            token=github_token
+                        )
+                        if git_result.get('status') == 'success':
+                            git_setup_message = f"Git configured on branch {branch_name}"
+                            metadata['git_configured'] = True
+                            metadata['git_branch'] = branch_name
+                            existing_workspace.metadata = metadata
+                            existing_workspace.save()
+                else:
+                    # No GitHub - clone template
+                    logger.info(f"[PROVISION] Cloning template for existing workspace")
+                    template_setup_cmd = '''
+cd /workspace
+if [ ! -d nextjs-app ]; then
+    git clone https://github.com/lfg-hq/nextjs-template nextjs-app
+    cd nextjs-app
+    npm install
+    echo "Template cloned and dependencies installed"
+else
+    echo "Directory already exists"
+fi
+'''
+                    result = _run_magpie_ssh(client, existing_workspace.job_id, template_setup_cmd, timeout=300)
+                    if result.get('exit_code', 0) == 0:
+                        git_setup_message = "Default Next.js template installed"
+                        metadata['template_installed'] = True
+                        existing_workspace.metadata = metadata
+                        existing_workspace.save()
+                    else:
+                        git_setup_message = f"Template setup warning: {result.get('stderr', '')}"
+
+            except Exception as setup_err:
+                logger.warning(f"[PROVISION] Code setup error for existing workspace: {setup_err}")
+                git_setup_message = f"Code setup skipped: {str(setup_err)}"
+
+        return JsonResponse({
+            'success': True,
+            'message': 'Workspace already exists' + (' - code setup completed' if git_setup_message else ''),
+            'git_message': git_setup_message,
+            'workspace': {
+                'id': existing_workspace.id,
+                'workspace_id': existing_workspace.workspace_id,
+                'status': existing_workspace.status,
+                'ipv6_address': ipv6,
+                'preview_url': preview_url,
+            }
+        })
+
+    try:
+        # Get Magpie client
+        client = get_magpie_client()
+        if not client:
+            return JsonResponse({
+                'success': False,
+                'error': 'Failed to initialize Magpie client'
+            }, status=500)
+
+        # Create workspace name
+        project_name = project.provided_name or project.name
+        slug = _slugify_project_name(project_name)
+        workspace_name = f"{slug}-{project.id}"
+
+        logger.info(f"[PROVISION] Creating workspace for project {project_id}: {workspace_name}")
+
+        # Create the Magpie persistent VM (polls internally until ready)
+        vm_handle = client.jobs.create_persistent_vm(
+            name=workspace_name,
+            script=MAGPIE_BOOTSTRAP_SCRIPT,
+            stateful=True,
+            workspace_size_gb=10,
+            vcpus=2,
+            memory_mb=2048,
+            register_proxy=True,
+            proxy_port=3000,
+            poll_timeout=180,
+            poll_interval=5,
+        )
+
+        run_id = vm_handle.request_id
+        if not run_id:
+            return JsonResponse({
+                'success': False,
+                'error': 'Failed to create workspace - no job ID returned'
+            }, status=500)
+
+        logger.info(f"[PROVISION] Job created: {run_id}")
+
+        # Get IP and proxy URL from the handle (already populated after polling)
+        ipv6 = vm_handle.ip_address
+        proxy_url = vm_handle.proxy_url
+
+        if not ipv6:
+            return JsonResponse({
+                'success': False,
+                'error': 'Workspace provisioning timed out - no IP address received'
+            }, status=500)
+
+        logger.info(f"[PROVISION] VM ready with IP: {ipv6}, Proxy: {proxy_url}")
+
+        # Create DB record and mark as ready
+        workspace = MagpieWorkspace.objects.create(
+            project=project,
+            job_id=run_id,
+            workspace_id=run_id,
+            status='ready',
+            ipv6_address=ipv6,
+            project_path='/workspace',
+            proxy_url=proxy_url,
+            metadata={'project_name': project_name, 'created_for_preview': True}
+        )
+
+        # Setup code in workspace
+        git_setup_message = None
+        try:
+            indexed_repo = getattr(project, 'indexed_repository', None)
+            if indexed_repo and indexed_repo.github_url:
+                # Project has GitHub configured - clone the repo
+                github_token_obj = GitHubToken.objects.filter(user=request.user).first()
+                github_token = github_token_obj.access_token if github_token_obj else None
+
+                if github_token:
+                    owner = indexed_repo.github_owner
+                    repo = indexed_repo.github_repo_name
+                    branch_name = indexed_repo.github_branch or 'main'
+
+                    logger.info(f"[PROVISION] Setting up git for {owner}/{repo} on branch {branch_name}")
+
+                    git_result = setup_git_in_workspace(
+                        workspace_id=run_id,
+                        owner=owner,
+                        repo_name=repo,
+                        branch_name=branch_name,
+                        token=github_token
+                    )
+
+                    if git_result.get('status') == 'success':
+                        git_setup_message = f"Git configured on branch {branch_name}"
+                        workspace.metadata = workspace.metadata or {}
+                        workspace.metadata['git_configured'] = True
+                        workspace.metadata['git_branch'] = branch_name
+                        workspace.save()
+                    else:
+                        git_setup_message = f"Git setup warning: {git_result.get('message', 'unknown error')}"
+            else:
+                # No GitHub repo - clone the default template so there's something to preview
+                logger.info(f"[PROVISION] No GitHub repo configured, cloning default template")
+
+                template_setup_cmd = '''
+cd /workspace
+if [ ! -d nextjs-app ]; then
+    git clone https://github.com/lfg-hq/nextjs-template nextjs-app
+    cd nextjs-app
+    npm install
+    echo "Template cloned and dependencies installed"
+else
+    echo "Directory already exists"
+fi
+'''
+                result = _run_magpie_ssh(client, run_id, template_setup_cmd, timeout=300)
+
+                if result.get('exit_code', 0) == 0:
+                    git_setup_message = "Default Next.js template installed"
+                    workspace.metadata = workspace.metadata or {}
+                    workspace.metadata['template_installed'] = True
+                    workspace.save()
+                else:
+                    git_setup_message = f"Template setup warning: {result.get('stderr', 'unknown error')}"
+                    logger.warning(f"[PROVISION] Template setup warning: {result}")
+
+        except Exception as git_err:
+            logger.warning(f"[PROVISION] Code setup error (non-fatal): {git_err}")
+            git_setup_message = f"Code setup skipped: {str(git_err)}"
+
+        # Get preview URL
+        preview_url = get_or_fetch_proxy_url(workspace, port=3000)
+        if not preview_url:
+            preview_url = f"http://[{ipv6}]:3000" if ipv6 else None
+
+        return JsonResponse({
+            'success': True,
+            'message': 'Workspace provisioned successfully',
+            'git_message': git_setup_message,
+            'workspace': {
+                'id': workspace.id,
+                'workspace_id': workspace.workspace_id,
+                'status': workspace.status,
+                'ipv6_address': ipv6.strip('[]') if ipv6 else None,
+                'preview_url': preview_url,
+            }
+        })
+
+    except Exception as e:
+        logger.exception(f"[PROVISION] Error provisioning workspace: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': f'Failed to provision workspace: {str(e)}'
+        }, status=500)

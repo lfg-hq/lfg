@@ -10,18 +10,118 @@ from django.http import JsonResponse
 from asgiref.sync import async_to_sync
 from projects.models import ProjectTicket
 from development.models import MagpieWorkspace
+from accounts.models import ExternalServicesAPIKeys, GitHubToken
 
 logger = logging.getLogger(__name__)
 
 # Import Magpie utilities from factory/ai_functions.py
 try:
-    from factory.ai_functions import get_magpie_client, _run_magpie_ssh, magpie_available, _fetch_workspace
+    from factory.ai_functions import get_magpie_client, _run_magpie_ssh, magpie_available, _fetch_workspace, get_or_fetch_proxy_url
 except ImportError:
     logger.error("Failed to import Magpie utilities from factory.ai_functions")
     get_magpie_client = None
     _run_magpie_ssh = None
     magpie_available = lambda: False
     _fetch_workspace = None
+    get_or_fetch_proxy_url = None
+
+# Import git setup function
+try:
+    from tasks.task_definitions import setup_git_in_workspace
+except ImportError:
+    logger.error("Failed to import setup_git_in_workspace from tasks.task_definitions")
+    setup_git_in_workspace = None
+
+
+def _ensure_code_in_workspace(client, workspace, project, user):
+    """
+    Ensure code exists in the workspace. If not, clone from GitHub or use template.
+    Returns (success, message)
+    """
+    job_id = workspace.job_id
+    workspace_path = "/workspace/nextjs-app"
+
+    # First, check if code already exists
+    check_cmd = f"test -d {workspace_path} && test -f {workspace_path}/package.json && echo 'EXISTS' || echo 'MISSING'"
+    check_result = _run_magpie_ssh(client, job_id, check_cmd, timeout=30, with_node_env=False)
+
+    if 'EXISTS' in check_result.get('stdout', ''):
+        logger.info(f"[CODE_SETUP] Code already exists in workspace")
+        return True, "Code already exists"
+
+    logger.info(f"[CODE_SETUP] Code missing, setting up...")
+
+    # Check if project has GitHub repo configured (via IndexedRepository)
+    indexed_repo = getattr(project, 'indexed_repository', None)
+
+    if indexed_repo and indexed_repo.github_url:
+        # Clone from GitHub
+        github_token_obj = GitHubToken.objects.filter(user=user).first()
+        github_token = github_token_obj.access_token if github_token_obj else None
+
+        if github_token and setup_git_in_workspace:
+            owner = indexed_repo.github_owner
+            repo = indexed_repo.github_repo_name
+            branch_name = indexed_repo.github_branch or 'main'
+
+            logger.info(f"[CODE_SETUP] Cloning {owner}/{repo} branch {branch_name}")
+
+            git_result = setup_git_in_workspace(
+                workspace_id=job_id,
+                owner=owner,
+                repo_name=repo,
+                branch_name=branch_name,
+                token=github_token
+            )
+
+            if git_result.get('status') == 'success':
+                # Run npm install
+                logger.info(f"[CODE_SETUP] Running npm install...")
+                npm_result = _run_magpie_ssh(
+                    client, job_id,
+                    f"cd {workspace_path} && npm install",
+                    timeout=300, with_node_env=True
+                )
+                if npm_result.get('exit_code', 0) == 0:
+                    # Update workspace metadata
+                    metadata = workspace.metadata or {}
+                    metadata['git_configured'] = True
+                    metadata['git_branch'] = branch_name
+                    workspace.metadata = metadata
+                    workspace.save()
+                    return True, f"Cloned {owner}/{repo} and installed dependencies"
+                else:
+                    return False, f"npm install failed: {npm_result.get('stderr', '')[:200]}"
+            else:
+                return False, f"Git clone failed: {git_result.get('message', 'unknown error')}"
+        else:
+            return False, "GitHub token not configured"
+    else:
+        # No GitHub repo - clone the default template
+        logger.info(f"[CODE_SETUP] No GitHub repo, cloning default template")
+
+        template_cmd = '''
+cd /workspace
+if [ ! -d nextjs-app ]; then
+    git clone https://github.com/lfg-hq/nextjs-template nextjs-app
+    cd nextjs-app
+    npm install
+    echo "TEMPLATE_INSTALLED"
+else
+    echo "ALREADY_EXISTS"
+fi
+'''
+        result = _run_magpie_ssh(client, job_id, template_cmd, timeout=300, with_node_env=True)
+
+        if result.get('exit_code', 0) == 0:
+            # Update workspace metadata
+            metadata = workspace.metadata or {}
+            metadata['template_installed'] = True
+            workspace.metadata = metadata
+            workspace.save()
+            return True, "Default Next.js template installed"
+        else:
+            return False, f"Template setup failed: {result.get('stderr', '')[:200]}"
 
 
 @csrf_exempt
@@ -83,8 +183,16 @@ def start_dev_server(request, ticket_id):
         # Get Magpie client
         client = get_magpie_client()
 
-        # Step 0: Verify workspace structure
+        # Step 0: Ensure code exists in workspace
         logger.info(f"[DEV_SERVER] Checking workspace structure...")
+        code_success, code_message = _ensure_code_in_workspace(client, magpie_workspace, project, request.user)
+        logger.info(f"[DEV_SERVER] Code setup result: {code_success}, {code_message}")
+
+        if not code_success:
+            return JsonResponse(
+                {'error': f'Failed to set up code in workspace: {code_message}'},
+                status=500
+            )
         # verify_command = textwrap.dedent(f"""
         #     echo "=== Workspace verification ==="
         #     echo "Current directory: $(pwd)"
@@ -186,12 +294,19 @@ def start_dev_server(request, ticket_id):
 
         logger.info(f"Dev server started successfully with PID: {pid}")
 
+        # Get proxy URL, fetch if not available
+        preview_url = None
+        if get_or_fetch_proxy_url:
+            preview_url = get_or_fetch_proxy_url(magpie_workspace, port=3000, client=client)
+        if not preview_url:
+            preview_url = f'http://[{magpie_workspace.ipv6_address}]:3000' if magpie_workspace.ipv6_address else 'http://localhost:3000'
+
         return JsonResponse({
             'success': True,
             'message': 'Dev server started successfully',
             'pid': pid,
             'workspace_id': magpie_workspace.workspace_id,
-            'url': f'http://[{magpie_workspace.ipv6_address}]:3000' if magpie_workspace.ipv6_address else 'http://localhost:3000'
+            'url': preview_url
         })
 
     except ProjectTicket.DoesNotExist:

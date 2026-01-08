@@ -814,12 +814,22 @@
                     <i class="fas fa-play"></i> Start Server
                 </button>
                 {% else %}
-                <i class="fas fa-exclamation-triangle" style="color: #f59e0b;"></i>
-                <p>No Workspace Found</p>
-                <p style="font-size: 0.875rem; opacity: 0.7;">Run a ticket build first to set up the project environment</p>
-                <a href="{% url 'projects:project_tickets_list' project_id=project.project_id %}" style="padding: 0.75rem 1.5rem; background: var(--accent-purple, #8B5CF6); color: white; border: none; border-radius: 8px; text-decoration: none; font-weight: 500;">
-                    <i class="fas fa-tasks"></i> Go to Tickets
-                </a>
+                <div id="noWorkspaceContent">
+                    <i class="fas fa-cloud" style="color: #8B5CF6;"></i>
+                    <p>No Workspace Found</p>
+                    <p style="font-size: 0.875rem; opacity: 0.7;">Create a workspace to preview your application</p>
+                    <button onclick="provisionWorkspace()" id="provisionBtn" style="padding: 0.75rem 1.5rem; background: var(--accent-purple, #8B5CF6); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">
+                        <i class="fas fa-cloud-upload-alt"></i> Create Workspace
+                    </button>
+                    <p style="font-size: 0.75rem; opacity: 0.5; margin-top: 1rem;">
+                        Or <a href="{% url 'projects:project_tickets_list' project_id=project.project_id %}" style="color: var(--accent-purple);">run a ticket build</a> to set up with code
+                    </p>
+                </div>
+                <div id="provisioningContent" style="display: none;">
+                    <i class="fas fa-spinner fa-spin" style="color: #8B5CF6; font-size: 2rem;"></i>
+                    <p style="margin-top: 1rem;">Creating Workspace...</p>
+                    <p id="provisionStatus" style="font-size: 0.875rem; opacity: 0.7;">Provisioning VM, this may take up to 2 minutes</p>
+                </div>
                 {% endif %}
             </div>
             <iframe
@@ -991,6 +1001,83 @@
         setupTextSelection();
         setupConsoleResize();
     });
+
+    // Workspace Provisioning
+    async function provisionWorkspace() {
+        const noWorkspaceContent = document.getElementById('noWorkspaceContent');
+        const provisioningContent = document.getElementById('provisioningContent');
+        const provisionStatus = document.getElementById('provisionStatus');
+        const provisionBtn = document.getElementById('provisionBtn');
+
+        // Show provisioning UI
+        if (noWorkspaceContent) noWorkspaceContent.style.display = 'none';
+        if (provisioningContent) provisioningContent.style.display = 'block';
+        if (provisionBtn) provisionBtn.disabled = true;
+
+        try {
+            provisionStatus.textContent = 'Creating VM...';
+
+            const response = await fetch(`/projects/${projectId}/api/provision-workspace/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                }
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                // Update workspace variable with new data
+                workspace = data.workspace;
+                currentPreviewUrl = data.workspace.preview_url;
+
+                // Update status
+                provisionStatus.textContent = 'Workspace ready! Setting up...';
+
+                // Show success notification
+                showNotification(data.message + (data.git_message ? ` - ${data.git_message}` : ''), 'success');
+
+                // Enable server controls
+                document.getElementById('startServerBtn').disabled = false;
+                serverStatusDot.className = 'status-dot stopped';
+                serverStatusText.textContent = 'Ready';
+
+                // Update URL input if we have a preview URL
+                if (currentPreviewUrl) {
+                    urlInput.value = currentPreviewUrl;
+                }
+
+                // Transform the placeholder to show "Start Server" button
+                const placeholder = document.getElementById('iframePlaceholder');
+                placeholder.innerHTML = `
+                    <i class="fas fa-server"></i>
+                    <p>Workspace Ready</p>
+                    <p style="font-size: 0.875rem; opacity: 0.7;">Start the dev server to preview your application</p>
+                    <button onclick="startServer()" style="padding: 0.75rem 1.5rem; background: var(--accent-purple, #8B5CF6); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">
+                        <i class="fas fa-play"></i> Start Server
+                    </button>
+                `;
+
+            } else {
+                // Show error
+                showNotification(data.error || 'Failed to provision workspace', 'error');
+
+                // Reset UI
+                if (noWorkspaceContent) noWorkspaceContent.style.display = 'block';
+                if (provisioningContent) provisioningContent.style.display = 'none';
+                if (provisionBtn) provisionBtn.disabled = false;
+            }
+        } catch (error) {
+            console.error('Error provisioning workspace:', error);
+            showNotification('Error provisioning workspace: ' + error.message, 'error');
+
+            // Reset UI
+            if (noWorkspaceContent) noWorkspaceContent.style.display = 'block';
+            if (provisioningContent) provisioningContent.style.display = 'none';
+            if (provisionBtn) provisionBtn.disabled = false;
+        }
+    }
 
     // Server Control Functions
     async function checkServerStatus() {

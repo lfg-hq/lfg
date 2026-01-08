@@ -182,6 +182,12 @@ class MagpieWorkspace(models.Model):
         null=True,
         help_text="IPv6 (or IPv4) address assigned to the VM"
     )
+    proxy_url = models.URLField(
+        max_length=512,
+        blank=True,
+        null=True,
+        help_text="Public HTTPS proxy URL for accessing the workspace"
+    )
     project_path = models.CharField(
         max_length=512,
         blank=True,
@@ -233,7 +239,7 @@ class MagpieWorkspace(models.Model):
         identifier = self.project.provided_name if self.project and self.project.provided_name else self.workspace_id
         return f"Magpie Workspace {identifier} ({self.status})"
 
-    def mark_ready(self, ipv6=None, project_path=None, metadata=None):
+    def mark_ready(self, ipv6=None, project_path=None, metadata=None, proxy_url=None):
         """Mark the workspace as ready and update connection details."""
         self.status = 'ready'
         self.last_seen_at = timezone.now()
@@ -241,6 +247,8 @@ class MagpieWorkspace(models.Model):
             self.ipv6_address = ipv6
         if project_path:
             self.project_path = project_path
+        if proxy_url:
+            self.proxy_url = proxy_url
         if metadata:
             current_metadata = self.metadata or {}
             current_metadata.update(metadata)

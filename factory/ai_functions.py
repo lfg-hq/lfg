@@ -108,6 +108,125 @@ def _slugify_project_name(name: str) -> str:
     return slug or "turbo-app"
 
 
+def _generate_proxy_subdomain(workspace: MagpieWorkspace) -> str:
+    """
+    Generate a custom subdomain for proxy URL based on project name.
+    Format: {project-slug}-preview-{short-id}
+    """
+    import uuid
+
+    # Get project name
+    project_name = "app"
+    if workspace.project:
+        project_name = workspace.project.provided_name or workspace.project.name or "app"
+    elif workspace.metadata and workspace.metadata.get('project_name'):
+        project_name = workspace.metadata.get('project_name')
+
+    # Slugify the project name
+    slug = _slugify_project_name(project_name)
+
+    # Add a short unique suffix to avoid collisions
+    short_id = str(uuid.uuid4())[:6]
+
+    # Create subdomain: max 63 chars for DNS labels
+    subdomain = f"{slug}-preview-{short_id}"
+    if len(subdomain) > 63:
+        subdomain = f"{slug[:50]}-preview-{short_id}"
+
+    return subdomain
+
+
+def get_or_create_proxy_url(workspace: MagpieWorkspace, port: int = 3000, client=None) -> str | None:
+    """
+    Get the proxy URL for a workspace from database. If not exists, create a new
+    proxy target with a custom subdomain name.
+
+    Args:
+        workspace: The MagpieWorkspace instance
+        port: The port number for the proxy (default: 3000)
+        client: Optional Magpie client. If not provided, one will be created.
+
+    Returns:
+        The proxy URL string, or None if unavailable
+    """
+    # Return existing proxy URL if available in database
+    if workspace.proxy_url:
+        logger.debug(f"[PROXY] Using existing proxy URL for workspace {workspace.workspace_id}: {workspace.proxy_url}")
+        return workspace.proxy_url
+
+    # No proxy URL in DB - create a new one
+    try:
+        if client is None:
+            client = get_magpie_client()
+
+        # Check if workspace has IPv6 address
+        if not workspace.ipv6_address:
+            logger.warning(f"[PROXY] Cannot create proxy - workspace {workspace.workspace_id} has no IPv6 address")
+            return None
+
+        ipv6 = workspace.ipv6_address.strip('[]')
+        proxy_url = None
+
+        # Try to create custom proxy target with custom subdomain (newer API)
+        if hasattr(client, 'proxy_targets'):
+            try:
+                subdomain = _generate_proxy_subdomain(workspace)
+                logger.info(f"[PROXY] Creating custom proxy target: subdomain={subdomain}, IPv6={ipv6}, port={port}")
+
+                target = client.proxy_targets.create(
+                    ipv6_address=ipv6,
+                    port=port,
+                    name=f"LFG Preview - {subdomain}",
+                    subdomain=subdomain
+                )
+
+                # Extract proxy URL from response
+                if hasattr(target, 'proxy_url'):
+                    proxy_url = target.proxy_url
+                elif isinstance(target, dict):
+                    proxy_url = target.get('proxy_url') or target.get('url')
+
+                # If no url field, construct it from subdomain
+                if not proxy_url:
+                    proxy_url = f"https://{subdomain}.app.lfg.run"
+
+                logger.info(f"[PROXY] Created custom proxy target: {proxy_url}")
+
+            except Exception as e:
+                logger.warning(f"[PROXY] Custom proxy target creation failed, falling back to get_proxy_url: {e}")
+
+        # Fallback: use get_proxy_url for existing jobs
+        if not proxy_url:
+            job_id = workspace.job_id
+            logger.info(f"[PROXY] Fetching proxy URL for job {job_id}")
+            proxy_url = client.jobs.get_proxy_url(job_id)
+
+        if proxy_url:
+            # Store the proxy URL in the database
+            workspace.proxy_url = proxy_url
+            workspace.save(update_fields=['proxy_url', 'updated_at'])
+            logger.info(f"[PROXY] Stored proxy URL for workspace {workspace.workspace_id}: {proxy_url}")
+            return proxy_url
+        else:
+            logger.warning(f"[PROXY] No proxy URL obtained for workspace {workspace.workspace_id}")
+            return None
+
+    except Exception as e:
+        logger.error(f"[PROXY] Failed to get/create proxy URL for workspace {workspace.workspace_id}: {e}", exc_info=True)
+        return None
+
+
+# Keep old function name as alias for backward compatibility
+def get_or_fetch_proxy_url(workspace: MagpieWorkspace, port: int = 3000, client=None) -> str | None:
+    """Alias for get_or_create_proxy_url for backward compatibility."""
+    return get_or_create_proxy_url(workspace, port, client)
+
+
+async def async_get_or_fetch_proxy_url(workspace: MagpieWorkspace, port: int = 3000, client=None) -> str | None:
+    """Async version of get_or_create_proxy_url."""
+    return await sync_to_async(get_or_fetch_proxy_url, thread_sensitive=True)(workspace, port, client)
+
+
 def _sanitize_string(value: str) -> str:
     """
     Remove NUL bytes and other problematic characters that PostgreSQL cannot store.
@@ -2816,7 +2935,10 @@ async def new_dev_sandbox_tool(function_args, project_id, conversation_id):
 
     await sync_to_async(_update_workspace_metadata, thread_sensitive=True)(workspace, **metadata_updates)
 
-    preview_url = f"http://[{workspace.ipv6_address}]:3000" if workspace.ipv6_address else "(IPv6 pending)"
+    # Use proxy URL if available, otherwise fall back to IPv6
+    preview_url = await async_get_or_fetch_proxy_url(workspace, port=3000)
+    if not preview_url:
+        preview_url = f"http://[{workspace.ipv6_address}]:3000" if workspace.ipv6_address else "(URL pending)"
     status_text = "completed successfully" if result.get('exit_code') == 0 else f"exited with code {result.get('exit_code')}"
     message_lines = [
         f"Dev sandbox setup {status_text} 🚀",
@@ -3911,9 +4033,11 @@ async def run_code_server_tool(function_args, project_id, conversation_id):
             "message_to_agent": f"Error executing command: {str(exc)}"
         }
 
-    # Construct the app URL
-    ipv6 = workspace.ipv6_address.strip('[]')
-    app_url = f"http://[{ipv6}]:{port}"
+    # Use proxy URL if available, otherwise fall back to IPv6
+    app_url = await async_get_or_fetch_proxy_url(workspace, port=port)
+    if not app_url:
+        ipv6 = workspace.ipv6_address.strip('[]')
+        app_url = f"http://[{ipv6}]:{port}"
 
     logger.info(f"App should be available at: {app_url}")
 
@@ -4031,8 +4155,10 @@ async def open_app_in_artifacts_tool(function_args, project_id, conversation_id)
             logger.exception("Failed to start dev server")
             # Continue anyway - maybe server is already running
 
-    # Construct the app URL with IPv6
-    app_url = f"http://[{workspace.ipv6_address}]:{port}"
+    # Use proxy URL if available, otherwise fall back to IPv6
+    app_url = await async_get_or_fetch_proxy_url(workspace, port=port)
+    if not app_url:
+        app_url = f"http://[{workspace.ipv6_address}]:{port}"
 
     logger.info(f"Opening app in artifacts panel: {app_url}")
 

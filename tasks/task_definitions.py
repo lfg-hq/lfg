@@ -1281,40 +1281,40 @@ def setup_ticket_workspace(
             slug = _slugify_project_name(project_name)
             workspace_name = f"{slug}-{project.id}"
 
-            response = client.jobs.create(
+            vm_handle = client.jobs.create_persistent_vm(
                 name=workspace_name,
                 script=MAGPIE_BOOTSTRAP_SCRIPT,
-                persist=True,
-                ip_lease=True,
                 stateful=True,
                 workspace_size_gb=10,
                 vcpus=2,
                 memory_mb=2048,
+                register_proxy=True,
+                proxy_port=3000,
+                poll_timeout=180,
+                poll_interval=5,
             )
-            logger.info(f"[MAGPIE][CREATE] job response: {response}")
+            logger.info(f"[MAGPIE][CREATE] vm_handle: {vm_handle}")
 
-            run_id = response.get("request_id")
+            run_id = vm_handle.request_id
             workspace_identifier = run_id
+            ipv6 = vm_handle.ip_address
+            proxy_url = vm_handle.proxy_url
+
+            if not ipv6:
+                raise Exception(f"VM provisioning timed out - no IP address received")
 
             workspace = MagpieWorkspace.objects.create(
                 project=project,
                 conversation_id=str(conversation_id) if conversation_id else None,
                 job_id=run_id,
                 workspace_id=workspace_identifier,
-                status='provisioning',
+                status='ready',
+                ipv6_address=ipv6,
+                project_path='/workspace',
+                proxy_url=proxy_url,
                 metadata={'project_name': project_name}
             )
-
-            # Wait for VM to be ready
-            logger.info(f"[MAGPIE][POLL] Waiting for VM to be ready...")
-            vm_info = client.jobs.get_vm_info(run_id, poll_timeout=120, poll_interval=5)
-
-            ipv6 = vm_info.get("ip_address")
-            if not ipv6:
-                raise Exception(f"VM provisioning timed out - no IP address received")
-
-            workspace.mark_ready(ipv6=ipv6, project_path='/workspace')
-            logger.info(f"[MAGPIE][READY] Workspace ready: {workspace.workspace_id}, IP: {ipv6}")
+            logger.info(f"[MAGPIE][READY] Workspace ready: {workspace.workspace_id}, IP: {ipv6}, Proxy: {proxy_url}")
 
         except Exception as e:
             error_msg = f"Workspace provisioning failed: {str(e)}"
@@ -2043,40 +2043,40 @@ def ensure_workspace_and_execute(ticket_ids: List[int], project_db_id: int, conv
                 slug = _slugify_project_name(project_name)
                 workspace_name = f"{slug}-{project.id}"
 
-                response = client.jobs.create(
+                vm_handle = client.jobs.create_persistent_vm(
                     name=workspace_name,
                     script=MAGPIE_BOOTSTRAP_SCRIPT,
-                    persist=True,
-                    ip_lease=True,
                     stateful=True,
                     workspace_size_gb=10,
                     vcpus=2,
                     memory_mb=2048,
+                    register_proxy=True,
+                    proxy_port=3000,
+                    poll_timeout=180,
+                    poll_interval=5,
                 )
-                logger.info(f"[MAGPIE][CREATE] job response: {response}")
+                logger.info(f"[MAGPIE][CREATE] vm_handle: {vm_handle}")
 
-                run_id = response.get("request_id")
+                run_id = vm_handle.request_id
                 workspace_identifier = run_id
+                ipv6 = vm_handle.ip_address
+                proxy_url = vm_handle.proxy_url
+
+                if not ipv6:
+                    raise Exception(f"VM provisioning timed out - no IP address received")
 
                 workspace = MagpieWorkspace.objects.create(
                     project=project,
                     conversation_id=str(conversation_id) if conversation_id else None,
                     job_id=run_id,
                     workspace_id=workspace_identifier,
-                    status='provisioning',
+                    status='ready',
+                    ipv6_address=ipv6,
+                    project_path='/workspace',
+                    proxy_url=proxy_url,
                     metadata={'project_name': project_name}
                 )
-
-                # Wait for VM to be ready with IP address (polls internally)
-                logger.info(f"[MAGPIE][POLL] Waiting for VM to be ready with IP address...")
-                vm_info = client.jobs.get_vm_info(run_id, poll_timeout=120, poll_interval=5)
-
-                ipv6 = vm_info.get("ip_address")
-                if not ipv6:
-                    raise Exception(f"VM provisioning timed out - no IP address received")
-
-                workspace.mark_ready(ipv6=ipv6, project_path='/workspace')
-                logger.info(f"[MAGPIE][READY] Workspace ready: {workspace.workspace_id}, IP: {ipv6}")
+                logger.info(f"[MAGPIE][READY] Workspace ready: {workspace.workspace_id}, IP: {ipv6}, Proxy: {proxy_url}")
             except Exception as e:
                 broadcast_ticket_notification(conversation_id, {
                     'is_notification': True,

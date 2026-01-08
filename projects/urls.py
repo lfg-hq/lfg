@@ -55,6 +55,7 @@ urlpatterns = [
     path('<str:project_id>/api/check-servers/', views.check_server_status_api, name='check_server_status_api'),
     path('<str:project_id>/api/start-dev-server/', views.start_dev_server_api, name='start_dev_server_api'),
     path('<str:project_id>/api/stop-dev-server/', views.stop_dev_server_api, name='stop_dev_server_api'),
+    path('<str:project_id>/api/provision-workspace/', views.provision_workspace_api, name='provision_workspace_api'),
 
     # Environment variables API
     path('<str:project_id>/api/env-vars/', views.project_env_vars_api, name='project_env_vars_api'),
