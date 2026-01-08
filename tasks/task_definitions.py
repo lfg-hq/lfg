@@ -793,48 +793,48 @@ git merge {feature_branch} || echo "CONFLICT_DETECTED"
 
         # Build AI prompt for conflict resolution
         implementation_prompt = f"""
-You are resolving merge conflicts between two branches:
-- Base branch: lfg-agent
-- Feature branch: {feature_branch}
+            You are resolving merge conflicts between two branches:
+            - Base branch: lfg-agent
+            - Feature branch: {feature_branch}
 
 
-CONFLICT DETAILS:
-{conflict_diff}
+            CONFLICT DETAILS:
+            {conflict_diff}
 
-PROJECT PATH: nextjs-app
+            PROJECT PATH: nextjs-app
 
-Your task: Fix all merge conflicts using SSH commands.
+            Your task: Fix all merge conflicts using SSH commands.
 
-Steps:
-1. Check the conflicted files to understand the conflicts
-2. Resolve conflicts by editing files (choose appropriate resolution strategy)
-3. After resolving, stage the resolved files: git add <files>
-4. Complete the merge: git commit -m "Merge {feature_branch} into lfg-agent"
-5. Verify no conflicts remain: git status
+            Steps:
+            1. Check the conflicted files to understand the conflicts
+            2. Resolve conflicts by editing files (choose appropriate resolution strategy)
+            3. After resolving, stage the resolved files: git add <files>
+            4. Complete the merge: git commit -m "Merge {feature_branch} into lfg-agent"
+            5. Verify no conflicts remain: git status
 
-✅ Success case: "IMPLEMENTATION_STATUS: COMPLETE - Resolved all conflicts"
-❌ Failure case: "IMPLEMENTATION_STATUS: FAILED - [reason]"
-"""
+            ✅ Success case: "IMPLEMENTATION_STATUS: COMPLETE - Resolved all conflicts"
+            ❌ Failure case: "IMPLEMENTATION_STATUS: FAILED - [reason]"
+            """
 
         system_prompt = """
-You are an expert developer resolving merge conflicts.
+            You are an expert developer resolving merge conflicts.
 
-IMPORTANT:
-1. Use ssh_command tool to inspect and edit conflicted files
-2. Understand BOTH sides of the conflict before resolving
-3. Choose the correct resolution strategy (accept theirs, ours, or manual merge)
-4. After resolving, stage files with: git add <file>
-5. Complete merge with: git commit -m "Merge conflicts resolved"
-6. DO NOT create new features - only resolve conflicts
-7. Keep all valid changes from both branches when possible
+            IMPORTANT:
+            1. Use ssh_command tool to inspect and edit conflicted files
+            2. Understand BOTH sides of the conflict before resolving
+            3. Choose the correct resolution strategy (accept theirs, ours, or manual merge)
+            4. After resolving, stage files with: git add <file>
+            5. Complete merge with: git commit -m "Merge conflicts resolved"
+            6. DO NOT create new features - only resolve conflicts
+            7. Keep all valid changes from both branches when possible
 
-🎯 COMPLETION CRITERIA:
-- All conflicted files are resolved
-- Changes are staged and committed
-- git status shows no conflicts
+            🎯 COMPLETION CRITERIA:
+            - All conflicted files are resolved
+            - Changes are staged and committed
+            - git status shows no conflicts
 
-End with: "IMPLEMENTATION_STATUS: COMPLETE - [summary]" or "IMPLEMENTATION_STATUS: FAILED - [reason]"
-"""
+            End with: "IMPLEMENTATION_STATUS: COMPLETE - [summary]" or "IMPLEMENTATION_STATUS: FAILED - [reason]"
+            """
 
         # Set context for workspace
         current_workspace_id.set(workspace_id)

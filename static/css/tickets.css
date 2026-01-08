@@ -633,7 +633,34 @@
 .ticket-detail-drawer {
     display: flex;
     flex-direction: column;
-    gap: 1.25rem;
+    gap: 0.75rem;
+    padding: 1rem;
+    position: relative;
+}
+
+.detail-header-actions {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    z-index: 1;
+}
+
+.detail-header-actions .btn {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.8125rem;
+    border-radius: var(--radius-md);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-color);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+}
+
+.detail-header-actions .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.2);
 }
 
 .detail-meta-row {
@@ -643,6 +670,105 @@
     gap: 0.5rem;
     padding: 0.75rem 0;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.detail-meta-spacer {
+    flex: 1;
+}
+
+.detail-edit-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.25rem 0.625rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.detail-edit-btn:hover {
+    color: var(--text-color);
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+.detail-edit-btn i {
+    font-size: 0.625rem;
+}
+
+/* Uniform label styling for status and priority */
+.detail-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    font-family: inherit;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    line-height: 1;
+}
+
+/* Status label colors */
+.status-label.status-open {
+    background-color: rgba(99, 102, 241, 0.12);
+    color: #a5b4fc;
+}
+
+.status-label.status-in_progress {
+    background-color: rgba(251, 191, 36, 0.12);
+    color: #fcd34d;
+}
+
+.status-label.status-done {
+    background-color: rgba(34, 197, 94, 0.12);
+    color: #4ade80;
+}
+
+.status-label.status-blocked {
+    background-color: rgba(239, 68, 68, 0.12);
+    color: #f87171;
+}
+
+/* Priority label colors */
+.priority-label.priority-high {
+    background-color: rgba(239, 68, 68, 0.12);
+    color: #f87171;
+}
+
+.priority-label.priority-high::before {
+    content: '●';
+    font-size: 0.4rem;
+    line-height: 1;
+}
+
+.priority-label.priority-medium {
+    background-color: rgba(251, 191, 36, 0.12);
+    color: #fcd34d;
+}
+
+.priority-label.priority-medium::before {
+    content: '●';
+    font-size: 0.4rem;
+    line-height: 1;
+}
+
+.priority-label.priority-low {
+    background-color: rgba(34, 197, 94, 0.12);
+    color: #4ade80;
+}
+
+.priority-label.priority-low::before {
+    content: '●';
+    font-size: 0.4rem;
+    line-height: 1;
 }
 
 .detail-meta-badge {
@@ -1306,4 +1432,682 @@
 
 .queue-restart-btn:active {
     transform: scale(0.95);
+}
+
+/* ============================================
+   VIEW TOGGLE STYLES
+   ============================================ */
+
+.view-toggle-group {
+    display: inline-flex;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-md);
+    padding: 2px;
+    gap: 2px;
+}
+
+.view-toggle-btn {
+    padding: 0.5rem 0.75rem;
+    background: transparent;
+    border: none;
+    border-radius: calc(var(--radius-md) - 2px);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.view-toggle-btn:hover {
+    color: var(--text-color);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.view-toggle-btn.active {
+    background: var(--primary-color);
+    color: white;
+}
+
+.stages-btn {
+    padding: 0.5rem 0.75rem !important;
+    min-width: auto !important;
+}
+
+/* ============================================
+   KANBAN BOARD STYLES
+   ============================================ */
+
+.kanban-board {
+    display: flex;
+    gap: 1rem;
+    overflow-x: auto;
+    padding-bottom: 1rem;
+    flex: 1;
+    min-height: 0;
+    /* Hide scrollbar */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.kanban-board::-webkit-scrollbar {
+    display: none;
+}
+
+.kanban-column {
+    flex: 1 1 280px;
+    min-width: 280px;
+    max-width: 350px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: var(--radius-lg);
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 200px);
+}
+
+.kanban-column-header {
+    padding: 0.875rem 1rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-top: 3px solid #6366f1;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.kanban-column-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.stage-color-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.stage-name {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-color);
+    flex: 1;
+}
+
+.ticket-count {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.05);
+    padding: 0.125rem 0.5rem;
+    border-radius: 999px;
+}
+
+.kanban-column-body {
+    flex: 1;
+    padding: 0.75rem;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-height: 100px;
+    /* Hide scrollbar but keep scrolling */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.kanban-column-body::-webkit-scrollbar {
+    display: none;
+}
+
+.kanban-column-body.drag-over {
+    background: rgba(99, 102, 241, 0.05);
+    border: 2px dashed rgba(99, 102, 241, 0.3);
+    border-radius: var(--radius-md);
+}
+
+.kanban-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-md);
+    padding: 0.875rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.kanban-card:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.12);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.kanban-card.dragging {
+    opacity: 0.5;
+    transform: rotate(2deg);
+}
+
+.kanban-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.kanban-card-title {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-color);
+    line-height: 1.4;
+    flex: 1;
+}
+
+.kanban-edit-btn {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-secondary);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.6875rem;
+    opacity: 0;
+    flex-shrink: 0;
+}
+
+.kanban-card:hover .kanban-edit-btn {
+    opacity: 1;
+}
+
+.kanban-edit-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: var(--text-color);
+}
+
+.kanban-card-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+}
+
+.priority-indicator {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+}
+
+.priority-label {
+    font-size: 0.6875rem;
+    color: var(--text-secondary);
+}
+
+/* ============================================
+   STAGES MODAL STYLES
+   ============================================ */
+
+.stages-modal-dialog {
+    max-width: 500px;
+}
+
+.stages-hint {
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+}
+
+.stages-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.stage-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-md);
+    cursor: grab;
+    transition: all 0.2s ease;
+}
+
+.stage-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+.stage-item.dragging {
+    opacity: 0.5;
+    background: rgba(99, 102, 241, 0.1);
+}
+
+.stage-drag-handle {
+    color: var(--text-secondary);
+    opacity: 0.5;
+    cursor: grab;
+}
+
+.stage-drag-handle:active {
+    cursor: grabbing;
+}
+
+.stage-color-input {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    background: transparent;
+}
+
+.stage-color-input::-webkit-color-swatch-wrapper {
+    padding: 2px;
+}
+
+.stage-color-input::-webkit-color-swatch {
+    border-radius: calc(var(--radius-sm) - 4px);
+    border: none;
+}
+
+.stage-name-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--text-color);
+    font-size: 0.875rem;
+    font-weight: 500;
+    padding: 0.25rem;
+}
+
+.stage-name-input:focus {
+    outline: none;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: var(--radius-sm);
+}
+
+.stage-badges {
+    display: flex;
+    gap: 0.375rem;
+}
+
+.stage-badge {
+    font-size: 0.625rem;
+    padding: 0.125rem 0.375rem;
+    border-radius: 999px;
+    text-transform: uppercase;
+    font-weight: 600;
+    letter-spacing: 0.025em;
+}
+
+.stage-badge.default {
+    background: rgba(99, 102, 241, 0.15);
+    color: #818cf8;
+}
+
+.stage-badge.completed {
+    background: rgba(34, 197, 94, 0.15);
+    color: #22c55e;
+}
+
+.stage-actions {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.stage-action-btn {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: none;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-secondary);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+}
+
+.stage-action-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-color);
+}
+
+.stage-action-btn.danger:hover {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+}
+
+.add-stage-form {
+    display: flex;
+    gap: 0.5rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.add-stage-form input[type="text"] {
+    flex: 1;
+    padding: 0.5rem 0.75rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-md);
+    color: var(--text-color);
+    font-size: 0.875rem;
+}
+
+.add-stage-form input[type="text"]:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+.add-stage-form input[type="color"] {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    background: transparent;
+}
+
+/* ============================================
+   EDIT TICKET MODAL STYLES
+   ============================================ */
+
+.edit-ticket-dialog {
+    max-width: 550px;
+}
+
+.edit-ticket-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.edit-ticket-row > div {
+    display: flex;
+    flex-direction: column;
+}
+
+#editTicketModal .modal-body label {
+    display: block;
+    margin-bottom: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+}
+
+#editTicketModal .modal-body input[type="text"],
+#editTicketModal .modal-body textarea,
+#editTicketModal .modal-body select {
+    width: 100%;
+    padding: 0.625rem 0.875rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-md);
+    color: var(--text-color);
+    font-size: 0.875rem;
+    font-family: inherit;
+    transition: all 0.2s ease;
+}
+
+#editTicketModal .modal-body input[type="text"]:focus,
+#editTicketModal .modal-body textarea:focus,
+#editTicketModal .modal-body select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+#editTicketModal .modal-body textarea {
+    resize: vertical;
+    min-height: 100px;
+}
+
+#editTicketModal .modal-actions {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+.btn-danger {
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.btn-danger:hover {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.3);
+}
+
+/* Edit Button in Table */
+.edit-ticket-btn {
+    padding: 0.375rem 0.5rem;
+    opacity: 0.5;
+    transition: opacity 0.2s ease;
+}
+
+.ticket-row:hover .edit-ticket-btn {
+    opacity: 1;
+}
+
+/* ============================================
+   INLINE EDITING STYLES
+   ============================================ */
+
+.inline-edit-mode {
+    padding: 1rem;
+}
+
+.inline-edit-section {
+    margin-bottom: 1rem;
+}
+
+.inline-edit-section label {
+    display: block;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.375rem;
+}
+
+.inline-edit-input,
+.inline-edit-textarea,
+.inline-edit-select {
+    width: 100%;
+    padding: 0.625rem 0.75rem;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-md);
+    color: var(--text-color);
+    font-size: 0.875rem;
+    font-family: inherit;
+    transition: all 0.2s ease;
+}
+
+.inline-edit-input:hover,
+.inline-edit-textarea:hover,
+.inline-edit-select:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+.inline-edit-input:focus,
+.inline-edit-textarea:focus,
+.inline-edit-select:focus {
+    outline: none;
+    background: rgba(255, 255, 255, 0.05);
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.1);
+}
+
+.inline-edit-textarea {
+    resize: vertical;
+    min-height: 120px;
+    line-height: 1.5;
+}
+
+.inline-edit-header-row {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+}
+
+.inline-edit-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.inline-edit-meta {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding-top: 1rem;
+    margin-top: 0.5rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.inline-edit-meta i {
+    margin-right: 0.25rem;
+    opacity: 0.7;
+}
+
+.inline-linear-link {
+    color: var(--primary-color);
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+.inline-linear-link:hover {
+    color: var(--primary-hover);
+}
+
+/* Status/Priority select styling in inline mode */
+.inline-edit-select.status-select[data-status="open"] {
+    color: #818cf8;
+    background-color: rgba(99, 102, 241, 0.08);
+    border-color: rgba(99, 102, 241, 0.2);
+}
+
+.inline-edit-select.status-select[data-status="in_progress"] {
+    color: #fbbf24;
+    background-color: rgba(251, 191, 36, 0.08);
+    border-color: rgba(251, 191, 36, 0.2);
+}
+
+.inline-edit-select.status-select[data-status="done"] {
+    color: #34d399;
+    background-color: rgba(52, 211, 153, 0.08);
+    border-color: rgba(52, 211, 153, 0.2);
+}
+
+.inline-edit-select.status-select[data-status="blocked"] {
+    color: #ef4444;
+    background-color: rgba(239, 68, 68, 0.08);
+    border-color: rgba(239, 68, 68, 0.2);
+}
+
+.inline-edit-select.priority-select[data-priority="High"] {
+    color: #ef4444;
+    background-color: rgba(239, 68, 68, 0.08);
+    border-color: rgba(239, 68, 68, 0.2);
+}
+
+.inline-edit-select.priority-select[data-priority="Medium"] {
+    color: #fbbf24;
+    background-color: rgba(251, 191, 36, 0.08);
+    border-color: rgba(251, 191, 36, 0.2);
+}
+
+.inline-edit-select.priority-select[data-priority="Low"] {
+    color: #34d399;
+    background-color: rgba(52, 211, 153, 0.08);
+    border-color: rgba(52, 211, 153, 0.2);
+}
+
+/* Save indicator toast */
+.inline-save-indicator {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    padding: 0.625rem 1rem;
+    border-radius: var(--radius-md);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    z-index: 9999;
+    animation: slideInUp 0.2s ease;
+}
+
+.inline-save-indicator.success {
+    background: rgba(34, 197, 94, 0.15);
+    color: #22c55e;
+    border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.inline-save-indicator.error {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+@keyframes slideInUp {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ============================================
+   RESPONSIVE ADJUSTMENTS FOR KANBAN
+   ============================================ */
+
+@media (max-width: 768px) {
+    .kanban-board {
+        flex-direction: column;
+    }
+
+    .kanban-column {
+        flex: none;
+        min-width: 100%;
+        max-height: 400px;
+    }
+
+    .view-toggle-group {
+        order: -1;
+        width: 100%;
+        justify-content: center;
+    }
+
+    .edit-ticket-row {
+        grid-template-columns: 1fr;
+    }
 }

@@ -1419,6 +1419,25 @@ tools_turbo_ = [
     lookup_technology_specs
 ]
 
+# Tool for getting existing environment variables (OpenAI format)
+get_project_env_vars = {
+    "type": "function",
+    "function": {
+        "name": "get_project_env_vars",
+        "description": "Get the list of environment variables configured for this project. Returns variable names, whether they have values set, and their descriptions. Does NOT return actual secret values - only metadata. Use this to check what env vars already exist before registering new ones.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "include_values": {
+                    "type": "boolean",
+                    "description": "If true, include masked values for non-secret variables. Default false."
+                }
+            },
+            "required": []
+        }
+    }
+}
+
 # Tool for registering required environment variables (OpenAI format)
 register_required_env_vars = {
     "type": "function",
@@ -1468,6 +1487,39 @@ register_required_env_vars = {
     }
 }
 
+# Tool for agent to create a single ticket (OpenAI format)
+agent_create_ticket = {
+    "type": "function",
+    "function": {
+        "name": "agent_create_ticket",
+        "description": "Create a single ticket/task for the project. Use this when you need to create a follow-up task, document something that needs to be done later, or flag an issue for the user to address.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Short, descriptive title for the ticket (e.g., 'Configure SendGrid API credentials', 'Add error handling for payment flow')"
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Detailed description of what needs to be done. Can include markdown formatting, code snippets, or step-by-step instructions."
+                },
+                "priority": {
+                    "type": "string",
+                    "enum": ["High", "Medium", "Low"],
+                    "description": "Priority level. Use High for blockers/critical issues, Medium for important tasks, Low for nice-to-haves."
+                },
+                "status": {
+                    "type": "string",
+                    "enum": ["open", "in_progress", "done", "blocked"],
+                    "description": "Initial status. Usually 'open' for new tickets. Default: open"
+                }
+            },
+            "required": ["name", "description"]
+        }
+    }
+}
+
 tools_builder = [
     get_file_list,
     get_file_content,
@@ -1480,7 +1532,9 @@ tools_builder = [
     run_code_server,
     record_ticket_summary,
     broadcast_to_user,
-    register_required_env_vars
+    get_project_env_vars,
+    register_required_env_vars,
+    agent_create_ticket
 ]
 
 # Anthropic native format for direct API calls

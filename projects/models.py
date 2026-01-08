@@ -263,9 +263,50 @@ class DesignCanvas(models.Model):
         super().save(*args, **kwargs)
 
 
+class TicketStage(models.Model):
+    """Custom ticket stages per project - allows users to define their own workflow"""
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="ticket_stages")
+    name = models.CharField(max_length=100)
+    color = models.CharField(max_length=7, default='#6366f1', help_text='Hex color code')
+    order = models.IntegerField(default=0, help_text='Display order of the stage')
+    is_default = models.BooleanField(default=False, help_text='If true, new tickets will be assigned this stage')
+    is_completed = models.BooleanField(default=False, help_text='If true, tickets in this stage are considered done')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['order', 'created_at']
+        unique_together = ['project', 'name']
+        verbose_name = 'Ticket Stage'
+        verbose_name_plural = 'Ticket Stages'
+
+    def __str__(self):
+        return f"{self.project.name} - {self.name}"
+
+    @classmethod
+    def get_or_create_defaults(cls, project):
+        """Create default stages for a project if none exist"""
+        if cls.objects.filter(project=project).exists():
+            return cls.objects.filter(project=project)
+
+        default_stages = [
+            {'name': 'Backlog', 'color': '#6b7280', 'order': 0, 'is_default': True},
+            {'name': 'Todo', 'color': '#6366f1', 'order': 1},
+            {'name': 'In Progress', 'color': '#f59e0b', 'order': 2},
+            {'name': 'In Review', 'color': '#8b5cf6', 'order': 3},
+            {'name': 'Done', 'color': '#22c55e', 'order': 4, 'is_completed': True},
+        ]
+
+        stages = []
+        for stage_data in default_stages:
+            stages.append(cls.objects.create(project=project, **stage_data))
+        return stages
+
+
 class ProjectTicket(models.Model):
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="tickets")
     name = models.CharField(max_length=255)
+    # Legacy status field kept for backward compatibility
     status = models.CharField(max_length=20, choices=(
         ('open', 'Open'),
         ('in_progress', 'In Progress'),
@@ -273,6 +314,15 @@ class ProjectTicket(models.Model):
         ('failed', 'Failed'),
         ('blocked', 'Blocked'),
     ), default='open')
+    # New custom stage field
+    stage = models.ForeignKey(
+        TicketStage,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='tickets',
+        help_text='Custom workflow stage'
+    )
     description = models.TextField()
     priority = models.CharField(max_length=20, choices=(
         ('High', 'High'),

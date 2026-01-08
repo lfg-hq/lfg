@@ -1357,13 +1357,23 @@ async function loadEnvVars() {
         if (data.success && data.env_vars.length > 0) {
             listEl.innerHTML = data.env_vars.map(env => `
                 <div class="env-var-item ${!env.has_value ? 'env-var-missing' : ''}" data-key="${env.key}">
-                    <div>
-                        <span class="env-var-key">${env.key}</span>
-                        ${env.is_secret ? '<span class="env-var-secret-badge">secret</span>' : ''}
-                        ${!env.has_value ? '<span class="env-var-missing-badge">missing value</span>' : ''}
-                        ${env.is_required && !env.has_value ? '<span class="env-var-required-badge">required</span>' : ''}
-                        <span class="env-var-value">${env.has_value ? env.masked_value : '(no value set)'}</span>
-                        ${env.description ? `<div class="env-var-description">${env.description}</div>` : ''}
+                    <div class="env-var-info">
+                        <div class="env-var-header">
+                            <span class="env-var-key">${env.key}</span>
+                            ${env.is_secret ? '<span class="env-var-secret-badge">secret</span>' : ''}
+                            ${!env.has_value ? '<span class="env-var-missing-badge">missing value</span>' : ''}
+                            ${env.is_required && !env.has_value ? '<span class="env-var-required-badge">REQUIRED</span>' : ''}
+                            <span class="env-var-value">${env.has_value ? env.masked_value : '(no value set)'}</span>
+                        </div>
+                        ${env.description ? `<div class="env-var-description">${env.description}${env.example ? ` (Example: ${env.example})` : ''}</div>` : ''}
+                        <div class="env-var-edit-row" id="edit-row-${env.key}">
+                            ${!env.has_value ? `<button type="button" class="env-var-add-btn" onclick="showEnvVarInput('${env.key}', ${env.is_secret})"><i class="fas fa-plus"></i> Add Value</button>` : `<button type="button" class="env-var-edit-btn-small" onclick="showEnvVarInput('${env.key}', ${env.is_secret})"><i class="fas fa-pen"></i> Edit</button>`}
+                        </div>
+                        <div class="env-var-input-row" id="input-row-${env.key}" style="display: none;">
+                            <input type="${env.is_secret ? 'password' : 'text'}" class="env-var-input" id="input-${env.key}" placeholder="Enter value for ${env.key}">
+                            <button type="button" class="env-var-save-btn" onclick="saveEnvVarValue('${env.key}', ${env.is_secret})"><i class="fas fa-check"></i> Save</button>
+                            <button type="button" class="env-var-cancel-btn" onclick="hideEnvVarInput('${env.key}')"><i class="fas fa-times"></i></button>
+                        </div>
                     </div>
                     <div class="env-var-actions">
                         <button type="button" class="env-var-delete-btn" onclick="deleteEnvVar('${env.key}')" title="Delete">
@@ -1378,6 +1388,75 @@ async function loadEnvVars() {
     } catch (error) {
         console.error('Error loading env vars:', error);
         listEl.innerHTML = '<div class="env-vars-empty">Error loading variables</div>';
+    }
+}
+
+// Show input field for env var
+function showEnvVarInput(key, isSecret) {
+    const editRow = document.getElementById(`edit-row-${key}`);
+    const inputRow = document.getElementById(`input-row-${key}`);
+    if (editRow) editRow.style.display = 'none';
+    if (inputRow) {
+        inputRow.style.display = 'flex';
+        const input = document.getElementById(`input-${key}`);
+        if (input) input.focus();
+    }
+}
+
+// Hide input field for env var
+function hideEnvVarInput(key) {
+    const editRow = document.getElementById(`edit-row-${key}`);
+    const inputRow = document.getElementById(`input-row-${key}`);
+    if (editRow) editRow.style.display = 'block';
+    if (inputRow) inputRow.style.display = 'none';
+}
+
+// Save value for env var
+async function saveEnvVarValue(key, isSecret) {
+    const input = document.getElementById(`input-${key}`);
+    const value = input.value.trim();
+    const projectId = '{{ project.project_id }}';
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+    if (!value) {
+        alert('Please enter a value');
+        input.focus();
+        return;
+    }
+
+    const btn = input.nextElementSibling;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    btn.disabled = true;
+
+    try {
+        const response = await fetch(`/projects/${projectId}/api/env-vars/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
+            body: JSON.stringify({
+                single_var: true,
+                key: key,
+                value: value,
+                is_secret: isSecret
+            })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            loadEnvVars();
+        } else {
+            alert('Error: ' + (data.error || 'Failed to save'));
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+    } catch (error) {
+        console.error('Error saving env var:', error);
+        alert('Error saving environment variable');
+        btn.innerHTML = originalText;
+        btn.disabled = false;
     }
 }
 
@@ -1616,6 +1695,99 @@ document.addEventListener('DOMContentLoaded', function() {
     color: var(--text-secondary);
     margin-top: 0.25rem;
     font-style: italic;
+}
+.env-var-info {
+    flex: 1;
+}
+.env-var-header {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+.env-var-edit-row {
+    margin-top: 0.5rem;
+}
+.env-var-add-btn {
+    padding: 0.4rem 0.75rem;
+    background: #ef4444;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+.env-var-add-btn:hover {
+    background: #dc2626;
+}
+.env-var-edit-btn-small {
+    padding: 0.3rem 0.5rem;
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-secondary);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    font-size: 0.7rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+.env-var-edit-btn-small:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: var(--text-color);
+}
+.env-var-input-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    align-items: center;
+}
+.env-var-input {
+    flex: 1;
+    max-width: 300px;
+    padding: 0.5rem 0.75rem;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
+    color: var(--text-color);
+    font-size: 0.875rem;
+    font-family: 'Monaco', 'Menlo', monospace;
+}
+.env-var-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    background: rgba(255, 255, 255, 0.1);
+}
+.env-var-save-btn {
+    padding: 0.5rem 0.75rem;
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+.env-var-save-btn:hover {
+    background: var(--primary-hover);
+}
+.env-var-cancel-btn {
+    padding: 0.5rem;
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-secondary);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
+    cursor: pointer;
+}
+.env-var-cancel-btn:hover {
+    background: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
 }
 </style>
 

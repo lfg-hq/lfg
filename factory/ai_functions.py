@@ -586,6 +586,12 @@ async def app_functions(function_name, function_args, project_id, conversation_i
         case "register_required_env_vars":
             return await register_required_env_vars_tool(function_args, project_id, conversation_id)
 
+        case "get_project_env_vars":
+            return await get_project_env_vars_tool(function_args, project_id, conversation_id)
+
+        case "agent_create_ticket":
+            return await agent_create_ticket_tool(function_args, project_id, conversation_id)
+
         case "start_server":
             command = function_args.get('start_server_command', '')
             application_port = function_args.get('application_port', '')
@@ -3517,6 +3523,182 @@ async def broadcast_to_user_tool(function_args, project_id, conversation_id):
     }
 
 
+async def get_project_env_vars_tool(function_args, project_id, conversation_id):
+    """
+    Get the list of environment variables configured for a project.
+    Returns metadata only - not actual secret values.
+    """
+    from projects.models import Project, ProjectEnvironmentVariable
+    from asgiref.sync import sync_to_async
+
+    logger.info(f"[ENV_VARS] Getting env vars for project {project_id}")
+
+    include_values = function_args.get('include_values', False)
+
+    if not project_id:
+        return {
+            "success": False,
+            "error": "Project ID is required",
+            "is_notification": False
+        }
+
+    try:
+        @sync_to_async
+        def _get_env_vars():
+            project = Project.objects.get(project_id=project_id)
+            env_vars = ProjectEnvironmentVariable.objects.filter(project=project).order_by('key')
+
+            result = []
+            for env in env_vars:
+                var_info = {
+                    "key": env.key,
+                    "has_value": env.has_value,
+                    "is_required": env.is_required,
+                    "is_secret": env.is_secret,
+                    "description": env.description or ""
+                }
+                # Only include masked value for non-secrets if requested
+                if include_values and env.has_value:
+                    if env.is_secret:
+                        var_info["value"] = "***SECRET***"
+                    else:
+                        # Show first/last few chars
+                        try:
+                            decrypted = env.get_value()
+                            if len(decrypted) > 8:
+                                var_info["value"] = f"{decrypted[:4]}...{decrypted[-4:]}"
+                            else:
+                                var_info["value"] = "****"
+                        except:
+                            var_info["value"] = "****"
+
+                result.append(var_info)
+
+            return result
+
+        env_vars = await _get_env_vars()
+
+        # Build summary
+        total = len(env_vars)
+        with_values = sum(1 for e in env_vars if e['has_value'])
+        missing = total - with_values
+        required_missing = sum(1 for e in env_vars if e['is_required'] and not e['has_value'])
+
+        summary = f"Found {total} environment variable(s)"
+        if missing > 0:
+            summary += f" ({missing} missing value(s)"
+            if required_missing > 0:
+                summary += f", {required_missing} REQUIRED"
+            summary += ")"
+
+        return {
+            "success": True,
+            "env_vars": env_vars,
+            "summary": summary,
+            "total": total,
+            "with_values": with_values,
+            "missing_values": missing,
+            "required_missing": required_missing,
+            "is_notification": False
+        }
+
+    except Project.DoesNotExist:
+        return {
+            "success": False,
+            "error": f"Project {project_id} not found",
+            "is_notification": False
+        }
+    except Exception as e:
+        logger.error(f"[ENV_VARS] Error getting env vars: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": str(e),
+            "is_notification": False
+        }
+
+
+async def agent_create_ticket_tool(function_args, project_id, conversation_id):
+    """
+    Create a single ticket for the project.
+    Used by builder/agent to create follow-up tasks, document issues, or flag items for user attention.
+    """
+    from projects.models import Project, ProjectTicket
+    from asgiref.sync import sync_to_async
+
+    logger.info(f"[CREATE_TICKET] Creating ticket for project {project_id}")
+
+    name = function_args.get('name', '')
+    description = function_args.get('description', '')
+    priority = function_args.get('priority', 'Medium')
+    status = function_args.get('status', 'open')
+
+    if not name:
+        return {
+            "success": False,
+            "error": "Ticket name is required",
+            "is_notification": False
+        }
+
+    if not project_id:
+        return {
+            "success": False,
+            "error": "Project ID is required",
+            "is_notification": False
+        }
+
+    try:
+        @sync_to_async
+        def _create_ticket():
+            project = Project.objects.get(project_id=project_id)
+
+            ticket = ProjectTicket.objects.create(
+                project=project,
+                name=name,
+                description=description,
+                priority=priority,
+                status=status
+            )
+            return ticket
+
+        ticket = await _create_ticket()
+
+        logger.info(f"[CREATE_TICKET] Created ticket '{name}' with ID {ticket.id}")
+
+        return {
+            "success": True,
+            "message": f"Created ticket: {name}",
+            "ticket": {
+                "id": ticket.id,
+                "name": ticket.name,
+                "description": ticket.description,
+                "priority": ticket.priority,
+                "status": ticket.status
+            },
+            "is_notification": True,
+            "notification_type": "create_ticket",
+            "notification_data": {
+                "ticket_id": ticket.id,
+                "ticket_name": name,
+                "priority": priority,
+                "status": status
+            }
+        }
+
+    except Project.DoesNotExist:
+        return {
+            "success": False,
+            "error": f"Project {project_id} not found",
+            "is_notification": False
+        }
+    except Exception as e:
+        logger.error(f"[CREATE_TICKET] Error creating ticket: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": str(e),
+            "is_notification": False
+        }
+
+
 async def register_required_env_vars_tool(function_args, project_id, conversation_id):
     """
     Register required environment variables for a project.
@@ -3624,9 +3806,8 @@ Please go to Project Settings → Environment tab and provide values for the mis
                 project=project,
                 name="⚠️ Configure Required Environment Variables",
                 description=ticket_description,
-                status='pending',
-                priority='high',
-                ticket_type='task'
+                status='open',
+                priority='High'
             )
             logger.info(f"[ENV_VARS] Created ticket #{ticket.id} for missing env vars")
             return ticket.id

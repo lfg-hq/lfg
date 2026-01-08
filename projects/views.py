@@ -14,7 +14,8 @@ from .models import (
     ProjectTicketAttachment,
     ToolCallHistory,
     ProjectMember,
-    ProjectInvitation
+    ProjectInvitation,
+    TicketStage
 )
 from django.views.decorators.http import require_POST, require_http_methods
 from django.core.exceptions import PermissionDenied
@@ -153,14 +154,9 @@ def tickets_list(request):
         project_id__in=project_ids
     ).select_related('project').order_by('created_at')
 
-    # Get distinct statuses and priorities for filters
-    statuses = ProjectTicket.objects.filter(
-        project_id__in=project_ids
-    ).values_list('status', flat=True).distinct()
-
-    priorities = ProjectTicket.objects.filter(
-        project_id__in=project_ids
-    ).values_list('priority', flat=True).distinct()
+    # Fixed status and priority options for filters
+    statuses = ['open', 'in_progress', 'done', 'blocked']
+    priorities = ['High', 'Medium', 'Low']
 
     # Determine user's current model selection for pre-selecting option
     model_selection = ModelSelection.objects.filter(user=request.user).first()
@@ -170,6 +166,10 @@ def tickets_list(request):
     app_state = ApplicationState.objects.filter(user=request.user).first()
     sidebar_minimized = app_state.sidebar_minimized if app_state else False
 
+    # No stages for global view (stages are project-specific)
+    # Kanban will use status field instead
+    stages = []
+
     return render(request, 'projects/tickets_list.html', {
         'tickets': tickets,
         'statuses': statuses,
@@ -178,6 +178,7 @@ def tickets_list(request):
         'llm_model_config': get_llm_model_config(),
         'current_model_key': current_model_key,
         'sidebar_minimized': sidebar_minimized,
+        'stages': stages,
     })
 
 @login_required
@@ -206,14 +207,9 @@ def project_tickets_list(request, project_id):
         project=project
     ).select_related('project').order_by('created_at')
 
-    # Get distinct statuses and priorities for filters
-    statuses = ProjectTicket.objects.filter(
-        project=project
-    ).values_list('status', flat=True).distinct()
-
-    priorities = ProjectTicket.objects.filter(
-        project=project
-    ).values_list('priority', flat=True).distinct()
+    # Fixed status and priority options for filters
+    statuses = ['open', 'in_progress', 'done', 'blocked']
+    priorities = ['High', 'Medium', 'Low']
 
     # Determine user's current model selection
     model_selection = ModelSelection.objects.filter(user=request.user).first()
@@ -222,6 +218,12 @@ def project_tickets_list(request, project_id):
     # Get sidebar state
     app_state = ApplicationState.objects.filter(user=request.user).first()
     sidebar_minimized = app_state.sidebar_minimized if app_state else False
+
+    # Get stages for this project (create defaults if none exist)
+    stages = TicketStage.objects.filter(project=project).order_by('order')
+    if not stages.exists():
+        TicketStage.get_or_create_defaults(project)
+        stages = TicketStage.objects.filter(project=project).order_by('order')
 
     return render(request, 'projects/tickets_list.html', {
         'tickets': tickets,
@@ -232,6 +234,7 @@ def project_tickets_list(request, project_id):
         'llm_model_config': get_llm_model_config(),
         'current_model_key': current_model_key,
         'sidebar_minimized': sidebar_minimized,
+        'stages': stages,
     })
 
 @login_required
@@ -686,7 +689,7 @@ def project_checklist_api(request, project_id):
         raise PermissionDenied("You don't have permission to access this project.")
     
     # Get all tickets for this project
-    tickets = ProjectTicket.objects.filter(project=project).select_related('project').prefetch_related('attachments').order_by('created_at', 'id')
+    tickets = ProjectTicket.objects.filter(project=project).select_related('project', 'stage').prefetch_related('attachments').order_by('created_at', 'id')
 
     tickets_list = []
     for item in tickets:
@@ -713,6 +716,10 @@ def project_checklist_api(request, project_id):
             'complexity': item.complexity,
             'requires_worktree': item.requires_worktree,
             'notes': item.notes,
+            # Stage info
+            'stage_id': item.stage.id if item.stage else None,
+            'stage_name': item.stage.name if item.stage else None,
+            'stage_color': item.stage.color if item.stage else None,
             # Linear integration fields
             'linear_issue_id': item.linear_issue_id,
             'linear_issue_url': item.linear_issue_url,
@@ -1566,6 +1573,21 @@ def update_checklist_item_api(request, project_id):
             setattr(item, field, data[field])
             changed = True
 
+    # Update stage field
+    if 'stage_id' in data:
+        new_stage_id = data['stage_id']
+        current_stage_id = item.stage.id if item.stage else None
+        if new_stage_id != current_stage_id:
+            if new_stage_id is None:
+                item.stage = None
+            else:
+                try:
+                    new_stage = TicketStage.objects.get(id=new_stage_id, project=project)
+                    item.stage = new_stage
+                except TicketStage.DoesNotExist:
+                    return JsonResponse({'success': False, 'error': 'Invalid stage_id'}, status=400)
+            changed = True
+
     if changed:
         item.updated_at = timezone.now()
         item.save()
@@ -1579,6 +1601,9 @@ def update_checklist_item_api(request, project_id):
             'role': item.role,
             'complexity': item.complexity,
             'requires_worktree': item.requires_worktree,
+            'stage_id': item.stage.id if item.stage else None,
+            'stage_name': item.stage.name if item.stage else None,
+            'stage_color': item.stage.color if item.stage else None,
             'updated_at': item.updated_at.isoformat()
         })
     else:
@@ -2899,6 +2924,177 @@ def ticket_tasks_api(request, project_id, ticket_id):
         'ticket_id': ticket_id,
         'total_tasks': len(tasks)
     })
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def ticket_stages_api(request, project_id):
+    """API endpoint to list all stages or create a new stage"""
+    project = get_object_or_404(Project, project_id=project_id)
+
+    # Check permissions
+    if not (project.owner == request.user or project.members.filter(user=request.user, status='active').exists()):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    if request.method == 'GET':
+        # Get all stages for this project, create defaults if none exist
+        stages = TicketStage.objects.filter(project=project).order_by('order')
+        if not stages.exists():
+            TicketStage.get_or_create_defaults(project)
+            stages = TicketStage.objects.filter(project=project).order_by('order')
+
+        stages_data = []
+        for stage in stages:
+            stages_data.append({
+                'id': stage.id,
+                'name': stage.name,
+                'color': stage.color,
+                'order': stage.order,
+                'is_default': stage.is_default,
+                'is_completed': stage.is_completed,
+                'ticket_count': stage.tickets.count()
+            })
+
+        return JsonResponse({
+            'success': True,
+            'stages': stages_data
+        })
+
+    elif request.method == 'POST':
+        # Create a new stage
+        if not project.can_user_manage_tickets(request.user):
+            return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+
+        name = data.get('name', '').strip()
+        if not name:
+            return JsonResponse({'success': False, 'error': 'Stage name is required'}, status=400)
+
+        # Check for duplicate name
+        if TicketStage.objects.filter(project=project, name=name).exists():
+            return JsonResponse({'success': False, 'error': 'A stage with this name already exists'}, status=400)
+
+        # Get the highest order and add 1
+        max_order = TicketStage.objects.filter(project=project).order_by('-order').values_list('order', flat=True).first()
+        new_order = (max_order or 0) + 1
+
+        stage = TicketStage.objects.create(
+            project=project,
+            name=name,
+            color=data.get('color', '#6366f1'),
+            order=new_order,
+            is_default=data.get('is_default', False),
+            is_completed=data.get('is_completed', False)
+        )
+
+        return JsonResponse({
+            'success': True,
+            'stage': {
+                'id': stage.id,
+                'name': stage.name,
+                'color': stage.color,
+                'order': stage.order,
+                'is_default': stage.is_default,
+                'is_completed': stage.is_completed,
+                'ticket_count': 0
+            }
+        })
+
+
+@login_required
+@require_http_methods(["PUT", "DELETE"])
+def ticket_stage_detail_api(request, project_id, stage_id):
+    """API endpoint to update or delete a stage"""
+    project = get_object_or_404(Project, project_id=project_id)
+    stage = get_object_or_404(TicketStage, id=stage_id, project=project)
+
+    # Check permissions
+    if not project.can_user_manage_tickets(request.user):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    if request.method == 'PUT':
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+
+        if 'name' in data:
+            name = data['name'].strip()
+            if name and name != stage.name:
+                # Check for duplicate name
+                if TicketStage.objects.filter(project=project, name=name).exclude(id=stage_id).exists():
+                    return JsonResponse({'success': False, 'error': 'A stage with this name already exists'}, status=400)
+                stage.name = name
+
+        if 'color' in data:
+            stage.color = data['color']
+        if 'is_default' in data:
+            if data['is_default']:
+                # Unset default from other stages
+                TicketStage.objects.filter(project=project, is_default=True).update(is_default=False)
+            stage.is_default = data['is_default']
+        if 'is_completed' in data:
+            stage.is_completed = data['is_completed']
+
+        stage.save()
+
+        return JsonResponse({
+            'success': True,
+            'stage': {
+                'id': stage.id,
+                'name': stage.name,
+                'color': stage.color,
+                'order': stage.order,
+                'is_default': stage.is_default,
+                'is_completed': stage.is_completed,
+                'ticket_count': stage.tickets.count()
+            }
+        })
+
+    elif request.method == 'DELETE':
+        # Check if there are tickets in this stage
+        ticket_count = stage.tickets.count()
+        if ticket_count > 0:
+            # Move tickets to the default stage or first stage
+            default_stage = TicketStage.objects.filter(project=project, is_default=True).exclude(id=stage_id).first()
+            if not default_stage:
+                default_stage = TicketStage.objects.filter(project=project).exclude(id=stage_id).order_by('order').first()
+            if default_stage:
+                stage.tickets.update(stage=default_stage)
+            else:
+                stage.tickets.update(stage=None)
+
+        stage.delete()
+        return JsonResponse({'success': True})
+
+
+@login_required
+@require_http_methods(["POST"])
+def ticket_stages_reorder_api(request, project_id):
+    """API endpoint to reorder stages"""
+    project = get_object_or_404(Project, project_id=project_id)
+
+    if not project.can_user_manage_tickets(request.user):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+
+    stage_ids = data.get('stage_ids', [])
+    if not stage_ids:
+        return JsonResponse({'success': False, 'error': 'stage_ids is required'}, status=400)
+
+    # Update order for each stage
+    for order, stage_id in enumerate(stage_ids):
+        TicketStage.objects.filter(id=stage_id, project=project).update(order=order)
+
+    return JsonResponse({'success': True})
 
 
 @login_required
