@@ -728,6 +728,154 @@
         background: var(--surface-secondary);
         color: var(--text-primary);
     }
+
+    /* Inline Progress Styles */
+    .progress-content {
+        display: none;
+        width: 100%;
+        max-width: 280px;
+    }
+
+    .progress-content.active {
+        display: block;
+    }
+
+    .progress-title {
+        font-size: 0.9rem;
+        font-weight: 500;
+        margin-bottom: 1.25rem;
+        text-align: center;
+        color: var(--text-secondary);
+    }
+
+    .progress-steps {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        text-align: left;
+    }
+
+    .progress-step {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.5rem 0.75rem;
+        background: transparent;
+        border-radius: 6px;
+        transition: all 0.2s ease;
+    }
+
+    .progress-step.active {
+        background: rgba(139, 92, 246, 0.15);
+        border-radius: 6px;
+    }
+
+    .progress-step.error {
+        background: rgba(239, 68, 68, 0.15);
+    }
+
+    .step-icon {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(255, 255, 255, 0.1);
+        color: rgba(255, 255, 255, 0.3);
+        font-size: 0.55rem;
+        flex-shrink: 0;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .progress-step.active .step-icon {
+        background: var(--accent-purple, #8B5CF6);
+        color: white;
+        border-color: var(--accent-purple, #8B5CF6);
+    }
+
+    .progress-step.active .step-icon i.fa-spinner {
+        animation: spin 1s linear infinite;
+    }
+
+    .progress-step.completed .step-icon {
+        background: #22c55e;
+        color: white;
+        border-color: #22c55e;
+    }
+
+    .progress-step.error .step-icon {
+        background: #ef4444;
+        color: white;
+        border-color: #ef4444;
+    }
+
+    @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+
+    .step-label {
+        font-size: 0.8rem;
+        color: rgba(255, 255, 255, 0.4);
+    }
+
+    .progress-step.active .step-label {
+        color: var(--text-primary, #fff);
+        font-weight: 500;
+    }
+
+    .progress-step.completed .step-label {
+        color: rgba(255, 255, 255, 0.6);
+    }
+
+    .progress-step.error .step-label {
+        color: #ef4444;
+    }
+
+    .progress-error-message {
+        margin-top: 1rem;
+        padding: 0.75rem;
+        background: rgba(239, 68, 68, 0.1);
+        border: 1px solid #ef4444;
+        border-radius: 6px;
+        color: #ef4444;
+        text-align: center;
+        font-size: 0.8rem;
+    }
+
+    .progress-close-btn {
+        margin-top: 0.75rem;
+        padding: 0.4rem 0.75rem;
+        background: var(--surface-secondary);
+        border: 1px solid var(--border-color);
+        color: var(--text-secondary);
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.75rem;
+        transition: all 0.2s;
+    }
+
+    .progress-close-btn:hover {
+        background: var(--surface-primary);
+        color: var(--text-primary);
+    }
+
+    /* Placeholder content states */
+    .placeholder-ready-content,
+    .placeholder-no-workspace-content,
+    .placeholder-provisioning-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+    }
+
+    /* Hide these icons since parent has global icon styles */
+    .iframe-placeholder > div > i {
+        font-size: 2.5rem;
+        margin-bottom: 1rem;
+    }
 </style>
 {% endblock %}
 
@@ -806,18 +954,21 @@
         </div>
         <div class="iframe-wrapper desktop-view" id="iframeWrapper">
             <div class="iframe-placeholder" id="iframePlaceholder">
-                {% if workspace %}
-                <i class="fas fa-server"></i>
-                <p>Workspace Ready</p>
-                <p style="font-size: 0.875rem; opacity: 0.7;">Start the dev server to preview your application</p>
-                <button onclick="startServer()">
-                    <i class="fas fa-play"></i> Start Server
-                </button>
-                {% else %}
-                <div id="noWorkspaceContent">
-                    <i class="fas fa-cloud" style="color: #8B5CF6;"></i>
-                    <p>No Workspace Found</p>
-                    <p style="font-size: 0.875rem; opacity: 0.7;">Create a workspace to preview your application</p>
+                <!-- Ready State (with workspace) -->
+                <div id="readyContent" class="placeholder-ready-content" {% if not workspace %}style="display: none;"{% endif %}>
+                    <i class="fas fa-server" style="font-size: 2.5rem; opacity: 0.5; margin-bottom: 1rem;"></i>
+                    <p style="font-weight: 500;">Workspace Ready</p>
+                    <p style="font-size: 0.875rem; opacity: 0.7; margin-bottom: 1rem;">Start the dev server to preview your application</p>
+                    <button onclick="startServer()" style="padding: 0.75rem 1.5rem; background: var(--accent-purple, #8B5CF6); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">
+                        <i class="fas fa-play"></i> Start Server
+                    </button>
+                </div>
+
+                <!-- No Workspace State -->
+                <div id="noWorkspaceContent" class="placeholder-no-workspace-content" {% if workspace %}style="display: none;"{% endif %}>
+                    <i class="fas fa-cloud" style="color: #8B5CF6; font-size: 2.5rem; margin-bottom: 1rem;"></i>
+                    <p style="font-weight: 500;">No Workspace Found</p>
+                    <p style="font-size: 0.875rem; opacity: 0.7; margin-bottom: 1rem;">Create a workspace to preview your application</p>
                     <button onclick="provisionWorkspace()" id="provisionBtn" style="padding: 0.75rem 1.5rem; background: var(--accent-purple, #8B5CF6); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">
                         <i class="fas fa-cloud-upload-alt"></i> Create Workspace
                     </button>
@@ -825,12 +976,46 @@
                         Or <a href="{% url 'projects:project_tickets_list' project_id=project.project_id %}" style="color: var(--accent-purple);">run a ticket build</a> to set up with code
                     </p>
                 </div>
-                <div id="provisioningContent" style="display: none;">
-                    <i class="fas fa-spinner fa-spin" style="color: #8B5CF6; font-size: 2rem;"></i>
-                    <p style="margin-top: 1rem;">Creating Workspace...</p>
+
+                <!-- Provisioning State -->
+                <div id="provisioningContent" class="placeholder-provisioning-content" style="display: none;">
+                    <i class="fas fa-spinner fa-spin" style="color: #8B5CF6; font-size: 2rem; margin-bottom: 1rem;"></i>
+                    <p style="font-weight: 500;">Creating Workspace...</p>
                     <p id="provisionStatus" style="font-size: 0.875rem; opacity: 0.7;">Provisioning VM, this may take up to 2 minutes</p>
                 </div>
-                {% endif %}
+
+                <!-- Progress State (inline) -->
+                <div id="progressContent" class="progress-content">
+                    <div class="progress-title">Starting Server</div>
+                    <div class="progress-steps" id="progressSteps">
+                        <div class="progress-step" data-step="checking_workspace">
+                            <div class="step-icon"></div>
+                            <span class="step-label">Checking workspace</span>
+                        </div>
+                        <div class="progress-step" data-step="switching_branch">
+                            <div class="step-icon"></div>
+                            <span class="step-label">Switching branch</span>
+                        </div>
+                        <div class="progress-step" data-step="downloading_dependencies">
+                            <div class="step-icon"></div>
+                            <span class="step-label">Installing dependencies</span>
+                        </div>
+                        <div class="progress-step" data-step="clearing_cache">
+                            <div class="step-icon"></div>
+                            <span class="step-label">Clearing cache</span>
+                        </div>
+                        <div class="progress-step" data-step="starting_server">
+                            <div class="step-icon"></div>
+                            <span class="step-label">Starting dev server</span>
+                        </div>
+                        <div class="progress-step" data-step="assigning_proxy">
+                            <div class="step-icon"></div>
+                            <span class="step-label">Assigning proxy URL</span>
+                        </div>
+                    </div>
+                    <div class="progress-error-message" id="progressErrorMessage" style="display: none;"></div>
+                    <button class="progress-close-btn" id="progressCloseBtn" style="display: none;" onclick="closeProgress()">Close</button>
+                </div>
             </div>
             <iframe
                 id="previewIframe"
@@ -946,7 +1131,7 @@
     const projectId = '{{ project.project_id }}';
     const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
     const serverConfigs = {{ server_configs|safe }};
-    const workspace = {{ workspace_json|safe }};
+    let workspace = {{ workspace_json|safe }};
 
     // State
     let isServerRunning = false;
@@ -957,6 +1142,11 @@
     let currentViewport = 'desktop';
     let errorCount = 0;
     let selectedConsoleText = '';
+
+    // WebSocket Progress State
+    let progressSocket = null;
+    let progressCompletedSteps = [];
+    const accessToken = '{{ access_token|default:"" }}';
 
     // DOM Elements
     const iframe = document.getElementById('previewIframe');
@@ -1006,12 +1196,13 @@
     async function provisionWorkspace() {
         const noWorkspaceContent = document.getElementById('noWorkspaceContent');
         const provisioningContent = document.getElementById('provisioningContent');
+        const readyContent = document.getElementById('readyContent');
         const provisionStatus = document.getElementById('provisionStatus');
         const provisionBtn = document.getElementById('provisionBtn');
 
         // Show provisioning UI
         if (noWorkspaceContent) noWorkspaceContent.style.display = 'none';
-        if (provisioningContent) provisioningContent.style.display = 'block';
+        if (provisioningContent) provisioningContent.style.display = 'flex';
         if (provisionBtn) provisionBtn.disabled = true;
 
         try {
@@ -1048,23 +1239,16 @@
                     urlInput.value = currentPreviewUrl;
                 }
 
-                // Transform the placeholder to show "Start Server" button
-                const placeholder = document.getElementById('iframePlaceholder');
-                placeholder.innerHTML = `
-                    <i class="fas fa-server"></i>
-                    <p>Workspace Ready</p>
-                    <p style="font-size: 0.875rem; opacity: 0.7;">Start the dev server to preview your application</p>
-                    <button onclick="startServer()" style="padding: 0.75rem 1.5rem; background: var(--accent-purple, #8B5CF6); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">
-                        <i class="fas fa-play"></i> Start Server
-                    </button>
-                `;
+                // Show the ready content
+                if (provisioningContent) provisioningContent.style.display = 'none';
+                if (readyContent) readyContent.style.display = 'flex';
 
             } else {
                 // Show error
                 showNotification(data.error || 'Failed to provision workspace', 'error');
 
                 // Reset UI
-                if (noWorkspaceContent) noWorkspaceContent.style.display = 'block';
+                if (noWorkspaceContent) noWorkspaceContent.style.display = 'flex';
                 if (provisioningContent) provisioningContent.style.display = 'none';
                 if (provisionBtn) provisionBtn.disabled = false;
             }
@@ -1073,7 +1257,7 @@
             showNotification('Error provisioning workspace: ' + error.message, 'error');
 
             // Reset UI
-            if (noWorkspaceContent) noWorkspaceContent.style.display = 'block';
+            if (noWorkspaceContent) noWorkspaceContent.style.display = 'flex';
             if (provisioningContent) provisioningContent.style.display = 'none';
             if (provisionBtn) provisionBtn.disabled = false;
         }
@@ -1147,6 +1331,12 @@
             iframe.style.display = 'none';
             iframePlaceholder.style.display = 'flex';
             urlInput.value = '';
+
+            // Show ready content, hide progress
+            const progressContent = document.getElementById('progressContent');
+            const readyContent = document.getElementById('readyContent');
+            if (progressContent) progressContent.classList.remove('active');
+            if (readyContent && workspace) readyContent.style.display = 'flex';
         }
     }
 
@@ -1157,6 +1347,8 @@
         }
 
         setServerLoading(true);
+        showProgressOverlay();
+        connectProgressWebSocket();
 
         try {
             // Use the start-dev-server endpoint that runs on Magpie workspace
@@ -1175,23 +1367,212 @@
                 isServerRunning = true;
                 serverStartedManually = true;  // Mark that we started from this page
                 currentPreviewUrl = data.url;
-                loadPreview(data.url);
-                updateServerUI(true);
-                showNotification('Server started successfully', 'success');
+
+                // Close progress overlay after a short delay to show completion
+                setTimeout(() => {
+                    closeProgressOverlay();
+                    loadPreview(data.url);
+                    updateServerUI(true);
+                    showNotification('Server started successfully', 'success');
+                }, 1000);
 
                 // Log the startup output to console
                 if (data.log) {
                     addConsoleEntry('info', ['Server startup log:', data.log]);
                 }
             } else {
-                showNotification(data.error || 'Failed to start server', 'error');
+                showProgressError(data.error || 'Failed to start server');
             }
         } catch (error) {
             console.error('Error starting server:', error);
-            showNotification('Error starting server', 'error');
+            showProgressError('Error starting server: ' + error.message);
         } finally {
             setServerLoading(false);
         }
+    }
+
+    // ==================== WEBSOCKET PROGRESS ====================
+
+    function connectProgressWebSocket() {
+        // Disconnect existing socket if any
+        if (progressSocket) {
+            progressSocket.close();
+        }
+
+        // Reset progress state
+        progressCompletedSteps = [];
+        resetProgressSteps();
+
+        // Build WebSocket URL
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        let wsUrl = `${protocol}//${window.location.host}/ws/projects/${projectId}/workspace-progress/`;
+
+        // Add token for authentication if available
+        if (accessToken) {
+            wsUrl += `?token=${accessToken}`;
+        }
+
+        console.log('[WS Progress] Connecting to:', wsUrl);
+
+        try {
+            progressSocket = new WebSocket(wsUrl);
+
+            progressSocket.onopen = () => {
+                console.log('[WS Progress] Connected');
+            };
+
+            progressSocket.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('[WS Progress] Message:', data);
+                    handleProgressMessage(data);
+                } catch (e) {
+                    console.error('[WS Progress] Parse error:', e);
+                }
+            };
+
+            progressSocket.onclose = (event) => {
+                console.log('[WS Progress] Disconnected:', event.code);
+                progressSocket = null;
+            };
+
+            progressSocket.onerror = (error) => {
+                console.error('[WS Progress] Error:', error);
+            };
+        } catch (error) {
+            console.error('[WS Progress] Connection failed:', error);
+        }
+    }
+
+    function handleProgressMessage(data) {
+        const { type, step, step_label, message, error, extra_data } = data;
+
+        if (type === 'connected') {
+            console.log('[WS Progress] Connection confirmed');
+            return;
+        }
+
+        if (type === 'progress') {
+            if (step === 'complete') {
+                // Mark all steps as completed
+                markAllStepsCompleted();
+                return;
+            }
+
+            if (step === 'error' || error) {
+                showProgressError(error || message || 'An error occurred');
+                return;
+            }
+
+            // Update the step in the UI
+            updateProgressStep(step, message || step_label, false);
+        }
+    }
+
+    function resetProgressSteps() {
+        const steps = document.querySelectorAll('.progress-step');
+        steps.forEach(stepEl => {
+            stepEl.classList.remove('active', 'completed', 'error');
+            stepEl.querySelector('.step-icon').innerHTML = '';
+        });
+
+        document.getElementById('progressErrorMessage').style.display = 'none';
+        document.getElementById('progressCloseBtn').style.display = 'none';
+    }
+
+    function updateProgressStep(stepName, message, isCompleted = false) {
+        // Mark previous steps as completed
+        const stepOrder = ['checking_workspace', 'switching_branch', 'downloading_dependencies', 'clearing_cache', 'starting_server', 'assigning_proxy'];
+        const currentIndex = stepOrder.indexOf(stepName);
+
+        stepOrder.forEach((step, index) => {
+            const stepEl = document.querySelector(`.progress-step[data-step="${step}"]`);
+            if (!stepEl) return;
+
+            if (index < currentIndex) {
+                // Mark as completed
+                stepEl.classList.remove('active', 'error');
+                stepEl.classList.add('completed');
+                stepEl.querySelector('.step-icon').innerHTML = '<i class="fas fa-check" style="font-size: 0.55rem;"></i>';
+            } else if (index === currentIndex) {
+                // Mark as active
+                stepEl.classList.remove('completed', 'error');
+                stepEl.classList.add('active');
+                stepEl.querySelector('.step-icon').innerHTML = '<i class="fas fa-spinner fa-spin" style="font-size: 0.55rem;"></i>';
+            } else {
+                // Reset future steps
+                stepEl.classList.remove('active', 'completed', 'error');
+                stepEl.querySelector('.step-icon').innerHTML = '';
+            }
+        });
+    }
+
+    function markAllStepsCompleted() {
+        const steps = document.querySelectorAll('.progress-step');
+        steps.forEach(stepEl => {
+            stepEl.classList.remove('active', 'error');
+            stepEl.classList.add('completed');
+            stepEl.querySelector('.step-icon').innerHTML = '<i class="fas fa-check" style="font-size: 0.55rem;"></i>';
+        });
+    }
+
+    function showProgressError(errorMessage) {
+        const errorEl = document.getElementById('progressErrorMessage');
+        const closeBtn = document.getElementById('progressCloseBtn');
+
+        errorEl.textContent = errorMessage;
+        errorEl.style.display = 'block';
+        closeBtn.style.display = 'inline-block';
+
+        // Mark current active step as error
+        const activeStep = document.querySelector('.progress-step.active');
+        if (activeStep) {
+            activeStep.classList.remove('active');
+            activeStep.classList.add('error');
+            activeStep.querySelector('.step-icon').innerHTML = '<i class="fas fa-times" style="font-size: 0.55rem;"></i>';
+        }
+    }
+
+    function showProgress() {
+        // Hide other placeholder content
+        const readyContent = document.getElementById('readyContent');
+        const noWorkspaceContent = document.getElementById('noWorkspaceContent');
+        const provisioningContent = document.getElementById('provisioningContent');
+        const progressContent = document.getElementById('progressContent');
+
+        if (readyContent) readyContent.style.display = 'none';
+        if (noWorkspaceContent) noWorkspaceContent.style.display = 'none';
+        if (provisioningContent) provisioningContent.style.display = 'none';
+
+        // Show progress
+        progressContent.classList.add('active');
+        resetProgressSteps();
+    }
+
+    function closeProgress() {
+        const progressContent = document.getElementById('progressContent');
+        const readyContent = document.getElementById('readyContent');
+
+        // Hide progress
+        progressContent.classList.remove('active');
+
+        // Show ready content
+        if (readyContent) readyContent.style.display = 'flex';
+
+        // Close WebSocket
+        if (progressSocket) {
+            progressSocket.close();
+            progressSocket = null;
+        }
+    }
+
+    // Keep backward compatibility
+    function showProgressOverlay() {
+        showProgress();
+    }
+
+    function closeProgressOverlay() {
+        closeProgress();
     }
 
     async function stopServer() {

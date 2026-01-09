@@ -11,6 +11,7 @@ from asgiref.sync import async_to_sync
 from projects.models import ProjectTicket
 from development.models import MagpieWorkspace
 from accounts.models import ExternalServicesAPIKeys, GitHubToken
+from projects.websocket_utils import send_workspace_progress
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,7 @@ except ImportError:
     setup_git_in_workspace = None
 
 
-def _ensure_code_in_workspace(client, workspace, project, user, ticket=None):
+def _ensure_code_in_workspace(client, workspace, project, user, ticket=None, send_progress=True):
     """
     Ensure code exists in the workspace and is on the correct branch.
     - If ticket has github_branch, use that
@@ -42,6 +43,12 @@ def _ensure_code_in_workspace(client, workspace, project, user, ticket=None):
     """
     job_id = workspace.job_id
     workspace_path = "/workspace/nextjs-app"
+    project_id = str(project.project_id)
+
+    # Helper to send progress if enabled
+    def progress(step, message=None, extra_data=None):
+        if send_progress:
+            send_workspace_progress(project_id, step, message, extra_data=extra_data)
 
     # Determine target branch: ticket branch > lfg-agent (default)
     target_branch = 'lfg-agent'
@@ -50,6 +57,7 @@ def _ensure_code_in_workspace(client, workspace, project, user, ticket=None):
         logger.info(f"[CODE_SETUP] Using ticket branch: {target_branch}")
 
     # Check if code already exists
+    progress('checking_workspace', 'Checking workspace structure...')
     check_cmd = f"test -d {workspace_path} && test -f {workspace_path}/package.json && echo 'EXISTS' || echo 'MISSING'"
     check_result = _run_magpie_ssh(client, job_id, check_cmd, timeout=30, with_node_env=False)
 
@@ -75,6 +83,7 @@ def _ensure_code_in_workspace(client, workspace, project, user, ticket=None):
         if code_exists:
             # Code exists - check if we need to switch branches and pull latest
             logger.info(f"[CODE_SETUP] Code exists, switching to {target_branch} and pulling latest...")
+            progress('switching_branch', f'Switching to branch {target_branch}...', extra_data={'branch': target_branch})
 
             # Get current branch, switch if needed, and always pull latest
             # Note: All commands use || true to prevent set -e from causing early exit
@@ -154,6 +163,19 @@ echo "SWITCH_COMPLETE"
 
             if 'BRANCH_SWITCH_FAILED' in stdout:
                 logger.warning(f"[CODE_SETUP] Failed to switch branch, but continuing...")
+
+            # Run npm install after branch switch to ensure dependencies are up to date
+            progress('downloading_dependencies', 'Installing dependencies (npm install)...')
+            logger.info(f"[CODE_SETUP] Running npm install after branch switch...")
+            npm_result = _run_magpie_ssh(
+                client, job_id,
+                f"cd {workspace_path} && npm install",
+                timeout=300, with_node_env=True
+            )
+            if npm_result.get('exit_code', 0) != 0:
+                logger.warning(f"[CODE_SETUP] npm install warning: {npm_result.get('stderr', '')[:200]}")
+            else:
+                logger.info(f"[CODE_SETUP] npm install completed successfully")
 
             # Update metadata with current branch
             metadata = workspace.metadata or {}
@@ -294,6 +316,7 @@ def start_dev_server(request, ticket_id):
         logger.info(f"[DEV_SERVER] Code setup result: {code_success}, {code_message}")
 
         if not code_success:
+            send_workspace_progress(str(project.project_id), 'error', f'Failed to set up code: {code_message}', error=code_message)
             return JsonResponse(
                 {'error': f'Failed to set up code in workspace: {code_message}'},
                 status=500
@@ -314,6 +337,8 @@ def start_dev_server(request, ticket_id):
         # logger.info(f"[VERIFY] Stderr:\n{verify_result.get('stderr', '')}")
 
         # Step 1: Kill existing processes and remove lock files
+        project_id = str(project.project_id)
+        send_workspace_progress(project_id, 'clearing_cache', 'Clearing cache and stopping existing processes...')
         cleanup_command = textwrap.dedent(f"""
             cd {workspace_path}
 
@@ -348,6 +373,7 @@ def start_dev_server(request, ticket_id):
             logger.warning(f"Cleanup had non-zero exit code {cleanup_result.get('exit_code')}: {cleanup_result.get('stderr', '')}")
 
         # Step 2: Start the dev server in background
+        send_workspace_progress(project_id, 'starting_server', 'Starting development server...')
         start_command = textwrap.dedent(f"""
             cd {workspace_path}
 
@@ -384,6 +410,7 @@ def start_dev_server(request, ticket_id):
             stderr = start_result.get('stderr', '')
             error_msg = stderr or stdout or 'Unknown error - command exited with non-zero status'
             logger.error(f"Failed to start dev server (exit {start_result.get('exit_code')}): stdout={stdout}, stderr={stderr}")
+            send_workspace_progress(project_id, 'error', f'Failed to start server: {error_msg[:100]}', error=error_msg)
             return JsonResponse(
                 {'error': f'Failed to start dev server: {error_msg}'},
                 status=500
@@ -400,11 +427,15 @@ def start_dev_server(request, ticket_id):
         logger.info(f"Dev server started successfully with PID: {pid}")
 
         # Get proxy URL, fetch if not available
+        send_workspace_progress(project_id, 'assigning_proxy', 'Getting preview URL...')
         preview_url = None
         if get_or_fetch_proxy_url:
             preview_url = get_or_fetch_proxy_url(magpie_workspace, port=3000, client=client)
         if not preview_url:
             preview_url = f'http://[{magpie_workspace.ipv6_address}]:3000' if magpie_workspace.ipv6_address else 'http://localhost:3000'
+
+        # Send completion notification
+        send_workspace_progress(project_id, 'complete', 'Dev server is ready!', extra_data={'url': preview_url})
 
         return JsonResponse({
             'success': True,

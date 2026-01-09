@@ -1121,6 +1121,7 @@
                             <option value="in_progress">In Progress</option>
                             <option value="done">Done</option>
                             <option value="blocked">Blocked</option>
+                            <option value="failed">Failed</option>
                         </select>
                         <select class="filter-select" id="priorityFilter" onchange="filterTickets()">
                             <option value="">All Priorities</option>
@@ -1213,6 +1214,16 @@
                         </div>
                         <div class="kanban-column-body" id="statusColumnBlocked" data-status="blocked"></div>
                     </div>
+                    <div class="kanban-column" data-status="failed">
+                        <div class="kanban-column-header" style="border-top-color: #dc2626;">
+                            <div class="kanban-column-title">
+                                <span class="stage-color-dot" style="background: #dc2626;"></span>
+                                <span class="stage-name">Failed</span>
+                                <span class="ticket-count" id="statusCountFailed">0</span>
+                            </div>
+                        </div>
+                        <div class="kanban-column-body" id="statusColumnFailed" data-status="failed"></div>
+                    </div>
                 </div>
 
                 <!-- Tickets Table -->
@@ -1252,6 +1263,7 @@
                                                 <option value="in_progress" {% if ticket.status == 'in_progress' %}selected{% endif %}>In Progress</option>
                                                 <option value="done" {% if ticket.status == 'done' %}selected{% endif %}>Done</option>
                                                 <option value="blocked" {% if ticket.status == 'blocked' %}selected{% endif %}>Blocked</option>
+                                                <option value="failed" {% if ticket.status == 'failed' %}selected{% endif %}>Failed</option>
                                             </select>
                                         </td>
                                         <td>
@@ -1633,7 +1645,8 @@
                     'open': 'Open',
                     'in_progress': 'InProgress',
                     'done': 'Done',
-                    'blocked': 'Blocked'
+                    'blocked': 'Blocked',
+                    'failed': 'Failed'
                 };
 
                 Object.keys(statusMap).forEach(status => {
@@ -1668,6 +1681,38 @@
                 'Low': '#6b7280'
             };
 
+            // Build queue status HTML
+            let queueStatusHtml = '';
+            if (ticket.queue_status === 'queued') {
+                queueStatusHtml = `
+                    <div class="kanban-card-queue" onclick="event.stopPropagation();">
+                        <span class="queue-badge queued">
+                            <i class="fas fa-clock"></i> Queued
+                        </span>
+                        <button class="queue-cancel-btn" onclick="event.stopPropagation(); cancelFromQueue(${ticket.id}, '${ticket.project_id}')" title="Remove from queue">
+                            <i class="fas fa-times"></i>
+                        </button>
+                        <button class="queue-restart-btn" onclick="event.stopPropagation(); restartFromQueue(${ticket.id}, '${ticket.project_id}')" title="Restart ticket">
+                            <i class="fas fa-redo"></i>
+                        </button>
+                    </div>
+                `;
+            } else if (ticket.queue_status === 'executing') {
+                queueStatusHtml = `
+                    <div class="kanban-card-queue" onclick="event.stopPropagation();">
+                        <span class="queue-badge executing">
+                            <i class="fas fa-spinner fa-spin"></i> Executing
+                        </span>
+                        <button class="queue-force-stop-btn" onclick="event.stopPropagation(); forceStopFromQueue(${ticket.id}, '${ticket.project_id}')" title="Force stop (use if stuck)">
+                            <i class="fas fa-stop"></i>
+                        </button>
+                        <button class="queue-restart-btn" onclick="event.stopPropagation(); restartFromQueue(${ticket.id}, '${ticket.project_id}')" title="Force restart">
+                            <i class="fas fa-redo"></i>
+                        </button>
+                    </div>
+                `;
+            }
+
             card.innerHTML = `
                 <div class="kanban-card-header">
                     <div class="kanban-card-title">${escapeHtml(ticket.name)}</div>
@@ -1679,6 +1724,7 @@
                     <span class="priority-indicator" style="background: ${priorityColors[ticket.priority] || '#6b7280'};"></span>
                     <span class="priority-label">${ticket.priority || 'Medium'}</span>
                 </div>
+                ${queueStatusHtml}
             `;
 
             // Click to open sidebar drawer (like list view)
@@ -2264,7 +2310,8 @@
                 { value: 'open', label: 'Open' },
                 { value: 'in_progress', label: 'In Progress' },
                 { value: 'done', label: 'Done' },
-                { value: 'blocked', label: 'Blocked' }
+                { value: 'blocked', label: 'Blocked' },
+                { value: 'failed', label: 'Failed' }
             ].forEach(option => {
                 const opt = document.createElement('option');
                 opt.value = option.value;
@@ -2553,6 +2600,11 @@
                 if (response.ok && data.success) {
                     const createdTicket = data.ticket || {};
                     addTicketRow(createdTicket);
+
+                    // Refresh kanban board if in board view
+                    if (currentViewMode === 'board') {
+                        populateKanbanBoard();
+                    }
 
                     if (newTicketFiles.length > 0) {
                         try {

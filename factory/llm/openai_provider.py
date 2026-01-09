@@ -407,6 +407,7 @@ class OpenAIProvider(BaseLLMProvider):
             
         # Sanitize messages for Responses API format
         # Remove any fields that aren't supported (like tool_calls from Chat Completions format)
+        # Also convert content type names: "text" -> "input_text", "image_url" -> "input_image"
         current_messages = []
         for msg in messages:
             if msg.get("type") == "function_call_output":
@@ -414,7 +415,32 @@ class OpenAIProvider(BaseLLMProvider):
                 current_messages.append(msg)
             elif msg.get("role") in ("user", "assistant", "system"):
                 # For regular messages, only keep role and content
-                sanitized = {"role": msg["role"], "content": msg.get("content", "")}
+                content = msg.get("content", "")
+
+                # Convert content types if content is a list (multimodal content)
+                if isinstance(content, list):
+                    converted_content = []
+                    for item in content:
+                        if isinstance(item, dict):
+                            item_type = item.get("type")
+                            if item_type == "text":
+                                # Convert "text" to "input_text" for Responses API
+                                converted_item = {"type": "input_text", "text": item.get("text", "")}
+                                converted_content.append(converted_item)
+                            elif item_type == "image_url":
+                                # Convert "image_url" to "input_image" for Responses API
+                                image_url = item.get("image_url", {})
+                                url = image_url.get("url", "") if isinstance(image_url, dict) else image_url
+                                converted_item = {"type": "input_image", "image_url": url}
+                                converted_content.append(converted_item)
+                            else:
+                                # Pass through other types as-is
+                                converted_content.append(item)
+                        else:
+                            converted_content.append(item)
+                    content = converted_content
+
+                sanitized = {"role": msg["role"], "content": content}
                 current_messages.append(sanitized)
             else:
                 # Pass through other message types

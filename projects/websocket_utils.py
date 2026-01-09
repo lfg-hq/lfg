@@ -140,3 +140,103 @@ async def async_send_ticket_log_notification(ticket_id, log_data):
 
     except Exception as e:
         logger.error(f"Error sending WebSocket notification for ticket {ticket_id}: {e}")
+
+
+# Workspace Setup Progress Steps
+WORKSPACE_STEPS = {
+    'checking_workspace': {'order': 1, 'label': 'Checking workspace'},
+    'switching_branch': {'order': 2, 'label': 'Switching branch'},
+    'downloading_dependencies': {'order': 3, 'label': 'Installing dependencies'},
+    'clearing_cache': {'order': 4, 'label': 'Clearing cache'},
+    'starting_server': {'order': 5, 'label': 'Starting dev server'},
+    'assigning_proxy': {'order': 6, 'label': 'Assigning proxy URL'},
+    'complete': {'order': 7, 'label': 'Complete'},
+    'error': {'order': -1, 'label': 'Error'},
+}
+
+
+def send_workspace_progress(project_id, step, message=None, progress=None, error=None, extra_data=None):
+    """
+    Send a WebSocket notification for workspace setup progress.
+
+    Args:
+        project_id: The project ID (string UUID)
+        step: One of WORKSPACE_STEPS keys
+        message: Optional custom message
+        progress: Optional progress percentage (0-100)
+        error: Optional error message if step failed
+        extra_data: Optional dict with additional data (branch name, url, etc.)
+    """
+    try:
+        channel_layer = get_channel_layer()
+        if not channel_layer:
+            logger.warning("No channel layer configured, cannot send workspace progress notification")
+            return
+
+        # Group name for workspace progress updates
+        group_name = f'workspace_progress_{project_id}'
+
+        step_info = WORKSPACE_STEPS.get(step, {'order': 0, 'label': step})
+
+        payload = {
+            'type': 'workspace_progress_update',
+            'project_id': str(project_id),
+            'step': step,
+            'step_label': step_info['label'],
+            'step_order': step_info['order'],
+            'total_steps': len(WORKSPACE_STEPS) - 2,  # Exclude 'complete' and 'error'
+            'message': message or step_info['label'],
+            'progress': progress,
+            'error': error,
+            'extra_data': extra_data or {},
+        }
+
+        async_to_sync(channel_layer.group_send)(group_name, payload)
+
+        logger.info(f"[WORKSPACE_PROGRESS] project={project_id} step={step} message={message}")
+
+    except Exception as e:
+        logger.error(f"Error sending workspace progress notification: {e}")
+
+
+async def async_send_workspace_progress(project_id, step, message=None, progress=None, error=None, extra_data=None):
+    """
+    Async version of send_workspace_progress.
+
+    Args:
+        project_id: The project ID (string UUID)
+        step: One of WORKSPACE_STEPS keys
+        message: Optional custom message
+        progress: Optional progress percentage (0-100)
+        error: Optional error message if step failed
+        extra_data: Optional dict with additional data
+    """
+    try:
+        channel_layer = get_channel_layer()
+        if not channel_layer:
+            logger.warning("No channel layer configured, cannot send workspace progress notification")
+            return
+
+        group_name = f'workspace_progress_{project_id}'
+
+        step_info = WORKSPACE_STEPS.get(step, {'order': 0, 'label': step})
+
+        payload = {
+            'type': 'workspace_progress_update',
+            'project_id': str(project_id),
+            'step': step,
+            'step_label': step_info['label'],
+            'step_order': step_info['order'],
+            'total_steps': len(WORKSPACE_STEPS) - 2,
+            'message': message or step_info['label'],
+            'progress': progress,
+            'error': error,
+            'extra_data': extra_data or {},
+        }
+
+        await channel_layer.group_send(group_name, payload)
+
+        logger.info(f"[WORKSPACE_PROGRESS] project={project_id} step={step} message={message}")
+
+    except Exception as e:
+        logger.error(f"Error sending workspace progress notification: {e}")

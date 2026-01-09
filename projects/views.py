@@ -33,6 +33,7 @@ import os
 # Import ServerConfig and MagpieWorkspace from development app
 from development.models import ServerConfig, MagpieWorkspace
 from accounts.models import LLMApiKeys, ExternalServicesAPIKeys, GitHubToken
+from rest_framework_simplejwt.tokens import RefreshToken
 import logging
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,7 @@ from factory.ai_functions import execute_local_command, restart_server_from_conf
 from factory.llm_config import get_llm_model_config
 from chat.models import ModelSelection
 from accounts.models import ApplicationState
+from projects.websocket_utils import send_workspace_progress
 
 
 def serialize_ticket_attachment(attachment, request=None):
@@ -1124,6 +1126,10 @@ def app_preview(request, project_id):
     app_state = ApplicationState.objects.filter(user=request.user).first()
     sidebar_minimized = app_state.sidebar_minimized if app_state else False
 
+    # Generate JWT access token for WebSocket authentication
+    refresh = RefreshToken.for_user(request.user)
+    access_token = str(refresh.access_token)
+
     context = {
         'project': project,
         'current_project': project,
@@ -1132,6 +1138,7 @@ def app_preview(request, project_id):
         'workspace': workspace_data,
         'workspace_json': json.dumps(workspace_data) if workspace_data else 'null',
         'sidebar_minimized': sidebar_minimized,
+        'access_token': access_token,
     }
 
     return render(request, 'projects/app_preview.html', context)
@@ -1298,6 +1305,9 @@ def start_dev_server_api(request, project_id):
     target_branch = 'lfg-agent'  # Always use lfg-agent for preview
 
     try:
+        # Send initial progress
+        send_workspace_progress(project_id, 'checking_workspace', 'Looking for existing workspace...')
+
         # Find the Magpie workspace for this project (any workspace with IPv6)
         workspace = MagpieWorkspace.objects.filter(
             project=project,
@@ -1305,20 +1315,25 @@ def start_dev_server_api(request, project_id):
         ).exclude(ipv6_address='').order_by('-updated_at').first()
 
         if not workspace:
+            send_workspace_progress(project_id, 'error', error='No workspace found. Please run a ticket build first.')
             return JsonResponse({
                 'success': False,
                 'error': 'No workspace found. Please run a ticket build first to set up the project environment.'
             })
 
         if not workspace.ipv6_address:
+            send_workspace_progress(project_id, 'error', error='Workspace still provisioning. Please wait.')
             return JsonResponse({
                 'success': False,
                 'error': 'Workspace IPv6 address not available. The workspace may still be provisioning.'
             })
 
+        send_workspace_progress(project_id, 'checking_workspace', 'Workspace found, connecting...')
+
         # Get Magpie client
         client = get_magpie_client()
         if not client:
+            send_workspace_progress(project_id, 'error', error='Magpie client not configured.')
             return JsonResponse({
                 'success': False,
                 'error': 'Magpie client not configured. Check server settings.'
@@ -1329,6 +1344,7 @@ def start_dev_server_api(request, project_id):
         # Step 1: Ensure code exists and switch to lfg-agent branch with latest changes
         indexed_repo = getattr(project, 'indexed_repository', None)
         if indexed_repo and indexed_repo.github_url:
+            send_workspace_progress(project_id, 'switching_branch', f'Switching to branch: {target_branch}...', extra_data={'branch': target_branch})
             logger.info(f"[PREVIEW] Ensuring code is on {target_branch} branch with latest changes")
 
             # Get GitHub token for authenticated git operations
@@ -1427,12 +1443,28 @@ echo "SWITCH_COMPLETE"
                 logger.warning(f"[PREVIEW] Git sync stderr: {stderr[:500]}")
 
             if 'CODE_MISSING' in stdout:
+                send_workspace_progress(project_id, 'error', error='No code found in workspace. Please run a ticket build first.')
                 return JsonResponse({
                     'success': False,
                     'error': 'No code found in workspace. Please run a ticket build first.'
                 })
 
+            # Run npm install after branch switch to ensure dependencies are up to date
+            send_workspace_progress(project_id, 'downloading_dependencies', 'Installing dependencies (npm install)...')
+            logger.info(f"[PREVIEW] Running npm install after branch switch...")
+            npm_result = _run_magpie_ssh(
+                client, workspace.job_id,
+                f"cd {workspace_path} && npm install",
+                timeout=300, with_node_env=True
+            )
+            if npm_result.get('exit_code', 0) != 0:
+                logger.warning(f"[PREVIEW] npm install warning: {npm_result.get('stderr', '')[:200]}")
+            else:
+                logger.info(f"[PREVIEW] npm install completed successfully")
+
         # Step 2: Kill any existing process, clear cache, and start dev server
+        send_workspace_progress(project_id, 'clearing_cache', 'Clearing cache and preparing to start server...')
+
         start_command = f"""
 cd {workspace_path}
 
@@ -1462,13 +1494,17 @@ sleep 5
 cat {workspace_path}/dev.log | tail -30
 """
 
+        send_workspace_progress(project_id, 'starting_server', 'Starting development server...')
         result = _run_magpie_ssh(client, workspace.job_id, start_command, timeout=30, project_id=project.id)
 
         # Use proxy URL if available, otherwise fall back to IPv6
+        send_workspace_progress(project_id, 'assigning_proxy', 'Assigning proxy URL...')
         preview_url = get_or_fetch_proxy_url(workspace, port=port, client=client)
         if not preview_url:
             ipv6 = workspace.ipv6_address.strip('[]')
             preview_url = f"http://[{ipv6}]:{port}"
+
+        send_workspace_progress(project_id, 'complete', f'Server started on {target_branch}', extra_data={'url': preview_url, 'branch': target_branch})
 
         return JsonResponse({
             'success': True,
@@ -1483,6 +1519,7 @@ cat {workspace_path}/dev.log | tail -30
 
     except Exception as e:
         logger.exception("Error starting dev server")
+        send_workspace_progress(project_id, 'error', error=str(e))
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
