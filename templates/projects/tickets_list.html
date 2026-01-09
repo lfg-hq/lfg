@@ -1119,6 +1119,7 @@
                             <option value="">All Statuses</option>
                             <option value="open">Open</option>
                             <option value="in_progress">In Progress</option>
+                            <option value="review">Review</option>
                             <option value="done">Done</option>
                             <option value="blocked">Blocked</option>
                             <option value="failed">Failed</option>
@@ -1194,6 +1195,16 @@
                         </div>
                         <div class="kanban-column-body" id="statusColumnInProgress" data-status="in_progress"></div>
                     </div>
+                    <div class="kanban-column" data-status="review">
+                        <div class="kanban-column-header" style="border-top-color: #8b5cf6;">
+                            <div class="kanban-column-title">
+                                <span class="stage-color-dot" style="background: #8b5cf6;"></span>
+                                <span class="stage-name">Review</span>
+                                <span class="ticket-count" id="statusCountReview">0</span>
+                            </div>
+                        </div>
+                        <div class="kanban-column-body" id="statusColumnReview" data-status="review"></div>
+                    </div>
                     <div class="kanban-column" data-status="done">
                         <div class="kanban-column-header" style="border-top-color: #22c55e;">
                             <div class="kanban-column-title">
@@ -1261,6 +1272,7 @@
                                                     onchange="updateTicketFromTable(this, 'status')">
                                                 <option value="open" {% if ticket.status == 'open' %}selected{% endif %}>Open</option>
                                                 <option value="in_progress" {% if ticket.status == 'in_progress' %}selected{% endif %}>In Progress</option>
+                                                <option value="review" {% if ticket.status == 'review' %}selected{% endif %}>Review</option>
                                                 <option value="done" {% if ticket.status == 'done' %}selected{% endif %}>Done</option>
                                                 <option value="blocked" {% if ticket.status == 'blocked' %}selected{% endif %}>Blocked</option>
                                                 <option value="failed" {% if ticket.status == 'failed' %}selected{% endif %}>Failed</option>
@@ -1358,7 +1370,7 @@
                     <button class="drawer-open-url-btn" onclick="openPreviewInNewTab()" id="openPreviewBtn" title="Preview not available yet" disabled>
                         <i class="fas fa-arrow-up-right-from-square"></i>
                     </button>
-                    <button class="drawer-execute-btn" onclick="executeTicket()" id="executeTicketBtn">
+                    <button class="drawer-execute-btn" onclick="handleExecuteButtonClick()" id="executeTicketBtn">
                         <i class="fas fa-hammer"></i> Build Ticket
                     </button>
                 </div>
@@ -1372,13 +1384,19 @@
                 <i class="fas fa-info-circle"></i> Details
             </button>
             <button class="drawer-tab" data-tab="logs" onclick="switchDrawerTab('logs')">
-                <i class="fas fa-terminal"></i> Logs
+                <i class="fas fa-terminal"></i> Actions
             </button>
             <button class="drawer-tab" data-tab="tasks" onclick="switchDrawerTab('tasks')">
                 <i class="fas fa-list-check"></i> Tasks
             </button>
             <button class="drawer-tab" data-tab="preview" onclick="switchDrawerTab('preview')">
                 <i class="fas fa-desktop"></i> Preview
+            </button>
+            <button class="drawer-tab" data-tab="git" onclick="switchDrawerTab('git')">
+                <i class="fab fa-github"></i> Git
+            </button>
+            <button class="drawer-tab" data-tab="server-logs" onclick="switchDrawerTab('server-logs')">
+                <i class="fas fa-file-alt"></i> Server Logs
             </button>
         </div>
         <div class="drawer-body" id="drawerTicketBody">
@@ -1435,6 +1453,7 @@
                                 <select id="newTicketStatus">
                                     <option value="open" selected>Open</option>
                                     <option value="in_progress">In Progress</option>
+                                    <option value="review">Review</option>
                                     <option value="done">Done</option>
                                     <option value="blocked">Blocked</option>
                                 </select>
@@ -1474,7 +1493,7 @@
                     <div class="modal-actions">
                         <button type="button" class="btn btn-secondary" id="cancelNewTicketBtn">Cancel</button>
                         <button type="submit" class="btn btn-primary" id="createTicketSubmit">
-                            <i class="fas fa-plus"></i>
+                            <i class="fas fa-plus" style="margin-right: 0.375rem;"></i>
                             Create Ticket
                         </button>
                     </div>
@@ -1516,6 +1535,7 @@
                         <select id="editTicketStatus">
                             <option value="open">Open</option>
                             <option value="in_progress">In Progress</option>
+                            <option value="review">Review</option>
                             <option value="done">Done</option>
                             <option value="blocked">Blocked</option>
                         </select>
@@ -1644,6 +1664,7 @@
                 const statusMap = {
                     'open': 'Open',
                     'in_progress': 'InProgress',
+                    'review': 'Review',
                     'done': 'Done',
                     'blocked': 'Blocked',
                     'failed': 'Failed'
@@ -2625,7 +2646,7 @@
             } finally {
                 if (createTicketSubmit) {
                     createTicketSubmit.disabled = false;
-                    createTicketSubmit.innerHTML = originalButtonText || '<i class="fas fa-plus"></i> Create Ticket';
+                    createTicketSubmit.innerHTML = originalButtonText || '<i class="fas fa-plus" style="margin-right: 0.375rem;"></i> Create Ticket';
                 }
             }
         }
@@ -3193,15 +3214,18 @@
                     if (status === 'done' || status === 'none') {
                         executeBtn.disabled = false;
                         executeBtn.innerHTML = '<i class="fas fa-hammer"></i> Build Ticket';
+                        executeBtn.classList.remove('stop-mode');
                         // Update currentTicket's queue_status
                         currentTicket.queue_status = 'none';
                     } else if (status === 'executing') {
-                        executeBtn.disabled = true;
-                        executeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Building...';
+                        executeBtn.disabled = false;
+                        executeBtn.innerHTML = '<i class="fas fa-stop"></i> Stop Build';
+                        executeBtn.classList.add('stop-mode');
                         currentTicket.queue_status = 'executing';
                     } else if (status === 'queued') {
-                        executeBtn.disabled = true;
-                        executeBtn.innerHTML = '<i class="fas fa-clock"></i> Queued';
+                        executeBtn.disabled = false;
+                        executeBtn.innerHTML = '<i class="fas fa-times"></i> Cancel Queue';
+                        executeBtn.classList.add('stop-mode');
                         currentTicket.queue_status = 'queued';
                     }
                 }
@@ -3294,6 +3318,12 @@
                 case 'preview':
                     showPreviewTab(body);
                     break;
+                case 'git':
+                    showGitTab(body);
+                    break;
+                case 'server-logs':
+                    showServerLogsTab(body);
+                    break;
             }
         }
 
@@ -3339,6 +3369,9 @@
                         <div class="detail-meta-spacer"></div>
                         <button type="button" class="detail-edit-btn" onclick="enterDetailsEditMode()">
                             <i class="fas fa-pen"></i> Edit
+                        </button>
+                        <button type="button" class="detail-delete-btn" onclick="deleteCurrentTicket()">
+                            <i class="fas fa-trash"></i>
                         </button>
                     </div>
 
@@ -3420,6 +3453,7 @@
                                     onchange="saveInlineField('status', this.value); this.dataset.status = this.value;">
                                 <option value="open" ${ticket.status === 'open' ? 'selected' : ''}>Open</option>
                                 <option value="in_progress" ${ticket.status === 'in_progress' ? 'selected' : ''}>In Progress</option>
+                                <option value="review" ${ticket.status === 'review' ? 'selected' : ''}>Review</option>
                                 <option value="done" ${ticket.status === 'done' ? 'selected' : ''}>Done</option>
                                 <option value="blocked" ${ticket.status === 'blocked' ? 'selected' : ''}>Blocked</option>
                             </select>
@@ -3504,6 +3538,58 @@
             // Also update the list view if visible
             if (currentViewMode === 'list') {
                 updateTicketInList(currentTicket);
+            }
+        }
+
+        // Delete the current ticket
+        async function deleteCurrentTicket() {
+            if (!currentTicket || !currentProjectId) return;
+
+            const ticketName = currentTicket.name || `Ticket #${currentTicket.id}`;
+            if (!confirm(`Are you sure you want to delete "${ticketName}"?\n\nThis action cannot be undone.`)) {
+                return;
+            }
+
+            try {
+                const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+                const response = await fetch(`/projects/${currentProjectId}/api/checklist/${currentTicket.id}/delete/`, {
+                    method: 'DELETE',
+                    headers: {
+                        'X-CSRFToken': csrfToken
+                    }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Close the drawer
+                    closeTicketDrawer();
+
+                    // Remove from tickets array
+                    const ticketIndex = tickets.findIndex(t => t.id === currentTicket.id);
+                    if (ticketIndex > -1) {
+                        tickets.splice(ticketIndex, 1);
+                    }
+
+                    // Update the view
+                    if (currentViewMode === 'board') {
+                        populateKanbanBoard();
+                    } else {
+                        // Remove from list view
+                        const row = document.querySelector(`tr[data-ticket-id="${currentTicket.id}"]`);
+                        if (row) row.remove();
+                    }
+
+                    // Show success notification
+                    if (typeof showNotification === 'function') {
+                        showNotification('Ticket deleted successfully', 'success');
+                    }
+                } else {
+                    alert('Failed to delete ticket: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error deleting ticket:', error);
+                alert('Error deleting ticket: ' + error.message);
             }
         }
 
@@ -3841,14 +3927,17 @@
             if (executeBtn) {
                 const queueStatus = ticket.queue_status || 'none';
                 if (queueStatus === 'executing') {
-                    executeBtn.disabled = true;
-                    executeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Building...';
+                    executeBtn.disabled = false;
+                    executeBtn.innerHTML = '<i class="fas fa-stop"></i> Stop Build';
+                    executeBtn.classList.add('stop-mode');
                 } else if (queueStatus === 'queued') {
-                    executeBtn.disabled = true;
-                    executeBtn.innerHTML = '<i class="fas fa-clock"></i> Queued';
+                    executeBtn.disabled = false;
+                    executeBtn.innerHTML = '<i class="fas fa-times"></i> Cancel Queue';
+                    executeBtn.classList.add('stop-mode');
                 } else {
                     executeBtn.disabled = false;
                     executeBtn.innerHTML = '<i class="fas fa-hammer"></i> Build Ticket';
+                    executeBtn.classList.remove('stop-mode');
                 }
             }
 
@@ -4167,6 +4256,122 @@
             }
         }
 
+        // Handle click on the execute/stop button based on current state
+        async function handleExecuteButtonClick() {
+            if (!currentTicket || !currentProjectId) return;
+
+            const queueStatus = currentTicket.queue_status || 'none';
+
+            if (queueStatus === 'executing') {
+                // Stop the build
+                await stopBuild();
+            } else if (queueStatus === 'queued') {
+                // Cancel from queue
+                await cancelBuild();
+            } else {
+                // Start build
+                await executeTicket();
+            }
+        }
+
+        async function stopBuild() {
+            if (!currentTicket || !currentProjectId) return;
+
+            const btn = document.getElementById('executeTicketBtn');
+            if (!btn) return;
+
+            if (!confirm('Stop this build? This will force stop the current execution.')) {
+                return;
+            }
+
+            // Show stopping state
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Stopping...';
+
+            try {
+                const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+                const response = await fetch(`/projects/${currentProjectId}/api/tickets/${currentTicket.id}/force-reset-queue/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    }
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    // Update queue status
+                    updateQueueStatusUI(currentTicket.id, 'none');
+                    currentTicket.queue_status = 'none';
+
+                    // Reset button to build state
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-hammer"></i> Build Ticket';
+                    btn.classList.remove('stop-mode');
+
+                    if (typeof showNotification === 'function') {
+                        showNotification('Build stopped', 'success');
+                    }
+                } else {
+                    alert('Failed to stop build: ' + (data.error || 'Unknown error'));
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-stop"></i> Stop Build';
+                }
+            } catch (error) {
+                console.error('Error stopping build:', error);
+                alert('Error stopping build: ' + error.message);
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-stop"></i> Stop Build';
+            }
+        }
+
+        async function cancelBuild() {
+            if (!currentTicket || !currentProjectId) return;
+
+            const btn = document.getElementById('executeTicketBtn');
+            if (!btn) return;
+
+            // Show canceling state
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Canceling...';
+
+            try {
+                const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+                const response = await fetch(`/projects/${currentProjectId}/api/tickets/${currentTicket.id}/cancel-queue/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    }
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    // Update queue status
+                    updateQueueStatusUI(currentTicket.id, 'none');
+                    currentTicket.queue_status = 'none';
+
+                    // Reset button to build state
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-hammer"></i> Build Ticket';
+                    btn.classList.remove('stop-mode');
+
+                    if (typeof showNotification === 'function') {
+                        showNotification('Build canceled', 'success');
+                    }
+                } else {
+                    alert('Failed to cancel: ' + (data.error || 'Unknown error'));
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-times"></i> Cancel Queue';
+                }
+            } catch (error) {
+                console.error('Error canceling build:', error);
+                alert('Error canceling build: ' + error.message);
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-times"></i> Cancel Queue';
+            }
+        }
+
         async function executeTicket() {
             if (!currentTicket || !currentProjectId) return;
 
@@ -4175,7 +4380,7 @@
 
             // Disable button and show loading state
             btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Building...';
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting...';
 
             try {
                 const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
@@ -4197,13 +4402,15 @@
                     const queueStatus = data.queue_status || 'queued';
                     updateQueueStatusUI(currentTicket.id, queueStatus);
 
-                    // Update button to reflect actual queue status
+                    // Update button to reflect actual queue status (now stoppable)
+                    btn.disabled = false;
                     if (queueStatus === 'executing') {
-                        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Building...';
+                        btn.innerHTML = '<i class="fas fa-stop"></i> Stop Build';
+                        btn.classList.add('stop-mode');
                     } else if (queueStatus === 'queued') {
-                        btn.innerHTML = '<i class="fas fa-clock"></i> Queued';
+                        btn.innerHTML = '<i class="fas fa-times"></i> Cancel Queue';
+                        btn.classList.add('stop-mode');
                     }
-                    // Keep button disabled since ticket is now queued/executing
 
                     // Update currentTicket's queue_status so it persists when reopening
                     currentTicket.queue_status = queueStatus;
@@ -4215,6 +4422,7 @@
                     // Re-enable button
                     btn.disabled = false;
                     btn.innerHTML = '<i class="fas fa-hammer"></i> Build Ticket';
+                    btn.classList.remove('stop-mode');
                 }
             } catch (error) {
                 console.error('Error executing ticket:', error);
@@ -4222,6 +4430,7 @@
                 // Re-enable button
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-hammer"></i> Build Ticket';
+                btn.classList.remove('stop-mode');
             }
         }
 
@@ -4349,6 +4558,379 @@
             }
             shouldAutoStartPreview = true;
             updatePreviewLaunchButton(false);
+        }
+
+        // ============================================
+        // GIT TAB FUNCTIONS
+        // ============================================
+
+        async function showGitTab(body) {
+            const ticket = currentTicket;
+            if (!ticket) {
+                body.innerHTML = '<div class="drawer-tab-content"><p>No ticket selected</p></div>';
+                return;
+            }
+
+            // Show loading state
+            body.innerHTML = `
+                <div class="drawer-tab-content git-tab-content">
+                    <div class="git-loading">
+                        <i class="fas fa-spinner fa-spin"></i> Loading git status...
+                    </div>
+                </div>
+            `;
+
+            try {
+                const response = await fetch(`/projects/${currentProjectId}/api/tickets/${ticket.id}/git-status/`);
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to load git status');
+                }
+
+                renderGitTab(body, data);
+            } catch (error) {
+                console.error('Error loading git status:', error);
+                body.innerHTML = `
+                    <div class="drawer-tab-content git-tab-content">
+                        <div class="git-error">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <p>Failed to load git status: ${escapeHtml(error.message)}</p>
+                            <button class="btn btn-secondary" onclick="showGitTab(document.getElementById('drawerTicketBody'))">
+                                <i class="fas fa-refresh"></i> Retry
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        function renderGitTab(body, data) {
+            const ticket = currentTicket;
+            const branch = data.branch || ticket.github_branch;
+            const mergeStatus = data.merge_status || 'pending';
+            const commitSha = data.commit_sha;
+            const repoUrl = data.repo_url || '';
+            const branchUrl = data.branch_url || '';
+            const lfgAgentUrl = data.lfg_agent_url || '';
+            const commitUrl = data.commit_url || '';
+            const repoName = data.github_repo || '';
+            const hasUncommittedChanges = data.has_uncommitted_changes || false;
+            const uncommittedFiles = data.uncommitted_files || [];
+            const recentCommits = data.recent_commits || [];
+
+            // Build the git tree visualization
+            const isMerged = mergeStatus === 'merged';
+            const hasConflict = mergeStatus === 'conflict';
+            const hasFailed = mergeStatus === 'failed';
+
+            // Build commits list HTML
+            let commitsHtml = '';
+            if (recentCommits.length > 0) {
+                commitsHtml = `
+                    <div class="git-tree-commits">
+                        ${recentCommits.map((commit, idx) => {
+                            const parts = commit.split(' ');
+                            const sha = parts[0] || '';
+                            const msg = parts.slice(1).join(' ') || '';
+                            return `
+                                <div class="git-tree-commit">
+                                    <div class="git-tree-commit-dot ${idx === 0 ? 'latest' : ''}"></div>
+                                    <div class="git-tree-commit-info">
+                                        <code class="git-tree-sha">${escapeHtml(sha.substring(0, 7))}</code>
+                                        <span class="git-tree-msg">${escapeHtml(msg)}</span>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+            }
+
+            // Build uncommitted files section
+            let uncommittedHtml = '';
+            if (hasUncommittedChanges && uncommittedFiles.length > 0) {
+                uncommittedHtml = `
+                    <div class="git-uncommitted-section">
+                        <div class="git-uncommitted-header">
+                            <i class="fas fa-exclamation-circle"></i> Uncommitted Changes
+                        </div>
+                        <div class="git-uncommitted-files">
+                            ${uncommittedFiles.slice(0, 10).map(file => `
+                                <div class="git-uncommitted-file">
+                                    <span class="git-file-status">${escapeHtml(file.substring(0, 2))}</span>
+                                    <span class="git-file-path">${escapeHtml(file.substring(3))}</span>
+                                </div>
+                            `).join('')}
+                            ${uncommittedFiles.length > 10 ? `<div class="git-uncommitted-more">... and ${uncommittedFiles.length - 10} more files</div>` : ''}
+                        </div>
+                    </div>
+                `;
+            }
+
+            body.innerHTML = `
+                <div class="drawer-tab-content git-tab-content">
+                    <div class="git-tree-container">
+                        <!-- Repository Header -->
+                        <div class="git-tree-header">
+                            <i class="fab fa-github"></i>
+                            ${repoUrl ? `<a href="${repoUrl}" target="_blank" rel="noopener">${escapeHtml(repoName || 'Repository')}</a>` : '<span class="git-not-set">Repository not configured</span>'}
+                        </div>
+
+                        <!-- Git Tree Visualization -->
+                        <div class="git-tree">
+                            <!-- lfg-agent branch -->
+                            <div class="git-tree-branch git-tree-main">
+                                <div class="git-tree-branch-line"></div>
+                                <div class="git-tree-branch-node ${isMerged ? 'merged' : ''}">
+                                    <div class="git-tree-branch-dot"></div>
+                                    <div class="git-tree-branch-info">
+                                        <span class="git-tree-branch-name">
+                                            ${lfgAgentUrl ? `<a href="${lfgAgentUrl}" target="_blank" rel="noopener">lfg-agent</a>` : 'lfg-agent'}
+                                        </span>
+                                        <span class="git-tree-branch-label main">main integration</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Merge indicator -->
+                            <div class="git-tree-merge ${isMerged ? 'merged' : hasConflict ? 'conflict' : hasFailed ? 'failed' : 'pending'}">
+                                <div class="git-tree-merge-line"></div>
+                                <div class="git-tree-merge-status">
+                                    ${isMerged ? '<i class="fas fa-check-circle"></i> Merged' :
+                                      hasConflict ? '<i class="fas fa-exclamation-triangle"></i> Conflict' :
+                                      hasFailed ? '<i class="fas fa-times-circle"></i> Failed' :
+                                      '<i class="fas fa-clock"></i> Pending'}
+                                </div>
+                            </div>
+
+                            <!-- Feature branch -->
+                            <div class="git-tree-branch git-tree-feature">
+                                <div class="git-tree-branch-line"></div>
+                                <div class="git-tree-branch-node">
+                                    <div class="git-tree-branch-dot feature"></div>
+                                    <div class="git-tree-branch-info">
+                                        <span class="git-tree-branch-name">
+                                            ${branch ? (branchUrl ? `<a href="${branchUrl}" target="_blank" rel="noopener">${escapeHtml(branch)}</a>` : escapeHtml(branch)) : '<span class="git-not-set">No branch assigned</span>'}
+                                        </span>
+                                        <span class="git-tree-branch-label feature">feature branch</span>
+                                    </div>
+                                </div>
+
+                                <!-- Commits on feature branch -->
+                                ${commitsHtml}
+
+                                <!-- Last commit info -->
+                                ${commitSha ? `
+                                    <div class="git-tree-last-commit">
+                                        <span class="git-tree-last-label">Last pushed:</span>
+                                        ${commitUrl ? `<a href="${commitUrl}" target="_blank" rel="noopener"><code>${escapeHtml(commitSha.substring(0, 7))}</code></a>` : `<code>${escapeHtml(commitSha.substring(0, 7))}</code>`}
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+
+                        <!-- Uncommitted changes -->
+                        ${uncommittedHtml}
+
+                        <!-- Actions -->
+                        <div class="git-tree-actions">
+                            ${!isMerged || hasUncommittedChanges ? `
+                                <button class="btn btn-primary" onclick="pushToLfgAgent()" id="pushToLfgAgentBtn">
+                                    <i class="fas fa-code-branch"></i> Push & Merge to lfg-agent
+                                </button>
+                            ` : `
+                                <div class="git-tree-success">
+                                    <i class="fas fa-check-circle"></i> All changes merged to lfg-agent
+                                </div>
+                            `}
+                            <button class="btn btn-secondary btn-sm" onclick="showGitTab(document.getElementById('drawerTicketBody'))">
+                                <i class="fas fa-sync-alt" style="margin-right: 0.375rem;"></i>Refresh
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function pushToLfgAgent() {
+            if (!currentTicket || !currentProjectId) return;
+
+            const btn = document.getElementById('pushToLfgAgentBtn');
+            if (!btn) return;
+
+            if (!confirm('This will commit any pending changes, push to the feature branch, and merge into lfg-agent. Continue?')) {
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Pushing...';
+
+            try {
+                const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+                const response = await fetch(`/projects/${currentProjectId}/api/tickets/${currentTicket.id}/push-to-lfg-agent/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Refresh the git tab to show updated status
+                    showGitTab(document.getElementById('drawerTicketBody'));
+                    if (typeof showNotification === 'function') {
+                        showNotification('Successfully pushed and merged to lfg-agent', 'success');
+                    }
+                } else {
+                    alert('Push failed: ' + (data.error || 'Unknown error'));
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-upload"></i> Push & Merge to lfg-agent';
+                }
+            } catch (error) {
+                console.error('Error pushing to lfg-agent:', error);
+                alert('Error: ' + error.message);
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-upload"></i> Push & Merge to lfg-agent';
+            }
+        }
+
+        // ============================================
+        // SERVER LOGS TAB
+        // ============================================
+
+        async function showServerLogsTab(body) {
+            const ticket = currentTicket;
+            if (!ticket) {
+                body.innerHTML = '<div class="empty-state"><p>No ticket selected</p></div>';
+                return;
+            }
+
+            // Show loading state
+            body.innerHTML = `
+                <div class="server-logs-container" style="padding: 1rem; height: 100%; display: flex; flex-direction: column;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem; color: var(--text-secondary);">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <span>Loading server logs...</span>
+                    </div>
+                </div>
+            `;
+
+            await fetchAndRenderServerLogs(body);
+        }
+
+        async function fetchAndRenderServerLogs(body, lines = 200) {
+            const ticket = currentTicket;
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+
+            try {
+                const response = await fetch(`/api/v1/project-tickets/${ticket.id}/dev-server-logs/?lines=${lines}`, {
+                    headers: {
+                        'X-CSRFToken': csrfToken
+                    }
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to fetch logs');
+                }
+
+                renderServerLogsTab(body, data);
+            } catch (error) {
+                console.error('Error loading server logs:', error);
+                body.innerHTML = `
+                    <div class="server-logs-container" style="padding: 1rem;">
+                        <div class="empty-state" style="text-align: center; padding: 2rem;">
+                            <i class="fas fa-exclamation-triangle" style="font-size: 2rem; color: var(--warning-color, #f59e0b); margin-bottom: 1rem;"></i>
+                            <p style="color: var(--text-secondary);">Failed to load server logs: ${escapeHtml(error.message)}</p>
+                            <button class="btn btn-secondary" onclick="showServerLogsTab(document.getElementById('drawerTicketBody'))" style="margin-top: 1rem;">
+                                <i class="fas fa-sync-alt" style="margin-right: 0.35rem;"></i>Retry
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        function renderServerLogsTab(body, data) {
+            const { logs, is_running, pid, lines_requested } = data;
+
+            const statusColor = is_running ? 'var(--success-color, #22c55e)' : 'var(--text-secondary, #666)';
+            const statusText = is_running ? `Running (PID: ${pid})` : 'Stopped';
+            const statusIcon = is_running ? 'fa-circle-check' : 'fa-circle-xmark';
+
+            body.innerHTML = `
+                <div class="server-logs-container" style="padding: 1rem; height: 100%; display: flex; flex-direction: column; gap: 1rem;">
+                    <!-- Header with status and controls -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                        <div style="display: flex; align-items: center; gap: 0.75rem;">
+                            <span style="display: flex; align-items: center; gap: 0.5rem; color: ${statusColor};">
+                                <i class="fas ${statusIcon}"></i>
+                                <strong>Dev Server:</strong> ${statusText}
+                            </span>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <select id="logLinesSelect" onchange="refreshServerLogs()" style="
+                                background: var(--surface-secondary, #1a1a1a);
+                                border: 1px solid var(--border-color, #333);
+                                color: var(--text-primary, #fff);
+                                padding: 0.35rem 0.5rem;
+                                border-radius: 4px;
+                                font-size: 0.8rem;
+                            ">
+                                <option value="50" ${lines_requested === 50 ? 'selected' : ''}>50 lines</option>
+                                <option value="100" ${lines_requested === 100 ? 'selected' : ''}>100 lines</option>
+                                <option value="200" ${lines_requested === 200 ? 'selected' : ''}>200 lines</option>
+                                <option value="500" ${lines_requested === 500 ? 'selected' : ''}>500 lines</option>
+                            </select>
+                            <button class="btn btn-secondary btn-sm" onclick="refreshServerLogs()" style="padding: 0.35rem 0.75rem;">
+                                <i class="fas fa-sync-alt" style="margin-right: 0.375rem;"></i>Refresh
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Log content -->
+                    <div style="
+                        flex: 1;
+                        background: var(--surface-secondary, #0a0a0a);
+                        border: 1px solid var(--border-color, #333);
+                        border-radius: 6px;
+                        overflow: auto;
+                        font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+                        font-size: 0.75rem;
+                        line-height: 1.5;
+                    ">
+                        <pre id="serverLogsContent" style="
+                            margin: 0;
+                            padding: 1rem;
+                            white-space: pre-wrap;
+                            word-wrap: break-word;
+                            color: var(--text-secondary, #ccc);
+                        ">${logs ? escapeHtml(logs) : 'No logs available yet. Start the dev server from the Preview tab.'}</pre>
+                    </div>
+
+                    <!-- Footer hint -->
+                    <div style="font-size: 0.75rem; color: var(--text-tertiary, #666);">
+                        <i class="fas fa-info-circle"></i> Logs are from <code style="background: var(--surface-secondary); padding: 0.1rem 0.3rem; border-radius: 3px;">/workspace/nextjs-app/dev.log</code>
+                    </div>
+                </div>
+            `;
+
+            // Auto-scroll to bottom
+            const logsContent = document.getElementById('serverLogsContent');
+            if (logsContent) {
+                logsContent.parentElement.scrollTop = logsContent.parentElement.scrollHeight;
+            }
+        }
+
+        function refreshServerLogs() {
+            const select = document.getElementById('logLinesSelect');
+            const lines = select ? parseInt(select.value) : 200;
+            const body = document.getElementById('drawerTicketBody');
+            fetchAndRenderServerLogs(body, lines);
         }
 
         let devServerProcess = null;

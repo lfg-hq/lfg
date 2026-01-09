@@ -35,6 +35,8 @@ urlpatterns = [
     # Dev Server management
     path('project-tickets/<int:ticket_id>/start-dev-server/', dev_server.start_dev_server, name='start_dev_server'),
     path('project-tickets/<int:ticket_id>/stop-dev-server/', dev_server.stop_dev_server, name='stop_dev_server'),
+    path('project-tickets/<int:ticket_id>/dev-server-logs/', dev_server.get_dev_server_logs, name='get_dev_server_logs'),
+    path('workspace/<str:workspace_id>/dev-server-logs/', dev_server.get_workspace_dev_server_logs, name='get_workspace_dev_server_logs'),
 
     # Include router URLs
     path('', include(router.urls)),

@@ -2,6 +2,7 @@
 API endpoints for managing development servers for ticket previews using Magpie workspaces.
 """
 import logging
+import os
 import textwrap
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_http_methods
@@ -377,11 +378,9 @@ def start_dev_server(request, ticket_id):
         start_command = textwrap.dedent(f"""
             cd {workspace_path}
 
-            # Clear old logs
-            : > /workspace/nextjs-app/dev.log
-
             # Start npm run dev in background
-            nohup npm run dev -- --hostname :: --port 3000 >/workspace/nextjs-app/dev.log 2>&1 &
+            : > /workspace/nextjs-app/dev.log
+            nohup npm run dev -- --hostname :: --port 3000 > /workspace/nextjs-app/dev.log 2>&1 &
             pid=$!
             echo "$pid" > .devserver_pid
             echo "PID:$pid"
@@ -546,6 +545,190 @@ def stop_dev_server(request, ticket_id):
         )
     except Exception as e:
         logger.error(f"Error stopping dev server: {e}", exc_info=True)
+        return JsonResponse(
+            {'error': str(e)},
+            status=500
+        )
+
+
+@csrf_exempt
+@login_required
+@require_http_methods(["GET"])
+def get_dev_server_logs(request, ticket_id):
+    """
+    Get the dev server logs from the workspace.
+    Query params:
+        - lines: Number of lines to tail (default 100, max 500)
+    """
+    try:
+        # Get the ticket
+        ticket = ProjectTicket.objects.select_related('project').get(id=ticket_id)
+
+        # Check permissions
+        if ticket.project.owner != request.user:
+            return JsonResponse(
+                {'error': 'Permission denied'},
+                status=403
+            )
+
+        project = ticket.project
+
+        # Check if Magpie is available
+        if not magpie_available():
+            return JsonResponse(
+                {'error': 'Magpie workspace execution is not available.'},
+                status=503
+            )
+
+        # Get the MagpieWorkspace for this project
+        magpie_workspace = async_to_sync(_fetch_workspace)(project=project)
+
+        if not magpie_workspace:
+            return JsonResponse(
+                {'error': 'No Magpie workspace found for this project.'},
+                status=400
+            )
+
+        # dev.log is always at /workspace/nextjs-app/dev.log
+        log_file_path = "/workspace/nextjs-app/dev.log"
+        job_id = magpie_workspace.job_id
+
+        # Get number of lines from query param (default 100, max 500)
+        lines = min(int(request.GET.get('lines', 100)), 500)
+
+        logger.info(f"Fetching {lines} lines of dev server logs for ticket {ticket_id}")
+
+        # Get Magpie client
+        client = get_magpie_client()
+
+        # Tail the dev.log file
+        log_command = f"tail -n {lines} {log_file_path} 2>/dev/null || echo ''"
+
+        log_result = _run_magpie_ssh(client, job_id, log_command, timeout=30, with_node_env=False, project_id=project.id)
+
+        logs = log_result.get('stdout', '')
+
+        # Also check if the dev server is running
+        workspace_path = "/workspace/nextjs-app"
+        status_command = f"""
+            if [ -f {workspace_path}/.devserver_pid ]; then
+                pid=$(cat {workspace_path}/.devserver_pid)
+                if kill -0 "$pid" 2>/dev/null; then
+                    echo "running:$pid"
+                else
+                    echo "stopped"
+                fi
+            else
+                echo "stopped"
+            fi
+        """
+        status_result = _run_magpie_ssh(client, job_id, status_command, timeout=10, with_node_env=False, project_id=project.id)
+        status_output = status_result.get('stdout', '').strip()
+
+        is_running = status_output.startswith('running')
+        pid = status_output.split(':')[1] if is_running else None
+
+        return JsonResponse({
+            'success': True,
+            'logs': logs,
+            'is_running': is_running,
+            'pid': pid,
+            'lines_requested': lines
+        })
+
+    except ProjectTicket.DoesNotExist:
+        return JsonResponse(
+            {'error': 'Ticket not found'},
+            status=404
+        )
+    except Exception as e:
+        logger.error(f"Error fetching dev server logs: {e}", exc_info=True)
+        return JsonResponse(
+            {'error': str(e)},
+            status=500
+        )
+
+
+@login_required
+@require_http_methods(["GET"])
+def get_workspace_dev_server_logs(request, workspace_id):
+    """
+    Get the dev server logs from a workspace by workspace_id.
+    Query params:
+        - lines: Number of lines to tail (default 100, max 500)
+    """
+    try:
+        # Get the workspace
+        workspace = MagpieWorkspace.objects.select_related('project').get(workspace_id=workspace_id)
+
+        # Check permissions - user must own the project
+        if workspace.project.owner != request.user:
+            return JsonResponse(
+                {'error': 'Permission denied'},
+                status=403
+            )
+
+        # Check if Magpie is available
+        if not magpie_available():
+            return JsonResponse(
+                {'error': 'Magpie workspace execution is not available.'},
+                status=503
+            )
+
+        # dev.log is always at /workspace/nextjs-app/dev.log
+        log_file_path = "/workspace/nextjs-app/dev.log"
+        job_id = workspace.job_id
+
+        # Get number of lines from query param (default 100, max 500)
+        lines = min(int(request.GET.get('lines', 100)), 500)
+
+        logger.info(f"Fetching {lines} lines of dev server logs for workspace {workspace_id}")
+
+        # Get Magpie client
+        client = get_magpie_client()
+
+        # Tail the dev.log file
+        log_command = f"tail -n {lines} {log_file_path} 2>/dev/null || echo ''"
+
+        log_result = _run_magpie_ssh(client, job_id, log_command, timeout=30, with_node_env=False, project_id=workspace.project.id)
+
+        logs = log_result.get('stdout', '')
+
+        # Also check if the dev server is running
+        workspace_path = "/workspace/nextjs-app"
+        status_command = f"""
+            if [ -f {workspace_path}/.devserver_pid ]; then
+                pid=$(cat {workspace_path}/.devserver_pid)
+                if kill -0 "$pid" 2>/dev/null; then
+                    echo "running:$pid"
+                else
+                    echo "stopped"
+                fi
+            else
+                echo "stopped"
+            fi
+        """
+        status_result = _run_magpie_ssh(client, job_id, status_command, timeout=10, with_node_env=False, project_id=workspace.project.id)
+        status_output = status_result.get('stdout', '').strip()
+
+        is_running = status_output.startswith('running')
+        pid = status_output.split(':')[1] if is_running else None
+
+        return JsonResponse({
+            'success': True,
+            'logs': logs,
+            'is_running': is_running,
+            'pid': pid,
+            'lines_requested': lines
+        })
+
+    except MagpieWorkspace.DoesNotExist:
+        return JsonResponse(
+            {'error': 'Workspace not found'},
+            status=404
+        )
+    except Exception as e:
+        logger.error(f"Error fetching dev server logs for workspace: {e}", exc_info=True)
         return JsonResponse(
             {'error': str(e)},
             status=500

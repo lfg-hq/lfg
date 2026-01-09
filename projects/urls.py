@@ -59,6 +59,7 @@ urlpatterns = [
 
     # Environment variables API
     path('<str:project_id>/api/env-vars/', views.project_env_vars_api, name='project_env_vars_api'),
+    path('<str:project_id>/api/env-vars/download/', views.project_env_vars_download_api, name='project_env_vars_download_api'),
     path('<str:project_id>/api/env-vars/bulk-delete/', views.project_env_vars_bulk_delete_api, name='project_env_vars_bulk_delete_api'),
     path('<str:project_id>/api/tool-call-history/', views.project_tool_call_history_api, name='project_tool_call_history_api'),
     path('<str:project_id>/api/linear/sync/', views.linear_sync_tickets_api, name='linear_sync_tickets_api'),
@@ -119,4 +120,8 @@ urlpatterns = [
     path('<str:project_id>/api/stages/', views.ticket_stages_api, name='ticket_stages_api'),
     path('<str:project_id>/api/stages/<int:stage_id>/', views.ticket_stage_detail_api, name='ticket_stage_detail_api'),
     path('<str:project_id>/api/stages/reorder/', views.ticket_stages_reorder_api, name='ticket_stages_reorder_api'),
+
+    # Git status and push API
+    path('<str:project_id>/api/tickets/<int:ticket_id>/git-status/', views.ticket_git_status_api, name='ticket_git_status_api'),
+    path('<str:project_id>/api/tickets/<int:ticket_id>/push-to-lfg-agent/', views.push_to_lfg_agent_api, name='push_to_lfg_agent_api'),
 ]

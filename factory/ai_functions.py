@@ -366,7 +366,7 @@ def _bootstrap_magpie_workspace(client, job_id: str):
           fi
         fi
         : > /workspace/nextjs-app/dev.log
-        nohup npm run dev -- --hostname :: --port 3000 >/workspace/nextjs-app/dev.log 2>&1 &
+        nohup npm run dev -- --hostname :: --port 3000 > /workspace/nextjs-app/dev.log 2>&1 &
         pid=$!
         echo "$pid" > .devserver_pid
         echo "PID:$pid"
@@ -4116,7 +4116,7 @@ async def open_app_in_artifacts_tool(function_args, project_id, conversation_id)
               fi
             fi
             : > /workspace/nextjs-app/dev.log
-            nohup {server_command} -- --hostname :: --port {port} >/workspace/nextjs-app/dev.log 2>&1 &
+            nohup {server_command} -- --hostname :: --port {port} > /workspace/nextjs-app/dev.log 2>&1 &
             pid=$!
             echo "$pid" > .devserver_pid
             echo "PID:$pid"

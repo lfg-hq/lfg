@@ -151,7 +151,7 @@ def safe_execute_ticket_implementation(ticket_id: int, project_id: int, conversa
         from projects.models import ProjectTicket
         
         ticket = ProjectTicket.objects.get(id=ticket_id)
-        ticket.status = 'done'  # Mark as done when execution completes
+        ticket.status = 'review'  # Mark as review when execution completes
         ticket.save()
         
         logger.info(f"Successfully completed SAFE implementation of ticket {ticket_id}")
@@ -667,6 +667,7 @@ cd /workspace
 if [ -d nextjs-app/.git ]; then
     echo "Git repo exists, updating..."
     cd nextjs-app
+    git remote set-url origin https://{token}@github.com/{owner}/{repo_name}.git
     git fetch origin
     git checkout {escaped_branch} || git checkout -b {escaped_branch} origin/{escaped_branch} || (git fetch origin {escaped_branch} && git checkout {escaped_branch})
 elif [ -d nextjs-app ]; then
@@ -1403,7 +1404,7 @@ def setup_ticket_workspace(
     return result
 
 
-def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_id: int, max_execution_time: int = 600) -> Dict[str, Any]:
+def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_id: int, max_execution_time: int = 1200) -> Dict[str, Any]:
     """
     Execute a single ticket implementation - streamlined version with timeout protection.
     Works like Claude Code CLI - fast, efficient, limited tool rounds.
@@ -1480,7 +1481,7 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
             error_msg = setup_result.get('error', 'Workspace setup failed')
             logger.error(f"[STEP 3/6] ✗ {error_msg}")
 
-            ticket.status = 'failed'
+            ticket.status = 'blocked'
             ticket.notes = (ticket.notes or "") + f"""
             ---
             [{datetime.now().strftime('%Y-%m-%d %H:%M')}] EXECUTION FAILED
@@ -1779,8 +1780,8 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
         # 13. UPDATE TICKET BASED ON RESULT
         if completed and not failed:
             # SUCCESS!
-            logger.info(f"[FINALIZE] ✓ SUCCESS - Marking ticket as done")
-            ticket.status = 'done'
+            logger.info(f"[FINALIZE] ✓ SUCCESS - Marking ticket as review")
+            ticket.status = 'review'
 
             # Build notes with Git information if available
             git_info = ""
@@ -1850,7 +1851,7 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
             return result
         else:
             # FAILED OR INCOMPLETE
-            logger.warning(f"[FINALIZE] ✗ FAILED - Marking ticket as failed")
+            logger.warning(f"[FINALIZE] ✗ FAILED - Marking ticket as blocked")
             error_match = re.search(r'IMPLEMENTATION_STATUS: FAILED - (.+)', content)
             if error_match:
                 error_reason = error_match.group(1)
@@ -1859,7 +1860,7 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
             else:
                 error_reason = "No explicit completion status provided. AI may have exceeded tool limit or stopped unexpectedly."
 
-            ticket.status = 'failed'
+            ticket.status = 'blocked'
             ticket.notes = (ticket.notes or "") + f"""
                 ---
                 [{datetime.now().strftime('%Y-%m-%d %H:%M')}] IMPLEMENTATION FAILED
@@ -1904,8 +1905,8 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
         logger.error(f"Elapsed time: {execution_time:.1f}s")
 
         if 'ticket' in locals():
-            # Mark ticket as failed - no retry logic
-            ticket.status = 'failed'
+            # Mark ticket as blocked - no retry logic
+            ticket.status = 'blocked'
             ticket.notes = (ticket.notes or "") + f"""
             ---
             [{datetime.now().strftime('%Y-%m-%d %H:%M')}] EXECUTION FAILED

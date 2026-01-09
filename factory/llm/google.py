@@ -97,7 +97,7 @@ class GoogleGeminiProvider(BaseLLMProvider):
                             parts.append({
                                 "text": f"[Called function {tool_name} with args: {tool_args}]"
                             })
-                            logger.debug(f"Converted tool call {tool_name} to text (no thought_signature)")
+                            logger.warning(f"[GEMINI] Converted tool call {tool_name} to text (no thought_signature) - this may cause issues!")
                         else:
                             part = {
                                 "function_call": {
@@ -325,10 +325,14 @@ class GoogleGeminiProvider(BaseLLMProvider):
             tools.append(search_tool)
             logger.info("Added web_search tool to Google Gemini tools")
 
+        iteration_count = 0
         while True: # Loop to handle potential multi-turn tool calls
+            iteration_count += 1
+            logger.info(f"[GEMINI] Starting iteration {iteration_count}")
             try:
                 # Convert messages and tools to Gemini format
                 system_instruction, contents = self._convert_messages_to_provider_format(current_messages)
+                logger.info(f"[GEMINI] Converted {len(current_messages)} messages to {len(contents)} contents")
                 gemini_tools = self._convert_tools_to_provider_format(tools)
                 
                 # Create configuration
@@ -457,6 +461,10 @@ class GoogleGeminiProvider(BaseLLMProvider):
                                             if hasattr(fc, 'args'):
                                                 args = fc.args if fc.args else {}
 
+                                            # Log part attributes for debugging
+                                            part_attrs = [attr for attr in dir(part) if not attr.startswith('_')]
+                                            logger.info(f"[GEMINI] Function call part attributes: {part_attrs}")
+
                                             tool_call = {
                                                 "id": f"call_{len(tool_calls_requested)}",
                                                 "type": "function",
@@ -469,7 +477,9 @@ class GoogleGeminiProvider(BaseLLMProvider):
                                             # Capture thought_signature if present (required for Gemini 2.5+)
                                             if hasattr(part, 'thought_signature') and part.thought_signature:
                                                 tool_call["thought_signature"] = part.thought_signature
-                                                logger.debug(f"Captured thought_signature for function call: {fc.name}")
+                                                logger.info(f"[GEMINI] Captured thought_signature for function call: {fc.name}")
+                                            else:
+                                                logger.warning(f"[GEMINI] NO thought_signature for function call: {fc.name}. has_attr={hasattr(part, 'thought_signature')}, value={getattr(part, 'thought_signature', 'N/A')}")
 
                                             tool_calls_requested.append(tool_call)
                                             
@@ -490,13 +500,18 @@ class GoogleGeminiProvider(BaseLLMProvider):
                 
                 # After stream completes, check if we have tool calls to execute
                 if tool_calls_requested:
+                    logger.info(f"[GEMINI] Tool calls detected: {len(tool_calls_requested)} calls")
+                    for tc in tool_calls_requested:
+                        logger.info(f"[GEMINI] Tool call: {tc['function']['name']}, has_thought_sig: {bool(tc.get('thought_signature'))}")
+
                     # Update assistant message with tool calls
                     full_assistant_message["tool_calls"] = tool_calls_requested
                     if not full_assistant_message["content"]:
                         full_assistant_message.pop("content")
-                    
+
                     current_messages.append(full_assistant_message)
-                    
+                    logger.info(f"[GEMINI] Current messages count after append: {len(current_messages)}")
+
                     # Execute tools
                     tool_results_messages = []
                     for tool_call in tool_calls_requested:
@@ -538,6 +553,7 @@ class GoogleGeminiProvider(BaseLLMProvider):
                                 yield formatted
                     
                     current_messages.extend(tool_results_messages)
+                    logger.info(f"[GEMINI] Tool results added. Total messages: {len(current_messages)}. Continuing to next iteration...")
                     # Continue the loop for next iteration
                     continue
                 else:
@@ -606,7 +622,7 @@ class GoogleGeminiProvider(BaseLLMProvider):
                     return
 
             except Exception as e:
-                logger.error(f"Critical Error: {str(e)}\n{traceback.format_exc()}")
+                logger.error(f"[GEMINI] Critical Error on iteration {iteration_count}: {str(e)}\n{traceback.format_exc()}")
                 yield f"Error with Google Gemini stream: {str(e)}"
                 return
     

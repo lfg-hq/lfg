@@ -731,6 +731,8 @@ def project_checklist_api(request, project_id):
             'linear_synced_at': item.linear_synced_at.isoformat() if item.linear_synced_at else None,
             'linear_sync_enabled': item.linear_sync_enabled,
             'attachments': attachments,
+            # Queue status for build tracking
+            'queue_status': item.queue_status,
         })
 
     return JsonResponse({'tickets': tickets_list})
@@ -814,6 +816,7 @@ def create_checklist_item_api(request, project_id):
         'created_at': ticket.created_at.isoformat(),
         'updated_at': ticket.updated_at.isoformat(),
         'attachments': [],
+        'queue_status': ticket.queue_status,
     }
 
     return JsonResponse({
@@ -1015,6 +1018,39 @@ def project_env_vars_api(request, project_id):
             return JsonResponse({'success': True, 'message': f'Deleted {key}'})
         else:
             return JsonResponse({'success': False, 'error': 'Variable not found'}, status=404)
+
+
+@login_required
+@require_http_methods(["GET"])
+def project_env_vars_download_api(request, project_id):
+    """
+    API endpoint for downloading environment variables with full (unmasked) values.
+    Returns env vars in a format suitable for creating a .env file.
+    """
+    from projects.models import ProjectEnvironmentVariable
+
+    project = get_object_or_404(Project, project_id=project_id)
+
+    # Check permissions - must be owner or admin
+    if project.owner != request.user:
+        member = project.members.filter(user=request.user, status='active').first()
+        if not member or member.role not in ['owner', 'admin']:
+            return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    # Get all env vars with full values
+    env_vars = []
+    for env_var in ProjectEnvironmentVariable.objects.filter(project=project).order_by('key'):
+        if env_var.has_value:
+            env_vars.append({
+                'key': env_var.key,
+                'value': env_var.get_value(),  # Full unmasked value
+                'is_secret': env_var.is_secret,
+            })
+
+    if not env_vars:
+        return JsonResponse({'success': False, 'error': 'No environment variables to download'})
+
+    return JsonResponse({'success': True, 'env_vars': env_vars})
 
 
 @login_required
@@ -1484,14 +1520,14 @@ pkill -f "next dev" 2>/dev/null || true
 # Clear Next.js cache to ensure fresh build from new branch
 rm -rf .next 2>/dev/null || true
 
-# Clear log and start dev server
+# Start dev server
 : > {workspace_path}/dev.log
 nohup npm run dev -- --hostname :: --port {port} > {workspace_path}/dev.log 2>&1 &
 pid=$!
 echo "$pid" > .devserver_pid
 echo "PID:$pid"
 sleep 5
-cat {workspace_path}/dev.log | tail -30
+echo "Dev server started"
 """
 
         send_workspace_progress(project_id, 'starting_server', 'Starting development server...')
@@ -1769,7 +1805,8 @@ def update_checklist_item_api(request, project_id):
             'stage_id': item.stage.id if item.stage else None,
             'stage_name': item.stage.name if item.stage else None,
             'stage_color': item.stage.color if item.stage else None,
-            'updated_at': item.updated_at.isoformat()
+            'updated_at': item.updated_at.isoformat(),
+            'queue_status': item.queue_status,
         })
     else:
         return JsonResponse({'success': False, 'error': 'No changes made'})
@@ -2772,8 +2809,8 @@ def execute_ticket_api(request, project_id, ticket_id):
 @login_required
 @require_http_methods(["POST"])
 def cancel_ticket_queue_api(request, project_id, ticket_id):
-    """API endpoint to remove a ticket from the execution queue"""
-    from tasks.dispatch import remove_from_queue
+    """API endpoint to remove a ticket from the execution queue or stop execution"""
+    from tasks.dispatch import remove_from_queue, force_reset_ticket_queue_status
 
     # Get project and ticket
     project = get_object_or_404(Project, project_id=project_id)
@@ -2790,12 +2827,26 @@ def cancel_ticket_queue_api(request, project_id, ticket_id):
             'error': 'Ticket is not in queue'
         }, status=400)
 
-    # Check if ticket is already executing (can't cancel)
+    # If ticket is executing, use force reset to stop it
     if ticket.queue_status == 'executing':
-        return JsonResponse({
-            'success': False,
-            'error': 'Cannot cancel ticket that is currently executing'
-        }, status=400)
+        try:
+            result = force_reset_ticket_queue_status(project.id, ticket.id)
+            if result.get('error'):
+                return JsonResponse({
+                    'success': False,
+                    'error': result['error']
+                }, status=500)
+            return JsonResponse({
+                'success': True,
+                'message': 'Ticket execution stopped',
+                'ticket_id': ticket_id
+            })
+        except Exception as e:
+            logger.error(f"Error stopping ticket execution: {str(e)}", exc_info=True)
+            return JsonResponse({
+                'success': False,
+                'error': str(e)
+            }, status=500)
 
     try:
         # Remove from queue
@@ -3260,6 +3311,269 @@ def ticket_stages_reorder_api(request, project_id):
         TicketStage.objects.filter(id=stage_id, project=project).update(order=order)
 
     return JsonResponse({'success': True})
+
+
+@login_required
+@require_http_methods(["GET"])
+def ticket_git_status_api(request, project_id, ticket_id):
+    """
+    API endpoint to get git status information for a ticket.
+
+    Returns:
+        - branch: Feature branch name
+        - commit_sha: Latest commit SHA (if any)
+        - merge_status: Status of merge to lfg-agent
+        - repo_url: GitHub repository URL
+        - has_uncommitted_changes: Whether there are uncommitted changes in workspace
+    """
+    from accounts.models import GitHubToken
+    from development.models import MagpieWorkspace
+    from codebase_index.models import IndexedRepository
+    from factory.ai_functions import get_magpie_client, _run_magpie_ssh
+
+    project = get_object_or_404(Project, project_id=project_id)
+    ticket = get_object_or_404(ProjectTicket, id=ticket_id, project=project)
+
+    # Check permissions
+    if not (project.owner == request.user or project.members.filter(user=request.user, status='active').exists()):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    # Get GitHub info from IndexedRepository (linked to project)
+    github_owner = None
+    github_repo = None
+    repo_url = None
+
+    try:
+        indexed_repo = IndexedRepository.objects.get(project=project)
+        github_owner = indexed_repo.github_owner
+        github_repo = indexed_repo.github_repo_name
+        repo_url = indexed_repo.github_url
+    except IndexedRepository.DoesNotExist:
+        pass
+
+    # Build response data
+    response_data = {
+        'success': True,
+        'branch': ticket.github_branch,
+        'commit_sha': ticket.github_commit_sha,
+        'merge_status': ticket.github_merge_status,
+        'github_owner': github_owner,
+        'github_repo': github_repo,
+        'repo_url': repo_url,
+    }
+
+    # Add URLs if we have repo info
+    if github_owner and github_repo:
+        if not repo_url:
+            response_data['repo_url'] = f"https://github.com/{github_owner}/{github_repo}"
+        if ticket.github_branch:
+            response_data['branch_url'] = f"https://github.com/{github_owner}/{github_repo}/tree/{ticket.github_branch}"
+        if ticket.github_commit_sha:
+            response_data['commit_url'] = f"https://github.com/{github_owner}/{github_repo}/commit/{ticket.github_commit_sha}"
+        # Add lfg-agent branch URL
+        response_data['lfg_agent_url'] = f"https://github.com/{github_owner}/{github_repo}/tree/lfg-agent"
+
+    # Get workspace info for live git status
+    workspace = MagpieWorkspace.objects.filter(
+        project=project,
+        status='ready'
+    ).order_by('-updated_at').first()
+
+    # Try to get live git status from workspace if available
+    if workspace:
+        try:
+            client = get_magpie_client()
+
+            # Get current branch in workspace
+            branch_result = _run_magpie_ssh(
+                client,
+                workspace.workspace_id,
+                "cd /workspace/nextjs-app && git branch --show-current 2>/dev/null || echo ''",
+                timeout=30,
+                with_node_env=False
+            )
+            response_data['current_branch'] = branch_result.get('stdout', '').strip()
+
+            # Get git status (check for uncommitted changes)
+            status_result = _run_magpie_ssh(
+                client,
+                workspace.workspace_id,
+                "cd /workspace/nextjs-app && git status --porcelain 2>/dev/null | head -20",
+                timeout=30,
+                with_node_env=False
+            )
+            status_output = status_result.get('stdout', '').strip()
+            response_data['has_uncommitted_changes'] = len(status_output) > 0
+            if status_output:
+                response_data['uncommitted_files'] = [f for f in status_output.split('\n') if f.strip()]
+
+            # Get recent commits on this branch (last 5)
+            log_result = _run_magpie_ssh(
+                client,
+                workspace.workspace_id,
+                "cd /workspace/nextjs-app && git log --oneline -5 2>/dev/null || echo ''",
+                timeout=30,
+                with_node_env=False
+            )
+            log_output = log_result.get('stdout', '').strip()
+            if log_output:
+                response_data['recent_commits'] = [c for c in log_output.split('\n') if c.strip()]
+
+        except Exception as e:
+            logger.warning(f"Could not get git status from workspace: {e}")
+            # Don't fail the request, just note we couldn't get live status
+
+    return JsonResponse(response_data)
+
+
+@login_required
+@require_http_methods(["POST"])
+def push_to_lfg_agent_api(request, project_id, ticket_id):
+    """
+    API endpoint to commit, push, and merge changes to lfg-agent branch.
+
+    This performs:
+    1. git add -A
+    2. git commit with ticket info
+    3. git push to feature branch
+    4. Merge feature branch into lfg-agent
+    """
+    from accounts.models import GitHubToken
+    from development.models import MagpieWorkspace
+    from codebase_index.models import IndexedRepository
+    from tasks.task_definitions import commit_and_push_changes, merge_feature_to_lfg_agent
+
+    project = get_object_or_404(Project, project_id=project_id)
+    ticket = get_object_or_404(ProjectTicket, id=ticket_id, project=project)
+
+    # Check permissions
+    if not project.can_user_manage_tickets(request.user):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    # Validate ticket has a branch
+    if not ticket.github_branch:
+        return JsonResponse({
+            'success': False,
+            'error': 'Ticket does not have a feature branch assigned'
+        }, status=400)
+
+    # Get GitHub token
+    try:
+        github_token_obj = GitHubToken.objects.get(user=request.user)
+        github_token = github_token_obj.access_token
+    except GitHubToken.DoesNotExist:
+        return JsonResponse({
+            'success': False,
+            'error': 'GitHub not connected. Please connect GitHub in settings.',
+            'requires_github_setup': True
+        }, status=400)
+
+    # Get GitHub repo info from IndexedRepository
+    try:
+        indexed_repo = IndexedRepository.objects.get(project=project)
+        github_owner = indexed_repo.github_owner
+        github_repo = indexed_repo.github_repo_name
+    except IndexedRepository.DoesNotExist:
+        return JsonResponse({
+            'success': False,
+            'error': 'GitHub repository not configured for this project'
+        }, status=400)
+
+    # Get workspace
+    workspace = MagpieWorkspace.objects.filter(
+        project=project,
+        status='ready'
+    ).order_by('-updated_at').first()
+
+    if not workspace:
+        return JsonResponse({
+            'success': False,
+            'error': 'No active workspace found. Please ensure the workspace is running.'
+        }, status=400)
+
+    try:
+        # Parse request body for optional commit message
+        try:
+            data = json.loads(request.body.decode('utf-8')) if request.body else {}
+        except:
+            data = {}
+
+        custom_message = data.get('commit_message')
+        commit_message = custom_message or f"feat: {ticket.name}\n\nImplemented ticket #{ticket.id}\n\n{ticket.description[:200] if ticket.description else ''}"
+
+        # Step 1: Commit and push changes
+        logger.info(f"[GIT API] Committing and pushing changes for ticket #{ticket_id}")
+        commit_result = commit_and_push_changes(
+            workspace.workspace_id,
+            ticket.github_branch,
+            commit_message,
+            ticket.id
+        )
+
+        if commit_result['status'] != 'success':
+            return JsonResponse({
+                'success': False,
+                'error': f"Failed to commit/push: {commit_result.get('message', 'Unknown error')}",
+                'details': commit_result
+            }, status=500)
+
+        commit_sha = commit_result.get('commit_sha')
+
+        # Save commit SHA to ticket
+        if commit_sha:
+            ticket.github_commit_sha = commit_sha
+            ticket.save(update_fields=['github_commit_sha'])
+
+        # Step 2: Merge into lfg-agent
+        logger.info(f"[GIT API] Merging {ticket.github_branch} into lfg-agent")
+        merge_result = merge_feature_to_lfg_agent(
+            github_token,
+            github_owner,
+            github_repo,
+            ticket.github_branch
+        )
+
+        merge_status = merge_result.get('status', 'error')
+
+        # Map status to model choices
+        if merge_status == 'success':
+            ticket.github_merge_status = 'merged'
+        elif merge_status == 'conflict':
+            ticket.github_merge_status = 'conflict'
+        else:
+            ticket.github_merge_status = 'failed'
+
+        ticket.save(update_fields=['github_merge_status'])
+
+        # Build response
+        response_data = {
+            'success': merge_status in ['success'],
+            'commit_sha': commit_sha,
+            'merge_status': ticket.github_merge_status,
+            'merge_message': merge_result.get('message', ''),
+        }
+
+        if commit_sha:
+            response_data['commit_url'] = f"https://github.com/{github_owner}/{github_repo}/commit/{commit_sha}"
+
+        if ticket.github_merge_status == 'merged':
+            response_data['lfg_agent_url'] = f"https://github.com/{github_owner}/{github_repo}/tree/lfg-agent"
+
+        if merge_status == 'conflict':
+            response_data['error'] = 'Merge conflict detected. Manual resolution may be required.'
+            return JsonResponse(response_data, status=409)
+        elif merge_status not in ['success']:
+            response_data['error'] = merge_result.get('message', 'Merge failed')
+            return JsonResponse(response_data, status=500)
+
+        return JsonResponse(response_data)
+
+    except Exception as e:
+        logger.error(f"Error in push_to_lfg_agent: {str(e)}", exc_info=True)
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
 
 
 @login_required

@@ -508,7 +508,12 @@
 
         <!-- Existing Variables List -->
         <div class="settings-group">
-            <h3>Current Variables</h3>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 style="margin: 0;">Current Variables</h3>
+                <button type="button" class="btn btn-secondary btn-sm" id="download-env-btn" onclick="downloadEnvVars()" title="Download as .env file" style="padding: 0.4rem 0.75rem; font-size: 0.8rem;">
+                    <i class="fas fa-download"></i> Download .env
+                </button>
+            </div>
             <div id="env-vars-list" class="env-vars-list">
                 <div class="env-vars-loading">Loading environment variables...</div>
             </div>
@@ -1343,6 +1348,59 @@ document.addEventListener('DOMContentLoaded', function() {
 // ============================================
 // Environment Variables Management
 // ============================================
+
+async function downloadEnvVars() {
+    const projectId = '{{ project.project_id }}';
+    const btn = document.getElementById('download-env-btn');
+    const originalText = btn.innerHTML;
+
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Downloading...';
+    btn.disabled = true;
+
+    try {
+        // Fetch env vars with full values for download
+        const response = await fetch(`/projects/${projectId}/api/env-vars/download/`);
+        const data = await response.json();
+
+        if (data.success && data.env_vars) {
+            // Create .env file content
+            let content = `# Environment variables for {{ project.name }}\n`;
+            content += `# Downloaded on ${new Date().toISOString()}\n\n`;
+
+            data.env_vars.forEach(env => {
+                if (env.value !== null && env.value !== undefined) {
+                    // Escape double quotes and handle multiline values
+                    let value = env.value;
+                    if (value.includes('\n') || value.includes('"') || value.includes(' ')) {
+                        value = `"${value.replace(/"/g, '\\"')}"`;
+                    }
+                    content += `${env.key}=${value}\n`;
+                }
+            });
+
+            // Create and trigger download
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${projectId.substring(0, 8)}-env.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            showNotification('Environment variables downloaded', 'success');
+        } else {
+            showNotification(data.error || 'No environment variables to download', 'error');
+        }
+    } catch (error) {
+        console.error('Error downloading env vars:', error);
+        showNotification('Error downloading environment variables', 'error');
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+}
 
 async function loadEnvVars() {
     const listEl = document.getElementById('env-vars-list');
