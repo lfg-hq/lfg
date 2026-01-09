@@ -351,7 +351,7 @@ def _bootstrap_magpie_workspace(client, job_id: str):
     scaffold_result["command"] = scaffold_cmd
     steps.append(("Write Next.js project skeleton", scaffold_result))
 
-    install_dependencies_cmd = "cd nextjs-app && npm install"
+    install_dependencies_cmd = "cd nextjs-app && npm config set cache /workspace/.npm-cache && npm install"
     deps_result = _run_magpie_ssh(client, job_id, install_dependencies_cmd, timeout=480)
     deps_result["command"] = install_dependencies_cmd
     steps.append(("Install npm dependencies", deps_result))
@@ -359,6 +359,8 @@ def _bootstrap_magpie_workspace(client, job_id: str):
     start_server_cmd = textwrap.dedent(
         """
         cd nextjs-app
+        # Set npm cache to /workspace to avoid disk space issues
+        npm config set cache /workspace/.npm-cache
         if [ -f .devserver_pid ]; then
           old_pid=$(cat .devserver_pid)
           if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then

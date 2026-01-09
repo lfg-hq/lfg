@@ -170,7 +170,7 @@ echo "SWITCH_COMPLETE"
             logger.info(f"[CODE_SETUP] Running npm install after branch switch...")
             npm_result = _run_magpie_ssh(
                 client, job_id,
-                f"cd {workspace_path} && npm install",
+                f"cd {workspace_path} && npm config set cache /workspace/.npm-cache && npm install",
                 timeout=300, with_node_env=True
             )
             if npm_result.get('exit_code', 0) != 0:
@@ -203,7 +203,7 @@ echo "SWITCH_COMPLETE"
                     logger.info(f"[CODE_SETUP] Running npm install...")
                     npm_result = _run_magpie_ssh(
                         client, job_id,
-                        f"cd {workspace_path} && npm install",
+                        f"cd {workspace_path} && npm config set cache /workspace/.npm-cache && npm install",
                         timeout=300, with_node_env=True
                     )
                     if npm_result.get('exit_code', 0) == 0:
@@ -229,6 +229,7 @@ echo "SWITCH_COMPLETE"
 
         template_cmd = '''
 cd /workspace
+npm config set cache /workspace/.npm-cache
 if [ ! -d nextjs-app ]; then
     git clone https://github.com/lfg-hq/nextjs-template nextjs-app
     cd nextjs-app
@@ -343,23 +344,26 @@ def start_dev_server(request, ticket_id):
         cleanup_command = textwrap.dedent(f"""
             cd {workspace_path}
 
+            # Set npm cache to /workspace to avoid disk space issues
+            npm config set cache /workspace/.npm-cache
+
             echo "Stopping all Node processes..."
-            
+
             # Nuclear option - kill all node processes
             killall -9 node 2>/dev/null || true
             pkill -9 node 2>/dev/null || true
-            
+
             # Kill anything on port 3000
             fuser -k -9 3000/tcp 2>/dev/null || true
-            
+
             # Clean up files
             rm -rf .next || true
             rm -f .devserver_pid || true
             rm -f package-lock.json || true
-            
+
             # Wait for port to be fully released
             sleep 3
-            
+
             echo "Cleanup completed"
         """)
 

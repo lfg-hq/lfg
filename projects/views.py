@@ -1490,7 +1490,7 @@ echo "SWITCH_COMPLETE"
             logger.info(f"[PREVIEW] Running npm install after branch switch...")
             npm_result = _run_magpie_ssh(
                 client, workspace.job_id,
-                f"cd {workspace_path} && npm install",
+                f"cd {workspace_path} && npm config set cache /workspace/.npm-cache && npm install",
                 timeout=300, with_node_env=True
             )
             if npm_result.get('exit_code', 0) != 0:
@@ -1503,6 +1503,9 @@ echo "SWITCH_COMPLETE"
 
         start_command = f"""
 cd {workspace_path}
+
+# Set npm cache to /workspace to avoid disk space issues
+npm config set cache /workspace/.npm-cache
 
 # Kill existing process
 if [ -f .devserver_pid ]; then
@@ -4528,6 +4531,7 @@ def provision_workspace_api(request, project_id):
                     logger.info(f"[PROVISION] Cloning template for existing workspace")
                     template_setup_cmd = '''
 cd /workspace
+npm config set cache /workspace/.npm-cache
 if [ ! -d nextjs-app ]; then
     git clone https://github.com/lfg-hq/nextjs-template nextjs-app
     cd nextjs-app
@@ -4664,6 +4668,7 @@ fi
 
                 template_setup_cmd = '''
 cd /workspace
+npm config set cache /workspace/.npm-cache
 if [ ! -d nextjs-app ]; then
     git clone https://github.com/lfg-hq/nextjs-template nextjs-app
     cd nextjs-app
