@@ -1289,8 +1289,6 @@ def setup_ticket_workspace(
                 workspace_size_gb=10,
                 vcpus=2,
                 memory_mb=2048,
-                register_proxy=True,
-                proxy_port=3000,
                 poll_timeout=180,
                 poll_interval=5,
             )
@@ -1299,7 +1297,6 @@ def setup_ticket_workspace(
             run_id = vm_handle.request_id
             workspace_identifier = run_id
             ipv6 = vm_handle.ip_address
-            proxy_url = vm_handle.proxy_url
 
             if not ipv6:
                 raise Exception(f"VM provisioning timed out - no IP address received")
@@ -1312,10 +1309,9 @@ def setup_ticket_workspace(
                 status='ready',
                 ipv6_address=ipv6,
                 project_path='/workspace',
-                proxy_url=proxy_url,
                 metadata={'project_name': project_name}
             )
-            logger.info(f"[MAGPIE][READY] Workspace ready: {workspace.workspace_id}, IP: {ipv6}, Proxy: {proxy_url}")
+            logger.info(f"[MAGPIE][READY] Workspace ready: {workspace.workspace_id}, IP: {ipv6}")
 
         except Exception as e:
             error_msg = f"Workspace provisioning failed: {str(e)}"
@@ -2051,8 +2047,6 @@ def ensure_workspace_and_execute(ticket_ids: List[int], project_db_id: int, conv
                     workspace_size_gb=10,
                     vcpus=2,
                     memory_mb=2048,
-                    register_proxy=True,
-                    proxy_port=3000,
                     poll_timeout=180,
                     poll_interval=5,
                 )
@@ -2061,7 +2055,6 @@ def ensure_workspace_and_execute(ticket_ids: List[int], project_db_id: int, conv
                 run_id = vm_handle.request_id
                 workspace_identifier = run_id
                 ipv6 = vm_handle.ip_address
-                proxy_url = vm_handle.proxy_url
 
                 if not ipv6:
                     raise Exception(f"VM provisioning timed out - no IP address received")
@@ -2074,10 +2067,9 @@ def ensure_workspace_and_execute(ticket_ids: List[int], project_db_id: int, conv
                     status='ready',
                     ipv6_address=ipv6,
                     project_path='/workspace',
-                    proxy_url=proxy_url,
                     metadata={'project_name': project_name}
                 )
-                logger.info(f"[MAGPIE][READY] Workspace ready: {workspace.workspace_id}, IP: {ipv6}, Proxy: {proxy_url}")
+                logger.info(f"[MAGPIE][READY] Workspace ready: {workspace.workspace_id}, IP: {ipv6}")
             except Exception as e:
                 broadcast_ticket_notification(conversation_id, {
                     'is_notification': True,

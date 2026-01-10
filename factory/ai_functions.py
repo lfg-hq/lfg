@@ -169,9 +169,12 @@ def get_or_create_proxy_url(workspace: MagpieWorkspace, port: int = 3000, client
 
         ipv6 = workspace.ipv6_address.strip('[]')
         proxy_url = None
+        logger.info(f"[PROXY] Starting proxy setup for workspace {workspace.workspace_id}, IPv6={ipv6}, port={port}, force_refresh={force_refresh}")
 
         # Try to find/update/create proxy target via proxy_targets API
-        if hasattr(client, 'proxy_targets'):
+        has_proxy_targets = hasattr(client, 'proxy_targets')
+        logger.info(f"[PROXY] Client has proxy_targets API: {has_proxy_targets}")
+        if has_proxy_targets:
             try:
                 # First, list existing proxy targets to find one for this IPv6
                 existing_targets = client.proxy_targets.list()
@@ -227,16 +230,17 @@ def get_or_create_proxy_url(workspace: MagpieWorkspace, port: int = 3000, client
 
             except Exception as e:
                 logger.error(f"[PROXY] Proxy target operation failed: {e}", exc_info=True)
-                # If force_refresh was requested, don't fall back to old proxy
-                if force_refresh:
-                    logger.error(f"[PROXY] Cannot update/create proxy target with port {port}, and force_refresh prevents using old proxy")
 
-        # Fallback: use get_proxy_url for existing jobs (only if NOT force_refresh)
-        # When force_refresh=True, we need the correct port, not the old one
-        if not proxy_url and not force_refresh:
+        # Fallback: use get_proxy_url for existing jobs
+        if not proxy_url:
             job_id = workspace.job_id
-            logger.info(f"[PROXY] Fetching existing proxy URL for job {job_id}")
-            proxy_url = client.jobs.get_proxy_url(job_id)
+            logger.info(f"[PROXY] Proxy target API failed, trying jobs.get_proxy_url() for job {job_id}")
+            try:
+                proxy_url = client.jobs.get_proxy_url(job_id)
+                if proxy_url:
+                    logger.warning(f"[PROXY] Using job proxy URL (port may not be {port}): {proxy_url}")
+            except Exception as e:
+                logger.error(f"[PROXY] jobs.get_proxy_url() also failed: {e}")
 
         if proxy_url:
             # Store the proxy URL in the database

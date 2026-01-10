@@ -4592,8 +4592,6 @@ fi
             workspace_size_gb=10,
             vcpus=2,
             memory_mb=2048,
-            register_proxy=True,
-            proxy_port=3000,
             poll_timeout=180,
             poll_interval=5,
         )
@@ -4607,9 +4605,8 @@ fi
 
         logger.info(f"[PROVISION] Job created: {run_id}")
 
-        # Get IP and proxy URL from the handle (already populated after polling)
+        # Get IP from the handle (already populated after polling)
         ipv6 = vm_handle.ip_address
-        proxy_url = vm_handle.proxy_url
 
         if not ipv6:
             return JsonResponse({
@@ -4617,9 +4614,9 @@ fi
                 'error': 'Workspace provisioning timed out - no IP address received'
             }, status=500)
 
-        logger.info(f"[PROVISION] VM ready with IP: {ipv6}, Proxy: {proxy_url}")
+        logger.info(f"[PROVISION] VM ready with IP: {ipv6}")
 
-        # Create DB record and mark as ready
+        # Create DB record and mark as ready (proxy_url will be set when server is started)
         workspace = MagpieWorkspace.objects.create(
             project=project,
             job_id=run_id,
@@ -4627,7 +4624,6 @@ fi
             status='ready',
             ipv6_address=ipv6,
             project_path='/workspace',
-            proxy_url=proxy_url,
             metadata={'project_name': project_name, 'created_for_preview': True}
         )
 
