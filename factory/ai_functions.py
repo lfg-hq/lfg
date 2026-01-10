@@ -132,6 +132,45 @@ def _generate_proxy_subdomain(workspace: MagpieWorkspace) -> str:
     return subdomain
 
 
+def _call_magpie_proxy_api(method: str, endpoint: str, data: dict = None) -> dict | None:
+    """
+    Make direct HTTP calls to Magpie API for proxy targets.
+    This bypasses SDK version issues by calling the API directly.
+    """
+    import requests
+
+    base_url = "https://api.magpiecloud.com"
+    url = f"{base_url}{endpoint}"
+    headers = {
+        "Authorization": f"Bearer {MAGPIE_API_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        if method == "GET":
+            response = requests.get(url, headers=headers, timeout=30)
+        elif method == "POST":
+            response = requests.post(url, headers=headers, json=data, timeout=30)
+        elif method == "PUT":
+            response = requests.put(url, headers=headers, json=data, timeout=30)
+        else:
+            return None
+
+        logger.info(f"[PROXY API] {method} {endpoint} -> {response.status_code}")
+
+        if response.status_code == 404:
+            logger.warning(f"[PROXY API] Endpoint not found: {endpoint}")
+            return None
+        elif response.status_code >= 400:
+            logger.error(f"[PROXY API] Error {response.status_code}: {response.text}")
+            return None
+
+        return response.json() if response.text else {}
+    except Exception as e:
+        logger.error(f"[PROXY API] Request failed: {e}")
+        return None
+
+
 def get_or_create_proxy_url(workspace: MagpieWorkspace, port: int = 3000, client=None, force_refresh: bool = False) -> str | None:
     """
     Get the proxy URL for a workspace from database. If not exists, create a new
@@ -171,12 +210,72 @@ def get_or_create_proxy_url(workspace: MagpieWorkspace, port: int = 3000, client
         proxy_url = None
         logger.info(f"[PROXY] Starting proxy setup for workspace {workspace.workspace_id}, IPv6={ipv6}, port={port}, force_refresh={force_refresh}")
 
-        # Try to find/update/create proxy target via proxy_targets API
-        has_proxy_targets = hasattr(client, 'proxy_targets')
-        logger.info(f"[PROXY] Client has proxy_targets API: {has_proxy_targets}")
-        if has_proxy_targets:
+        # Try direct API calls first (bypasses SDK version issues)
+        logger.info(f"[PROXY] Trying direct API calls to Magpie proxy-targets endpoint")
+
+        # List existing proxy targets
+        list_response = _call_magpie_proxy_api("GET", "/api/v1/proxy-targets")
+
+        if list_response is not None:
+            # API endpoint exists - look for matching target
+            existing_targets = list_response.get("proxy_targets", [])
+            logger.info(f"[PROXY] Found {len(existing_targets)} existing proxy targets")
+
+            matching_target = None
+            for target in existing_targets:
+                target_ipv6 = (target.get('ipv6_address') or '').strip('[]')
+                if target_ipv6 == ipv6:
+                    matching_target = target
+                    break
+
+            if matching_target:
+                # Found existing proxy target - check if port needs update
+                target_id = matching_target.get('id') or matching_target.get('target_id')
+                current_port = matching_target.get('port')
+                logger.info(f"[PROXY] Found existing proxy target {target_id} for IPv6 {ipv6}, current port={current_port}, desired port={port}")
+
+                if target_id and current_port != port:
+                    # Update port
+                    logger.info(f"[PROXY] Updating proxy target {target_id} to port {port}")
+                    update_response = _call_magpie_proxy_api("PUT", f"/api/v1/proxy-targets/{target_id}", {"port": port})
+                    if update_response:
+                        proxy_url = update_response.get('proxy_url')
+                        if not proxy_url and update_response.get('subdomain'):
+                            proxy_url = f"https://{update_response['subdomain']}.app.lfg.run"
+                        logger.info(f"[PROXY] Updated proxy target to port {port}: {proxy_url}")
+                else:
+                    # Port already correct
+                    proxy_url = matching_target.get('proxy_url')
+                    if not proxy_url and matching_target.get('subdomain'):
+                        proxy_url = f"https://{matching_target['subdomain']}.app.lfg.run"
+                    logger.info(f"[PROXY] Using existing proxy target (port already correct): {proxy_url}")
+            else:
+                # No existing proxy target - create new one
+                subdomain = _generate_proxy_subdomain(workspace)
+                logger.info(f"[PROXY] Creating new proxy target: subdomain={subdomain}, IPv6={ipv6}, port={port}")
+
+                create_data = {
+                    "ipv6_address": ipv6,
+                    "port": port,
+                    "subdomain": subdomain,
+                    "name": f"LFG Preview - {subdomain}",
+                }
+                create_response = _call_magpie_proxy_api("POST", "/api/v1/proxy-targets", create_data)
+
+                if create_response:
+                    proxy_url = create_response.get('proxy_url')
+                    if not proxy_url and create_response.get('subdomain'):
+                        proxy_url = f"https://{create_response['subdomain']}.app.lfg.run"
+                    elif not proxy_url:
+                        proxy_url = f"https://{subdomain}.app.lfg.run"
+                    logger.info(f"[PROXY] Created new proxy target: {proxy_url}")
+        else:
+            logger.warning(f"[PROXY] Direct API calls failed, proxy-targets endpoint may not exist")
+
+        # Fallback: try SDK's proxy_targets if available
+        if not proxy_url and hasattr(client, 'proxy_targets'):
+            logger.info(f"[PROXY] Trying SDK proxy_targets API")
             try:
-                # First, list existing proxy targets to find one for this IPv6
                 existing_targets = client.proxy_targets.list()
                 matching_target = None
                 for target in existing_targets:
@@ -186,55 +285,37 @@ def get_or_create_proxy_url(workspace: MagpieWorkspace, port: int = 3000, client
                         break
 
                 if matching_target:
-                    # Found existing proxy target - update its port
                     target_id = getattr(matching_target, 'id', None) or getattr(matching_target, 'target_id', None)
                     current_port = getattr(matching_target, 'port', None)
-                    logger.info(f"[PROXY] Found existing proxy target {target_id} for IPv6 {ipv6}, current port={current_port}, desired port={port}")
-
                     if target_id and current_port != port:
-                        logger.info(f"[PROXY] Updating proxy target {target_id} to port {port}")
                         updated_target = client.proxy_targets.update(target_id, port=port)
                         proxy_url = getattr(updated_target, 'proxy_url', None)
                         if not proxy_url and hasattr(updated_target, 'subdomain'):
                             proxy_url = f"https://{updated_target.subdomain}.app.lfg.run"
-                        logger.info(f"[PROXY] Updated proxy target to port {port}: {proxy_url}")
                     else:
-                        # Port already correct, use existing URL
                         proxy_url = getattr(matching_target, 'proxy_url', None)
                         if not proxy_url and hasattr(matching_target, 'subdomain'):
                             proxy_url = f"https://{matching_target.subdomain}.app.lfg.run"
-                        logger.info(f"[PROXY] Using existing proxy target (port already correct): {proxy_url}")
                 else:
-                    # No existing proxy target - create new one
                     subdomain = _generate_proxy_subdomain(workspace)
-                    logger.info(f"[PROXY] Creating new proxy target: subdomain={subdomain}, IPv6={ipv6}, port={port}")
-
                     target = client.proxy_targets.create(
                         ipv6_address=ipv6,
                         port=port,
                         name=f"LFG Preview - {subdomain}",
                         subdomain=subdomain
                     )
-
-                    # Extract proxy URL from response
-                    if hasattr(target, 'proxy_url'):
-                        proxy_url = target.proxy_url
-                    elif isinstance(target, dict):
-                        proxy_url = target.get('proxy_url') or target.get('url')
-
-                    # If no url field, construct it from subdomain
+                    proxy_url = getattr(target, 'proxy_url', None)
                     if not proxy_url:
                         proxy_url = f"https://{subdomain}.app.lfg.run"
-
-                    logger.info(f"[PROXY] Created new proxy target: {proxy_url}")
-
+                logger.info(f"[PROXY] SDK proxy_targets succeeded: {proxy_url}")
             except Exception as e:
-                logger.error(f"[PROXY] Proxy target operation failed: {e}", exc_info=True)
+                logger.error(f"[PROXY] SDK proxy_targets failed: {e}")
 
-        # Fallback: use get_proxy_url for existing jobs
+        # Last resort: use get_proxy_url for existing jobs (WARNING: port may be wrong)
         if not proxy_url:
             job_id = workspace.job_id
-            logger.info(f"[PROXY] Proxy target API failed, trying jobs.get_proxy_url() for job {job_id}")
+            logger.warning(f"[PROXY] All proxy target methods failed, trying jobs.get_proxy_url() for job {job_id}")
+            logger.warning(f"[PROXY] WARNING: This fallback may not use port {port} - the proxy might point to wrong port!")
             try:
                 proxy_url = client.jobs.get_proxy_url(job_id)
                 if proxy_url:
