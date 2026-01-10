@@ -93,12 +93,8 @@ def get_magpie_client():
     if not magpie_available():
         raise RuntimeError("Magpie SDK or MAGPIE_API_KEY is not configured")
     # Create client with extended timeout for long-running commands (npm install, build, etc.)
-    client = Magpie(api_key=MAGPIE_API_KEY)
-    # Increase HTTP read timeout from default 30s to 5 minutes
-    if hasattr(client, 'session'):
-        client.session.timeout = 300
-    elif hasattr(client, 'timeout'):
-        client.timeout = 300
+    # The Magpie client uses self.timeout in _make_request(), so we pass it to __init__
+    client = Magpie(api_key=MAGPIE_API_KEY, timeout=600)  # 10 minutes for npm install, builds, etc.
     return client
 
 

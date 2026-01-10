@@ -19,6 +19,9 @@ Make sure the code is executed in /workspace folder.
 You can use ssh_command() to execute commands
 
 Update the ticket status to in-review when done.
+
+Use the tool `get_project_env_vars` to inspect the environment variables. When anything is required of the 
+user, make sure to create a ticket to inform the user. 
  
 Make sure to write all your notes in Agents.md in the project folder. 
 """
