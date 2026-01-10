@@ -132,7 +132,7 @@ def _generate_proxy_subdomain(workspace: MagpieWorkspace) -> str:
     return subdomain
 
 
-def get_or_create_proxy_url(workspace: MagpieWorkspace, port: int = 3000, client=None) -> str | None:
+def get_or_create_proxy_url(workspace: MagpieWorkspace, port: int = 3000, client=None, force_refresh: bool = False) -> str | None:
     """
     Get the proxy URL for a workspace from database. If not exists, create a new
     proxy target with a custom subdomain name.
@@ -141,10 +141,17 @@ def get_or_create_proxy_url(workspace: MagpieWorkspace, port: int = 3000, client
         workspace: The MagpieWorkspace instance
         port: The port number for the proxy (default: 3000)
         client: Optional Magpie client. If not provided, one will be created.
+        force_refresh: If True, clear existing proxy_url and create a new one
 
     Returns:
         The proxy URL string, or None if unavailable
     """
+    # Clear existing proxy URL if force_refresh is requested
+    if force_refresh and workspace.proxy_url:
+        logger.info(f"[PROXY] Force refresh requested, clearing existing proxy URL for workspace {workspace.workspace_id}")
+        workspace.proxy_url = ''
+        workspace.save(update_fields=['proxy_url', 'updated_at'])
+
     # Return existing proxy URL if available in database
     if workspace.proxy_url:
         logger.debug(f"[PROXY] Using existing proxy URL for workspace {workspace.workspace_id}: {workspace.proxy_url}")
@@ -213,14 +220,14 @@ def get_or_create_proxy_url(workspace: MagpieWorkspace, port: int = 3000, client
 
 
 # Keep old function name as alias for backward compatibility
-def get_or_fetch_proxy_url(workspace: MagpieWorkspace, port: int = 3000, client=None) -> str | None:
+def get_or_fetch_proxy_url(workspace: MagpieWorkspace, port: int = 3000, client=None, force_refresh: bool = False) -> str | None:
     """Alias for get_or_create_proxy_url for backward compatibility."""
-    return get_or_create_proxy_url(workspace, port, client)
+    return get_or_create_proxy_url(workspace, port, client, force_refresh)
 
 
-async def async_get_or_fetch_proxy_url(workspace: MagpieWorkspace, port: int = 3000, client=None) -> str | None:
+async def async_get_or_fetch_proxy_url(workspace: MagpieWorkspace, port: int = 3000, client=None, force_refresh: bool = False) -> str | None:
     """Async version of get_or_create_proxy_url."""
-    return await sync_to_async(get_or_fetch_proxy_url, thread_sensitive=True)(workspace, port, client)
+    return await sync_to_async(get_or_fetch_proxy_url, thread_sensitive=True)(workspace, port, client, force_refresh)
 
 
 def _sanitize_string(value: str) -> str:

@@ -1537,8 +1537,9 @@ echo "Dev server started"
         result = _run_magpie_ssh(client, workspace.job_id, start_command, timeout=30, project_id=project.id)
 
         # Use proxy URL if available, otherwise fall back to IPv6
+        # Force refresh the proxy URL to ensure it points to current IPv6/port
         send_workspace_progress(project_id, 'assigning_proxy', 'Assigning proxy URL...')
-        preview_url = get_or_fetch_proxy_url(workspace, port=port, client=client)
+        preview_url = get_or_fetch_proxy_url(workspace, port=port, client=client, force_refresh=True)
         if not preview_url:
             ipv6 = workspace.ipv6_address.strip('[]')
             preview_url = f"http://[{ipv6}]:{port}"

@@ -429,11 +429,11 @@ def start_dev_server(request, ticket_id):
 
         logger.info(f"Dev server started successfully with PID: {pid}")
 
-        # Get proxy URL, fetch if not available
+        # Get proxy URL, force refresh to ensure it points to current IPv6/port
         send_workspace_progress(project_id, 'assigning_proxy', 'Getting preview URL...')
         preview_url = None
         if get_or_fetch_proxy_url:
-            preview_url = get_or_fetch_proxy_url(magpie_workspace, port=3000, client=client)
+            preview_url = get_or_fetch_proxy_url(magpie_workspace, port=3000, client=client, force_refresh=True)
         if not preview_url:
             preview_url = f'http://[{magpie_workspace.ipv6_address}]:3000' if magpie_workspace.ipv6_address else 'http://localhost:3000'
 
