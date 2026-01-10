@@ -894,6 +894,8 @@
     .step-icon {
         width: 20px;
         height: 20px;
+        min-width: 20px;
+        min-height: 20px;
         border-radius: 50%;
         display: flex;
         align-items: center;
@@ -903,16 +905,37 @@
         font-size: 0.55rem;
         flex-shrink: 0;
         border: 1px solid var(--border-color, #333);
+        position: relative;
+    }
+
+    .step-icon i {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+    }
+
+    .step-icon i.fa-spinner {
+        animation: spin-centered 1s linear infinite;
+    }
+
+    @keyframes spin-centered {
+        from { transform: translate(-50%, -50%) rotate(0deg); }
+        to { transform: translate(-50%, -50%) rotate(360deg); }
+    }
+
+    .step-label {
+        font-size: 0.8rem;
+        color: var(--text-secondary, #666);
+        display: flex;
+        align-items: center;
+        height: 20px;
     }
 
     .progress-step.active .step-icon {
         background: var(--accent-purple, #8B5CF6);
         color: white;
         border-color: var(--accent-purple, #8B5CF6);
-    }
-
-    .progress-step.active .step-icon i.fa-spinner {
-        animation: spin 1s linear infinite;
     }
 
     .progress-step.completed .step-icon {
@@ -925,16 +948,6 @@
         background: #ef4444;
         color: white;
         border-color: #ef4444;
-    }
-
-    @keyframes spin {
-        from { transform: rotate(0deg); }
-        to { transform: rotate(360deg); }
-    }
-
-    .step-label {
-        font-size: 0.8rem;
-        color: var(--text-secondary, #666);
     }
 
     .progress-step.active .step-label {

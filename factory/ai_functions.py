@@ -170,38 +170,72 @@ def get_or_create_proxy_url(workspace: MagpieWorkspace, port: int = 3000, client
         ipv6 = workspace.ipv6_address.strip('[]')
         proxy_url = None
 
-        # Try to create custom proxy target with custom subdomain (newer API)
+        # Try to find/update/create proxy target via proxy_targets API
         if hasattr(client, 'proxy_targets'):
             try:
-                subdomain = _generate_proxy_subdomain(workspace)
-                logger.info(f"[PROXY] Creating custom proxy target: subdomain={subdomain}, IPv6={ipv6}, port={port}")
+                # First, list existing proxy targets to find one for this IPv6
+                existing_targets = client.proxy_targets.list()
+                matching_target = None
+                for target in existing_targets:
+                    target_ipv6 = getattr(target, 'ipv6_address', '') or ''
+                    if target_ipv6.strip('[]') == ipv6:
+                        matching_target = target
+                        break
 
-                target = client.proxy_targets.create(
-                    ipv6_address=ipv6,
-                    port=port,
-                    name=f"LFG Preview - {subdomain}",
-                    subdomain=subdomain
-                )
+                if matching_target:
+                    # Found existing proxy target - update its port
+                    target_id = getattr(matching_target, 'id', None) or getattr(matching_target, 'target_id', None)
+                    current_port = getattr(matching_target, 'port', None)
+                    logger.info(f"[PROXY] Found existing proxy target {target_id} for IPv6 {ipv6}, current port={current_port}, desired port={port}")
 
-                # Extract proxy URL from response
-                if hasattr(target, 'proxy_url'):
-                    proxy_url = target.proxy_url
-                elif isinstance(target, dict):
-                    proxy_url = target.get('proxy_url') or target.get('url')
+                    if target_id and current_port != port:
+                        logger.info(f"[PROXY] Updating proxy target {target_id} to port {port}")
+                        updated_target = client.proxy_targets.update(target_id, port=port)
+                        proxy_url = getattr(updated_target, 'proxy_url', None)
+                        if not proxy_url and hasattr(updated_target, 'subdomain'):
+                            proxy_url = f"https://{updated_target.subdomain}.app.lfg.run"
+                        logger.info(f"[PROXY] Updated proxy target to port {port}: {proxy_url}")
+                    else:
+                        # Port already correct, use existing URL
+                        proxy_url = getattr(matching_target, 'proxy_url', None)
+                        if not proxy_url and hasattr(matching_target, 'subdomain'):
+                            proxy_url = f"https://{matching_target.subdomain}.app.lfg.run"
+                        logger.info(f"[PROXY] Using existing proxy target (port already correct): {proxy_url}")
+                else:
+                    # No existing proxy target - create new one
+                    subdomain = _generate_proxy_subdomain(workspace)
+                    logger.info(f"[PROXY] Creating new proxy target: subdomain={subdomain}, IPv6={ipv6}, port={port}")
 
-                # If no url field, construct it from subdomain
-                if not proxy_url:
-                    proxy_url = f"https://{subdomain}.app.lfg.run"
+                    target = client.proxy_targets.create(
+                        ipv6_address=ipv6,
+                        port=port,
+                        name=f"LFG Preview - {subdomain}",
+                        subdomain=subdomain
+                    )
 
-                logger.info(f"[PROXY] Created custom proxy target: {proxy_url}")
+                    # Extract proxy URL from response
+                    if hasattr(target, 'proxy_url'):
+                        proxy_url = target.proxy_url
+                    elif isinstance(target, dict):
+                        proxy_url = target.get('proxy_url') or target.get('url')
+
+                    # If no url field, construct it from subdomain
+                    if not proxy_url:
+                        proxy_url = f"https://{subdomain}.app.lfg.run"
+
+                    logger.info(f"[PROXY] Created new proxy target: {proxy_url}")
 
             except Exception as e:
-                logger.warning(f"[PROXY] Custom proxy target creation failed, falling back to get_proxy_url: {e}")
+                logger.error(f"[PROXY] Proxy target operation failed: {e}", exc_info=True)
+                # If force_refresh was requested, don't fall back to old proxy
+                if force_refresh:
+                    logger.error(f"[PROXY] Cannot update/create proxy target with port {port}, and force_refresh prevents using old proxy")
 
-        # Fallback: use get_proxy_url for existing jobs
-        if not proxy_url:
+        # Fallback: use get_proxy_url for existing jobs (only if NOT force_refresh)
+        # When force_refresh=True, we need the correct port, not the old one
+        if not proxy_url and not force_refresh:
             job_id = workspace.job_id
-            logger.info(f"[PROXY] Fetching proxy URL for job {job_id}")
+            logger.info(f"[PROXY] Fetching existing proxy URL for job {job_id}")
             proxy_url = client.jobs.get_proxy_url(job_id)
 
         if proxy_url:
