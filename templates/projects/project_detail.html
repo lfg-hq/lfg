@@ -25,24 +25,14 @@
             </div>
         </div>
         <div class="project-header-actions">
-            <a href="{% url 'create_conversation' project.project_id %}" class="btn btn-primary" style="display: inline-flex; align-items: center; gap: 6px;">
-                <i class="fas fa-plus"></i> <span>New Chat</span>
+            <a href="{% url 'create_conversation' project.project_id %}" class="btn btn-primary" style="display: inline-flex; align-items: center; gap: 8px;">
+                <i class="fas fa-arrow-left"></i> <span>Back to Workspace</span>
             </a>
-            <a href="{% url 'projects:project_terminal' project.project_id %}" class="btn btn-outline" style="display: inline-flex; align-items: center; gap: 6px;">
-                <i class="fas fa-terminal"></i> <span>Terminal</span>
-            </a>
-            <button type="button" class="btn btn-outline" onclick="openCodebaseSidebar()" style="display: inline-flex; align-items: center; gap: 6px;">
-                <i class="fas fa-code-branch"></i> <span>Codebase</span>
-            </button>
         </div>
     </div>
 
     <div class="project-tabs">
-        <a href="#overview" class="tab-item active" data-section="overview">
-            <i class="fas fa-home"></i>
-            Overview
-        </a>
-        <a href="#conversations" class="tab-item" data-section="conversations">
+        <a href="#conversations" class="tab-item active" data-section="conversations">
             <i class="fas fa-comments"></i>
             Conversations
             {% if project.direct_conversations.all.count %}
@@ -80,112 +70,25 @@
         </a>
     </div>
 
-    <!-- Overview Section -->
-    <div class="project-section active" id="overview-section">
-        <div class="section-grid">
-            <div class="section-card about-card">
-                <div class="card-header">
-                    <h3 class="card-title">About this project</h3>
-                    <button type="button" class="btn btn-sm btn-outline" onclick="openAboutModal()">
-                        <i class="fas fa-pen"></i> Edit
-                    </button>
-                </div>
-                <div class="card-content">
-                    <p id="project-description-text" data-empty="{% if project.description %}false{% else %}true{% endif %}">
-                        {% if project.description %}
-                            {{ project.description }}
-                        {% else %}
-                            <span class="text-muted">No description provided</span>
-                        {% endif %}
-                    </p>
-                </div>
-            </div>
-            
-            <div class="section-card project-stats-card">
-                <h3 class="card-title">Project Stats</h3>
-                <div class="card-content">
-                    <div class="stats-list">
-                        <div class="stat-row">
-                            <span class="stat-label">Conversations</span>
-                            <span class="stat-value">{{ project.direct_conversations.all.count }}</span>
-                        </div>
-                        <div class="stat-row">
-                            <span class="stat-label">Age</span>
-                            <span class="stat-value">{{ project.created_at|timesince }}</span>
-                        </div>
-                        {% if project.indexed_repository %}
-                        <div class="stat-row">
-                            <span class="stat-label">Files Indexed</span>
-                            <span class="stat-value">{{ project.indexed_repository.indexed_files_count }}</span>
-                        </div>
-                        <div class="stat-row">
-                            <span class="stat-label">Entities Mapped</span>
-                            <span class="stat-value">{{ project.indexed_repository.total_entities }}</span>
-                        </div>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div id="about-project-overlay" class="about-modal-overlay">
-            <div class="about-modal" id="about-project-modal">
-                <div class="modal-header">
-                    <div>
-                        <span class="modal-context">Update Project Overview</span>
-                        <h3 class="modal-title">Edit project description</h3>
-                        <p class="modal-subtitle">Keep teammates aligned with a clear summary.</p>
-                    </div>
-                    <button type="button" class="modal-close" onclick="closeAboutModal()" aria-label="Close">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                <form method="post" action="{% url 'projects:update_project_description' project.project_id %}" class="modal-form">
-                    {% csrf_token %}
-                    <div class="form-group">
-                        <label for="about-project-input">Project description</label>
-                        <textarea id="about-project-input" name="description" rows="6" placeholder="Describe the project goals, scope, and milestones">{{ project.description|default_if_none:''|escape }}</textarea>
-                    </div>
-                    <div class="modal-actions">
-                        <button type="button" class="btn btn-outline" onclick="closeAboutModal()">Cancel</button>
-                        <button type="submit" class="btn btn-primary">Save</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-    
     <!-- Conversations Section -->
-    <div class="project-section" id="conversations-section">
+    <div class="project-section active" id="conversations-section">
         <div class="section-header">
             <h2 class="section-title">Conversations</h2>
-            <a href="{% url 'create_conversation' project.project_id %}" class="btn btn-primary btn-sm">
-                <i class="fas fa-plus"></i> New Conversation
+            <a href="{% url 'create_conversation' project.project_id %}" class="btn btn-primary btn-sm" style="display: inline-flex; align-items: center; gap: 6px;">
+                <i class="fas fa-plus"></i> <span>New Conversation</span>
             </a>
         </div>
-        
+
         {% if project.direct_conversations.all %}
-            <div class="conversation-list">
+            <div class="conversation-list-compact">
                 {% for conversation in project.direct_conversations.all|dictsortreversed:"updated_at" %}
-                    <div class="conversation-list-item">
-                        <div class="conversation-list-main">
-                            <div class="conversation-icon">
-                                <i class="fas fa-comments"></i>
-                            </div>
-                            <div class="conversation-content">
-                                <h4 class="conversation-title">{{ conversation.title }}</h4>
-                                <div class="conversation-meta">
-                                    <span><i class="fas fa-calendar"></i> {{ conversation.created_at|date:"M d, Y" }}</span>
-                                    <span><i class="fas fa-message"></i> {{ conversation.messages.count }} messages</span>
-                                </div>
-                            </div>
+                    <a href="{% url 'create_conversation' project.project_id %}" class="conversation-row">
+                        <div class="conversation-row-main">
+                            <span class="conversation-row-title">{{ conversation.title|truncatechars:60 }}</span>
+                            <span class="conversation-row-meta">{{ conversation.created_at|date:"M d" }} · {{ conversation.messages.count }} msgs</span>
                         </div>
-                        <div class="conversation-actions">
-                            <a href="{% url 'conversation_detail' conversation.id %}" class="btn btn-sm btn-outline" style="display: inline-flex; align-items: center; gap: 6px;">
-                                <i class="fas fa-external-link-alt"></i> <span>Open</span>
-                            </a>
-                        </div>
-                    </div>
+                        <i class="fas fa-chevron-right conversation-row-arrow"></i>
+                    </a>
                 {% endfor %}
             </div>
         {% else %}
@@ -197,8 +100,8 @@
                 <div class="empty-state-text">
                     Start a conversation to interact with AI about this project.
                 </div>
-                <a href="{% url 'create_conversation' project.project_id %}" class="btn btn-primary">
-                    <i class="fas fa-comment"></i> Start First Conversation
+                <a href="{% url 'create_conversation' project.project_id %}" class="btn btn-primary" style="display: inline-flex; align-items: center; gap: 6px;">
+                    <i class="fas fa-comment"></i> <span>Start First Conversation</span>
                 </a>
             </div>
         {% endif %}
@@ -214,8 +117,8 @@
                         <i class="fas fa-sync"></i> Sync with Linear
                     </button>
                 {% endif %}
-                <button class="btn btn-primary btn-sm" onclick="showCreateTicketModal()">
-                    <i class="fas fa-plus"></i> New Ticket
+                <button class="btn btn-primary btn-sm" onclick="showCreateTicketModal()" style="display: inline-flex; align-items: center; gap: 6px;">
+                    <i class="fas fa-plus"></i> <span>New Ticket</span>
                 </button>
             </div>
         </div>
@@ -809,6 +712,12 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     if (targetSection && document.getElementById(`${targetSection}-section`)) {
         showSection(targetSection);
+        // Load data for the section if needed
+        if (targetSection === 'tickets') {
+            loadTickets();
+        } else if (targetSection === 'environment') {
+            loadEnvVars();
+        }
     }
 });
 
@@ -991,10 +900,11 @@ async function loadTickets() {
         const response = await fetch(`/projects/{{ project.project_id }}/api/checklist/`);
         const data = await response.json();
 
-        if (data.success) {
-            allTickets = data.checklist || [];
+        // API returns {tickets: [...]}
+        if (data.tickets) {
+            allTickets = data.tickets || [];
             renderTickets(allTickets);
-        } else {
+        } else if (data.error) {
             console.error('Error loading tickets:', data.error);
         }
     } catch (error) {
@@ -1846,6 +1756,56 @@ document.addEventListener('DOMContentLoaded', function() {
 .env-var-cancel-btn:hover {
     background: rgba(239, 68, 68, 0.2);
     color: #ef4444;
+}
+
+/* Compact Conversation List */
+.conversation-list-compact {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+}
+.conversation-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.875rem 1rem;
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-color);
+    text-decoration: none;
+    transition: background 0.15s ease;
+}
+.conversation-row:last-child {
+    border-bottom: none;
+}
+.conversation-row:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+.conversation-row-main {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    flex: 1;
+    min-width: 0;
+}
+.conversation-row-title {
+    font-weight: 500;
+    color: var(--text-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.conversation-row-meta {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+.conversation-row-arrow {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    margin-left: 1rem;
+    flex-shrink: 0;
 }
 </style>
 

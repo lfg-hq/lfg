@@ -341,13 +341,29 @@
     }
 
     .console-resize-handle {
-        height: 4px;
-        background: transparent;
+        height: 6px;
+        background: rgba(139, 92, 246, 0.3);
         cursor: ns-resize;
         transition: background 0.2s;
+        flex-shrink: 0;
+        position: relative;
+    }
+
+    .console-resize-handle::before {
+        content: '';
+        position: absolute;
+        top: -4px;
+        left: 0;
+        right: 0;
+        height: 14px;
+        cursor: ns-resize;
     }
 
     .console-resize-handle:hover {
+        background: var(--accent-purple);
+    }
+
+    .console-resize-handle:active {
         background: var(--accent-purple);
     }
 
@@ -459,6 +475,50 @@
     .console-actions button:disabled {
         opacity: 0.5;
         cursor: not-allowed;
+    }
+
+    /* Floating Create Ticket Button */
+    .floating-ticket-btn {
+        position: fixed;
+        z-index: 1000;
+        animation: fadeInUp 0.15s ease-out;
+    }
+
+    .floating-ticket-btn button {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 0.875rem;
+        background: var(--accent-purple, #8B5CF6);
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        font-weight: 500;
+        cursor: pointer;
+        box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);
+        transition: all 0.2s;
+    }
+
+    .floating-ticket-btn button:hover {
+        background: var(--accent-purple-hover, #7C3AED);
+        transform: translateY(-1px);
+        box-shadow: 0 6px 16px rgba(139, 92, 246, 0.5);
+    }
+
+    .floating-ticket-btn button i {
+        font-size: 0.75rem;
+    }
+
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(8px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
     }
 
     .console-actions .btn-create-ticket {
@@ -1139,6 +1199,13 @@
             <div class="server-logs-placeholder">Server logs will appear here...</div>
         </div>
     </div>
+</div>
+
+<!-- Floating Create Ticket Button -->
+<div class="floating-ticket-btn" id="floatingTicketBtn" style="display: none;">
+    <button onclick="openCreateTicketModal()">
+        <i class="fas fa-ticket-alt"></i> Create Ticket
+    </button>
 </div>
 
 <!-- Create Ticket Modal -->
@@ -2064,18 +2131,82 @@
 
     // Text Selection for Ticket Creation
     function setupTextSelection() {
-        consoleLogs_el.addEventListener('mouseup', () => {
-            const selection = window.getSelection();
-            selectedConsoleText = selection.toString().trim();
+        const floatingBtn = document.getElementById('floatingTicketBtn');
+        const serverLogsContent = document.getElementById('serverLogsContent');
 
-            const createBtn = document.getElementById('createTicketBtn');
-            createBtn.disabled = selectedConsoleText.length === 0;
+        function handleTextSelection(e) {
+            // Small delay to let selection complete
+            setTimeout(() => {
+                const selection = window.getSelection();
+                selectedConsoleText = selection.toString().trim();
+
+                const createBtn = document.getElementById('createTicketBtn');
+                createBtn.disabled = selectedConsoleText.length === 0;
+
+                if (selectedConsoleText.length > 0) {
+                    // Get selection end position
+                    const range = selection.getRangeAt(0);
+                    const rects = range.getClientRects();
+                    const lastRect = rects[rects.length - 1];
+
+                    if (lastRect) {
+                        // Position floating button at the end of selection
+                        const btnWidth = 120;
+                        let left = lastRect.right + 10;
+                        let top = lastRect.top - 5;
+
+                        // Keep button within viewport
+                        if (left + btnWidth > window.innerWidth) {
+                            left = lastRect.left;
+                            top = lastRect.bottom + 5;
+                        }
+
+                        floatingBtn.style.left = `${left}px`;
+                        floatingBtn.style.top = `${top}px`;
+                        floatingBtn.style.display = 'block';
+                    }
+                } else {
+                    floatingBtn.style.display = 'none';
+                }
+            }, 10);
+        }
+
+        function hideFloatingBtn() {
+            // Hide after a short delay to allow button click
+            setTimeout(() => {
+                const selection = window.getSelection();
+                if (!selection.toString().trim()) {
+                    floatingBtn.style.display = 'none';
+                }
+            }, 200);
+        }
+
+        // Listen on console logs
+        consoleLogs_el.addEventListener('mouseup', handleTextSelection);
+
+        // Listen on server logs
+        if (serverLogsContent) {
+            serverLogsContent.addEventListener('mouseup', handleTextSelection);
+        }
+
+        // Hide floating button when clicking elsewhere
+        document.addEventListener('mousedown', (e) => {
+            if (!floatingBtn.contains(e.target) &&
+                !consoleLogs_el.contains(e.target) &&
+                (!serverLogsContent || !serverLogsContent.contains(e.target))) {
+                floatingBtn.style.display = 'none';
+                selectedConsoleText = '';
+                document.getElementById('createTicketBtn').disabled = true;
+            }
         });
     }
 
     // Ticket Creation Functions
     function openCreateTicketModal() {
         if (!selectedConsoleText) return;
+
+        // Hide floating button
+        document.getElementById('floatingTicketBtn').style.display = 'none';
 
         // Pre-fill the form
         const truncatedText = selectedConsoleText.substring(0, 50);
@@ -2145,30 +2276,68 @@ The above error appeared in the console.`;
     function setupConsoleResize() {
         const handle = document.getElementById('consoleResizeHandle');
         const panel = document.getElementById('consolePanel');
+        const iframe = document.getElementById('previewIframe');
+        const previewContainer = document.querySelector('.preview-content');
         let isResizing = false;
         let startY, startHeight;
 
         handle.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
             isResizing = true;
             startY = e.clientY;
             startHeight = panel.offsetHeight;
+
+            // Remove collapsed class and transition for smooth dragging
+            panel.classList.remove('collapsed');
+            panel.style.transition = 'none';
             document.body.style.cursor = 'ns-resize';
             document.body.style.userSelect = 'none';
+
+            // Disable iframe pointer events so it doesn't capture mouse
+            if (iframe) iframe.style.pointerEvents = 'none';
+            if (previewContainer) previewContainer.style.pointerEvents = 'none';
+
+            // Update toggle icon
+            const toggleIcon = document.getElementById('consoleToggleIcon');
+            if (toggleIcon) {
+                toggleIcon.classList.remove('fa-chevron-up');
+                toggleIcon.classList.add('fa-chevron-down');
+            }
+            consoleExpanded = true;
         });
 
         document.addEventListener('mousemove', (e) => {
             if (!isResizing) return;
+            e.preventDefault();
 
             const diff = startY - e.clientY;
-            const newHeight = Math.max(100, Math.min(window.innerHeight * 0.5, startHeight + diff));
+            const newHeight = Math.max(100, Math.min(window.innerHeight * 0.8, startHeight + diff));
             panel.style.height = newHeight + 'px';
         });
 
         document.addEventListener('mouseup', () => {
             if (isResizing) {
                 isResizing = false;
+                panel.style.transition = '';
                 document.body.style.cursor = '';
                 document.body.style.userSelect = '';
+
+                // Re-enable iframe pointer events
+                if (iframe) iframe.style.pointerEvents = '';
+                if (previewContainer) previewContainer.style.pointerEvents = '';
+            }
+        });
+
+        // Also handle mouseleave from document to catch edge cases
+        document.addEventListener('mouseleave', () => {
+            if (isResizing) {
+                isResizing = false;
+                panel.style.transition = '';
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+                if (iframe) iframe.style.pointerEvents = '';
+                if (previewContainer) previewContainer.style.pointerEvents = '';
             }
         });
     }

@@ -12,8 +12,8 @@
         </div>
         <div class="project-selector-section">
             <div class="nav-dropdown-container" id="projectDropdownContainer">
-                <button class="project-dropdown-trigger" id="projectDropdownTrigger" title="Switch Project">
-                    <i class="fas fa-folder"></i>
+                <button class="project-dropdown-trigger" id="projectDropdownTrigger" title="{% if current_project %}Project Options{% else %}All Projects{% endif %}">
+                    <i class="fas fa-folder{% if current_project %}-open{% endif %}"></i>
                     <span class="project-name-text">{% if current_project %}{{ current_project.name|truncatechars:18 }}{% else %}All Projects{% endif %}</span>
                     <i class="fas fa-chevron-down dropdown-arrow"></i>
                 </button>
@@ -22,19 +22,16 @@
                         <i class="fas fa-th-large"></i>
                         <span>All Projects</span>
                     </a>
-                    <div class="nav-dropdown-divider"></div>
-                    {% for proj in projects %}
-                        {% if proj.project_id %}
-                        <a href="{% url 'create_conversation' project_id=proj.project_id %}"
-                           class="nav-dropdown-item{% if current_project and proj.project_id == current_project.project_id %} active{% endif %}">
-                            <i class="fas fa-folder{% if current_project and proj.project_id == current_project.project_id %}-open{% endif %}"></i>
-                            <span>{{ proj.name|truncatechars:20 }}</span>
-                        </a>
-                        {% endif %}
-                    {% endfor %}
+                    {% if current_project %}
+                    <a href="{% url 'projects:project_detail' project_id=current_project.project_id %}" class="nav-dropdown-item">
+                        <i class="fas fa-tachometer-alt"></i>
+                        <span>Project Dashboard</span>
+                    </a>
+                    {% endif %}
                 </div>
             </div>
         </div>
+        {% if current_project %}
         <div class="new-chat-section">
             <a href="{% if show_conversations %}#{% else %}{% url 'index' %}{% endif %}" id="new-chat-btn" class="new-chat-link{% if not show_conversations %} disabled{% endif %}" title="New Chat">
                 <i class="fas fa-pen-to-square"></i>
@@ -46,7 +43,6 @@
                 <i class="fas fa-comments"></i>
                 <span class="nav-text">Chat</span>
             </a>
-            {% if current_project %}
             <a href="{% url 'projects:project_tickets_list' project_id=current_project.project_id %}" class="nav-link{% if request.resolver_match.url_name == 'project_tickets_list' %} active{% endif %}" title="Tickets">
                 <i class="fas fa-tasks"></i>
                 <span class="nav-text">Tickets</span>
@@ -55,13 +51,8 @@
                 <i class="fas fa-eye"></i>
                 <span class="nav-text">Preview</span>
             </a>
-            {% else %}
-            <a href="{% url 'projects:tickets_list' %}" class="nav-link{% if request.resolver_match.url_name == 'tickets_list' %} active{% endif %}" title="Tickets">
-                <i class="fas fa-tasks"></i>
-                <span class="nav-text">Tickets</span>
-            </a>
-            {% endif %}
         </div>
+        {% endif %}
         {% if show_conversations %}
         <div class="conversations-section">
             <h3 class="sidebar-section-title">Recents</h3>
