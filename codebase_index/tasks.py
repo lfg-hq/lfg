@@ -54,14 +54,15 @@ def index_repository_task(repository_id: int, force_full_reindex: bool = False, 
     )
     
     try:
-        logger.info(f"Starting indexing task for repository {repository.github_repo_name}")
-        
+        logger.info(f"Starting indexing task for repository {repository.github_repo_name}, force_full_reindex={force_full_reindex}")
+
         # Update repository status
         repository.status = 'indexing'
         repository.save()
-        
+
         # Perform indexing
         indexer = RepositoryIndexer(repository)
+        logger.info(f"[STACK] Calling index_repository with force_full_reindex={force_full_reindex}")
         success, message = indexer.index_repository(force_full_reindex)
         
         # Update job status

@@ -33,6 +33,7 @@ from claude_agent_sdk import (
 
 from projects.models import ProjectTicket, Project, ProjectFile
 from factory.ai_functions import new_dev_sandbox_tool, _fetch_workspace, get_magpie_client, _slugify_project_name, MAGPIE_BOOTSTRAP_SCRIPT
+from factory.stack_configs import get_stack_config
 from development.models import MagpieWorkspace
 
 logger = logging.getLogger(__name__)
@@ -149,8 +150,13 @@ class TicketExecutor:
 
         return project_context
 
-    def create_implementation_prompt(self, ticket: ProjectTicket, workspace_id: str, project_context: str) -> str:
+    def create_implementation_prompt(self, ticket: ProjectTicket, workspace_id: str, project_context: str, stack: str = 'nextjs') -> str:
         """Create the implementation prompt for the AI."""
+
+        # Get stack configuration
+        stack_config = get_stack_config(stack)
+        project_dir = stack_config['project_dir']
+        dev_cmd = stack_config.get('dev_cmd', 'npm run dev')
 
         # Check for previous attempt context
         previous_attempt_context = ""
@@ -173,7 +179,9 @@ You are implementing ticket #{ticket.id}: {ticket.name}
 TICKET DESCRIPTION:
 {ticket.description}
 
-PROJECT PATH: /workspace/nextjs-app
+PROJECT STACK: {stack_config['name']}
+PROJECT PATH: /workspace/{project_dir}
+DEV COMMAND: {dev_cmd}
 {project_context}
 {previous_attempt_context}
 
@@ -184,7 +192,7 @@ After completing the ticket requirements, you MUST write:
 ❌ Failure case: "IMPLEMENTATION_STATUS: FAILED - [reason]"
 
 Remember:
-- ALWAYS check workspace state first (ls, cat package.json)
+- ALWAYS check workspace state first (ls, cat or similar)
 - This is an EXISTING project - don't recreate it
 - Focus ONLY on the ticket requirements
 - Don't redo work that's already complete
@@ -304,25 +312,35 @@ Remember:
             # 6. FETCH PROJECT DOCUMENTATION
             project_context = await self.get_project_context()
 
+            # 6b. GET STACK CONFIGURATION
+            stack = getattr(self.project, 'stack', 'nextjs')
+            stack_config = get_stack_config(stack)
+            project_dir = stack_config['project_dir']
+            dev_cmd = stack_config.get('dev_cmd', 'npm run dev')
+            install_cmd = stack_config.get('install_cmd', 'npm install')
+
+            logger.info(f"Project stack: {stack}, directory: {project_dir}")
+
             # 7. CREATE IMPLEMENTATION PROMPT
             implementation_prompt = self.create_implementation_prompt(
                 self.ticket,
                 self.workspace_id,
-                project_context
+                project_context,
+                stack=stack
             )
 
             # 8. EXECUTE WITH CLAUDE AGENT SDK
             logger.info("Calling Claude Agent SDK for implementation...")
 
-            # Define the system prompt
-            system_prompt = """
-You are an expert developer working on an EXISTING codebase. You implement tickets with surgical precision.
+            # Define the system prompt (stack-aware)
+            system_prompt = f"""
+You are an expert developer working on an EXISTING {stack_config['name']} codebase. You implement tickets with surgical precision.
 
 FUNDAMENTAL PRINCIPLE: You are working on an EXISTING PROJECT. Every ticket is a TARGETED change to this existing codebase.
 
 🔍 MANDATORY FIRST STEP - ALWAYS CHECK STATE:
 Before EVERY ticket implementation, you MUST:
-1. Make sure the parent folder is /workspace/nextjs-app/
+1. Make sure the parent folder is /workspace/{project_dir}/
 2. Read the codebase using `ls -la` and `cat` and `grep` (see what exists and read the code)
 3. Assess what already exists vs what needs to be done
 4. This is NOT optional - you MUST check before doing any work!
@@ -342,10 +360,10 @@ Plan once. No loops. No tests. No builds. Minimal edits.
 
 Phases: ANALYZE → APPLY → RUN → REPORT. No going backwards.
 
-1. In the planning phase, understand and list all the libraries that need to be installed. Install them at once.
+1. In the planning phase, understand and list all the libraries that need to be installed. Install them at once: {install_cmd}
 2. Understand all the files that need to be created at once. Create them in a single command.
 3. Understand all the edits that need to be made. Make the edits in a single command.
-4. Run the app (npm run dev), and check for errors. Use the tool `run_code_server`.
+4. Run the app ({dev_cmd}), and check for errors. Use the tool `run_code_server`.
 5. Do not build the project, and do not attempt to test the project or verify the files.
 
 STRICT RULES:
@@ -413,9 +431,21 @@ REMEMBER: Always check state first, then make surgical changes. You're a precisi
                 failed = True
                 logger.error("Marking as FAILED due to missing explicit completion status")
 
-            # 10. EXTRACT IMPLEMENTATION DETAILS
-            files_created = re.findall(r'cat > (/workspace/nextjs-app/[\w\-\./]+)', content)
-            deps_installed = re.findall(r'npm install ([\w\-\s@/]+)', content)
+            # 10. EXTRACT IMPLEMENTATION DETAILS (stack-aware)
+            files_created = re.findall(rf'cat > (/workspace/{re.escape(project_dir)}/[\w\-\./]+)', content)
+            # Extract dependencies based on stack package manager
+            if stack_config.get('package_manager') == 'npm':
+                deps_installed = re.findall(r'npm install ([\w\-\s@/]+)', content)
+            elif stack_config.get('package_manager') == 'pip':
+                deps_installed = re.findall(r'pip install ([\w\-\s@/\[\]]+)', content)
+            elif stack_config.get('package_manager') == 'go mod':
+                deps_installed = re.findall(r'go get ([\w\-\./]+)', content)
+            elif stack_config.get('package_manager') == 'cargo':
+                deps_installed = re.findall(r'cargo add ([\w\-\s]+)', content)
+            elif stack_config.get('package_manager') == 'bundler':
+                deps_installed = re.findall(r'gem install ([\w\-\s]+)', content)
+            else:
+                deps_installed = []
             dependencies = []
             for dep_string in deps_installed:
                 dependencies.extend(dep_string.split())

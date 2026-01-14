@@ -32,7 +32,14 @@
     </div>
 
     <div class="project-tabs">
-        <a href="#conversations" class="tab-item active" data-section="conversations">
+        <a href="#codebase" class="tab-item active" data-section="codebase">
+            <i class="fas fa-code-branch"></i>
+            Codebase
+            {% if project.indexed_repository %}
+                <span class="tab-status tab-status-{{ project.indexed_repository.status }}"></span>
+            {% endif %}
+        </a>
+        <a href="#conversations" class="tab-item" data-section="conversations">
             <i class="fas fa-comments"></i>
             Conversations
             {% if project.direct_conversations.all.count %}
@@ -44,13 +51,6 @@
             Tickets
             {% if project.tickets.all.count %}
                 <span class="tab-count">{{ project.tickets.all.count }}</span>
-            {% endif %}
-        </a>
-        <a href="#codebase" class="tab-item" data-section="codebase">
-            <i class="fas fa-code-branch"></i>
-            Codebase
-            {% if project.indexed_repository %}
-                <span class="tab-status tab-status-{{ project.indexed_repository.status }}"></span>
             {% endif %}
         </a>
         <a href="#integrations" class="tab-item" data-section="integrations">
@@ -71,7 +71,7 @@
     </div>
 
     <!-- Conversations Section -->
-    <div class="project-section active" id="conversations-section">
+    <div class="project-section" id="conversations-section">
         <div class="section-header">
             <h2 class="section-title">Conversations</h2>
             <a href="{% url 'create_conversation' project.project_id %}" class="btn btn-primary btn-sm" style="display: inline-flex; align-items: center; gap: 6px;">
@@ -198,7 +198,7 @@
     </div>
 
     <!-- Codebase Section -->
-    <div class="project-section" id="codebase-section">
+    <div class="project-section active" id="codebase-section">
         <div class="section-header">
             <h2 class="section-title">Codebase Management</h2>
             {% if project.indexed_repository %}
@@ -248,8 +248,62 @@
                             <span class="stat-label">Entities Mapped</span>
                         </div>
                     </div>
-                    
-                    <div class="codebase-actions">
+
+                    <!-- Tech Stack Info -->
+                    {% if stack_config %}
+                    <div class="tech-stack-info" style="margin-top: 1.5rem; padding: 1rem; background: rgba(187, 134, 252, 0.1); border: 1px solid rgba(187, 134, 252, 0.3); border-radius: 0.5rem;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <i class="fas fa-layer-group" style="color: #bb86fc;"></i>
+                                <h4 style="margin: 0; color: #f1f5f9; font-size: 14px; font-weight: 600;">Tech Stack: {{ stack_config.name }}</h4>
+                                <button onclick="openStackEditModal()" class="btn-icon" style="background: none; border: none; color: #94a3b8; cursor: pointer; padding: 4px; margin-left: 4px;" title="Edit Stack">
+                                    <i class="fas fa-pencil-alt" style="font-size: 12px;"></i>
+                                </button>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                {% with workspace=project.magpie_workspaces.first %}
+                                {% if workspace and workspace.proxy_url %}
+                                <a href="{{ workspace.proxy_url }}" target="_blank" class="btn btn-sm btn-primary" style="display: inline-flex; align-items: center; gap: 6px;">
+                                    <i class="fas fa-external-link-alt"></i> Preview App
+                                </a>
+                                {% endif %}
+                                {% endwith %}
+                            </div>
+                        </div>
+                        <div style="display: grid; gap: 0.5rem; font-size: 13px;">
+                            <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+                                <span style="color: #94a3b8; min-width: 100px;">Project Dir:</span>
+                                <code style="background: rgba(0,0,0,0.3); padding: 2px 8px; border-radius: 4px; color: #e0e0e0;">/workspace/{{ stack_config.project_dir }}</code>
+                            </div>
+                            {% if stack_config.install_cmd %}
+                            <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+                                <span style="color: #94a3b8; min-width: 100px;">Install:</span>
+                                <code style="background: rgba(0,0,0,0.3); padding: 2px 8px; border-radius: 4px; color: #e0e0e0;">{{ stack_config.install_cmd }}</code>
+                            </div>
+                            {% endif %}
+                            {% if stack_config.dev_cmd %}
+                            <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+                                <span style="color: #94a3b8; min-width: 100px;">Dev Server:</span>
+                                <code style="background: rgba(0,0,0,0.3); padding: 2px 8px; border-radius: 4px; color: #e0e0e0;">{{ stack_config.dev_cmd }}</code>
+                            </div>
+                            {% endif %}
+                            <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+                                <span style="color: #94a3b8; min-width: 100px;">Default Port:</span>
+                                <code style="background: rgba(0,0,0,0.3); padding: 2px 8px; border-radius: 4px; color: #e0e0e0;">{{ stack_config.default_port }}</code>
+                            </div>
+                            {% with workspace=project.magpie_workspaces.first %}
+                            {% if workspace and workspace.proxy_url %}
+                            <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+                                <span style="color: #94a3b8; min-width: 100px;">Preview URL:</span>
+                                <a href="{{ workspace.proxy_url }}" target="_blank" style="color: #bb86fc; text-decoration: none;">{{ workspace.proxy_url }}</a>
+                            </div>
+                            {% endif %}
+                            {% endwith %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <div class="codebase-actions" style="display: flex; gap: 12px; margin-top: 1rem;">
                         <a href="{% url 'codebase_index:repository_detail' project.indexed_repository.id %}" class="btn btn-outline" style="display: inline-flex; align-items: center; gap: 6px;">
                             <i class="fas fa-chart-bar"></i> <span>View Analytics</span>
                         </a>
@@ -260,14 +314,33 @@
                 </div>
 
                 <!-- Codebase Summary Section -->
-                <div class="codebase-summary-container" style="margin-top: 2rem;" data-repository-id="{{ project.indexed_repository.id }}">
-                    <div class="codebase-summary-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
-                        <h3 style="margin: 0;"><i class="fas fa-book-open"></i> AI-Generated Codebase Summary</h3>
+                <style>
+                    .codebase-summary-content h1, .codebase-summary-content h2, .codebase-summary-content h3 {
+                        margin-top: 1rem;
+                        margin-bottom: 0.5rem;
+                    }
+                    .codebase-summary-content h1:first-child, .codebase-summary-content h2:first-child, .codebase-summary-content h3:first-child {
+                        margin-top: 0;
+                    }
+                    .codebase-summary-content p {
+                        margin: 0.5rem 0;
+                    }
+                    .codebase-summary-content ul, .codebase-summary-content ol {
+                        margin: 0.5rem 0;
+                        padding-left: 1.5rem;
+                    }
+                    .codebase-summary-content li {
+                        margin: 0.25rem 0;
+                    }
+                </style>
+                <div class="codebase-summary-container" style="margin-top: 1.5rem;" data-repository-id="{{ project.indexed_repository.id }}">
+                    <div class="codebase-summary-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; padding-bottom: 0.75rem; border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
+                        <h3 style="margin: 0; font-size: 16px;"><i class="fas fa-book-open"></i> AI-Generated Codebase Summary</h3>
                         <button class="btn btn-sm btn-outline" id="refreshSummaryBtn" onclick="loadCodebaseSummary()" style="display: inline-flex; align-items: center; gap: 6px;">
                             <i class="fas fa-sync"></i> <span>Refresh</span>
                         </button>
                     </div>
-                    <div id="codebaseSummaryContent" class="codebase-summary-content" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 0.5rem; padding: 1.5rem; min-height: 200px;">
+                    <div id="codebaseSummaryContent" class="codebase-summary-content" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 0.5rem; padding: 1rem; min-height: 150px; font-size: 14px; line-height: 1.5;">
                         <p style="color: rgba(255, 255, 255, 0.5); text-align: center;"><i class="fas fa-spinner fa-spin"></i> Loading summary...</p>
                     </div>
                 </div>
@@ -575,6 +648,155 @@
         </div>
     </div>
 </div>
+
+<!-- Stack Edit Modal -->
+<div class="modal-overlay" id="stackEditModal">
+    <div class="modal" style="max-width: 500px;">
+        <div class="modal-header">
+            <h3 class="modal-title">
+                <i class="fas fa-layer-group"></i> Edit Tech Stack
+            </h3>
+            <button type="button" class="modal-close" onclick="closeStackEditModal()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <form id="stackEditForm">
+                <div class="form-group">
+                    <label for="stackSelect" class="form-label">Technology Stack</label>
+                    <select class="form-control" id="stackSelect" onchange="updateStackDefaults()">
+                        <option value="nextjs">Next.js</option>
+                        <option value="python-django">Python (Django)</option>
+                        <option value="python-fastapi">Python (FastAPI)</option>
+                        <option value="go">Go</option>
+                        <option value="rust">Rust</option>
+                        <option value="ruby-rails">Ruby on Rails</option>
+                        <option value="custom">Custom/Existing Repo</option>
+                    </select>
+                </div>
+
+                <div style="border-top: 1px solid rgba(255,255,255,0.1); margin: 1rem 0; padding-top: 1rem;">
+                    <p style="color: #94a3b8; font-size: 12px; margin-bottom: 1rem;">Leave blank to use defaults for the selected stack:</p>
+
+                    <div class="form-group">
+                        <label for="customProjectDir" class="form-label">Project Directory</label>
+                        <input type="text" class="form-control" id="customProjectDir" placeholder="{{ stack_config.project_dir }}">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="customInstallCmd" class="form-label">Install Command</label>
+                        <input type="text" class="form-control" id="customInstallCmd" placeholder="{{ stack_config.install_cmd }}">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="customDevCmd" class="form-label">Dev Server Command</label>
+                        <input type="text" class="form-control" id="customDevCmd" placeholder="{{ stack_config.dev_cmd }}">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="customDefaultPort" class="form-label">Default Port</label>
+                        <input type="number" class="form-control" id="customDefaultPort" placeholder="{{ stack_config.default_port }}">
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-outline" onclick="closeStackEditModal()">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="saveStack()" style="display: inline-flex; align-items: center; gap: 6px;">
+                <i class="fas fa-save"></i> <span>Save</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+function openStackEditModal() {
+    document.getElementById('stackSelect').value = '{{ project.stack }}';
+    document.getElementById('customProjectDir').value = '{{ project.custom_project_dir|default:"" }}';
+    document.getElementById('customInstallCmd').value = '{{ project.custom_install_cmd|default:"" }}';
+    document.getElementById('customDevCmd').value = '{{ project.custom_dev_cmd|default:"" }}';
+    document.getElementById('customDefaultPort').value = '{{ project.custom_default_port|default:"" }}';
+    document.getElementById('stackEditModal').classList.add('active');
+}
+
+function closeStackEditModal() {
+    document.getElementById('stackEditModal').classList.remove('active');
+}
+
+// Stack defaults for placeholder updates
+const stackDefaults = {
+    'nextjs': { dir: 'nextjs-app', install: 'npm install', dev: 'npm run dev', port: 3000 },
+    'python-django': { dir: 'django-app', install: 'pip install -r requirements.txt', dev: 'python manage.py runserver 0.0.0.0:8000', port: 8000 },
+    'python-fastapi': { dir: 'fastapi-app', install: 'pip install -r requirements.txt', dev: 'uvicorn main:app --host 0.0.0.0 --port 8000 --reload', port: 8000 },
+    'go': { dir: 'go-app', install: 'go mod download', dev: 'go run .', port: 8080 },
+    'rust': { dir: 'rust-app', install: 'cargo build', dev: 'cargo run', port: 8080 },
+    'ruby-rails': { dir: 'rails-app', install: 'bundle install', dev: 'rails server -b 0.0.0.0 -p 3000', port: 3000 },
+    'custom': { dir: 'app', install: '', dev: '', port: 3000 }
+};
+
+function updateStackDefaults() {
+    const stack = document.getElementById('stackSelect').value;
+    const defaults = stackDefaults[stack] || stackDefaults['custom'];
+    document.getElementById('customProjectDir').placeholder = defaults.dir;
+    document.getElementById('customInstallCmd').placeholder = defaults.install || '(none)';
+    document.getElementById('customDevCmd').placeholder = defaults.dev || '(none)';
+    document.getElementById('customDefaultPort').placeholder = defaults.port;
+}
+
+async function saveStack() {
+    const stack = document.getElementById('stackSelect').value;
+    const customProjectDir = document.getElementById('customProjectDir').value.trim();
+    const customInstallCmd = document.getElementById('customInstallCmd').value.trim();
+    const customDevCmd = document.getElementById('customDevCmd').value.trim();
+    const customDefaultPort = document.getElementById('customDefaultPort').value.trim();
+
+    const saveBtn = document.querySelector('#stackEditModal .btn-primary');
+    const originalText = saveBtn.innerHTML;
+    saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+    saveBtn.disabled = true;
+
+    try {
+        const response = await fetch('/projects/api/{{ project.project_id }}/stack/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({
+                stack: stack,
+                custom_project_dir: customProjectDir,
+                custom_install_cmd: customInstallCmd,
+                custom_dev_cmd: customDevCmd,
+                custom_default_port: customDefaultPort
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            closeStackEditModal();
+            window.location.reload();
+        } else {
+            alert('Error saving stack: ' + (data.error || 'Unknown error'));
+            saveBtn.innerHTML = originalText;
+            saveBtn.disabled = false;
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+        saveBtn.innerHTML = originalText;
+        saveBtn.disabled = false;
+    }
+}
+
+// Close stack modal when clicking outside
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('stackEditModal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            closeStackEditModal();
+        }
+    });
+});
+</script>
 
 <script>
 function showCodebaseModal() {

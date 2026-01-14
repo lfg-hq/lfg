@@ -42,9 +42,15 @@ def _ensure_code_in_workspace(client, workspace, project, user, ticket=None, sen
     - Otherwise default to 'lfg-agent'
     Returns (success, message)
     """
+    from factory.stack_configs import get_stack_config
+
     job_id = workspace.job_id
-    workspace_path = "/workspace/nextjs-app"
+    stack_config = get_stack_config(project.stack, project)
+    project_dir = stack_config['project_dir']
+    workspace_path = f"/workspace/{project_dir}"
     project_id = str(project.project_id)
+
+    logger.info(f"[CODE_SETUP] Project stack: {project.stack}, project_dir: {project_dir}")
 
     # Helper to send progress if enabled
     def progress(step, message=None, extra_data=None):
@@ -57,9 +63,12 @@ def _ensure_code_in_workspace(client, workspace, project, user, ticket=None, sen
         target_branch = ticket.github_branch
         logger.info(f"[CODE_SETUP] Using ticket branch: {target_branch}")
 
-    # Check if code already exists
+    # Check if code already exists - use stack-specific file patterns
     progress('checking_workspace', 'Checking workspace structure...')
-    check_cmd = f"test -d {workspace_path} && test -f {workspace_path}/package.json && echo 'EXISTS' || echo 'MISSING'"
+    file_patterns = stack_config.get('file_patterns', ['package.json'])
+    # Check for first file pattern (most common indicator file)
+    check_file = file_patterns[0] if file_patterns else 'package.json'
+    check_cmd = f"test -d {workspace_path} && test -f {workspace_path}/{check_file} && echo 'EXISTS' || echo 'MISSING'"
     check_result = _run_magpie_ssh(client, job_id, check_cmd, timeout=30, with_node_env=False)
 
     code_exists = 'EXISTS' in check_result.get('stdout', '')
@@ -298,10 +307,15 @@ def start_dev_server(request, ticket_id):
         if magpie_workspace.status != 'ready':
             logger.warning(f"Using workspace with status '{magpie_workspace.status}' (not 'ready')")
 
-        workspace_path = "/workspace/nextjs-app"
+        # Get stack configuration
+        from factory.stack_configs import get_stack_config
+        stack_config = get_stack_config(project.stack, project)
+        project_dir = stack_config['project_dir']
+        workspace_path = f"/workspace/{project_dir}"
         job_id = magpie_workspace.job_id
 
         logger.info(f"[DEV_SERVER] Starting dev server for ticket {ticket_id}")
+        logger.info(f"[DEV_SERVER] Project stack: {project.stack}, project_dir: {project_dir}")
         logger.info(f"[DEV_SERVER] Workspace ID: {magpie_workspace.workspace_id}")
         logger.info(f"[DEV_SERVER] Workspace status: {magpie_workspace.status}")
         logger.info(f"[DEV_SERVER] Job ID: {job_id}")
@@ -338,28 +352,68 @@ def start_dev_server(request, ticket_id):
         # logger.info(f"[VERIFY] Stdout:\n{verify_result.get('stdout', '')}")
         # logger.info(f"[VERIFY] Stderr:\n{verify_result.get('stderr', '')}")
 
-        # Step 1: Kill existing processes and remove lock files
         project_id = str(project.project_id)
+
+        # Step 0.5: Run bootstrap script to ensure stack tools are installed
+        bootstrap_script = stack_config.get('bootstrap_script', '')
+        if bootstrap_script and project.stack != 'nextjs':  # Node.js is pre-installed
+            send_workspace_progress(project_id, 'installing_tools', f'Checking/installing {stack_config["name"]} tools...')
+            logger.info(f"[DEV_SERVER] Running bootstrap script for {project.stack}")
+
+            bootstrap_result = _run_magpie_ssh(
+                client, job_id, bootstrap_script, timeout=300, with_node_env=False, project_id=project.id
+            )
+            if bootstrap_result.get('exit_code', 0) != 0:
+                logger.warning(f"[DEV_SERVER] Bootstrap warning: {bootstrap_result.get('stderr', '')[:200]}")
+            else:
+                logger.info(f"[DEV_SERVER] Bootstrap completed successfully")
+
+        # Step 1: Kill existing processes and remove lock files
         send_workspace_progress(project_id, 'clearing_cache', 'Clearing cache and stopping existing processes...')
+
+        # Build stack-specific cleanup command
+        default_port = stack_config.get('default_port', 3000)
+        if project.stack == 'nextjs':
+            cleanup_extras = """
+            npm config set cache /workspace/.npm-cache
+            killall -9 node 2>/dev/null || true
+            pkill -9 node 2>/dev/null || true
+            rm -rf .next || true
+            rm -f package-lock.json || true
+            """
+        elif project.stack in ('python-django', 'python-fastapi'):
+            cleanup_extras = """
+            pkill -f 'runserver' 2>/dev/null || true
+            pkill -f 'uvicorn' 2>/dev/null || true
+            rm -rf __pycache__ .pytest_cache || true
+            """
+        elif project.stack == 'go':
+            cleanup_extras = """
+            pkill -f 'go run' 2>/dev/null || true
+            """
+        elif project.stack == 'rust':
+            cleanup_extras = """
+            pkill -f 'cargo run' 2>/dev/null || true
+            """
+        elif project.stack == 'ruby-rails':
+            cleanup_extras = """
+            pkill -f 'rails server' 2>/dev/null || true
+            rm -rf tmp/cache || true
+            """
+        else:
+            cleanup_extras = ""
+
         cleanup_command = textwrap.dedent(f"""
             cd {workspace_path}
 
-            # Set npm cache to /workspace to avoid disk space issues
-            npm config set cache /workspace/.npm-cache
+            echo "Stopping existing processes..."
+            {cleanup_extras}
 
-            echo "Stopping all Node processes..."
+            # Kill anything on the default port
+            fuser -k -9 {default_port}/tcp 2>/dev/null || true
 
-            # Nuclear option - kill all node processes
-            killall -9 node 2>/dev/null || true
-            pkill -9 node 2>/dev/null || true
-
-            # Kill anything on port 3000
-            fuser -k -9 3000/tcp 2>/dev/null || true
-
-            # Clean up files
-            rm -rf .next || true
+            # Clean up PID file
             rm -f .devserver_pid || true
-            rm -f package-lock.json || true
 
             # Wait for port to be fully released
             sleep 3
@@ -367,7 +421,7 @@ def start_dev_server(request, ticket_id):
             echo "Cleanup completed"
         """)
 
-        cleanup_result = _run_magpie_ssh(client, job_id, cleanup_command, timeout=60, with_node_env=True, project_id=project.id)
+        cleanup_result = _run_magpie_ssh(client, job_id, cleanup_command, timeout=60, with_node_env=(project.stack == 'nextjs'), project_id=project.id)
         
         logger.info(f"[CLEANUP] Result: {cleanup_result}")
         logger.info(f"[CLEANUP] Exit code: {cleanup_result.get('exit_code')}")
@@ -379,12 +433,32 @@ def start_dev_server(request, ticket_id):
 
         # Step 2: Start the dev server in background
         send_workspace_progress(project_id, 'starting_server', 'Starting development server...')
+
+        # Get the dev command from stack config
+        dev_cmd = stack_config['dev_cmd']
+        default_port = stack_config.get('default_port', 3000)
+        pre_dev_cmd = stack_config.get('pre_dev_cmd', '')
+
+        # Customize dev command for different stacks
+        if project.stack == 'nextjs':
+            final_dev_cmd = f"npm run dev -- --hostname :: --port {default_port}"
+        elif project.stack in ('python-django', 'python-fastapi'):
+            final_dev_cmd = dev_cmd
+        else:
+            final_dev_cmd = f"PORT={default_port} {dev_cmd}" if dev_cmd else f"echo 'No dev command configured'"
+
+        # Build the full dev command including any pre-setup (e.g., export PATH)
+        if pre_dev_cmd:
+            full_dev_cmd = f"{pre_dev_cmd} && {final_dev_cmd}"
+        else:
+            full_dev_cmd = final_dev_cmd
+
         start_command = textwrap.dedent(f"""
             cd {workspace_path}
 
-            # Start npm run dev in background
-            : > /workspace/nextjs-app/dev.log
-            nohup npm run dev -- --hostname :: --port 3000 > /workspace/nextjs-app/dev.log 2>&1 &
+            # Start dev server in background
+            : > {workspace_path}/dev.log
+            nohup sh -c '{full_dev_cmd}' > {workspace_path}/dev.log 2>&1 &
             pid=$!
             echo "$pid" > .devserver_pid
             echo "PID:$pid"
@@ -433,9 +507,9 @@ def start_dev_server(request, ticket_id):
         send_workspace_progress(project_id, 'assigning_proxy', 'Getting preview URL...')
         preview_url = None
         if get_or_fetch_proxy_url:
-            preview_url = get_or_fetch_proxy_url(magpie_workspace, port=3000, client=client, force_refresh=True)
+            preview_url = get_or_fetch_proxy_url(magpie_workspace, port=default_port, client=client, force_refresh=True)
         if not preview_url:
-            preview_url = f'http://[{magpie_workspace.ipv6_address}]:3000' if magpie_workspace.ipv6_address else 'http://localhost:3000'
+            preview_url = f'http://[{magpie_workspace.ipv6_address}]:{default_port}' if magpie_workspace.ipv6_address else f'http://localhost:{default_port}'
 
         # Send completion notification
         send_workspace_progress(project_id, 'complete', 'Dev server is ready!', extra_data={'url': preview_url})
@@ -501,7 +575,11 @@ def stop_dev_server(request, ticket_id):
         if magpie_workspace.status != 'ready':
             logger.warning(f"Stopping dev server on workspace with status '{magpie_workspace.status}'")
 
-        workspace_path = magpie_workspace.project_path or "/workspace/nextjs-app"
+        # Get stack configuration
+        from factory.stack_configs import get_stack_config
+        stack_config = get_stack_config(project.stack, project)
+        project_dir = stack_config['project_dir']
+        workspace_path = f"/workspace/{project_dir}"
         job_id = magpie_workspace.job_id
 
         logger.info(f"Stopping dev server for ticket {ticket_id} in Magpie workspace {magpie_workspace.workspace_id}")
@@ -593,8 +671,12 @@ def get_dev_server_logs(request, ticket_id):
                 status=400
             )
 
-        # dev.log is always at /workspace/nextjs-app/dev.log
-        log_file_path = "/workspace/nextjs-app/dev.log"
+        # Get stack configuration
+        from factory.stack_configs import get_stack_config
+        stack_config = get_stack_config(project.stack, project)
+        project_dir = stack_config['project_dir']
+        workspace_path = f"/workspace/{project_dir}"
+        log_file_path = f"{workspace_path}/dev.log"
         job_id = magpie_workspace.job_id
 
         # Get number of lines from query param (default 100, max 500)
@@ -613,7 +695,6 @@ def get_dev_server_logs(request, ticket_id):
         logs = log_result.get('stdout', '')
 
         # Also check if the dev server is running
-        workspace_path = "/workspace/nextjs-app"
         status_command = f"""
             if [ -f {workspace_path}/.devserver_pid ]; then
                 pid=$(cat {workspace_path}/.devserver_pid)
@@ -679,8 +760,13 @@ def get_workspace_dev_server_logs(request, workspace_id):
                 status=503
             )
 
-        # dev.log is always at /workspace/nextjs-app/dev.log
-        log_file_path = "/workspace/nextjs-app/dev.log"
+        # Get stack configuration
+        from factory.stack_configs import get_stack_config
+        project = workspace.project
+        stack_config = get_stack_config(project.stack, project)
+        project_dir = stack_config['project_dir']
+        workspace_path = f"/workspace/{project_dir}"
+        log_file_path = f"{workspace_path}/dev.log"
         job_id = workspace.job_id
 
         # Get number of lines from query param (default 100, max 500)
@@ -694,12 +780,11 @@ def get_workspace_dev_server_logs(request, workspace_id):
         # Tail the dev.log file
         log_command = f"tail -n {lines} {log_file_path} 2>/dev/null || echo ''"
 
-        log_result = _run_magpie_ssh(client, job_id, log_command, timeout=30, with_node_env=False, project_id=workspace.project.id)
+        log_result = _run_magpie_ssh(client, job_id, log_command, timeout=30, with_node_env=False, project_id=project.id)
 
         logs = log_result.get('stdout', '')
 
         # Also check if the dev server is running
-        workspace_path = "/workspace/nextjs-app"
         status_command = f"""
             if [ -f {workspace_path}/.devserver_pid ]; then
                 pid=$(cat {workspace_path}/.devserver_pid)

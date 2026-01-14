@@ -128,6 +128,58 @@ def add_repository(request):
 
 @login_required
 @require_http_methods(["POST"])
+def detect_stack(request):
+    """Detect project stack from repository files using GitHub API"""
+    try:
+        from .github_sync import get_repo_file_list_via_api
+        from factory.stack_configs import detect_stack_from_files, get_stack_config, get_stack_choices
+
+        data = json.loads(request.body)
+        github_url = data.get('github_url')
+        branch = data.get('branch', 'main')
+
+        if not github_url:
+            return JsonResponse({
+                'success': False,
+                'error': 'github_url is required'
+            }, status=400)
+
+        # Get file list via GitHub API (no clone needed)
+        file_list = get_repo_file_list_via_api(request.user, github_url, branch)
+
+        if not file_list:
+            # Couldn't get file list, default to custom
+            return JsonResponse({
+                'success': True,
+                'detected_stack': 'custom',
+                'stack_name': 'Custom/Existing Repo',
+                'all_stacks': get_stack_choices(),
+                'file_count': 0
+            })
+
+        # Detect stack from files
+        detected = detect_stack_from_files(file_list)
+        stack = detected or 'custom'
+        stack_config = get_stack_config(stack)
+
+        return JsonResponse({
+            'success': True,
+            'detected_stack': stack,
+            'stack_name': stack_config['name'],
+            'all_stacks': get_stack_choices(),
+            'file_count': len(file_list)
+        })
+
+    except Exception as e:
+        logger.error(f"Error detecting stack: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
 def reindex_repository(request, repository_id):
     """Trigger re-indexing of a repository"""
     try:

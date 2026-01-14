@@ -68,6 +68,7 @@ from factory.ai_providers import get_ai_response
 from factory.ai_functions import new_dev_sandbox_tool, _fetch_workspace, get_magpie_client, _slugify_project_name, MAGPIE_BOOTSTRAP_SCRIPT
 from factory.prompts.builder_prompt import get_system_builder_mode
 from factory.ai_tools import tools_builder
+from factory.stack_configs import get_stack_config, get_bootstrap_script
 from development.models import MagpieWorkspace
 import time
 
@@ -203,10 +204,15 @@ def get_github_token(user) -> Optional[str]:
         return None
 
 
-def get_or_create_github_repo(project, user) -> Dict[str, Any]:
+def get_or_create_github_repo(project, user, stack: str = None) -> Dict[str, Any]:
     """
     Get existing GitHub repo or create a new one for the project.
-    If creating new, initialize it with the nextjs-template.
+    If creating new, initialize it with the appropriate template for the stack.
+
+    Args:
+        project: The Project instance
+        user: The User instance
+        stack: Technology stack (e.g., 'nextjs', 'python-django', 'go'). Uses project.stack if not provided.
 
     Returns:
         Dict with 'owner', 'repo_name', 'url', 'created' keys
@@ -215,6 +221,11 @@ def get_or_create_github_repo(project, user) -> Dict[str, Any]:
         Exception with detailed error message if repo cannot be created or accessed
     """
     from codebase_index.models import IndexedRepository
+
+    # Get stack config
+    stack = stack or getattr(project, 'stack', 'nextjs')
+    stack_config = get_stack_config(stack)
+    template_repo = stack_config['template_repo']
 
     # Check if project already has a GitHub repo linked
     try:
@@ -296,64 +307,62 @@ def get_or_create_github_repo(project, user) -> Dict[str, Any]:
 
         logger.info(f"Created empty GitHub repo: {owner}/{repo_name}")
 
-        # Step 2: Initialize repo with nextjs-template using GitHub API
+        # Step 2: Initialize repo with template using GitHub API
         # This is a template repository, so we use the GitHub template API
-        template_data = {
-            'owner': 'lfg-hq',
-            'name': 'nextjs-template',
-            'description': f'LFG Project: {project.name}',
-            'private': True
-        }
-
-        # Try to use GitHub's template repository feature to copy the template
-        # Note: This will only work if lfg-hq/nextjs-template is marked as a template repo
         repo_needs_template = True
-        try:
-            # First, delete the empty repo we just created
-            delete_response = requests.delete(
-                f'https://api.github.com/repos/{owner}/{repo_name}',
-                headers=headers,
-                timeout=10
-            )
 
-            if delete_response.status_code not in [204, 404]:
-                logger.warning(f"Failed to delete empty repo (will continue): {delete_response.status_code}")
-
-            # Now create from template
-            template_response = requests.post(
-                'https://api.github.com/repos/lfg-hq/nextjs-template/generate',
-                headers=headers,
-                json={
-                    'owner': owner,
-                    'name': repo_name,
-                    'description': f'LFG Project: {project.name}',
-                    'private': True
-                },
-                timeout=30
-            )
-
-            if template_response.status_code == 201:
-                repo_data = template_response.json()
-                repo_url = repo_data['html_url']
-                logger.info(f"Successfully created repo from template: {owner}/{repo_name}")
-                repo_needs_template = False  # Template was successfully applied
-            else:
-                # If template creation fails, fall back to the empty repo
-                error_detail = template_response.json().get('message', '') if template_response.text else ''
-                logger.warning(f"Template creation failed ({template_response.status_code}): {error_detail}. Will push template from workspace.")
-                # Recreate the empty repo
-                response = requests.post(
-                    'https://api.github.com/user/repos',
+        # Only use template if one is configured for this stack
+        if template_repo:
+            try:
+                # First, delete the empty repo we just created
+                delete_response = requests.delete(
+                    f'https://api.github.com/repos/{owner}/{repo_name}',
                     headers=headers,
-                    json=data,
                     timeout=10
                 )
-                if response.status_code == 201:
-                    repo_data = response.json()
-                    repo_url = repo_data['html_url']
 
-        except Exception as e:
-            logger.warning(f"Failed to use template repository: {str(e)}. Will push template from workspace.")
+                if delete_response.status_code not in [204, 404]:
+                    logger.warning(f"Failed to delete empty repo (will continue): {delete_response.status_code}")
+
+                # Now create from template
+                logger.info(f"Creating repo from template: {template_repo}")
+                template_response = requests.post(
+                    f'https://api.github.com/repos/{template_repo}/generate',
+                    headers=headers,
+                    json={
+                        'owner': owner,
+                        'name': repo_name,
+                        'description': f'LFG Project: {project.name}',
+                        'private': True
+                    },
+                    timeout=30
+                )
+
+                if template_response.status_code == 201:
+                    repo_data = template_response.json()
+                    repo_url = repo_data['html_url']
+                    logger.info(f"Successfully created repo from template: {owner}/{repo_name}")
+                    repo_needs_template = False  # Template was successfully applied
+                else:
+                    # If template creation fails, fall back to the empty repo
+                    error_detail = template_response.json().get('message', '') if template_response.text else ''
+                    logger.warning(f"Template creation failed ({template_response.status_code}): {error_detail}. Will push template from workspace.")
+                    # Recreate the empty repo
+                    response = requests.post(
+                        'https://api.github.com/user/repos',
+                        headers=headers,
+                        json=data,
+                        timeout=10
+                    )
+                    if response.status_code == 201:
+                        repo_data = response.json()
+                        repo_url = repo_data['html_url']
+
+            except Exception as e:
+                logger.warning(f"Failed to use template repository: {str(e)}. Will push template from workspace.")
+        else:
+            # No template configured for this stack (e.g., 'custom')
+            logger.info(f"No template configured for stack '{stack}', using empty repo")
 
         # Create IndexedRepository record
         IndexedRepository.objects.create(
@@ -535,22 +544,36 @@ def get_github_user_info(token: str) -> Dict[str, str]:
     return {'name': 'LFG Agent', 'email': 'agent@lfg.ai'}
 
 
-def push_template_and_create_branch(workspace_id: str, owner: str, repo_name: str, branch_name: str, token: str) -> Dict[str, Any]:
+def push_template_and_create_branch(workspace_id: str, owner: str, repo_name: str, branch_name: str, token: str, stack: str = 'nextjs') -> Dict[str, Any]:
     """
-    Push the template from /workspace/nextjs-app to the empty GitHub repo and create the feature branch.
+    Push the template to the empty GitHub repo and create the feature branch.
 
     Workflow:
     1. Clone template if directory doesn't exist
-    2. Remove .git from template (it points to lfg-hq/nextjs-template)
+    2. Remove .git from template
     3. Initialize new git repo
     4. Push to GitHub main branch
     5. Create and push feature branch
+
+    Args:
+        workspace_id: Magpie workspace ID
+        owner: GitHub repo owner
+        repo_name: GitHub repo name
+        branch_name: Feature branch name to create
+        token: GitHub token
+        stack: Technology stack (determines template and project directory)
 
     Returns:
         Dict with status and any error messages
     """
     from factory.ai_functions import get_magpie_client, _run_magpie_ssh
     import shlex
+
+    # Get stack configuration
+    stack_config = get_stack_config(stack)
+    project_dir = stack_config['project_dir']
+    template_repo = stack_config['template_repo']
+    stack_name = stack_config['name']
 
     client = get_magpie_client()
     escaped_branch = shlex.quote(branch_name)
@@ -560,34 +583,40 @@ def push_template_and_create_branch(workspace_id: str, owner: str, repo_name: st
     git_name = user_info['name']
     git_email = user_info['email']
 
+    # Build clone command based on whether template exists
+    if template_repo:
+        clone_cmd = f"if [ ! -d /workspace/{project_dir} ]; then cd /workspace && git clone https://github.com/{template_repo} {project_dir}; fi"
+    else:
+        clone_cmd = f"mkdir -p /workspace/{project_dir}"
+
     commands = [
         # Clone the template if directory doesn't exist
-        "if [ ! -d /workspace/nextjs-app ]; then cd /workspace && git clone https://github.com/lfg-hq/nextjs-template nextjs-app; fi",
-        # Remove the template's .git directory (points to lfg-hq/nextjs-template)
-        "cd /workspace/nextjs-app && rm -rf .git",
+        clone_cmd,
+        # Remove the template's .git directory
+        f"cd /workspace/{project_dir} && rm -rf .git",
         # Initialize new git repo
-        "cd /workspace/nextjs-app && git init -b main",
+        f"cd /workspace/{project_dir} && git init -b main",
         # Configure git user with actual GitHub account info
-        f'cd /workspace/nextjs-app && git config user.email "{git_email}"',
-        f'cd /workspace/nextjs-app && git config user.name "{git_name}"',
+        f'cd /workspace/{project_dir} && git config user.email "{git_email}"',
+        f'cd /workspace/{project_dir} && git config user.name "{git_name}"',
         # Add all template files
-        "cd /workspace/nextjs-app && git add -A",
+        f"cd /workspace/{project_dir} && git add -A",
         # Create initial commit
-        'cd /workspace/nextjs-app && git commit -m "Initial commit: Next.js template from LFG"',
+        f'cd /workspace/{project_dir} && git commit -m "Initial commit: {stack_name} template from LFG" --allow-empty',
         # Add remote origin (allow to fail if remote already exists)
-        f"cd /workspace/nextjs-app && (git remote add origin https://{token}@github.com/{owner}/{repo_name}.git || git remote set-url origin https://{token}@github.com/{owner}/{repo_name}.git)",
+        f"cd /workspace/{project_dir} && (git remote add origin https://{token}@github.com/{owner}/{repo_name}.git || git remote set-url origin https://{token}@github.com/{owner}/{repo_name}.git)",
         # Push main branch to GitHub
-        "cd /workspace/nextjs-app && git push -u origin main",
+        f"cd /workspace/{project_dir} && git push -u origin main",
         # Create lfg-agent branch from main
-        "cd /workspace/nextjs-app && git checkout -b lfg-agent",
+        f"cd /workspace/{project_dir} && git checkout -b lfg-agent",
         # Push lfg-agent branch to GitHub
-        "cd /workspace/nextjs-app && git push -u origin lfg-agent",
+        f"cd /workspace/{project_dir} && git push -u origin lfg-agent",
         # Create and checkout feature branch from lfg-agent
-        f"cd /workspace/nextjs-app && git checkout -b {escaped_branch}",
+        f"cd /workspace/{project_dir} && git checkout -b {escaped_branch}",
         # Push feature branch to GitHub
-        f"cd /workspace/nextjs-app && git push -u origin {escaped_branch}",
+        f"cd /workspace/{project_dir} && git push -u origin {escaped_branch}",
         # Verify current branch
-        "cd /workspace/nextjs-app && git branch --show-current"
+        f"cd /workspace/{project_dir} && git branch --show-current"
     ]
 
     try:
@@ -635,7 +664,7 @@ def push_template_and_create_branch(workspace_id: str, owner: str, repo_name: st
         return {'status': 'error', 'message': str(e)}
 
 
-def setup_git_in_workspace(workspace_id: str, owner: str, repo_name: str, branch_name: str, token: str) -> Dict[str, Any]:
+def setup_git_in_workspace(workspace_id: str, owner: str, repo_name: str, branch_name: str, token: str, stack: str = 'nextjs') -> Dict[str, Any]:
     """
     Setup git repository in workspace and checkout the feature branch.
 
@@ -645,11 +674,23 @@ def setup_git_in_workspace(workspace_id: str, owner: str, repo_name: str, branch
 
     This avoids unnecessary deletions and re-cloning.
 
+    Args:
+        workspace_id: Magpie workspace ID
+        owner: GitHub repo owner
+        repo_name: GitHub repo name
+        branch_name: Branch to checkout
+        token: GitHub token
+        stack: Technology stack (determines project directory)
+
     Returns:
         Dict with status and any error messages
     """
     from factory.ai_functions import get_magpie_client, _run_magpie_ssh
     import shlex
+
+    # Get stack configuration
+    stack_config = get_stack_config(stack)
+    project_dir = stack_config['project_dir']
 
     client = get_magpie_client()
 
@@ -664,22 +705,22 @@ def setup_git_in_workspace(workspace_id: str, owner: str, repo_name: str, branch
     # Single command that handles all cases
     setup_command = f'''
 cd /workspace
-if [ -d nextjs-app/.git ]; then
+if [ -d {project_dir}/.git ]; then
     echo "Git repo exists, updating..."
-    cd nextjs-app
+    cd {project_dir}
     git remote set-url origin https://{token}@github.com/{owner}/{repo_name}.git
     git fetch origin
     git checkout {escaped_branch} || git checkout -b {escaped_branch} origin/{escaped_branch} || (git fetch origin {escaped_branch} && git checkout {escaped_branch})
-elif [ -d nextjs-app ]; then
+elif [ -d {project_dir} ]; then
     echo "Directory exists but not a git repo, removing and cloning..."
-    rm -rf nextjs-app
-    git clone https://{token}@github.com/{owner}/{repo_name}.git nextjs-app
-    cd nextjs-app
+    rm -rf {project_dir}
+    git clone https://{token}@github.com/{owner}/{repo_name}.git {project_dir}
+    cd {project_dir}
     git checkout {escaped_branch}
 else
     echo "Directory doesn't exist, cloning..."
-    git clone https://{token}@github.com/{owner}/{repo_name}.git nextjs-app
-    cd nextjs-app
+    git clone https://{token}@github.com/{owner}/{repo_name}.git {project_dir}
+    cd {project_dir}
     git checkout {escaped_branch}
 fi
 git config user.email "{git_email}"
@@ -730,7 +771,7 @@ git branch --show-current
         return {'status': 'error', 'message': str(e)}
 
 
-def resolve_merge_conflict(workspace_id: str, feature_branch: str, ticket_id: int, project_id: str, conversation_id: int) -> Dict[str, Any]:
+def resolve_merge_conflict(workspace_id: str, feature_branch: str, ticket_id: int, project_id: str, conversation_id: int, stack: str = 'nextjs') -> Dict[str, Any]:
     """
     Resolve merge conflicts by having AI fix them in the workspace.
 
@@ -740,6 +781,7 @@ def resolve_merge_conflict(workspace_id: str, feature_branch: str, ticket_id: in
         ticket_id: The ticket ID
         project_id: The project UUID
         conversation_id: The conversation ID
+        stack: Technology stack (determines project directory)
 
     Returns:
         Dict with resolution status
@@ -748,13 +790,17 @@ def resolve_merge_conflict(workspace_id: str, feature_branch: str, ticket_id: in
     from factory.ai_providers import get_ai_response
     from factory.ai_tools import tools_builder
 
+    # Get stack configuration
+    stack_config = get_stack_config(stack)
+    project_dir = stack_config['project_dir']
+
     client = get_magpie_client()
 
     logger.info(f"[CONFLICT RESOLUTION] Starting automatic conflict resolution for {feature_branch}")
 
     # Step 1: Checkout lfg-agent and try to merge locally
     merge_command = f'''
-cd /workspace/nextjs-app
+cd /workspace/{project_dir}
 git fetch origin
 git checkout lfg-agent
 git pull origin lfg-agent
@@ -768,7 +814,7 @@ git merge {feature_branch} || echo "CONFLICT_DETECTED"
         logger.info(f"[CONFLICT RESOLUTION] Conflicts detected, getting conflict details...")
 
         # Get list of conflicted files
-        status_cmd = "cd /workspace/nextjs-app && git status --short | grep '^UU\\|^AA\\|^DD'"
+        status_cmd = f"cd /workspace/{project_dir} && git status --short | grep '^UU\\|^AA\\|^DD'"
         status_result = _run_magpie_ssh(client, workspace_id, status_cmd, timeout=30, with_node_env=False)
         conflicted_files_raw = status_result.get('stdout', '').strip()
         conflicted_files = [f.strip() for f in conflicted_files_raw.split('\n') if f.strip()]
@@ -777,7 +823,7 @@ git merge {feature_branch} || echo "CONFLICT_DETECTED"
 
         # if not conflicted_files:
         #     logger.warning(f"[CONFLICT RESOLUTION] No conflicted files found, aborting merge")
-        #     abort_cmd = "cd /workspace/nextjs-app && git merge --abort"
+        #     abort_cmd = f"cd /workspace/{project_dir} && git merge --abort"
         #     _run_magpie_ssh(client, workspace_id, abort_cmd, timeout=30, with_node_env=False)
         #     return {
         #         'status': 'conflict',
@@ -786,7 +832,7 @@ git merge {feature_branch} || echo "CONFLICT_DETECTED"
         #     }
 
         # Get conflict diff details
-        diff_cmd = "cd /workspace/nextjs-app && git diff --name-status"
+        diff_cmd = f"cd /workspace/{project_dir} && git diff --name-status"
         diff_result = _run_magpie_ssh(client, workspace_id, diff_cmd, timeout=30, with_node_env=False)
         conflict_diff = diff_result.get('stdout', '').strip()
 
@@ -802,7 +848,7 @@ git merge {feature_branch} || echo "CONFLICT_DETECTED"
             CONFLICT DETAILS:
             {conflict_diff}
 
-            PROJECT PATH: nextjs-app
+            PROJECT PATH: {project_dir}
 
             Your task: Fix all merge conflicts using SSH commands.
 
@@ -861,14 +907,14 @@ git merge {feature_branch} || echo "CONFLICT_DETECTED"
                 logger.info(f"[CONFLICT RESOLUTION] ✓ AI reported successful resolution")
 
                 # Verify conflicts are actually resolved
-                verify_cmd = "cd /workspace/nextjs-app && git status --short | grep '^UU\\|^AA\\|^DD'"
+                verify_cmd = f"cd /workspace/{project_dir} && git status --short | grep '^UU\\|^AA\\|^DD'"
                 verify_result = _run_magpie_ssh(client, workspace_id, verify_cmd, timeout=30, with_node_env=False)
                 remaining_conflicts = verify_result.get('stdout', '').strip()
 
                 if remaining_conflicts:
                     logger.error(f"[CONFLICT RESOLUTION] ✗ Conflicts still remain: {remaining_conflicts}")
                     # Abort the merge
-                    abort_cmd = "cd /workspace/nextjs-app && git merge --abort"
+                    abort_cmd = f"cd /workspace/{project_dir} && git merge --abort"
                     _run_magpie_ssh(client, workspace_id, abort_cmd, timeout=30, with_node_env=False)
                     return {
                         'status': 'conflict',
@@ -877,7 +923,7 @@ git merge {feature_branch} || echo "CONFLICT_DETECTED"
                     }
 
                 # Push the merge to GitHub
-                push_cmd = "cd /workspace/nextjs-app && git push origin lfg-agent"
+                push_cmd = f"cd /workspace/{project_dir} && git push origin lfg-agent"
                 push_result = _run_magpie_ssh(client, workspace_id, push_cmd, timeout=60, with_node_env=False)
 
                 if push_result.get('exit_code') == 0:
@@ -890,7 +936,7 @@ git merge {feature_branch} || echo "CONFLICT_DETECTED"
             else:
                 # AI failed to resolve conflicts
                 logger.error(f"[CONFLICT RESOLUTION] ✗ AI failed to resolve conflicts")
-                abort_cmd = "cd /workspace/nextjs-app && git merge --abort"
+                abort_cmd = f"cd /workspace/{project_dir} && git merge --abort"
                 _run_magpie_ssh(client, workspace_id, abort_cmd, timeout=30, with_node_env=False)
                 return {
                     'status': 'conflict',
@@ -901,7 +947,7 @@ git merge {feature_branch} || echo "CONFLICT_DETECTED"
         except Exception as ai_error:
             logger.error(f"[CONFLICT RESOLUTION] ✗ AI error: {str(ai_error)}", exc_info=True)
             # Abort the merge on error
-            abort_cmd = "cd /workspace/nextjs-app && git merge --abort"
+            abort_cmd = f"cd /workspace/{project_dir} && git merge --abort"
             _run_magpie_ssh(client, workspace_id, abort_cmd, timeout=30, with_node_env=False)
             return {
                 'status': 'error',
@@ -910,7 +956,7 @@ git merge {feature_branch} || echo "CONFLICT_DETECTED"
             }
 
     # No conflicts - push the merge
-    push_cmd = "cd /workspace/nextjs-app && git push origin lfg-agent"
+    push_cmd = f"cd /workspace/{project_dir} && git push origin lfg-agent"
     push_result = _run_magpie_ssh(client, workspace_id, push_cmd, timeout=60, with_node_env=False)
 
     if push_result.get('exit_code') == 0:
@@ -980,15 +1026,26 @@ def merge_feature_to_lfg_agent(token: str, owner: str, repo_name: str, feature_b
         return {'status': 'error', 'message': str(e)}
 
 
-def commit_and_push_changes(workspace_id: str, branch_name: str, commit_message: str, ticket_id: int) -> Dict[str, Any]:
+def commit_and_push_changes(workspace_id: str, branch_name: str, commit_message: str, ticket_id: int, stack: str = 'nextjs') -> Dict[str, Any]:
     """
-    Commit all changes in workspace/nextjs-app and push to GitHub.
+    Commit all changes in workspace and push to GitHub.
+
+    Args:
+        workspace_id: Magpie workspace ID
+        branch_name: Branch to commit to
+        commit_message: Commit message
+        ticket_id: Ticket ID for reference
+        stack: Technology stack (determines project directory)
 
     Returns:
         Dict with status and commit details
     """
     from factory.ai_functions import get_magpie_client, _run_magpie_ssh
     import shlex
+
+    # Get stack configuration
+    stack_config = get_stack_config(stack)
+    project_dir = stack_config['project_dir']
 
     client = get_magpie_client()
 
@@ -1000,15 +1057,15 @@ def commit_and_push_changes(workspace_id: str, branch_name: str, commit_message:
 
     commands = [
         # Check current branch
-        "cd /workspace/nextjs-app && git branch --show-current",
+        f"cd /workspace/{project_dir} && git branch --show-current",
         # Check git status
-        "cd /workspace/nextjs-app && git status --short",
+        f"cd /workspace/{project_dir} && git status --short",
         # Add all changes
-        "cd /workspace/nextjs-app && git add -A",
+        f"cd /workspace/{project_dir} && git add -A",
         # Commit changes
-        f'cd /workspace/nextjs-app && git commit -m "{escaped_message}" || echo "No changes to commit"',
+        f'cd /workspace/{project_dir} && git commit -m "{escaped_message}" || echo "No changes to commit"',
         # Push to remote
-        f"cd /workspace/nextjs-app && git push -u origin {escaped_branch}"
+        f"cd /workspace/{project_dir} && git push -u origin {escaped_branch}"
     ]
 
     try:
@@ -1187,12 +1244,18 @@ def setup_ticket_workspace(
             - github_owner: GitHub repository owner
             - github_repo: GitHub repository name
             - feature_branch: Feature branch name
+            - stack: Technology stack
+            - project_dir: Project directory name
             - git_setup_error: Any git setup errors (for AI to fix)
             - error: Error message if status is 'error'
     """
     from development.models import MagpieWorkspace
 
-    logger.info(f"\n{'='*60}\n[WORKSPACE SETUP] Starting for ticket #{ticket.id}\n{'='*60}")
+    # Get stack configuration
+    stack = getattr(project, 'stack', 'nextjs')
+    stack_config = get_stack_config(stack)
+
+    logger.info(f"\n{'='*60}\n[WORKSPACE SETUP] Starting for ticket #{ticket.id} (stack: {stack})\n{'='*60}")
 
     result = {
         'status': 'success',
@@ -1203,6 +1266,8 @@ def setup_ticket_workspace(
         'feature_branch': None,
         'git_setup_error': None,
         'repo_needs_template': False,
+        'stack': stack,
+        'project_dir': stack_config['project_dir'],
     }
 
     # 1. GITHUB REPOSITORY SETUP
@@ -1221,7 +1286,7 @@ def setup_ticket_workspace(
 
     try:
         # Get or create GitHub repo
-        repo_info = get_or_create_github_repo(project, project.owner)
+        repo_info = get_or_create_github_repo(project, project.owner, stack=stack)
         result['github_owner'] = repo_info['owner']
         result['github_repo'] = repo_info['repo_name']
         result['repo_needs_template'] = repo_info.get('needs_template', False)
@@ -1361,7 +1426,8 @@ def setup_ticket_workspace(
                 result['github_owner'],
                 result['github_repo'],
                 result['feature_branch'],
-                github_token
+                github_token,
+                stack=stack
             )
         else:
             logger.info(f"[WORKSPACE SETUP] Cloning repo and checking out branch...")
@@ -1370,7 +1436,8 @@ def setup_ticket_workspace(
                 result['github_owner'],
                 result['github_repo'],
                 result['feature_branch'],
-                github_token
+                github_token,
+                stack=stack
             )
 
         if git_setup_result['status'] == 'success':
@@ -1511,6 +1578,9 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
         github_owner = setup_result.get('github_owner')
         github_repo = setup_result.get('github_repo')
         github_token = get_github_token(project.owner)
+        stack = setup_result.get('stack', 'nextjs')
+        project_dir = setup_result.get('project_dir', 'nextjs-app')
+        stack_config = get_stack_config(stack)
 
         logger.info(f"[STEP 3/6] ✓ Workspace setup complete: {workspace_id}")
 
@@ -1585,7 +1655,7 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
                 Error: {git_setup_error['message']}
 
                 🔧 BEFORE implementing the ticket, you MUST fix this git issue:
-                1. Check the current git status: cd /workspace/nextjs-app && git status
+                1. Check the current git status: cd /workspace/{project_dir} && git status
                 2. If there are merge conflicts, resolve them:
                 - Check conflicted files
                 - Resolve conflicts by editing files
@@ -1604,7 +1674,8 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
             TICKET DESCRIPTION:
             {ticket.description}
 
-            PROJECT PATH: nextjs-app
+            PROJECT STACK: {stack_config['name']}
+            PROJECT PATH: {project_dir}
             {project_context}
             {git_error_context}
 
@@ -1614,8 +1685,12 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
             ✅ Success case: "IMPLEMENTATION_STATUS: COMPLETE - [brief summary of what you did]"
             ❌ Failure case: "IMPLEMENTATION_STATUS: FAILED - [reason]"
             """
-        system_prompt = """
-            You are expert developer assigned to work on a development ticket.
+
+        # Build stack-specific completion criteria
+        dev_cmd = stack_config.get('dev_cmd', 'npm run dev')
+
+        system_prompt = f"""
+            You are expert developer assigned to work on a {stack_config['name']} development ticket.
 
             COMMUNICATION PROTOCOL - VERY IMPORTANT:
             1. IMMEDIATELY call broadcast_to_user(status="progress", message="Starting work on: [ticket name]...")
@@ -1636,7 +1711,7 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
             7. Broadcast final summary
 
             🎯 COMPLETION CRITERIA:
-            - Project runs with `npm run dev` (DO NOT BUILD)
+            - Project runs with `{dev_cmd}` (DO NOT BUILD)
             - All todos marked `Success`
 
             IMPORTANT:
@@ -1730,7 +1805,7 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
 
             # Commit and push changes
             commit_message = f"feat: {ticket.name}\n\nImplemented ticket #{ticket_id}\n\n{ticket.description[:200]}"
-            commit_result = commit_and_push_changes(workspace_id, feature_branch_name, commit_message, ticket_id)
+            commit_result = commit_and_push_changes(workspace_id, feature_branch_name, commit_message, ticket_id, stack=stack)
 
             if commit_result['status'] == 'success':
                 commit_sha = commit_result.get('commit_sha')
@@ -1750,7 +1825,7 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
                 elif merge_result['status'] == 'conflict':
                     # Try to resolve conflict locally in workspace
                     logger.warning(f"[COMMIT] ⚠ Merge conflict detected via API, attempting AI-based resolution...")
-                    resolution_result = resolve_merge_conflict(workspace_id, feature_branch_name, ticket_id, project.project_id, conversation_id)
+                    resolution_result = resolve_merge_conflict(workspace_id, feature_branch_name, ticket_id, project.project_id, conversation_id, stack=stack)
 
                     if resolution_result['status'] == 'success':
                         logger.info(f"[COMMIT] ✓ Conflicts resolved and merged locally")

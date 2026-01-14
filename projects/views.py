@@ -39,7 +39,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Import the functions from ai_functions
-from factory.ai_functions import execute_local_command, restart_server_from_config, get_magpie_client, _run_magpie_ssh, get_or_fetch_proxy_url
+from factory.ai_functions import execute_local_command, restart_server_from_config, get_magpie_client, _run_magpie_ssh, get_or_fetch_proxy_url, remap_proxy_to_new_ipv6, MAGPIE_BOOTSTRAP_SCRIPT, _slugify_project_name, magpie_available
 from factory.llm_config import get_llm_model_config
 from chat.models import ModelSelection
 from accounts.models import ApplicationState
@@ -316,7 +316,24 @@ def project_detail(request, project_id):
 
     except Exception as e:
         logger.debug(f"No codebase index found for project {project.id}: {e}")
-    
+
+    # Get stack configuration with custom overrides
+    stack_config = None
+    try:
+        from factory.stack_configs import get_stack_config
+        stack_config = get_stack_config(project.stack, project).copy()  # Copy to avoid mutating original
+        # Apply custom overrides if set
+        if project.custom_project_dir:
+            stack_config['project_dir'] = project.custom_project_dir
+        if project.custom_install_cmd:
+            stack_config['install_cmd'] = project.custom_install_cmd
+        if project.custom_dev_cmd:
+            stack_config['dev_cmd'] = project.custom_dev_cmd
+        if project.custom_default_port:
+            stack_config['default_port'] = project.custom_default_port
+    except Exception as e:
+        logger.debug(f"Could not get stack config: {e}")
+
     logger.info(f"Project direct conversations: {project.direct_conversations.all()}", extra={'easylogs_metadata': {'project_id': project.id, 'project_name': project.name}})
     return render(request, 'projects/project_detail.html', {
         'project': project,
@@ -324,7 +341,8 @@ def project_detail(request, project_id):
         'repository_insights': repository_insights,
         'code_chunks': code_chunks,
         'total_chunks': code_chunks.__len__() if code_chunks else 0,
-        'codebase_map': codebase_map
+        'codebase_map': codebase_map,
+        'stack_config': stack_config,
     })
 
 @login_required
@@ -482,6 +500,65 @@ def update_project_description(request, project_id):
 
     messages.success(request, 'Project description updated successfully.')
     return redirect('projects:project_detail', project_id=project.project_id)
+
+
+@login_required
+@require_POST
+def update_project_stack(request, project_id):
+    """API endpoint to update a project's technology stack and custom overrides"""
+    try:
+        project = get_object_or_404(Project, project_id=project_id)
+
+        # Check permissions
+        if project.owner != request.user:
+            return JsonResponse({
+                'success': False,
+                'error': 'You do not have permission to update this project'
+            }, status=403)
+
+        data = json.loads(request.body)
+        stack = data.get('stack', project.stack)
+
+        # Validate stack choice
+        valid_stacks = dict(Project.STACK_CHOICES)
+        if stack not in valid_stacks:
+            return JsonResponse({
+                'success': False,
+                'error': f'Invalid stack. Must be one of: {", ".join(valid_stacks.keys())}'
+            }, status=400)
+
+        project.stack = stack
+
+        # Update custom overrides (empty string = clear override, use default)
+        if 'custom_project_dir' in data:
+            project.custom_project_dir = data['custom_project_dir'] or None
+        if 'custom_install_cmd' in data:
+            project.custom_install_cmd = data['custom_install_cmd'] or None
+        if 'custom_dev_cmd' in data:
+            project.custom_dev_cmd = data['custom_dev_cmd'] or None
+        if 'custom_default_port' in data:
+            port = data['custom_default_port']
+            project.custom_default_port = int(port) if port else None
+
+        project.save()
+
+        return JsonResponse({
+            'success': True,
+            'stack': project.stack,
+            'stack_name': valid_stacks[stack]
+        })
+
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': 'Invalid JSON data'
+        }, status=400)
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
 
 @login_required
 def update_project(request, project_id):
@@ -1321,11 +1398,262 @@ def project_files_api(request, project_id):
     
     return JsonResponse({'error': 'Invalid request method'}, status=405)
 
+
+def _reprovision_crashed_workspace(project, old_workspace, user, send_progress_fn=None):
+    """
+    Reprovision a new workspace when the existing one has crashed/become unresponsive.
+    Preserves the old proxy URL by remapping it to the new workspace.
+
+    Args:
+        project: The Project instance
+        old_workspace: The crashed MagpieWorkspace instance
+        user: The user making the request
+        send_progress_fn: Optional function to send progress updates
+
+    Returns:
+        tuple: (new_workspace, error_message) - new_workspace is None if failed
+    """
+    from tasks.task_definitions import setup_git_in_workspace
+
+    def send_progress(step, message, **kwargs):
+        if send_progress_fn:
+            send_progress_fn(step, message, **kwargs)
+        logger.info(f"[REPROVISION] {step}: {message}")
+
+    try:
+        # Check if Magpie is available
+        if not magpie_available():
+            return None, "Magpie workspace service is not configured"
+
+        send_progress('checking_workspace', 'Workspace unresponsive, provisioning new workspace...')
+
+        # Get old proxy URL and metadata before we update the workspace
+        old_proxy_url = old_workspace.proxy_url
+        old_metadata = old_workspace.metadata or {}
+
+        # Get Magpie client
+        client = get_magpie_client()
+        if not client:
+            return None, "Failed to initialize Magpie client"
+
+        # Create workspace name
+        project_name = project.provided_name or project.name
+        slug = _slugify_project_name(project_name)
+        workspace_name = f"{slug}-{project.id}"
+
+        send_progress('checking_workspace', 'Creating new workspace VM...')
+        logger.info(f"[REPROVISION] Creating workspace for project {project.project_id}: {workspace_name}")
+
+        # Create the Magpie persistent VM
+        vm_handle = client.jobs.create_persistent_vm(
+            name=workspace_name,
+            script=MAGPIE_BOOTSTRAP_SCRIPT,
+            stateful=True,
+            workspace_size_gb=10,
+            vcpus=2,
+            memory_mb=2048,
+            poll_timeout=180,
+            poll_interval=5,
+        )
+
+        run_id = vm_handle.request_id
+        if not run_id:
+            return None, "Failed to create workspace - no job ID returned"
+
+        logger.info(f"[REPROVISION] Job created: {run_id}")
+
+        # Get IP from the handle
+        ipv6 = vm_handle.ip_address
+        if not ipv6:
+            return None, "Workspace provisioning timed out - no IP address received"
+
+        logger.info(f"[REPROVISION] VM ready with IP: {ipv6}")
+
+        # Update the existing workspace record instead of creating new one
+        # (there's a unique constraint on project_id)
+        old_job_id = old_workspace.job_id
+        old_workspace.job_id = run_id
+        old_workspace.workspace_id = run_id
+        old_workspace.status = 'ready'
+        old_workspace.ipv6_address = ipv6
+        old_workspace.project_path = '/workspace'
+        old_workspace.metadata = old_workspace.metadata or {}
+        old_workspace.metadata.update({
+            'project_name': project_name,
+            'reprovisioned': True,
+            'previous_job_id': old_job_id,
+            'reprovisioned_at': timezone.now().isoformat(),
+        })
+
+        # Remap the old proxy URL to the new workspace if it exists
+        if old_proxy_url:
+            send_progress('assigning_proxy', 'Remapping proxy URL to new workspace...')
+            remapped_url = remap_proxy_to_new_ipv6(old_proxy_url, ipv6, port=3000)
+            if remapped_url:
+                old_workspace.proxy_url = remapped_url
+                logger.info(f"[REPROVISION] Successfully remapped proxy URL: {remapped_url}")
+            else:
+                logger.warning(f"[REPROVISION] Failed to remap proxy URL, will create new one later")
+
+        old_workspace.save()
+        new_workspace = old_workspace  # Use the updated workspace
+
+        # Wait for the new workspace to be fully ready for SSH
+        send_progress('checking_workspace', 'Waiting for new workspace to be ready...')
+        max_retries = 5
+        ssh_ready = False
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"[REPROVISION] Testing SSH connectivity, attempt {attempt + 1}/{max_retries}")
+                test_result = _run_magpie_ssh(client, run_id, "echo 'SSH_READY'", timeout=30)
+                if test_result.get('exit_code', -1) == 0 and 'SSH_READY' in test_result.get('stdout', ''):
+                    ssh_ready = True
+                    logger.info(f"[REPROVISION] SSH connectivity confirmed")
+                    break
+            except Exception as ssh_err:
+                logger.warning(f"[REPROVISION] SSH test failed (attempt {attempt + 1}): {ssh_err}")
+
+            # Wait before retrying (10-15 seconds for workspace to stabilize)
+            if attempt < max_retries - 1:
+                time.sleep(12)
+
+        if not ssh_ready:
+            logger.error(f"[REPROVISION] New workspace failed SSH connectivity tests")
+            return None, "New workspace is not responding to SSH commands"
+
+        # Setup code in workspace
+        send_progress('switching_branch', 'Setting up code in new workspace...')
+        git_setup_success = False
+
+        try:
+            indexed_repo = getattr(project, 'indexed_repository', None)
+            if indexed_repo and indexed_repo.github_url:
+                # Project has GitHub configured - clone the repo
+                github_token_obj = GitHubToken.objects.filter(user=user).first()
+                github_token = github_token_obj.access_token if github_token_obj else None
+
+                if github_token:
+                    owner = indexed_repo.github_owner
+                    repo = indexed_repo.github_repo_name
+                    # Use the branch from old workspace metadata or default
+                    branch_name = old_metadata.get('git_branch') or indexed_repo.github_branch or 'lfg-agent'
+
+                    logger.info(f"[REPROVISION] Setting up git for {owner}/{repo} on branch {branch_name}")
+
+                    git_result = setup_git_in_workspace(
+                        workspace_id=run_id,
+                        owner=owner,
+                        repo_name=repo,
+                        branch_name=branch_name,
+                        token=github_token
+                    )
+
+                    if git_result.get('status') == 'success':
+                        git_setup_success = True
+                        new_workspace.metadata['git_configured'] = True
+                        new_workspace.metadata['git_branch'] = branch_name
+                        new_workspace.save()
+                        logger.info(f"[REPROVISION] Git configured on branch {branch_name}")
+            else:
+                # No GitHub repo - clone the default template
+                logger.info(f"[REPROVISION] No GitHub repo configured, cloning default template")
+
+                template_setup_cmd = '''
+cd /workspace
+npm config set cache /workspace/.npm-cache
+if [ ! -d nextjs-app ]; then
+    git clone https://github.com/lfg-hq/nextjs-template nextjs-app
+    cd nextjs-app
+    npm install
+    echo "Template cloned and dependencies installed"
+else
+    echo "Directory already exists"
+fi
+'''
+                result = _run_magpie_ssh(client, run_id, template_setup_cmd, timeout=300)
+
+                if result.get('exit_code', 0) == 0:
+                    git_setup_success = True
+                    new_workspace.metadata['template_installed'] = True
+                    new_workspace.save()
+
+        except Exception as git_err:
+            logger.warning(f"[REPROVISION] Code setup error (non-fatal): {git_err}")
+
+        return new_workspace, None
+
+    except Exception as e:
+        logger.exception(f"[REPROVISION] Error reprovisioning workspace: {e}")
+        return None, f"Failed to reprovision workspace: {str(e)}"
+
+
+def _is_workspace_unresponsive_error(error_message: str) -> bool:
+    """
+    Check if an error message indicates the workspace is crashed/unresponsive.
+    Returns True if the error suggests we should try reprovisioning.
+    """
+    if not error_message:
+        return False
+
+    error_lower = error_message.lower()
+
+    # Common SSH/connection errors that indicate workspace is unresponsive
+    unresponsive_indicators = [
+        'failed to execute ssh command',
+        'ssh command failed',
+        'connection refused',
+        'connection timed out',
+        'no route to host',
+        'network is unreachable',
+        'host is down',
+        'connection reset',
+        'broken pipe',
+        'ssh_exchange_identification',
+        'permission denied (publickey)',
+        'read: connection reset by peer',
+        'socket is not connected',
+        'operation timed out',
+        'timeout expired',
+        'failed to establish ssh connection',
+        'workspace not responding',
+    ]
+
+    for indicator in unresponsive_indicators:
+        if indicator in error_lower:
+            return True
+
+    return False
+
+
+class WorkspaceUnresponsiveError(Exception):
+    """Exception raised when workspace is unresponsive and needs reprovisioning."""
+    pass
+
+
+def _run_ssh_with_recovery_check(client, workspace, command, timeout=300, with_node_env=True, project_id=None, check_unresponsive=True):
+    """
+    Run SSH command on workspace with automatic detection of unresponsive workspace.
+    Raises WorkspaceUnresponsiveError if the workspace appears to be crashed.
+    """
+    try:
+        result = _run_magpie_ssh(client, workspace.job_id, command, timeout=timeout, with_node_env=with_node_env, project_id=project_id)
+        return result
+    except Exception as e:
+        error_str = str(e)
+        if check_unresponsive and _is_workspace_unresponsive_error(error_str):
+            logger.warning(f"[SSH] Workspace {workspace.workspace_id} appears unresponsive: {error_str}")
+            raise WorkspaceUnresponsiveError(error_str) from e
+        raise
+
+
 @login_required
 @require_http_methods(["POST"])
 def start_dev_server_api(request, project_id):
     """Start a dev server on the Magpie workspace for the project.
-    Always uses lfg-agent branch and pulls latest changes."""
+    Always uses lfg-agent branch and pulls latest changes.
+
+    If the workspace is unresponsive (crashed), automatically provisions a new
+    workspace and remaps the proxy URL to maintain the same preview URL."""
     project = get_object_or_404(Project, project_id=project_id)
 
     # Check access
@@ -1337,8 +1665,10 @@ def start_dev_server_api(request, project_id):
     except json.JSONDecodeError:
         data = {}
 
-    port = data.get('port', 3000)
+    # Port will be set from stack config default if not provided
+    requested_port = data.get('port')
     target_branch = 'lfg-agent'  # Always use lfg-agent for preview
+    is_retry = data.get('is_retry', False)  # Prevent infinite retry loops
 
     try:
         # Send initial progress
@@ -1375,12 +1705,19 @@ def start_dev_server_api(request, project_id):
                 'error': 'Magpie client not configured. Check server settings.'
             })
 
-        workspace_path = "/workspace/nextjs-app"
+        # Get stack configuration for this project
+        from factory.stack_configs import get_stack_config
+        stack_config = get_stack_config(project.stack, project)
+        project_dir = stack_config['project_dir']
+        workspace_path = f"/workspace/{project_dir}"
+        port = requested_port or stack_config.get('default_port', 3000)
+
+        logger.info(f"[PREVIEW] Project stack: {project.stack}, project_dir: {project_dir}, port: {port}")
 
         # Step 1: Ensure code exists and switch to lfg-agent branch with latest changes
         indexed_repo = getattr(project, 'indexed_repository', None)
         if indexed_repo and indexed_repo.github_url:
-            send_workspace_progress(project_id, 'switching_branch', f'Switching to branch: {target_branch}...', extra_data={'branch': target_branch})
+            send_workspace_progress(project_id, 'switching_branch', f'Syncing code and switching to branch: {target_branch}...', extra_data={'branch': target_branch})
             logger.info(f"[PREVIEW] Ensuring code is on {target_branch} branch with latest changes")
 
             # Get GitHub token for authenticated git operations
@@ -1396,20 +1733,27 @@ def start_dev_server_api(request, project_id):
             owner = indexed_repo.github_owner
             repo_name = indexed_repo.github_repo_name
 
-            # Check if code exists, switch to lfg-agent, and pull latest
+            # Clone repo if missing, then switch to lfg-agent and pull latest
             git_sync_command = f'''
 cd /workspace
 
-# Check if code exists
-if [ ! -d nextjs-app ] || [ ! -f nextjs-app/package.json ]; then
-    echo "CODE_MISSING"
-    exit 1
+# Check if code exists - if not, clone the connected GitHub repo
+if [ -d {project_dir}/.git ]; then
+    echo "Git repo exists, updating..."
+    cd {project_dir}
+    git remote set-url origin "{auth_remote_url}"
+elif [ -d {project_dir} ]; then
+    echo "Directory exists but not a git repo, removing and cloning..."
+    rm -rf {project_dir}
+    echo "CLONING_REPO"
+    git clone "{auth_remote_url}" {project_dir}
+    cd {project_dir}
+else
+    echo "Directory doesn't exist, cloning..."
+    echo "CLONING_REPO"
+    git clone "{auth_remote_url}" {project_dir}
+    cd {project_dir}
 fi
-
-cd nextjs-app
-
-# Update remote URL with auth token for this operation
-git remote set-url origin "{auth_remote_url}"
 
 # Get current branch
 current_branch=$(git branch --show-current 2>/dev/null || echo "unknown")
@@ -1471,41 +1815,128 @@ git remote set-url origin "https://github.com/{owner}/{repo_name}.git" || true
 
 echo "SWITCH_COMPLETE"
 '''
-            git_result = _run_magpie_ssh(client, workspace.job_id, git_sync_command, timeout=120)
+            git_result = _run_ssh_with_recovery_check(client, workspace, git_sync_command, timeout=300, check_unresponsive=not is_retry)
             stdout = git_result.get('stdout', '')
             stderr = git_result.get('stderr', '')
             logger.info(f"[PREVIEW] Git sync result: {stdout[:500]}")
             if stderr:
                 logger.warning(f"[PREVIEW] Git sync stderr: {stderr[:500]}")
 
-            if 'CODE_MISSING' in stdout:
-                send_workspace_progress(project_id, 'error', error='No code found in workspace. Please run a ticket build first.')
+            # Check if git clone/sync failed
+            if git_result.get('exit_code', 0) != 0:
+                error_msg = stderr or stdout or 'Git operation failed'
+                send_workspace_progress(project_id, 'error', error=f'Failed to sync code: {error_msg[:200]}')
                 return JsonResponse({
                     'success': False,
-                    'error': 'No code found in workspace. Please run a ticket build first.'
+                    'error': f'Failed to sync code from repository: {error_msg[:200]}'
                 })
 
-            # Run npm install after branch switch to ensure dependencies are up to date
-            send_workspace_progress(project_id, 'downloading_dependencies', 'Installing dependencies (npm install)...')
-            logger.info(f"[PREVIEW] Running npm install after branch switch...")
-            npm_result = _run_magpie_ssh(
-                client, workspace.job_id,
-                f"cd {workspace_path} && npm config set cache /workspace/.npm-cache && npm install",
-                timeout=300, with_node_env=True
-            )
-            if npm_result.get('exit_code', 0) != 0:
-                logger.warning(f"[PREVIEW] npm install warning: {npm_result.get('stderr', '')[:200]}")
-            else:
-                logger.info(f"[PREVIEW] npm install completed successfully")
+            # Log if we cloned a new repo
+            if 'CLONING_REPO' in stdout:
+                logger.info(f"[PREVIEW] Cloned repository from GitHub")
+
+            # Run bootstrap script to ensure stack tools are installed (e.g., Go, Rust, Python venv)
+            bootstrap_script = stack_config.get('bootstrap_script', '')
+            if bootstrap_script and project.stack != 'nextjs':  # Node.js is pre-installed
+                send_workspace_progress(project_id, 'installing_tools', f'Checking/installing {stack_config["name"]} tools...')
+                logger.info(f"[PREVIEW] Running bootstrap script for {project.stack}")
+
+                bootstrap_result = _run_ssh_with_recovery_check(
+                    client, workspace,
+                    bootstrap_script,
+                    timeout=300,
+                    with_node_env=False,
+                    check_unresponsive=not is_retry
+                )
+                if bootstrap_result.get('exit_code', 0) != 0:
+                    logger.warning(f"[PREVIEW] Bootstrap warning: {bootstrap_result.get('stderr', '')[:200]}")
+                else:
+                    logger.info(f"[PREVIEW] Bootstrap completed successfully")
+
+            # Run install command after branch switch to ensure dependencies are up to date
+            install_cmd = stack_config['install_cmd']
+            if install_cmd:
+                send_workspace_progress(project_id, 'downloading_dependencies', f'Installing dependencies ({install_cmd})...')
+                logger.info(f"[PREVIEW] Running install command: {install_cmd}")
+
+                # Build the full install command with any pre-commands
+                pre_cmd = stack_config.get('pre_dev_cmd', '')
+                if pre_cmd:
+                    full_install_cmd = f"cd {workspace_path} && {pre_cmd} && {install_cmd}"
+                else:
+                    full_install_cmd = f"cd {workspace_path} && {install_cmd}"
+
+                # Add npm cache config for Node.js projects
+                if stack_config['package_manager'] == 'npm':
+                    full_install_cmd = f"cd {workspace_path} && npm config set cache /workspace/.npm-cache && {install_cmd}"
+
+                install_result = _run_ssh_with_recovery_check(
+                    client, workspace,
+                    full_install_cmd,
+                    timeout=300, with_node_env=(stack_config['language'] == 'javascript'),
+                    check_unresponsive=not is_retry
+                )
+                if install_result.get('exit_code', 0) != 0:
+                    logger.warning(f"[PREVIEW] Install warning: {install_result.get('stderr', '')[:200]}")
+                else:
+                    logger.info(f"[PREVIEW] Install completed successfully")
 
         # Step 2: Kill any existing process, clear cache, and start dev server
         send_workspace_progress(project_id, 'clearing_cache', 'Clearing cache and preparing to start server...')
 
+        # Build the dev command based on stack
+        dev_cmd = stack_config['dev_cmd']
+        default_port = stack_config.get('default_port', 3000)
+        pre_dev_cmd = stack_config.get('pre_dev_cmd', '')
+
+        # Customize dev command for different stacks to use the correct port
+        if project.stack == 'nextjs':
+            # Next.js: npm run dev -- --hostname :: --port {port}
+            final_dev_cmd = f"npm run dev -- --hostname :: --port {port}"
+            cache_clear = "rm -rf .next 2>/dev/null || true"
+            kill_processes = 'pkill -f "npm run dev" 2>/dev/null || true\npkill -f "next dev" 2>/dev/null || true'
+            npm_cache = "npm config set cache /workspace/.npm-cache"
+        elif project.stack in ('python-django', 'python-fastapi'):
+            # Python: replace default port in command
+            final_dev_cmd = dev_cmd.replace(str(default_port), str(port)) if dev_cmd else f"python manage.py runserver 0.0.0.0:{port}"
+            cache_clear = "rm -rf __pycache__ .pytest_cache 2>/dev/null || true"
+            kill_processes = 'pkill -f "runserver" 2>/dev/null || true\npkill -f "uvicorn" 2>/dev/null || true'
+            npm_cache = ""
+        elif project.stack == 'go':
+            # Go: needs PORT env var or flag
+            final_dev_cmd = f"PORT={port} {dev_cmd}" if dev_cmd else f"PORT={port} go run ."
+            cache_clear = ""
+            kill_processes = 'pkill -f "go run" 2>/dev/null || true'
+            npm_cache = ""
+        elif project.stack == 'rust':
+            # Rust: needs PORT env var
+            final_dev_cmd = f"PORT={port} {dev_cmd}" if dev_cmd else f"PORT={port} cargo run"
+            cache_clear = ""
+            kill_processes = 'pkill -f "cargo run" 2>/dev/null || true'
+            npm_cache = ""
+        elif project.stack == 'ruby-rails':
+            # Rails: replace port in command
+            final_dev_cmd = dev_cmd.replace(str(default_port), str(port)) if dev_cmd else f"rails server -b 0.0.0.0 -p {port}"
+            cache_clear = "rm -rf tmp/cache 2>/dev/null || true"
+            kill_processes = 'pkill -f "rails server" 2>/dev/null || true'
+            npm_cache = ""
+        else:
+            # Custom/unknown: try to use PORT env var
+            final_dev_cmd = f"PORT={port} {dev_cmd}" if dev_cmd else f"echo 'No dev command configured'"
+            cache_clear = ""
+            kill_processes = ""
+            npm_cache = ""
+
+        # Build the full dev command including any pre-setup (e.g., export PATH)
+        if pre_dev_cmd:
+            full_dev_cmd = f"{pre_dev_cmd} && {final_dev_cmd}"
+        else:
+            full_dev_cmd = final_dev_cmd
+
         start_command = f"""
 cd {workspace_path}
 
-# Set npm cache to /workspace to avoid disk space issues
-npm config set cache /workspace/.npm-cache
+{npm_cache}
 
 # Kill existing process
 if [ -f .devserver_pid ]; then
@@ -1516,16 +1947,15 @@ if [ -f .devserver_pid ]; then
   fi
 fi
 
-# Kill any remaining node processes
-pkill -f "npm run dev" 2>/dev/null || true
-pkill -f "next dev" 2>/dev/null || true
+# Kill any remaining processes
+{kill_processes}
 
-# Clear Next.js cache to ensure fresh build from new branch
-rm -rf .next 2>/dev/null || true
+# Clear cache
+{cache_clear}
 
 # Start dev server
 : > {workspace_path}/dev.log
-nohup npm run dev -- --hostname :: --port {port} > {workspace_path}/dev.log 2>&1 &
+nohup sh -c '{full_dev_cmd}' > {workspace_path}/dev.log 2>&1 &
 pid=$!
 echo "$pid" > .devserver_pid
 echo "PID:$pid"
@@ -1534,7 +1964,7 @@ echo "Dev server started"
 """
 
         send_workspace_progress(project_id, 'starting_server', 'Starting development server...')
-        result = _run_magpie_ssh(client, workspace.job_id, start_command, timeout=30, project_id=project.id)
+        result = _run_ssh_with_recovery_check(client, workspace, start_command, timeout=30, project_id=project.id, check_unresponsive=not is_retry)
 
         # Use proxy URL if available, otherwise fall back to IPv6
         # Force refresh the proxy URL to ensure it points to current IPv6/port
@@ -1556,6 +1986,48 @@ echo "Dev server started"
             'message': f'Server started on {preview_url} (branch: {target_branch})',
             'log': result.get('stdout', '')[:500]
         })
+
+    except WorkspaceUnresponsiveError as e:
+        # Workspace is crashed/unresponsive - try to reprovision
+        logger.warning(f"[PREVIEW] Workspace unresponsive for project {project_id}, attempting recovery...")
+        send_workspace_progress(project_id, 'checking_workspace', 'Workspace crashed, reprovisioning...')
+
+        # Create progress sender function for the reprovision helper
+        def progress_sender(step, message, **kwargs):
+            send_workspace_progress(project_id, step, message, **kwargs)
+
+        # Reprovision the workspace
+        new_workspace, error_msg = _reprovision_crashed_workspace(project, workspace, request.user, progress_sender)
+
+        if not new_workspace:
+            send_workspace_progress(project_id, 'error', error=f'Failed to reprovision workspace: {error_msg}')
+            return JsonResponse({
+                'success': False,
+                'error': f'Workspace crashed and reprovisioning failed: {error_msg}'
+            }, status=500)
+
+        # Retry the dev server startup with the new workspace
+        logger.info(f"[PREVIEW] Reprovisioned workspace {new_workspace.workspace_id}, retrying dev server startup...")
+
+        # Call ourselves recursively with is_retry=True to prevent infinite loops
+        # We need to create a new request-like object with the retry flag
+        from django.http import QueryDict
+        retry_data = data.copy() if data else {}
+        retry_data['is_retry'] = True
+        retry_data['port'] = port
+
+        # Create a mock request body
+        class MockRequest:
+            def __init__(self, original_request, body_data):
+                self.user = original_request.user
+                self.body = json.dumps(body_data).encode('utf-8')
+                self.method = original_request.method
+                self.META = original_request.META
+
+        mock_request = MockRequest(request, retry_data)
+
+        # Recursively call the function with retry flag
+        return start_dev_server_api(mock_request, project_id)
 
     except Exception as e:
         logger.exception("Error starting dev server")
@@ -1593,9 +2065,31 @@ def stop_dev_server_api(request, project_id):
                 'error': 'Magpie client not configured.'
             })
 
+        # Get stack configuration
+        from factory.stack_configs import get_stack_config
+        stack_config = get_stack_config(project.stack, project)
+        project_dir = stack_config['project_dir']
+        workspace_path = f"/workspace/{project_dir}"
+
+        # Build stack-specific kill pattern (avoid too generic patterns like just "go")
+        if project.stack == 'nextjs':
+            kill_pattern = "next dev"
+        elif project.stack == 'python-django':
+            kill_pattern = "runserver"
+        elif project.stack == 'python-fastapi':
+            kill_pattern = "uvicorn"
+        elif project.stack == 'go':
+            kill_pattern = "go run"
+        elif project.stack == 'rust':
+            kill_pattern = "cargo run"
+        elif project.stack == 'ruby-rails':
+            kill_pattern = "rails server"
+        else:
+            kill_pattern = ""
+
         # Kill the dev server process using PID file
-        stop_command = """
-cd /workspace/nextjs-app
+        stop_command = f"""
+cd {workspace_path}
 if [ -f .devserver_pid ]; then
   pid=$(cat .devserver_pid)
   if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
@@ -1604,17 +2098,28 @@ if [ -f .devserver_pid ]; then
   fi
   rm -f .devserver_pid
 fi
-pkill -f "next dev" 2>/dev/null || true
+{f'pkill -f "{kill_pattern}" 2>/dev/null || true' if kill_pattern else ''}
 echo "Server stopped"
 """
 
-        result = _run_magpie_ssh(client, workspace.job_id, stop_command, timeout=10, project_id=project.id)
+        try:
+            result = _run_magpie_ssh(client, workspace.job_id, stop_command, timeout=10, project_id=project.id)
+            return JsonResponse({
+                'success': True,
+                'message': 'Server stopped',
+                'output': result.get('stdout', '')
+            })
+        except Exception as ssh_error:
+            # SSH command failed - workspace might be down or expired
+            logger.warning(f"SSH command failed when stopping server: {ssh_error}")
+            # Still return success since the goal is to stop the server
+            # If workspace is down, server is effectively stopped
+            return JsonResponse({
+                'success': True,
+                'message': 'Server stopped (workspace may have expired)',
+                'output': ''
+            })
 
-        return JsonResponse({
-            'success': True,
-            'message': 'Server stopped',
-            'output': result.get('stdout', '')
-        })
     except Exception as e:
         logger.exception("Error stopping dev server")
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
@@ -3386,13 +3891,17 @@ def ticket_git_status_api(request, project_id, ticket_id):
     # Try to get live git status from workspace if available
     if workspace:
         try:
+            from factory.stack_configs import get_stack_config
             client = get_magpie_client()
+            stack_config = get_stack_config(project.stack, project)
+            project_dir = stack_config['project_dir']
+            workspace_path = f"/workspace/{project_dir}"
 
             # Get current branch in workspace
             branch_result = _run_magpie_ssh(
                 client,
                 workspace.workspace_id,
-                "cd /workspace/nextjs-app && git branch --show-current 2>/dev/null || echo ''",
+                f"cd {workspace_path} && git branch --show-current 2>/dev/null || echo ''",
                 timeout=30,
                 with_node_env=False
             )
@@ -3402,7 +3911,7 @@ def ticket_git_status_api(request, project_id, ticket_id):
             status_result = _run_magpie_ssh(
                 client,
                 workspace.workspace_id,
-                "cd /workspace/nextjs-app && git status --porcelain 2>/dev/null | head -20",
+                f"cd {workspace_path} && git status --porcelain 2>/dev/null | head -20",
                 timeout=30,
                 with_node_env=False
             )
@@ -3415,7 +3924,7 @@ def ticket_git_status_api(request, project_id, ticket_id):
             log_result = _run_magpie_ssh(
                 client,
                 workspace.workspace_id,
-                "cd /workspace/nextjs-app && git log --oneline -5 2>/dev/null || echo ''",
+                f"cd {workspace_path} && git log --oneline -5 2>/dev/null || echo ''",
                 timeout=30,
                 with_node_env=False
             )

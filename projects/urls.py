@@ -16,6 +16,7 @@ urlpatterns = [
     path('<str:project_id>/update-description/', views.update_project_description, name='update_project_description'),
     path('<str:project_id>/update-description/', views.update_project_description, name='update_project_description'),
     path('api/update-name/', views.update_project_name, name='update_project_name'),
+    path('api/<str:project_id>/stack/', views.update_project_stack, name='update_project_stack'),
     path('<str:project_id>/delete/', views.delete_project, name='delete_project'),
     path('<str:project_id>/terminal/', views.project_terminal, name='project_terminal'),
     path('<str:project_id>/preview/', views.app_preview, name='app_preview'),

@@ -21,7 +21,30 @@ class Project(models.Model):
         ('completed', 'Completed')
     ), default='active')
     icon = models.CharField(max_length=50, default='📋')  # Default icon is a clipboard
-    
+
+    # Stack/Technology configuration
+    STACK_CHOICES = [
+        ('nextjs', 'Next.js'),
+        ('python-django', 'Python (Django)'),
+        ('python-fastapi', 'Python (FastAPI)'),
+        ('go', 'Go'),
+        ('rust', 'Rust'),
+        ('ruby-rails', 'Ruby on Rails'),
+        ('custom', 'Custom/Existing Repo'),
+    ]
+    stack = models.CharField(
+        max_length=50,
+        choices=STACK_CHOICES,
+        default='nextjs',
+        help_text="Technology stack for this project"
+    )
+
+    # Custom stack overrides (if blank, uses defaults from stack_config)
+    custom_project_dir = models.CharField(max_length=255, blank=True, null=True, help_text="Override project directory")
+    custom_install_cmd = models.CharField(max_length=512, blank=True, null=True, help_text="Override install command")
+    custom_dev_cmd = models.CharField(max_length=512, blank=True, null=True, help_text="Override dev server command")
+    custom_default_port = models.IntegerField(blank=True, null=True, help_text="Override default port")
+
     # Linear integration fields
     linear_team_id = models.CharField(max_length=255, blank=True, null=True, help_text="Linear team ID for syncing")
     linear_project_id = models.CharField(max_length=255, blank=True, null=True, help_text="Linear project ID for syncing")

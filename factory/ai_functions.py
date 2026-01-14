@@ -28,6 +28,7 @@ from factory.notion_connector import NotionConnector
 from projects.linear_sync import LinearSyncService
 from django.utils import timezone
 from tasks.task_manager import TaskManager
+from factory.stack_configs import get_stack_config
 
 try:
     from magpie import Magpie
@@ -347,6 +348,97 @@ def get_or_fetch_proxy_url(workspace: MagpieWorkspace, port: int = 3000, client=
 async def async_get_or_fetch_proxy_url(workspace: MagpieWorkspace, port: int = 3000, client=None, force_refresh: bool = False) -> str | None:
     """Async version of get_or_create_proxy_url."""
     return await sync_to_async(get_or_fetch_proxy_url, thread_sensitive=True)(workspace, port, client, force_refresh)
+
+
+def remap_proxy_to_new_ipv6(old_proxy_url: str, new_ipv6: str, port: int = 3000) -> str | None:
+    """
+    Remap an existing proxy URL to point to a new IPv6 address.
+    This is used when a workspace is reprovisioned and we want to keep the same proxy URL.
+
+    Args:
+        old_proxy_url: The existing proxy URL (e.g., https://project-preview-abc123.app.lfg.run)
+        new_ipv6: The new IPv6 address to point to
+        port: The port number for the proxy
+
+    Returns:
+        The proxy URL string (same as old), or None if remapping failed
+    """
+    if not old_proxy_url or not new_ipv6:
+        logger.warning(f"[PROXY REMAP] Missing required parameters: old_proxy_url={old_proxy_url}, new_ipv6={new_ipv6}")
+        return None
+
+    try:
+        # Extract subdomain from old proxy URL
+        # Format: https://project-preview-abc123.app.lfg.run
+        import re
+        match = re.match(r'https://([^.]+)\.app\.lfg\.run', old_proxy_url)
+        if not match:
+            logger.warning(f"[PROXY REMAP] Could not parse subdomain from URL: {old_proxy_url}")
+            return None
+
+        subdomain = match.group(1)
+        new_ipv6 = new_ipv6.strip('[]')
+
+        logger.info(f"[PROXY REMAP] Remapping subdomain {subdomain} from old IP to {new_ipv6}:{port}")
+
+        # List existing proxy targets to find the one with matching subdomain
+        list_response = _call_magpie_proxy_api("GET", "/api/v1/proxy-targets")
+
+        if list_response is None:
+            logger.error(f"[PROXY REMAP] Failed to list proxy targets")
+            return None
+
+        existing_targets = list_response.get("proxy_targets", [])
+        matching_target = None
+
+        for target in existing_targets:
+            target_subdomain = target.get('subdomain', '')
+            if target_subdomain == subdomain:
+                matching_target = target
+                break
+
+        if matching_target:
+            # Found existing proxy target - update its IPv6 and port
+            target_id = matching_target.get('id') or matching_target.get('target_id')
+            logger.info(f"[PROXY REMAP] Found existing target {target_id}, updating to IPv6={new_ipv6}, port={port}")
+
+            update_data = {
+                "ipv6_address": new_ipv6,
+                "port": port
+            }
+            update_response = _call_magpie_proxy_api("PUT", f"/api/v1/proxy-targets/{target_id}", update_data)
+
+            if update_response:
+                logger.info(f"[PROXY REMAP] Successfully remapped {subdomain} to {new_ipv6}:{port}")
+                return old_proxy_url
+            else:
+                logger.error(f"[PROXY REMAP] Failed to update proxy target {target_id}")
+                return None
+        else:
+            # No existing target found - create new one with the same subdomain
+            logger.info(f"[PROXY REMAP] No existing target for {subdomain}, creating new one")
+
+            create_data = {
+                "ipv6_address": new_ipv6,
+                "port": port,
+                "subdomain": subdomain,
+                "name": f"LFG Preview - {subdomain}",
+            }
+            create_response = _call_magpie_proxy_api("POST", "/api/v1/proxy-targets", create_data)
+
+            if create_response:
+                proxy_url = create_response.get('proxy_url')
+                if not proxy_url:
+                    proxy_url = f"https://{subdomain}.app.lfg.run"
+                logger.info(f"[PROXY REMAP] Created new proxy target: {proxy_url}")
+                return proxy_url
+            else:
+                logger.error(f"[PROXY REMAP] Failed to create proxy target")
+                return None
+
+    except Exception as e:
+        logger.error(f"[PROXY REMAP] Error remapping proxy: {e}", exc_info=True)
+        return None
 
 
 def _sanitize_string(value: str) -> str:
@@ -2947,7 +3039,7 @@ async def ssh_command_tool(function_args, project_id, conversation_id, ticket_id
 
 
 async def new_dev_sandbox_tool(function_args, project_id, conversation_id):
-    """Clone the Next.js template, install dependencies, and start the dev server on the Magpie workspace."""
+    """Set up the dev sandbox for the Magpie workspace based on the project's stack."""
 
     logger.info(f"[DEV_SANDBOX] Setting up dev sandbox for workspace: {function_args.get('workspace_id')}")
 
@@ -2974,6 +3066,15 @@ async def new_dev_sandbox_tool(function_args, project_id, conversation_id):
             "message_to_agent": f"No Magpie workspace found for ID {workspace_id}. Provision one first."
         }
 
+    # Get stack configuration from project
+    stack = 'nextjs'  # Default
+    if workspace.project:
+        stack = getattr(workspace.project, 'stack', 'nextjs')
+    stack_config = get_stack_config(stack)
+    project_dir = stack_config['project_dir']
+
+    logger.info(f"[DEV_SANDBOX] Stack: {stack}, Project dir: {project_dir}")
+
     try:
         client = get_magpie_client()
     except RuntimeError as exc:
@@ -2983,25 +3084,25 @@ async def new_dev_sandbox_tool(function_args, project_id, conversation_id):
             "message_to_agent": f"Magpie client error: {exc}"
         }
 
+    # Build stack-aware setup command
+    pre_dev_cmd = stack_config.get('pre_dev_cmd', '')
+
     restart_cmd = textwrap.dedent(
         f"""
         cd /workspace
         # Kill any existing dev server
-        if [ -f nextjs-app/.devserver_pid ]; then
-          old_pid=$(cat nextjs-app/.devserver_pid)
+        if [ -f {project_dir}/.devserver_pid ]; then
+          old_pid=$(cat {project_dir}/.devserver_pid)
           if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
             kill "$old_pid" || true
           fi
         fi
-        npm config set cache /workspace/.npm-cache
-        # Clone the nextjs-template repo if it doesn't exist
-        # if [ ! -d "nextjs-app" ]; then
-        #   echo "Cloning nextjs-template repository..."
-        #   git clone https://github.com/lfg-hq/nextjs-template nextjs-app
-        #   cd nextjs-app
-        #   echo "Installing dependencies..."
-        #   npm install
-        # fi
+        # Stack-specific setup
+        {pre_dev_cmd if pre_dev_cmd else '# No pre-dev command for this stack'}
+        # Configure npm cache if Node.js based
+        if command -v npm &> /dev/null; then
+          npm config set cache /workspace/.npm-cache 2>/dev/null || true
+        fi
         """
     )
 
@@ -3060,16 +3161,19 @@ async def new_dev_sandbox_tool(function_args, project_id, conversation_id):
     await sync_to_async(_update_workspace_metadata, thread_sensitive=True)(workspace, **metadata_updates)
 
     # Use proxy URL if available, otherwise fall back to IPv6
-    preview_url = await async_get_or_fetch_proxy_url(workspace, port=3000)
+    default_port = stack_config.get('default_port', 3000)
+    preview_url = await async_get_or_fetch_proxy_url(workspace, port=default_port)
     if not preview_url:
-        preview_url = f"http://[{workspace.ipv6_address}]:3000" if workspace.ipv6_address else "(URL pending)"
+        preview_url = f"http://[{workspace.ipv6_address}]:{default_port}" if workspace.ipv6_address else "(URL pending)"
     status_text = "completed successfully" if result.get('exit_code') == 0 else f"exited with code {result.get('exit_code')}"
+    workspace_dir = f"/workspace/{project_dir}"
     message_lines = [
         f"Dev sandbox setup {status_text} 🚀",
         f"Workspace ID: {workspace.workspace_id}",
+        f"Stack: {stack_config['name']}",
         f"PID: {pid or 'unknown'}",
         f"Preview: {preview_url}",
-        f"Logs: {MAGPIE_WORKSPACE_DIR}/dev.log"
+        f"Logs: {workspace_dir}/dev.log"
     ]
     if log_tail:
         message_lines.append("\nLog tail:\n" + log_tail)
@@ -3080,8 +3184,8 @@ async def new_dev_sandbox_tool(function_args, project_id, conversation_id):
 
     log_entries = [
         {
-            "title": "Setup new dev sandbox",
-            "command": "git clone nextjs-template && npm install && npm run dev",
+            "title": f"Setup {stack_config['name']} dev sandbox",
+            "command": f"{stack_config.get('install_cmd', '')} && {stack_config.get('dev_cmd', '')}",
             "stdout": _truncate_output(stdout, 800),
             "stderr": _truncate_output(stderr, 800),
             "exit_code": result.get('exit_code')
@@ -3093,13 +3197,15 @@ async def new_dev_sandbox_tool(function_args, project_id, conversation_id):
         "workspace_id": workspace.workspace_id,
         "exit_code": result.get('exit_code'),
         "preview_url": preview_url,
-        "log_path": f"{MAGPIE_WORKSPACE_DIR}/dev.log",
+        "log_path": f"{workspace_dir}/dev.log",
         "preview_snippet": preview_snippet,
         "log_tail": log_tail,
         "dev_server_pid": pid,
         "stderr": _truncate_output(stderr.strip(), 2000),
         "status": "completed" if result.get('exit_code') == 0 else "failed",
         "log_entries": log_entries,
+        "stack": stack,
+        "project_dir": project_dir,
         "message_to_agent": "\n".join(message_lines)
     }
 

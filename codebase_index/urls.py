@@ -9,6 +9,7 @@ urlpatterns = [
     path('repositories/<int:repository_id>/', views.repository_detail, name='repository_detail'),
     
     # API endpoints
+    path('api/detect-stack/', views.detect_stack, name='detect_stack'),
     path('api/repositories/add/', views.add_repository, name='add_repository'),
     path('api/repositories/<int:repository_id>/reindex/', views.reindex_repository, name='reindex_repository'),
     path('api/repositories/<int:repository_id>/delete/', views.delete_repository, name='delete_repository'),
