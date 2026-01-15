@@ -2192,11 +2192,17 @@ async def create_tickets(function_args, project_id, conversation_id=None):
 
     try:
         # Create tickets with enhanced details
+        # First pass: create all tickets and store their original dependencies
         created_tickets = []
+        original_dependencies = []  # Store original dependency indices for each ticket
+
         for ticket in checklist_tickets:
             if isinstance(ticket, dict):
                 # Extract details from the ticket
                 details = ticket.get('details', {})
+
+                # Store original dependencies (these are order-based indices like "1", "3")
+                original_dependencies.append(ticket.get('dependencies', []))
 
                 new_ticket = await sync_to_async(ProjectTicket.objects.create)(
                     project=project,
@@ -2212,11 +2218,37 @@ async def create_tickets(function_args, project_id, conversation_id=None):
                     ui_requirements=ticket.get('ui_requirements', {}),
                     component_specs=ticket.get('component_specs', {}),
                     acceptance_criteria=ticket.get('acceptance_criteria', []),
-                    dependencies=ticket.get('dependencies', []),
+                    dependencies=[],  # Will be updated in second pass
                     # complexity=details.get('complexity', 'medium'),
                     # requires_worktree=details.get('requires_worktree', True)
                 )
                 created_tickets.append(new_ticket.id)
+
+        # Second pass: update dependencies with actual ticket IDs
+        # The AI passes dependencies as 1-based indices (e.g., "1" means first ticket, "3" means third ticket)
+        for i, ticket_id in enumerate(created_tickets):
+            deps = original_dependencies[i]
+            if deps:
+                # Convert order-based indices to actual ticket IDs
+                resolved_deps = []
+                for dep in deps:
+                    try:
+                        # Try to parse as 1-based index
+                        dep_index = int(dep) - 1  # Convert to 0-based index
+                        if 0 <= dep_index < len(created_tickets):
+                            resolved_deps.append(str(created_tickets[dep_index]))
+                        else:
+                            # Keep original value if index out of range (might be an existing ticket ID)
+                            resolved_deps.append(str(dep))
+                    except (ValueError, TypeError):
+                        # If not a number, keep the original value (might be a ticket name or existing ID)
+                        resolved_deps.append(str(dep))
+
+                if resolved_deps:
+                    # Update the ticket with resolved dependencies
+                    await sync_to_async(
+                        ProjectTicket.objects.filter(id=ticket_id).update
+                    )(dependencies=resolved_deps)
 
         prd_msg = f" (linked to PRD: {source_document.name})" if source_document else ""
         return {

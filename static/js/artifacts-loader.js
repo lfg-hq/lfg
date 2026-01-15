@@ -659,7 +659,26 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (modalElements.dependenciesSection) {
                     if (ticket.dependencies && ticket.dependencies.length > 0) {
                         modalElements.dependenciesSection.style.display = '';
-                        modalElements.dependencies.innerHTML = `<ul>${ticket.dependencies.map(dep => `<li>${escapeHtml(dep)}</li>`).join('')}</ul>`;
+                        modalElements.dependencies.innerHTML = `<ul>${ticket.dependencies.map(dep => {
+                            // Check if dependency is a numeric ticket ID
+                            const depId = parseInt(dep, 10);
+                            if (!isNaN(depId)) {
+                                return `<li><a href="#" class="dependency-link" data-ticket-id="${depId}" style="color: #a78bfa; text-decoration: none;">Ticket #${depId}</a></li>`;
+                            }
+                            return `<li>${escapeHtml(dep)}</li>`;
+                        }).join('')}</ul>`;
+
+                        // Add click handlers for dependency links
+                        modalElements.dependencies.querySelectorAll('.dependency-link').forEach(link => {
+                            link.addEventListener('click', (e) => {
+                                e.preventDefault();
+                                const depTicketId = link.dataset.ticketId;
+                                // Try to find and open the dependent ticket
+                                if (window.showTicketDetail && depTicketId) {
+                                    window.showTicketDetail(depTicketId);
+                                }
+                            });
+                        });
                     } else {
                         modalElements.dependenciesSection.style.display = 'none';
                         modalElements.dependencies.innerHTML = '';
@@ -2702,7 +2721,13 @@ document.addEventListener('DOMContentLoaded', function() {
                                 dependenciesHtml = `
                                     <div class="card-dependencies">
                                         <span class="dependencies-label"><i class="fas fa-link"></i> Dependencies:</span>
-                                        ${item.dependencies.map(dep => `<span class="dependency-tag">${modalHelpers.escapeHtml(dep)}</span>`).join('')}
+                                        ${item.dependencies.map(dep => {
+                                            const depId = parseInt(dep, 10);
+                                            if (!isNaN(depId)) {
+                                                return `<span class="dependency-tag">Ticket #${depId}</span>`;
+                                            }
+                                            return `<span class="dependency-tag">${modalHelpers.escapeHtml(dep)}</span>`;
+                                        }).join('')}
                                     </div>
                                 `;
                             }

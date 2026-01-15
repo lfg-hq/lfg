@@ -324,7 +324,7 @@ create_tickets = {
                             "name": {"type": "string"},
                             "description": {"type": "string", "description": "The user-story of the ticket to be implemented"},
                             "role": {"type": "string", "enum": ["agent", "user"]},
-                            "dependencies": {"type": "array", "items": {"type": "string"}, "description": "Is this ticket dependent on any other ticket? If yes, pass the ticket id"},
+                            "dependencies": {"type": "array", "items": {"type": "string"}, "description": "List of ticket dependencies using 1-based position numbers (e.g., ['1', '2'] means this ticket depends on the 1st and 2nd tickets in this batch). Use empty array [] if no dependencies."},
                             "priority": {"type": "string", "enum": ["High", "Medium", "Low"]}
                         },
                         "required": ["name", "description", "role", "dependencies", "priority"]
