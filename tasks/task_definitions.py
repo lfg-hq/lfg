@@ -1584,6 +1584,17 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
 
         logger.info(f"[STEP 3/6] ✓ Workspace setup complete: {workspace_id}")
 
+        # Check for cancellation before proceeding
+        from tasks.dispatch import is_ticket_cancelled, clear_ticket_cancellation_flag
+        if is_ticket_cancelled(ticket_id):
+            logger.info(f"[STEP 3/6] ⊘ Ticket #{ticket_id} was cancelled, stopping execution")
+            return {
+                "status": "cancelled",
+                "ticket_id": ticket_id,
+                "message": "Ticket execution was cancelled by user",
+                "execution_time": f"{time.time() - start_time:.2f}s"
+            }
+
         # 4. UPDATE STATUS TO IN-PROGRESS
         logger.info(f"\n[STEP 4/6] Updating ticket status to in_progress...")
         ticket.status = 'in_progress'
@@ -1727,6 +1738,19 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
 
         logger.info(f"\n[STEP 6/6] Calling AI for ticket implementation...")
         logger.info(f"[STEP 6/6] Max execution time: {max_execution_time}s | Elapsed: {time.time() - start_time:.1f}s")
+
+        # Check for cancellation before expensive AI call
+        if is_ticket_cancelled(ticket_id):
+            logger.info(f"[STEP 6/6] ⊘ Ticket #{ticket_id} was cancelled before AI call, stopping execution")
+            ticket.status = 'open'  # Reset to open so it can be re-queued
+            ticket.save(update_fields=['status'])
+            return {
+                "status": "cancelled",
+                "ticket_id": ticket_id,
+                "message": "Ticket execution was cancelled by user before AI processing",
+                "execution_time": f"{time.time() - start_time:.2f}s"
+            }
+
         # 10. CALL AI WITH TIMEOUT PROTECTION
 
         # Wrap AI call with timeout check
@@ -1754,6 +1778,19 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
         # Log the AI response for debugging
         logger.info(f"[STEP 6/6] AI response length: {len(content)} chars")
         logger.info(f"[STEP 6/6] Total elapsed time: {execution_time:.1f}s")
+
+        # Check for cancellation after AI call (user may have cancelled during execution)
+        if is_ticket_cancelled(ticket_id):
+            logger.info(f"[POST-AI] ⊘ Ticket #{ticket_id} was cancelled during AI execution, stopping")
+            clear_ticket_cancellation_flag(ticket_id)
+            ticket.status = 'open'  # Reset to open so it can be re-queued
+            ticket.save(update_fields=['status'])
+            return {
+                "status": "cancelled",
+                "ticket_id": ticket_id,
+                "message": "Ticket execution was cancelled by user during AI processing",
+                "execution_time": f"{execution_time:.2f}s"
+            }
 
         # Check if AI response indicates an error (500, overloaded, etc.)
         has_api_error = ai_response.get('error') if ai_response else False
@@ -1898,6 +1935,9 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
             logger.info(f"[FINALIZE] ✓ Task completed successfully in {execution_time:.1f}s")
             logger.info(f"{'='*80}\n[TASK END] SUCCESS - Ticket #{ticket_id}\n{'='*80}\n")
 
+            # Clear any cancellation flag (may have been set but we finished anyway)
+            clear_ticket_cancellation_flag(ticket_id)
+
             result = {
                 "status": "success",
                 "ticket_id": ticket_id,
@@ -1957,6 +1997,9 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
 
             logger.info(f"{'='*80}\n[TASK END] FAILED - Ticket #{ticket_id}\n{'='*80}\n")
 
+            # Clear any cancellation flag
+            clear_ticket_cancellation_flag(ticket_id)
+
             return {
                 "status": "failed",
                 "ticket_id": ticket_id,
@@ -2001,6 +2044,14 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
 
         # Return error without re-raising (prevents Django-Q retry loops)
         logger.error(f"{'='*80}\n[TASK END] ERROR - Ticket #{ticket_id}\n{'='*80}\n")
+
+        # Clear any cancellation flag
+        try:
+            from tasks.dispatch import clear_ticket_cancellation_flag
+            clear_ticket_cancellation_flag(ticket_id)
+        except Exception:
+            pass  # Don't fail on cleanup
+
         return {
             "status": "error",
             "ticket_id": ticket_id,

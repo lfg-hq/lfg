@@ -144,8 +144,11 @@ class AsyncTicketExecutor:
         """
         Execute all tickets for a project sequentially.
 
-        Tickets are processed one-by-one in order. If a ticket fails with
-        'error' status, execution stops (remaining tickets are skipped).
+        Tickets are processed one-by-one in order. Before each ticket:
+        - Check if ticket was cancelled (queue_status changed to 'none')
+        - Check if ticket is blocked or depends on blocked tickets
+
+        If a ticket fails with 'error' status, execution stops.
 
         Args:
             project_id: The project database ID
@@ -162,8 +165,28 @@ class AsyncTicketExecutor:
 
         results = []
         completed = 0
+        cancelled = 0
+        blocked = 0
 
         for i, ticket_id in enumerate(ticket_ids):
+            # Check if ticket should still be executed
+            should_execute, skip_reason = await self._should_execute_ticket(ticket_id)
+
+            if not should_execute:
+                logger.info(
+                    f"[EXECUTOR] Project {project_id}: skipping ticket #{ticket_id} - {skip_reason}"
+                )
+                results.append({
+                    'ticket_id': ticket_id,
+                    'status': 'skipped',
+                    'reason': skip_reason
+                })
+                if skip_reason == 'cancelled':
+                    cancelled += 1
+                elif skip_reason == 'blocked':
+                    blocked += 1
+                continue
+
             logger.info(
                 f"[EXECUTOR] Project {project_id}: "
                 f"ticket {i+1}/{len(ticket_ids)} (#{ticket_id})"
@@ -186,17 +209,63 @@ class AsyncTicketExecutor:
             'project_id': project_id,
             'total': len(ticket_ids),
             'completed': completed,
-            'failed': len(results) - completed,
+            'failed': len([r for r in results if r.get('status') == 'error']),
+            'cancelled': cancelled,
+            'blocked': blocked,
             'skipped': len(ticket_ids) - len(results),
             'results': results
         }
 
         logger.info(
             f"[EXECUTOR] Batch complete for project {project_id}: "
-            f"{completed}/{len(ticket_ids)} succeeded"
+            f"{completed}/{len(ticket_ids)} succeeded, {cancelled} cancelled, {blocked} blocked"
         )
 
         return batch_result
+
+    async def _should_execute_ticket(self, ticket_id: int) -> tuple:
+        """
+        Check if a ticket should be executed.
+
+        Returns:
+            (should_execute: bool, reason: str or None)
+        """
+        from asgiref.sync import sync_to_async
+
+        @sync_to_async
+        def _check():
+            from projects.models import ProjectTicket
+
+            try:
+                ticket = ProjectTicket.objects.get(id=ticket_id)
+
+                # Check if cancelled (queue_status was reset to 'none')
+                if ticket.queue_status == 'none':
+                    return (False, 'cancelled')
+
+                # Check if ticket is blocked
+                if ticket.status == 'blocked':
+                    return (False, 'blocked')
+
+                # Check if any dependencies are blocked or failed
+                dependencies = ticket.dependencies.all()
+                for dep in dependencies:
+                    if dep.status in ['blocked', 'failed']:
+                        # Mark this ticket as blocked too
+                        ticket.status = 'blocked'
+                        ticket.queue_status = 'none'
+                        ticket.save(update_fields=['status', 'queue_status'])
+                        return (False, 'blocked')
+                    # Also skip if dependency isn't done yet
+                    if dep.status not in ['done', 'review']:
+                        return (False, 'dependency_pending')
+
+                return (True, None)
+
+            except ProjectTicket.DoesNotExist:
+                return (False, 'not_found')
+
+        return await _check()
 
     async def execute_multi_project(
         self,

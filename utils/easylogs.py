@@ -18,7 +18,7 @@ class EasyLogsHandler:
     Centralized logging handler for EasyLogs integration.
     Handles batching and asynchronous sending of logs to EasyLogs API.
     """
-    
+
     def __init__(self):
         self.api_key = os.environ.get('EASYLOGS_API_KEY')
         self.api_url = "https://ingest.easylogs.co/logs"
@@ -26,10 +26,25 @@ class EasyLogsHandler:
         self.batch_size = 10
         self.flush_interval = 5  # seconds
         self.is_running = True
-        
+        self._pid = os.getpid()  # Track process ID for fork detection
+        self._lock = threading.Lock()
+
         # Start the background worker thread
         self.worker_thread = threading.Thread(target=self._worker, daemon=True)
         self.worker_thread.start()
+
+    def _ensure_worker_running(self):
+        """Ensure the worker thread is running in the current process."""
+        current_pid = os.getpid()
+        if current_pid != self._pid:
+            # Process was forked, reinitialize
+            with self._lock:
+                if current_pid != self._pid:  # Double-check after acquiring lock
+                    self._pid = current_pid
+                    self.batch_queue = Queue()
+                    self.is_running = True
+                    self.worker_thread = threading.Thread(target=self._worker, daemon=True)
+                    self.worker_thread.start()
     
     def _worker(self):
         """Background worker that processes log batches."""
@@ -86,7 +101,7 @@ class EasyLogsHandler:
     def log(self, level: str, message: str, metadata: Optional[Dict[str, Any]] = None):
         """
         Send a log entry to EasyLogs.
-        
+
         Args:
             level: Log level (info, warning, error, debug)
             message: Log message
@@ -96,18 +111,22 @@ class EasyLogsHandler:
             # Fallback to console if API key not configured
             print(f"[{level.upper()}] {message}")
             return
-        
+
+        # Ensure worker thread is running (handles forked processes)
+        self._ensure_worker_running()
+
         log_entry = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "level": level,
             "message": message,
+            "service": "lfg",
+            "env": os.environ.get("ENVIRONMENT", "development"),
+            "app_type": os.environ.get("APP_TYPE", "web"),
             "metadata": {
-                "service": "lfg",
-                "env": os.environ.get("ENVIRONMENT", "development"),
                 **(metadata or {})
             }
         }
-        
+
         # Add to queue for async processing
         try:
             self.batch_queue.put_nowait(log_entry)

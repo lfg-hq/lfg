@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 # Redis keys
 QUEUE_KEY = "lfg:ticket_execution_queue"
 LOCK_PREFIX = "lfg:project_executing:"
+CANCEL_FLAG_PREFIX = "lfg:ticket_cancelled:"
 
 # Cache the Redis client
 _redis_client = None
@@ -416,9 +417,10 @@ def force_reset_ticket_queue_status(project_id: int, ticket_id: int) -> Dict[str
     due to executor crash or other issues.
 
     This will:
-    1. Remove the ticket from Redis queue if present
-    2. Reset the ticket's queue_status to 'none' in database
-    3. Optionally release project lock if no other tickets are executing
+    1. Set a cancellation flag to signal running threads to stop
+    2. Remove the ticket from Redis queue if present
+    3. Reset the ticket's queue_status to 'none' in database
+    4. Optionally release project lock if no other tickets are executing
 
     Args:
         project_id: The project database ID
@@ -429,6 +431,7 @@ def force_reset_ticket_queue_status(project_id: int, ticket_id: int) -> Dict[str
     """
     result = {
         'ticket_id': ticket_id,
+        'cancellation_flag_set': False,
         'removed_from_redis': False,
         'db_status_reset': False,
         'lock_released': False,
@@ -437,6 +440,12 @@ def force_reset_ticket_queue_status(project_id: int, ticket_id: int) -> Dict[str
 
     try:
         client = get_redis_client()
+
+        # Step 0: Set cancellation flag to signal running executor thread
+        cancel_key = f"{CANCEL_FLAG_PREFIX}{ticket_id}"
+        client.setex(cancel_key, 3600, "1")  # 1 hour TTL
+        result['cancellation_flag_set'] = True
+        logger.info(f"[DISPATCH] Set cancellation flag for ticket #{ticket_id}")
 
         # Step 1: Try to remove from Redis queue if present
         items = client.lrange(QUEUE_KEY, 0, -1)
@@ -491,3 +500,72 @@ def force_reset_ticket_queue_status(project_id: int, ticket_id: int) -> Dict[str
         result['error'] = str(e)
 
     return result
+
+
+def set_ticket_cancellation_flag(ticket_id: int, ttl: int = 3600) -> bool:
+    """
+    Set a cancellation flag for a ticket.
+
+    This flag can be checked by running executor threads to stop execution early.
+    The flag expires after TTL seconds to prevent stale flags.
+
+    Args:
+        ticket_id: The ticket ID to cancel
+        ttl: Time-to-live in seconds (default 1 hour)
+
+    Returns:
+        True if flag was set successfully
+    """
+    try:
+        client = get_redis_client()
+        key = f"{CANCEL_FLAG_PREFIX}{ticket_id}"
+        client.setex(key, ttl, "1")
+        logger.info(f"[DISPATCH] Set cancellation flag for ticket #{ticket_id}")
+        return True
+    except Exception as e:
+        logger.error(f"[DISPATCH] Error setting cancellation flag: {e}")
+        return False
+
+
+def is_ticket_cancelled(ticket_id: int) -> bool:
+    """
+    Check if a ticket has been cancelled.
+
+    This should be called periodically by executor threads to check
+    if they should stop execution.
+
+    Args:
+        ticket_id: The ticket ID to check
+
+    Returns:
+        True if ticket has been cancelled
+    """
+    try:
+        client = get_redis_client()
+        key = f"{CANCEL_FLAG_PREFIX}{ticket_id}"
+        return bool(client.exists(key))
+    except Exception as e:
+        logger.error(f"[DISPATCH] Error checking cancellation flag: {e}")
+        return False
+
+
+def clear_ticket_cancellation_flag(ticket_id: int) -> bool:
+    """
+    Clear a ticket's cancellation flag.
+
+    Call this when a ticket execution completes normally.
+
+    Args:
+        ticket_id: The ticket ID
+
+    Returns:
+        True if flag was cleared
+    """
+    try:
+        client = get_redis_client()
+        key = f"{CANCEL_FLAG_PREFIX}{ticket_id}"
+        client.delete(key)
+        return True
+    except Exception as e:
+        logger.error(f"[DISPATCH] Error clearing cancellation flag: {e}")
+        return False

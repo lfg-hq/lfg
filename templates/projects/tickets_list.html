@@ -3918,7 +3918,6 @@
 
             currentTicket = ticket;
             currentProjectId = ticket.project_id;
-            currentTab = 'details';
             isDetailsEditMode = false; // Reset edit mode when opening a new ticket
             setAiProcessingState(false);
 
@@ -3954,14 +3953,19 @@
 
             title.textContent = `TKT-${ticket.id}: ${ticket.name}`;
 
+            // Determine which tab to open - Actions tab if ticket is being worked on
+            const queueStatus = ticket.queue_status || 'none';
+            const defaultTab = (queueStatus === 'executing' || queueStatus === 'queued') ? 'logs' : 'details';
+            currentTab = defaultTab;
+
             // Reset tabs
             document.querySelectorAll('.drawer-tab').forEach(btn => {
                 btn.classList.remove('active');
             });
-            document.querySelector('.drawer-tab[data-tab="details"]').classList.add('active');
+            document.querySelector(`.drawer-tab[data-tab="${defaultTab}"]`).classList.add('active');
 
-            // Load details tab
-            loadTabContent('details');
+            // Load the default tab
+            loadTabContent(defaultTab);
 
             // Pre-connect WebSocket for this ticket (so messages aren't missed)
             connectTicketLogsWebSocket(ticket.id);
