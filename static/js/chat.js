@@ -1828,26 +1828,35 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Switch to the appropriate tab
             if (window.switchTab && data.notification_type) {
-                console.log(`Switching to tab: ${data.notification_type}`);
-                
-                // Map non-existent tabs to existing ones
+                console.log(`Notification type: ${data.notification_type}`);
+
+                // Only switch tabs for specific notification types (docs and tickets creation)
+                const allowedTabSwitches = [
+                    'prd',
+                    'file_stream',
+                    'file_saved',
+                    'checklist',           // Mapped from create_tickets in backend
+                    'create_tickets',      // In case it's not mapped
+                    'create_checklist_tickets',
+                    'tickets'
+                ];
+
+                // Skip tab switching for notification types not in the allowed list
+                if (!allowedTabSwitches.includes(data.notification_type)) {
+                    console.log(`Skipping tab switch for notification type: ${data.notification_type}`);
+                } else {
+
+                // Map notification types to actual tab names
                 const tabMapping = {
-                    // 'features': 'checklist',
-                    // 'personas': 'checklist',
                     'prd': 'filebrowser',  // Map prd to filebrowser tab
-                    'implementation': 'filebrowser',  // Map implementation to filebrowser tab
-                    'design': 'implementation',
-                    'tickets': 'checklist',
-                    // 'execute_command': 'toolhistory',
-                    // 'command_output': 'toolhistory',
-                    'start_server': 'apps',
-                    // 'get_pending_tickets': 'checklist',
-                    'create_checklist_tickets': 'checklist',
-                    'implement_ticket': 'implementation',
                     'file_stream': 'filebrowser',  // Map file_stream to filebrowser tab
-                    'file_saved': 'filebrowser'    // Map file_saved to filebrowser tab
+                    'file_saved': 'filebrowser',   // Map file_saved to filebrowser tab
+                    'tickets': 'checklist',
+                    'checklist': 'checklist',      // Already the correct tab name
+                    'create_checklist_tickets': 'checklist',
+                    'create_tickets': 'checklist'  // Map create_tickets to checklist tab
                 };
-                
+
                 // Use mapped tab if original doesn't exist
                 const targetTab = tabMapping[data.notification_type] || data.notification_type;
                 
@@ -1892,7 +1901,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     console.log(`Already on ${targetTab} tab during streaming, skipping tab switch`);
                 }
-                
+                } // end of allowedTabSwitches else block
+
                 // Load the content for that tab if we have a project ID
                 console.log(`Current project ID for loading: ${currentProjectId}`);
                 

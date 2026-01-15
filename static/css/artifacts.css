@@ -2306,6 +2306,11 @@ body.ticket-modal-open {
     border: 2px solid var(--status-color, #6b7280) !important;
 }
 
+/* Hide status circle in selection mode */
+.checklist-wrapper[data-selection-mode="true"] .checklist-card::before {
+    display: none !important;
+}
+
 /* Status Colors */
 .checklist-card.open {
     --status-color: #6b7280;
@@ -3012,6 +3017,40 @@ body.ticket-modal-open {
 .checklist-card.blocked::before {
     background: #9ca3af !important;
     border-color: #9ca3af !important;
+}
+
+/* Custom checkbox styling for ticket selection */
+.ticket-checkbox-wrapper {
+    position: relative;
+    cursor: pointer;
+}
+
+.ticket-checkbox-wrapper:hover .checkbox-custom {
+    border-color: #a78bfa !important;
+    background: rgba(139, 92, 246, 0.15) !important;
+    transform: scale(1.1);
+}
+
+.ticket-checkbox-wrapper .ticket-select-checkbox:checked + .checkbox-custom {
+    background: #8b5cf6 !important;
+    border-color: #8b5cf6 !important;
+}
+
+.ticket-checkbox-wrapper .ticket-select-checkbox:checked + .checkbox-custom + .checkbox-check {
+    opacity: 1 !important;
+}
+
+/* Hide status icon when selection mode is active */
+.checklist-wrapper[data-selection-mode="true"] .status-icon {
+    display: none !important;
+}
+
+/* Select all checkbox styling */
+#select-all-tickets {
+    width: 14px;
+    height: 14px;
+    accent-color: #8b5cf6;
+    cursor: pointer;
 }
 
 /* Execute button styling */

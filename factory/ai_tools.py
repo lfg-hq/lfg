@@ -311,8 +311,8 @@ create_tickets = {
     "type": "function",
     "function": {
         "name": "create_tickets",
-        "description": "Call this function to generate the tickets for the project. This is based of the referred PRD or technical analysis or provided contenxt in markedown format \
-                        This will include user-story and UI Requirements, and Acceptance Criteria",
+        "description": "Call this function to generate the tickets for the project. This is based of the referred PRD or technical analysis or provided context in markdown format. \
+                        This will include user-story and UI Requirements, and Acceptance Criteria. If creating tickets from a PRD, always pass the source_document_id to link tickets to the PRD.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -329,6 +329,14 @@ create_tickets = {
                         },
                         "required": ["name", "description", "role", "dependencies", "priority"]
                     }
+                },
+                "source_document_id": {
+                    "type": "integer",
+                    "description": "The ID of the PRD or document these tickets are being created from. Use this to link tickets to their source document."
+                },
+                "conversation_id": {
+                    "type": "integer",
+                    "description": "The ID of the current conversation. Use this to link tickets to the conversation they were created in for filtering purposes."
                 }
             },
             "required": ["tickets"]
@@ -608,18 +616,17 @@ queue_ticket_execution = {
     "type": "function",
     "function": {
         "name": "queue_ticket_execution",
-        "description": "Queue all open agent tickets for background execution in creation order. This schedules a Django-Q worker to process tickets sequentially and stream progress updates.",
+        "description": "Queue all open agent tickets for background execution in creation order. This schedules a Django-Q worker to process tickets sequentially and stream progress updates. If no ticket_ids are provided, automatically queues all open agent tickets for the project.",
         "parameters": {
             "type": "object",
             "properties": {
                 "ticket_ids": {
                     "type": "array",
                     "items": {"type": "integer"},
-                    "description": "Explicit list of ticket IDs to execute. Defaults to all open agent tickets when omitted."
+                    "description": "Optional: Explicit list of ticket IDs to execute. If omitted, defaults to all open agent tickets."
                 }
-            },
-            "required": ["ticket_ids"],
-                    }
+            }
+        }
     }
 }
 

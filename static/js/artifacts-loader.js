@@ -2469,40 +2469,108 @@ document.addEventListener('DOMContentLoaded', function() {
                     const dropdownDividerBg = isLightTheme ? '#e2e8f0' : '#313244';
 
                     let checklistHTML = `
-                        <div class="checklist-wrapper">
-                            <div class="checklist-header" style="display: flex; align-items: center; justify-content: flex-end; padding: 12px 16px; background: transparent; border: none;">
-                                <div class="checklist-filters" style="margin-right: 12px;">
-                                    <div class="filter-options">
-                                        <div class="filter-group">
-                                            <select id="status-filter" class="checklist-filter-dropdown">
-                                                <option value="all">All Statuses</option>
-                                                ${statuses.map(status => `<option value="${status}">${status.replace('_', ' ').charAt(0).toUpperCase() + status.replace('_', ' ').slice(1)}</option>`).join('')}
-                                            </select>
-                                            <select id="role-filter" class="checklist-filter-dropdown">
-                                                <option value="all">All Assigned</option>
-                                                ${roles.map(role => `<option value="${role}">${role.charAt(0).toUpperCase() + role.slice(1)}</option>`).join('')}
-                                            </select>
-                                            <button id="clear-checklist-filters" class="clear-filters-btn" title="Clear filters">
-                                                <i class="fas fa-times"></i>
+                        <style>
+                            /* Default: hide checkbox */
+                            .checklist-wrapper .ticket-select-checkbox { display: none !important; }
+
+                            /* Select mode: show checkbox, hide the ::before status indicator */
+                            .checklist-wrapper[data-selection-mode="true"] .ticket-select-checkbox {
+                                display: inline-block !important;
+                                width: 14px;
+                                height: 14px;
+                                accent-color: #8b5cf6;
+                                cursor: pointer;
+                                flex-shrink: 0;
+                            }
+                            .checklist-wrapper[data-selection-mode="true"] .checklist-card::before { display: none !important; }
+
+                            /* Checkbox positioning in selection mode */
+                            .checklist-wrapper[data-selection-mode="true"] .checklist-card {
+                                padding-left: 12px !important;
+                            }
+                            .checklist-wrapper[data-selection-mode="true"] .ticket-select-checkbox {
+                                position: absolute !important;
+                                left: 12px !important;
+                                top: 50% !important;
+                                transform: translateY(-50%) !important;
+                            }
+                            .checklist-wrapper[data-selection-mode="true"] .card-header {
+                                margin-left: 24px !important;
+                            }
+                        </style>
+                        <div class="checklist-wrapper" data-selection-mode="false">
+                            <div class="checklist-header" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: transparent; border: none;">
+                                <!-- Select All (hidden by default, shown in selection mode) -->
+                                <div id="select-all-container" style="display: none; align-items: center; gap: 6px;">
+                                    <input type="checkbox" id="select-all-tickets" class="ticket-checkbox" style="width: 16px; height: 16px; cursor: pointer; accent-color: #8b5cf6;">
+                                    <label for="select-all-tickets" style="font-size: 12px; color: ${isLightTheme ? '#64748b' : '#888'}; cursor: pointer;">Select All</label>
+                                </div>
+                                <div id="header-spacer" style="flex: 1;"></div>
+                                <div style="display: flex; align-items: center;">
+                                    <div class="checklist-filters" style="margin-right: 12px;">
+                                        <div class="filter-options">
+                                            <div class="filter-group">
+                                                <select id="status-filter" class="checklist-filter-dropdown">
+                                                    <option value="all">All Statuses</option>
+                                                    ${statuses.map(status => `<option value="${status}">${status.replace('_', ' ').charAt(0).toUpperCase() + status.replace('_', ' ').slice(1)}</option>`).join('')}
+                                                </select>
+                                                <select id="role-filter" class="checklist-filter-dropdown">
+                                                    <option value="all">All Assigned</option>
+                                                    ${roles.map(role => `<option value="${role}">${role.charAt(0).toUpperCase() + role.slice(1)}</option>`).join('')}
+                                                </select>
+                                                <button id="clear-checklist-filters" class="clear-filters-btn" title="Clear filters">
+                                                    <i class="fas fa-times"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="dropdown" style="position: relative;">
+                                        <button class="dropdown-toggle" id="checklist-actions-dropdown" style="background: ${headerBtnBg}; color: ${headerBtnColor}; border: ${headerBtnBorder}; width: 24px; height: 24px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s ease; padding: 0;"
+                                                onmouseover="this.style.background='${headerBtnHoverBg}'; this.style.color='#8b5cf6'; this.style.transform='scale(1.05)';"
+                                                onmouseout="this.style.background='${headerBtnBg}'; this.style.color='${headerBtnColor}'; this.style.transform='scale(1)';">
+                                            <i class="fas fa-ellipsis-v" style="font-size: 9px;"></i>
+                                        </button>
+                                        <div class="dropdown-menu" id="checklist-actions-menu" style="display: none; position: absolute; top: 100%; right: 0; background: ${dropdownBg}; border: ${dropdownBorder}; border-radius: 8px; min-width: 180px; box-shadow: 0 8px 16px rgba(0, 0, 0, ${isLightTheme ? '0.1' : '0.3'}); z-index: 1000; margin-top: 8px; overflow: hidden;">
+                                            <button id="toggle-select-mode" class="dropdown-item" style="display: block; width: 100%; text-align: left; padding: 12px 16px; background: none; border: none; color: ${dropdownItemColor}; cursor: pointer; transition: all 0.2s; font-size: 14px;"
+                                                    onmouseover="this.style.background='${dropdownItemHoverBg}'; this.style.color='${isLightTheme ? '#7c3aed' : '#b4befe'}';" onmouseout="this.style.background='none'; this.style.color='${dropdownItemColor}';">
+                                                <i class="fas fa-check-square" style="margin-right: 10px; width: 14px; text-align: center; color: #8b5cf6;"></i> Select
+                                            </button>
+                                            <div style="height: 1px; background: ${dropdownDividerBg};"></div>
+                                            <button id="sync-checklist-linear" class="dropdown-item" style="display: block; width: 100%; text-align: left; padding: 12px 16px; background: none; border: none; color: ${dropdownItemColor}; cursor: pointer; transition: all 0.2s; font-size: 14px;"
+                                                    onmouseover="this.style.background='${dropdownItemHoverBg}'; this.style.color='${isLightTheme ? '#7c3aed' : '#b4befe'}';" onmouseout="this.style.background='none'; this.style.color='${dropdownItemColor}';">
+                                                <i class="fas fa-sync" style="margin-right: 10px; width: 14px; text-align: center; color: #8b5cf6;"></i> Sync with Linear
+                                            </button>
+                                            <div style="height: 1px; background: ${dropdownDividerBg};"></div>
+                                            <button id="delete-all-checklist" class="dropdown-item" style="display: block; width: 100%; text-align: left; padding: 12px 16px; background: none; border: none; color: ${isLightTheme ? '#dc2626' : '#f38ba8'}; cursor: pointer; transition: all 0.2s; font-size: 14px;"
+                                                    onmouseover="this.style.background='${isLightTheme ? '#fef2f2' : '#313244'}'; this.style.color='${isLightTheme ? '#b91c1c' : '#eba0ac'}';" onmouseout="this.style.background='none'; this.style.color='${isLightTheme ? '#dc2626' : '#f38ba8'}';">
+                                                <i class="fas fa-trash-alt" style="margin-right: 10px; width: 14px; text-align: center;"></i> Delete All
                                             </button>
                                         </div>
                                     </div>
                                 </div>
-                                <div class="dropdown" style="position: relative;">
-                                    <button class="dropdown-toggle" id="checklist-actions-dropdown" style="background: ${headerBtnBg}; color: ${headerBtnColor}; border: ${headerBtnBorder}; width: 24px; height: 24px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s ease; padding: 0;"
-                                            onmouseover="this.style.background='${headerBtnHoverBg}'; this.style.color='#8b5cf6'; this.style.transform='scale(1.05)';"
-                                            onmouseout="this.style.background='${headerBtnBg}'; this.style.color='${headerBtnColor}'; this.style.transform='scale(1)';">
-                                        <i class="fas fa-ellipsis-v" style="font-size: 9px;"></i>
-                                    </button>
-                                    <div class="dropdown-menu" id="checklist-actions-menu" style="display: none; position: absolute; top: 100%; right: 0; background: ${dropdownBg}; border: ${dropdownBorder}; border-radius: 8px; min-width: 180px; box-shadow: 0 8px 16px rgba(0, 0, 0, ${isLightTheme ? '0.1' : '0.3'}); z-index: 1000; margin-top: 8px; overflow: hidden;">
-                                        <button id="sync-checklist-linear" class="dropdown-item" style="display: block; width: 100%; text-align: left; padding: 12px 16px; background: none; border: none; color: ${dropdownItemColor}; cursor: pointer; transition: all 0.2s; font-size: 14px;"
-                                                onmouseover="this.style.background='${dropdownItemHoverBg}'; this.style.color='${isLightTheme ? '#7c3aed' : '#b4befe'}';" onmouseout="this.style.background='none'; this.style.color='${dropdownItemColor}';">
-                                            <i class="fas fa-sync" style="margin-right: 10px; width: 14px; text-align: center; color: #8b5cf6;"></i> Sync with Linear
+                            </div>
+                            <!-- Floating action bar for selected items (shown when items selected) -->
+                            <div id="checklist-action-bar" class="checklist-action-bar" style="display: none; position: sticky; top: 0; z-index: 100; background: ${isLightTheme ? 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)' : 'linear-gradient(135deg, #1e1e2e 0%, #2a2a3e 100%)'}; border: 1px solid ${isLightTheme ? '#e2e8f0' : '#313244'}; border-radius: 8px; padding: 12px 16px; margin: 0 16px 12px 16px; box-shadow: 0 4px 12px rgba(0, 0, 0, ${isLightTheme ? '0.1' : '0.3'});">
+                                <div style="display: flex; align-items: center; justify-content: space-between;">
+                                    <span id="selected-count" style="font-size: 14px; color: ${isLightTheme ? '#374151' : '#cdd6f4'}; font-weight: 500;">
+                                        <i class="fas fa-check-square" style="margin-right: 8px; color: #8b5cf6;"></i>
+                                        <span id="selected-count-number">0</span> selected
+                                    </span>
+                                    <div style="display: flex; gap: 10px;">
+                                        <button id="queue-selected-btn" class="action-bar-btn" style="display: flex; align-items: center; gap: 6px; padding: 8px 16px; background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.2s ease;"
+                                                onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(139, 92, 246, 0.4)';"
+                                                onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none';">
+                                            <i class="fas fa-play"></i> Queue for Build
                                         </button>
-                                        <div style="height: 1px; background: ${dropdownDividerBg};"></div>
-                                        <button id="delete-all-checklist" class="dropdown-item" style="display: block; width: 100%; text-align: left; padding: 12px 16px; background: none; border: none; color: ${isLightTheme ? '#dc2626' : '#f38ba8'}; cursor: pointer; transition: all 0.2s; font-size: 14px;"
-                                                onmouseover="this.style.background='${isLightTheme ? '#fef2f2' : '#313244'}'; this.style.color='${isLightTheme ? '#b91c1c' : '#eba0ac'}';" onmouseout="this.style.background='none'; this.style.color='${isLightTheme ? '#dc2626' : '#f38ba8'}';">
-                                            <i class="fas fa-trash-alt" style="margin-right: 10px; width: 14px; text-align: center;"></i> Delete All
+                                        <button id="delete-selected-btn" class="action-bar-btn" style="display: flex; align-items: center; gap: 6px; padding: 8px 16px; background: ${isLightTheme ? '#fee2e2' : '#3d2a2a'}; color: ${isLightTheme ? '#dc2626' : '#f38ba8'}; border: 1px solid ${isLightTheme ? '#fecaca' : '#5c3a3a'}; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.2s ease;"
+                                                onmouseover="this.style.background='${isLightTheme ? '#fecaca' : '#4d3a3a'}';"
+                                                onmouseout="this.style.background='${isLightTheme ? '#fee2e2' : '#3d2a2a'}';">
+                                            <i class="fas fa-trash"></i> Delete
+                                        </button>
+                                        <button id="cancel-selection-btn" class="action-bar-btn" style="display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: transparent; color: ${isLightTheme ? '#64748b' : '#888'}; border: 1px solid ${isLightTheme ? '#e2e8f0' : '#313244'}; border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.2s ease;"
+                                                onmouseover="this.style.background='${isLightTheme ? '#f1f5f9' : '#313244'}';"
+                                                onmouseout="this.style.background='transparent';">
+                                            <i class="fas fa-times"></i> Cancel
                                         </button>
                                     </div>
                                 </div>
@@ -2624,32 +2692,6 @@ document.addEventListener('DOMContentLoaded', function() {
                             const priorityClass = item.priority ? item.priority.toLowerCase() : 'medium';
                             const roleClass = item.role ? item.role.toLowerCase() : 'user';
                             
-                            // Get status icon
-                            let statusIcon = 'fas fa-circle';
-                            switch(statusClass) {
-                                case 'open':
-                                    statusIcon = 'fas fa-circle';
-                                    break;
-                                case 'in-progress':
-                                    statusIcon = 'fas fa-play-circle';
-                                    break;
-                                case 'agent':
-                                    statusIcon = 'fas fa-robot';
-                                    break;
-                                case 'closed':
-                                    statusIcon = 'fas fa-check-circle';
-                                    break;
-                                case 'done':
-                                    statusIcon = 'fas fa-check-circle';
-                                    break;
-                                case 'failed':
-                                    statusIcon = 'fas fa-times-circle';
-                                    break;
-                                case 'blocked':
-                                    statusIcon = 'fas fa-ban';
-                                    break;
-                            }
-                            
                             // Check if this item matches active filters for highlighting
                             const isStatusHighlighted = filterStatus !== 'all' && (item.status || 'open') === filterStatus;
                             const isRoleHighlighted = filterRole !== 'all' && (item.role || 'user') === filterRole;
@@ -2693,8 +2735,8 @@ document.addEventListener('DOMContentLoaded', function() {
                             itemsHTML += `
                                 <div class="checklist-card ${statusClass}" data-id="${item.id}">
                                     <div class="card-header">
-                                        <div class="card-status">
-                                            <i class="${statusIcon} status-icon"></i>
+                                        <div class="card-status" style="display: flex; align-items: center; gap: 8px;">
+                                            <input type="checkbox" class="ticket-select-checkbox" data-ticket-id="${item.id}" style="display: none; width: 14px; height: 14px; accent-color: #8b5cf6; cursor: pointer; flex-shrink: 0;" onclick="event.stopPropagation();">
                                             <h3 class="card-title">${modalHelpers.escapeHtml(item.name || 'Untitled Item')}</h3>
                                         </div>
                                         <div class="card-badges">
@@ -2770,7 +2812,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
                         checklistCards.forEach((card, index) => {
                             card.addEventListener('click', function(e) {
-                                if (e.target.closest('.action-btn')) {
+                                if (e.target.closest('.action-btn') || e.target.closest('.ticket-select-checkbox')) {
                                     return;
                                 }
 
@@ -2791,6 +2833,204 @@ document.addEventListener('DOMContentLoaded', function() {
                                 }
                             });
                         });
+
+                        // Multi-select functionality
+                        const wrapper = document.querySelector('.checklist-wrapper');
+                        const actionBar = document.getElementById('checklist-action-bar');
+                        const selectedCountEl = document.getElementById('selected-count-number');
+                        const selectAllCheckbox = document.getElementById('select-all-tickets');
+                        const selectAllContainer = document.getElementById('select-all-container');
+                        const toggleSelectModeBtn = document.getElementById('toggle-select-mode');
+                        const ticketCheckboxes = checklistContent.querySelectorAll('.ticket-select-checkbox');
+
+                        let selectionMode = false;
+
+                        const setSelectionMode = (enabled) => {
+                            selectionMode = enabled;
+                            wrapper.setAttribute('data-selection-mode', enabled ? 'true' : 'false');
+
+                            // Show/hide select all container
+                            if (selectAllContainer) {
+                                selectAllContainer.style.display = enabled ? 'flex' : 'none';
+                            }
+
+                            // Toggle checkbox visibility (status circle hidden via CSS ::before selector)
+                            const checkboxes = checklistContent.querySelectorAll('.ticket-select-checkbox');
+
+                            checkboxes.forEach(checkbox => {
+                                checkbox.style.display = enabled ? 'inline-block' : 'none';
+                                if (!enabled) {
+                                    checkbox.checked = false;
+                                }
+                            });
+
+                            // Reset select all checkbox
+                            if (selectAllCheckbox) {
+                                selectAllCheckbox.checked = false;
+                                selectAllCheckbox.indeterminate = false;
+                            }
+
+                            // Update toggle button text in dropdown
+                            if (toggleSelectModeBtn) {
+                                if (enabled) {
+                                    toggleSelectModeBtn.innerHTML = '<i class="fas fa-times" style="margin-right: 10px; width: 14px; text-align: center; color: #8b5cf6;"></i> Cancel Selection';
+                                } else {
+                                    toggleSelectModeBtn.innerHTML = '<i class="fas fa-check-square" style="margin-right: 10px; width: 14px; text-align: center; color: #8b5cf6;"></i> Select';
+                                }
+                            }
+
+                            // Hide action bar when exiting selection mode
+                            if (!enabled && actionBar) {
+                                actionBar.style.display = 'none';
+                            }
+                        };
+
+                        const updateActionBar = () => {
+                            if (!selectionMode) return;
+
+                            const selectedCheckboxes = checklistContent.querySelectorAll('.ticket-select-checkbox:checked');
+                            const count = selectedCheckboxes.length;
+
+                            if (count > 0) {
+                                actionBar.style.display = 'block';
+                                selectedCountEl.textContent = count;
+                            } else {
+                                actionBar.style.display = 'none';
+                            }
+
+                            // Update select all checkbox state
+                            if (selectAllCheckbox) {
+                                selectAllCheckbox.checked = count > 0 && count === ticketCheckboxes.length;
+                                selectAllCheckbox.indeterminate = count > 0 && count < ticketCheckboxes.length;
+                            }
+                        };
+
+                        // Toggle selection mode button (in dropdown menu)
+                        if (toggleSelectModeBtn) {
+                            toggleSelectModeBtn.addEventListener('click', function() {
+                                // Close the dropdown menu
+                                const dropdownMenu = document.getElementById('checklist-actions-menu');
+                                if (dropdownMenu) {
+                                    dropdownMenu.style.display = 'none';
+                                }
+                                setSelectionMode(!selectionMode);
+                            });
+                        }
+
+                        // Individual checkbox listeners
+                        ticketCheckboxes.forEach(checkbox => {
+                            checkbox.addEventListener('change', updateActionBar);
+                        });
+
+                        // Select all checkbox listener
+                        if (selectAllCheckbox) {
+                            selectAllCheckbox.addEventListener('change', function() {
+                                ticketCheckboxes.forEach(checkbox => {
+                                    checkbox.checked = this.checked;
+                                });
+                                updateActionBar();
+                            });
+                        }
+
+                        // Cancel selection button (in action bar)
+                        const cancelSelectionBtn = document.getElementById('cancel-selection-btn');
+                        if (cancelSelectionBtn) {
+                            cancelSelectionBtn.addEventListener('click', function() {
+                                setSelectionMode(false);
+                            });
+                        }
+
+                        // Queue selected button
+                        const queueSelectedBtn = document.getElementById('queue-selected-btn');
+                        if (queueSelectedBtn) {
+                            queueSelectedBtn.addEventListener('click', function() {
+                                const selectedIds = Array.from(checklistContent.querySelectorAll('.ticket-select-checkbox:checked'))
+                                    .map(cb => parseInt(cb.getAttribute('data-ticket-id'), 10));
+
+                                if (selectedIds.length === 0) {
+                                    window.showToast('No tickets selected', 'warning');
+                                    return;
+                                }
+
+                                if (!confirm(`Queue ${selectedIds.length} ticket(s) for build?`)) {
+                                    return;
+                                }
+
+                                // Call queue API
+                                fetch(`/projects/${projectId}/api/checklist/queue/`, {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'X-CSRFToken': getCsrfToken()
+                                    },
+                                    body: JSON.stringify({ ticket_ids: selectedIds })
+                                })
+                                .then(response => response.json())
+                                .then(data => {
+                                    if (data.success) {
+                                        window.showToast(`${selectedIds.length} ticket(s) queued for build`, 'success');
+                                        // Clear selection
+                                        ticketCheckboxes.forEach(checkbox => {
+                                            checkbox.checked = false;
+                                        });
+                                        if (selectAllCheckbox) {
+                                            selectAllCheckbox.checked = false;
+                                        }
+                                        updateActionBar();
+                                        // Reload checklist to show updated status
+                                        ArtifactsLoader.loadChecklist(projectId);
+                                    } else {
+                                        window.showToast(data.error || 'Failed to queue tickets', 'error');
+                                    }
+                                })
+                                .catch(error => {
+                                    console.error('Error queueing tickets:', error);
+                                    window.showToast('Error queueing tickets', 'error');
+                                });
+                            });
+                        }
+
+                        // Delete selected button
+                        const deleteSelectedBtn = document.getElementById('delete-selected-btn');
+                        if (deleteSelectedBtn) {
+                            deleteSelectedBtn.addEventListener('click', function() {
+                                const selectedIds = Array.from(checklistContent.querySelectorAll('.ticket-select-checkbox:checked'))
+                                    .map(cb => parseInt(cb.getAttribute('data-ticket-id'), 10));
+
+                                if (selectedIds.length === 0) {
+                                    window.showToast('No tickets selected', 'warning');
+                                    return;
+                                }
+
+                                if (!confirm(`Delete ${selectedIds.length} ticket(s)? This action cannot be undone.`)) {
+                                    return;
+                                }
+
+                                // Call bulk delete API
+                                fetch(`/projects/${projectId}/api/checklist/bulk-delete/`, {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'X-CSRFToken': getCsrfToken()
+                                    },
+                                    body: JSON.stringify({ ticket_ids: selectedIds })
+                                })
+                                .then(response => response.json())
+                                .then(data => {
+                                    if (data.success) {
+                                        window.showToast(`${data.deleted_count} ticket(s) deleted`, 'success');
+                                        // Reload checklist
+                                        ArtifactsLoader.loadChecklist(projectId);
+                                    } else {
+                                        window.showToast(data.error || 'Failed to delete tickets', 'error');
+                                    }
+                                })
+                                .catch(error => {
+                                    console.error('Error deleting tickets:', error);
+                                    window.showToast('Error deleting tickets', 'error');
+                                });
+                            });
+                        }
                     };
 
                     // Function to update checklist item status
@@ -2829,23 +3069,11 @@ document.addEventListener('DOMContentLoaded', function() {
                                     item.status = newStatus;
                                     item.updated_at = data.updated_at || new Date().toISOString();
                                 }
-                                // Update the visual state in the main list
+                                // Update the visual state in the main list (status circle color is handled by CSS)
                                 const itemElement = document.querySelector(`[data-id="${itemId}"]`);
                                 if (itemElement) {
                                     itemElement.classList.remove('open', 'in-progress', 'done', 'failed', 'blocked');
                                     itemElement.classList.add(newStatus.replace('_', '-'));
-                                    const statusIcon = itemElement.querySelector('.status-icon');
-                                    if (statusIcon) {
-                                        let newIconClass = 'fas fa-circle';
-                                        switch(newStatus) {
-                                            case 'open': newIconClass = 'fas fa-circle'; break;
-                                            case 'in_progress': newIconClass = 'fas fa-play-circle'; break;
-                                            case 'done': newIconClass = 'fas fa-check-circle'; break;
-                                            case 'failed': newIconClass = 'fas fa-times-circle'; break;
-                                            case 'blocked': newIconClass = 'fas fa-ban'; break;
-                                        }
-                                        statusIcon.className = `${newIconClass} status-icon`;
-                                    }
                                 }
                                 showStatusUpdateSuccess(newStatus);
                             } else {

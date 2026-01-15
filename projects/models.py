@@ -373,6 +373,26 @@ class ProjectTicket(models.Model):
     dependencies = models.JSONField(default=list, blank=True,
         help_text='List of ticket IDs or names this ticket depends on')
 
+    # Source document reference (PRD, implementation plan, etc.)
+    source_document = models.ForeignKey(
+        'ProjectFile',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='tickets',
+        help_text='The document (PRD, spec) this ticket was created from'
+    )
+
+    # Conversation reference (to filter tickets by conversation)
+    conversation = models.ForeignKey(
+        'chat.Conversation',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='tickets',
+        help_text='The conversation during which this ticket was created'
+    )
+
     notes = models.TextField(blank=True, default='',
         help_text='Execution notes, issues, and progress updates for this ticket')
     

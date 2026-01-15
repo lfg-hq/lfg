@@ -4011,12 +4011,8 @@
 
                 const data = await response.json();
                 if (data.success) {
-                    // Update the queue status cell in the table
-                    const queueCell = document.querySelector(`.queue-status-cell[data-ticket-id="${ticketId}"]`);
-                    if (queueCell) {
-                        queueCell.dataset.queueStatus = 'none';
-                        queueCell.innerHTML = '<span class="queue-badge none">-</span>';
-                    }
+                    // Update both table and kanban views
+                    updateQueueStatusUI(ticketId, 'none');
 
                     // Show success notification if available
                     if (typeof showNotification === 'function') {
@@ -4101,38 +4097,74 @@
         }
 
         function updateQueueStatusUI(ticketId, queueStatus) {
+            // Get project ID from either table cell or kanban card
             const queueCell = document.querySelector(`.queue-status-cell[data-ticket-id="${ticketId}"]`);
-            if (!queueCell) return;
+            const kanbanCard = document.querySelector(`.kanban-card[data-ticket-id="${ticketId}"]`);
+            const projectId = queueCell?.dataset.projectId || kanbanCard?.dataset.projectId || currentProjectId;
 
-            queueCell.dataset.queueStatus = queueStatus;
-            const projectId = queueCell.dataset.projectId;
+            // Update table view
+            if (queueCell) {
+                queueCell.dataset.queueStatus = queueStatus;
 
-            if (queueStatus === 'queued') {
-                queueCell.innerHTML = `
-                    <span class="queue-badge queued">
-                        <i class="fas fa-clock"></i> Queued
-                    </span>
-                    <button class="queue-cancel-btn" onclick="cancelFromQueue(${ticketId}, '${projectId}')" title="Remove from queue">
-                        <i class="fas fa-times"></i>
-                    </button>
-                    <button class="queue-restart-btn" onclick="restartFromQueue(${ticketId}, '${projectId}')" title="Restart ticket">
-                        <i class="fas fa-redo"></i>
-                    </button>
-                `;
-            } else if (queueStatus === 'executing') {
-                queueCell.innerHTML = `
-                    <span class="queue-badge executing">
-                        <i class="fas fa-spinner fa-spin"></i> Executing
-                    </span>
-                    <button class="queue-force-stop-btn" onclick="forceStopFromQueue(${ticketId}, '${projectId}')" title="Force stop (use if stuck)">
-                        <i class="fas fa-stop"></i>
-                    </button>
-                    <button class="queue-restart-btn" onclick="restartFromQueue(${ticketId}, '${projectId}')" title="Force restart">
-                        <i class="fas fa-redo"></i>
-                    </button>
-                `;
-            } else {
-                queueCell.innerHTML = '<span class="queue-badge none">-</span>';
+                if (queueStatus === 'queued') {
+                    queueCell.innerHTML = `
+                        <span class="queue-badge queued">
+                            <i class="fas fa-clock"></i> Queued
+                        </span>
+                        <button class="queue-cancel-btn" onclick="cancelFromQueue(${ticketId}, '${projectId}')" title="Remove from queue">
+                            <i class="fas fa-times"></i>
+                        </button>
+                        <button class="queue-restart-btn" onclick="restartFromQueue(${ticketId}, '${projectId}')" title="Restart ticket">
+                            <i class="fas fa-redo"></i>
+                        </button>
+                    `;
+                } else if (queueStatus === 'executing') {
+                    queueCell.innerHTML = `
+                        <span class="queue-badge executing">
+                            <i class="fas fa-spinner fa-spin"></i> Executing
+                        </span>
+                        <button class="queue-force-stop-btn" onclick="forceStopFromQueue(${ticketId}, '${projectId}')" title="Force stop (use if stuck)">
+                            <i class="fas fa-stop"></i>
+                        </button>
+                        <button class="queue-restart-btn" onclick="restartFromQueue(${ticketId}, '${projectId}')" title="Force restart">
+                            <i class="fas fa-redo"></i>
+                        </button>
+                    `;
+                } else {
+                    queueCell.innerHTML = '<span class="queue-badge none">-</span>';
+                }
+            }
+
+            // Update kanban board view
+            if (kanbanCard) {
+                let queueDiv = kanbanCard.querySelector('.kanban-card-queue');
+
+                if (queueStatus === 'queued' || queueStatus === 'executing') {
+                    const statusText = queueStatus === 'queued' ? 'Queued' : 'Executing';
+                    const icon = queueStatus === 'queued' ? 'fa-clock' : 'fa-cog fa-spin';
+                    const badgeClass = queueStatus;
+
+                    if (!queueDiv) {
+                        queueDiv = document.createElement('div');
+                        queueDiv.className = 'kanban-card-queue';
+                        queueDiv.setAttribute('onclick', 'event.stopPropagation();');
+                        kanbanCard.appendChild(queueDiv);
+                    }
+
+                    queueDiv.innerHTML = `
+                        <span class="queue-badge ${badgeClass}">
+                            <i class="fas ${icon}"></i> ${statusText}
+                        </span>
+                        <button class="queue-cancel-btn" onclick="event.stopPropagation(); cancelFromQueue(${ticketId}, '${projectId}')" title="Remove from queue">
+                            <i class="fas fa-times"></i>
+                        </button>
+                        <button class="queue-restart-btn" onclick="event.stopPropagation(); restartTicket(${ticketId}, '${projectId}')" title="Restart">
+                            <i class="fas fa-redo"></i>
+                        </button>
+                    `;
+                } else if (queueDiv) {
+                    queueDiv.remove();
+                }
             }
         }
 

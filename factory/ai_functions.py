@@ -865,7 +865,7 @@ async def app_functions(function_name, function_args, project_id, conversation_i
         case "update_implementation":
             return await update_implementation(function_args, project_id)
         case "create_tickets":
-            return await create_tickets(function_args, project_id)
+            return await create_tickets(function_args, project_id, conversation_id)
         case "update_ticket":
             return await update_individual_checklist_ticket(project_id, function_args.get('ticket_id'), function_args.get('status'))
         case "update_all_tickets":
@@ -2135,36 +2135,61 @@ async def stream_document_content(function_args, project_id):
     logger.info(f"[DOCUMENT_STREAM] Returning stream result: is_complete={is_complete}, has_file_id={'file_id' in result}, keys={list(result.keys())}")
     return result
 
-async def create_tickets(function_args, project_id):
+async def create_tickets(function_args, project_id, conversation_id=None):
     """
     Generate checklist tickets for a project
     """
-    logger.info("Checklist tickets function called ")
-    
+    logger.info(f"Checklist tickets function called for project {project_id}, conversation {conversation_id}")
+
     error_response = validate_project_id(project_id)
     if error_response:
         return error_response
-    
+
     # Validate function arguments
     validation_error = validate_function_args(function_args, ['tickets'])
     if validation_error:
         return validation_error
-    
+
     project = await get_project(project_id)
     if not project:
         return {
             "is_notification": False,
             "message_to_agent": f"Error: Project with ID {project_id} does not exist"
         }
-    
+
     checklist_tickets = function_args.get('tickets', [])
-    
+    source_document_id = function_args.get('source_document_id')
+    # Use passed conversation_id or fall back to function_args (for tool-based calls)
+    conversation_id = conversation_id or function_args.get('conversation_id')
+
     if not isinstance(checklist_tickets, list):
         return {
             "is_notification": False,
             "message_to_agent": "Error: tickets must be a list"
         }
-    
+
+    # Get the source document (PRD) if provided
+    source_document = None
+    if source_document_id:
+        try:
+            source_document = await sync_to_async(ProjectFile.objects.get)(
+                id=source_document_id,
+                project=project
+            )
+            logger.info(f"Linking tickets to source document: {source_document.name} (ID: {source_document_id})")
+        except ProjectFile.DoesNotExist:
+            logger.warning(f"Source document with ID {source_document_id} not found")
+
+    # Get the conversation if provided
+    conversation = None
+    if conversation_id:
+        try:
+            from chat.models import Conversation
+            conversation = await sync_to_async(Conversation.objects.get)(id=conversation_id)
+            logger.info(f"Linking tickets to conversation ID: {conversation_id}")
+        except Exception as e:
+            logger.warning(f"Conversation with ID {conversation_id} not found: {e}")
+
     try:
         # Create tickets with enhanced details
         created_tickets = []
@@ -2172,7 +2197,7 @@ async def create_tickets(function_args, project_id):
             if isinstance(ticket, dict):
                 # Extract details from the ticket
                 details = ticket.get('details', {})
-                
+
                 new_ticket = await sync_to_async(ProjectTicket.objects.create)(
                     project=project,
                     name=ticket.get('name', ''),
@@ -2180,6 +2205,8 @@ async def create_tickets(function_args, project_id):
                     priority=ticket.get('priority', 'Medium'),
                     status='open',
                     role=ticket.get('role', 'agent'),
+                    source_document=source_document,  # Link to PRD
+                    conversation=conversation,  # Link to conversation
                     # Enhanced fields
                     # details=details,
                     ui_requirements=ticket.get('ui_requirements', {}),
@@ -2190,11 +2217,13 @@ async def create_tickets(function_args, project_id):
                     # requires_worktree=details.get('requires_worktree', True)
                 )
                 created_tickets.append(new_ticket.id)
-        
+
+        prd_msg = f" (linked to PRD: {source_document.name})" if source_document else ""
         return {
             "is_notification": True,
             "notification_type": "create_tickets",
-            "message_to_agent": f"Successfully created {len(created_tickets)} detailed tickets with design specifications"
+            "message_to_agent": f"Successfully created {len(created_tickets)} detailed tickets{prd_msg}. Ticket IDs: {created_tickets}. Pass these IDs to queue_ticket_execution() to schedule them.",
+            "ticket_ids": created_tickets
         }
     except Exception as e:
         return {
@@ -3231,29 +3260,31 @@ async def queue_ticket_execution_tool(function_args, project_id, conversation_id
             "message_to_agent": f"Error: Project with ID {project_id} does not exist"
         }
 
-    ticket_id_list = function_args.get('ticket_ids') or []
+    requested_ids = function_args.get('ticket_ids') or []
 
-    # def _get_ticket_ids(ids):
-    #     queryset = ProjectTicket.objects.filter(project=project, role='agent', status='open')
-    #     if ids:
-    #         queryset = queryset.filter(id__in=ids)
-    #     return list(queryset.order_by('created_at', 'id').values_list('id', flat=True))
+    def _get_ticket_ids(ids):
+        queryset = ProjectTicket.objects.filter(project=project, role='agent', status='open')
+        if ids:
+            queryset = queryset.filter(id__in=ids)
+        return list(queryset.order_by('created_at', 'id').values_list('id', flat=True))
 
-    # cleaned_requested_ids = []
-    # for raw_id in requested_ids:
-    #     try:
-    #         cleaned_requested_ids.append(int(raw_id))
-    #     except (TypeError, ValueError):
-    #         continue
+    # Clean up any non-integer IDs
+    cleaned_requested_ids = []
+    for raw_id in requested_ids:
+        try:
+            cleaned_requested_ids.append(int(raw_id))
+        except (TypeError, ValueError):
+            continue
 
-    # ticket_id_list = await sync_to_async(_get_ticket_ids)(cleaned_requested_ids)
+    # Auto-fetch open tickets if none specified, or filter by specified IDs
+    ticket_id_list = await sync_to_async(_get_ticket_ids)(cleaned_requested_ids)
 
     if not ticket_id_list:
         return {
             "is_notification": False,
             "notification_type": "toolhistory",
             "notification_marker": "__NOTIFICATION__",
-            "message_to_agent": "No open agent tickets are available to execute.",
+            "message_to_agent": "No open agent tickets are available to execute. Create tickets first using create_tickets().",
             "status": "skipped"
         }
 
@@ -3263,6 +3294,7 @@ async def queue_ticket_execution_tool(function_args, project_id, conversation_id
     # Queue each ticket as a separate task for parallel execution
     task_ids = []
     failed_tickets = []
+    queued_ticket_ids = []
 
     for ticket_id in ticket_id_list:
         try:
@@ -3275,10 +3307,18 @@ async def queue_ticket_execution_tool(function_args, project_id, conversation_id
                 timeout=7200
             )
             task_ids.append(task_id)
+            queued_ticket_ids.append(ticket_id)
             logger.info(f"Queued ticket {ticket_id} with task ID {task_id}")
         except Exception as exc:
             logger.exception(f"Failed to queue ticket {ticket_id}")
             failed_tickets.append({'ticket_id': ticket_id, 'error': str(exc)})
+
+    # Update ticket queue_status to 'queued' for successfully queued tickets
+    if queued_ticket_ids:
+        def _update_ticket_status():
+            ProjectTicket.objects.filter(id__in=queued_ticket_ids).update(queue_status='queued')
+        await sync_to_async(_update_ticket_status)()
+        logger.info(f"Updated {len(queued_ticket_ids)} tickets to queue_status='queued'")
 
     if failed_tickets and not task_ids:
         # All tickets failed to queue
@@ -3305,10 +3345,10 @@ async def queue_ticket_execution_tool(function_args, project_id, conversation_id
         }
 
     return {
-        "is_notification": False,
-        "notification_type": "toolhistory",
+        "is_notification": True,
+        "notification_type": "checklist",
         "status": "queued",
-        "message_to_agent": f"Queued {len(task_ids)} tickets for parallel background execution. Each ticket will run independently.",
+        "message_to_agent": f"Queued {len(task_ids)} tickets for parallel background execution. Each ticket will run independently. Tickets updated to in_progress status.",
         "ticket_ids": ticket_id_list,
         "task_ids": task_ids,
         "notification_marker": "__NOTIFICATION__"

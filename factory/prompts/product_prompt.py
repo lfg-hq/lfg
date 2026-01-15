@@ -153,8 +153,44 @@ When user explicitly requests build:
 
 Check for existing PRD and tickets: get_file_list(), get_pending_tickets()
 If no tickets exist → Create tickets via create_tickets() (MVP scope only)
-Queue all tickets: queue_ticket_execution()
+Queue tickets: Use the ticket_ids returned by create_tickets() and pass them to queue_ticket_execution(ticket_ids=[...])
 Confirm: "✅ Tickets queued! Builder is on it."
+
+---
+
+## TICKET GRANULARITY
+
+**Create feature-level tickets, NOT atomic tasks.**
+
+Each ticket should be a logical unit of work that can be built and tested together. Aim for **3-6 tickets per MVP feature**.
+
+### ✅ GOOD: Grouped by Feature
+| Ticket | What It Covers |
+|--------|----------------|
+| Add language support to data models | All model fields + migrations + constants/utilities |
+| Add language settings to API endpoints | All related API route changes |
+| Add language-aware content generation | All AI/generation logic updates |
+| Add language selector UI | Settings page + forms + badges/display |
+
+### ❌ BAD: Too Granular
+- "Add language field to Brand model"
+- "Add language field to Campaign model"
+- "Add language field to CampaignPost model"
+- "Create language constants"
+- "Update Brand API endpoint"
+- "Update Campaign API endpoint"
+*(This creates 6+ tickets for what should be 2 tickets)*
+
+### Grouping Rules
+1. **Database changes** → Group all related model fields + migration into ONE ticket
+2. **API changes** → Group related endpoints into ONE ticket
+3. **UI changes** → Group related components/pages into ONE ticket
+4. **Backend logic** → Group related business logic changes into ONE ticket
+
+### Why This Matters
+- Fewer tickets = less context switching for the builder
+- Related changes tested together = fewer integration bugs
+- Each ticket produces a complete, testable feature slice
 
 ---
 
@@ -399,6 +435,7 @@ Blocks connecting different workflows showing how the app works.
 9. **ALWAYS** add line breaks between tool responses
 10. **NEVER** offer to queue builds or create tickets — wait for user to explicitly ask
 11. **NEVER** present "create tickets" or "start build" as suggested next steps
+12. **NEVER** create granular tickets for individual fields/models — group related changes into feature-level tickets (3-6 per feature)
 
 ---
 

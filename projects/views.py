@@ -2523,6 +2523,141 @@ def delete_checklist_item_api(request, project_id, item_id):
 
 
 @login_required
+def bulk_delete_checklist_items_api(request, project_id):
+    """API endpoint to delete multiple checklist items at once"""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Method not allowed'}, status=405)
+
+    project = get_object_or_404(Project, project_id=project_id, owner=request.user)
+
+    try:
+        import json
+        data = json.loads(request.body)
+        ticket_ids = data.get('ticket_ids', [])
+
+        if not ticket_ids:
+            return JsonResponse({
+                'success': False,
+                'error': 'No ticket IDs provided'
+            }, status=400)
+
+        # Delete tickets that belong to this project
+        deleted_count, _ = ProjectTicket.objects.filter(
+            id__in=ticket_ids,
+            project=project
+        ).delete()
+
+        return JsonResponse({
+            'success': True,
+            'deleted_count': deleted_count,
+            'message': f'{deleted_count} ticket(s) deleted successfully'
+        })
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': 'Invalid JSON data'
+        }, status=400)
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+def queue_checklist_items_api(request, project_id):
+    """API endpoint to queue multiple checklist items for build execution"""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Method not allowed'}, status=405)
+
+    project = get_object_or_404(Project, project_id=project_id, owner=request.user)
+
+    try:
+        import json
+        from tasks.task_manager import TaskManager
+        from chat.models import Conversation
+
+        data = json.loads(request.body)
+        ticket_ids = data.get('ticket_ids', [])
+
+        if not ticket_ids:
+            return JsonResponse({
+                'success': False,
+                'error': 'No ticket IDs provided'
+            }, status=400)
+
+        # Get the most recent conversation for this project
+        conversation = Conversation.objects.filter(
+            project_id=project.id
+        ).order_by('-created_at').first()
+
+        conversation_id = conversation.id if conversation else None
+
+        # Verify tickets exist and belong to this project
+        tickets = ProjectTicket.objects.filter(
+            id__in=ticket_ids,
+            project=project
+        )
+
+        valid_ticket_ids = list(tickets.values_list('id', flat=True))
+
+        if not valid_ticket_ids:
+            return JsonResponse({
+                'success': False,
+                'error': 'No valid tickets found'
+            }, status=400)
+
+        # Queue each ticket for execution
+        queued_count = 0
+        failed_tickets = []
+
+        for ticket_id in valid_ticket_ids:
+            try:
+                TaskManager.publish_task(
+                    'tasks.task_definitions.execute_ticket_implementation',
+                    ticket_id,
+                    project.id,
+                    conversation_id,
+                )
+
+                # Update ticket status to indicate it's queued
+                ProjectTicket.objects.filter(id=ticket_id).update(status='agent', queue_status='queued')
+                queued_count += 1
+            except Exception as e:
+                failed_tickets.append({'id': ticket_id, 'error': str(e)})
+
+        return JsonResponse({
+            'success': True,
+            'queued_count': queued_count,
+            'failed_tickets': failed_tickets,
+            'message': f'{queued_count} ticket(s) queued for build'
+        })
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': 'Invalid JSON data'
+        }, status=400)
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+def tickets_queue_status_api(request, project_id):
+    """API endpoint to get queue status for all tickets (for polling)"""
+    project = get_object_or_404(Project, project_id=project_id, owner=request.user)
+
+    tickets = ProjectTicket.objects.filter(project=project).values('id', 'queue_status')
+
+    return JsonResponse({
+        'success': True,
+        'tickets': list(tickets)
+    })
+
+
+@login_required
 def linear_create_project_api(request, project_id):
     """API view to create a new Linear project"""
     from .linear_sync import LinearSyncService
