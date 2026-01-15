@@ -3822,3 +3822,275 @@ body[data-theme="light"] {
     color: #64748b !important;
     border: 1px solid #e2e8f0 !important;
 }
+
+/* =================================================================
+   KANBAN BOARD - Light mode overrides for ticket board columns
+   ================================================================= */
+
+[data-theme="light"] .kanban-column {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
+}
+
+[data-theme="light"] .kanban-column-header {
+    background: #f8fafc !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .kanban-column-body {
+    background: transparent !important;
+}
+
+[data-theme="light"] .kanban-column-body.drag-over {
+    background: rgba(99, 102, 241, 0.05) !important;
+    border: 2px dashed rgba(99, 102, 241, 0.3) !important;
+}
+
+[data-theme="light"] .kanban-card {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .kanban-card:hover {
+    background: #f8fafc !important;
+    border-color: #cbd5e1 !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+}
+
+[data-theme="light"] .ticket-count {
+    background: #f1f5f9 !important;
+    color: #64748b !important;
+}
+
+[data-theme="light"] .kanban-edit-btn {
+    background: #f1f5f9 !important;
+    color: #64748b !important;
+}
+
+[data-theme="light"] .kanban-edit-btn:hover {
+    background: #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+/* =================================================================
+   LOGS CHAT CONTAINER - Light mode for Actions tab chat input
+   ================================================================= */
+
+[data-theme="light"] .logs-chat-container {
+    background: #ffffff !important;
+    border-top: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .logs-chat-field {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .logs-chat-field:focus-within {
+    border-color: #7c3aed !important;
+    box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.1) !important;
+}
+
+[data-theme="light"] .logs-chat-input {
+    background: transparent !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .logs-chat-input::placeholder {
+    color: #94a3b8 !important;
+}
+
+[data-theme="light"] .logs-chat-attach-btn {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .logs-chat-attach-btn:hover {
+    color: #1e293b !important;
+    background: #e2e8f0 !important;
+}
+
+[data-theme="light"] .ai-typing-indicator {
+    color: #64748b !important;
+}
+
+/* =================================================================
+   PREVIEW PAGE - Light mode overrides for app preview
+   ================================================================= */
+
+[data-theme="light"] .preview-page-container {
+    background: #f8fafc !important;
+}
+
+[data-theme="light"] .preview-header {
+    background: #ffffff !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .server-status {
+    background: #f1f5f9 !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .status-text {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .url-bar input {
+    background: #f1f5f9 !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .url-bar input:focus {
+    border-color: #7c3aed !important;
+    box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.1) !important;
+}
+
+[data-theme="light"] .url-bar button {
+    background: #f1f5f9 !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #64748b !important;
+}
+
+[data-theme="light"] .url-bar button:hover {
+    background: #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .viewport-toggle {
+    background: #f1f5f9 !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .viewport-toggle button {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .viewport-toggle button:hover {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .viewport-toggle button.active {
+    background: #7c3aed !important;
+    color: white !important;
+}
+
+[data-theme="light"] .server-dropdown-toggle {
+    background: #f1f5f9 !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #64748b !important;
+}
+
+[data-theme="light"] .server-dropdown-toggle:hover {
+    background: #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .server-dropdown-menu {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
+}
+
+[data-theme="light"] .server-dropdown-item {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .server-dropdown-item:hover:not(:disabled) {
+    background: #f1f5f9 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .open-tab-btn,
+[data-theme="light"] .console-toggle-btn {
+    background: #f1f5f9 !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #64748b !important;
+}
+
+[data-theme="light"] .open-tab-btn:hover,
+[data-theme="light"] .console-toggle-btn:hover {
+    background: #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .preview-iframe-container {
+    background: #e2e8f0 !important;
+}
+
+[data-theme="light"] .iframe-wrapper.mobile-view {
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.15) !important;
+}
+
+[data-theme="light"] .iframe-wrapper.mobile-view::before {
+    background: #cbd5e1 !important;
+}
+
+[data-theme="light"] .iframe-placeholder {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .preview-console-panel {
+    background: #ffffff !important;
+    border-top: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .console-resize-handle {
+    background: rgba(124, 58, 237, 0.15) !important;
+}
+
+[data-theme="light"] .console-resize-handle:hover,
+[data-theme="light"] .console-resize-handle:active {
+    background: rgba(124, 58, 237, 0.3) !important;
+}
+
+[data-theme="light"] .console-header {
+    background: #f8fafc !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .console-title {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .console-tab {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .console-tab:hover {
+    background: #f1f5f9 !important;
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .console-tab.active {
+    background: rgba(124, 58, 237, 0.1) !important;
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .log-count {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .server-logs-content {
+    background: #f8fafc !important;
+}
+
+[data-theme="light"] .server-logs-output {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .server-logs-placeholder {
+    color: #94a3b8 !important;
+}
+
+[data-theme="light"] .console-actions button {
+    background: #f1f5f9 !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #64748b !important;
+}
+
+[data-theme="light"] .console-actions button:hover:not(:disabled) {
+    background: #e2e8f0 !important;
+    color: #1e293b !important;
+}

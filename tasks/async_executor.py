@@ -248,7 +248,8 @@ class AsyncTicketExecutor:
                     return (False, 'blocked')
 
                 # Check if any dependencies are blocked or failed
-                dependencies = ticket.dependencies.all()
+                dependency_ids = ticket.dependencies or []
+                dependencies = ProjectTicket.objects.filter(id__in=dependency_ids)
                 for dep in dependencies:
                     if dep.status in ['blocked', 'failed']:
                         # Mark this ticket as blocked too

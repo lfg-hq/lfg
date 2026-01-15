@@ -157,15 +157,20 @@ class TicketLogsConsumer(AsyncWebsocketConsumer):
         # Extract status from event
         status = event.get('status')
         ticket_id = event.get('ticket_id')
+        queue_status = event.get('queue_status')  # May be None
 
         # Send to WebSocket client
-        await self.send(text_data=json.dumps({
+        message = {
             'type': 'status_changed',
             'status': status,
             'ticket_id': ticket_id
-        }))
+        }
+        if queue_status is not None:
+            message['queue_status'] = queue_status
 
-        logger.info(f"Sent status update to client for ticket {self.ticket_id}: {status}")
+        await self.send(text_data=json.dumps(message))
+
+        logger.info(f"Sent status update to client for ticket {self.ticket_id}: status={status}, queue_status={queue_status}")
 
     @database_sync_to_async
     def verify_ticket_access(self):

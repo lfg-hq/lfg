@@ -100,6 +100,29 @@ def broadcast_ticket_notification(conversation_id: Optional[int], payload: Dict[
         logger.error(f"Failed to broadcast ticket notification: {exc}")
 
 
+def broadcast_ticket_status_change(ticket_id: int, status: str, queue_status: str = 'none') -> None:
+    """
+    Broadcast a status change to the ticket logs WebSocket group.
+    This updates the UI to reflect the new ticket status and queue status.
+    """
+    channel_layer = get_channel_layer()
+    if not channel_layer:
+        return
+    try:
+        async_to_sync(channel_layer.group_send)(
+            f"ticket_logs_{ticket_id}",
+            {
+                'type': 'ticket_status_changed',
+                'status': status,
+                'ticket_id': ticket_id,
+                'queue_status': queue_status
+            }
+        )
+        logger.info(f"Broadcast status change for ticket #{ticket_id}: status={status}, queue_status={queue_status}")
+    except Exception as exc:
+        logger.error(f"Failed to broadcast ticket status change: {exc}")
+
+
 def simple_test_task_for_debugging(message: str, delay: int = 1) -> dict:
     """
     A simple test task to verify Django-Q functionality without complex operations.
@@ -1026,7 +1049,7 @@ def merge_feature_to_lfg_agent(token: str, owner: str, repo_name: str, feature_b
         return {'status': 'error', 'message': str(e)}
 
 
-def commit_and_push_changes(workspace_id: str, branch_name: str, commit_message: str, ticket_id: int, stack: str = 'nextjs') -> Dict[str, Any]:
+def commit_and_push_changes(workspace_id: str, branch_name: str, commit_message: str, ticket_id: int, stack: str = 'nextjs', github_token: str = None, github_owner: str = None, github_repo: str = None) -> Dict[str, Any]:
     """
     Commit all changes in workspace and push to GitHub.
 
@@ -1036,6 +1059,9 @@ def commit_and_push_changes(workspace_id: str, branch_name: str, commit_message:
         commit_message: Commit message
         ticket_id: Ticket ID for reference
         stack: Technology stack (determines project directory)
+        github_token: GitHub token for authentication (optional but recommended)
+        github_owner: GitHub repo owner (required if github_token provided)
+        github_repo: GitHub repo name (required if github_token provided)
 
     Returns:
         Dict with status and commit details
@@ -1055,6 +1081,7 @@ def commit_and_push_changes(workspace_id: str, branch_name: str, commit_message:
     # Properly escape branch name for shell (handles special characters like &, spaces, etc.)
     escaped_branch = shlex.quote(branch_name)
 
+    # Build commands list
     commands = [
         # Check current branch
         f"cd /workspace/{project_dir} && git branch --show-current",
@@ -1064,9 +1091,16 @@ def commit_and_push_changes(workspace_id: str, branch_name: str, commit_message:
         f"cd /workspace/{project_dir} && git add -A",
         # Commit changes
         f'cd /workspace/{project_dir} && git commit -m "{escaped_message}" || echo "No changes to commit"',
-        # Push to remote
-        f"cd /workspace/{project_dir} && git push -u origin {escaped_branch}"
     ]
+
+    # If we have GitHub token, update remote URL to include auth before pushing
+    if github_token and github_owner and github_repo:
+        commands.append(
+            f"cd /workspace/{project_dir} && git remote set-url origin https://{github_token}@github.com/{github_owner}/{github_repo}.git"
+        )
+
+    # Push to remote
+    commands.append(f"cd /workspace/{project_dir} && git push -u origin {escaped_branch}")
 
     try:
         commit_sha = None
@@ -1100,14 +1134,24 @@ def commit_and_push_changes(workspace_id: str, branch_name: str, commit_message:
                     logger.info(f"  Modified files:\n{stdout}")
 
             # Extract commit SHA
+            # Git commit output format: "[branch_name SHA] message"
+            # Example: "[feature/google-login b6bd18a] chore: User requested changes"
             if 'git commit' in cmd and exit_code == 0:
                 # Try to extract commit SHA from output
                 if '[' in stdout and ']' in stdout:
                     try:
-                        commit_sha = stdout.split('[')[1].split(']')[0].split()[0]
+                        # Extract content between [ and ]
+                        bracket_content = stdout.split('[')[1].split(']')[0]
+                        parts = bracket_content.split()
+                        # SHA is the LAST part (after branch name which may contain slashes)
+                        # Format is: "branch/name SHA" so SHA is always last
+                        if len(parts) >= 2:
+                            commit_sha = parts[-1]  # Last element is the SHA
+                        else:
+                            commit_sha = parts[0] if parts else None
                         logger.info(f"  Commit SHA: {commit_sha}")
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.warning(f"  Could not parse commit SHA: {e}")
 
             # Check for errors
             if exit_code != 0:
@@ -1505,6 +1549,21 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
                 "message": "Already completed",
                 "skipped": True
             }
+
+        # Check if this is a retry (ticket was previously blocked, failed, or in_progress)
+        is_retry = ticket.status in ['blocked', 'failed', 'in_progress']
+        previous_status = ticket.status
+        if is_retry:
+            logger.info(f"[STEP 2/6] ⟳ RETRY detected - previous status was '{previous_status}'")
+            # Add retry note to ticket
+            ticket.notes = (ticket.notes or "") + f"""
+---
+[{datetime.now().strftime('%Y-%m-%d %H:%M')}] ⟳ EXECUTION RETRY
+Previous status: {previous_status}
+Retrying execution...
+"""
+            ticket.save(update_fields=['notes'])
+
         logger.info(f"[STEP 2/6] ✓ Ticket status: {ticket.status}, proceeding...")
 
         attachments = list(ticket.attachments.all())
@@ -1545,12 +1604,15 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
             logger.error(f"[STEP 3/6] ✗ {error_msg}")
 
             ticket.status = 'blocked'
+            ticket.queue_status = 'none'  # Clear queue status
             ticket.notes = (ticket.notes or "") + f"""
-            ---
-            [{datetime.now().strftime('%Y-%m-%d %H:%M')}] EXECUTION FAILED
-            Error: {error_msg}
-            """
-            ticket.save(update_fields=['status', 'notes'])
+---
+[{datetime.now().strftime('%Y-%m-%d %H:%M')}] ❌ BLOCKED - Workspace Setup Failed
+Reason: {error_msg}
+Stage: Workspace/GitHub setup
+Action required: Check workspace configuration and GitHub access
+"""
+            ticket.save(update_fields=['status', 'queue_status', 'notes'])
 
             broadcast_ticket_notification(conversation_id, {
                 'is_notification': True,
@@ -1560,8 +1622,12 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
                 'message': f"✗ Ticket #{ticket.id} failed: {error_msg}",
                 'ticket_id': ticket.id,
                 'ticket_name': ticket.name,
+                'queue_status': 'none',  # Tell frontend to clear queue indicator
                 'refresh_checklist': True
             })
+
+            # Broadcast status change to ticket logs WebSocket (clears queue indicator)
+            broadcast_ticket_status_change(ticket_id, 'blocked', 'none')
 
             return {
                 "status": "error",
@@ -1714,12 +1780,18 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
 
             WORKFLOW:
             1. Broadcast that you're starting
-            2. Check if todos exist - if no, create them. If yes, continue from pending ones.
+            2. Check existing todos: get_ticket_todos(ticket_id={ticket_id}). If none exist, create them with create_ticket_todos(ticket_id={ticket_id}, todos=[...])
             3. Check agent.md for project state. Update it with important changes.
             4. Execute todos one by one SILENTLY (batch shell commands: ls -la && cat ... && grep ...)
-            5. Mark each todo as `Success` when complete
+            5. Mark each todo as done: update_todo_status(ticket_id={ticket_id}, todo_index=X, status="Success")
             6. Install libraries as needed
             7. Broadcast final summary
+
+            TODO MANAGEMENT (IMPORTANT):
+            - ALWAYS use ticket_id={ticket_id} when calling todo functions
+            - Check existing todos: get_ticket_todos(ticket_id={ticket_id})
+            - Create todos: create_ticket_todos(ticket_id={ticket_id}, todos=[{{"description": "Task 1"}}, {{"description": "Task 2"}}])
+            - Update status: update_todo_status(ticket_id={ticket_id}, todo_index=0, status="Success")
 
             🎯 COMPLETION CRITERIA:
             - Project runs with `{dev_cmd}` (DO NOT BUILD)
@@ -1842,7 +1914,7 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
 
             # Commit and push changes
             commit_message = f"feat: {ticket.name}\n\nImplemented ticket #{ticket_id}\n\n{ticket.description[:200]}"
-            commit_result = commit_and_push_changes(workspace_id, feature_branch_name, commit_message, ticket_id, stack=stack)
+            commit_result = commit_and_push_changes(workspace_id, feature_branch_name, commit_message, ticket_id, stack=stack, github_token=github_token, github_owner=github_owner, github_repo=github_repo)
 
             if commit_result['status'] == 'success':
                 commit_sha = commit_result.get('commit_sha')
@@ -1929,11 +2001,15 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
                 'message': f"✓ Completed ticket #{ticket.id}: {ticket.name}",
                 'ticket_id': ticket.id,
                 'ticket_name': ticket.name,
+                'queue_status': 'none',  # Tell frontend to clear queue indicator
                 'refresh_checklist': True
             })
 
             logger.info(f"[FINALIZE] ✓ Task completed successfully in {execution_time:.1f}s")
             logger.info(f"{'='*80}\n[TASK END] SUCCESS - Ticket #{ticket_id}\n{'='*80}\n")
+
+            # Broadcast status change to ticket logs WebSocket (clears queue indicator)
+            broadcast_ticket_status_change(ticket_id, 'review', 'none')
 
             # Clear any cancellation flag (may have been set but we finished anyway)
             clear_ticket_cancellation_flag(ticket_id)
@@ -1972,17 +2048,19 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
                 error_reason = "No explicit completion status provided. AI may have exceeded tool limit or stopped unexpectedly."
 
             ticket.status = 'blocked'
+            ticket.queue_status = 'none'  # Clear queue status
             ticket.notes = (ticket.notes or "") + f"""
-                ---
-                [{datetime.now().strftime('%Y-%m-%d %H:%M')}] IMPLEMENTATION FAILED
-                Time: {execution_time:.2f} seconds
-                Tool calls: ~{tool_calls_count}
-                Files attempted: {len(files_created)}
-                Error: {error_reason}
-                Workspace: {workspace_id}
-                Manual intervention required
-                """
-            ticket.save(update_fields=['status', 'notes'])
+---
+[{datetime.now().strftime('%Y-%m-%d %H:%M')}] ❌ BLOCKED - Implementation Failed
+Reason: {error_reason}
+Stage: AI Implementation
+Execution time: {execution_time:.2f}s
+Tool calls: ~{tool_calls_count}
+Files attempted: {len(files_created)}
+Workspace: {workspace_id}
+Action required: Review error and retry or manually fix
+"""
+            ticket.save(update_fields=['status', 'queue_status', 'notes'])
 
             broadcast_ticket_notification(conversation_id, {
                 'is_notification': True,
@@ -1992,8 +2070,12 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
                 'message': f"✗ Failed ticket #{ticket.id}: {error_reason}",
                 'ticket_id': ticket.id,
                 'ticket_name': ticket.name,
+                'queue_status': 'none',  # Tell frontend to clear queue indicator
                 'refresh_checklist': True
             })
+
+            # Broadcast status change to ticket logs WebSocket (clears queue indicator)
+            broadcast_ticket_status_change(ticket_id, 'blocked', 'none')
 
             logger.info(f"{'='*80}\n[TASK END] FAILED - Ticket #{ticket_id}\n{'='*80}\n")
 
@@ -2021,15 +2103,17 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
         if 'ticket' in locals():
             # Mark ticket as blocked - no retry logic
             ticket.status = 'blocked'
+            ticket.queue_status = 'none'  # Clear queue status
             ticket.notes = (ticket.notes or "") + f"""
-            ---
-            [{datetime.now().strftime('%Y-%m-%d %H:%M')}] EXECUTION FAILED
-            Error: {error_msg}
-            Time: {execution_time:.2f}s
-            Workspace: {workspace_id or 'N/A'}
-            Manual intervention required
-            """
-            ticket.save(update_fields=['status', 'notes'])
+---
+[{datetime.now().strftime('%Y-%m-%d %H:%M')}] ❌ BLOCKED - Exception Error
+Reason: {error_msg}
+Stage: Execution crashed
+Execution time: {execution_time:.2f}s
+Workspace: {workspace_id or 'N/A'}
+Action required: Check logs for detailed error trace and retry
+"""
+            ticket.save(update_fields=['status', 'queue_status', 'notes'])
 
             broadcast_ticket_notification(conversation_id, {
                 'is_notification': True,
@@ -2039,11 +2123,18 @@ def execute_ticket_implementation(ticket_id: int, project_id: int, conversation_
                 'message': f"✗ Ticket #{ticket.id} error: {error_msg[:100]}",
                 'ticket_id': ticket.id,
                 'ticket_name': ticket.name,
+                'queue_status': 'none',  # Tell frontend to clear queue indicator
                 'refresh_checklist': True
             })
 
         # Return error without re-raising (prevents Django-Q retry loops)
         logger.error(f"{'='*80}\n[TASK END] ERROR - Ticket #{ticket_id}\n{'='*80}\n")
+
+        # Broadcast status change to ticket logs WebSocket (clears queue indicator)
+        try:
+            broadcast_ticket_status_change(ticket_id, 'blocked', 'none')
+        except Exception:
+            pass  # Don't fail on cleanup
 
         # Clear any cancellation flag
         try:
@@ -2426,7 +2517,20 @@ def continue_ticket_with_message(ticket_id: int, project_id: int, user_message: 
     start_time = time.time()
     workspace_id = None
 
+    # Import cancellation utilities at the top of the function
+    from tasks.dispatch import is_ticket_cancelled, clear_ticket_cancellation_flag
+
     try:
+        # 0. CHECK FOR CANCELLATION BEFORE STARTING
+        if is_ticket_cancelled(ticket_id):
+            logger.info(f"[TICKET CHAT] ⊘ Ticket #{ticket_id} was cancelled before processing, stopping")
+            return {
+                "status": "cancelled",
+                "ticket_id": ticket_id,
+                "message": "Ticket chat was cancelled by user",
+                "execution_time": f"{time.time() - start_time:.2f}s"
+            }
+
         # 1. GET TICKET AND PROJECT
         ticket = ProjectTicket.objects.get(id=ticket_id)
         project = Project.objects.get(id=project_id)
@@ -2523,7 +2627,13 @@ def continue_ticket_with_message(ticket_id: int, project_id: int, user_message: 
                         })
                 logger.info(f"[TICKET CHAT] Including {len(attachment_files)} attachments in context")
 
-        # 5. BUILD THE CONTINUATION PROMPT
+        # 5. GET STACK CONFIGURATION FOR CORRECT PROJECT DIRECTORY
+        stack = getattr(project, 'stack', 'nextjs')
+        stack_config = get_stack_config(stack)
+        project_dir = stack_config['project_dir']
+        logger.info(f"[TICKET CHAT] Using stack: {stack}, project_dir: {project_dir}")
+
+        # 5.5 BUILD THE CONTINUATION PROMPT
         workspace_info = ""
         if workspace_id:
             workspace_info = """
@@ -2555,7 +2665,8 @@ def continue_ticket_with_message(ticket_id: int, project_id: int, user_message: 
             {logs_context}
             {attachments_context}
 
-            PROJECT PATH: nextjs-app
+            PROJECT STACK: {stack_config['name']}
+            PROJECT PATH: {project_dir}
             {workspace_info}
 
             After completing the user's request:
@@ -2567,25 +2678,35 @@ def continue_ticket_with_message(ticket_id: int, project_id: int, user_message: 
         system_prompt = """
             You are an expert developer continuing work on a ticket based on user feedback.
 
-            COMMUNICATION PROTOCOL - VERY IMPORTANT:
-            1. IMMEDIATELY call broadcast_to_user(status="progress", message="I'll help you with [brief description]...") to acknowledge the request
-            2. Work SILENTLY - do NOT output explanatory text like "Let me check...", "Perfect!", "Now I'll..."
-            3. Just execute tools directly without narration
-            4. At the END, call broadcast_to_user(status="complete", message="[summary of what was done]") with your final summary
-            5. If blocked or need help, call broadcast_to_user(status="blocked", message="[what's wrong]")
+            COMMUNICATION PROTOCOL - CRITICAL (The user ONLY sees broadcast_to_user messages!):
+            ALL your responses MUST go through broadcast_to_user. Never just return text - it won't be shown to the user!
+
+            1. IMMEDIATELY call broadcast_to_user(status="progress", message="I'll help you with [brief description]...") to acknowledge
+            2. For questions: call broadcast_to_user(status="complete", message="[your answer here]") with your full answer
+            3. For tasks: work SILENTLY (no explanatory text), then call broadcast_to_user(status="complete", message="[summary]")
+            4. If blocked: call broadcast_to_user(status="blocked", message="[what's wrong]")
 
             WORKFLOW:
+            For QUESTIONS:
+            - Call broadcast_to_user with your complete answer as the message
+
+            For TASKS:
             1. Broadcast acknowledgment FIRST
-            2. If new task: create Todos, execute them silently one by one
-            3. If question: look into codebase if needed
-            4. Mark todos as done when complete
+            2. If new task: First check existing todos with get_ticket_todos(ticket_id={ticket.id}), then create new todos with create_ticket_todos(ticket_id={ticket.id}, todos=[...])
+            3. Execute todos one by one SILENTLY
+            4. Mark each todo as done with update_todo_status(ticket_id={ticket.id}, todo_index=X, status="Success")
             5. Broadcast final summary
+
+            TODO MANAGEMENT (IMPORTANT):
+            - ALWAYS use ticket_id={ticket.id} when calling todo functions
+            - Check existing todos first: get_ticket_todos(ticket_id={ticket.id})
+            - Create new todos: create_ticket_todos(ticket_id={ticket.id}, todos=[{{"description": "Task 1"}}, {{"description": "Task 2"}}])
+            - Update todo status: update_todo_status(ticket_id={ticket.id}, todo_index=0, status="Success")
 
             IMPORTANT:
             - DO NOT RE-CREATE the project. Modify existing files.
             - DO NOT verify extensively or test in loops.
             - DO NOT create documentation files (*.md) except agent.md
-            - CREATE new TODO list if there are new changes to be made. This will allow user to track the progress being made
             - When done, update todos and broadcast completion
 
             MANDATORY: You MUST end your response with one of these exact status lines (required for tracking):
@@ -2593,7 +2714,20 @@ def continue_ticket_with_message(ticket_id: int, project_id: int, user_message: 
             - "IMPLEMENTATION_STATUS: FAILED - [reason]"
             """
 
-        # 6. CALL AI
+        # 6. CHECK FOR CANCELLATION BEFORE AI CALL
+        if is_ticket_cancelled(ticket_id):
+            logger.info(f"[TICKET CHAT] ⊘ Ticket #{ticket_id} was cancelled before AI call, stopping")
+            # Clear AI processing flag
+            from django.core.cache import cache
+            cache.delete(f'ticket_ai_processing_{ticket_id}')
+            return {
+                "status": "cancelled",
+                "ticket_id": ticket_id,
+                "message": "Ticket chat was cancelled by user before AI processing",
+                "execution_time": f"{time.time() - start_time:.2f}s"
+            }
+
+        # 7. CALL AI
         logger.info(f"[TICKET CHAT] Calling AI to process user message...")
 
         ai_start = time.time()
@@ -2611,16 +2745,101 @@ def continue_ticket_with_message(ticket_id: int, project_id: int, user_message: 
         content = ai_response.get('content', '') if ai_response else ''
         execution_time = time.time() - start_time
 
-        # 7. CLEAR AI PROCESSING FLAG
-        # Note: AI response is NOT saved to TicketLog - AI communicates via broadcast_to_user tool only
+        # 8. CLEAR AI PROCESSING FLAG
         from django.core.cache import cache
         ai_processing_key = f'ticket_ai_processing_{ticket_id}'
         cache.delete(ai_processing_key)
         logger.info(f"[TICKET CHAT] Cleared AI processing flag for ticket #{ticket_id}")
 
-        # 8. CHECK COMPLETION STATUS
+        # 8.5 FALLBACK: If AI didn't call broadcast_to_user, we need to send the response manually
+        # Check if there was a recent ai_response log for this ticket (created during AI execution)
+        try:
+            from django.utils import timezone
+            from datetime import timedelta
+
+            # Check for ai_response logs created in the last 60 seconds (during this execution)
+            recent_cutoff = timezone.now() - timedelta(seconds=60)
+            recent_ai_logs = TicketLog.objects.filter(
+                ticket_id=ticket_id,
+                log_type='ai_response',
+                created_at__gte=recent_cutoff
+            ).exists()
+
+            if not recent_ai_logs and content:
+                # AI didn't broadcast any response, we need to send a fallback
+                # Extract meaningful content - strip implementation status markers
+                fallback_content = content
+                for marker in ['IMPLEMENTATION_STATUS: COMPLETE', 'IMPLEMENTATION_STATUS: FAILED', 'IMPLEMENTATION_STATUS: BLOCKED']:
+                    fallback_content = fallback_content.replace(marker, '').strip()
+
+                if fallback_content:
+                    logger.info(f"[TICKET CHAT] No broadcast_to_user call detected, sending fallback response")
+
+                    # Save to TicketLog
+                    fallback_log = TicketLog.objects.create(
+                        ticket=ticket,
+                        log_type='ai_response',
+                        command='[RESPONSE]',
+                        explanation='AI Agent Response',
+                        output=fallback_content[:5000]  # Limit to 5000 chars
+                    )
+
+                    # Send via WebSocket
+                    try:
+                        from channels.layers import get_channel_layer
+                        # Note: async_to_sync is already imported globally at top of file
+
+                        channel_layer = get_channel_layer()
+                        if channel_layer:
+                            log_data = {
+                                'id': fallback_log.id,
+                                'log_type': 'ai_response',
+                                'command': '[RESPONSE]',
+                                'output': fallback_content[:5000],
+                                'exit_code': None,
+                                'created_at': fallback_log.created_at.isoformat()
+                            }
+                            async_to_sync(channel_layer.group_send)(
+                                f'ticket_logs_{ticket_id}',
+                                {
+                                    'type': 'ticket_log_created',
+                                    'log_data': log_data
+                                }
+                            )
+                            logger.info(f"[TICKET CHAT] ✓ Fallback response sent via WebSocket (log #{fallback_log.id})")
+                    except Exception as ws_error:
+                        logger.warning(f"[TICKET CHAT] Failed to send fallback via WebSocket: {ws_error}")
+                else:
+                    logger.info(f"[TICKET CHAT] No meaningful content to send as fallback")
+            elif recent_ai_logs:
+                logger.info(f"[TICKET CHAT] AI already broadcast response, no fallback needed")
+            else:
+                logger.warning(f"[TICKET CHAT] No content from AI response")
+        except Exception as fallback_error:
+            logger.warning(f"[TICKET CHAT] Error checking/sending fallback response: {fallback_error}")
+
+        # 9. CHECK FOR CANCELLATION AFTER AI CALL
+        if is_ticket_cancelled(ticket_id):
+            logger.info(f"[TICKET CHAT] ⊘ Ticket #{ticket_id} was cancelled during AI execution, stopping")
+            clear_ticket_cancellation_flag(ticket_id)
+            return {
+                "status": "cancelled",
+                "ticket_id": ticket_id,
+                "message": "Ticket chat was cancelled by user during AI processing",
+                "execution_time": f"{execution_time:.2f}s",
+                "workspace_id": workspace_id
+            }
+
+        # 10. CHECK COMPLETION STATUS
         completed = 'IMPLEMENTATION_STATUS: COMPLETE' in content
         failed = 'IMPLEMENTATION_STATUS: FAILED' in content
+
+        # Debug logging for completion status
+        logger.info(f"[TICKET CHAT] AI response length: {len(content)} chars")
+        logger.info(f"[TICKET CHAT] Completion status: completed={completed}, failed={failed}")
+        if not completed and not failed:
+            # Log last 500 chars to see if status was almost there
+            logger.warning(f"[TICKET CHAT] ⚠ No completion status found! Last 500 chars of response: {content[-500:] if content else '(empty)'}")
 
         # Re-fetch workspace in case it was created during AI execution (lazy initialization)
         if not workspace_id:
@@ -2651,15 +2870,15 @@ def continue_ticket_with_message(ticket_id: int, project_id: int, user_message: 
                 else:
                     logger.warning(f"[TICKET CHAT] No workspace found for project")
 
-        # 9. COMMIT CHANGES AND UPDATE STATUS IF COMPLETE
+        # 11. COMMIT CHANGES AND UPDATE STATUS IF COMPLETE
         commit_sha = None
         merge_status = None
         github_owner = None
         github_repo = None
 
-        logger.info(f"[TICKET CHAT] Commit check: workspace_id={workspace_id}, completed={completed}, failed={failed}")
+        logger.info(f"[TICKET CHAT] Commit check: workspace_id={workspace_id}, completed={completed}, failed={failed}, stack={stack}, github_branch={ticket.github_branch}")
 
-        if workspace_id and completed:
+        if workspace_id and completed and not failed:
             from codebase_index.models import IndexedRepository
 
             try:
@@ -2671,11 +2890,11 @@ def continue_ticket_with_message(ticket_id: int, project_id: int, user_message: 
 
                 if github_token and feature_branch:
                     commit_message = f"chore: User requested changes for ticket #{ticket_id}\n\n{user_message[:200]}"
-                    commit_result = commit_and_push_changes(workspace_id, feature_branch, commit_message, ticket_id)
+                    commit_result = commit_and_push_changes(workspace_id, feature_branch, commit_message, ticket_id, stack=stack, github_token=github_token, github_owner=github_owner, github_repo=github_repo)
 
                     if commit_result['status'] == 'success':
                         commit_sha = commit_result.get('commit_sha')
-                        logger.info(f"[TICKET CHAT] Changes committed: {commit_sha}")
+                        logger.info(f"[TICKET CHAT] ✓ Changes committed and pushed: {commit_sha}")
 
                         # Save commit SHA to ticket
                         ticket.github_commit_sha = commit_sha
@@ -2691,7 +2910,7 @@ def continue_ticket_with_message(ticket_id: int, project_id: int, user_message: 
                         elif merge_result['status'] == 'conflict':
                             # Try to resolve conflict locally in workspace
                             logger.warning(f"[TICKET CHAT] ⚠ Merge conflict detected, attempting AI-based resolution...")
-                            resolution_result = resolve_merge_conflict(workspace_id, feature_branch, ticket_id, project.project_id, None)
+                            resolution_result = resolve_merge_conflict(workspace_id, feature_branch, ticket_id, project.project_id, None, stack=stack)
 
                             if resolution_result['status'] == 'success':
                                 logger.info(f"[TICKET CHAT] ✓ Conflicts resolved and merged locally")
@@ -2699,6 +2918,10 @@ def continue_ticket_with_message(ticket_id: int, project_id: int, user_message: 
                             else:
                                 logger.error(f"[TICKET CHAT] ✗ Could not resolve conflicts: {resolution_result.get('message')}")
                                 merge_status = 'conflict'
+                                # Add conflict details to ticket notes
+                                if 'conflicted_files' in resolution_result:
+                                    ticket.notes = (ticket.notes or "") + f"\n\n⚠ MERGE CONFLICTS:\nFiles: {', '.join(resolution_result['conflicted_files'])}"
+                                    ticket.save(update_fields=['notes'])
                         else:
                             logger.error(f"[TICKET CHAT] ✗ Merge failed: {merge_result.get('message')}")
                             merge_status = 'failed'
@@ -2706,10 +2929,19 @@ def continue_ticket_with_message(ticket_id: int, project_id: int, user_message: 
                         # Save merge status to ticket
                         ticket.github_merge_status = merge_status
                         ticket.save(update_fields=['github_merge_status'])
+                    else:
+                        logger.error(f"[TICKET CHAT] ✗ Failed to commit changes: {commit_result.get('message')}")
+                else:
+                    if not github_token:
+                        logger.warning(f"[TICKET CHAT] No GitHub token available, skipping commit")
+                    if not feature_branch:
+                        logger.warning(f"[TICKET CHAT] No feature branch set on ticket, skipping commit")
             except IndexedRepository.DoesNotExist:
                 logger.info(f"[TICKET CHAT] No GitHub repo linked, skipping commit")
+            except Exception as git_error:
+                logger.error(f"[TICKET CHAT] ✗ Git operation failed: {str(git_error)}", exc_info=True)
 
-        # 9. UPDATE TICKET STATUS TO DONE IF ALL TASKS COMPLETE
+        # 12. UPDATE TICKET STATUS TO DONE IF ALL TASKS COMPLETE
         if completed and not failed:
             # Check if all todos are done
             from projects.models import ProjectTodoList

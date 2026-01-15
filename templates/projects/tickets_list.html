@@ -2762,6 +2762,78 @@
         let isAiProcessing = false;
         const MAX_RECONNECT_ATTEMPTS = 5;
 
+        // State persistence functions - save/restore ticket drawer state per project
+        function getTicketStateKey() {
+            if (!currentProject || !currentProject.id) return null;
+            return `lfg_ticket_state_${currentProject.id}`;
+        }
+
+        function saveTicketState() {
+            const key = getTicketStateKey();
+            if (!key || !currentTicket) return;
+
+            const state = {
+                ticketId: currentTicket.id,
+                projectId: currentTicket.project_id,
+                tab: currentTab,
+                timestamp: Date.now()
+            };
+            localStorage.setItem(key, JSON.stringify(state));
+        }
+
+        function clearTicketState() {
+            const key = getTicketStateKey();
+            if (key) {
+                localStorage.removeItem(key);
+            }
+        }
+
+        function getSavedTicketState() {
+            const key = getTicketStateKey();
+            if (!key) return null;
+
+            try {
+                const saved = localStorage.getItem(key);
+                if (!saved) return null;
+
+                const state = JSON.parse(saved);
+                // Optional: expire state after 24 hours
+                if (Date.now() - state.timestamp > 24 * 60 * 60 * 1000) {
+                    clearTicketState();
+                    return null;
+                }
+                return state;
+            } catch (e) {
+                console.error('Error loading saved ticket state:', e);
+                return null;
+            }
+        }
+
+        async function restoreTicketState() {
+            const savedState = getSavedTicketState();
+            if (!savedState) return;
+
+            console.log('Restoring ticket state:', savedState);
+
+            // Temporarily store the desired tab before opening the ticket
+            const desiredTab = savedState.tab || 'details';
+
+            try {
+                // Fetch and open the saved ticket
+                await viewTicketDetails(savedState.ticketId, savedState.projectId);
+
+                // Switch to the saved tab after a brief delay to ensure drawer is ready
+                setTimeout(() => {
+                    if (currentTicket && currentTicket.id === savedState.ticketId) {
+                        switchDrawerTab(desiredTab);
+                    }
+                }, 100);
+            } catch (error) {
+                console.error('Error restoring ticket state:', error);
+                clearTicketState();
+            }
+        }
+
         // WebSocket functions for real-time log updates
         function connectTicketLogsWebSocket(ticketId) {
             // Close existing connection if any
@@ -2787,8 +2859,8 @@
                         // Add the new log to the UI
                         handleNewLog(data.log);
                     } else if (data.type === 'status_changed') {
-                        // Handle ticket status change
-                        handleStatusChange(data.status, data.ticket_id);
+                        // Handle ticket status change with optional queue_status
+                        handleStatusChange(data.status, data.ticket_id, data.queue_status || null);
                     }
                 };
 
@@ -3201,34 +3273,49 @@
             scrollLogsToBottom();
         }
 
-        function handleStatusChange(status, ticketId) {
-            console.log(`Ticket ${ticketId} status changed to: ${status}`);
+        function handleStatusChange(status, ticketId, queueStatus = null) {
+            console.log(`Ticket ${ticketId} status changed to: ${status}, queue_status: ${queueStatus}`);
+
+            // Determine the correct queue status
+            // If queue_status is explicitly provided, use it
+            // Otherwise, derive from ticket status (done/blocked/failed = none)
+            let effectiveQueueStatus = queueStatus;
+            if (effectiveQueueStatus === null) {
+                if (['done', 'blocked', 'failed', 'review'].includes(status)) {
+                    effectiveQueueStatus = 'none';
+                } else {
+                    effectiveQueueStatus = status;
+                }
+            }
 
             // Update the queue status in the table
-            updateQueueStatusUI(ticketId, status === 'done' ? 'none' : status);
+            updateQueueStatusUI(ticketId, effectiveQueueStatus);
 
             // Update the execute button if this is the currently viewed ticket
             if (currentTicket && currentTicket.id === ticketId) {
                 const executeBtn = document.getElementById('executeTicketBtn');
                 if (executeBtn) {
-                    if (status === 'done' || status === 'none') {
+                    if (effectiveQueueStatus === 'none') {
                         executeBtn.disabled = false;
                         executeBtn.innerHTML = '<i class="fas fa-hammer"></i> Build Ticket';
                         executeBtn.classList.remove('stop-mode');
                         // Update currentTicket's queue_status
                         currentTicket.queue_status = 'none';
-                    } else if (status === 'executing') {
+                    } else if (effectiveQueueStatus === 'executing') {
                         executeBtn.disabled = false;
                         executeBtn.innerHTML = '<i class="fas fa-stop"></i> Stop Build';
                         executeBtn.classList.add('stop-mode');
                         currentTicket.queue_status = 'executing';
-                    } else if (status === 'queued') {
+                    } else if (effectiveQueueStatus === 'queued') {
                         executeBtn.disabled = false;
                         executeBtn.innerHTML = '<i class="fas fa-times"></i> Cancel Queue';
                         executeBtn.classList.add('stop-mode');
                         currentTicket.queue_status = 'queued';
                     }
                 }
+
+                // Also update the ticket status in currentTicket
+                currentTicket.status = status;
             }
 
             // Find the logs container
@@ -3300,6 +3387,9 @@
             if (currentTicket) {
                 loadTabContent(tab);
             }
+
+            // Save state when tab changes
+            saveTicketState();
         }
 
         function loadTabContent(tab) {
@@ -3972,6 +4062,9 @@
 
             drawer.classList.add('active');
             overlay.classList.add('active');
+
+            // Save state to localStorage for persistence
+            saveTicketState();
         }
 
         function closeTicketDrawer() {
@@ -3988,6 +4081,9 @@
             currentProjectId = null;
             // Reset edit mode when drawer closes
             isDetailsEditMode = false;
+
+            // Clear saved state when drawer is explicitly closed
+            clearTicketState();
         }
 
         function handleOverlayClick() {
@@ -5637,6 +5733,9 @@
 
             // Initialize WebSocket connection
             initializeTicketWebSocket();
+
+            // Restore saved ticket state if any (opens ticket drawer to last viewed ticket/tab)
+            restoreTicketState();
         });
     </script>
 

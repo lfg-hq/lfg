@@ -4155,7 +4155,10 @@ def push_to_lfg_agent_api(request, project_id, ticket_id):
             workspace.workspace_id,
             ticket.github_branch,
             commit_message,
-            ticket.id
+            ticket.id,
+            github_token=github_token,
+            github_owner=github_owner,
+            github_repo=github_repo
         )
 
         if commit_result['status'] != 'success':
