@@ -1352,6 +1352,7 @@
     const projectId = '{{ project.project_id }}';
     const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
     const serverConfigs = {{ server_configs|safe }};
+    const previewPort = {{ preview_port }};  // Dynamic port based on project stack
     let workspace = {{ workspace_json|safe }};
     let workspaceId = workspace ? workspace.workspace_id : null;
 
@@ -1581,7 +1582,7 @@
                     'Content-Type': 'application/json',
                     'X-CSRFToken': csrfToken
                 },
-                body: JSON.stringify({ port: 3000 })
+                body: JSON.stringify({ port: previewPort })
             });
 
             const data = await response.json();
@@ -1813,7 +1814,7 @@
                     'Content-Type': 'application/json',
                     'X-CSRFToken': csrfToken
                 },
-                body: JSON.stringify({ port: 3000 })
+                body: JSON.stringify({ port: previewPort })
             });
 
             const data = await response.json();
@@ -1874,7 +1875,7 @@
                     'Content-Type': 'application/json',
                     'X-CSRFToken': csrfToken
                 },
-                body: JSON.stringify({ port: 3000 })
+                body: JSON.stringify({ port: previewPort })
             });
 
             // Wait a moment
@@ -1887,7 +1888,7 @@
                     'Content-Type': 'application/json',
                     'X-CSRFToken': csrfToken
                 },
-                body: JSON.stringify({ port: 3000 })
+                body: JSON.stringify({ port: previewPort })
             });
 
             const data = await response.json();

@@ -1220,6 +1220,11 @@ def app_preview(request, project_id):
         for config in server_configs
     ]
 
+    # Get the correct port from project settings or stack config (used for all server operations)
+    from factory.stack_configs import get_stack_config
+    stack_config = get_stack_config(project.stack, project)
+    preview_port = project.custom_default_port or stack_config.get('default_port', 3000)
+
     # Get Magpie workspace for this project (any workspace with an IPv6 address)
     workspace = MagpieWorkspace.objects.filter(
         project=project,
@@ -1229,10 +1234,6 @@ def app_preview(request, project_id):
     workspace_data = None
     if workspace:
         ipv6 = workspace.ipv6_address.strip('[]') if workspace.ipv6_address else None
-        # Get the correct port from project settings or stack config
-        from factory.stack_configs import get_stack_config
-        stack_config = get_stack_config(project.stack, project)
-        preview_port = project.custom_default_port or stack_config.get('default_port', 3000)
         # Use proxy URL if available, otherwise fall back to IPv6
         preview_url = get_or_fetch_proxy_url(workspace, port=preview_port)
         if not preview_url:
@@ -1262,6 +1263,7 @@ def app_preview(request, project_id):
         'workspace_json': json.dumps(workspace_data) if workspace_data else 'null',
         'sidebar_minimized': sidebar_minimized,
         'access_token': access_token,
+        'preview_port': preview_port,
     }
 
     return render(request, 'projects/app_preview.html', context)
@@ -1968,13 +1970,6 @@ fi
 # Kill any remaining processes by name
 {kill_processes}
 
-# Kill ANY process on the port (most reliable method)
-fuser -k -9 {port}/tcp 2>/dev/null || true
-lsof -ti:{port} | xargs kill -9 2>/dev/null || true
-
-# Wait for port to be fully released
-sleep 2
-
 # Clear cache
 {cache_clear}
 
@@ -2135,10 +2130,6 @@ fi
 
 # Kill by process pattern
 {f'pkill -f "{kill_pattern}" 2>/dev/null || true' if kill_pattern else ''}
-
-# Kill ANY process on the port (most reliable)
-fuser -k -9 {port}/tcp 2>/dev/null || true
-lsof -ti:{port} | xargs kill -9 2>/dev/null || true
 
 echo "Server stopped"
 """
