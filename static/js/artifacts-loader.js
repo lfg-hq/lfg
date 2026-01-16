@@ -2474,6 +2474,28 @@ document.addEventListener('DOMContentLoaded', function() {
                     const statuses = [...new Set(checklist.map(item => item.status || 'open'))].sort();
                     const roles = [...new Set(checklist.map(item => item.role || 'user'))].sort();
 
+                    // Extract unique source documents (files) for filter
+                    const sourceDocuments = checklist
+                        .filter(item => item.source_document_id && item.source_document_name)
+                        .reduce((acc, item) => {
+                            if (!acc.find(d => d.id === item.source_document_id)) {
+                                acc.push({ id: item.source_document_id, name: item.source_document_name });
+                            }
+                            return acc;
+                        }, [])
+                        .sort((a, b) => a.name.localeCompare(b.name));
+
+                    // Check if there are any tickets with conversation associations
+                    const hasConversationTickets = checklist.some(item => item.conversation_id);
+
+                    // Get current conversation ID from page context (if available)
+                    // Check multiple sources: window.conversationId, window.currentConversationId, or URL param
+                    let currentConversationId = window.conversationId || window.currentConversationId || null;
+                    if (!currentConversationId) {
+                        const urlParams = new URLSearchParams(window.location.search);
+                        currentConversationId = urlParams.get('conversation_id') || null;
+                    }
+
                     // Create container with filters
                     // Check current theme for styling
                     const isLightTheme = document.documentElement.getAttribute('data-theme') === 'light';
@@ -2537,6 +2559,18 @@ document.addEventListener('DOMContentLoaded', function() {
                                                     <option value="all">All Assigned</option>
                                                     ${roles.map(role => `<option value="${role}">${role.charAt(0).toUpperCase() + role.slice(1)}</option>`).join('')}
                                                 </select>
+                                                ${sourceDocuments.length > 0 ? `
+                                                <select id="file-filter" class="checklist-filter-dropdown">
+                                                    <option value="all">All Files</option>
+                                                    ${sourceDocuments.map(doc => `<option value="${doc.id}">${doc.name}</option>`).join('')}
+                                                </select>
+                                                ` : ''}
+                                                ${currentConversationId ? `
+                                                <select id="conversation-filter" class="checklist-filter-dropdown">
+                                                    <option value="all">All Tickets</option>
+                                                    <option value="current">This Chat Only</option>
+                                                </select>
+                                                ` : ''}
                                                 <button id="clear-checklist-filters" class="clear-filters-btn" title="Clear filters">
                                                     <i class="fas fa-times"></i>
                                                 </button>
@@ -2606,6 +2640,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     const checklistContent = document.getElementById('checklist-content');
                     const statusFilter = document.getElementById('status-filter');
                     const roleFilter = document.getElementById('role-filter');
+                    const fileFilter = document.getElementById('file-filter');
+                    const conversationFilter = document.getElementById('conversation-filter');
                     const clearFiltersBtn = document.getElementById('clear-checklist-filters');
 
                     const deleteChecklistItem = (item) => {
@@ -2672,20 +2708,34 @@ document.addEventListener('DOMContentLoaded', function() {
                     });
 
                     // Function to render checklist items based on filters
-                    const renderChecklist = (filterStatus = 'all', filterRole = 'all') => {
+                    const renderChecklist = (filterStatus = 'all', filterRole = 'all', filterFile = 'all', filterConversation = 'all') => {
                         let filteredChecklist = [...checklist];
-                        
+
                         // Apply status filter
                         if (filterStatus !== 'all') {
-                            filteredChecklist = filteredChecklist.filter(item => 
+                            filteredChecklist = filteredChecklist.filter(item =>
                                 (item.status || 'open') === filterStatus
                             );
                         }
-                        
+
                         // Apply role filter
                         if (filterRole !== 'all') {
-                            filteredChecklist = filteredChecklist.filter(item => 
+                            filteredChecklist = filteredChecklist.filter(item =>
                                 (item.role || 'user') === filterRole
+                            );
+                        }
+
+                        // Apply file filter
+                        if (filterFile !== 'all') {
+                            filteredChecklist = filteredChecklist.filter(item =>
+                                item.source_document_id && item.source_document_id.toString() === filterFile
+                            );
+                        }
+
+                        // Apply conversation filter
+                        if (filterConversation === 'current' && currentConversationId) {
+                            filteredChecklist = filteredChecklist.filter(item =>
+                                item.conversation_id && item.conversation_id.toString() === currentConversationId.toString()
                             );
                         }
 
@@ -3231,22 +3281,32 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
                     };
 
+                    // Helper to apply all filters
+                    const applyAllFilters = () => {
+                        const filterStatus = statusFilter ? statusFilter.value : 'all';
+                        const filterRole = roleFilter ? roleFilter.value : 'all';
+                        const filterFile = fileFilter ? fileFilter.value : 'all';
+                        const filterConv = conversationFilter ? conversationFilter.value : 'all';
+                        renderChecklist(filterStatus, filterRole, filterFile, filterConv);
+                    };
+
                     // Attach event listeners for filters
-                    statusFilter.addEventListener('change', function() {
-                        const filterStatus = this.value;
-                        const filterRole = roleFilter.value;
-                        renderChecklist(filterStatus, filterRole);
-                    });
-                    
-                    roleFilter.addEventListener('change', function() {
-                        const filterStatus = statusFilter.value;
-                        const filterRole = this.value;
-                        renderChecklist(filterStatus, filterRole);
-                    });
-                    
+                    statusFilter.addEventListener('change', applyAllFilters);
+                    roleFilter.addEventListener('change', applyAllFilters);
+
+                    if (fileFilter) {
+                        fileFilter.addEventListener('change', applyAllFilters);
+                    }
+
+                    if (conversationFilter) {
+                        conversationFilter.addEventListener('change', applyAllFilters);
+                    }
+
                     clearFiltersBtn.addEventListener('click', function() {
                         statusFilter.value = 'all';
                         roleFilter.value = 'all';
+                        if (fileFilter) fileFilter.value = 'all';
+                        if (conversationFilter) conversationFilter.value = 'all';
                         renderChecklist();
                     });
                     

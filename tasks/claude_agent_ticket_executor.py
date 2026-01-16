@@ -454,8 +454,8 @@ REMEMBER: Always check state first, then make surgical changes. You're a precisi
 
             # 11. UPDATE TICKET BASED ON RESULT
             if completed and not failed:
-                # SUCCESS!
-                self.ticket.status = 'done'
+                # SUCCESS! Mark as review (not done) so user can review the changes
+                self.ticket.status = 'review'
                 self.ticket.notes = f"""
 [{datetime.now().strftime('%Y-%m-%d %H:%M')}] IMPLEMENTATION COMPLETED
 Time: {execution_time:.2f} seconds

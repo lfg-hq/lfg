@@ -2073,8 +2073,18 @@ Action required: Check workspace configuration and GitHub access
             # FAILED OR INCOMPLETE
             logger.warning(f"[FINALIZE] ✗ FAILED - Marking ticket as blocked")
             error_match = re.search(r'IMPLEMENTATION_STATUS: FAILED - (.+)', content)
+
+            # Detect specific failure reasons
+            hit_tool_limit = 'Maximum tool execution limit reached' in content or 'exceeded tool limit' in content.lower()
+            hit_timeout = execution_time >= max_execution_time
+            failure_type = 'tool_limit' if hit_tool_limit else ('timeout' if hit_timeout else 'incomplete')
+
             if error_match:
                 error_reason = error_match.group(1)
+            elif hit_tool_limit:
+                error_reason = f"Maximum tool execution limit reached (80 rounds). Implementation may be incomplete."
+            elif hit_timeout:
+                error_reason = f"Execution timed out after {execution_time:.0f}s (limit: {max_execution_time}s)."
             elif not content or len(content) < 100:
                 error_reason = "AI response was empty or incomplete. Possible API timeout or error."
             else:
@@ -2082,9 +2092,12 @@ Action required: Check workspace configuration and GitHub access
 
             ticket.status = 'blocked'
             ticket.queue_status = 'none'  # Clear queue status
+
+            # Build failure indicator for notes
+            failure_indicator = "⏱️ TIMEOUT" if hit_timeout else ("🔧 TOOL LIMIT" if hit_tool_limit else "❌ BLOCKED")
             ticket.notes = (ticket.notes or "") + f"""
 ---
-[{datetime.now().strftime('%Y-%m-%d %H:%M')}] ❌ BLOCKED - Implementation Failed
+[{datetime.now().strftime('%Y-%m-%d %H:%M')}] {failure_indicator} - Implementation Failed
 Reason: {error_reason}
 Stage: AI Implementation
 Execution time: {execution_time:.2f}s
@@ -2103,10 +2116,13 @@ Action required: Review error and retry or manually fix
                 'notification_type': 'toolhistory',
                 'function_name': 'ticket_execution',
                 'status': 'failed',
+                'failure_type': failure_type,  # 'tool_limit', 'timeout', or 'incomplete'
                 'message': f"✗ Failed ticket #{ticket.id}: {error_reason}",
                 'ticket_id': ticket.id,
                 'ticket_name': ticket.name,
                 'queue_status': 'none',  # Tell frontend to clear queue indicator
+                'execution_time': execution_time,
+                'tool_calls_count': tool_calls_count,
                 'refresh_checklist': True
             })
 

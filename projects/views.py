@@ -227,6 +227,14 @@ def project_tickets_list(request, project_id):
         TicketStage.get_or_create_defaults(project)
         stages = TicketStage.objects.filter(project=project).order_by('order')
 
+    # Get project files for file filter (only files that have associated tickets)
+    from django.db.models import Exists, OuterRef
+    project_files = ProjectFile.objects.filter(
+        project=project
+    ).filter(
+        Exists(ProjectTicket.objects.filter(source_document=OuterRef('pk')))
+    ).order_by('name')
+
     return render(request, 'projects/tickets_list.html', {
         'tickets': tickets,
         'statuses': statuses,
@@ -237,6 +245,7 @@ def project_tickets_list(request, project_id):
         'current_model_key': current_model_key,
         'sidebar_minimized': sidebar_minimized,
         'stages': stages,
+        'project_files': project_files,
     })
 
 @login_required
@@ -769,7 +778,7 @@ def project_checklist_api(request, project_id):
     
     # Get all tickets for this project with log count annotation
     from django.db.models import Count
-    tickets = ProjectTicket.objects.filter(project=project).select_related('project', 'stage').prefetch_related('attachments').annotate(log_count=Count('logs')).order_by('created_at', 'id')
+    tickets = ProjectTicket.objects.filter(project=project).select_related('project', 'stage', 'source_document').prefetch_related('attachments').annotate(log_count=Count('logs')).order_by('created_at', 'id')
 
     tickets_list = []
     for item in tickets:
@@ -816,6 +825,15 @@ def project_checklist_api(request, project_id):
             # Execution time tracking
             'execution_time_seconds': item.execution_time_seconds or 0,
             'last_execution_at': item.last_execution_at.isoformat() if item.last_execution_at else None,
+            # Source document/file association
+            'source_document_id': item.source_document.id if item.source_document else None,
+            'source_document_name': item.source_document.name if item.source_document else None,
+            # Git/GitHub tracking
+            'github_branch': item.github_branch,
+            'github_commit_sha': item.github_commit_sha,
+            'github_merge_status': item.github_merge_status,
+            # Conversation association (for filtering by conversation)
+            'conversation_id': item.conversation_id,
         })
 
     return JsonResponse({'tickets': tickets_list})

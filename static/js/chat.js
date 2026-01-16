@@ -38,8 +38,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentConversationId = null;
     let currentProvider = 'openai';
     let currentProjectId = null;
-    // Make currentProjectId globally accessible for ArtifactsLoader
+    // Make currentProjectId and currentConversationId globally accessible for ArtifactsLoader
     window.currentProjectId = null;
+    window.currentConversationId = null;
     let socket = null;
     let isSocketConnected = false;
     let messageQueue = [];
@@ -79,14 +80,16 @@ document.addEventListener('DOMContentLoaded', () => {
     } else if (typeof initialConversationId !== 'undefined' && initialConversationId) {
         currentConversationId = initialConversationId;
     }
-    
+    // Sync to global for ArtifactsLoader
+    window.currentConversationId = currentConversationId;
+
     // Extract project ID from path
     const pathProjectId = extractProjectIdFromPath();
-    
+
     if (!pathProjectId) {
         throw new Error('No project ID found in path. Expected format: /chat/project/{id}/');
     }
-    
+
     currentProjectId = pathProjectId;
     window.currentProjectId = currentProjectId;
     console.log('Extracted project ID from path:', currentProjectId);
@@ -290,6 +293,7 @@ document.addEventListener('DOMContentLoaded', () => {
     newChatBtn.addEventListener('click', () => {
         // Reset conversation ID but keep project ID
         currentConversationId = null;
+        window.currentConversationId = null;  // Sync to global
         
         // Project ID should always be available from path
         const pathProjectId = extractProjectIdFromPath();
@@ -1461,7 +1465,8 @@ document.addEventListener('DOMContentLoaded', () => {
             // Update conversation ID and other metadata if provided
             if (data.conversation_id) {
                 currentConversationId = data.conversation_id;
-                
+                window.currentConversationId = currentConversationId;  // Sync to global
+
                 // Update URL with conversation ID
                 const url = new URL(window.location);
                 url.searchParams.set('conversation_id', currentConversationId);
@@ -3701,9 +3706,10 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const response = await fetch(`/api/conversations/${conversationId}/`);
             const data = await response.json();
-            
+
             // Set current conversation ID
             currentConversationId = conversationId;
+            window.currentConversationId = currentConversationId;  // Sync to global
             
             // Clear chat
             clearChatMessages();

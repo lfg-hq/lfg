@@ -1130,6 +1130,14 @@
                             <option value="Medium">Medium</option>
                             <option value="Low">Low</option>
                         </select>
+                        {% if current_project and project_files %}
+                        <select class="filter-select" id="fileFilter" onchange="filterTickets()">
+                            <option value="">All Files</option>
+                            {% for file in project_files %}
+                                <option value="{{ file.id }}">{{ file.name }}</option>
+                            {% endfor %}
+                        </select>
+                        {% endif %}
                         <select class="filter-select" id="model-dropdown" style="min-width: 180px;">
                             {% if llm_model_config.providers %}
                                 {% for provider_key, provider in llm_model_config.providers.items %}
@@ -1258,7 +1266,8 @@
                                         data-status="{{ ticket.status }}"
                                         data-priority="{{ ticket.priority }}"
                                         data-name="{{ ticket.name|lower }}"
-                                        data-description="{{ ticket.description|lower }}">
+                                        data-description="{{ ticket.description|lower }}"
+                                        data-source-document="{{ ticket.source_document.id|default:'' }}">
                                         <td onclick="viewTicketDetails({{ ticket.id }}, '{{ ticket.project.project_id }}')" style="cursor: pointer;">
                                             <div class="ticket-info">
                                                 <div class="ticket-name">{{ ticket.name }}</div>
@@ -2251,6 +2260,8 @@
             const projectFilter = document.getElementById('projectFilter').value;
             const statusFilter = document.getElementById('statusFilter').value;
             const priorityFilter = document.getElementById('priorityFilter').value;
+            const fileFilterEl = document.getElementById('fileFilter');
+            const fileFilter = fileFilterEl ? fileFilterEl.value : '';
 
             const rows = document.querySelectorAll('.ticket-row');
             let visibleCount = 0;
@@ -2261,6 +2272,7 @@
                 const projectId = row.dataset.projectId || '';
                 const status = row.dataset.status || '';
                 const priority = row.dataset.priority || '';
+                const sourceDocument = row.dataset.sourceDocument || '';
 
                 const matchesSearch = !searchTerm ||
                     name.includes(searchTerm) ||
@@ -2268,8 +2280,9 @@
                 const matchesProject = !projectFilter || projectId === projectFilter;
                 const matchesStatus = !statusFilter || status === statusFilter;
                 const matchesPriority = !priorityFilter || priority === priorityFilter;
+                const matchesFile = !fileFilter || sourceDocument === fileFilter;
 
-                if (matchesSearch && matchesProject && matchesStatus && matchesPriority) {
+                if (matchesSearch && matchesProject && matchesStatus && matchesPriority && matchesFile) {
                     row.style.display = '';
                     visibleCount++;
                 } else {
@@ -2311,6 +2324,7 @@
             row.dataset.priority = ticket.priority || 'Medium';
             row.dataset.name = (ticket.name || '').toLowerCase();
             row.dataset.description = (ticket.description || '').toLowerCase();
+            row.dataset.sourceDocument = ticket.source_document_id || '';
 
             const ticketCell = document.createElement('td');
             ticketCell.style.cursor = 'pointer';
@@ -3849,9 +3863,45 @@
                     logsHtml = commands.map((cmd, index) => renderLogEntry(cmd, index)).join('');
                 }
 
+                // Build git status one-liner if available
+                let gitStatusHtml = '';
+                if (currentTicket.github_branch) {
+                    const branchName = currentTicket.github_branch;
+                    const mergeStatus = currentTicket.github_merge_status;
+                    const commitSha = currentTicket.github_commit_sha;
+
+                    let mergeIcon, mergeText, mergeClass;
+                    if (mergeStatus === 'merged') {
+                        mergeIcon = 'fa-check-circle';
+                        mergeText = 'Merged to lfg-agent';
+                        mergeClass = 'git-merged';
+                    } else if (mergeStatus === 'conflict') {
+                        mergeIcon = 'fa-exclamation-triangle';
+                        mergeText = 'Merge conflict';
+                        mergeClass = 'git-conflict';
+                    } else if (mergeStatus === 'failed') {
+                        mergeIcon = 'fa-times-circle';
+                        mergeText = 'Merge failed';
+                        mergeClass = 'git-failed';
+                    } else {
+                        mergeIcon = 'fa-clock';
+                        mergeText = 'Pending merge';
+                        mergeClass = 'git-pending';
+                    }
+
+                    gitStatusHtml = `
+                        <div class="git-status-banner ${mergeClass}">
+                            <span class="git-branch"><i class="fas fa-code-branch"></i> ${escapeHtml(branchName)}</span>
+                            ${commitSha ? `<span class="git-commit"><i class="fas fa-code-commit"></i> ${escapeHtml(commitSha.substring(0, 7))}</span>` : ''}
+                            <span class="git-merge-status"><i class="fas ${mergeIcon}"></i> ${mergeText}</span>
+                        </div>
+                    `;
+                }
+
                 // Display logs with chat input at bottom
                 body.innerHTML = `
                     <div class="drawer-tab-content logs-tab-content">
+                        ${gitStatusHtml}
                         <div class="execution-logs-container" id="executionLogsContainer">
                             <h4><i class="fas fa-terminal"></i> Command History</h4>
                             ${logsHtml || '<p class="no-logs-message" style="color: var(--text-secondary); font-size: 0.875rem; padding: 1rem 0;">No execution logs yet. Logs will appear here after the ticket is executed.</p>'}
