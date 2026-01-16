@@ -1071,6 +1071,22 @@
     font-size: 0.75rem;
 }
 
+.execution-time-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: var(--bg-secondary);
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-weight: 500;
+    color: var(--primary-color);
+}
+
+.execution-time-badge i {
+    font-size: 0.7rem;
+    opacity: 0.8;
+}
+
 /* Drawer Tab Content */
 .drawer-tab-content {
     padding: 1.5rem;
@@ -1477,6 +1493,25 @@
 
 .queue-restart-btn:active {
     transform: scale(0.95);
+}
+
+/* Detail Panel Queue Status */
+.detail-queue-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: 0.5rem;
+}
+
+.detail-queue-status .queue-badge {
+    font-size: 0.8rem;
+    padding: 0.3rem 0.6rem;
+}
+
+.detail-queue-status .queue-cancel-btn {
+    width: 24px;
+    height: 24px;
+    font-size: 0.75rem;
 }
 
 /* ============================================

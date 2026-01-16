@@ -78,7 +78,47 @@ class GitHubRepositoryManager:
         except Exception as e:
             logger.error(f"Error validating repository access: {e}")
             return False, f"Error validating repository: {str(e)}", {}
-    
+
+    def list_branches(self, owner: str, repo: str, per_page: int = 100) -> Tuple[bool, str, List[Dict[str, Any]]]:
+        """List all branches for a repository via GitHub API"""
+        if not self.github_token:
+            return False, "No GitHub token configured", []
+
+        try:
+            api_url = f"https://api.github.com/repos/{owner}/{repo}/branches"
+            headers = {
+                'Authorization': f'token {self.github_token.access_token}',
+                'Accept': 'application/vnd.github.v3+json'
+            }
+            params = {'per_page': per_page}
+
+            response = requests.get(api_url, headers=headers, params=params, timeout=10)
+
+            if response.status_code == 200:
+                branches_data = response.json()
+                branches = [
+                    {
+                        'name': branch['name'],
+                        'sha': branch['commit']['sha'],
+                        'protected': branch.get('protected', False)
+                    }
+                    for branch in branches_data
+                ]
+                return True, f"Found {len(branches)} branches", branches
+            elif response.status_code == 404:
+                return False, "Repository not found or no access", []
+            elif response.status_code == 403:
+                rate_limit_remaining = response.headers.get('X-RateLimit-Remaining', 'unknown')
+                if rate_limit_remaining == '0':
+                    return False, "GitHub API rate limit exceeded", []
+                return False, "Access forbidden", []
+            else:
+                return False, f"GitHub API error: {response.status_code}", []
+
+        except Exception as e:
+            logger.error(f"Error listing branches: {e}")
+            return False, f"Error listing branches: {str(e)}", []
+
     def clone_repository(self, github_url: str, branch: str = None) -> Tuple[bool, str, Optional[str]]:
         """Clone repository to temporary directory"""
         if not self.github_token:

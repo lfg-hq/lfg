@@ -486,6 +486,83 @@ def update_repository_url(request, repository_id):
 
 
 @login_required
+def get_repository_branches(request, repository_id):
+    """Get list of branches for an indexed repository from GitHub"""
+    try:
+        indexed_repo = get_object_or_404(
+            IndexedRepository,
+            id=repository_id,
+            project__owner=request.user
+        )
+
+        from .github_sync import GitHubRepositoryManager
+        github_manager = GitHubRepositoryManager(request.user)
+
+        success, message, branches = github_manager.list_branches(
+            indexed_repo.github_owner,
+            indexed_repo.github_repo_name
+        )
+
+        if not success:
+            return JsonResponse({
+                'success': False,
+                'error': message
+            }, status=400)
+
+        return JsonResponse({
+            'success': True,
+            'branches': branches,
+            'current_branch': indexed_repo.github_branch
+        })
+
+    except Exception as e:
+        logger.error(f"Error fetching repository branches: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def update_repository_branch(request, repository_id):
+    """Update the selected branch for an indexed repository"""
+    try:
+        indexed_repo = get_object_or_404(
+            IndexedRepository,
+            id=repository_id,
+            project__owner=request.user
+        )
+
+        data = json.loads(request.body)
+        new_branch = data.get('branch')
+
+        if not new_branch:
+            return JsonResponse({
+                'success': False,
+                'error': 'Branch name is required'
+            }, status=400)
+
+        # Update the branch
+        old_branch = indexed_repo.github_branch
+        indexed_repo.github_branch = new_branch
+        indexed_repo.save(update_fields=['github_branch'])
+
+        return JsonResponse({
+            'success': True,
+            'message': f'Branch updated from {old_branch} to {new_branch}',
+            'branch': new_branch
+        })
+
+    except Exception as e:
+        logger.error(f"Error updating repository branch: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
 def get_code_preview(request, repository_id):
     """Get a preview of code chunks for the sidebar"""
     try:

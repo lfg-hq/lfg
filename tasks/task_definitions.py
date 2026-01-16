@@ -1909,6 +1909,19 @@ Action required: Check workspace configuration and GitHub access
         commit_sha = None
         merge_status = None
 
+        # Check for cancellation one more time before committing
+        if is_ticket_cancelled(ticket_id):
+            logger.info(f"[PRE-COMMIT] ⊘ Ticket #{ticket_id} was cancelled before commit, skipping push")
+            clear_ticket_cancellation_flag(ticket_id)
+            ticket.status = 'open'
+            ticket.save(update_fields=['status'])
+            return {
+                "status": "cancelled",
+                "ticket_id": ticket_id,
+                "message": "Ticket was cancelled before commit - changes NOT pushed to GitHub",
+                "execution_time": f"{time.time() - start_time:.2f}s"
+            }
+
         if completed and not failed and github_owner and github_repo and github_token and feature_branch_name:
             logger.info(f"\n[COMMIT] Committing and pushing changes to GitHub...")
 
@@ -1991,7 +2004,10 @@ Action required: Check workspace configuration and GitHub access
                 Dependencies: {', '.join(set(dependencies))}{git_info}
                 Status: ✓ Complete
                 """
-            ticket.save(update_fields=['status', 'notes'])
+            # Update execution time tracking
+            ticket.execution_time_seconds = (ticket.execution_time_seconds or 0) + execution_time
+            ticket.last_execution_at = datetime.now()
+            ticket.save(update_fields=['status', 'notes', 'execution_time_seconds', 'last_execution_at'])
             
             broadcast_ticket_notification(conversation_id, {
                 'is_notification': True,
@@ -2060,7 +2076,10 @@ Files attempted: {len(files_created)}
 Workspace: {workspace_id}
 Action required: Review error and retry or manually fix
 """
-            ticket.save(update_fields=['status', 'queue_status', 'notes'])
+            # Update execution time tracking even on failure
+            ticket.execution_time_seconds = (ticket.execution_time_seconds or 0) + execution_time
+            ticket.last_execution_at = datetime.now()
+            ticket.save(update_fields=['status', 'queue_status', 'notes', 'execution_time_seconds', 'last_execution_at'])
 
             broadcast_ticket_notification(conversation_id, {
                 'is_notification': True,
@@ -2113,7 +2132,10 @@ Execution time: {execution_time:.2f}s
 Workspace: {workspace_id or 'N/A'}
 Action required: Check logs for detailed error trace and retry
 """
-            ticket.save(update_fields=['status', 'queue_status', 'notes'])
+            # Update execution time tracking even on exception
+            ticket.execution_time_seconds = (ticket.execution_time_seconds or 0) + execution_time
+            ticket.last_execution_at = datetime.now()
+            ticket.save(update_fields=['status', 'queue_status', 'notes', 'execution_time_seconds', 'last_execution_at'])
 
             broadcast_ticket_notification(conversation_id, {
                 'is_notification': True,

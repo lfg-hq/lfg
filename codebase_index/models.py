@@ -70,6 +70,11 @@ class IndexedRepository(models.Model):
         return f"{self.github_owner}/{self.github_repo_name} ({self.status})"
     
     @property
+    def branch(self):
+        """Alias for github_branch for template convenience"""
+        return self.github_branch
+
+    @property
     def indexing_progress(self):
         """Calculate indexing progress as percentage"""
         if self.total_files == 0:

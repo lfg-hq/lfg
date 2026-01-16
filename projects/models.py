@@ -454,6 +454,17 @@ class ProjectTicket(models.Model):
         help_text='Task ID for tracking in the execution queue'
     )
 
+    # Execution time tracking
+    execution_time_seconds = models.FloatField(
+        default=0,
+        help_text='Total execution time spent on this ticket in seconds (accumulated across all runs)'
+    )
+    last_execution_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When the ticket was last executed'
+    )
+
     def __str__(self):
         return f"{self.project.name} - {self.name}"
 

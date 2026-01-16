@@ -3314,6 +3314,9 @@
                     }
                 }
 
+                // Update the detail panel queue status indicator
+                updateDetailPanelQueueStatus(effectiveQueueStatus);
+
                 // Also update the ticket status in currentTicket
                 currentTicket.status = status;
             }
@@ -3456,6 +3459,17 @@
                     <div class="detail-meta-row">
                         <span class="detail-label status-label status-${ticket.status}">${formatStatus(ticket.status)}</span>
                         <span class="detail-label priority-label priority-${ticket.priority?.toLowerCase()}">${ticket.priority || 'Medium'}</span>
+                        ${ticket.queue_status && ticket.queue_status !== 'none' ? `
+                        <div class="detail-queue-status" id="detailQueueStatus">
+                            <span class="queue-badge ${ticket.queue_status}">
+                                <i class="fas fa-${ticket.queue_status === 'executing' ? 'spinner fa-spin' : 'clock'}"></i>
+                                ${ticket.queue_status === 'executing' ? 'Building' : 'Queued'}
+                            </span>
+                            <button class="queue-cancel-btn" onclick="event.stopPropagation(); ${ticket.queue_status === 'executing' ? 'stopBuild()' : 'cancelBuild()'}" title="${ticket.queue_status === 'executing' ? 'Stop build' : 'Remove from queue'}">
+                                <i class="fas fa-${ticket.queue_status === 'executing' ? 'stop' : 'times'}"></i>
+                            </button>
+                        </div>
+                        ` : ''}
                         <div class="detail-meta-spacer"></div>
                         <button type="button" class="detail-edit-btn" onclick="enterDetailsEditMode()">
                             <i class="fas fa-pen"></i> Edit
@@ -3483,6 +3497,18 @@
                                 <label>Updated</label>
                                 <span>${formatDate(ticket.updated_at)}</span>
                             </div>
+                            ${ticket.execution_time_seconds > 0 ? `
+                            <div class="detail-item">
+                                <label>Time Spent</label>
+                                <span class="execution-time-badge">
+                                    <i class="fas fa-clock"></i> ${formatExecutionTime(ticket.execution_time_seconds)}
+                                </span>
+                            </div>
+                            <div class="detail-item">
+                                <label>Last Executed</label>
+                                <span>${ticket.last_execution_at ? formatDate(ticket.last_execution_at) : 'Never'}</span>
+                            </div>
+                            ` : ''}
                             ${ticket.linear_issue_url ? `
                             <div class="detail-item" style="grid-column: span 2;">
                                 <label>Linear Issue</label>
@@ -4043,9 +4069,10 @@
 
             title.textContent = `TKT-${ticket.id}: ${ticket.name}`;
 
-            // Determine which tab to open - Actions tab if ticket is being worked on
+            // Determine which tab to open - Actions tab if ticket is being worked on OR has existing logs
             const queueStatus = ticket.queue_status || 'none';
-            const defaultTab = (queueStatus === 'executing' || queueStatus === 'queued') ? 'logs' : 'details';
+            const hasLogs = ticket.has_logs || false;
+            const defaultTab = (queueStatus === 'executing' || queueStatus === 'queued' || hasLogs) ? 'logs' : 'details';
             currentTab = defaultTab;
 
             // Reset tabs
@@ -4264,6 +4291,41 @@
                     `;
                 } else if (queueDiv) {
                     queueDiv.remove();
+                }
+            }
+        }
+
+        function updateDetailPanelQueueStatus(queueStatus) {
+            // Update the queue status indicator in the detail panel
+            const metaRow = document.querySelector('.detail-meta-row');
+            if (!metaRow) return;
+
+            // Remove existing queue status
+            const existingStatus = metaRow.querySelector('.detail-queue-status');
+            if (existingStatus) {
+                existingStatus.remove();
+            }
+
+            // Add new queue status if not 'none'
+            if (queueStatus && queueStatus !== 'none') {
+                const priorityLabel = metaRow.querySelector('.priority-label');
+                if (priorityLabel) {
+                    const queueDiv = document.createElement('div');
+                    queueDiv.className = 'detail-queue-status';
+                    queueDiv.id = 'detailQueueStatus';
+
+                    const isExecuting = queueStatus === 'executing';
+                    queueDiv.innerHTML = `
+                        <span class="queue-badge ${queueStatus}">
+                            <i class="fas fa-${isExecuting ? 'spinner fa-spin' : 'clock'}"></i>
+                            ${isExecuting ? 'Building' : 'Queued'}
+                        </span>
+                        <button class="queue-cancel-btn" onclick="event.stopPropagation(); ${isExecuting ? 'stopBuild()' : 'cancelBuild()'}" title="${isExecuting ? 'Stop build' : 'Remove from queue'}">
+                            <i class="fas fa-${isExecuting ? 'stop' : 'times'}"></i>
+                        </button>
+                    `;
+
+                    priorityLabel.insertAdjacentElement('afterend', queueDiv);
                 }
             }
         }
@@ -4602,6 +4664,22 @@
                 unitIndex++;
             }
             return `${size.toFixed(size === Math.floor(size) ? 0 : 1)} ${units[unitIndex]}`;
+        }
+
+        function formatExecutionTime(seconds) {
+            if (!seconds || seconds <= 0) return '0s';
+
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = Math.floor(seconds % 60);
+
+            if (hours > 0) {
+                return `${hours}h ${minutes}m ${secs}s`;
+            } else if (minutes > 0) {
+                return `${minutes}m ${secs}s`;
+            } else {
+                return `${secs}s`;
+            }
         }
 
         function escapeHtml(text) {

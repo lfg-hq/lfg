@@ -103,6 +103,17 @@ def dispatch_tickets(
             queue_task_id=task_id
         )
 
+        # Send WebSocket notifications for each ticket
+        from projects.websocket_utils import send_ticket_status_notification
+        for ticket_id in ticket_ids:
+            try:
+                # Get current ticket status
+                ticket = ProjectTicket.objects.filter(id=ticket_id).values('status').first()
+                status = ticket['status'] if ticket else 'open'
+                send_ticket_status_notification(ticket_id, status, queue_status='queued')
+            except Exception as ws_error:
+                logger.warning(f"[DISPATCH] Failed to send WebSocket notification for ticket {ticket_id}: {ws_error}")
+
         logger.info(
             f"[DISPATCH] Queued {len(ticket_ids)} tickets for project {project_id} "
             f"(task_id={task_id})"
@@ -326,7 +337,8 @@ def force_release_project_lock(project_id: int) -> bool:
 def update_ticket_queue_status(
     ticket_id: int,
     status: str,
-    task_id: Optional[str] = None
+    task_id: Optional[str] = None,
+    send_websocket: bool = True
 ):
     """
     Update a ticket's queue status in the database.
@@ -335,6 +347,7 @@ def update_ticket_queue_status(
         ticket_id: The ticket ID
         status: New status ('none', 'queued', 'executing')
         task_id: Optional task ID (for 'queued' status)
+        send_websocket: Whether to send WebSocket notification (default: True)
     """
     try:
         from projects.models import ProjectTicket
@@ -352,6 +365,16 @@ def update_ticket_queue_status(
         ProjectTicket.objects.filter(id=ticket_id).update(**updates)
         logger.debug(f"[DISPATCH] Updated ticket #{ticket_id} queue_status={status}")
 
+        # Send WebSocket notification
+        if send_websocket:
+            try:
+                from projects.websocket_utils import send_ticket_status_notification
+                ticket = ProjectTicket.objects.filter(id=ticket_id).values('status').first()
+                ticket_status = ticket['status'] if ticket else 'open'
+                send_ticket_status_notification(ticket_id, ticket_status, queue_status=status)
+            except Exception as ws_error:
+                logger.warning(f"[DISPATCH] Failed to send WebSocket notification: {ws_error}")
+
     except Exception as e:
         logger.error(f"[DISPATCH] Error updating ticket status: {e}", exc_info=True)
 
@@ -359,7 +382,8 @@ def update_ticket_queue_status(
 async def update_ticket_queue_status_async(
     ticket_id: int,
     status: str,
-    task_id: Optional[str] = None
+    task_id: Optional[str] = None,
+    send_websocket: bool = True
 ):
     """
     Async version of update_ticket_queue_status for use in async contexts.
@@ -368,6 +392,7 @@ async def update_ticket_queue_status_async(
         ticket_id: The ticket ID
         status: New status ('none', 'queued', 'executing')
         task_id: Optional task ID (for 'queued' status)
+        send_websocket: Whether to send WebSocket notification (default: True)
     """
     from asgiref.sync import sync_to_async
 
@@ -387,6 +412,16 @@ async def update_ticket_queue_status_async(
 
         ProjectTicket.objects.filter(id=ticket_id).update(**updates)
         logger.debug(f"[DISPATCH] Updated ticket #{ticket_id} queue_status={status}")
+
+        # Send WebSocket notification
+        if send_websocket:
+            try:
+                from projects.websocket_utils import send_ticket_status_notification
+                ticket = ProjectTicket.objects.filter(id=ticket_id).values('status').first()
+                ticket_status = ticket['status'] if ticket else 'open'
+                send_ticket_status_notification(ticket_id, ticket_status, queue_status=status)
+            except Exception as ws_error:
+                logger.warning(f"[DISPATCH] Failed to send WebSocket notification: {ws_error}")
 
     try:
         await _update()
@@ -475,19 +510,23 @@ def force_reset_ticket_queue_status(project_id: int, ticket_id: int) -> Dict[str
         )
         result['db_status_reset'] = updated > 0
 
-        # Step 3: Check if we should release project lock
-        # Only release if no other tickets are queued/executing for this project
-        other_active = ProjectTicket.objects.filter(
-            project_id=project_id,
-            queue_status__in=['queued', 'executing']
-        ).exclude(id=ticket_id).exists()
+        # Step 3: ALWAYS release project lock when force stopping
+        # This allows new tickets to be queued immediately
+        # The running thread will check cancellation flag and exit gracefully
+        lock_key = f"{LOCK_PREFIX}{project_id}"
+        if client.exists(lock_key):
+            client.delete(lock_key)
+            result['lock_released'] = True
+            logger.info(f"[DISPATCH] Released project lock for project {project_id}")
 
-        if not other_active:
-            lock_key = f"{LOCK_PREFIX}{project_id}"
-            if client.exists(lock_key):
-                client.delete(lock_key)
-                result['lock_released'] = True
-                logger.info(f"[DISPATCH] Released project lock for project {project_id}")
+        # Step 4: Send WebSocket notification about the cancellation
+        try:
+            from projects.websocket_utils import send_ticket_status_notification
+            ticket = ProjectTicket.objects.filter(id=ticket_id).values('status').first()
+            ticket_status = ticket['status'] if ticket else 'open'
+            send_ticket_status_notification(ticket_id, ticket_status, queue_status='none')
+        except Exception as ws_error:
+            logger.warning(f"[DISPATCH] Failed to send WebSocket notification: {ws_error}")
 
         logger.info(
             f"[DISPATCH] Force reset ticket #{ticket_id}: "

@@ -767,8 +767,9 @@ def project_checklist_api(request, project_id):
     if not project.can_user_access(request.user):
         raise PermissionDenied("You don't have permission to access this project.")
     
-    # Get all tickets for this project
-    tickets = ProjectTicket.objects.filter(project=project).select_related('project', 'stage').prefetch_related('attachments').order_by('created_at', 'id')
+    # Get all tickets for this project with log count annotation
+    from django.db.models import Count
+    tickets = ProjectTicket.objects.filter(project=project).select_related('project', 'stage').prefetch_related('attachments').annotate(log_count=Count('logs')).order_by('created_at', 'id')
 
     tickets_list = []
     for item in tickets:
@@ -810,6 +811,11 @@ def project_checklist_api(request, project_id):
             'attachments': attachments,
             # Queue status for build tracking
             'queue_status': item.queue_status,
+            # Has logs - to determine which tab to open
+            'has_logs': item.log_count > 0,
+            # Execution time tracking
+            'execution_time_seconds': item.execution_time_seconds or 0,
+            'last_execution_at': item.last_execution_at.isoformat() if item.last_execution_at else None,
         })
 
     return JsonResponse({'tickets': tickets_list})
@@ -3390,7 +3396,7 @@ def ticket_chat_api(request, project_id, ticket_id):
 def execute_ticket_api(request, project_id, ticket_id):
     """API endpoint to execute a ticket using the parallel executor system"""
     import json
-    from tasks.dispatch import dispatch_tickets
+    from tasks.dispatch import dispatch_tickets, get_project_queue_info
 
     try:
         data = json.loads(request.body.decode('utf-8'))
@@ -3418,6 +3424,16 @@ def execute_ticket_api(request, project_id, ticket_id):
         return JsonResponse({
             'success': False,
             'error': f'Ticket is already {ticket.queue_status}'
+        }, status=400)
+
+    # IMPORTANT: Check if project has an active execution lock
+    # This prevents starting a new ticket while another is still running
+    # (even if the user clicked "stop" - the execution may still be in progress)
+    queue_info = get_project_queue_info(project.id)
+    if queue_info.get('is_executing'):
+        return JsonResponse({
+            'success': False,
+            'error': 'Another ticket is still executing for this project. Please wait for it to complete or force stop it.'
         }, status=400)
 
     try:

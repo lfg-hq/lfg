@@ -8,13 +8,14 @@ from asgiref.sync import async_to_sync
 logger = logging.getLogger(__name__)
 
 
-def send_ticket_status_notification(ticket_id, status):
+def send_ticket_status_notification(ticket_id, status, queue_status=None):
     """
     Send a WebSocket notification when a ticket status changes.
 
     Args:
         ticket_id: The ID of the ticket
         status: The new status of the ticket (e.g., 'done', 'in_progress', 'failed')
+        queue_status: Optional queue status ('none', 'queued', 'executing')
     """
     try:
         channel_layer = get_channel_layer()
@@ -24,17 +25,18 @@ def send_ticket_status_notification(ticket_id, status):
 
         group_name = f'ticket_logs_{ticket_id}'
 
-        # Send the status update to all clients in the ticket's group
-        async_to_sync(channel_layer.group_send)(
-            group_name,
-            {
-                'type': 'ticket_status_changed',
-                'status': status,
-                'ticket_id': ticket_id
-            }
-        )
+        message = {
+            'type': 'ticket_status_changed',
+            'status': status,
+            'ticket_id': ticket_id
+        }
+        if queue_status is not None:
+            message['queue_status'] = queue_status
 
-        logger.info(f"Sent WebSocket notification for ticket {ticket_id} status change to: {status}")
+        # Send the status update to all clients in the ticket's group
+        async_to_sync(channel_layer.group_send)(group_name, message)
+
+        logger.info(f"Sent WebSocket notification for ticket {ticket_id} status change to: {status}, queue_status: {queue_status}")
 
     except Exception as e:
         logger.error(f"Error sending WebSocket notification for ticket {ticket_id}: {e}")
@@ -77,7 +79,7 @@ def send_ticket_log_notification(ticket_id, log_data):
         logger.error(f"Error sending WebSocket notification for ticket {ticket_id}: {e}")
 
 
-async def async_send_ticket_status_notification(ticket_id, status):
+async def async_send_ticket_status_notification(ticket_id, status, queue_status=None):
     """
     Async version of send_ticket_status_notification.
     Use this when calling from async code.
@@ -85,6 +87,7 @@ async def async_send_ticket_status_notification(ticket_id, status):
     Args:
         ticket_id: The ID of the ticket
         status: The new status of the ticket
+        queue_status: Optional queue status ('none', 'queued', 'executing')
     """
     try:
         channel_layer = get_channel_layer()
@@ -94,17 +97,18 @@ async def async_send_ticket_status_notification(ticket_id, status):
 
         group_name = f'ticket_logs_{ticket_id}'
 
-        # Send the status update to all clients in the ticket's group
-        await channel_layer.group_send(
-            group_name,
-            {
-                'type': 'ticket_status_changed',
-                'status': status,
-                'ticket_id': ticket_id
-            }
-        )
+        message = {
+            'type': 'ticket_status_changed',
+            'status': status,
+            'ticket_id': ticket_id
+        }
+        if queue_status is not None:
+            message['queue_status'] = queue_status
 
-        logger.info(f"Sent WebSocket notification for ticket {ticket_id} status change to: {status}")
+        # Send the status update to all clients in the ticket's group
+        await channel_layer.group_send(group_name, message)
+
+        logger.info(f"Sent WebSocket notification for ticket {ticket_id} status change to: {status}, queue_status: {queue_status}")
 
     except Exception as e:
         logger.error(f"Error sending WebSocket notification for ticket {ticket_id}: {e}")

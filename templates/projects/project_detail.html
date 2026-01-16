@@ -217,7 +217,19 @@
                         </div>
                         <div class="codebase-info">
                             <h3>{{ project.indexed_repository.github_owner }}/{{ project.indexed_repository.github_repo_name }}</h3>
-                            <p>Branch: {{ project.indexed_repository.branch }}</p>
+                            <div class="branch-selector-row" style="display: flex; align-items: center; gap: 0.5rem; margin: 0.25rem 0;">
+                                <span style="color: #94a3b8; font-size: 13px;">Branch:</span>
+                                <select id="branchSelector"
+                                        class="branch-dropdown"
+                                        data-repository-id="{{ project.indexed_repository.id }}"
+                                        onchange="updateBranch(this.value)"
+                                        style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 4px 8px; color: #f1f5f9; font-size: 13px; cursor: pointer; min-width: 120px;">
+                                    <option value="{{ project.indexed_repository.github_branch }}">{{ project.indexed_repository.github_branch }}</option>
+                                </select>
+                                <button onclick="loadBranches()" class="btn-icon" style="background: none; border: none; color: #94a3b8; cursor: pointer; padding: 4px;" title="Refresh branches">
+                                    <i class="fas fa-sync-alt" style="font-size: 12px;"></i>
+                                </button>
+                            </div>
                             <span class="status-badge status-{{ project.indexed_repository.status }}" 
                                   {% if project.indexed_repository.error_message %}title="{{ project.indexed_repository.error_message }}"{% endif %}>
                                 {{ project.indexed_repository.get_status_display }}
@@ -968,6 +980,103 @@ async function reindexRepository(repositoryId) {
         alert('Error starting re-index: ' + error.message);
     }
 }
+
+// Branch management functions
+async function loadBranches() {
+    const selector = document.getElementById('branchSelector');
+    const repositoryId = selector?.getAttribute('data-repository-id');
+
+    if (!repositoryId) {
+        console.error('Repository ID not found');
+        return;
+    }
+
+    // Show loading state
+    const refreshBtn = selector.nextElementSibling;
+    const originalIcon = refreshBtn.innerHTML;
+    refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="font-size: 12px;"></i>';
+
+    try {
+        const response = await fetch(`/codebase/api/repositories/${repositoryId}/branches/`);
+        const data = await response.json();
+
+        if (data.success) {
+            const currentBranch = data.current_branch;
+            selector.innerHTML = '';
+
+            // Sort branches to put current branch first, then main/master, then others
+            const sortedBranches = data.branches.sort((a, b) => {
+                if (a.name === currentBranch) return -1;
+                if (b.name === currentBranch) return 1;
+                if (a.name === 'main' || a.name === 'master') return -1;
+                if (b.name === 'main' || b.name === 'master') return 1;
+                return a.name.localeCompare(b.name);
+            });
+
+            sortedBranches.forEach(branch => {
+                const option = document.createElement('option');
+                option.value = branch.name;
+                option.textContent = branch.name;
+                if (branch.name === currentBranch) {
+                    option.selected = true;
+                }
+                selector.appendChild(option);
+            });
+        } else {
+            console.error('Error loading branches:', data.error);
+            alert('Error loading branches: ' + data.error);
+        }
+    } catch (error) {
+        console.error('Error loading branches:', error);
+        alert('Error loading branches: ' + error.message);
+    } finally {
+        refreshBtn.innerHTML = originalIcon;
+    }
+}
+
+async function updateBranch(newBranch) {
+    const selector = document.getElementById('branchSelector');
+    const repositoryId = selector?.getAttribute('data-repository-id');
+
+    if (!repositoryId) {
+        console.error('Repository ID not found');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/codebase/api/repositories/${repositoryId}/update-branch/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify({ branch: newBranch })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            // Show brief success indication
+            selector.style.borderColor = '#22c55e';
+            setTimeout(() => {
+                selector.style.borderColor = 'rgba(255,255,255,0.1)';
+            }, 1000);
+        } else {
+            alert('Error updating branch: ' + data.error);
+        }
+    } catch (error) {
+        console.error('Error updating branch:', error);
+        alert('Error updating branch: ' + error.message);
+    }
+}
+
+// Load branches when page loads (if repository is connected)
+document.addEventListener('DOMContentLoaded', function() {
+    const branchSelector = document.getElementById('branchSelector');
+    if (branchSelector) {
+        loadBranches();
+    }
+});
 
 async function disconnectRepository() {
     const repositoryId = document.querySelector('[data-repository-id]')?.getAttribute('data-repository-id');

@@ -70,8 +70,9 @@ class AsyncTicketExecutor:
         This method:
         1. Acquires global semaphore (limits total concurrent)
         2. Acquires project semaphore (ensures only 1 per project)
-        3. Runs the sync execute_ticket_implementation in thread pool
-        4. Returns result
+        3. Checks for cancellation before executing
+        4. Runs the sync execute_ticket_implementation in thread pool
+        5. Returns result
 
         Args:
             ticket_id: The ticket to execute
@@ -81,12 +82,24 @@ class AsyncTicketExecutor:
         Returns:
             Dict with execution result
         """
-        from tasks.dispatch import update_ticket_queue_status_async
+        from tasks.dispatch import update_ticket_queue_status_async, is_ticket_cancelled
 
         project_sem = await self.get_project_semaphore(project_id)
 
         async with self.global_semaphore:  # Limit total concurrent
             async with project_sem:  # Only 1 per project at a time
+                # Check for cancellation BEFORE starting execution
+                # This handles the case where ticket was cancelled while waiting for semaphore
+                if await self._check_cancellation_async(ticket_id):
+                    logger.info(
+                        f"[EXECUTOR] Ticket #{ticket_id} was cancelled before execution, skipping"
+                    )
+                    return {
+                        'status': 'cancelled',
+                        'ticket_id': ticket_id,
+                        'message': 'Ticket was cancelled before execution started'
+                    }
+
                 logger.info(
                     f"[EXECUTOR] Starting ticket #{ticket_id} "
                     f"(project={project_id}, conv={conversation_id})"
@@ -134,6 +147,13 @@ class AsyncTicketExecutor:
                         await update_ticket_queue_status_async(ticket_id, 'none')
                     except Exception as e:
                         logger.warning(f"[EXECUTOR] Failed to clear queue status: {e}")
+
+    async def _check_cancellation_async(self, ticket_id: int) -> bool:
+        """Check if a ticket has been cancelled (async wrapper)."""
+        from asgiref.sync import sync_to_async
+        from tasks.dispatch import is_ticket_cancelled
+
+        return await sync_to_async(is_ticket_cancelled)(ticket_id)
 
     async def execute_project_batch(
         self,
