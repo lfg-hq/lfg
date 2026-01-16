@@ -372,7 +372,8 @@ def start_dev_server(request, ticket_id):
         send_workspace_progress(project_id, 'clearing_cache', 'Clearing cache and stopping existing processes...')
 
         # Build stack-specific cleanup command
-        default_port = stack_config.get('default_port', 3000)
+        # Use custom_default_port if set, otherwise fall back to stack default
+        default_port = project.custom_default_port or stack_config.get('default_port', 3000)
         if project.stack == 'nextjs':
             cleanup_extras = """
             npm config set cache /workspace/.npm-cache

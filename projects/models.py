@@ -530,11 +530,15 @@ def get_ticket_attachment_upload_path(instance, filename):
     return os.path.join('ticket_attachments', str(instance.ticket.id), unique_name)
 
 
+# Import the storage backend that respects FILE_STORAGE_TYPE setting (local or S3)
+from chat.storage import ChatFileStorage
+
+
 class ProjectTicketAttachment(models.Model):
     """Files/screenshots associated with a ticket"""
     ticket = models.ForeignKey(ProjectTicket, on_delete=models.CASCADE, related_name="attachments")
     uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='ticket_attachments')
-    file = models.FileField(upload_to=get_ticket_attachment_upload_path)
+    file = models.FileField(upload_to=get_ticket_attachment_upload_path, storage=ChatFileStorage())
     original_filename = models.CharField(max_length=255, blank=True)
     file_type = models.CharField(max_length=100, blank=True)
     file_size = models.PositiveIntegerField(default=0)

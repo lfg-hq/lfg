@@ -3222,7 +3222,9 @@ async def new_dev_sandbox_tool(function_args, project_id, conversation_id):
     await sync_to_async(_update_workspace_metadata, thread_sensitive=True)(workspace, **metadata_updates)
 
     # Use proxy URL if available, otherwise fall back to IPv6
-    default_port = stack_config.get('default_port', 3000)
+    # Use custom_default_port from project if set, otherwise stack default
+    project = workspace.project
+    default_port = (project.custom_default_port if project else None) or stack_config.get('default_port', 3000)
     preview_url = await async_get_or_fetch_proxy_url(workspace, port=default_port)
     if not preview_url:
         preview_url = f"http://[{workspace.ipv6_address}]:{default_port}" if workspace.ipv6_address else "(URL pending)"
@@ -4614,13 +4616,16 @@ async def run_server_locally(command: str, project_id: int | str = None,
         }
     ))()
     
-    # 2. Check if server is running on the port and kill it
-    kill_command = f"lsof -ti:{application_port} | xargs kill -9 2>/dev/null || true"
+    # 2. Check if server is running on the port and kill it (multiple methods for reliability)
+    kill_command = f"""
+lsof -ti:{application_port} | xargs kill -9 2>/dev/null || true
+fuser -k -9 {application_port}/tcp 2>/dev/null || true
+"""
     success, stdout, stderr = execute_local_command(kill_command, str(workspace_path))
     logger.info(f"Killed existing process on port {application_port}")
 
-    # Wait a moment for port to be freed
-    await asyncio.sleep(1)
+    # Wait for port to be fully released
+    await asyncio.sleep(2)
 
     # 3. Run the server command in background using nohup
     # Create a log file for the server

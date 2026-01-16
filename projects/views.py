@@ -1229,10 +1229,14 @@ def app_preview(request, project_id):
     workspace_data = None
     if workspace:
         ipv6 = workspace.ipv6_address.strip('[]') if workspace.ipv6_address else None
+        # Get the correct port from project settings or stack config
+        from factory.stack_configs import get_stack_config
+        stack_config = get_stack_config(project.stack, project)
+        preview_port = project.custom_default_port or stack_config.get('default_port', 3000)
         # Use proxy URL if available, otherwise fall back to IPv6
-        preview_url = get_or_fetch_proxy_url(workspace, port=3000)
+        preview_url = get_or_fetch_proxy_url(workspace, port=preview_port)
         if not preview_url:
-            preview_url = f"http://[{ipv6}]:3000" if ipv6 else None
+            preview_url = f"http://[{ipv6}]:{preview_port}" if ipv6 else None
         workspace_data = {
             'id': workspace.id,
             'workspace_id': workspace.workspace_id,
@@ -1494,7 +1498,11 @@ def _reprovision_crashed_workspace(project, old_workspace, user, send_progress_f
         # Remap the old proxy URL to the new workspace if it exists
         if old_proxy_url:
             send_progress('assigning_proxy', 'Remapping proxy URL to new workspace...')
-            remapped_url = remap_proxy_to_new_ipv6(old_proxy_url, ipv6, port=3000)
+            # Get the correct port from project settings or stack config
+            from factory.stack_configs import get_stack_config
+            stack_config = get_stack_config(project.stack, project)
+            preview_port = project.custom_default_port or stack_config.get('default_port', 3000)
+            remapped_url = remap_proxy_to_new_ipv6(old_proxy_url, ipv6, port=preview_port)
             if remapped_url:
                 old_workspace.proxy_url = remapped_url
                 logger.info(f"[REPROVISION] Successfully remapped proxy URL: {remapped_url}")
@@ -1944,17 +1952,27 @@ cd {workspace_path}
 
 {npm_cache}
 
-# Kill existing process
+# Kill existing process from PID file
 if [ -f .devserver_pid ]; then
   old_pid=$(cat .devserver_pid)
   if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
     kill "$old_pid" || true
     sleep 2
+    # Force kill if still running
+    kill -9 "$old_pid" 2>/dev/null || true
   fi
+  rm -f .devserver_pid
 fi
 
-# Kill any remaining processes
+# Kill any remaining processes by name
 {kill_processes}
+
+# Kill ANY process on the port (most reliable method)
+fuser -k -9 {port}/tcp 2>/dev/null || true
+lsof -ti:{port} | xargs kill -9 2>/dev/null || true
+
+# Wait for port to be fully released
+sleep 2
 
 # Clear cache
 {cache_clear}
@@ -2093,18 +2111,34 @@ def stop_dev_server_api(request, project_id):
         else:
             kill_pattern = ""
 
-        # Kill the dev server process using PID file
+        # Get the port to kill
+        default_port = stack_config.get('default_port', 3000)
+        port = project.custom_default_port or default_port
+
+        # Kill the dev server process using PID file and port
         stop_command = f"""
 cd {workspace_path}
+
+# Kill by PID file first
 if [ -f .devserver_pid ]; then
   pid=$(cat .devserver_pid)
   if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
     kill "$pid" || true
+    sleep 1
+    # Force kill if still running
+    kill -9 "$pid" 2>/dev/null || true
     echo "Killed server PID: $pid"
   fi
   rm -f .devserver_pid
 fi
+
+# Kill by process pattern
 {f'pkill -f "{kill_pattern}" 2>/dev/null || true' if kill_pattern else ''}
+
+# Kill ANY process on the port (most reliable)
+fuser -k -9 {port}/tcp 2>/dev/null || true
+lsof -ti:{port} | xargs kill -9 2>/dev/null || true
+
 echo "Server stopped"
 """
 
@@ -5152,9 +5186,13 @@ def provision_workspace_api(request, project_id):
 
     if existing_workspace:
         ipv6 = existing_workspace.ipv6_address.strip('[]') if existing_workspace.ipv6_address else None
-        preview_url = get_or_fetch_proxy_url(existing_workspace, port=3000)
+        # Get the correct port from project settings or stack config
+        from factory.stack_configs import get_stack_config
+        stack_config = get_stack_config(project.stack, project)
+        preview_port = project.custom_default_port or stack_config.get('default_port', 3000)
+        preview_url = get_or_fetch_proxy_url(existing_workspace, port=preview_port)
         if not preview_url:
-            preview_url = f"http://[{ipv6}]:3000" if ipv6 else None
+            preview_url = f"http://[{ipv6}]:{preview_port}" if ipv6 else None
 
         # Check if workspace needs code setup (no git_configured and no template_installed)
         metadata = existing_workspace.metadata or {}
@@ -5353,10 +5391,13 @@ fi
             logger.warning(f"[PROVISION] Code setup error (non-fatal): {git_err}")
             git_setup_message = f"Code setup skipped: {str(git_err)}"
 
-        # Get preview URL
-        preview_url = get_or_fetch_proxy_url(workspace, port=3000)
+        # Get preview URL with correct port from project settings or stack config
+        from factory.stack_configs import get_stack_config
+        stack_config = get_stack_config(project.stack, project)
+        preview_port = project.custom_default_port or stack_config.get('default_port', 3000)
+        preview_url = get_or_fetch_proxy_url(workspace, port=preview_port)
         if not preview_url:
-            preview_url = f"http://[{ipv6}]:3000" if ipv6 else None
+            preview_url = f"http://[{ipv6}]:{preview_port}" if ipv6 else None
 
         return JsonResponse({
             'success': True,
