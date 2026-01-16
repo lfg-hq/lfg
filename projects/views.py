@@ -1970,6 +1970,12 @@ fi
 # Kill any remaining processes by name
 {kill_processes}
 
+# Kill ANY process on the port using netstat (BusyBox/Alpine safe)
+PORT={port}
+PID=$(netstat -ltnp 2>/dev/null | awk -v p=":$PORT" '$4 ~ p && $6=="LISTEN"{{split($7,a,"/"); print a[1]; exit}}')
+[ -n "$PID" ] && kill -9 "$PID" 2>/dev/null || true
+sleep 1
+
 # Clear cache
 {cache_clear}
 
@@ -2130,6 +2136,11 @@ fi
 
 # Kill by process pattern
 {f'pkill -f "{kill_pattern}" 2>/dev/null || true' if kill_pattern else ''}
+
+# Kill ANY process on the port using netstat (BusyBox/Alpine safe)
+PORT={port}
+PID=$(netstat -ltnp 2>/dev/null | awk -v p=":$PORT" '$4 ~ p && $6=="LISTEN"{{split($7,a,"/"); print a[1]; exit}}')
+[ -n "$PID" ] && kill -9 "$PID" 2>/dev/null || true
 
 echo "Server stopped"
 """

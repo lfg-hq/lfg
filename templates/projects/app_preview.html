@@ -1592,6 +1592,11 @@
                 serverStartedManually = true;  // Mark that we started from this page
                 currentPreviewUrl = data.url;
 
+                // Update workspaceId in case it was reprovisioned
+                if (data.workspace_id) {
+                    workspaceId = data.workspace_id;
+                }
+
                 // Close progress overlay after a short delay to show completion
                 setTimeout(() => {
                     closeProgressOverlay();
@@ -1897,6 +1902,12 @@
                 isServerRunning = true;
                 serverStartedManually = true;  // Mark that we started from this page
                 currentPreviewUrl = data.url;
+
+                // Update workspaceId in case it was reprovisioned
+                if (data.workspace_id) {
+                    workspaceId = data.workspace_id;
+                }
+
                 loadPreview(data.url);
                 updateServerUI(true);
                 showNotification('Server restarted', 'success');
