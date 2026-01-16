@@ -1559,7 +1559,8 @@ def _reprovision_crashed_workspace(project, old_workspace, user, send_progress_f
                         owner=owner,
                         repo_name=repo,
                         branch_name=branch_name,
-                        token=github_token
+                        token=github_token,
+                        stack=project.stack  # Use project's actual stack
                     )
 
                     if git_result.get('status') == 'success':
@@ -5220,7 +5221,8 @@ def provision_workspace_api(request, project_id):
                             owner=owner,
                             repo_name=repo,
                             branch_name=branch_name,
-                            token=github_token
+                            token=github_token,
+                            stack=project.stack  # Use project's actual stack
                         )
                         if git_result.get('status') == 'success':
                             git_setup_message = f"Git configured on branch {branch_name}"
@@ -5349,7 +5351,8 @@ fi
                         owner=owner,
                         repo_name=repo,
                         branch_name=branch_name,
-                        token=github_token
+                        token=github_token,
+                        stack=project.stack  # Use project's actual stack
                     )
 
                     if git_result.get('status') == 'success':

@@ -204,7 +204,8 @@ echo "SWITCH_COMPLETE"
                     owner=owner,
                     repo_name=repo,
                     branch_name=target_branch,
-                    token=github_token
+                    token=github_token,
+                    stack=project.stack  # Use project's actual stack
                 )
 
                 if git_result.get('status') == 'success':
