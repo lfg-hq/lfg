@@ -1644,9 +1644,11 @@ Action required: Check workspace configuration and GitHub access
         github_owner = setup_result.get('github_owner')
         github_repo = setup_result.get('github_repo')
         github_token = get_github_token(project.owner)
-        stack = setup_result.get('stack', 'nextjs')
-        project_dir = setup_result.get('project_dir', 'nextjs-app')
-        stack_config = get_stack_config(stack)
+        # Use project's actual stack, not hardcoded fallback
+        stack = setup_result.get('stack') or project.stack or 'nextjs'
+        stack_config = get_stack_config(stack, project)
+        # Get project_dir from stack_config, not hardcoded fallback
+        project_dir = setup_result.get('project_dir') or stack_config.get('project_dir', 'nextjs-app')
 
         logger.info(f"[STEP 3/6] ✓ Workspace setup complete: {workspace_id}")
 
