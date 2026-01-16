@@ -92,14 +92,15 @@ async def _get_selected_model_for_user(user: Optional[User]) -> str:
         logger.warning(f"Could not load model selection for user {user.id}: {selection_error}")
     return default_model
 
-async def get_ai_response(user_message: str, system_prompt: str, project_id: Optional[int], 
-                          conversation_id: Optional[int], stream: bool = False, 
+async def get_ai_response(user_message: str, system_prompt: str, project_id: Optional[int],
+                          conversation_id: Optional[int], stream: bool = False,
                           tools: Optional[List[Dict]] = None,
-                          attachments: Optional[List[Any]] = None) -> Dict[str, Any]:
+                          attachments: Optional[List[Any]] = None,
+                          ticket_id: Optional[int] = None) -> Dict[str, Any]:
     """
     Non-streaming wrapper for AI providers to be used in task implementations.
     Collects the full response from streaming providers and returns it as a complete response.
-    
+
     Args:
         user_message: The user's message content
         system_prompt: The system prompt for the AI
@@ -108,7 +109,8 @@ async def get_ai_response(user_message: str, system_prompt: str, project_id: Opt
         stream: Whether to return streaming (not used, kept for compatibility)
         tools: List of tools available to the AI
         attachments: Optional iterable of file objects to include in the request
-        
+        ticket_id: Optional ticket ID for cancellation checking during execution
+
     Returns:
         Dict containing the AI response with content and tool_calls
     """
@@ -178,7 +180,17 @@ async def get_ai_response(user_message: str, system_prompt: str, project_id: Opt
     has_500_error = False
 
     try:
-        async for chunk in provider.generate_stream(messages, project_id, conversation_id, tools):
+        async for chunk in provider.generate_stream(messages, project_id, conversation_id, tools, ticket_id=ticket_id):
+            # Check for cancellation signal
+            if isinstance(chunk, str) and "__CANCELLED__" in chunk:
+                logger.info(f"[AI_PROVIDERS] Ticket #{ticket_id} was cancelled during AI execution")
+                return {
+                    "content": full_content,
+                    "tool_calls": [],
+                    "error": False,
+                    "cancelled": True,
+                    "error_message": "Ticket execution was cancelled"
+                }
             # Check for error markers
             if isinstance(chunk, str) and "__ERROR_500__" in chunk:
                 has_500_error = True

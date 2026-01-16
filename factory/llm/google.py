@@ -257,10 +257,11 @@ class GoogleGeminiProvider(BaseLLMProvider):
         
         return gemini_tools
     
-    async def generate_stream(self, messages: List[Dict[str, Any]], 
-                            project_id: Optional[int], 
-                            conversation_id: Optional[int], 
-                            tools: List[Dict[str, Any]]) -> AsyncGenerator[str, None]:
+    async def generate_stream(self, messages: List[Dict[str, Any]],
+                            project_id: Optional[int],
+                            conversation_id: Optional[int],
+                            tools: List[Dict[str, Any]],
+                            ticket_id: Optional[int] = None) -> AsyncGenerator[str, None]:
         """Generate streaming response from Google Gemini"""
         logger.info(f"Google Gemini generate_stream called - Model: {self.model}, Messages: {len(messages)}, Tools: {len(tools) if tools else 0}")
         

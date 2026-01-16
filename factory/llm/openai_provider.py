@@ -381,10 +381,11 @@ class OpenAIProvider(BaseLLMProvider):
                        f"Validation failures: {stats['validation_failure']}, "
                        f"API failures: {stats['api_failure']}")
     
-    async def generate_stream(self, messages: List[Dict[str, Any]], 
-                            project_id: Optional[int], 
-                            conversation_id: Optional[int], 
-                            tools: List[Dict[str, Any]]) -> AsyncGenerator[str, None]:
+    async def generate_stream(self, messages: List[Dict[str, Any]],
+                            project_id: Optional[int],
+                            conversation_id: Optional[int],
+                            tools: List[Dict[str, Any]],
+                            ticket_id: Optional[int] = None) -> AsyncGenerator[str, None]:
         """Generate streaming response from OpenAI"""
         logger.info(f"OpenAI generate_stream called - Model: {self.model}, Messages: {len(messages)}, Tools: {len(tools) if tools else 0}")
         

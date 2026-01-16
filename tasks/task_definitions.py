@@ -1835,9 +1835,24 @@ Action required: Check workspace configuration and GitHub access
                 conversation_id=conversation_id,
                 stream=False,
                 tools=tools_builder,
-                attachments=attachments if attachments else None
+                attachments=attachments if attachments else None,
+                ticket_id=ticket_id  # Pass ticket_id for cancellation checking during AI execution
             )
             ai_call_duration = time.time() - ai_call_start
+
+            # Check if AI execution was cancelled during tool execution
+            if ai_response and ai_response.get('cancelled'):
+                logger.info(f"[STEP 6/6] ⊘ Ticket #{ticket_id} was cancelled during AI tool execution")
+                clear_ticket_cancellation_flag(ticket_id)
+                ticket.status = 'open'
+                ticket.save(update_fields=['status'])
+                return {
+                    "status": "cancelled",
+                    "ticket_id": ticket_id,
+                    "message": "Ticket execution was cancelled during AI tool execution",
+                    "execution_time": f"{time.time() - start_time:.2f}s"
+                }
+
             logger.info(f"[STEP 6/6] ✓ AI call completed in {ai_call_duration:.1f}s")
         except Exception as ai_error:
             # Handle API errors (500s, timeouts, etc.) - no retry, just fail

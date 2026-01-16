@@ -62,10 +62,11 @@ class XAIProvider(BaseLLMProvider):
         """XAI uses OpenAI-compatible format, so just return as-is"""
         return tools
     
-    async def generate_stream(self, messages: List[Dict[str, Any]], 
-                            project_id: Optional[int], 
-                            conversation_id: Optional[int], 
-                            tools: List[Dict[str, Any]]) -> AsyncGenerator[str, None]:
+    async def generate_stream(self, messages: List[Dict[str, Any]],
+                            project_id: Optional[int],
+                            conversation_id: Optional[int],
+                            tools: List[Dict[str, Any]],
+                            ticket_id: Optional[int] = None) -> AsyncGenerator[str, None]:
         """Generate streaming response from XAI Grok"""
         # Check token limits before proceeding
         can_proceed, error_message, remaining_tokens = await self.check_token_limits()

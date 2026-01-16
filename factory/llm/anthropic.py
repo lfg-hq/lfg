@@ -12,6 +12,9 @@ from factory.llm_config import get_provider_model_mapping, get_default_model_key
 from factory.ai_common import execute_tool_call, get_notification_type_for_tool, track_token_usage
 from factory.streaming_handlers import StreamingTagHandler, format_notification
 
+# Import cancellation check function
+from tasks.dispatch import is_ticket_cancelled
+
 logger = logging.getLogger(__name__)
 
 
@@ -126,10 +129,11 @@ class AnthropicProvider(BaseLLMProvider):
         
         return claude_tools
     
-    async def generate_stream(self, messages: List[Dict[str, Any]], 
-                            project_id: Optional[int], 
-                            conversation_id: Optional[int], 
-                            tools: List[Dict[str, Any]]) -> AsyncGenerator[str, None]:
+    async def generate_stream(self, messages: List[Dict[str, Any]],
+                            project_id: Optional[int],
+                            conversation_id: Optional[int],
+                            tools: List[Dict[str, Any]],
+                            ticket_id: Optional[int] = None) -> AsyncGenerator[str, None]:
         """Generate streaming response from Anthropic Claude"""
         # Check token limits before proceeding
         can_proceed, error_message, remaining_tokens = await self.check_token_limits()
@@ -169,6 +173,12 @@ class AnthropicProvider(BaseLLMProvider):
 
         while True: # Loop to handle potential multi-turn tool calls
             current_tool_round += 1
+
+            # Check for ticket cancellation at start of each tool round
+            if ticket_id and is_ticket_cancelled(ticket_id):
+                logger.info(f"[ANTHROPIC] Ticket #{ticket_id} was cancelled, stopping at tool round {current_tool_round}")
+                yield "__CANCELLED__"
+                return
 
             # Check if we've exceeded max tool rounds
             if current_tool_round > max_tool_rounds:
