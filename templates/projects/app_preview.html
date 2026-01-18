@@ -895,6 +895,67 @@
         color: var(--text-primary);
     }
 
+    /* Screenshot context section */
+    .screenshot-context-section {
+        background: var(--surface-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 0.75rem;
+        margin-top: 1rem;
+    }
+
+    .screenshot-context-section .context-header {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--text-secondary);
+        margin-bottom: 0.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .screenshot-context-section .context-header i {
+        color: var(--accent-blue);
+    }
+
+    .screenshot-context-section .context-fields {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .screenshot-context-section .context-field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .screenshot-context-section .context-field label {
+        font-size: 0.7rem;
+        color: var(--text-muted);
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+    }
+
+    .screenshot-context-section .context-field label i {
+        font-size: 0.65rem;
+    }
+
+    .screenshot-context-section .context-field input {
+        background: var(--surface-primary);
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        padding: 0.4rem 0.6rem;
+        font-size: 0.75rem;
+        color: var(--text-primary);
+        font-family: 'JetBrains Mono', monospace;
+    }
+
+    .screenshot-context-section .context-field input[readonly] {
+        cursor: default;
+    }
+
     /* Inline Progress Styles */
     .progress-content {
         display: none;
@@ -1333,6 +1394,26 @@
                 <div class="form-group">
                     <label for="screenshotTicketDescription">Comments</label>
                     <textarea id="screenshotTicketDescription" name="description" placeholder="Add your comments about this issue..."></textarea>
+                </div>
+                <!-- Context Information -->
+                <div class="screenshot-context-section">
+                    <div class="context-header">
+                        <i class="fas fa-info-circle"></i> Context Captured
+                    </div>
+                    <div class="context-fields">
+                        <div class="context-field">
+                            <label><i class="fas fa-link"></i> Page URL</label>
+                            <input type="text" id="screenshotContextUrl" readonly>
+                        </div>
+                        <div class="context-field">
+                            <label><i class="fas fa-desktop"></i> Viewport</label>
+                            <input type="text" id="screenshotContextViewport" readonly>
+                        </div>
+                        <div class="context-field" id="screenshotErrorCountField" style="display: none;">
+                            <label><i class="fas fa-exclamation-triangle"></i> Console Errors</label>
+                            <input type="text" id="screenshotContextErrors" readonly>
+                        </div>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -2643,6 +2724,23 @@ The above error appeared in the console.`;
         document.getElementById('screenshotPreviewImg').src = screenshotDataUrl;
         document.getElementById('screenshotTicketName').value = 'UI Issue: ';
         document.getElementById('screenshotTicketDescription').value = '';
+
+        // Populate context fields
+        document.getElementById('screenshotContextUrl').value = currentPreviewUrl || 'Not available';
+
+        // Get viewport info
+        const viewportNames = { desktop: 'Desktop (100%)', tablet: 'Tablet (768px)', mobile: 'Mobile (375px)' };
+        document.getElementById('screenshotContextViewport').value = viewportNames[currentViewport] || currentViewport;
+
+        // Show console error count if any
+        const errorField = document.getElementById('screenshotErrorCountField');
+        if (errorCount > 0) {
+            document.getElementById('screenshotContextErrors').value = `${errorCount} error${errorCount !== 1 ? 's' : ''} in console`;
+            errorField.style.display = 'block';
+        } else {
+            errorField.style.display = 'none';
+        }
+
         document.getElementById('screenshotTicketModal').classList.add('active');
     }
 
@@ -2669,14 +2767,27 @@ The above error appeared in the console.`;
 
         const name = document.getElementById('screenshotTicketName').value.trim();
         const description = document.getElementById('screenshotTicketDescription').value.trim();
+        const contextUrl = document.getElementById('screenshotContextUrl').value;
+        const contextViewport = document.getElementById('screenshotContextViewport').value;
+        const contextErrors = document.getElementById('screenshotContextErrors').value;
 
         if (!name) {
             showNotification('Please enter a ticket name', 'error');
             return;
         }
 
-        // Build description with screenshot indicator
-        const fullDescription = `${description}\n\n**Screenshot attached**\n\n![Screenshot](screenshot)`;
+        // Build context section
+        let contextSection = '### Context\n';
+        if (contextUrl && contextUrl !== 'Not available') {
+            contextSection += `- **URL:** ${contextUrl}\n`;
+        }
+        contextSection += `- **Viewport:** ${contextViewport}\n`;
+        if (contextErrors) {
+            contextSection += `- **Console:** ${contextErrors}\n`;
+        }
+
+        // Build description with context and screenshot
+        const fullDescription = `${description}\n\n${contextSection}\n**Screenshot attached**\n\n![Screenshot](screenshot)`;
 
         try {
             // First create the ticket
