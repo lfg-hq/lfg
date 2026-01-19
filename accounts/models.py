@@ -234,7 +234,33 @@ class Profile(models.Model):
     sidebar_collapsed = models.BooleanField(default=False)
     email_verified = models.BooleanField(default=False)
     has_seen_onboarding = models.BooleanField(default=False)
-    
+
+    # Claude Code CLI authentication status
+    claude_code_authenticated = models.BooleanField(
+        default=False,
+        help_text="Whether the user has authenticated Claude Code CLI on their workspace"
+    )
+    claude_code_s3_key = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="S3 key where Claude auth folder is backed up"
+    )
+    cli_api_key = models.CharField(
+        max_length=64,
+        blank=True,
+        null=True,
+        unique=True,
+        help_text="API key for CLI to call LFG endpoints from VM"
+    )
+
+    def generate_cli_api_key(self):
+        """Generate a new CLI API key for this profile."""
+        import secrets
+        self.cli_api_key = f"lfg_cli_{secrets.token_urlsafe(32)}"
+        self.save(update_fields=['cli_api_key'])
+        return self.cli_api_key
+
     # Organization context
     current_organization = models.ForeignKey(
         Organization, 
@@ -343,9 +369,16 @@ class ApplicationState(models.Model):
     last_selected_model = models.CharField(max_length=50, default='o4-mini')
     last_selected_role = models.CharField(max_length=50, default='product_analyst')
     turbo_mode_enabled = models.BooleanField(default=False)
+
+    # Claude Code CLI mode toggle
+    claude_code_enabled = models.BooleanField(
+        default=False,
+        help_text="Use Claude Code CLI for ticket execution instead of API"
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     def __str__(self):
         return f"{self.user.username}'s app state"
 

@@ -31,8 +31,13 @@ ALLOWED_HOSTS = [
     'lfg.run',
     'www.lfg.run',
     'localhost',
-    'dev-rocks.lfg.run'
+    'dev-rocks.lfg.run',
+    '3a35ec4d3dc3.ngrok-free.app'
 ]
+
+# LFG API Base URL for CLI callbacks from VMs
+# This is the URL that Claude Code CLI running on Magpie VMs will use to call back to LFG
+LFG_API_BASE_URL = os.environ.get('LFG_API_BASE_URL', 'https://www.turboship.ai')
 
 CSRF_COOKIE_SECURE = False
 

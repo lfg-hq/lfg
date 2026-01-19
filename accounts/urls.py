@@ -70,4 +70,11 @@ urlpatterns = [
     
     # Settings endpoints
     path('settings/project-collaboration/', views.update_project_collaboration_setting, name='update_project_collaboration_setting'),
+
+    # Claude Code CLI Integration
+    path('claude-code/start-auth/', views.claude_code_start_auth, name='claude_code_start_auth'),
+    path('claude-code/submit-code/', views.claude_code_submit_code, name='claude_code_submit_code'),
+    path('claude-code/status/', views.claude_code_check_status, name='claude_code_status'),
+    path('claude-code/toggle/', views.claude_code_toggle, name='claude_code_toggle'),
+    path('claude-code/disconnect/', views.claude_code_disconnect, name='claude_code_disconnect'),
 ] 

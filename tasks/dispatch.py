@@ -97,6 +97,14 @@ def dispatch_tickets(
 
         # Update ticket statuses in database
         from projects.models import ProjectTicket
+
+        # Reset blocked/failed tickets to pending when re-queuing
+        ProjectTicket.objects.filter(
+            id__in=ticket_ids,
+            status__in=['blocked', 'failed']
+        ).update(status='pending')
+
+        # Set queue status for all tickets
         ProjectTicket.objects.filter(id__in=ticket_ids).update(
             queue_status='queued',
             queued_at=timezone.now(),

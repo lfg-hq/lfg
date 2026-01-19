@@ -1593,3 +1593,322 @@ def update_project_collaboration_setting(request):
             }
         })
         return JsonResponse({'error': 'Failed to update setting'}, status=500)
+
+
+# ============================================================================
+# Claude Code CLI Integration Views
+# ============================================================================
+
+@login_required
+def claude_code_start_auth(request):
+    """
+    Start Claude Code authentication process.
+
+    This creates a temporary workspace if needed and initiates the OAuth flow.
+    Returns the OAuth URL for the user to authenticate.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    from development.models import MagpieWorkspace
+    from factory.claude_code_utils import start_claude_auth, restore_claude_auth_from_s3
+    from factory.ai_functions import get_magpie_client, _run_magpie_ssh, MAGPIE_BOOTSTRAP_SCRIPT
+
+    try:
+        client = get_magpie_client()
+
+        # Check if we have an existing Claude auth workspace for this user
+        workspace = MagpieWorkspace.objects.filter(
+            user=request.user,
+            workspace_type='claude_auth',
+            status='ready'
+        ).first()
+
+        workspace_id = None
+        use_existing = False
+
+        if workspace:
+            workspace_id = workspace.workspace_id
+            logger.info(f"[CLAUDE_CODE] Checking existing Claude auth workspace {workspace_id} for user {request.user.id}")
+
+            # Verify workspace is actually accessible with a simple test
+            try:
+                test_result = _run_magpie_ssh(
+                    client, workspace_id, "echo 'WORKSPACE_OK'",
+                    timeout=30, with_node_env=False
+                )
+                if test_result.get('exit_code') == 0 and 'WORKSPACE_OK' in test_result.get('stdout', ''):
+                    use_existing = True
+                    logger.info(f"[CLAUDE_CODE] Existing workspace {workspace_id} is accessible")
+                else:
+                    logger.warning(f"[CLAUDE_CODE] Existing workspace {workspace_id} not responding correctly")
+            except Exception as e:
+                logger.warning(f"[CLAUDE_CODE] Existing workspace {workspace_id} not accessible: {e}")
+                # Mark workspace as not ready
+                workspace.status = 'error'
+                workspace.save(update_fields=['status'])
+
+        if not use_existing:
+            # Create a new workspace for Claude Code authentication
+            logger.info(f"[CLAUDE_CODE] Creating Claude auth workspace for user {request.user.id}")
+
+            workspace_name = f"claude-auth-{request.user.id}"
+            vm_handle = client.jobs.create_persistent_vm(
+                name=workspace_name,
+                script=MAGPIE_BOOTSTRAP_SCRIPT,
+                stateful=True,
+                workspace_size_gb=5,
+                vcpus=1,
+                memory_mb=1024,
+                poll_timeout=120,
+                poll_interval=5,
+            )
+
+            workspace_id = vm_handle.request_id
+            ipv6 = vm_handle.ip_address
+
+            if not ipv6:
+                return JsonResponse({
+                    'status': 'error',
+                    'error': 'Failed to create workspace - no IP address received'
+                }, status=500)
+
+            # Save workspace to database (delete old one first if exists)
+            MagpieWorkspace.objects.filter(
+                user=request.user,
+                workspace_type='claude_auth'
+            ).delete()
+
+            MagpieWorkspace.objects.create(
+                user=request.user,
+                workspace_type='claude_auth',
+                job_id=workspace_id,
+                workspace_id=workspace_id,
+                ipv6_address=ipv6,
+                status='ready'
+            )
+            logger.info(f"[CLAUDE_CODE] Created and saved workspace {workspace_id}")
+
+            # Wait a moment for workspace to be fully ready
+            import time
+            time.sleep(3)
+
+        # Try to restore existing auth from S3 first
+        profile = request.user.profile
+        if profile.claude_code_s3_key:
+            restore_result = restore_claude_auth_from_s3(
+                workspace_id, request.user.id, profile.claude_code_s3_key
+            )
+            if restore_result.get('status') == 'success':
+                # Auth restored, verify it works
+                from factory.claude_code_utils import check_claude_auth_status
+                check_result = check_claude_auth_status(workspace_id)
+                if check_result.get('authenticated'):
+                    # Update DB to reflect authenticated state
+                    profile.claude_code_authenticated = True
+                    profile.save(update_fields=['claude_code_authenticated'])
+                    return JsonResponse({
+                        'status': 'already_authenticated',
+                        'message': 'Claude Code authentication restored from backup'
+                    })
+
+        # Start the authentication flow
+        auth_result = start_claude_auth(workspace_id)
+
+        # If already authenticated, update DB
+        if auth_result.get('status') == 'already_authenticated':
+            profile.claude_code_authenticated = True
+            profile.save(update_fields=['claude_code_authenticated'])
+
+        return JsonResponse(auth_result)
+
+    except Exception as e:
+        logger.error(f"[CLAUDE_CODE] Start auth error: {e}", exc_info=True)
+        return JsonResponse({
+            'status': 'error',
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+def claude_code_submit_code(request):
+    """
+    Submit the OAuth code to complete Claude Code authentication.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    from development.models import MagpieWorkspace
+    from factory.claude_code_utils import submit_claude_auth_code, backup_claude_auth_to_s3, check_claude_auth_status
+
+    try:
+        data = json.loads(request.body)
+        auth_code = data.get('code', '').strip()
+
+        if not auth_code:
+            return JsonResponse({
+                'status': 'error',
+                'error': 'Authentication code is required'
+            }, status=400)
+
+        # Get workspace ID from database
+        workspace = MagpieWorkspace.objects.filter(
+            user=request.user,
+            workspace_type='claude_auth',
+            status='ready'
+        ).first()
+
+        if not workspace:
+            return JsonResponse({
+                'status': 'error',
+                'error': 'No active authentication workspace. Please start again.'
+            }, status=400)
+
+        workspace_id = workspace.workspace_id
+
+        # Submit the auth code
+        result = submit_claude_auth_code(workspace_id, auth_code)
+
+        if result.get('status') == 'success':
+            # Verify authentication worked
+            check_result = check_claude_auth_status(workspace_id)
+
+            if check_result.get('authenticated'):
+                # Backup auth to S3
+                backup_result = backup_claude_auth_to_s3(workspace_id, request.user.id)
+
+                # Update user profile
+                profile = request.user.profile
+                profile.claude_code_authenticated = True
+                if backup_result.get('status') == 'success':
+                    profile.claude_code_s3_key = backup_result.get('s3_key')
+                profile.save(update_fields=['claude_code_authenticated', 'claude_code_s3_key'])
+
+                return JsonResponse({
+                    'status': 'success',
+                    'message': 'Claude Code authenticated successfully',
+                    'backed_up': backup_result.get('status') == 'success'
+                })
+            else:
+                return JsonResponse({
+                    'status': 'error',
+                    'error': 'Authentication verification failed. Please try again.'
+                })
+
+        return JsonResponse(result)
+
+    except Exception as e:
+        logger.error(f"[CLAUDE_CODE] Submit code error: {e}", exc_info=True)
+        return JsonResponse({
+            'status': 'error',
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+def claude_code_check_status(request):
+    """
+    Check Claude Code authentication status.
+    """
+    if request.method != 'GET':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    try:
+        profile = request.user.profile
+
+        # Get ApplicationState
+        from .models import ApplicationState
+        app_state, _ = ApplicationState.objects.get_or_create(user=request.user)
+
+        return JsonResponse({
+            'status': 'success',
+            'authenticated': profile.claude_code_authenticated,
+            'enabled': app_state.claude_code_enabled,
+            'has_backup': bool(profile.claude_code_s3_key)
+        })
+
+    except Exception as e:
+        logger.error(f"[CLAUDE_CODE] Check status error: {e}", exc_info=True)
+        return JsonResponse({
+            'status': 'error',
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+def claude_code_toggle(request):
+    """
+    Toggle Claude Code CLI mode on/off.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    try:
+        data = json.loads(request.body)
+        enabled = data.get('enabled', False)
+
+        # Get or create ApplicationState
+        from .models import ApplicationState
+        app_state, _ = ApplicationState.objects.get_or_create(user=request.user)
+
+        # Only allow enabling if authenticated
+        profile = request.user.profile
+        if enabled and not profile.claude_code_authenticated:
+            return JsonResponse({
+                'status': 'error',
+                'error': 'Please authenticate Claude Code first before enabling CLI mode'
+            }, status=400)
+
+        app_state.claude_code_enabled = enabled
+        app_state.save(update_fields=['claude_code_enabled'])
+
+        logger.info(f"[CLAUDE_CODE] User {request.user.id} {'enabled' if enabled else 'disabled'} CLI mode")
+
+        return JsonResponse({
+            'status': 'success',
+            'enabled': app_state.claude_code_enabled,
+            'message': f"Claude Code CLI mode {'enabled' if enabled else 'disabled'}"
+        })
+
+    except Exception as e:
+        logger.error(f"[CLAUDE_CODE] Toggle error: {e}", exc_info=True)
+        return JsonResponse({
+            'status': 'error',
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+def claude_code_disconnect(request):
+    """
+    Disconnect Claude Code authentication.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    try:
+        # Update profile
+        profile = request.user.profile
+        profile.claude_code_authenticated = False
+        profile.claude_code_s3_key = None
+        profile.save(update_fields=['claude_code_authenticated', 'claude_code_s3_key'])
+
+        # Disable CLI mode
+        from .models import ApplicationState
+        app_state, _ = ApplicationState.objects.get_or_create(user=request.user)
+        app_state.claude_code_enabled = False
+        app_state.save(update_fields=['claude_code_enabled'])
+
+        logger.info(f"[CLAUDE_CODE] User {request.user.id} disconnected Claude Code")
+
+        return JsonResponse({
+            'status': 'success',
+            'message': 'Claude Code disconnected successfully'
+        })
+
+    except Exception as e:
+        logger.error(f"[CLAUDE_CODE] Disconnect error: {e}", exc_info=True)
+        return JsonResponse({
+            'status': 'error',
+            'error': str(e)
+        }, status=500)

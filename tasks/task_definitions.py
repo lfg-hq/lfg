@@ -2206,6 +2206,711 @@ Action required: Check logs for detailed error trace and retry
             "execution_time": f"{execution_time:.2f}s"
         }
 
+
+def execute_ticket_with_claude_cli(ticket_id: int, project_id: int, conversation_id: int, max_execution_time: int = 1200) -> Dict[str, Any]:
+    """
+    Execute a ticket using Claude Code CLI instead of direct API calls.
+
+    This function delegates AI work to Claude Code CLI installed in the Magpie workspace,
+    providing better context handling and leveraging Claude Code's built-in tools.
+
+    Args:
+        ticket_id: The ID of the ProjectTicket ticket
+        project_id: The ID of the project
+        conversation_id: The ID of the conversation
+        max_execution_time: Maximum execution time in seconds (default: 1200s/20min)
+
+    Returns:
+        Dict with execution results and status
+    """
+    from factory.claude_code_utils import (
+        restore_claude_auth_from_s3,
+        backup_claude_auth_to_s3,
+        run_claude_cli,
+        parse_claude_json_stream,
+        create_ticket_logs_from_claude_output
+    )
+    from accounts.models import Profile
+    from projects.websocket_utils import async_send_ticket_log_notification
+
+    # Set the current ticket_id in context
+    current_ticket_id.set(ticket_id)
+    logger.info(f"\n{'='*80}\n[CLI TASK START] Ticket #{ticket_id} | Project #{project_id} | Conv #{conversation_id}\n{'='*80}")
+
+    start_time = time.time()
+    workspace_id = None
+
+    try:
+        logger.info(f"\n[CLI STEP 1/7] Fetching ticket and project data...")
+        # 1. GET TICKET AND PROJECT
+        ticket = ProjectTicket.objects.get(id=ticket_id)
+        project = Project.objects.get(id=project_id)
+        user = project.owner
+        profile = Profile.objects.get(user=user)
+
+        # Ensure user has a CLI API key
+        if not profile.cli_api_key:
+            profile.generate_cli_api_key()
+            logger.info(f"[CLI STEP 1/7] Generated new CLI API key for user")
+
+        logger.info(f"[CLI STEP 1/7] ✓ Ticket: '{ticket.name}' | Project: '{project.name}'")
+
+        logger.info(f"\n[CLI STEP 2/7] Checking ticket status...")
+        # 2. CHECK IF ALREADY COMPLETED
+        if ticket.status == 'done':
+            logger.info(f"[CLI STEP 2/7] ⊘ Ticket already completed, skipping")
+            return {
+                "status": "success",
+                "ticket_id": ticket_id,
+                "message": "Already completed",
+                "skipped": True
+            }
+
+        # Check if retry
+        is_retry = ticket.status in ['blocked', 'failed', 'in_progress']
+        if is_retry:
+            logger.info(f"[CLI STEP 2/7] ⟳ RETRY detected - previous status: {ticket.status}")
+            ticket.notes = (ticket.notes or "") + f"""
+---
+[{datetime.now().strftime('%Y-%m-%d %H:%M')}] ⟳ CLI EXECUTION RETRY
+Previous status: {ticket.status}
+Using Claude Code CLI mode
+"""
+            ticket.save(update_fields=['notes'])
+
+        # Get attachments
+        attachments = list(ticket.attachments.all())
+
+        def _format_file_size(num_bytes: int) -> str:
+            try:
+                size = float(num_bytes or 0)
+            except (TypeError, ValueError):
+                size = 0
+            for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+                if size < 1024 or unit == 'TB':
+                    return f"{size:.1f} {unit}" if size >= 1024 and unit != 'B' else f"{int(size)} {unit}"
+                size /= 1024
+            return f"{size:.1f} TB"
+
+        if attachments:
+            attachment_lines = []
+            for attachment in attachments:
+                display_name = attachment.original_filename or os.path.basename(attachment.file.name)
+                size_label = _format_file_size(attachment.file_size)
+                uploaded_label = attachment.uploaded_at.strftime('%Y-%m-%d %H:%M')
+                attachment_lines.append(f"- {display_name} ({size_label}, uploaded {uploaded_label})")
+            attachments_summary = "\n".join(attachment_lines)
+        else:
+            attachments_summary = "No attachments were provided for this ticket."
+
+        logger.info(f"\n[CLI STEP 3/7] Getting Claude auth workspace...")
+        # 3. USE CLAUDE AUTH WORKSPACE (instead of creating new one)
+        from development.models import MagpieWorkspace
+        from factory.ai_functions import _run_magpie_ssh, get_magpie_client
+
+        # Get the user's Claude auth workspace
+        claude_workspace = MagpieWorkspace.objects.filter(
+            user=user,
+            workspace_type='claude_auth',
+            status='ready'
+        ).first()
+
+        if not claude_workspace:
+            error_msg = "No Claude auth workspace found. Please authenticate Claude Code in Settings first."
+            logger.error(f"[CLI STEP 3/7] ✗ {error_msg}")
+
+            ticket.status = 'blocked'
+            ticket.queue_status = 'none'
+            ticket.notes = (ticket.notes or "") + f"""
+---
+[{datetime.now().strftime('%Y-%m-%d %H:%M')}] ❌ BLOCKED - No Claude Auth Workspace
+Reason: {error_msg}
+Mode: Claude Code CLI
+"""
+            ticket.save(update_fields=['status', 'queue_status', 'notes'])
+
+            broadcast_ticket_notification(conversation_id, {
+                'is_notification': True,
+                'notification_type': 'toolhistory',
+                'function_name': 'ticket_execution',
+                'status': 'failed',
+                'message': f"✗ Ticket #{ticket.id} failed: {error_msg}",
+                'ticket_id': ticket.id,
+                'ticket_name': ticket.name,
+                'queue_status': 'none',
+                'refresh_checklist': True
+            })
+
+            broadcast_ticket_status_change(ticket_id, 'blocked', 'none')
+
+            return {
+                "status": "error",
+                "ticket_id": ticket_id,
+                "error": error_msg,
+                "cli_error": True,
+                "execution_time": f"{time.time() - start_time:.2f}s"
+            }
+
+        workspace_id = claude_workspace.workspace_id
+        logger.info(f"[CLI STEP 3/7] ✓ Using Claude auth workspace: {workspace_id}")
+
+        # Verify workspace is accessible
+        try:
+            client = get_magpie_client()
+            check_result = _run_magpie_ssh(client, workspace_id, "echo 'OK'", timeout=15)
+            if check_result.get('exit_code') != 0:
+                raise Exception("Workspace not responding")
+        except Exception as e:
+            error_msg = f"Claude workspace not accessible: {str(e)}"
+            logger.error(f"[CLI STEP 3/7] ✗ {error_msg}")
+
+            ticket.status = 'blocked'
+            ticket.queue_status = 'none'
+            ticket.notes = (ticket.notes or "") + f"""
+---
+[{datetime.now().strftime('%Y-%m-%d %H:%M')}] ❌ BLOCKED - Workspace Not Accessible
+Reason: {error_msg}
+Mode: Claude Code CLI
+"""
+            ticket.save(update_fields=['status', 'queue_status', 'notes'])
+            broadcast_ticket_status_change(ticket_id, 'blocked', 'none')
+
+            return {
+                "status": "error",
+                "ticket_id": ticket_id,
+                "error": error_msg,
+                "cli_error": True,
+                "execution_time": f"{time.time() - start_time:.2f}s"
+            }
+
+        # Setup git in the Claude workspace
+        from codebase_index.models import IndexedRepository
+
+        github_token = get_github_token(project.owner)
+        github_owner = None
+        github_repo = None
+        git_setup_error = None
+        stack = project.stack or 'nextjs'
+        stack_config = get_stack_config(stack, project)
+        project_dir = stack_config.get('project_dir', 'nextjs-app')
+        feature_branch_name = f"feature/ticket-{ticket.id}"
+
+        # Get GitHub info from IndexedRepository
+        try:
+            indexed_repo = IndexedRepository.objects.get(project=project)
+            github_owner = indexed_repo.github_owner
+            github_repo = indexed_repo.github_repo_name
+            logger.info(f"[CLI STEP 3/7] Found repo: {github_owner}/{github_repo}")
+        except IndexedRepository.DoesNotExist:
+            logger.warning(f"[CLI STEP 3/7] No IndexedRepository found for project")
+
+        if github_owner and github_repo and github_token:
+            # Setup git in workspace
+            logger.info(f"[CLI STEP 3/7] Setting up git repo in Claude workspace...")
+
+            git_setup_script = f"""
+            cd /workspace
+
+            # Check if repo already cloned
+            if [ -d "{project_dir}/.git" ]; then
+                echo "REPO_EXISTS"
+                cd {project_dir}
+                git fetch origin
+            else
+                echo "CLONING_REPO"
+                rm -rf {project_dir}
+                git clone https://{github_token}@github.com/{github_owner}/{github_repo}.git {project_dir}
+                cd {project_dir}
+            fi
+
+            # Ensure lfg-agent branch exists and is up to date
+            # lfg-agent is the base branch for all feature branches
+            git checkout lfg-agent 2>/dev/null || git checkout -b lfg-agent origin/lfg-agent 2>/dev/null || (git checkout main && git checkout -b lfg-agent)
+            git pull origin lfg-agent 2>/dev/null || echo "PULL_SKIPPED"
+
+            # Create or checkout feature branch from lfg-agent
+            git checkout -b {feature_branch_name} 2>/dev/null || git checkout {feature_branch_name} 2>/dev/null || echo "BRANCH_ERROR"
+
+            # Configure git
+            git config user.email "ai@lfg.dev"
+            git config user.name "LFG AI"
+
+            echo "GIT_SETUP_COMPLETE"
+            pwd
+            git branch --show-current
+            """
+
+            git_result = _run_magpie_ssh(client, workspace_id, git_setup_script, timeout=120)
+            git_stdout = git_result.get('stdout', '')
+
+            if 'GIT_SETUP_COMPLETE' in git_stdout:
+                logger.info(f"[CLI STEP 3/7] ✓ Git setup complete, branch: {feature_branch_name}")
+            else:
+                git_setup_error = f"Git setup issue: {git_stdout[:200]}"
+                logger.warning(f"[CLI STEP 3/7] ⚠ {git_setup_error}")
+        else:
+            git_setup_error = "No GitHub repo configured or missing token"
+
+        logger.info(f"[CLI STEP 3/7] ✓ Workspace ready: {workspace_id}")
+
+        # Check for cancellation
+        from tasks.dispatch import is_ticket_cancelled, clear_ticket_cancellation_flag
+        if is_ticket_cancelled(ticket_id):
+            logger.info(f"[CLI STEP 3/7] ⊘ Ticket cancelled")
+            return {
+                "status": "cancelled",
+                "ticket_id": ticket_id,
+                "message": "Cancelled by user",
+                "execution_time": f"{time.time() - start_time:.2f}s"
+            }
+
+        logger.info(f"\n[CLI STEP 4/7] Verifying Claude auth...")
+        # 4. VERIFY CLAUDE AUTH (workspace should already be authenticated)
+        # No need to restore from S3 since we're using the Claude auth workspace directly
+        logger.info(f"[CLI STEP 4/7] ✓ Using pre-authenticated Claude workspace")
+
+        # 5. UPDATE STATUS TO IN-PROGRESS
+        logger.info(f"\n[CLI STEP 5/7] Updating status to in_progress...")
+        ticket.status = 'in_progress'
+        ticket.save(update_fields=['status'])
+
+        broadcast_ticket_notification(conversation_id, {
+            'is_notification': True,
+            'notification_type': 'toolhistory',
+            'function_name': 'ticket_execution',
+            'status': 'in_progress',
+            'message': f"🤖 Working on ticket #{ticket.id} with Claude Code CLI",
+            'ticket_id': ticket.id,
+            'ticket_name': ticket.name,
+            'refresh_checklist': True
+        })
+
+        logger.info(f"\n[CLI STEP 6/7] Fetching project documentation...")
+        # 6. FETCH PROJECT DOCUMENTATION
+        project_context = ""
+        try:
+            from projects.models import ProjectFile
+
+            prd_files = ProjectFile.objects.filter(
+                project=project,
+                file_type='prd',
+                is_active=True
+            ).order_by('-updated_at')[:2]
+
+            impl_files = ProjectFile.objects.filter(
+                project=project,
+                file_type='implementation',
+                is_active=True
+            ).order_by('-updated_at')[:2]
+
+            if prd_files or impl_files:
+                project_context = "\n\n📋 PROJECT DOCUMENTATION:\n"
+
+                for prd in prd_files:
+                    project_context += f"\n--- PRD: {prd.name} ---\n"
+                    project_context += prd.file_content[:5000]
+                    if len(prd.file_content) > 5000:
+                        project_context += "\n...(truncated)\n"
+
+                for impl in impl_files:
+                    project_context += f"\n--- Technical Implementation: {impl.name} ---\n"
+                    project_context += impl.file_content[:5000]
+                    if len(impl.file_content) > 5000:
+                        project_context += "\n...(truncated)\n"
+
+                logger.info(f"[CLI STEP 6/7] ✓ Added {len(prd_files)} PRDs, {len(impl_files)} impl docs")
+        except Exception as e:
+            logger.warning(f"[CLI STEP 6/7] ⚠ Could not fetch docs: {str(e)}")
+
+        # Build git error context if present
+        git_error_context = ""
+        if git_setup_error:
+            git_error_context = f"""
+⚠️ GIT SETUP ISSUE DETECTED:
+Repository: {git_setup_error['repo']}
+Target Branch: {git_setup_error['branch']}
+Error: {git_setup_error['message']}
+
+Before implementing, fix the git issue:
+1. Check: cd /workspace/{project_dir} && git status
+2. Resolve any conflicts or uncommitted changes
+3. Checkout: git checkout {git_setup_error['branch']}
+"""
+
+        # Build the API URL for CLI callbacks
+        from django.conf import settings
+        api_base_url = getattr(settings, 'LFG_API_BASE_URL', 'https://www.turboship.ai')
+        cli_api_key = profile.cli_api_key
+
+        # Build the prompt for Claude Code CLI
+        implementation_prompt = f"""You are implementing ticket #{ticket.id}: {ticket.name}
+
+TICKET DESCRIPTION:
+{ticket.description}
+
+PROJECT STACK: {stack_config['name']}
+PROJECT PATH: /workspace/{project_dir}
+{project_context}
+{git_error_context}
+
+ATTACHMENTS:
+{attachments_summary}
+
+## LFG PLATFORM INTEGRATION
+
+You can update the LFG platform in real-time using these environment variables and commands:
+
+**Environment Variables (already set):**
+- LFG_API_URL={api_base_url}
+- LFG_API_KEY={cli_api_key}
+- LFG_TICKET_ID={ticket.id}
+- LFG_PROJECT_ID={project.project_id}
+
+**Update Tasks/Progress:**
+Use the TodoWrite tool to track your progress. Your tasks will be synced to LFG automatically via the API.
+
+Alternatively, you can directly call the API to create/update tasks:
+```bash
+curl -X POST "$LFG_API_URL/api/v1/cli/tasks/bulk/" \\
+  -H "X-CLI-API-Key: $LFG_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{{"ticket_id": {ticket.id}, "tasks": [{{"content": "Task 1", "status": "completed"}}, {{"content": "Task 2", "status": "in_progress"}}]}}'
+```
+
+**Mark Ticket Complete:**
+When you finish implementing, call this to mark the ticket as complete:
+```bash
+curl -X POST "$LFG_API_URL/api/v1/cli/status/" \\
+  -H "X-CLI-API-Key: $LFG_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{{"ticket_id": {ticket.id}, "status": "completed", "summary": "Brief summary of what was implemented"}}'
+```
+
+**Report Failure:**
+If you encounter blockers or cannot complete the ticket:
+```bash
+curl -X POST "$LFG_API_URL/api/v1/cli/status/" \\
+  -H "X-CLI-API-Key: $LFG_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{{"ticket_id": {ticket.id}, "status": "failed", "summary": "Reason for failure"}}'
+```
+
+**Create User Action Ticket:**
+If you need the user to do something (add API keys, configure settings, etc.):
+```bash
+curl -X POST "$LFG_API_URL/api/v1/cli/user-action/" \\
+  -H "X-CLI-API-Key: $LFG_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{{"project_id": "'$LFG_PROJECT_ID'", "parent_ticket_id": '$LFG_TICKET_ID', "title": "Add API Key", "description": "Description of what the user needs to do", "action_type": "add_api_key", "priority": "high"}}'
+```
+Action types: add_api_key, configure_setting, review_code, manual_fix, other
+
+**Request User Input:**
+If you need clarification or a decision from the user:
+```bash
+curl -X POST "$LFG_API_URL/api/v1/cli/request-input/" \\
+  -H "X-CLI-API-Key: $LFG_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{{"ticket_id": {ticket.id}, "question": "Which approach should I use?", "options": ["Option A", "Option B"], "context": "Additional context..."}}'
+```
+This will block the ticket until the user responds.
+
+## INSTRUCTIONS
+
+1. Navigate to the project directory: cd /workspace/{project_dir}
+2. Understand the existing codebase structure
+3. Create tasks to track your implementation progress (using TodoWrite or the API)
+4. Implement the required changes for this ticket
+5. DO NOT commit changes - that will be handled automatically
+6. When done, call the status API to mark complete (or failed)
+
+## COMPLETION
+
+IMPORTANT: After implementing, you MUST call the status API to mark the ticket as complete or failed.
+This is how the LFG platform knows you are done.
+
+You can also output (for logging purposes):
+✅ IMPLEMENTATION_STATUS: COMPLETE - [brief summary of changes]
+❌ IMPLEMENTATION_STATUS: FAILED - [reason]"""
+
+        logger.info(f"\n[CLI STEP 7/7] Running Claude Code CLI...")
+        # 7. RUN CLAUDE CODE CLI
+        cli_start = time.time()
+
+        cli_result = run_claude_cli(
+            workspace_id=workspace_id,
+            prompt=implementation_prompt,
+            timeout=max_execution_time,
+            working_dir=f"/workspace/{project_dir}",
+            project_id=str(project.project_id),
+            lfg_env={
+                'LFG_API_URL': api_base_url,
+                'LFG_API_KEY': cli_api_key,
+                'LFG_TICKET_ID': str(ticket.id),
+                'LFG_PROJECT_ID': str(project.project_id)
+            }
+        )
+
+        cli_duration = time.time() - cli_start
+        logger.info(f"[CLI STEP 7/7] CLI completed in {cli_duration:.1f}s")
+
+        # Create ticket logs from Claude output
+        if cli_result.get('messages'):
+            def broadcast_log(ticket_id, log_data):
+                try:
+                    async_to_sync(async_send_ticket_log_notification)(ticket_id, log_data)
+                except Exception as e:
+                    logger.warning(f"Broadcast failed: {e}")
+
+            logs = create_ticket_logs_from_claude_output(
+                ticket_id=ticket_id,
+                parsed_output=cli_result,
+                broadcast_func=broadcast_log
+            )
+            logger.info(f"[CLI STEP 7/7] Created {len(logs)} ticket logs")
+
+        # Check CLI result
+        execution_time = time.time() - start_time
+        stdout = cli_result.get('stdout', '')
+
+        # Determine completion status
+        completed = 'IMPLEMENTATION_STATUS: COMPLETE' in stdout
+        failed = 'IMPLEMENTATION_STATUS: FAILED' in stdout or cli_result.get('status') == 'error'
+
+        if not completed and not failed:
+            # Check final_result from parsed output
+            final_result = cli_result.get('final_result', '')
+            if final_result:
+                if 'COMPLETE' in str(final_result).upper():
+                    completed = True
+                elif 'FAILED' in str(final_result).upper():
+                    failed = True
+
+        # If still no status, mark as failed
+        if not completed and not failed:
+            logger.warning(f"[CLI] No explicit status found, marking as failed")
+            failed = True
+
+        logger.info(f"[CLI] Status - Completed: {completed} | Failed: {failed} | Time: {execution_time:.1f}s")
+
+        # COMMIT AND PUSH
+        commit_sha = None
+        merge_status = None
+
+        if is_ticket_cancelled(ticket_id):
+            logger.info(f"[CLI] Ticket cancelled before commit")
+            clear_ticket_cancellation_flag(ticket_id)
+            ticket.status = 'open'
+            ticket.save(update_fields=['status'])
+            return {
+                "status": "cancelled",
+                "ticket_id": ticket_id,
+                "message": "Cancelled before commit",
+                "execution_time": f"{execution_time:.2f}s"
+            }
+
+        if completed and not failed and github_owner and github_repo and github_token and feature_branch_name:
+            logger.info(f"\n[CLI COMMIT] Committing and pushing changes...")
+
+            commit_message = f"feat: {ticket.name}\n\nImplemented ticket #{ticket_id} (via Claude Code CLI)\n\n{ticket.description[:200]}"
+            commit_result = commit_and_push_changes(
+                workspace_id, feature_branch_name, commit_message, ticket_id,
+                stack=stack, github_token=github_token,
+                github_owner=github_owner, github_repo=github_repo
+            )
+
+            if commit_result['status'] == 'success':
+                commit_sha = commit_result.get('commit_sha')
+                logger.info(f"[CLI COMMIT] ✓ Committed: {commit_sha}")
+
+                ticket.github_commit_sha = commit_sha
+                ticket.save(update_fields=['github_commit_sha'])
+
+                # Merge to lfg-agent
+                merge_result = merge_feature_to_lfg_agent(github_token, github_owner, github_repo, feature_branch_name)
+
+                if merge_result['status'] == 'success':
+                    logger.info(f"[CLI COMMIT] ✓ Merged to lfg-agent")
+                    merge_status = 'merged'
+                elif merge_result['status'] == 'conflict':
+                    logger.warning(f"[CLI COMMIT] ⚠ Merge conflict, attempting resolution...")
+                    resolution_result = resolve_merge_conflict(
+                        workspace_id, feature_branch_name, ticket_id,
+                        project.project_id, conversation_id, stack=stack
+                    )
+                    merge_status = 'merged' if resolution_result['status'] == 'success' else 'conflict'
+                else:
+                    merge_status = 'failed'
+
+                ticket.github_merge_status = merge_status
+                ticket.save(update_fields=['github_merge_status'])
+            else:
+                logger.error(f"[CLI COMMIT] ✗ Commit failed: {commit_result.get('message')}")
+
+        # NOTE: Backup is NOT done after each ticket execution
+        # Auth backup only happens during initial authentication in Settings
+        # The Claude workspace persists between executions, so no backup needed
+
+        # UPDATE TICKET STATUS
+        if completed and not failed:
+            logger.info(f"\n[CLI FINALIZE] ✓ SUCCESS - Marking as review")
+            ticket.status = 'review'
+
+            git_info = ""
+            if github_owner and github_repo:
+                repo_url = f"https://github.com/{github_owner}/{github_repo}"
+                git_info = f"\nGitHub: {repo_url}"
+                if feature_branch_name:
+                    git_info += f"\nBranch: {feature_branch_name}"
+                if commit_sha:
+                    git_info += f"\nCommit: {commit_sha}"
+                if merge_status:
+                    merge_emoji = '✓' if merge_status == 'merged' else ('⚠' if merge_status == 'conflict' else '✗')
+                    git_info += f"\nMerge: {merge_emoji} {merge_status}"
+
+            ticket.notes = (ticket.notes or "") + f"""
+---
+[{datetime.now().strftime('%Y-%m-%d %H:%M')}] ✅ IMPLEMENTATION COMPLETED (Claude Code CLI)
+Execution time: {execution_time:.2f}s
+CLI duration: {cli_duration:.2f}s{git_info}
+"""
+            ticket.execution_time_seconds = (ticket.execution_time_seconds or 0) + execution_time
+            ticket.last_execution_at = datetime.now()
+            ticket.save(update_fields=['status', 'notes', 'execution_time_seconds', 'last_execution_at'])
+
+            broadcast_ticket_notification(conversation_id, {
+                'is_notification': True,
+                'notification_type': 'toolhistory',
+                'function_name': 'ticket_execution',
+                'status': 'completed',
+                'message': f"✓ Completed ticket #{ticket.id} with Claude Code CLI",
+                'ticket_id': ticket.id,
+                'ticket_name': ticket.name,
+                'queue_status': 'none',
+                'refresh_checklist': True
+            })
+
+            broadcast_ticket_status_change(ticket_id, 'review', 'none')
+            clear_ticket_cancellation_flag(ticket_id)
+
+            return {
+                "status": "success",
+                "ticket_id": ticket_id,
+                "ticket_name": ticket.name,
+                "message": f"Completed with Claude Code CLI in {execution_time:.2f}s",
+                "execution_time": f"{execution_time:.2f}s",
+                "cli_duration": f"{cli_duration:.2f}s",
+                "session_id": cli_result.get('session_id'),
+                "workspace_id": workspace_id,
+                "git": {
+                    "repository": f"{github_owner}/{github_repo}" if github_owner else None,
+                    "branch": feature_branch_name,
+                    "commit_sha": commit_sha,
+                    "merge_status": merge_status
+                } if github_owner else None
+            }
+        else:
+            # FAILED
+            logger.warning(f"\n[CLI FINALIZE] ✗ FAILED - Marking as blocked")
+
+            error_reason = cli_result.get('error') or 'No explicit completion status'
+            if 'IMPLEMENTATION_STATUS: FAILED' in stdout:
+                import re
+                error_match = re.search(r'IMPLEMENTATION_STATUS: FAILED - (.+)', stdout)
+                if error_match:
+                    error_reason = error_match.group(1)
+
+            ticket.status = 'blocked'
+            ticket.queue_status = 'none'
+            ticket.notes = (ticket.notes or "") + f"""
+---
+[{datetime.now().strftime('%Y-%m-%d %H:%M')}] ❌ BLOCKED - Claude Code CLI Failed
+Reason: {error_reason}
+Execution time: {execution_time:.2f}s
+Workspace: {workspace_id}
+"""
+            ticket.execution_time_seconds = (ticket.execution_time_seconds or 0) + execution_time
+            ticket.last_execution_at = datetime.now()
+            ticket.save(update_fields=['status', 'queue_status', 'notes', 'execution_time_seconds', 'last_execution_at'])
+
+            broadcast_ticket_notification(conversation_id, {
+                'is_notification': True,
+                'notification_type': 'toolhistory',
+                'function_name': 'ticket_execution',
+                'status': 'failed',
+                'message': f"✗ Claude Code CLI failed: {error_reason[:100]}",
+                'ticket_id': ticket.id,
+                'ticket_name': ticket.name,
+                'queue_status': 'none',
+                'refresh_checklist': True
+            })
+
+            broadcast_ticket_status_change(ticket_id, 'blocked', 'none')
+            clear_ticket_cancellation_flag(ticket_id)
+
+            return {
+                "status": "failed",
+                "ticket_id": ticket_id,
+                "ticket_name": ticket.name,
+                "error": error_reason,
+                "cli_error": True,
+                "execution_time": f"{execution_time:.2f}s",
+                "workspace_id": workspace_id
+            }
+
+    except Exception as e:
+        execution_time = time.time() - start_time
+        error_msg = str(e)
+        logger.error(f"\n{'='*80}\n[CLI EXCEPTION] Error in ticket {ticket_id}\n{'='*80}")
+        logger.error(f"Error: {error_msg}", exc_info=True)
+
+        if 'ticket' in locals():
+            ticket.status = 'blocked'
+            ticket.queue_status = 'none'
+            ticket.notes = (ticket.notes or "") + f"""
+---
+[{datetime.now().strftime('%Y-%m-%d %H:%M')}] ❌ BLOCKED - CLI Exception
+Reason: {error_msg}
+Execution time: {execution_time:.2f}s
+Workspace: {workspace_id or 'N/A'}
+"""
+            ticket.execution_time_seconds = (ticket.execution_time_seconds or 0) + execution_time
+            ticket.last_execution_at = datetime.now()
+            ticket.save(update_fields=['status', 'queue_status', 'notes', 'execution_time_seconds', 'last_execution_at'])
+
+            broadcast_ticket_notification(conversation_id, {
+                'is_notification': True,
+                'notification_type': 'toolhistory',
+                'function_name': 'ticket_execution',
+                'status': 'failed',
+                'message': f"✗ CLI error: {error_msg[:100]}",
+                'ticket_id': ticket.id,
+                'ticket_name': ticket.name,
+                'queue_status': 'none',
+                'refresh_checklist': True
+            })
+
+        try:
+            broadcast_ticket_status_change(ticket_id, 'blocked', 'none')
+        except Exception:
+            pass
+
+        try:
+            from tasks.dispatch import clear_ticket_cancellation_flag
+            clear_ticket_cancellation_flag(ticket_id)
+        except Exception:
+            pass
+
+        return {
+            "status": "error",
+            "ticket_id": ticket_id,
+            "error": error_msg,
+            "cli_error": True,
+            "workspace_id": workspace_id,
+            "execution_time": f"{execution_time:.2f}s"
+        }
+
+
 def batch_execute_tickets(ticket_ids: List[int], project_id: int, conversation_id: int) -> Dict[str, Any]:
     """
     Execute multiple tickets in sequence for a single project.

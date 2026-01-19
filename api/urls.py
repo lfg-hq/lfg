@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
 from . import views
 from . import dev_server
+from . import cli_endpoints
 
 # Create router for ViewSets
 router = DefaultRouter()
@@ -37,6 +38,14 @@ urlpatterns = [
     path('project-tickets/<int:ticket_id>/stop-dev-server/', dev_server.stop_dev_server, name='stop_dev_server'),
     path('project-tickets/<int:ticket_id>/dev-server-logs/', dev_server.get_dev_server_logs, name='get_dev_server_logs'),
     path('workspace/<str:workspace_id>/dev-server-logs/', dev_server.get_workspace_dev_server_logs, name='get_workspace_dev_server_logs'),
+
+    # CLI API endpoints (for Claude Code CLI running on VM)
+    path('cli/stream/', cli_endpoints.cli_stream_log, name='cli_stream_log'),
+    path('cli/task/', cli_endpoints.cli_update_task, name='cli_update_task'),
+    path('cli/tasks/bulk/', cli_endpoints.cli_bulk_tasks, name='cli_bulk_tasks'),
+    path('cli/status/', cli_endpoints.cli_update_status, name='cli_update_status'),
+    path('cli/user-action/', cli_endpoints.cli_create_user_action_ticket, name='cli_create_user_action'),
+    path('cli/request-input/', cli_endpoints.cli_request_user_input, name='cli_request_user_input'),
 
     # Include router URLs
     path('', include(router.urls)),

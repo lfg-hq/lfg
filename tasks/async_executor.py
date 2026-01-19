@@ -113,17 +113,40 @@ class AsyncTicketExecutor:
 
                 try:
                     # Import here to avoid circular imports
-                    from tasks.task_definitions import execute_ticket_implementation
+                    from tasks.task_definitions import execute_ticket_implementation, execute_ticket_with_claude_cli
+                    from asgiref.sync import sync_to_async
+
+                    # Check if user prefers CLI mode
+                    use_cli_mode = await self._should_use_cli_mode(project_id)
 
                     # Run sync function in thread pool (doesn't block event loop)
                     loop = asyncio.get_event_loop()
-                    result = await loop.run_in_executor(
-                        self._thread_pool,
-                        execute_ticket_implementation,
-                        ticket_id,
-                        project_id,
-                        conversation_id
-                    )
+
+                    if use_cli_mode:
+                        logger.info(
+                            f"[EXECUTOR] Using Claude Code CLI mode for ticket #{ticket_id}"
+                        )
+                        result = await loop.run_in_executor(
+                            self._thread_pool,
+                            execute_ticket_with_claude_cli,
+                            ticket_id,
+                            project_id,
+                            conversation_id
+                        )
+
+                        # If CLI failed, broadcast fallback prompt
+                        if result.get('status') in ['error', 'failed'] and result.get('cli_error'):
+                            await self._broadcast_fallback_prompt(
+                                ticket_id, conversation_id, result.get('error', 'CLI execution failed')
+                            )
+                    else:
+                        result = await loop.run_in_executor(
+                            self._thread_pool,
+                            execute_ticket_implementation,
+                            ticket_id,
+                            project_id,
+                            conversation_id
+                        )
 
                     logger.info(
                         f"[EXECUTOR] Completed ticket #{ticket_id}: "
@@ -154,6 +177,99 @@ class AsyncTicketExecutor:
         from tasks.dispatch import is_ticket_cancelled
 
         return await sync_to_async(is_ticket_cancelled)(ticket_id)
+
+    async def _should_use_cli_mode(self, project_id: int) -> bool:
+        """
+        Check if the user prefers Claude Code CLI mode for execution.
+
+        Returns True if:
+        1. User has enabled claude_code_enabled in ApplicationState
+        2. User has authenticated Claude Code (claude_code_authenticated in Profile)
+
+        Args:
+            project_id: The project database ID
+
+        Returns:
+            True if CLI mode should be used, False otherwise
+        """
+        from asgiref.sync import sync_to_async
+        from projects.models import Project
+        from accounts.models import ApplicationState, Profile
+
+        try:
+            # Get project owner
+            project = await sync_to_async(Project.objects.select_related('owner').get)(id=project_id)
+            user = project.owner
+
+            # Check ApplicationState for cli mode preference
+            app_state = await sync_to_async(
+                lambda: ApplicationState.objects.filter(user=user).first()
+            )()
+            if not app_state or not app_state.claude_code_enabled:
+                return False
+
+            # Check Profile for authentication status
+            profile = await sync_to_async(
+                lambda: Profile.objects.filter(user=user).first()
+            )()
+            if not profile or not profile.claude_code_authenticated:
+                return False
+
+            logger.info(f"[EXECUTOR] CLI mode enabled for user {user.id}")
+            return True
+
+        except Exception as e:
+            logger.warning(f"[EXECUTOR] Error checking CLI mode preference: {e}")
+            return False
+
+    async def _broadcast_fallback_prompt(
+        self,
+        ticket_id: int,
+        conversation_id: int,
+        error: str
+    ) -> None:
+        """
+        Broadcast a fallback prompt when CLI mode fails.
+
+        This notifies the frontend to show a modal asking if the user
+        wants to retry with API mode.
+
+        Args:
+            ticket_id: The ticket ID
+            conversation_id: The conversation ID
+            error: The error message from CLI execution
+        """
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+
+        try:
+            channel_layer = get_channel_layer()
+            if not channel_layer:
+                return
+
+            await channel_layer.group_send(
+                f"conversation_{conversation_id}",
+                {
+                    'type': 'ai_response_chunk',
+                    'chunk': '',
+                    'is_final': False,
+                    'conversation_id': conversation_id,
+                    'is_notification': True,
+                    'notification_type': 'fallback_prompt',
+                    'notification_marker': '__NOTIFICATION__',
+                    'ticket_id': ticket_id,
+                    'error': error[:500],
+                    'message': f"Claude Code CLI failed: {error[:200]}. Would you like to retry with API mode?",
+                    'actions': [
+                        {'label': 'Retry with API', 'action': 'retry_api'},
+                        {'label': 'Cancel', 'action': 'cancel'}
+                    ]
+                }
+            )
+            logger.info(f"[EXECUTOR] Sent fallback prompt for ticket #{ticket_id}")
+
+        except Exception as e:
+            logger.warning(f"[EXECUTOR] Failed to send fallback prompt: {e}")
 
     async def execute_project_batch(
         self,

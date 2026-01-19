@@ -783,6 +783,10 @@
                 <i class="fab fa-github"></i>
                 <span>GitHub</span>
             </a>
+            <a href="#claude-code" class="settings-nav-item" data-section="claude-code">
+                <i class="fas fa-terminal"></i>
+                <span>Claude Code</span>
+            </a>
             <a href="#prompts" class="settings-nav-item disabled" data-section="prompts">
                 <i class="fas fa-comment-dots"></i>
                 <span>Prompts</span>
@@ -2937,7 +2941,96 @@
                 </div>
             </div>
         </div>
-        
+
+        <!-- Claude Code Section -->
+        <div id="claude-code" class="settings-section">
+            <h2 class="section-heading">Claude Code CLI</h2>
+            <div class="integrations-list">
+                <!-- Claude Code Integration -->
+                <div class="integration-item">
+                    <div class="integration-header">
+                        <div class="integration-icon" style="background: linear-gradient(135deg, #D97706, #F59E0B);">
+                            <i class="fas fa-terminal" style="color: white;"></i>
+                        </div>
+                        <div class="integration-info">
+                            <h3 class="integration-name">
+                                Claude Code
+                                <span id="claude-code-status-check" style="display: none;">
+                                    <i class="fas fa-check"></i>
+                                </span>
+                            </h3>
+                            <p class="integration-description">Use Claude Code CLI for enhanced ticket execution</p>
+                        </div>
+                    </div>
+
+                    <div id="claude-code-auth-section">
+                        <!-- Auth status will be loaded dynamically -->
+                        <div class="api-key-section" style="align-items: center;">
+                            <button id="claude-code-connect-btn" class="save-button" style="width: auto;">
+                                <i class="fas fa-plug" style="margin-right: 0.5rem;"></i>Connect Claude Code
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- OAuth URL Display (hidden by default) -->
+                    <div id="claude-code-oauth-section" style="display: none; margin-top: 1rem;">
+                        <div style="background: var(--bg-alt); padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                            <p style="color: var(--text-light); font-size: 0.875rem; margin-bottom: 0.5rem;">
+                                <i class="fas fa-info-circle"></i> Open this URL in your browser and authenticate:
+                            </p>
+                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                <input type="text" id="claude-code-oauth-url" readonly
+                                    style="flex: 1; min-width: 0; padding: 0.5rem; background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); font-size: 0.8rem;">
+                                <button onclick="window.open(document.getElementById('claude-code-oauth-url').value, '_blank')" title="Open URL"
+                                    class="save-button" style="width: auto; padding: 0.5rem 1rem; flex-shrink: 0;">
+                                    <i class="fas fa-external-link-alt"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem; align-items: center;">
+                            <input type="text" id="claude-code-auth-code" placeholder="Paste authentication code here..."
+                                style="flex: 1; padding: 0.75rem; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary);">
+                            <button id="claude-code-submit-btn" class="save-button" style="width: auto;">
+                                Submit Code
+                            </button>
+                        </div>
+                        <p id="claude-code-error" style="color: #EF4444; font-size: 0.875rem; margin-top: 0.5rem; display: none;"></p>
+                    </div>
+
+                    <!-- Connected State (hidden by default) -->
+                    <div id="claude-code-connected-section" style="display: none; margin-top: 1rem;">
+                        <div class="connected-user" style="margin-bottom: 1rem;">
+                            <i class="fas fa-check-circle" style="color: #10B981; margin-right: 0.5rem;"></i>
+                            <span>Claude Code is <strong>connected</strong></span>
+                        </div>
+
+                        <!-- CLI Mode Toggle -->
+                        <div style="display: flex; align-items: center; gap: 1rem; padding: 1rem; background: var(--bg-alt); border-radius: 8px; margin-bottom: 1rem;">
+                            <label class="toggle-switch" style="flex-shrink: 0;">
+                                <input type="checkbox" id="claude-code-enabled-toggle">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <div>
+                                <h4 style="margin: 0; color: var(--text-primary);">Use CLI Mode for Tickets</h4>
+                                <p style="margin: 0.25rem 0 0 0; color: var(--text-light); font-size: 0.875rem;">
+                                    Execute tickets using Claude Code CLI instead of API
+                                </p>
+                            </div>
+                        </div>
+
+                        <button id="claude-code-disconnect-btn" class="disconnect-button" style="width: auto; margin-top: 0.5rem;">
+                            Disconnect
+                        </button>
+                    </div>
+
+                    <a href="https://docs.anthropic.com/en/docs/claude-code" target="_blank" class="external-link" style="margin-top: 1rem;">
+                        Learn about Claude Code
+                        <i class="fas fa-external-link-alt"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+
         <!-- Prompts Section (Disabled) -->
         <div id="prompts" class="settings-section">
             <h2 class="section-heading">Prompts</h2>
@@ -2948,6 +3041,190 @@
 </div>
 
 <script>
+    // Claude Code Integration Scripts
+    document.addEventListener('DOMContentLoaded', function() {
+        const connectBtn = document.getElementById('claude-code-connect-btn');
+        const submitBtn = document.getElementById('claude-code-submit-btn');
+        const disconnectBtn = document.getElementById('claude-code-disconnect-btn');
+        const enabledToggle = document.getElementById('claude-code-enabled-toggle');
+        const oauthSection = document.getElementById('claude-code-oauth-section');
+        const connectedSection = document.getElementById('claude-code-connected-section');
+        const authSection = document.getElementById('claude-code-auth-section');
+        const statusCheck = document.getElementById('claude-code-status-check');
+        const errorDisplay = document.getElementById('claude-code-error');
+
+        // Check initial status
+        checkClaudeCodeStatus();
+
+        async function checkClaudeCodeStatus() {
+            try {
+                const response = await fetch('/accounts/claude-code/status/');
+                const data = await response.json();
+
+                if (data.authenticated) {
+                    showConnectedState(data.enabled);
+                } else {
+                    showDisconnectedState();
+                }
+            } catch (error) {
+                console.error('Error checking Claude Code status:', error);
+            }
+        }
+
+        function showConnectedState(enabled) {
+            authSection.style.display = 'none';
+            oauthSection.style.display = 'none';
+            connectedSection.style.display = 'block';
+            statusCheck.style.display = 'inline';
+            enabledToggle.checked = enabled;
+        }
+
+        function showDisconnectedState() {
+            authSection.style.display = 'block';
+            oauthSection.style.display = 'none';
+            connectedSection.style.display = 'none';
+            statusCheck.style.display = 'none';
+        }
+
+        function showError(message) {
+            errorDisplay.textContent = message;
+            errorDisplay.style.display = 'block';
+        }
+
+        function hideError() {
+            errorDisplay.style.display = 'none';
+        }
+
+        // Connect button
+        connectBtn.addEventListener('click', async function() {
+            connectBtn.disabled = true;
+            connectBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right: 0.5rem;"></i>Connecting...';
+            hideError();
+
+            try {
+                const response = await fetch('/accounts/claude-code/start-auth/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken()
+                    }
+                });
+                const data = await response.json();
+
+                if (data.status === 'already_authenticated') {
+                    showConnectedState(false);
+                } else if (data.status === 'pending' && data.oauth_url) {
+                    // Show OAuth section
+                    document.getElementById('claude-code-oauth-url').value = data.oauth_url;
+                    authSection.style.display = 'none';
+                    oauthSection.style.display = 'block';
+                } else if (data.status === 'error') {
+                    showError(data.error || 'Failed to start authentication');
+                    authSection.style.display = 'block';
+                }
+            } catch (error) {
+                showError('Network error. Please try again.');
+            } finally {
+                connectBtn.disabled = false;
+                connectBtn.innerHTML = '<i class="fas fa-plug" style="margin-right: 0.5rem;"></i>Connect Claude Code';
+            }
+        });
+
+        // Submit code button
+        submitBtn.addEventListener('click', async function() {
+            const code = document.getElementById('claude-code-auth-code').value.trim();
+            if (!code) {
+                showError('Please enter the authentication code');
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right: 0.5rem;"></i>Verifying...';
+            hideError();
+
+            try {
+                const response = await fetch('/accounts/claude-code/submit-code/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken()
+                    },
+                    body: JSON.stringify({ code: code })
+                });
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    showConnectedState(false);
+                } else {
+                    showError(data.error || 'Authentication failed');
+                }
+            } catch (error) {
+                showError('Network error. Please try again.');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = 'Submit Code';
+            }
+        });
+
+        // Toggle CLI mode
+        enabledToggle.addEventListener('change', async function() {
+            const enabled = this.checked;
+
+            try {
+                const response = await fetch('/accounts/claude-code/toggle/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken()
+                    },
+                    body: JSON.stringify({ enabled: enabled })
+                });
+                const data = await response.json();
+
+                if (data.status === 'error') {
+                    this.checked = !enabled; // Revert
+                    alert(data.error);
+                }
+            } catch (error) {
+                this.checked = !enabled; // Revert
+                alert('Failed to update setting');
+            }
+        });
+
+        // Disconnect button
+        disconnectBtn.addEventListener('click', async function() {
+            if (!confirm('Are you sure you want to disconnect Claude Code?')) return;
+
+            disconnectBtn.disabled = true;
+            disconnectBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Disconnecting...';
+
+            try {
+                const response = await fetch('/accounts/claude-code/disconnect/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken()
+                    }
+                });
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    showDisconnectedState();
+                }
+            } catch (error) {
+                alert('Failed to disconnect');
+            } finally {
+                disconnectBtn.disabled = false;
+                disconnectBtn.innerHTML = 'Disconnect';
+            }
+        });
+
+        function getCsrfToken() {
+            return document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+                document.cookie.split('; ').find(row => row.startsWith('csrftoken='))?.split('=')[1];
+        }
+    });
+
     // Settings navigation
     document.addEventListener('DOMContentLoaded', function() {
         const navItems = document.querySelectorAll('.settings-nav-item:not(.disabled)');

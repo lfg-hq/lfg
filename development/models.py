@@ -152,6 +152,12 @@ class MagpieWorkspace(models.Model):
         ('error', 'Error'),
     )
 
+    WORKSPACE_TYPE_CHOICES = (
+        ('execute', 'Ticket Execution'),
+        ('claude_auth', 'Claude Code Auth'),
+        ('preview', 'Preview'),
+    )
+
     project = models.ForeignKey(
         Project,
         on_delete=models.CASCADE,
@@ -159,6 +165,20 @@ class MagpieWorkspace(models.Model):
         blank=True,
         null=True,
         help_text="Project associated with this Magpie workspace"
+    )
+    user = models.ForeignKey(
+        'auth.User',
+        on_delete=models.CASCADE,
+        related_name="magpie_workspaces",
+        blank=True,
+        null=True,
+        help_text="User associated with this workspace (for user-level workspaces like Claude auth)"
+    )
+    workspace_type = models.CharField(
+        max_length=20,
+        choices=WORKSPACE_TYPE_CHOICES,
+        default='execute',
+        help_text="Purpose of this workspace"
     )
     conversation_id = models.CharField(
         max_length=255,
@@ -219,6 +239,7 @@ class MagpieWorkspace(models.Model):
             models.Index(fields=['conversation_id']),
             models.Index(fields=['workspace_id']),
             models.Index(fields=['status']),
+            models.Index(fields=['user', 'workspace_type']),
         ]
         constraints = [
             models.UniqueConstraint(
@@ -230,6 +251,11 @@ class MagpieWorkspace(models.Model):
                 fields=['conversation_id'],
                 condition=models.Q(conversation_id__isnull=False),
                 name='unique_conversation_magpie_workspace'
+            ),
+            models.UniqueConstraint(
+                fields=['user', 'workspace_type'],
+                condition=models.Q(user__isnull=False),
+                name='unique_user_workspace_type'
             ),
         ]
         verbose_name = "Magpie Workspace"
