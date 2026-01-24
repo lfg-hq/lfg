@@ -92,6 +92,13 @@ def dispatch_tickets(
     }
 
     try:
+        # Clear any stale cancellation flags for tickets being queued
+        # This prevents "cancelled before execution" when re-queuing after a previous cancel
+        for tid in ticket_ids:
+            cancel_key = f"{CANCEL_FLAG_PREFIX}{tid}"
+            client.delete(cancel_key)
+        logger.info(f"[DISPATCH] Cleared cancellation flags for {len(ticket_ids)} tickets")
+
         # Push to Redis queue
         client.rpush(QUEUE_KEY, json.dumps(task_data))
 
@@ -615,4 +622,87 @@ def clear_ticket_cancellation_flag(ticket_id: int) -> bool:
         return True
     except Exception as e:
         logger.error(f"[DISPATCH] Error clearing cancellation flag: {e}")
+        return False
+
+
+# Redis key for ticket chat queue
+CHAT_QUEUE_KEY = "lfg:ticket_chat_queue"
+
+
+def dispatch_ticket_chat(
+    ticket_id: int,
+    project_id: int,
+    conversation_id: int,
+    message: str
+) -> bool:
+    """
+    Dispatch a ticket chat message for processing with standard API method.
+
+    Args:
+        ticket_id: The ticket ID
+        project_id: The project ID
+        conversation_id: The conversation ID for WebSocket notifications
+        message: The user's chat message
+
+    Returns:
+        True if successfully queued
+    """
+    client = get_redis_client()
+
+    task_data = {
+        'type': 'ticket_chat',
+        'ticket_id': ticket_id,
+        'project_id': project_id,
+        'conversation_id': conversation_id,
+        'message': message,
+        'queued_at': timezone.now().isoformat()
+    }
+
+    try:
+        client.rpush(CHAT_QUEUE_KEY, json.dumps(task_data))
+        logger.info(f"[DISPATCH] Queued ticket chat: ticket={ticket_id}, mode=api")
+        return True
+    except Exception as e:
+        logger.error(f"[DISPATCH] Failed to queue ticket chat: {e}")
+        return False
+
+
+def dispatch_ticket_chat_cli(
+    ticket_id: int,
+    project_id: int,
+    conversation_id: int,
+    message: str,
+    session_id: str
+) -> bool:
+    """
+    Dispatch a ticket chat message for processing with Claude CLI --resume.
+
+    Args:
+        ticket_id: The ticket ID
+        project_id: The project ID
+        conversation_id: The conversation ID for WebSocket notifications
+        message: The user's chat message
+        session_id: The Claude CLI session ID to resume
+
+    Returns:
+        True if successfully queued
+    """
+    client = get_redis_client()
+
+    task_data = {
+        'type': 'ticket_chat_cli',
+        'ticket_id': ticket_id,
+        'project_id': project_id,
+        'conversation_id': conversation_id,
+        'message': message,
+        'session_id': session_id,
+        'queued_at': timezone.now().isoformat()
+    }
+
+    try:
+        client.rpush(CHAT_QUEUE_KEY, json.dumps(task_data))
+        logger.info(f"[DISPATCH] Queued ticket chat CLI: ticket={ticket_id}, session={session_id[:20]}...")
+        return True
+    except Exception as e:
+        logger.error(f"[DISPATCH] Failed to queue ticket chat CLI: {e}")
         return False

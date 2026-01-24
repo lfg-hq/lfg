@@ -1138,7 +1138,29 @@
                             {% endfor %}
                         </select>
                         {% endif %}
-                        <select class="filter-select" id="model-dropdown" style="min-width: 180px;">
+
+                        <!-- Execution Mode Toggle -->
+                        <div class="execution-mode-toggle" id="executionModeToggle">
+                            <button type="button"
+                                    class="mode-btn {% if not claude_code_enabled %}active{% endif %}"
+                                    data-mode="api"
+                                    onclick="setExecutionMode('api')"
+                                    title="Use API for ticket execution">
+                                <i class="fas fa-cloud"></i>
+                                <span>API</span>
+                            </button>
+                            <button type="button"
+                                    class="mode-btn {% if claude_code_enabled %}active{% endif %}"
+                                    data-mode="cli"
+                                    onclick="setExecutionMode('cli')"
+                                    {% if not claude_code_authenticated %}disabled title="Connect Claude Code in settings first"{% else %}title="Use Claude Code CLI for ticket execution"{% endif %}>
+                                <i class="fas fa-terminal"></i>
+                                <span>CLI</span>
+                            </button>
+                        </div>
+
+                        <!-- Model Dropdown - Only visible in API mode -->
+                        <select class="filter-select model-select" id="model-dropdown" {% if claude_code_enabled %}style="display: none;"{% endif %}>
                             {% if llm_model_config.providers %}
                                 {% for provider_key, provider in llm_model_config.providers.items %}
                                     <optgroup label="{{ provider.label }}">
@@ -1155,9 +1177,10 @@
                                     </optgroup>
                                 {% endfor %}
                             {% else %}
-                                
+
                             {% endif %}
                         </select>
+
                         <button type="button"
                                 class="btn btn-primary new-ticket-btn"
                                 id="newTicketBtn"
@@ -1652,6 +1675,65 @@
                 if (emptyState) emptyState.style.display = 'none';
                 // Populate kanban board
                 populateKanbanBoard();
+            }
+        }
+
+        // Current execution mode (api or cli)
+        let currentExecutionMode = '{{ claude_code_enabled|yesno:"cli,api" }}';
+
+        // Execution mode toggle functionality
+        async function setExecutionMode(mode) {
+            // If already in this mode, do nothing
+            if (currentExecutionMode === mode) return;
+
+            // If trying to enable CLI mode but not authenticated, show message
+            const cliBtn = document.querySelector('.mode-btn[data-mode="cli"]');
+            if (mode === 'cli' && cliBtn && cliBtn.disabled) {
+                alert('Please connect Claude Code in Settings first to use CLI mode.');
+                return;
+            }
+
+            try {
+                const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+                const response = await fetch('/accounts/claude-code/toggle/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({
+                        enabled: mode === 'cli'
+                    })
+                });
+
+                const data = await response.json();
+                if (data.status === 'success') {
+                    currentExecutionMode = mode;
+
+                    // Update button states
+                    document.querySelectorAll('.execution-mode-toggle .mode-btn').forEach(btn => {
+                        if (btn.dataset.mode === mode) {
+                            btn.classList.add('active');
+                        } else {
+                            btn.classList.remove('active');
+                        }
+                    });
+
+                    // Show/hide model dropdown based on mode
+                    const modelDropdown = document.getElementById('model-dropdown');
+                    if (modelDropdown) {
+                        if (mode === 'cli') {
+                            modelDropdown.style.display = 'none';
+                        } else {
+                            modelDropdown.style.display = '';
+                        }
+                    }
+                } else {
+                    alert(data.error || 'Failed to switch execution mode');
+                }
+            } catch (error) {
+                console.error('Error switching execution mode:', error);
+                alert('Error switching execution mode');
             }
         }
 
@@ -2873,8 +2955,8 @@
                         // Add the new log to the UI
                         handleNewLog(data.log);
                     } else if (data.type === 'status_changed') {
-                        // Handle ticket status change with optional queue_status
-                        handleStatusChange(data.status, data.ticket_id, data.queue_status || null);
+                        // Handle ticket status change with optional queue_status and error_reason
+                        handleStatusChange(data.status, data.ticket_id, data.queue_status || null, data.error_reason || null);
                     }
                 };
 
@@ -3287,8 +3369,8 @@
             scrollLogsToBottom();
         }
 
-        function handleStatusChange(status, ticketId, queueStatus = null) {
-            console.log(`Ticket ${ticketId} status changed to: ${status}, queue_status: ${queueStatus}`);
+        function handleStatusChange(status, ticketId, queueStatus = null, errorReason = null) {
+            console.log(`Ticket ${ticketId} status changed to: ${status}, queue_status: ${queueStatus}, error: ${errorReason}`);
 
             // Determine the correct queue status
             // If queue_status is explicitly provided, use it
@@ -3380,6 +3462,70 @@
                         <div>
                             <div style="font-weight: 600; color: rgb(34, 197, 94); margin-bottom: 2px;">Ticket Completed</div>
                             <div style="font-size: 0.875rem; color: var(--text-secondary);">All commands have been executed successfully</div>
+                        </div>
+                    `;
+                    header.insertAdjacentElement('afterend', indicator);
+                }
+            } else if (status === 'blocked') {
+                // Show blocked indicator with actual error reason
+                const header = logsContainer.querySelector('h4');
+                if (header) {
+                    const indicator = document.createElement('div');
+                    indicator.className = 'ticket-status-indicator';
+                    indicator.style.cssText = `
+                        background: rgba(245, 158, 11, 0.1);
+                        border: 1px solid rgba(245, 158, 11, 0.3);
+                        border-radius: 8px;
+                        padding: 1rem;
+                        margin-bottom: 1rem;
+                        display: flex;
+                        align-items: flex-start;
+                        gap: 0.75rem;
+                        animation: slideIn 0.3s ease-out;
+                    `;
+
+                    // Format the error reason for display
+                    let errorDisplay = 'Execution was blocked.';
+                    if (errorReason) {
+                        // Truncate long errors and clean up for display
+                        let cleanError = errorReason.replace(/^CLI Error:\s*/i, '');
+                        if (cleanError.length > 200) {
+                            cleanError = cleanError.substring(0, 200) + '...';
+                        }
+                        errorDisplay = cleanError;
+                    }
+
+                    // Check if it's an auth error
+                    const isAuthError = errorReason && (
+                        errorReason.toLowerCase().includes('auth') ||
+                        errorReason.toLowerCase().includes('credential') ||
+                        errorReason.toLowerCase().includes('login') ||
+                        errorReason.toLowerCase().includes('not logged in')
+                    );
+
+                    indicator.innerHTML = `
+                        <div style="
+                            width: 32px;
+                            height: 32px;
+                            min-width: 32px;
+                            border-radius: 50%;
+                            background: rgba(245, 158, 11, 0.2);
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                        ">
+                            <i class="fas fa-exclamation-triangle" style="color: rgb(245, 158, 11); font-size: 18px;"></i>
+                        </div>
+                        <div style="flex: 1; min-width: 0;">
+                            <div style="font-weight: 600; color: rgb(245, 158, 11); margin-bottom: 4px;">Ticket Blocked</div>
+                            <div style="font-size: 0.875rem; color: var(--text-secondary); word-break: break-word;">
+                                ${errorDisplay}
+                            </div>
+                            ${isAuthError ? `
+                            <a href="/settings/#claude-code" style="color: rgb(245, 158, 11); font-size: 0.875rem; margin-top: 8px; display: inline-block;">
+                                <i class="fas fa-cog"></i> Reconnect Claude Code
+                            </a>
+                            ` : ''}
                         </div>
                     `;
                     header.insertAdjacentElement('afterend', indicator);
@@ -4616,7 +4762,7 @@
             }
         }
 
-        async function executeTicket() {
+        async function executeTicket(force = false) {
             if (!currentTicket || !currentProjectId) return;
 
             const btn = document.getElementById('executeTicketBtn');
@@ -4636,7 +4782,8 @@
                     },
                     body: JSON.stringify({
                         ticket_id: currentTicket.id,
-                        conversation_id: ticketConversationId
+                        conversation_id: ticketConversationId,
+                        force: force  // Force clear stale locks if true
                     })
                 });
 
@@ -4662,7 +4809,16 @@
                     // Switch to Logs tab to show execution progress
                     switchDrawerTab('logs');
                 } else {
-                    alert('Failed to execute ticket: ' + (data.error || 'Unknown error'));
+                    // Check if it's a lock/execution conflict error - offer to force restart
+                    const errorMsg = data.error || 'Unknown error';
+                    if (errorMsg.includes('still executing') || errorMsg.includes('already queued') || errorMsg.includes('already executing')) {
+                        if (confirm('A previous execution may be stuck. Do you want to force restart?\n\nThis will clear the stale lock and start fresh.')) {
+                            // Retry with force=true
+                            return executeTicket(true);
+                        }
+                    } else {
+                        alert('Failed to execute ticket: ' + errorMsg);
+                    }
                     // Re-enable button
                     btn.disabled = false;
                     btn.innerHTML = '<i class="fas fa-hammer"></i> Build Ticket';
@@ -4870,6 +5026,7 @@
             const branch = data.branch || ticket.github_branch;
             const mergeStatus = data.merge_status || 'pending';
             const commitSha = data.commit_sha;
+            const mergeCommitSha = data.merge_commit_sha || ticket.github_merge_commit_sha;
             const repoUrl = data.repo_url || '';
             const branchUrl = data.branch_url || '';
             const lfgAgentUrl = data.lfg_agent_url || '';
@@ -4878,9 +5035,12 @@
             const hasUncommittedChanges = data.has_uncommitted_changes || false;
             const uncommittedFiles = data.uncommitted_files || [];
             const recentCommits = data.recent_commits || [];
+            const revertedAt = data.reverted_at || null;
+            const revertedBy = data.reverted_by || null;
 
             // Build the git tree visualization
             const isMerged = mergeStatus === 'merged';
+            const isReverted = mergeStatus === 'reverted';
             const hasConflict = mergeStatus === 'conflict';
             const hasFailed = mergeStatus === 'failed';
 
@@ -4954,10 +5114,11 @@
                             </div>
 
                             <!-- Merge indicator -->
-                            <div class="git-tree-merge ${isMerged ? 'merged' : hasConflict ? 'conflict' : hasFailed ? 'failed' : 'pending'}">
+                            <div class="git-tree-merge ${isMerged ? 'merged' : isReverted ? 'reverted' : hasConflict ? 'conflict' : hasFailed ? 'failed' : 'pending'}">
                                 <div class="git-tree-merge-line"></div>
                                 <div class="git-tree-merge-status">
                                     ${isMerged ? '<i class="fas fa-check-circle"></i> Merged' :
+                                      isReverted ? '<i class="fas fa-undo-alt"></i> Reverted' :
                                       hasConflict ? '<i class="fas fa-exclamation-triangle"></i> Conflict' :
                                       hasFailed ? '<i class="fas fa-times-circle"></i> Failed' :
                                       '<i class="fas fa-clock"></i> Pending'}
@@ -4993,17 +5154,57 @@
                         <!-- Uncommitted changes -->
                         ${uncommittedHtml}
 
+                        <!-- Commit Details Section (for merged or reverted tickets) -->
+                        ${(isMerged || isReverted) && mergeCommitSha ? `
+                            <div class="git-commit-details-section">
+                                <div class="git-section-header" onclick="toggleCommitDetails()">
+                                    <i class="fas fa-file-code"></i>
+                                    <span>Commit Details</span>
+                                    <i class="fas fa-chevron-down" id="commitDetailsChevron"></i>
+                                </div>
+                                <div class="git-commit-details" id="commitDetailsContent" style="display: none;">
+                                    <div class="git-loading-inline">
+                                        <i class="fas fa-spinner fa-spin"></i> Loading...
+                                    </div>
+                                </div>
+                            </div>
+                        ` : ''}
+
+                        <!-- Reverted info banner -->
+                        ${isReverted ? `
+                            <div class="git-reverted-banner">
+                                <i class="fas fa-undo-alt"></i>
+                                <span>Merge was reverted${revertedBy ? ` by ${escapeHtml(revertedBy)}` : ''}${revertedAt ? ` on ${new Date(revertedAt).toLocaleDateString()}` : ''}</span>
+                            </div>
+                        ` : ''}
+
                         <!-- Actions -->
                         <div class="git-tree-actions">
-                            ${!isMerged || hasUncommittedChanges ? `
+                            ${(!isMerged && !isReverted) || hasUncommittedChanges ? `
                                 <button class="btn btn-primary" onclick="pushToLfgAgent()" id="pushToLfgAgentBtn">
                                     <i class="fas fa-code-branch"></i> Push & Merge to lfg-agent
                                 </button>
-                            ` : `
+                            ` : isMerged && !hasUncommittedChanges ? `
                                 <div class="git-tree-success">
                                     <i class="fas fa-check-circle"></i> All changes merged to lfg-agent
                                 </div>
-                            `}
+                                ${mergeCommitSha ? `
+                                    <button class="btn btn-danger btn-sm" onclick="revertMerge()" id="revertMergeBtn" style="margin-left: 0.5rem;">
+                                        <i class="fas fa-undo"></i> Revert Merge
+                                    </button>
+                                ` : `
+                                    <span class="git-revert-unavailable" title="Revert unavailable: This ticket was merged before revert tracking was enabled">
+                                        <i class="fas fa-info-circle"></i>
+                                    </span>
+                                `}
+                            ` : isReverted ? `
+                                <div class="git-tree-info">
+                                    <i class="fas fa-info-circle"></i> Merge was reverted. You can re-merge to include changes again.
+                                </div>
+                                <button class="btn btn-primary btn-sm" onclick="pushToLfgAgent()" id="pushToLfgAgentBtn" style="margin-left: 0.5rem;">
+                                    <i class="fas fa-code-branch"></i> Re-merge to lfg-agent
+                                </button>
+                            ` : ''}
                             <button class="btn btn-secondary btn-sm" onclick="showGitTab(document.getElementById('drawerTicketBody'))">
                                 <i class="fas fa-sync-alt" style="margin-right: 0.375rem;"></i>Refresh
                             </button>
@@ -5054,6 +5255,148 @@
                 alert('Error: ' + error.message);
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-upload"></i> Push & Merge to lfg-agent';
+            }
+        }
+
+        // Toggle commit details section
+        async function toggleCommitDetails() {
+            const content = document.getElementById('commitDetailsContent');
+            const chevron = document.getElementById('commitDetailsChevron');
+
+            if (content.style.display === 'none') {
+                content.style.display = 'block';
+                chevron.classList.remove('fa-chevron-down');
+                chevron.classList.add('fa-chevron-up');
+                await loadCommitDetails();
+            } else {
+                content.style.display = 'none';
+                chevron.classList.remove('fa-chevron-up');
+                chevron.classList.add('fa-chevron-down');
+            }
+        }
+
+        // Load commit details from API
+        async function loadCommitDetails() {
+            const content = document.getElementById('commitDetailsContent');
+            if (!currentTicket || !currentProjectId) return;
+
+            try {
+                const response = await fetch(
+                    `/projects/${currentProjectId}/api/tickets/${currentTicket.id}/commit-details/`
+                );
+                const data = await response.json();
+
+                if (data.success) {
+                    content.innerHTML = renderCommitDetails(data);
+                } else {
+                    content.innerHTML = `
+                        <div class="git-error-inline">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            ${escapeHtml(data.error || 'Failed to load details')}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                content.innerHTML = `
+                    <div class="git-error-inline">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        Error: ${escapeHtml(error.message)}
+                    </div>
+                `;
+            }
+        }
+
+        // Render commit details HTML
+        function renderCommitDetails(data) {
+            const files = data.files || [];
+            const stats = data.stats || {};
+
+            return `
+                <div class="commit-info">
+                    <div class="commit-message">${escapeHtml(data.message || 'No message')}</div>
+                    <div class="commit-meta">
+                        <span><i class="fas fa-user"></i> ${escapeHtml(data.author?.name || 'Unknown')}</span>
+                        <span><i class="fas fa-calendar"></i> ${data.author?.date ? new Date(data.author.date).toLocaleString() : 'Unknown'}</span>
+                    </div>
+                    <div class="commit-stats">
+                        <span class="stat-additions">+${stats.additions || 0}</span>
+                        <span class="stat-deletions">-${stats.deletions || 0}</span>
+                        <span class="stat-files">${files.length} files changed</span>
+                    </div>
+                </div>
+                <div class="commit-files">
+                    <div class="files-header">Changed Files</div>
+                    ${files.map(file => `
+                        <div class="commit-file ${file.status}">
+                            <span class="file-icon">
+                                ${file.status === 'added' ? '<i class="fas fa-plus text-success"></i>' :
+                                  file.status === 'removed' ? '<i class="fas fa-minus text-danger"></i>' :
+                                  '<i class="fas fa-edit text-warning"></i>'}
+                            </span>
+                            <span class="file-name">${escapeHtml(file.filename)}</span>
+                            <span class="file-stats">
+                                <span class="additions">+${file.additions}</span>
+                                <span class="deletions">-${file.deletions}</span>
+                            </span>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        // Revert merge
+        async function revertMerge() {
+            if (!currentTicket || !currentProjectId) return;
+
+            const confirmed = confirm(
+                'Are you sure you want to revert this merge?\n\n' +
+                'This will create a new commit on lfg-agent that undoes all changes from this ticket. ' +
+                'The feature branch will remain intact, and you can re-merge later if needed.'
+            );
+
+            if (!confirmed) return;
+
+            const btn = document.getElementById('revertMergeBtn');
+            if (!btn) return;
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Reverting...';
+
+            try {
+                const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+                const response = await fetch(
+                    `/projects/${currentProjectId}/api/tickets/${currentTicket.id}/revert-merge/`,
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': csrfToken
+                        }
+                    }
+                );
+
+                const data = await response.json();
+
+                if (data.success) {
+                    if (typeof showNotification === 'function') {
+                        showNotification('Merge reverted successfully', 'success');
+                    }
+                    // Refresh the git tab
+                    showGitTab(document.getElementById('drawerTicketBody'));
+                    // Update the ticket in our local cache
+                    if (currentTicket) {
+                        currentTicket.github_merge_status = 'reverted';
+                    }
+                } else {
+                    alert('Revert failed: ' + (data.error || 'Unknown error'));
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-undo"></i> Revert Merge';
+                }
+            } catch (error) {
+                console.error('Error reverting merge:', error);
+                alert('Error: ' + error.message);
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-undo"></i> Revert Merge';
             }
         }
 

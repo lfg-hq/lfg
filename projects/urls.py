@@ -128,4 +128,9 @@ urlpatterns = [
     # Git status and push API
     path('<str:project_id>/api/tickets/<int:ticket_id>/git-status/', views.ticket_git_status_api, name='ticket_git_status_api'),
     path('<str:project_id>/api/tickets/<int:ticket_id>/push-to-lfg-agent/', views.push_to_lfg_agent_api, name='push_to_lfg_agent_api'),
+
+    # Git commit details and revert API
+    path('<str:project_id>/api/tickets/<int:ticket_id>/commit-details/', views.ticket_commit_details_api, name='ticket_commit_details_api'),
+    path('<str:project_id>/api/tickets/<int:ticket_id>/merge-history/', views.ticket_merge_history_api, name='ticket_merge_history_api'),
+    path('<str:project_id>/api/tickets/<int:ticket_id>/revert-merge/', views.revert_ticket_merge_api, name='revert_ticket_merge_api'),
 ]

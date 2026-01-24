@@ -77,4 +77,5 @@ urlpatterns = [
     path('claude-code/status/', views.claude_code_check_status, name='claude_code_status'),
     path('claude-code/toggle/', views.claude_code_toggle, name='claude_code_toggle'),
     path('claude-code/disconnect/', views.claude_code_disconnect, name='claude_code_disconnect'),
+    path('claude-code/verify/', views.claude_code_verify, name='claude_code_verify'),
 ] 

@@ -100,7 +100,7 @@ def broadcast_ticket_notification(conversation_id: Optional[int], payload: Dict[
         logger.error(f"Failed to broadcast ticket notification: {exc}")
 
 
-def broadcast_ticket_status_change(ticket_id: int, status: str, queue_status: str = 'none') -> None:
+def broadcast_ticket_status_change(ticket_id: int, status: str, queue_status: str = 'none', error_reason: str = None) -> None:
     """
     Broadcast a status change to the ticket logs WebSocket group.
     This updates the UI to reflect the new ticket status and queue status.
@@ -109,16 +109,19 @@ def broadcast_ticket_status_change(ticket_id: int, status: str, queue_status: st
     if not channel_layer:
         return
     try:
+        message = {
+            'type': 'ticket_status_changed',
+            'status': status,
+            'ticket_id': ticket_id,
+            'queue_status': queue_status
+        }
+        if error_reason:
+            message['error_reason'] = error_reason
         async_to_sync(channel_layer.group_send)(
             f"ticket_logs_{ticket_id}",
-            {
-                'type': 'ticket_status_changed',
-                'status': status,
-                'ticket_id': ticket_id,
-                'queue_status': queue_status
-            }
+            message
         )
-        logger.info(f"Broadcast status change for ticket #{ticket_id}: status={status}, queue_status={queue_status}")
+        logger.info(f"Broadcast status change for ticket #{ticket_id}: status={status}, queue_status={queue_status}, error={error_reason[:50] if error_reason else None}")
     except Exception as exc:
         logger.error(f"Failed to broadcast ticket status change: {exc}")
 
@@ -1016,24 +1019,29 @@ def merge_feature_to_lfg_agent(token: str, owner: str, repo_name: str, feature_b
             timeout=10
         )
 
-        if response.status_code in [201, 204]:
-            logger.info(f"Successfully merged {feature_branch} into lfg-agent")
+        if response.status_code == 201:
+            response_data = response.json()
+            merge_sha = response_data.get('sha')
+            logger.info(f"Successfully merged {feature_branch} into lfg-agent (merge SHA: {merge_sha})")
             return {
                 'status': 'success',
-                'message': f'Successfully merged {feature_branch} into lfg-agent'
-            }
-        elif response.status_code == 409:
-            logger.warning(f"Merge conflict detected for {feature_branch} → lfg-agent")
-            return {
-                'status': 'conflict',
-                'message': 'Merge conflict detected. Manual resolution required.'
+                'message': f'Successfully merged {feature_branch} into lfg-agent',
+                'merge_commit_sha': merge_sha,
+                'html_url': response_data.get('html_url'),
             }
         elif response.status_code == 204:
             # 204 means branches are already merged/identical
             logger.info(f"Branch {feature_branch} already merged into lfg-agent (no changes)")
             return {
                 'status': 'success',
-                'message': 'Already up to date - no merge needed'
+                'message': 'Already up to date - no merge needed',
+                'merge_commit_sha': None,
+            }
+        elif response.status_code == 409:
+            logger.warning(f"Merge conflict detected for {feature_branch} → lfg-agent")
+            return {
+                'status': 'conflict',
+                'message': 'Merge conflict detected. Manual resolution required.'
             }
         else:
             error_detail = response.json().get('message', response.text) if response.text else 'Unknown error'
@@ -1046,6 +1054,221 @@ def merge_feature_to_lfg_agent(token: str, owner: str, repo_name: str, feature_b
         return {'status': 'error', 'message': 'GitHub API timeout during merge'}
     except Exception as e:
         logger.error(f"Exception during merge: {str(e)}", exc_info=True)
+        return {'status': 'error', 'message': str(e)}
+
+
+def get_commit_details(token: str, owner: str, repo_name: str, commit_sha: str) -> Dict[str, Any]:
+    """
+    Get detailed information about a specific commit using GitHub API.
+
+    Args:
+        token: GitHub access token
+        owner: Repository owner
+        repo_name: Repository name
+        commit_sha: The commit SHA to get details for
+
+    Returns:
+        Dict with commit details including files changed and stats
+    """
+    headers = {
+        'Authorization': f'token {token}',
+        'Accept': 'application/vnd.github.v3+json'
+    }
+
+    try:
+        # Get commit details
+        response = requests.get(
+            f'https://api.github.com/repos/{owner}/{repo_name}/commits/{commit_sha}',
+            headers=headers,
+            timeout=15
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+
+            # Extract file changes with stats
+            files = []
+            for file in data.get('files', []):
+                files.append({
+                    'filename': file.get('filename'),
+                    'status': file.get('status'),  # added, removed, modified, renamed
+                    'additions': file.get('additions', 0),
+                    'deletions': file.get('deletions', 0),
+                    'changes': file.get('changes', 0),
+                })
+
+            commit_info = data.get('commit', {})
+            author_info = commit_info.get('author', {})
+
+            return {
+                'success': True,
+                'sha': data.get('sha'),
+                'message': commit_info.get('message', ''),
+                'author': {
+                    'name': author_info.get('name'),
+                    'email': author_info.get('email'),
+                    'date': author_info.get('date'),
+                },
+                'stats': {
+                    'additions': data.get('stats', {}).get('additions', 0),
+                    'deletions': data.get('stats', {}).get('deletions', 0),
+                    'total': data.get('stats', {}).get('total', 0),
+                },
+                'files': files,
+                'html_url': data.get('html_url'),
+                'parents': [p.get('sha') for p in data.get('parents', [])],
+            }
+        elif response.status_code == 404:
+            return {
+                'success': False,
+                'error': 'Commit not found'
+            }
+        else:
+            error_detail = response.json().get('message', response.text) if response.text else 'Unknown error'
+            return {
+                'success': False,
+                'error': f'GitHub API error: {error_detail}'
+            }
+
+    except requests.exceptions.Timeout:
+        return {'success': False, 'error': 'GitHub API timeout'}
+    except Exception as e:
+        logger.error(f"Error getting commit details: {str(e)}", exc_info=True)
+        return {'success': False, 'error': str(e)}
+
+
+def revert_merge_on_branch(token: str, owner: str, repo_name: str, branch: str,
+                           merge_commit_sha: str, revert_message: str) -> Dict[str, Any]:
+    """
+    Revert a merge commit on a branch using GitHub API.
+
+    This uses the GitHub API to create a revert commit. The process:
+    1. Get the merge commit to find its parent (the state before merge)
+    2. Create a new commit that reverses all changes from the merge
+    3. Update the branch ref to point to the new revert commit
+
+    Args:
+        token: GitHub access token
+        owner: Repository owner
+        repo_name: Repository name
+        branch: Branch to revert on (e.g., 'lfg-agent')
+        merge_commit_sha: SHA of the merge commit to revert
+        revert_message: Commit message for the revert
+
+    Returns:
+        Dict with revert result and new commit SHA
+    """
+    headers = {
+        'Authorization': f'token {token}',
+        'Accept': 'application/vnd.github.v3+json'
+    }
+
+    try:
+        # Step 1: Get the merge commit details
+        commit_response = requests.get(
+            f'https://api.github.com/repos/{owner}/{repo_name}/commits/{merge_commit_sha}',
+            headers=headers,
+            timeout=15
+        )
+
+        if commit_response.status_code != 200:
+            return {
+                'status': 'error',
+                'message': f'Failed to get merge commit: {commit_response.status_code}'
+            }
+
+        commit_data = commit_response.json()
+        parents = commit_data.get('parents', [])
+
+        # For a merge commit, we need the first parent (the branch we merged into)
+        if len(parents) < 1:
+            return {
+                'status': 'error',
+                'message': 'Commit has no parents - cannot revert'
+            }
+
+        # Step 2: Get current branch ref
+        ref_response = requests.get(
+            f'https://api.github.com/repos/{owner}/{repo_name}/git/refs/heads/{branch}',
+            headers=headers,
+            timeout=10
+        )
+
+        if ref_response.status_code != 200:
+            return {
+                'status': 'error',
+                'message': f'Failed to get branch ref: {ref_response.status_code}'
+            }
+
+        current_sha = ref_response.json().get('object', {}).get('sha')
+
+        # Step 3: Get the tree of the first parent (state before merge)
+        parent_sha = parents[0].get('sha')
+        parent_response = requests.get(
+            f'https://api.github.com/repos/{owner}/{repo_name}/commits/{parent_sha}',
+            headers=headers,
+            timeout=10
+        )
+
+        if parent_response.status_code != 200:
+            return {
+                'status': 'error',
+                'message': f'Failed to get parent commit: {parent_response.status_code}'
+            }
+
+        parent_tree_sha = parent_response.json().get('commit', {}).get('tree', {}).get('sha')
+
+        # Step 4: Create a new commit using the parent's tree but pointing to current HEAD
+        new_commit_data = {
+            'message': revert_message,
+            'tree': parent_tree_sha,
+            'parents': [current_sha]
+        }
+
+        create_commit_response = requests.post(
+            f'https://api.github.com/repos/{owner}/{repo_name}/git/commits',
+            headers=headers,
+            json=new_commit_data,
+            timeout=15
+        )
+
+        if create_commit_response.status_code not in [200, 201]:
+            error_detail = create_commit_response.json().get('message', create_commit_response.text)
+            return {
+                'status': 'error',
+                'message': f'Failed to create revert commit: {error_detail}'
+            }
+
+        new_commit_sha = create_commit_response.json().get('sha')
+
+        # Step 5: Update branch ref to point to new commit
+        update_ref_response = requests.patch(
+            f'https://api.github.com/repos/{owner}/{repo_name}/git/refs/heads/{branch}',
+            headers=headers,
+            json={'sha': new_commit_sha, 'force': False},
+            timeout=10
+        )
+
+        if update_ref_response.status_code != 200:
+            error_detail = update_ref_response.json().get('message', update_ref_response.text)
+            return {
+                'status': 'error',
+                'message': f'Failed to update branch ref: {error_detail}'
+            }
+
+        logger.info(f"Successfully reverted merge {merge_commit_sha} on {branch} with commit {new_commit_sha}")
+
+        return {
+            'status': 'success',
+            'message': 'Successfully reverted merge commit',
+            'revert_commit_sha': new_commit_sha,
+            'reverted_merge_sha': merge_commit_sha,
+        }
+
+    except requests.exceptions.Timeout:
+        return {'status': 'error', 'message': 'GitHub API timeout during revert'}
+    except Exception as e:
+        logger.error(f"Exception during revert: {str(e)}", exc_info=True)
         return {'status': 'error', 'message': str(e)}
 
 
@@ -1083,6 +1306,8 @@ def commit_and_push_changes(workspace_id: str, branch_name: str, commit_message:
 
     # Build commands list
     commands = [
+        # Fix git "dubious ownership" error (happens when directory ownership changed for claudeuser)
+        f"git config --global --add safe.directory /workspace/{project_dir}",
         # Check current branch
         f"cd /workspace/{project_dir} && git branch --show-current",
         # Check git status
@@ -2315,73 +2540,105 @@ Using Claude Code CLI mode
             status='ready'
         ).first()
 
+        client = get_magpie_client()
+        workspace_id = None
+        need_new_workspace = False
+
         if not claude_workspace:
-            error_msg = "No Claude auth workspace found. Please authenticate Claude Code in Settings first."
-            logger.error(f"[CLI STEP 3/7] ✗ {error_msg}")
+            logger.info(f"[CLI STEP 3/7] No Claude auth workspace found, will create one...")
+            need_new_workspace = True
+        else:
+            workspace_id = claude_workspace.workspace_id
+            logger.info(f"[CLI STEP 3/7] Found Claude auth workspace: {workspace_id}")
 
-            ticket.status = 'blocked'
-            ticket.queue_status = 'none'
-            ticket.notes = (ticket.notes or "") + f"""
+            # Verify workspace is accessible
+            workspace_accessible = False
+            try:
+                check_result = _run_magpie_ssh(client, workspace_id, "echo 'OK'", timeout=15)
+                if check_result.get('exit_code') == 0 and 'OK' in check_result.get('stdout', ''):
+                    workspace_accessible = True
+                    logger.info(f"[CLI STEP 3/7] ✓ Workspace is accessible")
+            except Exception as e:
+                logger.warning(f"[CLI STEP 3/7] Workspace {workspace_id} not accessible: {e}")
+
+            if not workspace_accessible:
+                # Mark old workspace as error
+                claude_workspace.status = 'error'
+                claude_workspace.save(update_fields=['status'])
+                need_new_workspace = True
+
+        # Create new workspace if needed
+        if need_new_workspace:
+            logger.info(f"[CLI STEP 3/7] Creating new Claude workspace...")
+
+            # Create new workspace (MAGPIE_BOOTSTRAP_SCRIPT imported at top of file)
+            workspace_name = f"claude-auth-{user.id}"
+
+            try:
+                vm_handle = client.jobs.create_persistent_vm(
+                    name=workspace_name,
+                    script=MAGPIE_BOOTSTRAP_SCRIPT,
+                    stateful=True,
+                    workspace_size_gb=5,
+                    vcpus=1,
+                    memory_mb=1024,
+                    poll_timeout=120,
+                    poll_interval=5,
+                )
+
+                new_workspace_id = vm_handle.request_id
+                ipv6 = vm_handle.ip_address
+
+                if not new_workspace_id:
+                    raise Exception("Failed to create new workspace - no ID returned")
+
+                # Delete old workspace record and create new one
+                MagpieWorkspace.objects.filter(user=user, workspace_type='claude_auth').delete()
+                claude_workspace = MagpieWorkspace.objects.create(
+                    user=user,
+                    workspace_type='claude_auth',
+                    job_id=new_workspace_id,
+                    workspace_id=new_workspace_id,
+                    ipv6_address=ipv6,
+                    status='ready'
+                )
+                workspace_id = new_workspace_id
+                logger.info(f"[CLI STEP 3/7] ✓ Created new workspace: {workspace_id}")
+
+                # Wait for workspace to be ready
+                time.sleep(3)
+
+                # Restore Claude auth from S3
+                s3_key = profile.claude_code_s3_key or f"claude-auth/{user.id}/claude-config.tar.gz"
+                logger.info(f"[CLI STEP 3/7] Restoring Claude auth from S3: {s3_key}")
+                restore_result = restore_claude_auth_from_s3(workspace_id, user.id, s3_key)
+                if restore_result.get('status') == 'success':
+                    logger.info(f"[CLI STEP 3/7] ✓ Restored auth from S3")
+                else:
+                    logger.warning(f"[CLI STEP 3/7] ⚠ S3 restore failed: {restore_result.get('error')}")
+
+            except Exception as create_error:
+                error_msg = f"Failed to create new workspace: {str(create_error)}"
+                logger.error(f"[CLI STEP 3/7] ✗ {error_msg}")
+
+                ticket.status = 'blocked'
+                ticket.queue_status = 'none'
+                ticket.notes = (ticket.notes or "") + f"""
 ---
-[{datetime.now().strftime('%Y-%m-%d %H:%M')}] ❌ BLOCKED - No Claude Auth Workspace
+[{datetime.now().strftime('%Y-%m-%d %H:%M')}] ❌ BLOCKED - Could Not Create Workspace
 Reason: {error_msg}
 Mode: Claude Code CLI
 """
-            ticket.save(update_fields=['status', 'queue_status', 'notes'])
+                ticket.save(update_fields=['status', 'queue_status', 'notes'])
+                broadcast_ticket_status_change(ticket_id, 'blocked', 'none')
 
-            broadcast_ticket_notification(conversation_id, {
-                'is_notification': True,
-                'notification_type': 'toolhistory',
-                'function_name': 'ticket_execution',
-                'status': 'failed',
-                'message': f"✗ Ticket #{ticket.id} failed: {error_msg}",
-                'ticket_id': ticket.id,
-                'ticket_name': ticket.name,
-                'queue_status': 'none',
-                'refresh_checklist': True
-            })
-
-            broadcast_ticket_status_change(ticket_id, 'blocked', 'none')
-
-            return {
-                "status": "error",
-                "ticket_id": ticket_id,
-                "error": error_msg,
-                "cli_error": True,
-                "execution_time": f"{time.time() - start_time:.2f}s"
-            }
-
-        workspace_id = claude_workspace.workspace_id
-        logger.info(f"[CLI STEP 3/7] ✓ Using Claude auth workspace: {workspace_id}")
-
-        # Verify workspace is accessible
-        try:
-            client = get_magpie_client()
-            check_result = _run_magpie_ssh(client, workspace_id, "echo 'OK'", timeout=15)
-            if check_result.get('exit_code') != 0:
-                raise Exception("Workspace not responding")
-        except Exception as e:
-            error_msg = f"Claude workspace not accessible: {str(e)}"
-            logger.error(f"[CLI STEP 3/7] ✗ {error_msg}")
-
-            ticket.status = 'blocked'
-            ticket.queue_status = 'none'
-            ticket.notes = (ticket.notes or "") + f"""
----
-[{datetime.now().strftime('%Y-%m-%d %H:%M')}] ❌ BLOCKED - Workspace Not Accessible
-Reason: {error_msg}
-Mode: Claude Code CLI
-"""
-            ticket.save(update_fields=['status', 'queue_status', 'notes'])
-            broadcast_ticket_status_change(ticket_id, 'blocked', 'none')
-
-            return {
-                "status": "error",
-                "ticket_id": ticket_id,
-                "error": error_msg,
-                "cli_error": True,
-                "execution_time": f"{time.time() - start_time:.2f}s"
-            }
+                return {
+                    "status": "error",
+                    "ticket_id": ticket_id,
+                    "error": error_msg,
+                    "cli_error": True,
+                    "execution_time": f"{time.time() - start_time:.2f}s"
+                }
 
         # Setup git in the Claude workspace
         from codebase_index.models import IndexedRepository
@@ -2465,9 +2722,68 @@ Mode: Claude Code CLI
             }
 
         logger.info(f"\n[CLI STEP 4/7] Verifying Claude auth...")
-        # 4. VERIFY CLAUDE AUTH (workspace should already be authenticated)
-        # No need to restore from S3 since we're using the Claude auth workspace directly
-        logger.info(f"[CLI STEP 4/7] ✓ Using pre-authenticated Claude workspace")
+        # 4. VERIFY CLAUDE AUTH - run test command to ensure Claude is working
+        from factory.claude_code_utils import check_claude_auth_status
+
+        auth_check = check_claude_auth_status(workspace_id)
+
+        if not auth_check.get('authenticated'):
+            logger.warning(f"[CLI STEP 4/7] ⚠ Claude not authenticated, attempting to restore from S3...")
+
+            # Try to restore from S3
+            if profile.claude_code_s3_key:
+                restore_result = restore_claude_auth_from_s3(workspace_id, user.id, profile.claude_code_s3_key)
+
+                if restore_result.get('status') == 'success':
+                    # Verify again after restore
+                    auth_check = check_claude_auth_status(workspace_id)
+
+            if not auth_check.get('authenticated'):
+                error_msg = "Claude Code is not authenticated. Please reconnect in Settings."
+                logger.error(f"[CLI STEP 4/7] ✗ {error_msg}")
+
+                # Mark the user as not authenticated so Settings page shows correct status
+                profile.claude_code_authenticated = False
+                profile.save(update_fields=['claude_code_authenticated'])
+                logger.info(f"[CLI STEP 4/7] Marked user as not authenticated")
+
+                ticket.status = 'blocked'
+                ticket.queue_status = 'none'
+                ticket.notes = (ticket.notes or "") + f"""
+---
+[{datetime.now().strftime('%Y-%m-%d %H:%M')}] ❌ BLOCKED - Claude Auth Failed
+Reason: {error_msg}
+Mode: Claude Code CLI
+Action: Please go to Settings > Claude Code and reconnect
+"""
+                ticket.save(update_fields=['status', 'queue_status', 'notes'])
+
+                broadcast_ticket_notification(conversation_id, {
+                    'is_notification': True,
+                    'notification_type': 'claude_auth_required',
+                    'function_name': 'ticket_execution',
+                    'status': 'failed',
+                    'message': f"⚠️ Claude Code authentication required. Please reconnect in Settings.",
+                    'ticket_id': ticket.id,
+                    'ticket_name': ticket.name,
+                    'queue_status': 'none',
+                    'settings_url': '/settings/#claude-code',
+                    'refresh_checklist': True
+                })
+
+                broadcast_ticket_status_change(ticket_id, 'blocked', 'none', error_reason=error_msg)
+
+                return {
+                    "status": "error",
+                    "ticket_id": ticket_id,
+                    "error": error_msg,
+                    "cli_error": True,
+                    "auth_required": True,
+                    "settings_url": "/settings/#claude-code",
+                    "execution_time": f"{time.time() - start_time:.2f}s"
+                }
+
+        logger.info(f"[CLI STEP 4/7] ✓ Claude auth verified")
 
         # 5. UPDATE STATUS TO IN-PROGRESS
         logger.info(f"\n[CLI STEP 5/7] Updating status to in_progress...")
@@ -2527,14 +2843,12 @@ Mode: Claude Code CLI
         if git_setup_error:
             git_error_context = f"""
 ⚠️ GIT SETUP ISSUE DETECTED:
-Repository: {git_setup_error['repo']}
-Target Branch: {git_setup_error['branch']}
-Error: {git_setup_error['message']}
+{git_setup_error}
 
 Before implementing, fix the git issue:
 1. Check: cd /workspace/{project_dir} && git status
 2. Resolve any conflicts or uncommitted changes
-3. Checkout: git checkout {git_setup_error['branch']}
+3. Checkout the correct branch: git checkout {feature_branch_name}
 """
 
         # Build the API URL for CLI callbacks
@@ -2637,12 +2951,284 @@ You can also output (for logging purposes):
         # 7. RUN CLAUDE CODE CLI
         cli_start = time.time()
 
+        # Real-time streaming callback to create logs and broadcast to UI
+        streamed_log_count = [0]  # Use list to allow mutation in closure
+        line_buffer = ['']  # Buffer for partial lines (byte-based tail may split lines)
+
+        def stream_output_callback(new_output: str):
+            """Parse streaming output and create TicketLogs in real-time."""
+            import json
+            from projects.models import TicketLog
+
+            logger.info(f"[CLI CALLBACK] Received {len(new_output)} bytes")
+
+            # Prepend any leftover from previous call (partial line)
+            if line_buffer[0]:
+                logger.info(f"[CLI CALLBACK] Prepending {len(line_buffer[0])} bytes from buffer")
+                new_output = line_buffer[0] + new_output
+                line_buffer[0] = ''
+
+            lines = new_output.split('\n')
+
+            # If last line doesn't end with newline, it might be partial - save for next call
+            if new_output and not new_output.endswith('\n'):
+                line_buffer[0] = lines[-1]
+                lines = lines[:-1]
+                logger.info(f"[CLI CALLBACK] Buffered {len(line_buffer[0])} bytes for next call")
+
+            logger.info(f"[CLI CALLBACK] Processing {len(lines)} lines")
+            json_objects_found = 0
+            logs_created = 0
+
+            def parse_json_objects(text):
+                """Parse multiple JSON objects from a string (handles concatenated JSON)."""
+                decoder = json.JSONDecoder()
+                idx = 0
+                objects = []
+                text = text.strip()
+                while idx < len(text):
+                    # Skip whitespace
+                    while idx < len(text) and text[idx] in ' \t\r\n':
+                        idx += 1
+                    if idx >= len(text):
+                        break
+                    try:
+                        obj, end_idx = decoder.raw_decode(text, idx)
+                        objects.append(obj)
+                        idx += end_idx
+                    except json.JSONDecodeError:
+                        # Can't parse more, return what we have
+                        break
+                return objects
+
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                # Skip status/metadata lines from the poll output
+                if line.startswith('STATUS=') or line.startswith('OUTPUT_SIZE=') or line.startswith('EXIT_CODE='):
+                    continue
+
+                # Parse potentially multiple JSON objects from the line
+                json_objects = parse_json_objects(line)
+                if not json_objects and line.startswith('{'):
+                    logger.warning(f"[CLI CALLBACK] Could not parse JSON from line: {line[:100]}...")
+                    continue
+
+                for msg in json_objects:
+                    json_objects_found += 1
+                    msg_type = msg.get('type', '')
+
+                    # Handle assistant messages (which may contain text AND tool_use blocks)
+                    if msg_type == 'assistant':
+                        content_blocks = msg.get('message', {}).get('content', [])
+                        if not isinstance(content_blocks, list):
+                            content_blocks = [content_blocks] if content_blocks else []
+
+                        for block in content_blocks:
+                            if not isinstance(block, dict):
+                                continue
+
+                            block_type = block.get('type')
+                            log_entry = None
+
+                            # Handle text content
+                            if block_type == 'text':
+                                text = block.get('text', '')
+                                if text and len(text) > 10:  # Skip tiny messages
+                                    log_entry = TicketLog.objects.create(
+                                        ticket_id=ticket.id,
+                                        log_type='ai_response',
+                                        command="Claude CLI Response",
+                                        output=text[:4000]
+                                    )
+                                    logs_created += 1
+                                    logger.info(f"[CLI CALLBACK] Created ai_response log: {text[:50]}...")
+
+                            # Handle tool_use blocks (nested inside assistant message)
+                            elif block_type == 'tool_use':
+                                tool_name = block.get('name', 'unknown')
+                                tool_input = block.get('input', {})
+                                # Format tool input and explanation based on tool type
+                                if tool_name == 'Bash':
+                                    cmd = tool_input.get('command', '')
+                                    desc = tool_input.get('description', '')
+                                    output_str = f"{desc}\n{cmd}" if desc else cmd
+                                    explanation = desc if desc else f"Running command: {cmd[:80]}"
+                                elif tool_name == 'Read':
+                                    file_path = tool_input.get('file_path', '')
+                                    output_str = f"File: {file_path}"
+                                    explanation = f"Reading file: {file_path.split('/')[-1] if file_path else 'unknown'}"
+                                elif tool_name == 'Write':
+                                    file_path = tool_input.get('file_path', '')
+                                    output_str = f"File: {file_path}"
+                                    explanation = f"Writing file: {file_path.split('/')[-1] if file_path else 'unknown'}"
+                                elif tool_name == 'Edit':
+                                    file_path = tool_input.get('file_path', '')
+                                    output_str = f"File: {file_path}"
+                                    explanation = f"Editing file: {file_path.split('/')[-1] if file_path else 'unknown'}"
+                                elif tool_name == 'Glob':
+                                    pattern = tool_input.get('pattern', '')
+                                    output_str = f"Pattern: {pattern}"
+                                    explanation = f"Searching for files: {pattern}"
+                                elif tool_name == 'Grep':
+                                    pattern = tool_input.get('pattern', '')
+                                    path = tool_input.get('path', 'codebase')
+                                    output_str = f"Search: {pattern} in {path}"
+                                    explanation = f"Searching for: {pattern}"
+                                elif tool_name == 'TodoWrite':
+                                    output_str = str(tool_input)[:1000]
+                                    explanation = "Updating task list"
+
+                                    # Sync todos to ProjectTodoList
+                                    try:
+                                        from projects.models import ProjectTodoList
+                                        todos = tool_input.get('todos', [])
+                                        if todos and isinstance(todos, list):
+                                            # Status mapping: Claude CLI -> ProjectTodoList
+                                            status_map = {
+                                                'completed': 'success',
+                                                'in_progress': 'in_progress',
+                                                'pending': 'pending'
+                                            }
+
+                                            # Get existing tasks for this ticket (keyed by cli_task_id)
+                                            existing_tasks = {
+                                                t.cli_task_id: t for t in
+                                                ProjectTodoList.objects.filter(ticket_id=ticket.id)
+                                                if t.cli_task_id
+                                            }
+
+                                            synced_task_ids = set()
+                                            for idx, todo in enumerate(todos):
+                                                cli_id = todo.get('id', str(idx))
+                                                content = todo.get('content', '')
+                                                status = status_map.get(todo.get('status', 'pending'), 'pending')
+
+                                                if cli_id in existing_tasks:
+                                                    # Update existing task
+                                                    task = existing_tasks[cli_id]
+                                                    task.description = content
+                                                    task.status = status
+                                                    task.order = idx
+                                                    task.save(update_fields=['description', 'status', 'order', 'updated_at'])
+                                                else:
+                                                    # Create new task
+                                                    task = ProjectTodoList.objects.create(
+                                                        ticket_id=ticket.id,
+                                                        description=content,
+                                                        status=status,
+                                                        order=idx,
+                                                        cli_task_id=cli_id
+                                                    )
+
+                                                synced_task_ids.add(cli_id)
+
+                                                # Broadcast task update
+                                                try:
+                                                    async_to_sync(async_send_ticket_log_notification)(ticket.id, {
+                                                        'is_notification': True,
+                                                        'notification_type': 'task_update',
+                                                        'ticket_id': ticket.id,
+                                                        'task': {
+                                                            'id': task.id,
+                                                            'content': task.description,
+                                                            'status': task.status,
+                                                            'order': task.order
+                                                        }
+                                                    })
+                                                except Exception:
+                                                    pass
+
+                                            logger.info(f"[CLI CALLBACK] Synced {len(todos)} tasks to ProjectTodoList")
+                                    except Exception as e:
+                                        logger.warning(f"[CLI CALLBACK] Failed to sync todos: {e}")
+                                elif tool_name == 'Task':
+                                    output_str = str(tool_input)[:1000]
+                                    explanation = tool_input.get('description', 'Running subtask')
+                                else:
+                                    output_str = str(tool_input)[:1000]
+                                    explanation = f"Using tool: {tool_name}"
+
+                                log_entry = TicketLog.objects.create(
+                                    ticket_id=ticket.id,
+                                    log_type='command',
+                                    command=tool_name,
+                                    explanation=explanation,
+                                    output=output_str[:4000]
+                                )
+                                logs_created += 1
+                                logger.info(f"[CLI CALLBACK] Created tool_use log: {tool_name}")
+
+                            # Broadcast if log was created
+                            if log_entry:
+                                streamed_log_count[0] += 1
+                                try:
+                                    async_to_sync(async_send_ticket_log_notification)(ticket.id, {
+                                        'id': log_entry.id,
+                                        'log_type': log_entry.log_type,
+                                        'command': log_entry.command,
+                                        'explanation': log_entry.explanation or '',
+                                        'output': log_entry.output,
+                                        'created_at': log_entry.created_at.isoformat()
+                                    })
+                                except Exception as e:
+                                    logger.warning(f"[CLI CALLBACK] Broadcast error: {e}")
+
+                    # Handle user messages (which contain tool_result blocks)
+                    elif msg_type == 'user':
+                        content_blocks = msg.get('message', {}).get('content', [])
+                        if not isinstance(content_blocks, list):
+                            content_blocks = [content_blocks] if content_blocks else []
+
+                        for block in content_blocks:
+                            if not isinstance(block, dict):
+                                continue
+
+                            block_type = block.get('type')
+                            log_entry = None
+
+                            # Handle tool_result blocks (nested inside user message)
+                            if block_type == 'tool_result':
+                                result_content = str(block.get('content', ''))[:4000]
+                                is_error = block.get('is_error', False)
+
+                                # Only log significant results
+                                if result_content and len(result_content) > 50:
+                                    log_entry = TicketLog.objects.create(
+                                        ticket_id=ticket.id,
+                                        log_type='command',
+                                        command='Result' + (' (Error)' if is_error else ''),
+                                        explanation='Tool execution result',
+                                        output=result_content
+                                    )
+                                    logs_created += 1
+                                    logger.info(f"[CLI CALLBACK] Created tool_result log: {result_content[:50]}...")
+
+                            # Broadcast if log was created
+                            if log_entry:
+                                streamed_log_count[0] += 1
+                                try:
+                                    async_to_sync(async_send_ticket_log_notification)(ticket.id, {
+                                        'id': log_entry.id,
+                                        'log_type': log_entry.log_type,
+                                        'command': log_entry.command,
+                                        'explanation': log_entry.explanation or '',
+                                        'output': log_entry.output,
+                                        'created_at': log_entry.created_at.isoformat()
+                                    })
+                                except Exception as e:
+                                    logger.warning(f"[CLI CALLBACK] Broadcast error: {e}")
+
+            logger.info(f"[CLI CALLBACK] Summary: {json_objects_found} JSON objects parsed, {logs_created} logs created")
+
         cli_result = run_claude_cli(
             workspace_id=workspace_id,
             prompt=implementation_prompt,
             timeout=max_execution_time,
             working_dir=f"/workspace/{project_dir}",
             project_id=str(project.project_id),
+            poll_callback=stream_output_callback,
             lfg_env={
                 'LFG_API_URL': api_base_url,
                 'LFG_API_KEY': cli_api_key,
@@ -2652,10 +3238,19 @@ You can also output (for logging purposes):
         )
 
         cli_duration = time.time() - cli_start
-        logger.info(f"[CLI STEP 7/7] CLI completed in {cli_duration:.1f}s")
+        logger.info(f"[CLI STEP 7/7] CLI completed in {cli_duration:.1f}s, streamed {streamed_log_count[0]} logs")
 
-        # Create ticket logs from Claude output
-        if cli_result.get('messages'):
+        # Save session_id for potential resume (allows chat replies to continue conversation)
+        session_id = cli_result.get('session_id')
+        if session_id:
+            ticket.cli_session_id = session_id
+            ticket.save(update_fields=['cli_session_id'])
+            logger.info(f"[CLI] Saved session_id: {session_id}")
+
+        # Only create logs from full output if streaming didn't capture any
+        # (fallback for cases where streaming callback didn't work)
+        if cli_result.get('messages') and streamed_log_count[0] == 0:
+            logger.info(f"[CLI] No logs streamed, creating from full output as fallback")
             def broadcast_log(ticket_id, log_data):
                 try:
                     async_to_sync(async_send_ticket_log_notification)(ticket_id, log_data)
@@ -2667,7 +3262,9 @@ You can also output (for logging purposes):
                 parsed_output=cli_result,
                 broadcast_func=broadcast_log
             )
-            logger.info(f"[CLI STEP 7/7] Created {len(logs)} ticket logs")
+            logger.info(f"[CLI STEP 7/7] Created {len(logs)} ticket logs from fallback")
+        else:
+            logger.info(f"[CLI STEP 7/7] Streamed {streamed_log_count[0]} logs during execution, skipping post-processing")
 
         # Check CLI result
         execution_time = time.time() - start_time
@@ -2820,6 +3417,23 @@ CLI duration: {cli_duration:.2f}s{git_info}
                 if error_match:
                     error_reason = error_match.group(1)
 
+            # If stdout is small, it's likely the actual error message from CLI
+            if stdout and len(stdout) < 500 and not stdout.startswith('{'):
+                error_reason = f"CLI Error: {stdout.strip()}"
+
+            # Log the raw output for debugging
+            logger.warning(f"[CLI FINALIZE] Error reason: {error_reason}")
+            logger.warning(f"[CLI FINALIZE] Raw stdout ({len(stdout)} bytes): {stdout[:500] if stdout else '(empty)'}")
+
+            # Check if this is an auth-related error - if so, mark user as disconnected
+            auth_error_keywords = ['not logged in', 'authentication', 'credential', 'login required', 'auth failed', 'unauthorized']
+            is_auth_error = any(keyword in error_reason.lower() for keyword in auth_error_keywords)
+            if is_auth_error:
+                logger.warning(f"[CLI FINALIZE] Detected auth error - marking user as disconnected")
+                profile = ticket.project.owner.profile
+                profile.claude_code_authenticated = False
+                profile.save(update_fields=['claude_code_authenticated'])
+
             ticket.status = 'blocked'
             ticket.queue_status = 'none'
             ticket.notes = (ticket.notes or "") + f"""
@@ -2833,6 +3447,19 @@ Workspace: {workspace_id}
             ticket.last_execution_at = datetime.now()
             ticket.save(update_fields=['status', 'queue_status', 'notes', 'execution_time_seconds', 'last_execution_at'])
 
+            # Create a TicketLog entry so the error shows in the Actions tab
+            from projects.models import TicketLog
+            error_log = TicketLog.objects.create(
+                ticket=ticket,
+                log_type='ai_response',
+                command=f"Claude Code CLI Execution Failed",
+                output=f"❌ **Execution Failed**\n\n**Reason:** {error_reason}\n\nCheck the Notes tab for more details."
+            )
+            logger.info(f"[CLI FINALIZE] Created error TicketLog {error_log.id}")
+
+            # Broadcast the error log
+            async_send_ticket_log_notification(ticket.id, error_log)
+
             broadcast_ticket_notification(conversation_id, {
                 'is_notification': True,
                 'notification_type': 'toolhistory',
@@ -2845,7 +3472,7 @@ Workspace: {workspace_id}
                 'refresh_checklist': True
             })
 
-            broadcast_ticket_status_change(ticket_id, 'blocked', 'none')
+            broadcast_ticket_status_change(ticket_id, 'blocked', 'none', error_reason=error_reason)
             clear_ticket_cancellation_flag(ticket_id)
 
             return {
@@ -2908,6 +3535,368 @@ Workspace: {workspace_id or 'N/A'}
             "cli_error": True,
             "workspace_id": workspace_id,
             "execution_time": f"{execution_time:.2f}s"
+        }
+
+
+def execute_ticket_chat_cli(
+    ticket_id: int,
+    project_id: int,
+    conversation_id: int,
+    message: str,
+    session_id: str = None
+) -> Dict[str, Any]:
+    """
+    Run Claude CLI for ticket chat - either resume existing session or start new one.
+
+    Args:
+        ticket_id: The ticket ID
+        project_id: The project ID
+        conversation_id: The conversation ID for WebSocket notifications
+        message: The user's chat message
+        session_id: Optional session ID to resume (None = start new session)
+
+    Returns:
+        Dict with execution result
+    """
+    import time
+    from projects.models import ProjectTicket, Project, TicketLog
+    from accounts.models import Profile
+    from development.models import MagpieWorkspace
+    from factory.ai_functions import get_magpie_client
+    from factory.claude_code_utils import run_claude_cli
+    from projects.websocket_utils import async_send_ticket_log_notification
+    from asgiref.sync import async_to_sync
+
+    start_time = time.time()
+
+    try:
+        ticket = ProjectTicket.objects.select_related('project').get(id=ticket_id)
+        project = ticket.project
+        user = project.owner
+        profile = Profile.objects.get(user=user)
+
+        # Get Claude workspace
+        claude_workspace = MagpieWorkspace.objects.filter(
+            user=user,
+            workspace_type='claude_auth',
+            status='ready'
+        ).first()
+
+        if not claude_workspace:
+            logger.error(f"[CLI_CHAT] No workspace for ticket #{ticket_id}")
+            return {"status": "error", "error": "No Claude workspace"}
+
+        workspace_id = claude_workspace.workspace_id
+
+        # Create user message log
+        user_log = TicketLog.objects.create(
+            ticket_id=ticket_id,
+            log_type='user_message',
+            command=message,
+            explanation='Chat message from user'
+        )
+        async_to_sync(async_send_ticket_log_notification)(ticket_id, {
+            'id': user_log.id,
+            'log_type': user_log.log_type,
+            'command': user_log.command,
+            'output': '',
+            'created_at': user_log.created_at.isoformat()
+        })
+
+        # Get stack config for working directory
+        stack = project.stack or 'nextjs'
+        stack_config = get_stack_config(stack, project)
+        project_dir = stack_config.get('project_dir', 'nextjs-app')
+
+        # Streaming callback for real-time logs
+        def stream_callback(new_output: str):
+            import json
+            for line in new_output.strip().split('\n'):
+                if not line.strip():
+                    continue
+                try:
+                    msg = json.loads(line)
+                    msg_type = msg.get('type', '')
+
+                    if msg_type == 'assistant':
+                        content_blocks = msg.get('message', {}).get('content', [])
+                        if not isinstance(content_blocks, list):
+                            content_blocks = [content_blocks] if content_blocks else []
+
+                        for block in content_blocks:
+                            if not isinstance(block, dict):
+                                continue
+                            block_type = block.get('type')
+                            log_entry = None
+
+                            if block_type == 'text':
+                                text = block.get('text', '')
+                                if text and len(text) > 10:
+                                    log_entry = TicketLog.objects.create(
+                                        ticket_id=ticket_id,
+                                        log_type='ai_response',
+                                        command='Claude CLI Response',
+                                        output=text[:4000]
+                                    )
+
+                            elif block_type == 'tool_use':
+                                tool_name = block.get('name', 'unknown')
+                                tool_input = block.get('input', {})
+                                explanation = f"Using tool: {tool_name}"
+
+                                if tool_name == 'Bash':
+                                    output_str = tool_input.get('command', '')
+                                elif tool_name in ['Read', 'Write', 'Edit']:
+                                    output_str = f"File: {tool_input.get('file_path', '')}"
+                                elif tool_name == 'TodoWrite':
+                                    output_str = str(tool_input)[:1000]
+                                    explanation = "Updating task list"
+
+                                    # Sync todos to ProjectTodoList
+                                    try:
+                                        from projects.models import ProjectTodoList
+                                        todos = tool_input.get('todos', [])
+                                        if todos and isinstance(todos, list):
+                                            status_map = {
+                                                'completed': 'success',
+                                                'in_progress': 'in_progress',
+                                                'pending': 'pending'
+                                            }
+                                            existing_tasks = {
+                                                t.cli_task_id: t for t in
+                                                ProjectTodoList.objects.filter(ticket_id=ticket_id)
+                                                if t.cli_task_id
+                                            }
+                                            for idx, todo in enumerate(todos):
+                                                cli_id = todo.get('id', str(idx))
+                                                content = todo.get('content', '')
+                                                status = status_map.get(todo.get('status', 'pending'), 'pending')
+
+                                                if cli_id in existing_tasks:
+                                                    task = existing_tasks[cli_id]
+                                                    task.description = content
+                                                    task.status = status
+                                                    task.order = idx
+                                                    task.save(update_fields=['description', 'status', 'order', 'updated_at'])
+                                                else:
+                                                    task = ProjectTodoList.objects.create(
+                                                        ticket_id=ticket_id,
+                                                        description=content,
+                                                        status=status,
+                                                        order=idx,
+                                                        cli_task_id=cli_id
+                                                    )
+
+                                                # Broadcast task update
+                                                try:
+                                                    async_to_sync(async_send_ticket_log_notification)(ticket_id, {
+                                                        'is_notification': True,
+                                                        'notification_type': 'task_update',
+                                                        'ticket_id': ticket_id,
+                                                        'task': {
+                                                            'id': task.id,
+                                                            'content': task.description,
+                                                            'status': task.status,
+                                                            'order': task.order
+                                                        }
+                                                    })
+                                                except Exception:
+                                                    pass
+                                            logger.info(f"[CLI_CHAT] Synced {len(todos)} tasks to ProjectTodoList")
+                                    except Exception as e:
+                                        logger.warning(f"[CLI_CHAT] Failed to sync todos: {e}")
+                                else:
+                                    output_str = str(tool_input)[:1000]
+
+                                log_entry = TicketLog.objects.create(
+                                    ticket_id=ticket_id,
+                                    log_type='command',
+                                    command=tool_name,
+                                    explanation=explanation,
+                                    output=output_str[:4000]
+                                )
+
+                            if log_entry:
+                                try:
+                                    async_to_sync(async_send_ticket_log_notification)(ticket_id, {
+                                        'id': log_entry.id,
+                                        'log_type': log_entry.log_type,
+                                        'command': log_entry.command,
+                                        'explanation': log_entry.explanation or '',
+                                        'output': log_entry.output or '',
+                                        'created_at': log_entry.created_at.isoformat()
+                                    })
+                                except Exception:
+                                    pass
+
+                    elif msg_type == 'user':
+                        # Handle tool_result blocks inside user messages
+                        content_blocks = msg.get('message', {}).get('content', [])
+                        if not isinstance(content_blocks, list):
+                            content_blocks = [content_blocks] if content_blocks else []
+
+                        for block in content_blocks:
+                            if isinstance(block, dict) and block.get('type') == 'tool_result':
+                                result_content = str(block.get('content', ''))[:4000]
+                                if result_content and len(result_content) > 50:
+                                    log_entry = TicketLog.objects.create(
+                                        ticket_id=ticket_id,
+                                        log_type='command',
+                                        command='Result',
+                                        explanation='Tool execution result',
+                                        output=result_content
+                                    )
+                                    try:
+                                        async_to_sync(async_send_ticket_log_notification)(ticket_id, {
+                                            'id': log_entry.id,
+                                            'log_type': log_entry.log_type,
+                                            'command': log_entry.command,
+                                            'explanation': log_entry.explanation or '',
+                                            'output': log_entry.output,
+                                            'created_at': log_entry.created_at.isoformat()
+                                        })
+                                    except Exception:
+                                        pass
+
+                except json.JSONDecodeError:
+                    pass
+                except Exception:
+                    pass
+
+        if session_id:
+            logger.info(f"[CLI_CHAT] Running CLI with --resume {session_id[:20]}...")
+        else:
+            logger.info(f"[CLI_CHAT] Running CLI with new session for ticket #{ticket_id}")
+
+        # Build prompt with ticket context for new sessions
+        if not session_id:
+            # For new sessions, include ticket context
+            prompt_with_context = f"""You are helping with ticket #{ticket.id}: {ticket.name}
+
+TICKET DESCRIPTION:
+{ticket.description}
+
+PROJECT: {project.name}
+WORKING DIRECTORY: /workspace/{project_dir}
+
+USER MESSAGE:
+{message}
+
+Please respond to the user's message in the context of this ticket."""
+        else:
+            # For resume sessions, just send the user message
+            prompt_with_context = message
+
+        # Run Claude CLI (session_id=None starts new session, otherwise resumes)
+        cli_result = run_claude_cli(
+            workspace_id=workspace_id,
+            prompt=prompt_with_context,
+            session_id=session_id,  # None = new session, otherwise --resume
+            timeout=600,  # 10 minute timeout for chat
+            working_dir=f"/workspace/{project_dir}",
+            poll_callback=stream_callback
+        )
+
+        # Save session_id for future resume
+        new_session_id = cli_result.get('session_id')
+        if new_session_id:
+            ticket.cli_session_id = new_session_id
+            ticket.save(update_fields=['cli_session_id'])
+            logger.info(f"[CLI_CHAT] Saved session_id: {new_session_id[:20]}...")
+
+        # Check for uncommitted changes and auto-commit if there are any
+        commit_sha = None
+        try:
+            from accounts.models import GitHubToken
+            from codebase_index.models import IndexedRepository
+            from factory.ai_functions import _run_magpie_ssh
+
+            client = get_magpie_client()
+
+            # Check if there are uncommitted changes
+            git_status_result = _run_magpie_ssh(
+                client,
+                workspace_id,
+                f"cd /workspace/{project_dir} && git status --porcelain",
+                timeout=30,
+                with_node_env=False
+            )
+
+            has_changes = bool(git_status_result.get('stdout', '').strip())
+
+            if has_changes:
+                logger.info(f"[CLI_CHAT] Changes detected, auto-committing...")
+
+                # Get GitHub credentials
+                indexed_repo = getattr(project, 'indexed_repository', None)
+                github_token_obj = GitHubToken.objects.filter(user=user).first()
+                github_token = github_token_obj.access_token if github_token_obj else None
+
+                if indexed_repo and github_token and ticket.github_branch:
+                    github_owner = indexed_repo.github_owner
+                    github_repo = indexed_repo.github_repo_name
+
+                    # Build commit message
+                    short_message = message[:100] + ('...' if len(message) > 100 else '')
+                    commit_message = f"chore(chat): Changes from chat session - TKT-{ticket.id}\n\nUser request: {short_message}"
+
+                    # Call commit_and_push_changes
+                    commit_result = commit_and_push_changes(
+                        workspace_id,
+                        ticket.github_branch,
+                        commit_message,
+                        ticket.id,
+                        stack=stack,
+                        github_token=github_token,
+                        github_owner=github_owner,
+                        github_repo=github_repo
+                    )
+
+                    # Log the commit
+                    if commit_result.get('status') == 'success':
+                        commit_sha = commit_result.get('commit_sha', 'unknown')
+                        commit_log = TicketLog.objects.create(
+                            ticket_id=ticket_id,
+                            log_type='git',
+                            command='git commit & push',
+                            explanation='Auto-committed changes from chat',
+                            output=f"Committed: {commit_sha} on branch {ticket.github_branch}"
+                        )
+                        async_to_sync(async_send_ticket_log_notification)(ticket_id, {
+                            'id': commit_log.id,
+                            'log_type': commit_log.log_type,
+                            'command': commit_log.command,
+                            'explanation': commit_log.explanation,
+                            'output': commit_log.output,
+                            'created_at': commit_log.created_at.isoformat()
+                        })
+                        logger.info(f"[CLI_CHAT] Auto-committed changes: {commit_sha}")
+                    else:
+                        logger.warning(f"[CLI_CHAT] Auto-commit failed: {commit_result.get('message')}")
+                else:
+                    logger.info(f"[CLI_CHAT] Changes detected but no GitHub/branch configured, skipping commit")
+            else:
+                logger.info(f"[CLI_CHAT] No changes to commit")
+        except Exception as e:
+            logger.warning(f"[CLI_CHAT] Auto-commit check failed: {e}")
+
+        execution_time = time.time() - start_time
+        logger.info(f"[CLI_CHAT] Completed in {execution_time:.1f}s")
+
+        return {
+            "status": "success",
+            "ticket_id": ticket_id,
+            "session_id": cli_result.get('session_id'),
+            "execution_time": f"{execution_time:.2f}s",
+            "commit_sha": commit_sha
+        }
+
+    except Exception as e:
+        logger.error(f"[CLI_CHAT] Error: {e}", exc_info=True)
+        return {
+            "status": "error",
+            "ticket_id": ticket_id,
+            "error": str(e)
         }
 
 

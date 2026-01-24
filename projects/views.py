@@ -164,9 +164,14 @@ def tickets_list(request):
     model_selection = ModelSelection.objects.filter(user=request.user).first()
     current_model_key = model_selection.selected_model if model_selection else ModelSelection.DEFAULT_MODEL_KEY
 
-    # Get sidebar state
+    # Get sidebar state and CLI mode status
     app_state = ApplicationState.objects.filter(user=request.user).first()
     sidebar_minimized = app_state.sidebar_minimized if app_state else False
+    claude_code_enabled = app_state.claude_code_enabled if app_state else False
+
+    # Check if user has Claude Code authenticated
+    profile = request.user.profile if hasattr(request.user, 'profile') else None
+    claude_code_authenticated = profile.claude_code_authenticated if profile else False
 
     # No stages for global view (stages are project-specific)
     # Kanban will use status field instead
@@ -181,6 +186,8 @@ def tickets_list(request):
         'current_model_key': current_model_key,
         'sidebar_minimized': sidebar_minimized,
         'stages': stages,
+        'claude_code_enabled': claude_code_enabled,
+        'claude_code_authenticated': claude_code_authenticated,
     })
 
 @login_required
@@ -217,9 +224,14 @@ def project_tickets_list(request, project_id):
     model_selection = ModelSelection.objects.filter(user=request.user).first()
     current_model_key = model_selection.selected_model if model_selection else ModelSelection.DEFAULT_MODEL_KEY
 
-    # Get sidebar state
+    # Get sidebar state and CLI mode status
     app_state = ApplicationState.objects.filter(user=request.user).first()
     sidebar_minimized = app_state.sidebar_minimized if app_state else False
+    claude_code_enabled = app_state.claude_code_enabled if app_state else False
+
+    # Check if user has Claude Code authenticated
+    profile = request.user.profile if hasattr(request.user, 'profile') else None
+    claude_code_authenticated = profile.claude_code_authenticated if profile else False
 
     # Get stages for this project (create defaults if none exist)
     stages = TicketStage.objects.filter(project=project).order_by('order')
@@ -246,6 +258,8 @@ def project_tickets_list(request, project_id):
         'sidebar_minimized': sidebar_minimized,
         'stages': stages,
         'project_files': project_files,
+        'claude_code_enabled': claude_code_enabled,
+        'claude_code_authenticated': claude_code_authenticated,
     })
 
 @login_required
@@ -3392,6 +3406,7 @@ def ticket_chat_api(request, project_id, ticket_id):
     import json
     from channels.layers import get_channel_layer
     from asgiref.sync import async_to_sync
+    from accounts.models import ApplicationState, Profile
 
     try:
         data = json.loads(request.body.decode('utf-8'))
@@ -3410,16 +3425,11 @@ def ticket_chat_api(request, project_id, ticket_id):
     if not project.can_user_access(request.user):
         return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
 
-    # For now, we'll store the message and send it via WebSocket
-    # The actual AI integration will be handled in the backend executor
-
     try:
         # Get the conversation_id from the request (if available)
         conversation_id = data.get('conversation_id')
 
-        # Store user message (you may want to create a TicketChatMessage model in the future)
-        # For now, we'll broadcast it via WebSocket
-
+        # Broadcast user message via WebSocket
         channel_layer = get_channel_layer()
         if channel_layer and conversation_id:
             async_to_sync(channel_layer.group_send)(
@@ -3432,11 +3442,65 @@ def ticket_chat_api(request, project_id, ticket_id):
                 }
             )
 
-        return JsonResponse({
-            'success': True,
-            'message': 'Message sent successfully',
-            'ticket_id': ticket_id
-        })
+        # Check if user has CLI mode enabled
+        app_state = ApplicationState.objects.filter(user=request.user).first()
+        profile = Profile.objects.filter(user=request.user).first()
+
+        cli_mode_enabled = (
+            app_state and app_state.claude_code_enabled and
+            profile and profile.claude_code_authenticated
+        )
+
+        # Debug logging for CLI mode check
+        logger.info(f"[TICKET_CHAT_API] CLI mode check: app_state={app_state is not None}, "
+                    f"claude_code_enabled={getattr(app_state, 'claude_code_enabled', None)}, "
+                    f"profile={profile is not None}, "
+                    f"claude_code_authenticated={getattr(profile, 'claude_code_authenticated', None)}, "
+                    f"cli_mode_enabled={cli_mode_enabled}")
+
+        if cli_mode_enabled:
+            # Run CLI chat in background thread
+            import threading
+            from tasks.task_definitions import execute_ticket_chat_cli
+
+            session_id = ticket.cli_session_id  # May be None for new conversation
+
+            def run_cli_chat():
+                try:
+                    execute_ticket_chat_cli(
+                        ticket_id=ticket_id,
+                        project_id=project.id,
+                        conversation_id=conversation_id,
+                        message=message,
+                        session_id=session_id  # None = new session, otherwise resume
+                    )
+                except Exception as e:
+                    logger.error(f"CLI chat error: {e}", exc_info=True)
+
+            thread = threading.Thread(target=run_cli_chat, daemon=True)
+            thread.start()
+
+            return JsonResponse({
+                'success': True,
+                'message': 'Message sent to Claude CLI',
+                'ticket_id': ticket_id,
+                'mode': 'cli_resume' if session_id else 'cli_new'
+            })
+        else:
+            # Use standard API method (dispatch to ticket chat executor)
+            from tasks.dispatch import dispatch_ticket_chat
+            dispatch_ticket_chat(
+                ticket_id=ticket_id,
+                project_id=project.id,
+                conversation_id=conversation_id,
+                message=message
+            )
+            return JsonResponse({
+                'success': True,
+                'message': 'Message sent successfully',
+                'ticket_id': ticket_id,
+                'mode': 'api'
+            })
 
     except Exception as e:
         logger.error(f"Error handling ticket chat message: {str(e)}", exc_info=True)
@@ -3451,11 +3515,12 @@ def ticket_chat_api(request, project_id, ticket_id):
 def execute_ticket_api(request, project_id, ticket_id):
     """API endpoint to execute a ticket using the parallel executor system"""
     import json
-    from tasks.dispatch import dispatch_tickets, get_project_queue_info
+    from tasks.dispatch import dispatch_tickets, get_project_queue_info, force_release_project_lock
 
     try:
         data = json.loads(request.body.decode('utf-8'))
         conversation_id = data.get('conversation_id')
+        force = data.get('force', False)  # Force clear stale locks
     except Exception as e:
         return JsonResponse({'success': False, 'error': 'Invalid request data'}, status=400)
 
@@ -3476,20 +3541,30 @@ def execute_ticket_api(request, project_id, ticket_id):
 
     # Check if ticket is already queued or executing
     if ticket.queue_status in ['queued', 'executing']:
-        return JsonResponse({
-            'success': False,
-            'error': f'Ticket is already {ticket.queue_status}'
-        }, status=400)
+        # If force=True, reset the ticket's queue status
+        if force:
+            ticket.queue_status = 'none'
+            ticket.save(update_fields=['queue_status'])
+            logger.info(f"Force reset ticket #{ticket_id} queue_status to 'none'")
+        else:
+            return JsonResponse({
+                'success': False,
+                'error': f'Ticket is already {ticket.queue_status}'
+            }, status=400)
 
     # IMPORTANT: Check if project has an active execution lock
     # This prevents starting a new ticket while another is still running
-    # (even if the user clicked "stop" - the execution may still be in progress)
     queue_info = get_project_queue_info(project.id)
     if queue_info.get('is_executing'):
-        return JsonResponse({
-            'success': False,
-            'error': 'Another ticket is still executing for this project. Please wait for it to complete or force stop it.'
-        }, status=400)
+        if force:
+            # Force clear the stale lock - user explicitly wants to restart
+            force_release_project_lock(project.id)
+            logger.warning(f"Force released stale lock for project {project.id} (user requested)")
+        else:
+            return JsonResponse({
+                'success': False,
+                'error': 'Another ticket is still executing for this project. Please wait for it to complete or force stop it.'
+            }, status=400)
 
     try:
         # Dispatch ticket to the parallel executor queue
@@ -4072,6 +4147,10 @@ def ticket_git_status_api(request, project_id, ticket_id):
         'branch': ticket.github_branch,
         'commit_sha': ticket.github_commit_sha,
         'merge_status': ticket.github_merge_status,
+        'merge_commit_sha': ticket.github_merge_commit_sha,
+        'last_revert_sha': ticket.github_last_revert_sha,
+        'reverted_at': ticket.github_reverted_at.isoformat() if ticket.github_reverted_at else None,
+        'reverted_by': ticket.github_reverted_by.username if ticket.github_reverted_by else None,
         'github_owner': github_owner,
         'github_repo': github_repo,
         'repo_url': repo_url,
@@ -4256,27 +4335,45 @@ def push_to_lfg_agent_api(request, project_id, ticket_id):
         )
 
         merge_status = merge_result.get('status', 'error')
+        merge_commit_sha = merge_result.get('merge_commit_sha')
 
-        # Map status to model choices
+        # Map status to model choices and save merge commit SHA
         if merge_status == 'success':
             ticket.github_merge_status = 'merged'
+            if merge_commit_sha:
+                ticket.github_merge_commit_sha = merge_commit_sha
         elif merge_status == 'conflict':
             ticket.github_merge_status = 'conflict'
         else:
             ticket.github_merge_status = 'failed'
 
-        ticket.save(update_fields=['github_merge_status'])
+        ticket.save(update_fields=['github_merge_status', 'github_merge_commit_sha'])
+
+        # Create merge history record on successful merge
+        if merge_status == 'success' and merge_commit_sha:
+            from projects.models import TicketMergeHistory
+            TicketMergeHistory.objects.create(
+                ticket=ticket,
+                action='merged',
+                merge_commit_sha=merge_commit_sha,
+                performed_by=request.user,
+                commit_message=commit_message,
+            )
 
         # Build response
         response_data = {
             'success': merge_status in ['success'],
             'commit_sha': commit_sha,
+            'merge_commit_sha': merge_commit_sha,
             'merge_status': ticket.github_merge_status,
             'merge_message': merge_result.get('message', ''),
         }
 
         if commit_sha:
             response_data['commit_url'] = f"https://github.com/{github_owner}/{github_repo}/commit/{commit_sha}"
+
+        if merge_commit_sha:
+            response_data['merge_commit_url'] = f"https://github.com/{github_owner}/{github_repo}/commit/{merge_commit_sha}"
 
         if ticket.github_merge_status == 'merged':
             response_data['lfg_agent_url'] = f"https://github.com/{github_owner}/{github_repo}/tree/lfg-agent"
@@ -4295,6 +4392,218 @@ def push_to_lfg_agent_api(request, project_id, ticket_id):
         return JsonResponse({
             'success': False,
             'error': str(e)
+        }, status=500)
+
+
+@login_required
+@require_http_methods(["GET"])
+def ticket_commit_details_api(request, project_id, ticket_id):
+    """
+    Get detailed commit information for a ticket's merge.
+
+    Uses GitHub API to fetch:
+    - Commit details (message, author, date)
+    - Files changed with lines added/removed
+
+    Returns:
+        JSON with commit details and file changes
+    """
+    from accounts.models import GitHubToken
+    from codebase_index.models import IndexedRepository
+    from tasks.task_definitions import get_commit_details
+
+    project = get_object_or_404(Project, project_id=project_id)
+    ticket = get_object_or_404(ProjectTicket, id=ticket_id, project=project)
+
+    # Check permissions
+    if not (project.owner == request.user or
+            project.members.filter(user=request.user, status='active').exists()):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    # Get GitHub token
+    try:
+        github_token_obj = GitHubToken.objects.get(user=request.user)
+        github_token = github_token_obj.access_token
+    except GitHubToken.DoesNotExist:
+        return JsonResponse({
+            'success': False,
+            'error': 'GitHub not connected'
+        }, status=400)
+
+    # Get repo info
+    try:
+        indexed_repo = IndexedRepository.objects.get(project=project)
+        github_owner = indexed_repo.github_owner
+        github_repo = indexed_repo.github_repo_name
+    except IndexedRepository.DoesNotExist:
+        return JsonResponse({
+            'success': False,
+            'error': 'Repository not configured'
+        }, status=400)
+
+    # Use the merge commit SHA if available, otherwise the feature branch commit
+    commit_sha = ticket.github_merge_commit_sha or ticket.github_commit_sha
+
+    if not commit_sha:
+        return JsonResponse({
+            'success': False,
+            'error': 'No commit SHA available'
+        }, status=400)
+
+    result = get_commit_details(
+        github_token,
+        github_owner,
+        github_repo,
+        commit_sha
+    )
+
+    return JsonResponse(result)
+
+
+@login_required
+@require_http_methods(["GET"])
+def ticket_merge_history_api(request, project_id, ticket_id):
+    """
+    Get the merge/revert history for a ticket.
+
+    Returns:
+        JSON with list of merge and revert actions
+    """
+    from projects.models import TicketMergeHistory
+
+    project = get_object_or_404(Project, project_id=project_id)
+    ticket = get_object_or_404(ProjectTicket, id=ticket_id, project=project)
+
+    # Check permissions
+    if not (project.owner == request.user or
+            project.members.filter(user=request.user, status='active').exists()):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    history = ticket.merge_history.all()[:20]  # Last 20 entries
+
+    history_data = [{
+        'id': h.id,
+        'action': h.action,
+        'merge_commit_sha': h.merge_commit_sha,
+        'revert_commit_sha': h.revert_commit_sha,
+        'performed_by': h.performed_by.username if h.performed_by else None,
+        'files_changed': h.files_changed,
+        'lines_added': h.lines_added,
+        'lines_removed': h.lines_removed,
+        'commit_message': h.commit_message,
+        'commit_author': h.commit_author,
+        'commit_date': h.commit_date.isoformat() if h.commit_date else None,
+        'created_at': h.created_at.isoformat(),
+    } for h in history]
+
+    return JsonResponse({
+        'success': True,
+        'history': history_data,
+        'current_status': ticket.github_merge_status,
+    })
+
+
+@login_required
+@require_http_methods(["POST"])
+def revert_ticket_merge_api(request, project_id, ticket_id):
+    """
+    Revert a ticket's merge from lfg-agent branch.
+
+    This creates a revert commit on lfg-agent that undoes all changes
+    from the original merge.
+
+    Requires: ticket must be in 'merged' status with a merge_commit_sha
+    """
+    from accounts.models import GitHubToken
+    from codebase_index.models import IndexedRepository
+    from tasks.task_definitions import revert_merge_on_branch
+    from projects.models import TicketMergeHistory
+    from django.utils import timezone
+
+    project = get_object_or_404(Project, project_id=project_id)
+    ticket = get_object_or_404(ProjectTicket, id=ticket_id, project=project)
+
+    # Check permissions
+    if not project.can_user_manage_tickets(request.user):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    # Validate ticket state
+    if ticket.github_merge_status != 'merged':
+        return JsonResponse({
+            'success': False,
+            'error': f'Cannot revert: ticket status is "{ticket.github_merge_status}", not "merged"'
+        }, status=400)
+
+    if not ticket.github_merge_commit_sha:
+        return JsonResponse({
+            'success': False,
+            'error': 'No merge commit SHA found. Cannot revert.'
+        }, status=400)
+
+    # Get GitHub token
+    try:
+        github_token_obj = GitHubToken.objects.get(user=request.user)
+        github_token = github_token_obj.access_token
+    except GitHubToken.DoesNotExist:
+        return JsonResponse({
+            'success': False,
+            'error': 'GitHub not connected'
+        }, status=400)
+
+    # Get repo info
+    try:
+        indexed_repo = IndexedRepository.objects.get(project=project)
+        github_owner = indexed_repo.github_owner
+        github_repo = indexed_repo.github_repo_name
+    except IndexedRepository.DoesNotExist:
+        return JsonResponse({
+            'success': False,
+            'error': 'Repository not configured'
+        }, status=400)
+
+    # Perform the revert
+    result = revert_merge_on_branch(
+        github_token,
+        github_owner,
+        github_repo,
+        'lfg-agent',
+        ticket.github_merge_commit_sha,
+        f"Revert merge of {ticket.github_branch}: {ticket.name}"
+    )
+
+    if result['status'] == 'success':
+        # Update ticket status
+        ticket.github_merge_status = 'reverted'
+        ticket.github_last_revert_sha = result.get('revert_commit_sha')
+        ticket.github_reverted_at = timezone.now()
+        ticket.github_reverted_by = request.user
+        ticket.save(update_fields=[
+            'github_merge_status',
+            'github_last_revert_sha',
+            'github_reverted_at',
+            'github_reverted_by'
+        ])
+
+        # Record in merge history
+        TicketMergeHistory.objects.create(
+            ticket=ticket,
+            action='reverted',
+            merge_commit_sha=ticket.github_merge_commit_sha,
+            revert_commit_sha=result.get('revert_commit_sha'),
+            performed_by=request.user,
+            commit_message=f"Revert merge of {ticket.github_branch}",
+        )
+
+        return JsonResponse({
+            'success': True,
+            'message': 'Merge reverted successfully',
+            'revert_commit_sha': result.get('revert_commit_sha'),
+            'revert_commit_url': f"https://github.com/{github_owner}/{github_repo}/commit/{result.get('revert_commit_sha')}"
+        })
+    else:
+        return JsonResponse({
+            'success': False,
+            'error': result.get('message', 'Revert failed')
         }, status=500)
 
 

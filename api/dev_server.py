@@ -465,14 +465,17 @@ def start_dev_server(request, ticket_id):
             echo "$pid" > .devserver_pid
             echo "PID:$pid"
 
-            # Wait a moment to ensure process started
-            sleep 3
+            # Wait for server to start (Go/Rust need time to compile)
+            sleep 10
 
             # Check if process is still running
             if kill -0 "$pid" 2>/dev/null; then
                 echo "Dev server started successfully with PID $pid"
             else
                 echo "ERROR: Dev server failed to start"
+                echo "=== Last 50 lines of dev.log ==="
+                tail -50 {workspace_path}/dev.log 2>/dev/null || echo "(no log available)"
+                echo "=== End of dev.log ==="
                 exit 1
             fi
         """)

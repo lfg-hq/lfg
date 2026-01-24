@@ -3063,6 +3063,34 @@
 
                 if (data.authenticated) {
                     showConnectedState(data.enabled);
+                } else if (data.has_backup) {
+                    // Has backup but not marked authenticated - try to verify/restore
+                    console.log('Has backup, attempting to restore...');
+                    connectBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right: 0.5rem;"></i>Restoring...';
+                    connectBtn.disabled = true;
+
+                    try {
+                        const verifyResponse = await fetch('/accounts/claude-code/verify/', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': getCsrfToken()
+                            }
+                        });
+                        const verifyData = await verifyResponse.json();
+
+                        if (verifyData.authenticated) {
+                            showConnectedState(false);
+                        } else {
+                            showDisconnectedState();
+                        }
+                    } catch (e) {
+                        console.error('Restore failed:', e);
+                        showDisconnectedState();
+                    } finally {
+                        connectBtn.disabled = false;
+                        connectBtn.innerHTML = '<i class="fas fa-plug" style="margin-right: 0.5rem;"></i>Connect Claude Code';
+                    }
                 } else {
                     showDisconnectedState();
                 }
@@ -3142,6 +3170,10 @@
             submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right: 0.5rem;"></i>Verifying...';
             hideError();
 
+            // Create an AbortController for timeout
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
             try {
                 const response = await fetch('/accounts/claude-code/submit-code/', {
                     method: 'POST',
@@ -3149,20 +3181,73 @@
                         'Content-Type': 'application/json',
                         'X-CSRFToken': getCsrfToken()
                     },
-                    body: JSON.stringify({ code: code })
+                    body: JSON.stringify({ code: code }),
+                    signal: controller.signal
                 });
+                clearTimeout(timeoutId);
                 const data = await response.json();
 
                 if (data.status === 'success') {
                     showConnectedState(false);
                 } else {
                     showError(data.error || 'Authentication failed');
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = 'Submit Code';
                 }
             } catch (error) {
-                showError('Network error. Please try again.');
-            } finally {
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = 'Submit Code';
+                clearTimeout(timeoutId);
+
+                // On timeout or error, poll status to check if auth succeeded
+                if (error.name === 'AbortError') {
+                    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right: 0.5rem;"></i>Checking status...';
+
+                    // Poll for up to 15 seconds to check if auth completed
+                    let pollCount = 0;
+                    const maxPolls = 15;
+
+                    const pollInterval = setInterval(async () => {
+                        pollCount++;
+                        try {
+                            const statusResponse = await fetch('/accounts/claude-code/status/');
+                            const statusData = await statusResponse.json();
+
+                            if (statusData.authenticated) {
+                                clearInterval(pollInterval);
+                                showConnectedState(statusData.enabled);
+                            } else if (pollCount >= maxPolls) {
+                                clearInterval(pollInterval);
+                                // Run a direct test to verify
+                                try {
+                                    const testResponse = await fetch('/accounts/claude-code/verify/', {
+                                        method: 'POST',
+                                        headers: {
+                                            'Content-Type': 'application/json',
+                                            'X-CSRFToken': getCsrfToken()
+                                        }
+                                    });
+                                    const testData = await testResponse.json();
+                                    if (testData.authenticated) {
+                                        showConnectedState(false);
+                                    } else {
+                                        showError('Authentication is still in progress. Please wait and check status again.');
+                                        submitBtn.disabled = false;
+                                        submitBtn.innerHTML = 'Submit Code';
+                                    }
+                                } catch (e) {
+                                    showError('Authentication is still in progress. Please wait and check status again.');
+                                    submitBtn.disabled = false;
+                                    submitBtn.innerHTML = 'Submit Code';
+                                }
+                            }
+                        } catch (e) {
+                            // Continue polling
+                        }
+                    }, 1000);
+                } else {
+                    showError('Network error. Please try again.');
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = 'Submit Code';
+                }
             }
         });
 

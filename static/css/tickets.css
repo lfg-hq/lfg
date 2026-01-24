@@ -56,32 +56,41 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 1rem;
-    gap: 0.5rem;
+    margin-bottom: 1.25rem;
+    gap: 0.75rem;
     flex-wrap: wrap;
+    padding: 0.75rem 1rem;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: var(--radius-lg);
 }
 
 .filter-left,
 .filter-right {
     display: flex;
-    gap: 0.5rem;
+    gap: 0.625rem;
     align-items: center;
 }
 
+.filter-right {
+    flex-wrap: wrap;
+}
+
 .filter-search {
-    padding: 0.625rem 0.875rem;
-    padding-left: 2.25rem;
-    background-color: rgba(255, 255, 255, 0.05);
+    padding: 0.5rem 0.75rem;
+    padding-left: 2.125rem;
+    background-color: rgba(255, 255, 255, 0.04);
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%239ca3af'%3E%3Cpath d='M10 18a7.952 7.952 0 004.897-1.688l4.396 4.396 1.414-1.414-4.396-4.396A7.952 7.952 0 0018 10c0-4.411-3.589-8-8-8s-8 3.589-8 8 3.589 8 8 8zm0-14c3.309 0 6 2.691 6 6s-2.691 6-6 6-6-2.691-6-6 2.691-6 6-6z'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
-    background-position: 0.625rem center;
-    background-size: 1.125rem;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background-position: 0.5rem center;
+    background-size: 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: var(--radius-md);
     color: var(--text-color);
-    min-width: 220px;
-    font-size: 0.875rem;
+    min-width: 200px;
+    font-size: 0.8125rem;
     transition: all 0.2s ease;
+    height: 34px;
 }
 
 .filter-search:focus {
@@ -92,15 +101,16 @@
 }
 
 .filter-select {
-    padding: 0.625rem 0.875rem;
-    background-color: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 0.5rem 0.75rem;
+    background-color: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: var(--radius-md);
     color: var(--text-color);
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
     cursor: pointer;
     transition: all 0.2s ease;
-    min-width: 140px;
+    min-width: 120px;
+    height: 34px;
 }
 
 .filter-select:focus {
@@ -111,6 +121,69 @@
 
 .filter-select:hover {
     background-color: rgba(255, 255, 255, 0.08);
+}
+
+/* Model select specific styling */
+.filter-select.model-select {
+    min-width: 160px;
+    transition: all 0.2s ease, opacity 0.2s ease;
+}
+
+/* Execution Mode Toggle */
+.execution-mode-toggle {
+    display: inline-flex;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-md);
+    padding: 3px;
+    gap: 3px;
+}
+
+.execution-mode-toggle .mode-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.4rem 0.75rem;
+    background: transparent;
+    border: none;
+    border-radius: calc(var(--radius-md) - 3px);
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.execution-mode-toggle .mode-btn i {
+    font-size: 0.75rem;
+}
+
+.execution-mode-toggle .mode-btn:hover:not(:disabled) {
+    color: var(--text-color);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.execution-mode-toggle .mode-btn.active {
+    background: linear-gradient(135deg, var(--primary-color), #8b5cf6);
+    color: white;
+    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
+}
+
+.execution-mode-toggle .mode-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.execution-mode-toggle .mode-btn:disabled:hover {
+    background: transparent;
+    color: var(--text-secondary);
+}
+
+/* CLI mode indicator when active */
+.execution-mode-toggle .mode-btn[data-mode="cli"].active {
+    background: linear-gradient(135deg, #10b981, #059669);
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
 }
 
 /* Tickets Table */
@@ -2290,6 +2363,190 @@
 
 .git-tree-success i {
     font-size: 1rem;
+}
+
+.git-tree-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+/* Commit Details Section */
+.git-commit-details-section {
+    margin-top: 1rem;
+    margin-bottom: 1rem;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.git-section-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    background: rgba(255, 255, 255, 0.03);
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.2s ease;
+}
+
+.git-section-header:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.git-section-header span {
+    flex: 1;
+    font-weight: 500;
+}
+
+.git-section-header i:last-child {
+    transition: transform 0.2s ease;
+}
+
+.git-commit-details {
+    padding: 1rem;
+    border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+}
+
+.commit-info {
+    margin-bottom: 1rem;
+}
+
+.commit-message {
+    font-family: monospace;
+    white-space: pre-wrap;
+    padding: 0.75rem;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 6px;
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+.commit-meta {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+}
+
+.commit-meta i {
+    margin-right: 0.25rem;
+}
+
+.commit-stats {
+    display: flex;
+    gap: 1rem;
+    margin-top: 0.5rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+}
+
+.stat-additions { color: #22c55e; }
+.stat-deletions { color: #ef4444; }
+.stat-files { color: var(--text-secondary); }
+
+.commit-files {
+    border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    padding-top: 1rem;
+}
+
+.files-header {
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+}
+
+.commit-file {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.375rem 0;
+    font-size: 0.8125rem;
+    font-family: monospace;
+}
+
+.commit-file .file-icon {
+    width: 1rem;
+    flex-shrink: 0;
+}
+
+.commit-file .file-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-secondary);
+}
+
+.commit-file .file-stats {
+    display: flex;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.commit-file .additions { color: #22c55e; font-size: 0.75rem; }
+.commit-file .deletions { color: #ef4444; font-size: 0.75rem; }
+
+/* Revert button styling */
+.btn-danger {
+    background-color: #ef4444;
+    color: white;
+    border: none;
+}
+
+.btn-danger:hover {
+    background-color: #dc2626;
+}
+
+/* Reverted banner */
+.git-reverted-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+    color: #f59e0b;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    margin-bottom: 1rem;
+}
+
+/* Merge status - reverted */
+.git-tree-merge.reverted {
+    color: #f59e0b;
+}
+
+.git-tree-merge.reverted .git-tree-merge-line {
+    background: linear-gradient(to bottom, #22c55e, #f59e0b);
+}
+
+/* Loading and error inline states */
+.git-loading-inline,
+.git-error-inline {
+    padding: 1rem;
+    text-align: center;
+    color: var(--text-secondary);
+}
+
+.git-error-inline {
+    color: #ef4444;
+}
+
+.text-success { color: #22c55e; }
+.text-danger { color: #ef4444; }
+.text-warning { color: #f59e0b; }
+
+/* Revert unavailable indicator */
+.git-revert-unavailable {
+    color: var(--text-secondary);
+    cursor: help;
+    margin-left: 0.5rem;
+    font-size: 0.875rem;
 }
 
 /* ============================================

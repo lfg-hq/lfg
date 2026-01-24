@@ -333,6 +333,7 @@ class ProjectTicket(models.Model):
     status = models.CharField(max_length=20, choices=(
         ('open', 'Open'),
         ('in_progress', 'In Progress'),
+        ('review', 'Review'),
         ('done', 'Done'),
         ('failed', 'Failed'),
         ('blocked', 'Blocked'),
@@ -416,7 +417,24 @@ class ProjectTicket(models.Model):
             ('conflict', 'Conflict'),
             ('failed', 'Failed'),
             ('pending', 'Pending'),
+            ('reverted', 'Reverted'),
         ), help_text='Merge status of feature branch into lfg-agent')
+
+    # Git merge/revert tracking
+    github_merge_commit_sha = models.CharField(max_length=40, blank=True, null=True,
+        help_text='The merge commit SHA on lfg-agent branch (for reverting)')
+    github_last_revert_sha = models.CharField(max_length=40, blank=True, null=True,
+        help_text='SHA of the last revert commit (if any)')
+    github_reverted_at = models.DateTimeField(blank=True, null=True,
+        help_text='When the merge was last reverted')
+    github_reverted_by = models.ForeignKey(
+        'auth.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='reverted_tickets',
+        help_text='User who reverted the merge'
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -465,11 +483,74 @@ class ProjectTicket(models.Model):
         help_text='When the ticket was last executed'
     )
 
+    # Claude Code CLI session tracking
+    cli_session_id = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        help_text='Claude Code CLI session ID for resuming conversations'
+    )
+
     def __str__(self):
         return f"{self.project.name} - {self.name}"
 
     class Meta:
         ordering = ['created_at', 'id']
+
+
+class TicketMergeHistory(models.Model):
+    """Track merge and revert history for ticket branches"""
+
+    ACTION_CHOICES = [
+        ('merged', 'Merged'),
+        ('reverted', 'Reverted'),
+    ]
+
+    ticket = models.ForeignKey(
+        ProjectTicket,
+        on_delete=models.CASCADE,
+        related_name='merge_history'
+    )
+    action = models.CharField(max_length=20, choices=ACTION_CHOICES)
+
+    # The merge commit SHA on lfg-agent branch
+    merge_commit_sha = models.CharField(max_length=40, help_text='Merge commit SHA on lfg-agent')
+
+    # For reverts: the revert commit SHA
+    revert_commit_sha = models.CharField(max_length=40, blank=True, null=True,
+        help_text='Revert commit SHA (if reverted)')
+
+    # Who performed the action
+    performed_by = models.ForeignKey(
+        'auth.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='ticket_merge_actions'
+    )
+
+    # Metadata about the merge/revert
+    files_changed = models.JSONField(default=list, help_text='List of files changed in the merge')
+    lines_added = models.IntegerField(default=0)
+    lines_removed = models.IntegerField(default=0)
+
+    # Commit details
+    commit_message = models.TextField(blank=True, default='')
+    commit_author = models.CharField(max_length=255, blank=True, default='')
+    commit_date = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Ticket Merge History'
+        verbose_name_plural = 'Ticket Merge Histories'
+        indexes = [
+            models.Index(fields=['ticket', '-created_at']),
+            models.Index(fields=['merge_commit_sha']),
+        ]
+
+    def __str__(self):
+        return f"{self.ticket.name} - {self.action} at {self.created_at}"
 
 
 class ProjectTodoList(models.Model):
@@ -483,6 +564,7 @@ class ProjectTodoList(models.Model):
         ('fail', 'Fail'),
     ), default='pending')
     order = models.IntegerField(default=0, help_text='Order of task execution')
+    cli_task_id = models.CharField(max_length=50, null=True, blank=True, help_text="Claude CLI task ID for syncing")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

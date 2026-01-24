@@ -133,12 +133,8 @@ class AsyncTicketExecutor:
                             project_id,
                             conversation_id
                         )
-
-                        # If CLI failed, broadcast fallback prompt
-                        if result.get('status') in ['error', 'failed'] and result.get('cli_error'):
-                            await self._broadcast_fallback_prompt(
-                                ticket_id, conversation_id, result.get('error', 'CLI execution failed')
-                            )
+                        # CLI mode is strict - no fallback to API mode
+                        # If CLI fails, the ticket will be marked as blocked/failed
                     else:
                         result = await loop.run_in_executor(
                             self._thread_pool,

@@ -158,6 +158,7 @@ class TicketLogsConsumer(AsyncWebsocketConsumer):
         status = event.get('status')
         ticket_id = event.get('ticket_id')
         queue_status = event.get('queue_status')  # May be None
+        error_reason = event.get('error_reason')  # May be None
 
         # Send to WebSocket client
         message = {
@@ -167,10 +168,12 @@ class TicketLogsConsumer(AsyncWebsocketConsumer):
         }
         if queue_status is not None:
             message['queue_status'] = queue_status
+        if error_reason is not None:
+            message['error_reason'] = error_reason
 
         await self.send(text_data=json.dumps(message))
 
-        logger.info(f"Sent status update to client for ticket {self.ticket_id}: status={status}, queue_status={queue_status}")
+        logger.info(f"Sent status update to client for ticket {self.ticket_id}: status={status}, queue_status={queue_status}, error={error_reason[:30] if error_reason else None}")
 
     @database_sync_to_async
     def verify_ticket_access(self):

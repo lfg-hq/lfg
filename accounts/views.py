@@ -1693,26 +1693,49 @@ def claude_code_start_auth(request):
             import time
             time.sleep(3)
 
+        # Kill any existing claude processes first
+        logger.info(f"[CLAUDE_CODE] Killing any existing claude processes...")
+        _run_magpie_ssh(
+            client, workspace_id,
+            "pkill -9 claude 2>/dev/null; pkill -9 expect 2>/dev/null; rm -f /tmp/claude_*.txt /tmp/claude_*.log 2>/dev/null; echo 'CLEANUP_DONE'",
+            timeout=15, with_node_env=False
+        )
+
         # Try to restore existing auth from S3 first
         profile = request.user.profile
-        if profile.claude_code_s3_key:
-            restore_result = restore_claude_auth_from_s3(
-                workspace_id, request.user.id, profile.claude_code_s3_key
-            )
-            if restore_result.get('status') == 'success':
-                # Auth restored, verify it works
-                from factory.claude_code_utils import check_claude_auth_status
-                check_result = check_claude_auth_status(workspace_id)
-                if check_result.get('authenticated'):
-                    # Update DB to reflect authenticated state
-                    profile.claude_code_authenticated = True
-                    profile.save(update_fields=['claude_code_authenticated'])
-                    return JsonResponse({
-                        'status': 'already_authenticated',
-                        'message': 'Claude Code authentication restored from backup'
-                    })
+        from factory.claude_code_utils import check_claude_auth_status
 
-        # Start the authentication flow
+        # Try S3 restore - use profile key if set, otherwise try default path
+        s3_key = profile.claude_code_s3_key or f"claude-auth/{request.user.id}/claude-config.tar.gz"
+        logger.info(f"[CLAUDE_CODE] Attempting to restore from S3: {s3_key}")
+
+        restore_result = restore_claude_auth_from_s3(
+            workspace_id, request.user.id, s3_key
+        )
+        logger.info(f"[CLAUDE_CODE] S3 restore result: {restore_result}")
+
+        if restore_result.get('status') == 'success':
+            # Auth restored, verify it works
+            logger.info(f"[CLAUDE_CODE] S3 restore successful, verifying auth...")
+            check_result = check_claude_auth_status(workspace_id)
+            logger.info(f"[CLAUDE_CODE] Auth check result: {check_result}")
+
+            if check_result.get('authenticated'):
+                # Update DB to reflect authenticated state
+                profile.claude_code_authenticated = True
+                profile.claude_code_s3_key = s3_key  # Save the key if it worked
+                profile.save(update_fields=['claude_code_authenticated', 'claude_code_s3_key'])
+                return JsonResponse({
+                    'status': 'already_authenticated',
+                    'message': 'Claude Code authentication restored from backup'
+                })
+            else:
+                logger.warning(f"[CLAUDE_CODE] S3 restore succeeded but auth check failed")
+        else:
+            logger.warning(f"[CLAUDE_CODE] S3 restore failed: {restore_result.get('error', 'unknown')}")
+
+        # Start the authentication flow (OAuth) since restore didn't work
+        logger.info(f"[CLAUDE_CODE] Starting OAuth flow...")
         auth_result = start_claude_auth(workspace_id)
 
         # If already authenticated, update DB
@@ -1910,5 +1933,188 @@ def claude_code_disconnect(request):
         logger.error(f"[CLAUDE_CODE] Disconnect error: {e}", exc_info=True)
         return JsonResponse({
             'status': 'error',
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+def claude_code_verify(request):
+    """
+    Verify Claude Code authentication by running a test command.
+    If not authenticated, try restoring from S3 first.
+    If successful, backup auth to S3 and update profile.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    from development.models import MagpieWorkspace
+    from factory.claude_code_utils import check_claude_auth_status, backup_claude_auth_to_s3, restore_claude_auth_from_s3
+
+    try:
+        profile = request.user.profile
+
+        # Get workspace
+        workspace = MagpieWorkspace.objects.filter(
+            user=request.user,
+            workspace_type='claude_auth',
+            status='ready'
+        ).first()
+
+        if not workspace:
+            # Try to create a workspace if we have S3 backup
+            if profile.claude_code_s3_key:
+                logger.info(f"[CLAUDE_CODE] No workspace but have S3 backup, creating workspace...")
+                from factory.ai_functions import get_magpie_client, MAGPIE_BOOTSTRAP_SCRIPT
+                client = get_magpie_client()
+
+                # Create new workspace
+                create_result = client.jobs.create(
+                    name=f"claude-auth-{request.user.id}",
+                    command=MAGPIE_BOOTSTRAP_SCRIPT,
+                    wait_for_ready=True,
+                    timeout=300
+                )
+                workspace_id = create_result.get('run_id')
+
+                if workspace_id:
+                    # Save workspace to DB
+                    workspace = MagpieWorkspace.objects.create(
+                        user=request.user,
+                        workspace_id=workspace_id,
+                        workspace_type='claude_auth',
+                        status='ready'
+                    )
+                    logger.info(f"[CLAUDE_CODE] Created workspace {workspace_id}")
+
+                    # Wait for workspace to be ready
+                    import time
+                    time.sleep(3)
+                else:
+                    return JsonResponse({
+                        'status': 'error',
+                        'authenticated': False,
+                        'error': 'Failed to create workspace'
+                    })
+            else:
+                return JsonResponse({
+                    'status': 'error',
+                    'authenticated': False,
+                    'error': 'No active workspace and no backup available'
+                })
+
+        workspace_id = workspace.workspace_id
+
+        # Kill any existing claude processes first
+        from factory.ai_functions import get_magpie_client, _run_magpie_ssh, MAGPIE_BOOTSTRAP_SCRIPT
+        client = get_magpie_client()
+
+        # Test if workspace is accessible
+        try:
+            logger.info(f"[CLAUDE_CODE] Testing workspace accessibility...")
+            test_result = _run_magpie_ssh(
+                client, workspace_id,
+                "echo 'WORKSPACE_OK'",
+                timeout=15, with_node_env=False
+            )
+            if test_result.get('exit_code') != 0 or 'WORKSPACE_OK' not in test_result.get('stdout', ''):
+                raise Exception("Workspace not responding")
+        except Exception as e:
+            logger.warning(f"[CLAUDE_CODE] Workspace {workspace_id} not accessible: {e}, creating new one...")
+
+            # Mark old workspace as error
+            workspace.status = 'error'
+            workspace.save(update_fields=['status'])
+
+            # Create new workspace
+            workspace_name = f"claude-auth-{request.user.id}"
+            vm_handle = client.jobs.create_persistent_vm(
+                name=workspace_name,
+                script=MAGPIE_BOOTSTRAP_SCRIPT,
+                stateful=True,
+                workspace_size_gb=5,
+                vcpus=1,
+                memory_mb=1024,
+                poll_timeout=120,
+                poll_interval=5,
+            )
+
+            workspace_id = vm_handle.request_id
+            ipv6 = vm_handle.ip_address
+
+            if not workspace_id:
+                return JsonResponse({
+                    'status': 'error',
+                    'authenticated': False,
+                    'error': 'Failed to create new workspace'
+                })
+
+            # Delete old workspace record and create new one
+            MagpieWorkspace.objects.filter(user=request.user, workspace_type='claude_auth').delete()
+            workspace = MagpieWorkspace.objects.create(
+                user=request.user,
+                workspace_type='claude_auth',
+                job_id=workspace_id,
+                workspace_id=workspace_id,
+                ipv6_address=ipv6,
+                status='ready'
+            )
+            logger.info(f"[CLAUDE_CODE] Created new workspace {workspace_id}")
+
+            # Wait for workspace to be ready
+            import time
+            time.sleep(3)
+
+        logger.info(f"[CLAUDE_CODE] Cleaning up existing processes...")
+        _run_magpie_ssh(
+            client, workspace_id,
+            "pkill -9 claude 2>/dev/null; pkill -9 expect 2>/dev/null; rm -f /tmp/claude_*.txt /tmp/claude_*.log 2>/dev/null; echo 'CLEANUP_DONE'",
+            timeout=15, with_node_env=False
+        )
+
+        # Run test command first
+        logger.info(f"[CLAUDE_CODE] Verifying auth for user {request.user.id}")
+        check_result = check_claude_auth_status(workspace_id)
+
+        # If not authenticated, try to restore from S3
+        if not check_result.get('authenticated'):
+            # Try S3 restore - use profile key if set, otherwise try default path
+            s3_key = profile.claude_code_s3_key or f"claude-auth/{request.user.id}/claude-config.tar.gz"
+            logger.info(f"[CLAUDE_CODE] Not authenticated, trying to restore from S3: {s3_key}")
+            restore_result = restore_claude_auth_from_s3(workspace_id, request.user.id, s3_key)
+
+            if restore_result.get('status') == 'success':
+                # Check again after restore
+                check_result = check_claude_auth_status(workspace_id)
+                logger.info(f"[CLAUDE_CODE] After restore, authenticated: {check_result.get('authenticated')}")
+
+        if check_result.get('authenticated'):
+            # Backup to S3 (refresh the backup)
+            backup_result = backup_claude_auth_to_s3(workspace_id, request.user.id)
+
+            # Update profile
+            profile.claude_code_authenticated = True
+            if backup_result.get('status') == 'success':
+                profile.claude_code_s3_key = backup_result.get('s3_key')
+            profile.save(update_fields=['claude_code_authenticated', 'claude_code_s3_key'])
+
+            logger.info(f"[CLAUDE_CODE] User {request.user.id} verified and backed up")
+
+            return JsonResponse({
+                'status': 'success',
+                'authenticated': True,
+                'backed_up': backup_result.get('status') == 'success'
+            })
+        else:
+            return JsonResponse({
+                'status': 'not_authenticated',
+                'authenticated': False,
+                'message': 'Claude Code is not authenticated. Please reconnect.'
+            })
+
+    except Exception as e:
+        logger.error(f"[CLAUDE_CODE] Verify error: {e}", exc_info=True)
+        return JsonResponse({
+            'status': 'error',
+            'authenticated': False,
             'error': str(e)
         }, status=500)

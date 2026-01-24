@@ -751,31 +751,82 @@ class ProjectTicketViewSet(viewsets.ReadOnlyModelViewSet):
             # Set AI processing flag BEFORE queuing to prevent race conditions
             cache.set(ai_processing_key, True, timeout=1800)  # 30 minutes
 
-            from tasks.task_manager import TaskManager
+            # Check if user has CLI mode enabled
+            from accounts.models import ApplicationState, Profile as AccountProfile
+            app_state = ApplicationState.objects.filter(user=request.user).first()
+            profile = AccountProfile.objects.filter(user=request.user).first()
 
-            # Queue the ticket continuation with the user's message and attachment IDs
-            task_id = TaskManager.publish_task(
-                'tasks.task_definitions.continue_ticket_with_message',
-                ticket.id,
-                project.id,
-                message or f"User attached files: {', '.join(attachment_names)}",
-                request.user.id,
-                attachment_ids=attachment_ids,  # Pass attachment IDs as keyword arg
-                task_name=f"Ticket #{ticket.id} chat continuation",
-                group=f'project_{project.id}',
-                timeout=3600  # 1 hour timeout
+            cli_mode_enabled = (
+                app_state and app_state.claude_code_enabled and
+                profile and profile.claude_code_authenticated
             )
 
-            logger.info(f"[TICKET CHAT] Queued continuation task {task_id} for ticket {ticket.id}")
+            logger.info(f"[TICKET CHAT] CLI mode check: enabled={cli_mode_enabled}, "
+                       f"app_state.claude_code_enabled={getattr(app_state, 'claude_code_enabled', None)}, "
+                       f"profile.claude_code_authenticated={getattr(profile, 'claude_code_authenticated', None)}")
 
-            return Response({
-                'status': 'queued',
-                'message': 'Your message has been sent. The agent will process it shortly.',
-                'ticket_id': ticket.id,
-                'task_id': task_id,
-                'log_id': user_log.id,
-                'attachments': attachment_ids
-            }, status=status.HTTP_200_OK)
+            if cli_mode_enabled:
+                # Use Claude CLI for chat
+                import threading
+                from tasks.task_definitions import execute_ticket_chat_cli
+
+                session_id = ticket.cli_session_id  # May be None for new conversation
+
+                def run_cli_chat():
+                    try:
+                        execute_ticket_chat_cli(
+                            ticket_id=ticket.id,
+                            project_id=project.id,
+                            conversation_id=ticket.id,  # Use ticket_id as conversation_id
+                            message=message or f"User attached files: {', '.join(attachment_names)}",
+                            session_id=session_id
+                        )
+                    except Exception as e:
+                        logger.error(f"[TICKET CHAT] CLI chat error: {e}", exc_info=True)
+                    finally:
+                        # Clear processing flag when done
+                        cache.delete(ai_processing_key)
+
+                thread = threading.Thread(target=run_cli_chat, daemon=True)
+                thread.start()
+
+                logger.info(f"[TICKET CHAT] Started CLI chat thread for ticket {ticket.id}, session={session_id}")
+
+                return Response({
+                    'status': 'queued',
+                    'message': 'Your message has been sent to Claude CLI.',
+                    'ticket_id': ticket.id,
+                    'mode': 'cli_resume' if session_id else 'cli_new',
+                    'log_id': user_log.id,
+                    'attachments': attachment_ids
+                }, status=status.HTTP_200_OK)
+            else:
+                # Use standard API method (qcluster task queue)
+                from tasks.task_manager import TaskManager
+
+                # Queue the ticket continuation with the user's message and attachment IDs
+                task_id = TaskManager.publish_task(
+                    'tasks.task_definitions.continue_ticket_with_message',
+                    ticket.id,
+                    project.id,
+                    message or f"User attached files: {', '.join(attachment_names)}",
+                    request.user.id,
+                    attachment_ids=attachment_ids,  # Pass attachment IDs as keyword arg
+                    task_name=f"Ticket #{ticket.id} chat continuation",
+                    group=f'project_{project.id}',
+                    timeout=3600  # 1 hour timeout
+                )
+
+                logger.info(f"[TICKET CHAT] Queued continuation task {task_id} for ticket {ticket.id}")
+
+                return Response({
+                    'status': 'queued',
+                    'message': 'Your message has been sent. The agent will process it shortly.',
+                    'ticket_id': ticket.id,
+                    'task_id': task_id,
+                    'log_id': user_log.id,
+                    'attachments': attachment_ids
+                }, status=status.HTTP_200_OK)
 
         except Exception as e:
             logger.error(f"[TICKET CHAT] Error queuing chat message: {str(e)}", exc_info=True)
