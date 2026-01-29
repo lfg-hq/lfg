@@ -1790,11 +1790,14 @@ def claude_code_submit_code(request):
         workspace_id = workspace.workspace_id
 
         # Submit the auth code
+        logger.info(f"[CLAUDE_CODE] Submitting auth code for user {request.user.id}, workspace {workspace_id}")
         result = submit_claude_auth_code(workspace_id, auth_code)
+        logger.info(f"[CLAUDE_CODE] Submit result: {result.get('status')}")
 
         if result.get('status') == 'success':
             # Verify authentication worked
             check_result = check_claude_auth_status(workspace_id)
+            logger.info(f"[CLAUDE_CODE] Auth check result: authenticated={check_result.get('authenticated')}")
 
             if check_result.get('authenticated'):
                 # Backup auth to S3
@@ -1802,10 +1805,22 @@ def claude_code_submit_code(request):
 
                 # Update user profile
                 profile = request.user.profile
+                logger.info(f"[CLAUDE_CODE] Setting profile.claude_code_authenticated=True for user {request.user.id}")
                 profile.claude_code_authenticated = True
                 if backup_result.get('status') == 'success':
                     profile.claude_code_s3_key = backup_result.get('s3_key')
                 profile.save(update_fields=['claude_code_authenticated', 'claude_code_s3_key'])
+                logger.info(f"[CLAUDE_CODE] Profile saved - claude_code_authenticated=True for user {request.user.id}")
+
+                # Clear CLI session IDs and workspace IDs for all user's tickets to prevent stale session auth
+                # When OAuth is refreshed, old sessions may have cached invalid tokens
+                from projects.models import ProjectTicket
+                cleared_count = ProjectTicket.objects.filter(
+                    project__owner=request.user,
+                    cli_session_id__isnull=False
+                ).update(cli_session_id=None, cli_workspace_id=None)
+                if cleared_count > 0:
+                    logger.info(f"[CLAUDE_CODE] Cleared {cleared_count} CLI session IDs and workspace IDs after auth refresh for user {request.user.id}")
 
                 return JsonResponse({
                     'status': 'success',
@@ -2096,6 +2111,15 @@ def claude_code_verify(request):
             if backup_result.get('status') == 'success':
                 profile.claude_code_s3_key = backup_result.get('s3_key')
             profile.save(update_fields=['claude_code_authenticated', 'claude_code_s3_key'])
+
+            # Clear CLI session IDs and workspace IDs for all user's tickets to prevent stale session auth
+            from projects.models import ProjectTicket
+            cleared_count = ProjectTicket.objects.filter(
+                project__owner=request.user,
+                cli_session_id__isnull=False
+            ).update(cli_session_id=None, cli_workspace_id=None)
+            if cleared_count > 0:
+                logger.info(f"[CLAUDE_CODE] Cleared {cleared_count} CLI session IDs and workspace IDs after verify for user {request.user.id}")
 
             logger.info(f"[CLAUDE_CODE] User {request.user.id} verified and backed up")
 

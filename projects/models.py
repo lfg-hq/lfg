@@ -490,6 +490,12 @@ class ProjectTicket(models.Model):
         blank=True,
         help_text='Claude Code CLI session ID for resuming conversations'
     )
+    cli_workspace_id = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        help_text='Workspace ID where the CLI session was created'
+    )
 
     def __str__(self):
         return f"{self.project.name} - {self.name}"

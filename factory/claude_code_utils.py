@@ -252,7 +252,8 @@ def restore_claude_auth_from_s3(workspace_id: str, user_id: int, s3_key: str = N
 
         echo "Extracting to /root/.claude..."
         rm -rf /root/.claude
-        tar -xzf /tmp/claude-auth.tar.gz -C /root
+        # Use verbose mode and continue on errors for debugging
+        tar -xzvf /tmp/claude-auth.tar.gz -C /root 2>&1 | tail -20 || echo "TAR_HAD_WARNINGS"
 
         if [ -d /root/.claude ]; then
             echo "RESTORE_SUCCESS"
@@ -272,12 +273,15 @@ def restore_claude_auth_from_s3(workspace_id: str, user_id: int, s3_key: str = N
         )
 
         stdout = extract_result.get('stdout', '')
+        stderr = extract_result.get('stderr', '')
         logger.info(f"[CLAUDE_AUTH] Restore output: {stdout[:500]}")
+        if stderr:
+            logger.warning(f"[CLAUDE_AUTH] Restore stderr: {stderr[:500]}")
 
         if extract_result.get('exit_code') != 0 or 'RESTORE_SUCCESS' not in stdout:
             return {
                 'status': 'error',
-                'error': f"Failed to restore: {stdout[:200]}"
+                'error': f"Failed to restore: {stdout[:200]} stderr: {stderr[:200]}"
             }
 
         logger.info(f"[CLAUDE_AUTH] Successfully restored Claude auth from S3")
@@ -835,12 +839,19 @@ def check_claude_auth_status(workspace_id: str) -> Dict[str, Any]:
                     'message': 'Claude Code credentials found (verification skipped due to resource limits)'
                 }
 
-            # Check for common error messages
-            if 'not logged in' in stdout_lower or 'authenticate' in stdout_lower or 'oauth' in stdout_lower:
+            # Check for common error messages including token expiration
+            if ('not logged in' in stdout_lower or
+                'authenticate' in stdout_lower or
+                'oauth' in stdout_lower or
+                'expired' in stdout_lower or
+                'authentication_error' in stdout_lower or
+                'please run /login' in stdout_lower):
+                logger.warning(f"[CLAUDE_AUTH] Auth error detected in output: {stdout[:300]}")
                 return {
                     'status': 'success',
                     'authenticated': False,
-                    'message': 'Claude Code is not authenticated'
+                    'message': 'Claude Code token expired or invalid. Please reconnect.',
+                    'token_expired': True
                 }
 
             # If we have credentials but couldn't verify, assume authenticated
@@ -970,7 +981,7 @@ echo "PROMPT_WRITTEN"
         if ! id -u claudeuser > /dev/null 2>&1; then
             # Try useradd (Debian/Ubuntu) first, then adduser (Alpine)
             useradd -m -s /bin/bash claudeuser 2>/dev/null || \
-            adduser -D -s /bin/bash claudeuser 2>/dev/null || \
+            adduser -D -h /home/claudeuser -s /bin/bash claudeuser 2>/dev/null || \
             echo "Warning: Could not create claudeuser"
         fi
 
@@ -980,12 +991,53 @@ echo "PROMPT_WRITTEN"
             exit 1
         fi
 
-        # Copy Claude credentials to claudeuser's home
+        # Ensure home directory exists (Alpine adduser may not create it)
+        if [ ! -d /home/claudeuser ]; then
+            mkdir -p /home/claudeuser
+            chown claudeuser:claudeuser /home/claudeuser
+        fi
+
+        # Sync Claude credentials to claudeuser's home
+        # IMPORTANT: Only sync credentials file, NOT the entire directory (to preserve session data)
         if [ -d /root/.claude ]; then
-            cp -r /root/.claude /home/claudeuser/.claude 2>/dev/null || true
-            chown -R claudeuser:claudeuser /home/claudeuser/.claude 2>/dev/null || true
-            # Also make the binary executable if it exists
+            # Sync filesystem to ensure any pending credential writes are flushed
+            sync 2>/dev/null || true
+
+            # Create .claude directory if it doesn't exist
+            mkdir -p /home/claudeuser/.claude
+            chown claudeuser:claudeuser /home/claudeuser/.claude
+
+            # Copy only the credentials file (preserves existing session data)
+            if [ -f /root/.claude/.credentials.json ]; then
+                cp /root/.claude/.credentials.json /home/claudeuser/.claude/.credentials.json
+                chown claudeuser:claudeuser /home/claudeuser/.claude/.credentials.json
+            fi
+
+            # Copy settings if they exist
+            if [ -f /root/.claude/settings.json ]; then
+                cp /root/.claude/settings.json /home/claudeuser/.claude/settings.json
+                chown claudeuser:claudeuser /home/claudeuser/.claude/settings.json
+            fi
+
+            # Copy local binary directory if it exists (but don't overwrite if already there)
+            if [ -d /root/.claude/local ] && [ ! -d /home/claudeuser/.claude/local ]; then
+                cp -r /root/.claude/local /home/claudeuser/.claude/local
+                chown -R claudeuser:claudeuser /home/claudeuser/.claude/local
+            fi
+
+            # Make the binary executable if it exists
             chmod +x /home/claudeuser/.claude/local/claude 2>/dev/null || true
+
+            # Verify credentials were copied correctly
+            if [ ! -f /home/claudeuser/.claude/.credentials.json ]; then
+                echo "ERROR: Credentials file not found after copy"
+                exit 1
+            fi
+
+            echo "CREDENTIALS_SYNCED_OK"
+        else
+            echo "ERROR: No credentials found at /root/.claude"
+            exit 1
         fi
 
         # Give claudeuser access to workspace
@@ -1072,6 +1124,24 @@ WRAPPEREOF
             return {
                 'status': 'error',
                 'error': 'Could not create non-root user for Claude CLI execution.'
+            }
+
+        if 'ERROR: Failed to copy credentials' in start_stdout:
+            return {
+                'status': 'error',
+                'error': 'Failed to copy Claude credentials. Please try reconnecting Claude Code in Settings.'
+            }
+
+        if 'ERROR: Credentials file not found' in start_stdout:
+            return {
+                'status': 'error',
+                'error': 'Claude credentials not found after copy. Please reconnect Claude Code in Settings.'
+            }
+
+        if 'ERROR: No credentials found' in start_stdout:
+            return {
+                'status': 'error',
+                'error': 'No Claude credentials found. Please connect Claude Code in Settings first.'
             }
 
         if 'STARTED_PID=' not in start_stdout:

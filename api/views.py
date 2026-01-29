@@ -765,6 +765,17 @@ class ProjectTicketViewSet(viewsets.ReadOnlyModelViewSet):
                        f"app_state.claude_code_enabled={getattr(app_state, 'claude_code_enabled', None)}, "
                        f"profile.claude_code_authenticated={getattr(profile, 'claude_code_authenticated', None)}")
 
+            # Check if user has CLI mode enabled but not authenticated - block with error
+            if app_state and app_state.claude_code_enabled and profile and not profile.claude_code_authenticated:
+                logger.warning(f"[TICKET CHAT] CLI mode enabled but not authenticated - blocking request")
+                # Clear the processing flag since we're not actually processing
+                cache.delete(ai_processing_key)
+                return Response({
+                    'status': 'error',
+                    'error': 'Claude Code session expired. Please go to Settings > Claude Code and reconnect.',
+                    'auth_expired': True
+                }, status=status.HTTP_401_UNAUTHORIZED)
+
             if cli_mode_enabled:
                 # Use Claude CLI for chat
                 import threading
