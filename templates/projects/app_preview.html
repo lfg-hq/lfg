@@ -484,6 +484,11 @@
         font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
         font-size: 0.8rem;
         background: #0a0a0a;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+    }
+    .server-logs-content::-webkit-scrollbar {
+        display: none;
     }
 
     .server-logs-placeholder {
@@ -587,6 +592,11 @@
         font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
         font-size: 0.75rem;
         line-height: 1.4;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+    }
+    .console-logs::-webkit-scrollbar {
+        display: none;
     }
 
     .console-placeholder {
@@ -1135,6 +1145,457 @@
         margin-bottom: 0 !important;
         opacity: 1 !important;
     }
+
+    /* Ticket selector dropdown */
+    .ticket-selector {
+        position: relative;
+    }
+
+    .ticket-selector-toggle {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 0.75rem;
+        background: var(--surface-primary);
+        border: 1px solid var(--border-color);
+        color: var(--text-secondary);
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s;
+        max-width: 250px;
+        font-size: 0.8rem;
+    }
+
+    .ticket-selector-toggle:hover {
+        background: var(--surface-secondary);
+        color: var(--text-primary);
+    }
+
+    .ticket-selector-toggle .ticket-label {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 180px;
+    }
+
+    .ticket-selector-menu {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        margin-top: 4px;
+        background: var(--surface-secondary, #1a1a1a);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        min-width: 300px;
+        max-height: 400px;
+        overflow-y: auto;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+        z-index: 1000;
+        display: none;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .ticket-selector-menu::-webkit-scrollbar {
+        display: none;
+    }
+
+    .ticket-selector-menu.show {
+        display: block;
+    }
+
+    .ticket-selector-item {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        padding: 0.75rem 1rem;
+        border: none;
+        background: transparent;
+        color: var(--text-primary);
+        cursor: pointer;
+        width: 100%;
+        text-align: left;
+        transition: all 0.2s;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .ticket-selector-item:last-child {
+        border-bottom: none;
+    }
+
+    .ticket-selector-item:hover {
+        background: var(--surface-primary);
+    }
+
+    .ticket-selector-item.active {
+        background: rgba(139, 92, 246, 0.1);
+        border-left: 3px solid var(--accent-purple);
+    }
+
+    .ticket-selector-item .ticket-id {
+        font-size: 0.7rem;
+        color: var(--text-secondary);
+        font-family: monospace;
+    }
+
+    .ticket-selector-item .ticket-name {
+        font-size: 0.85rem;
+        font-weight: 500;
+    }
+
+    .ticket-selector-item .ticket-branch {
+        font-size: 0.7rem;
+        color: var(--accent-purple);
+        font-family: monospace;
+    }
+
+    .ticket-selector-clear {
+        padding: 0.5rem 1rem;
+        color: var(--text-secondary);
+        font-size: 0.8rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .ticket-selector-clear:hover {
+        color: #ef4444;
+    }
+
+    /* Hidden scrollbar utility - scrollable but no visible scrollbar */
+    .hidden-scrollbar {
+        scrollbar-width: none; /* Firefox */
+        -ms-overflow-style: none; /* IE/Edge */
+    }
+    .hidden-scrollbar::-webkit-scrollbar {
+        display: none; /* Chrome/Safari */
+    }
+
+    /* Chat panel */
+    .preview-chat-panel {
+        position: fixed;
+        right: 0;
+        top: 0;
+        width: 420px;
+        min-width: 320px;
+        max-width: 60vw;
+        height: 100vh;
+        background: var(--surface-secondary, #1a1a1a);
+        border-left: 1px solid var(--border-color);
+        display: flex;
+        flex-direction: column;
+        z-index: 1001;
+        transform: translateX(100%);
+        transition: transform 0.3s ease;
+    }
+
+    .preview-chat-panel.open {
+        transform: translateX(0);
+    }
+
+    .preview-chat-panel.resizing {
+        transition: none;
+        user-select: none;
+    }
+
+    /* Resize handle on left edge */
+    .panel-resize-handle {
+        position: absolute;
+        left: -3px;
+        top: 0;
+        width: 6px;
+        height: 100%;
+        cursor: col-resize;
+        z-index: 10;
+        background: transparent;
+        transition: background 0.2s;
+    }
+
+    .panel-resize-handle:hover,
+    .panel-resize-handle.active {
+        background: var(--accent-purple, #8B5CF6);
+        opacity: 0.6;
+    }
+
+    .chat-panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid var(--border-color);
+        flex-shrink: 0;
+    }
+
+    .chat-panel-header h3 {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--text-primary);
+    }
+
+    .chat-panel-close {
+        padding: 0.5rem;
+        background: transparent;
+        border: none;
+        color: var(--text-secondary);
+        cursor: pointer;
+        border-radius: 4px;
+    }
+
+    .chat-panel-close:hover {
+        background: var(--surface-primary);
+        color: var(--text-primary);
+    }
+
+    /* Panel logs container */
+    .panel-logs-container {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1rem 1.25rem;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+    }
+    .panel-logs-container::-webkit-scrollbar {
+        display: none;
+    }
+
+    /* Log entries in panel */
+    .panel-logs-container .execution-log-entry {
+        padding: 0.875rem 1rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        font-size: 0.825rem;
+        margin-bottom: 0.25rem;
+    }
+
+    .panel-logs-container .execution-log-entry:last-child {
+        border-bottom: none;
+    }
+
+    .panel-logs-container .execution-log-entry.user-message {
+        background: rgba(139, 92, 246, 0.08);
+        border-left: 3px solid #8B5CF6;
+        border-radius: 6px;
+        padding-left: 1rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .panel-logs-container .execution-log-entry.ai-response {
+        background: rgba(34, 197, 94, 0.04);
+        border-left: 3px solid #22c55e;
+        border-radius: 6px;
+        padding-left: 1rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .panel-logs-container .ai-response-content {
+        margin-top: 0.625rem;
+        line-height: 1.65;
+        color: var(--text-primary);
+        font-size: 0.825rem;
+    }
+
+    .panel-logs-container .ai-response-content code {
+        background: var(--surface-primary);
+        padding: 0.15rem 0.4rem;
+        border-radius: 3px;
+        font-size: 0.8rem;
+    }
+
+    .panel-logs-container .ai-response-content pre {
+        background: var(--surface-primary);
+        padding: 0.75rem;
+        border-radius: 6px;
+        overflow-x: auto;
+        margin: 0.625rem 0;
+        font-size: 0.75rem;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+    }
+    .panel-logs-container .ai-response-content pre::-webkit-scrollbar {
+        display: none;
+    }
+
+    .panel-logs-container .ai-response-content ol,
+    .panel-logs-container .ai-response-content ul {
+        padding-left: 1.25rem;
+        margin: 0.5rem 0;
+    }
+
+    .panel-logs-container .ai-response-content strong {
+        color: var(--text-primary);
+    }
+
+    .panel-logs-container .log-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.75rem;
+    }
+
+    .panel-logs-container .log-timestamp {
+        font-size: 0.7rem;
+        color: var(--text-secondary);
+        opacity: 0.7;
+    }
+
+    .panel-logs-container .log-explanation {
+        color: var(--text-primary);
+        font-size: 0.825rem;
+        line-height: 1.5;
+    }
+
+    .panel-logs-container .execution-log-entry.collapsed .log-details {
+        display: none;
+    }
+
+    .panel-logs-container .log-command {
+        background: var(--surface-primary);
+        padding: 0.625rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        margin-top: 0.5rem;
+        overflow-x: auto;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+    }
+    .panel-logs-container .log-command::-webkit-scrollbar {
+        display: none;
+    }
+
+    .panel-logs-container .log-output {
+        background: var(--surface-primary);
+        padding: 0.625rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        margin-top: 0.375rem;
+        overflow-x: auto;
+        max-height: 200px;
+        overflow-y: auto;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+    }
+    .panel-logs-container .log-output::-webkit-scrollbar {
+        display: none;
+    }
+
+    /* Chat input area at bottom */
+    .panel-chat-container {
+        border-top: 1px solid var(--border-color);
+        padding: 1rem 1.25rem;
+        flex-shrink: 0;
+    }
+
+    .panel-chat-field {
+        display: flex;
+        align-items: flex-end;
+        gap: 0.5rem;
+        background: var(--surface-primary);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 0.625rem;
+        transition: border-color 0.2s;
+    }
+
+    .panel-chat-field:focus-within {
+        border-color: var(--accent-purple);
+    }
+
+    .panel-chat-input {
+        flex: 1;
+        background: transparent;
+        border: none;
+        color: var(--text-primary);
+        font-size: 0.85rem;
+        resize: none;
+        min-height: 24px;
+        max-height: 120px;
+        outline: none;
+        font-family: inherit;
+    }
+
+    .panel-chat-send-btn {
+        padding: 0.4rem 0.6rem;
+        background: var(--accent-purple);
+        border: none;
+        border-radius: 6px;
+        color: white;
+        cursor: pointer;
+        transition: all 0.2s;
+        flex-shrink: 0;
+    }
+
+    .panel-chat-send-btn:hover {
+        background: #7c3aed;
+    }
+
+    .panel-chat-send-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    /* Typing indicator */
+    .panel-typing-indicator {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 0.75rem;
+        color: var(--accent-purple);
+        font-size: 0.8rem;
+    }
+
+    .panel-typing-dots span {
+        display: inline-block;
+        width: 4px;
+        height: 4px;
+        border-radius: 50%;
+        background: var(--accent-purple);
+        animation: panelTypingDot 1.4s infinite both;
+    }
+
+    .panel-typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .panel-typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes panelTypingDot {
+        0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+        40% { opacity: 1; transform: scale(1); }
+    }
+
+    /* Chat toggle button */
+    .chat-toggle-btn {
+        padding: 0.5rem 0.75rem;
+        background: transparent;
+        border: 1px solid var(--border-color);
+        color: var(--text-secondary);
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .chat-toggle-btn:hover {
+        background: var(--surface-secondary);
+        color: var(--text-primary);
+    }
+
+    .chat-toggle-btn.active {
+        background: var(--accent-purple);
+        color: white;
+        border-color: var(--accent-purple);
+    }
+
+    .chat-toggle-btn .badge {
+        background: #ef4444;
+        color: white;
+        font-size: 0.65rem;
+        padding: 0.1rem 0.35rem;
+        border-radius: 10px;
+        min-width: 16px;
+        text-align: center;
+    }
+
+    /* Adjust preview container when chat is open */
+    .preview-page-container.chat-open .preview-iframe-container {
+        margin-right: var(--panel-width, 420px);
+    }
 </style>
 {% endblock %}
 
@@ -1147,6 +1608,41 @@
         <div class="server-status">
             <span class="status-dot" id="serverStatusDot"></span>
             <span class="status-text" id="serverStatusText">Checking...</span>
+        </div>
+
+        <!-- Ticket Selector -->
+        <div class="ticket-selector">
+            <button class="ticket-selector-toggle" onclick="toggleTicketSelector()" id="ticketSelectorToggle">
+                <i class="fas fa-code-branch"></i>
+                <span class="ticket-label" id="ticketSelectorLabel">
+                    {% if preview_ticket %}
+                        TKT-{{ preview_ticket.id }}: {{ preview_ticket.name|truncatechars:25 }}
+                    {% else %}
+                        Select Ticket
+                    {% endif %}
+                </span>
+                <i class="fas fa-caret-down"></i>
+            </button>
+            <div class="ticket-selector-menu" id="ticketSelectorMenu">
+                <button class="ticket-selector-item ticket-selector-clear" onclick="clearPreviewTicket()">
+                    <i class="fas fa-times"></i> Clear Selection (use lfg-agent)
+                </button>
+                {% for ticket in tickets %}
+                <button class="ticket-selector-item {% if preview_ticket and preview_ticket.id == ticket.id %}active{% endif %}"
+                        onclick="selectPreviewTicket({{ ticket.id }}, '{{ ticket.name|escapejs }}', '{{ ticket.github_branch|default:'' }}')"
+                        data-ticket-id="{{ ticket.id }}">
+                    <span class="ticket-id">TKT-{{ ticket.id }}</span>
+                    <span class="ticket-name">{{ ticket.name|truncatechars:40 }}</span>
+                    {% if ticket.github_branch %}
+                    <span class="ticket-branch"><i class="fas fa-code-branch"></i> {{ ticket.github_branch }}</span>
+                    {% endif %}
+                </button>
+                {% empty %}
+                <div class="ticket-selector-item" style="color: var(--text-secondary); cursor: default;">
+                    No tickets available
+                </div>
+                {% endfor %}
+            </div>
         </div>
 
         <!-- URL Bar -->
@@ -1199,6 +1695,12 @@
         <button class="console-toggle-btn" onclick="toggleConsole()" title="Toggle Console" id="consoleToggleBtn">
             <i class="fas fa-terminal"></i>
             <span class="console-badge" id="consoleBadge" style="display: none;">0</span>
+        </button>
+
+        <!-- Chat Toggle -->
+        <button class="chat-toggle-btn" onclick="toggleChatPanel()" title="Chat with AI" id="chatToggleBtn" {% if not preview_ticket %}disabled{% endif %}>
+            <i class="fas fa-comments"></i>
+            <span>Chat</span>
         </button>
 
         <!-- Open in New Tab -->
@@ -1425,9 +1927,49 @@
         </form>
     </div>
 </div>
+
+<!-- Actions Panel -->
+<div class="preview-chat-panel" id="chatPanel">
+    <div class="panel-resize-handle" id="panelResizeHandle"></div>
+    <div class="chat-panel-header">
+        <h3 id="chatPanelTitle">
+            {% if preview_ticket %}
+                TKT-{{ preview_ticket.id }}: Actions
+            {% else %}
+                Actions
+            {% endif %}
+        </h3>
+        <button class="chat-panel-close" onclick="toggleChatPanel()">
+            <i class="fas fa-times"></i>
+        </button>
+    </div>
+    <div class="panel-logs-container" id="panelLogsContainer">
+        <p class="no-logs-message" style="color: var(--text-secondary); font-size: 0.875rem; padding: 1rem;">Select a ticket to see actions and chat.</p>
+    </div>
+    <div class="panel-chat-container">
+        <div id="panelTypingIndicatorSlot"></div>
+        <div class="panel-chat-input-wrapper">
+            <div class="panel-chat-field">
+                <textarea
+                    id="panelChatInput"
+                    class="panel-chat-input"
+                    placeholder="Message AI assistant..."
+                    rows="1"
+                    onkeydown="handlePanelChatKeydown(event)"
+                ></textarea>
+                <div class="panel-chat-actions">
+                    <button class="panel-chat-send-btn" id="panelChatSendBtn" onclick="sendPanelChatMessage()" title="Send message">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
+<script src="/static/js/marked.min.js"></script>
 <script>
     // Configuration
     const projectId = '{{ project.project_id }}';
@@ -1451,6 +1993,14 @@
     let progressSocket = null;
     let progressCompletedSteps = [];
     const accessToken = '{{ access_token|default:"" }}';
+
+    // Ticket and Chat State
+    const tickets = {{ tickets_json|safe }};
+    let previewTicket = {{ preview_ticket_json|safe }};
+    let chatPanelOpen = false;
+    let chatMessages = [];
+    let chatSocket = null;
+    let isChatSending = false;
 
     // DOM Elements
     const iframe = document.getElementById('previewIframe');
@@ -2020,7 +2570,500 @@
         if (dropdown && !dropdown.contains(e.target)) {
             closeServerDropdown();
         }
+
+        // Also close ticket selector
+        const ticketSelector = document.querySelector('.ticket-selector');
+        if (ticketSelector && !ticketSelector.contains(e.target)) {
+            closeTicketSelector();
+        }
     });
+
+    // Ticket Selector Functions
+    function toggleTicketSelector() {
+        const menu = document.getElementById('ticketSelectorMenu');
+        menu.classList.toggle('show');
+    }
+
+    function closeTicketSelector() {
+        const menu = document.getElementById('ticketSelectorMenu');
+        menu.classList.remove('show');
+    }
+
+    function selectPreviewTicket(ticketId, name, branch) {
+        closeTicketSelector();
+
+        // Show loading state
+        const label = document.getElementById('ticketSelectorLabel');
+        label.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Switching...';
+
+        // Call API to set preview ticket
+        fetch(`/projects/${projectId}/api/preview-ticket/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
+            body: JSON.stringify({
+                ticket_id: ticketId,
+                switch_branch: true
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                previewTicket = data.preview_ticket;
+
+                // Update UI
+                label.textContent = `TKT-${ticketId}: ${name.substring(0, 25)}${name.length > 25 ? '...' : ''}`;
+
+                // Update active state in dropdown
+                document.querySelectorAll('.ticket-selector-item').forEach(item => {
+                    item.classList.remove('active');
+                    if (item.dataset.ticketId == ticketId) {
+                        item.classList.add('active');
+                    }
+                });
+
+                // Enable chat button
+                document.getElementById('chatToggleBtn').disabled = false;
+
+                // Update panel title
+                document.getElementById('chatPanelTitle').textContent = `TKT-${ticketId}: Actions`;
+
+                // If branch was switched, restart/start server to load the new code
+                if (data.branch_switched) {
+                    showNotification('Switched to branch: ' + data.current_branch, 'success');
+                    if (isServerRunning) {
+                        restartServer();
+                    } else {
+                        startServer();
+                    }
+                } else if (data.branch_error) {
+                    showNotification('Note: ' + data.branch_error, 'warning');
+                }
+
+                // Load logs for this ticket and connect WebSocket
+                loadTicketLogs(ticketId);
+                if (chatPanelOpen) {
+                    connectPanelSocket(ticketId);
+                }
+            } else {
+                showNotification(data.error || 'Failed to set preview ticket', 'error');
+                label.textContent = 'Select Ticket';
+            }
+        })
+        .catch(error => {
+            console.error('Error setting preview ticket:', error);
+            showNotification('Failed to set preview ticket', 'error');
+            label.textContent = 'Select Ticket';
+        });
+    }
+
+    function clearPreviewTicket() {
+        closeTicketSelector();
+
+        fetch(`/projects/${projectId}/api/preview-ticket/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
+            body: JSON.stringify({
+                ticket_id: null
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                previewTicket = null;
+                document.getElementById('ticketSelectorLabel').textContent = 'Select Ticket';
+
+                // Remove active state from all items
+                document.querySelectorAll('.ticket-selector-item').forEach(item => {
+                    item.classList.remove('active');
+                });
+
+                // Disable chat button and close panel
+                document.getElementById('chatToggleBtn').disabled = true;
+                if (chatPanelOpen) {
+                    toggleChatPanel();
+                }
+
+                showNotification('Preview cleared - using lfg-agent branch', 'success');
+            }
+        })
+        .catch(error => {
+            console.error('Error clearing preview ticket:', error);
+        });
+    }
+
+    // Actions Panel Functions
+    function toggleChatPanel() {
+        const panel = document.getElementById('chatPanel');
+        const container = document.querySelector('.preview-page-container');
+        const btn = document.getElementById('chatToggleBtn');
+
+        chatPanelOpen = !chatPanelOpen;
+
+        if (chatPanelOpen) {
+            panel.classList.add('open');
+            container.classList.add('chat-open');
+            btn.classList.add('active');
+            // Sync CSS variable with current panel width
+            const panelWidth = panel.offsetWidth;
+            container.style.setProperty('--panel-width', panelWidth + 'px');
+
+            // Load logs and connect WebSocket
+            if (previewTicket) {
+                loadTicketLogs(previewTicket.id);
+                connectPanelSocket(previewTicket.id);
+            }
+        } else {
+            panel.classList.remove('open');
+            container.classList.remove('chat-open');
+            btn.classList.remove('active');
+
+            if (chatSocket) {
+                chatSocket.close();
+                chatSocket = null;
+            }
+        }
+    }
+
+    // Panel resize logic
+    (function initPanelResize() {
+        const handle = document.getElementById('panelResizeHandle');
+        const panel = document.getElementById('chatPanel');
+        const container = document.querySelector('.preview-page-container');
+        let isResizing = false;
+        let overlay = null;
+
+        handle.addEventListener('mousedown', function(e) {
+            e.preventDefault();
+            isResizing = true;
+            panel.classList.add('resizing');
+            handle.classList.add('active');
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+
+            // Add transparent overlay to prevent iframe from capturing mouse events
+            overlay = document.createElement('div');
+            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:1000;cursor:col-resize;';
+            document.body.appendChild(overlay);
+        });
+
+        document.addEventListener('mousemove', function(e) {
+            if (!isResizing) return;
+            const newWidth = window.innerWidth - e.clientX;
+            const clamped = Math.max(320, Math.min(newWidth, window.innerWidth * 0.6));
+            panel.style.width = clamped + 'px';
+            container.style.setProperty('--panel-width', clamped + 'px');
+        });
+
+        document.addEventListener('mouseup', function() {
+            if (!isResizing) return;
+            isResizing = false;
+            panel.classList.remove('resizing');
+            handle.classList.remove('active');
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+
+            // Remove overlay
+            if (overlay) {
+                overlay.remove();
+                overlay = null;
+            }
+        });
+    })();
+
+    // Helper functions for rendering
+    function panelFormatDate(dateString) {
+        if (!dateString) return '';
+        const date = new Date(dateString);
+        return date.toLocaleString('en-US', {
+            month: 'short', day: 'numeric',
+            hour: 'numeric', minute: '2-digit'
+        });
+    }
+
+    function panelEscapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function panelRenderMarkdown(content) {
+        if (!content) return '';
+        if (typeof marked !== 'undefined') {
+            try {
+                return marked.parse(content);
+            } catch (e) {
+                console.error('Markdown error:', e);
+            }
+        }
+        return `<pre>${panelEscapeHtml(content)}</pre>`;
+    }
+
+    function panelRenderLogEntry(log) {
+        const logType = log.log_type || 'command';
+        const timestamp = panelFormatDate(log.created_at);
+
+        if (logType === 'user_message') {
+            return `
+                <div class="execution-log-entry user-message" data-log-id="${log.id}">
+                    <div class="log-header">
+                        <div style="display: flex; align-items: flex-start; gap: 0.5rem; flex: 1;">
+                            <i class="fas fa-user" style="color: #8B5CF6; font-size: 0.8rem; margin-top: 3px;"></i>
+                            <div>
+                                <span style="color: #8B5CF6; font-weight: 500; font-size: 0.75rem;">You</span>
+                                <div class="log-explanation" style="margin-top: 0.25rem;">${panelEscapeHtml(log.command)}</div>
+                            </div>
+                        </div>
+                        <span class="log-timestamp">${timestamp}</span>
+                    </div>
+                </div>`;
+        } else if (logType === 'ai_response') {
+            const renderedResponse = panelRenderMarkdown(log.output || log.command || '');
+            return `
+                <div class="execution-log-entry ai-response" data-log-id="${log.id}">
+                    <div class="log-header">
+                        <span style="color: #a78bfa; font-weight: 500; font-size: 0.75rem;">🚀 Agent</span>
+                        <span class="log-timestamp">${timestamp}</span>
+                    </div>
+                    <div class="ai-response-content">${renderedResponse}</div>
+                </div>`;
+        } else if (logType === 'error') {
+            return `
+                <div class="execution-log-entry" data-log-id="${log.id}" style="border-left: 3px solid #ef4444; background: rgba(239, 68, 68, 0.08); padding-left: 0.75rem;">
+                    <div class="log-header">
+                        <div style="display: flex; align-items: flex-start; gap: 0.5rem; flex: 1;">
+                            <i class="fas fa-exclamation-circle" style="color: #ef4444; font-size: 0.8rem; margin-top: 3px;"></i>
+                            <div>
+                                <span style="color: #ef4444; font-weight: 500; font-size: 0.75rem;">${panelEscapeHtml(log.command || 'Error')}</span>
+                                <div class="log-explanation" style="margin-top: 0.25rem;">${panelEscapeHtml(log.output || log.explanation || '')}</div>
+                            </div>
+                        </div>
+                        <span class="log-timestamp">${timestamp}</span>
+                    </div>
+                </div>`;
+        } else if (logType === 'system' || logType === 'git') {
+            return `
+                <div class="execution-log-entry" data-log-id="${log.id}" style="border-left: 3px solid #6366f1; background: rgba(99, 102, 241, 0.05); padding-left: 0.75rem;">
+                    <div class="log-header">
+                        <div style="display: flex; align-items: flex-start; gap: 0.5rem; flex: 1;">
+                            <i class="fas fa-${logType === 'git' ? 'code-branch' : 'cog'}" style="color: #6366f1; font-size: 0.8rem; margin-top: 3px;"></i>
+                            <div>
+                                <span style="color: #6366f1; font-weight: 500; font-size: 0.75rem;">${panelEscapeHtml(log.command || log.explanation || 'System')}</span>
+                                ${log.output ? `<div class="log-explanation" style="margin-top: 0.25rem; color: var(--text-secondary);">${panelEscapeHtml(log.output)}</div>` : ''}
+                            </div>
+                        </div>
+                        <span class="log-timestamp">${timestamp}</span>
+                    </div>
+                </div>`;
+        } else {
+            // Command - collapsible
+            return `
+                <div class="execution-log-entry collapsed" data-log-id="${log.id}">
+                    <div class="log-header" onclick="togglePanelLogExpand(this)" style="cursor: pointer;">
+                        <div style="display: flex; align-items: center; gap: 0.5rem; flex: 1; overflow: hidden;">
+                            <i class="fas fa-chevron-right" style="font-size: 0.65rem; transition: transform 0.2s;"></i>
+                            <span class="log-explanation" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${panelEscapeHtml(log.explanation || log.command || 'Command')}</span>
+                        </div>
+                        <span class="log-timestamp">${timestamp}</span>
+                    </div>
+                    <div class="log-details" style="display: none;">
+                        ${log.command ? `<pre class="log-command">${panelEscapeHtml(log.command)}</pre>` : ''}
+                        ${log.output ? `<pre class="log-output">${panelEscapeHtml(log.output)}</pre>` : ''}
+                    </div>
+                </div>`;
+        }
+    }
+
+    function togglePanelLogExpand(header) {
+        const entry = header.closest('.execution-log-entry');
+        const details = entry.querySelector('.log-details');
+        const icon = entry.querySelector('.fa-chevron-right');
+        if (details.style.display === 'none') {
+            details.style.display = 'block';
+            entry.classList.remove('collapsed');
+            if (icon) icon.style.transform = 'rotate(90deg)';
+        } else {
+            details.style.display = 'none';
+            entry.classList.add('collapsed');
+            if (icon) icon.style.transform = '';
+        }
+    }
+
+    function loadTicketLogs(ticketId) {
+        const container = document.getElementById('panelLogsContainer');
+        container.innerHTML = '<p style="color: var(--text-secondary); padding: 1rem; text-align: center;"><i class="fas fa-spinner fa-spin"></i> Loading...</p>';
+
+        const cacheBuster = new Date().getTime();
+        fetch(`/api/v1/project-tickets/${ticketId}/logs/?_=${cacheBuster}`)
+            .then(response => response.json())
+            .then(data => {
+                container.innerHTML = '';
+                if (data.commands && data.commands.length > 0) {
+                    data.commands.forEach(log => {
+                        container.insertAdjacentHTML('beforeend', panelRenderLogEntry(log));
+                    });
+                } else {
+                    container.innerHTML = '<p class="no-logs-message" style="color: var(--text-secondary); font-size: 0.875rem; padding: 1rem;">No actions yet. Send a message to start.</p>';
+                }
+                // Scroll to bottom
+                requestAnimationFrame(() => {
+                    container.scrollTop = container.scrollHeight;
+                });
+            })
+            .catch(error => {
+                console.error('Error loading logs:', error);
+                container.innerHTML = '<p style="color: #ef4444; padding: 1rem;">Failed to load logs</p>';
+            });
+    }
+
+    function connectPanelSocket(ticketId) {
+        if (chatSocket) {
+            chatSocket.close();
+        }
+
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${wsProtocol}//${window.location.host}/ws/tickets/${ticketId}/logs/?token=${accessToken}`;
+
+        chatSocket = new WebSocket(wsUrl);
+
+        chatSocket.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            if (data.type === 'log_created' && data.log) {
+                const log = data.log;
+                const container = document.getElementById('panelLogsContainer');
+
+                // Remove no-logs message
+                const noMsg = container.querySelector('.no-logs-message');
+                if (noMsg) noMsg.remove();
+
+                // Prevent duplicates
+                if (container.querySelector(`[data-log-id="${log.id}"]`)) return;
+
+                // Hide typing indicator on ai_response, error, or system (completion)
+                if (log.log_type === 'ai_response' || log.log_type === 'error' || log.log_type === 'system') {
+                    hidePanelTypingIndicator();
+                    isChatSending = false;
+                    document.getElementById('panelChatSendBtn').disabled = false;
+                    document.getElementById('panelChatInput').disabled = false;
+                }
+
+                container.insertAdjacentHTML('beforeend', panelRenderLogEntry(log));
+                requestAnimationFrame(() => {
+                    container.scrollTop = container.scrollHeight;
+                });
+            }
+        };
+
+        chatSocket.onerror = function(error) {
+            console.error('Panel WebSocket error:', error);
+        };
+
+        chatSocket.onclose = function() {
+            console.log('Panel WebSocket closed');
+        };
+    }
+
+    function handlePanelChatKeydown(event) {
+        if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            sendPanelChatMessage();
+        }
+    }
+
+    function showPanelTypingIndicator() {
+        const slot = document.getElementById('panelTypingIndicatorSlot');
+        if (!slot) return;
+        slot.innerHTML = `
+            <div class="panel-typing-indicator" id="panelTypingIndicator">
+                <span>🚀 Agent is working...</span>
+                <div class="panel-typing-dots"><span></span><span></span><span></span></div>
+            </div>
+        `;
+    }
+
+    function hidePanelTypingIndicator() {
+        const indicator = document.getElementById('panelTypingIndicator');
+        if (indicator) indicator.remove();
+    }
+
+    async function sendPanelChatMessage() {
+        if (!previewTicket || isChatSending) return;
+
+        const input = document.getElementById('panelChatInput');
+        const sendBtn = document.getElementById('panelChatSendBtn');
+        const message = input.value.trim();
+
+        if (!message) return;
+
+        isChatSending = true;
+        input.disabled = true;
+        const origHtml = sendBtn.innerHTML;
+        sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        sendBtn.disabled = true;
+
+        try {
+            const formData = new FormData();
+            formData.append('message', message);
+            formData.append('project_id', projectId);
+
+            const response = await fetch(`/api/v1/project-tickets/${previewTicket.id}/chat/`, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': csrfToken },
+                body: formData
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Failed to send message');
+            }
+
+            input.value = '';
+            showPanelTypingIndicator();
+        } catch (error) {
+            console.error('Error sending message:', error);
+            showNotification('Failed to send: ' + error.message, 'error');
+            hidePanelTypingIndicator();
+            isChatSending = false;
+            sendBtn.disabled = false;
+            input.disabled = false;
+        } finally {
+            sendBtn.innerHTML = origHtml;
+            input.focus();
+        }
+    }
+
+    function showNotification(message, type = 'info') {
+        // Simple notification - could be enhanced with a toast library
+        console.log(`[${type}] ${message}`);
+
+        // Create a simple toast notification
+        const toast = document.createElement('div');
+        toast.style.cssText = `
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 1rem 1.5rem;
+            background: ${type === 'success' ? '#22c55e' : type === 'error' ? '#ef4444' : type === 'warning' ? '#f59e0b' : '#3b82f6'};
+            color: white;
+            border-radius: 8px;
+            z-index: 10000;
+            animation: fadeIn 0.3s ease;
+        `;
+        toast.textContent = message;
+        document.body.appendChild(toast);
+
+        setTimeout(() => {
+            toast.style.animation = 'fadeOut 0.3s ease';
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
 
     function setServerLoading(loading) {
         const buttons = document.querySelectorAll('.server-dropdown-item');

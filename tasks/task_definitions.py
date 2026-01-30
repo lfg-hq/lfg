@@ -3887,6 +3887,82 @@ def execute_ticket_chat_cli(
         stack_config = get_stack_config(stack, project)
         project_dir = stack_config.get('project_dir', 'nextjs-app')
 
+        # Ensure project directory exists in workspace (handles VM re-provisioning, workspace resets)
+        try:
+            dir_check = _run_magpie_ssh(client, workspace_id, f"ls -d /workspace/{project_dir}/.git 2>/dev/null && echo DIR_EXISTS || echo DIR_MISSING", timeout=10, with_node_env=False)
+            dir_stdout = dir_check.get('stdout', '')
+
+            if 'DIR_MISSING' in dir_stdout or 'DIR_EXISTS' not in dir_stdout:
+                logger.info(f"[CLI_CHAT] Project directory /workspace/{project_dir} missing, setting up git repo...")
+
+                # Send notification to user
+                setup_code_log = TicketLog.objects.create(
+                    ticket_id=ticket_id,
+                    log_type='system',
+                    command='Project Setup',
+                    explanation='Setting up project code in workspace...',
+                    output='Cloning repository and checking out branch...'
+                )
+                async_to_sync(async_send_ticket_log_notification)(ticket_id, {
+                    'id': setup_code_log.id,
+                    'log_type': setup_code_log.log_type,
+                    'command': setup_code_log.command,
+                    'explanation': setup_code_log.explanation,
+                    'output': setup_code_log.output,
+                    'created_at': setup_code_log.created_at.isoformat()
+                })
+
+                # Get GitHub repo info and token
+                from codebase_index.models import IndexedRepository
+                from accounts.models import GitHubToken
+                indexed_repo = IndexedRepository.objects.filter(project=project).first()
+                github_token_obj = GitHubToken.objects.filter(user=user).first()
+
+                if indexed_repo and github_token_obj:
+                    branch_name = ticket.github_branch or 'main'
+                    git_result = setup_git_in_workspace(
+                        workspace_id=workspace_id,
+                        owner=indexed_repo.github_owner,
+                        repo_name=indexed_repo.github_repo_name,
+                        branch_name=branch_name,
+                        token=github_token_obj.access_token,
+                        stack=stack
+                    )
+                    if git_result.get('status') == 'success':
+                        logger.info(f"[CLI_CHAT] Project code restored successfully on branch {branch_name}")
+                    else:
+                        logger.warning(f"[CLI_CHAT] Git setup returned: {git_result.get('message', 'unknown error')}")
+                else:
+                    logger.warning(f"[CLI_CHAT] Cannot restore project code: missing IndexedRepository or GitHubToken")
+
+                # Project dir was missing → VM was likely reset, old CLI session is gone too
+                if session_id:
+                    logger.info(f"[CLI_CHAT] Clearing stale session_id (project dir was missing, VM likely reset)")
+                    session_id = None
+                    ticket.cli_session_id = None
+                    ticket.save(update_fields=['cli_session_id'])
+            else:
+                # Directory exists - ensure correct branch is checked out
+                branch_name = ticket.github_branch
+                if branch_name:
+                    import shlex
+                    escaped_branch = shlex.quote(branch_name)
+                    branch_check = _run_magpie_ssh(
+                        client, workspace_id,
+                        f"cd /workspace/{project_dir} && git rev-parse --abbrev-ref HEAD",
+                        timeout=10, with_node_env=False
+                    )
+                    current_branch = branch_check.get('stdout', '').strip()
+                    if current_branch and current_branch != branch_name:
+                        logger.info(f"[CLI_CHAT] Switching branch from {current_branch} to {branch_name}")
+                        _run_magpie_ssh(
+                            client, workspace_id,
+                            f"cd /workspace/{project_dir} && git fetch origin && git checkout {escaped_branch} 2>/dev/null || git checkout -b {escaped_branch} origin/{escaped_branch}",
+                            timeout=30, with_node_env=False
+                        )
+        except Exception as e:
+            logger.warning(f"[CLI_CHAT] Project directory check failed: {e}")
+
         # Streaming callback for real-time logs
         def stream_callback(new_output: str):
             import json
@@ -4187,13 +4263,44 @@ Please respond to the user's message in the context of this ticket."""
             # Only check for changes if git command succeeded
             git_exit_code = git_status_result.get('exit_code', 1)
             git_failed = False
+            has_uncommitted_changes = False
+            has_unpushed_commits = False
+
             if git_exit_code != 0:
                 git_stderr = git_status_result.get('stderr', '')
                 logger.warning(f"[CLI_CHAT] Git status failed (exit_code={git_exit_code}): {git_stderr[:200]}")
-                has_changes = False  # Can't commit if git is not working
                 git_failed = True
             else:
-                has_changes = bool(git_status_result.get('stdout', '').strip())
+                has_uncommitted_changes = bool(git_status_result.get('stdout', '').strip())
+
+            # Also check for unpushed commits (Claude CLI may have committed but not pushed)
+            # Compare local HEAD with remote branch - if different (or remote doesn't exist), need to push
+            if not git_failed and ticket.github_branch:
+                unpushed_result = _run_magpie_ssh(
+                    client,
+                    workspace_id,
+                    f"""cd /workspace/{project_dir} && git fetch origin 2>/dev/null
+LOCAL_HEAD=$(git rev-parse HEAD 2>/dev/null)
+REMOTE_HEAD=$(git rev-parse origin/{ticket.github_branch} 2>/dev/null || echo "REMOTE_NOT_FOUND")
+if [ "$LOCAL_HEAD" != "$REMOTE_HEAD" ]; then
+    echo "NEEDS_PUSH: local=$LOCAL_HEAD remote=$REMOTE_HEAD"
+    git log origin/{ticket.github_branch}..HEAD --oneline 2>/dev/null || echo "New branch - all commits unpushed"
+fi""",
+                    timeout=30,
+                    with_node_env=False
+                )
+                unpushed_stdout = unpushed_result.get('stdout', '').strip()
+                has_unpushed_commits = 'NEEDS_PUSH' in unpushed_stdout
+                if has_unpushed_commits:
+                    logger.info(f"[CLI_CHAT] Found unpushed commits: {unpushed_stdout[:300]}")
+
+            # Need to push if there are uncommitted changes OR unpushed commits
+            has_changes = has_uncommitted_changes or has_unpushed_commits
+
+            if has_uncommitted_changes:
+                logger.info(f"[CLI_CHAT] Uncommitted changes detected, will commit and push...")
+            elif has_unpushed_commits:
+                logger.info(f"[CLI_CHAT] Unpushed commits detected, will push...")
 
             if has_changes:
                 logger.info(f"[CLI_CHAT] Changes detected, auto-committing...")

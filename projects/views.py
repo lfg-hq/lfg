@@ -1286,6 +1286,30 @@ def app_preview(request, project_id):
     refresh = RefreshToken.for_user(request.user)
     access_token = str(refresh.access_token)
 
+    # Get all tickets for this project (for ticket selector)
+    tickets = ProjectTicket.objects.filter(project=project).order_by('-created_at')
+    tickets_data = [
+        {
+            'id': ticket.id,
+            'name': ticket.name,
+            'ticket_id': f"TKT-{ticket.id}",
+            'status': ticket.status,
+            'github_branch': ticket.github_branch or '',
+        }
+        for ticket in tickets
+    ]
+
+    # Get current preview ticket
+    preview_ticket = project.preview_ticket
+    preview_ticket_data = None
+    if preview_ticket:
+        preview_ticket_data = {
+            'id': preview_ticket.id,
+            'name': preview_ticket.name,
+            'ticket_id': f"TKT-{preview_ticket.id}",
+            'github_branch': preview_ticket.github_branch or '',
+        }
+
     context = {
         'project': project,
         'current_project': project,
@@ -1296,6 +1320,10 @@ def app_preview(request, project_id):
         'sidebar_minimized': sidebar_minimized,
         'access_token': access_token,
         'preview_port': preview_port,
+        'tickets': tickets,
+        'tickets_json': json.dumps(tickets_data),
+        'preview_ticket': preview_ticket,
+        'preview_ticket_json': json.dumps(preview_ticket_data) if preview_ticket_data else 'null',
     }
 
     return render(request, 'projects/app_preview.html', context)
@@ -4645,6 +4673,113 @@ def revert_ticket_merge_api(request, project_id, ticket_id):
             'success': False,
             'error': result.get('message', 'Revert failed')
         }, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def set_preview_ticket_api(request, project_id):
+    """
+    Set the preview ticket for a project and optionally switch to its branch.
+
+    When a ticket is selected:
+    1. Save the ticket as the project's preview_ticket
+    2. Optionally switch the workspace to the ticket's branch
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    project = get_object_or_404(Project, project_id=project_id)
+
+    # Check permissions
+    if not project.can_user_access(request.user):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+
+    ticket_id = data.get('ticket_id')
+    switch_branch = data.get('switch_branch', True)
+
+    # Handle clearing the preview ticket
+    if ticket_id is None or ticket_id == '':
+        project.preview_ticket = None
+        project.save(update_fields=['preview_ticket'])
+        return JsonResponse({
+            'success': True,
+            'message': 'Preview ticket cleared',
+            'preview_ticket': None,
+        })
+
+    # Get the ticket
+    ticket = get_object_or_404(ProjectTicket, id=ticket_id, project=project)
+
+    # Save the preview ticket
+    project.preview_ticket = ticket
+    project.save(update_fields=['preview_ticket'])
+
+    response_data = {
+        'success': True,
+        'message': f'Preview ticket set to {ticket.name}',
+        'preview_ticket': {
+            'id': ticket.id,
+            'name': ticket.name,
+            'ticket_id': f'TKT-{ticket.id}',
+            'github_branch': ticket.github_branch or '',
+        }
+    }
+
+    # Switch branch if requested and ticket has a branch
+    if switch_branch and ticket.github_branch:
+        from development.models import MagpieWorkspace
+        from factory.ai_functions import get_magpie_client, _run_magpie_ssh
+        from factory.stack_configs import get_stack_config
+
+        # Get workspace
+        workspace = MagpieWorkspace.objects.filter(
+            project=project,
+            ipv6_address__isnull=False
+        ).exclude(ipv6_address='').order_by('-updated_at').first()
+
+        if workspace:
+            try:
+                stack_config = get_stack_config(project.stack, project)
+                project_dir = stack_config.get('project_dir', 'app')
+
+                client = get_magpie_client()
+                workspace_id = workspace.workspace_id
+
+                # Switch to the ticket's branch
+                branch_cmd = f"""
+                cd /workspace/{project_dir}
+                git fetch origin 2>/dev/null || true
+                git checkout {ticket.github_branch} 2>/dev/null || git checkout -b {ticket.github_branch} origin/{ticket.github_branch} 2>/dev/null || echo "BRANCH_SWITCH_FAILED"
+                git pull origin {ticket.github_branch} 2>/dev/null || true
+                git branch --show-current
+                """
+
+                result = _run_magpie_ssh(client, workspace_id, branch_cmd, timeout=60, with_node_env=False)
+                stdout = result.get('stdout', '').strip()
+                exit_code = result.get('exit_code', 1)
+
+                if 'BRANCH_SWITCH_FAILED' not in stdout and exit_code == 0:
+                    logger.info(f"[set_preview_ticket] Switched to branch {ticket.github_branch}")
+                    response_data['branch_switched'] = True
+                    response_data['current_branch'] = stdout.split('\n')[-1].strip()
+                else:
+                    logger.warning(f"[set_preview_ticket] Failed to switch branch: {stdout}")
+                    response_data['branch_switched'] = False
+                    response_data['branch_error'] = 'Could not switch to branch'
+            except Exception as e:
+                logger.error(f"[set_preview_ticket] Error switching branch: {e}")
+                response_data['branch_switched'] = False
+                response_data['branch_error'] = str(e)
+        else:
+            response_data['branch_switched'] = False
+            response_data['branch_error'] = 'No workspace available'
+
+    return JsonResponse(response_data)
 
 
 @login_required

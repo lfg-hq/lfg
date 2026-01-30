@@ -133,4 +133,7 @@ urlpatterns = [
     path('<str:project_id>/api/tickets/<int:ticket_id>/commit-details/', views.ticket_commit_details_api, name='ticket_commit_details_api'),
     path('<str:project_id>/api/tickets/<int:ticket_id>/merge-history/', views.ticket_merge_history_api, name='ticket_merge_history_api'),
     path('<str:project_id>/api/tickets/<int:ticket_id>/revert-merge/', views.revert_ticket_merge_api, name='revert_ticket_merge_api'),
+
+    # Preview settings API
+    path('<str:project_id>/api/preview-ticket/', views.set_preview_ticket_api, name='set_preview_ticket_api'),
 ]

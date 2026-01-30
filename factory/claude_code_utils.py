@@ -953,6 +953,7 @@ echo "PROMPT_WRITTEN"
             "--model claude-opus-4-5-20251101",
             "--output-format stream-json",
             "--verbose",
+            # "--max-turns 25",
             "--dangerously-skip-permissions"
         ]
 

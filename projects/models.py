@@ -49,7 +49,17 @@ class Project(models.Model):
     linear_team_id = models.CharField(max_length=255, blank=True, null=True, help_text="Linear team ID for syncing")
     linear_project_id = models.CharField(max_length=255, blank=True, null=True, help_text="Linear project ID for syncing")
     linear_sync_enabled = models.BooleanField(default=False, help_text="Enable automatic ticket syncing with Linear")
-    
+
+    # Preview settings
+    preview_ticket = models.ForeignKey(
+        'ProjectTicket',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='preview_projects',
+        help_text="Currently selected ticket for preview (loads its branch)"
+    )
+
     def __str__(self):
         return self.name
     
