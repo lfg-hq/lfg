@@ -236,7 +236,7 @@ AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID', '')
 AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY', '')
 AWS_S3_REGION_NAME = os.environ.get('AWS_S3_REGION_NAME', 'us-east-1')
 AWS_S3_PROJECT_PREFIX = os.environ.get('AWS_S3_PROJECT_PREFIX', 'projects')
-AWS_S3_PRESIGNED_URL_EXPIRY = int(os.environ.get('AWS_S3_PRESIGNED_URL_EXPIRY', 3600))  # Default 1 hour
+AWS_S3_PRESIGNED_URL_EXPIRY = int(os.environ.get('AWS_S3_PRESIGNED_URL_EXPIRY') or 3600)  # Default 1 hour
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
