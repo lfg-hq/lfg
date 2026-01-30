@@ -3883,9 +3883,9 @@ def execute_ticket_chat_cli(
         # This prevents duplicate messages from appearing in the UI
 
         # Get stack config for working directory
-        stack = project.stack or 'nextjs'
-        stack_config = get_stack_config(stack, project)
-        project_dir = stack_config.get('project_dir', 'nextjs-app')
+        stack = project.stack
+        stack_config = get_stack_config(stack, project) if stack else None
+        project_dir = stack_config.get('project_dir', 'app') if stack_config else 'app'
 
         # Ensure project directory exists in workspace (handles VM re-provisioning, workspace resets)
         try:
@@ -4125,14 +4125,61 @@ def execute_ticket_chat_cli(
 
         # Build prompt with ticket context for new sessions
         if not session_id:
-            # For new sessions, include ticket context
+            # Fetch project documentation (PRD + implementation/technical plan)
+            project_context = ""
+            try:
+                from projects.models import ProjectFile
+                prd_files = ProjectFile.objects.filter(
+                    project=project, file_type='prd', is_active=True
+                ).order_by('-updated_at')[:2]
+                impl_files = ProjectFile.objects.filter(
+                    project=project, file_type='implementation', is_active=True
+                ).order_by('-updated_at')[:2]
+
+                if prd_files or impl_files:
+                    project_context = "\n\nPROJECT DOCUMENTATION:\n"
+                    for prd in prd_files:
+                        project_context += f"\n--- PRD: {prd.name} ---\n"
+                        content = prd.file_content or ''
+                        project_context += content[:5000]
+                        if len(content) > 5000:
+                            project_context += "\n...(truncated)\n"
+                    for impl in impl_files:
+                        project_context += f"\n--- Technical Plan: {impl.name} ---\n"
+                        content = impl.file_content or ''
+                        project_context += content[:5000]
+                        if len(content) > 5000:
+                            project_context += "\n...(truncated)\n"
+            except Exception as e:
+                logger.warning(f"[CLI_CHAT] Could not fetch project docs: {e}")
+
+            # Fetch ticket attachments
+            attachments_summary = ""
+            try:
+                attachments = list(ticket.attachments.all())
+                if attachments:
+                    attachment_lines = []
+                    for attachment in attachments:
+                        display_name = attachment.original_filename or os.path.basename(attachment.file.name)
+                        size_label = f"{attachment.file_size} bytes" if attachment.file_size else "unknown size"
+                        attachment_lines.append(f"- {display_name} ({size_label})")
+                    attachments_summary = "\n\nATTACHMENTS:\n" + "\n".join(attachment_lines)
+            except Exception as e:
+                logger.warning(f"[CLI_CHAT] Could not fetch attachments: {e}")
+
+            # Build stack info line
+            stack_info = f"PROJECT STACK: {stack_config['name']}\n" if stack_config else ""
+
+            # For new sessions, include full ticket context
             prompt_with_context = f"""You are helping with ticket #{ticket.id}: {ticket.name}
 
 TICKET DESCRIPTION:
 {ticket.description}
 
-PROJECT: {project.name}
+{stack_info}PROJECT: {project.name}
 WORKING DIRECTORY: /workspace/{project_dir}
+{project_context}
+{attachments_summary}
 
 USER MESSAGE:
 {message}
