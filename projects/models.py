@@ -25,6 +25,7 @@ class Project(models.Model):
     # Stack/Technology configuration
     STACK_CHOICES = [
         ('nextjs', 'Next.js'),
+        ('astro', 'Astro'),
         ('python-django', 'Python (Django)'),
         ('python-fastapi', 'Python (FastAPI)'),
         ('go', 'Go'),
@@ -392,6 +393,12 @@ class ProjectTicket(models.Model):
         blank=True,
         related_name='tickets',
         help_text='The document (PRD, spec) this ticket was created from'
+    )
+    linked_documents = models.ManyToManyField(
+        'ProjectFile',
+        blank=True,
+        related_name='linked_tickets',
+        help_text='Documents (PRDs, specs, plans) linked to this ticket'
     )
 
     # Conversation reference (to filter tickets by conversation)

@@ -3767,6 +3767,21 @@
 
                     ${attachmentsHTML}
 
+                    ${ticket.linked_documents && ticket.linked_documents.length ? `
+                    <div class="detail-section">
+                        <h4>Linked Documents</h4>
+                        <div class="linked-docs-list">
+                            ${ticket.linked_documents.map(doc => `
+                                <div class="linked-doc-item">
+                                    <i class="fas fa-file-alt"></i>
+                                    <span class="linked-doc-name">${escapeHtml(doc.name)}</span>
+                                    <span class="linked-doc-type">${escapeHtml(doc.file_type)}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    ` : ''}
+
                     <div class="detail-section">
                         <h4>Details</h4>
                         <div class="detail-grid">

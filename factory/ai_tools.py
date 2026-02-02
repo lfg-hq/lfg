@@ -334,6 +334,11 @@ create_tickets = {
                     "type": "integer",
                     "description": "The ID of the PRD or document these tickets are being created from. Use this to link tickets to their source document."
                 },
+                "source_document_ids": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "IDs of PRDs/documents these tickets are being created from. Links all to each ticket. Use this when tickets reference multiple documents (e.g. a PRD and a technical plan)."
+                },
                 "conversation_id": {
                     "type": "integer",
                     "description": "The ID of the current conversation. Use this to link tickets to the conversation they were created in for filtering purposes."

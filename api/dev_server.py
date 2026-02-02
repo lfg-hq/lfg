@@ -455,6 +455,8 @@ def start_dev_server(request, ticket_id):
         # Customize dev command for different stacks
         if project.stack == 'nextjs':
             final_dev_cmd = f"npm run dev -- --hostname :: --port {default_port}"
+        elif project.stack == 'astro':
+            final_dev_cmd = f"npx astro dev --host 0.0.0.0 --port {default_port}"
         elif project.stack in ('python-django', 'python-fastapi'):
             final_dev_cmd = dev_cmd
         else:

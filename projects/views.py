@@ -792,7 +792,7 @@ def project_checklist_api(request, project_id):
     
     # Get all tickets for this project with log count annotation
     from django.db.models import Count
-    tickets = ProjectTicket.objects.filter(project=project).select_related('project', 'stage', 'source_document').prefetch_related('attachments').annotate(log_count=Count('logs')).order_by('created_at', 'id')
+    tickets = ProjectTicket.objects.filter(project=project).select_related('project', 'stage', 'source_document').prefetch_related('attachments', 'linked_documents').annotate(log_count=Count('logs')).order_by('created_at', 'id')
 
     tickets_list = []
     for item in tickets:
@@ -842,6 +842,10 @@ def project_checklist_api(request, project_id):
             # Source document/file association
             'source_document_id': item.source_document.id if item.source_document else None,
             'source_document_name': item.source_document.name if item.source_document else None,
+            'linked_documents': [
+                {'id': doc.id, 'name': doc.name, 'file_type': doc.file_type}
+                for doc in item.linked_documents.all()
+            ],
             # Git/GitHub tracking
             'github_branch': item.github_branch,
             'github_commit_sha': item.github_commit_sha,

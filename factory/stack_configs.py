@@ -200,6 +200,34 @@ echo "VM ready for Rails development"
         'pre_dev_cmd': 'export GEM_HOME=/workspace/.gem && export GEM_PATH=/workspace/.gem && export BUNDLE_PATH=/workspace/.bundle && export PATH=/workspace/.gem/bin:$PATH',
     },
 
+    'astro': {
+        'name': 'Astro',
+        'template_repo': 'lfg-hq/astro-template',
+        'project_dir': 'astro-app',
+        'install_cmd': 'npm install',
+        'dev_cmd': 'npx astro dev --host 0.0.0.0',
+        'build_cmd': 'npx astro build',
+        'default_port': 4321,
+        'language': 'javascript',
+        'package_manager': 'npm',
+        'bootstrap_packages': [],  # Node.js is pre-installed in Magpie
+        'bootstrap_script': '''#!/bin/sh
+set -eux
+cd /workspace
+# Configure npm to use /workspace for all storage
+mkdir -p /workspace/.npm-global /workspace/.npm-cache
+npm config set prefix /workspace/.npm-global
+npm config set cache /workspace/.npm-cache
+echo 'export PATH=/workspace/.npm-global/bin:$PATH' >> ~/.bashrc
+echo "VM ready for Astro development"
+''',
+        'health_check': 'curl -sf http://localhost:4321 > /dev/null',
+        'file_patterns': ['astro.config.mjs', 'astro.config.js', 'astro.config.ts', 'package.json'],
+        'env_file': '.env',
+        'gitignore_extras': ['node_modules/', 'dist/', '.astro/', '.env'],
+        'pre_dev_cmd': 'export PATH=/workspace/.npm-global/bin:$PATH',
+    },
+
     'custom': {
         'name': 'Custom/Existing Repo',
         'template_repo': None,  # User provides their own repo
@@ -280,13 +308,17 @@ def detect_stack_from_files(file_list: list) -> Optional[str]:
     has_go_mod = 'go.mod' in file_names
     has_package_json = 'package.json' in file_names
     has_next_config = 'next.config.js' in file_names or 'next.config.mjs' in file_names or 'next.config.ts' in file_names
+    has_astro_config = 'astro.config.mjs' in file_names or 'astro.config.js' in file_names or 'astro.config.ts' in file_names
     has_cargo_toml = 'Cargo.toml' in file_names
     has_manage_py = 'manage.py' in file_names
     has_requirements = 'requirements.txt' in file_names
 
-    logger.info(f"[STACK DETECTION] Key files - go.mod: {has_go_mod}, package.json: {has_package_json}, next.config.*: {has_next_config}, Cargo.toml: {has_cargo_toml}")
+    logger.info(f"[STACK DETECTION] Key files - go.mod: {has_go_mod}, package.json: {has_package_json}, next.config.*: {has_next_config}, astro.config.*: {has_astro_config}, Cargo.toml: {has_cargo_toml}")
 
     # Check in order of specificity
+    if has_astro_config:
+        logger.info("[STACK DETECTION] Detected: astro (found astro.config.*)")
+        return 'astro'
     if has_next_config:
         logger.info("[STACK DETECTION] Detected: nextjs (found next.config.*)")
         return 'nextjs'
@@ -475,6 +507,12 @@ def get_gitignore_content(stack: str) -> str:
             '# Debug',
             'debug/',
             '*.pdb',
+            '',
+        ],
+        'astro': [
+            '# Astro',
+            'dist/',
+            '.astro/',
             '',
         ],
         'ruby-rails': [

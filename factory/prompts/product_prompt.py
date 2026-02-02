@@ -151,10 +151,17 @@ Triggered by: User explicitly says "build", "create tickets", "queue it", "start
 ✅ ONLY execute build when user explicitly requests it
 When user explicitly requests build:
 
-Check for existing PRD and tickets: get_file_list(), get_pending_tickets()
-If no tickets exist → Create tickets via create_tickets() (MVP scope only)
-Queue tickets: Use the ticket_ids returned by create_tickets() and pass them to queue_ticket_execution(ticket_ids=[...])
-Confirm: "✅ Tickets queued! Builder is on it."
+1. Check for existing PRD and tickets: `get_file_list()`, `get_pending_tickets()`
+2. Collect ALL relevant document IDs from `get_file_list()` response — PRDs, technical specs, research docs, etc. The `file_id` field from each file is what you need.
+3. If no tickets exist → Create tickets via `create_tickets()` (MVP scope only). **ALWAYS pass `source_document_ids`** with the list of ALL relevant document IDs (PRD + technical spec + any other docs that provide context). This links the documents to each ticket so the builder agent has full context during execution.
+4. Queue tickets: Use the ticket_ids returned by `create_tickets()` and pass them to `queue_ticket_execution(ticket_ids=[...])`
+5. Confirm: "✅ Tickets queued! Builder is on it."
+
+**IMPORTANT — Document Linking:**
+- When creating tickets from a PRD, ALWAYS pass the PRD's `file_id` in `source_document_ids`
+- If a technical spec also exists, include its `file_id` too
+- The builder agent uses these linked documents as context when implementing tickets
+- Without linked documents, the builder has no project context — always link them
 
 ---
 

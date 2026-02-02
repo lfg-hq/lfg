@@ -104,46 +104,68 @@ class TicketExecutor:
             logger.error(f"Failed to broadcast chat message: {exc}")
 
     async def get_project_context(self) -> str:
-        """Fetch project documentation (PRD and implementation docs)."""
+        """Fetch project documentation: prefer ticket-linked docs, then source_document FK, then project-level."""
         project_context = ""
 
         try:
-            # Fetch PRD files
-            prd_files = await sync_to_async(list)(
-                ProjectFile.objects.filter(
-                    project=self.project,
-                    file_type='prd',
-                    is_active=True
-                ).order_by('-updated_at')[:2]
-            )
+            # 1. Check for ticket-linked documents (M2M)
+            linked_docs = await sync_to_async(list)(self.ticket.linked_documents.all())
 
-            # Fetch implementation files
-            impl_files = await sync_to_async(list)(
-                ProjectFile.objects.filter(
-                    project=self.project,
-                    file_type='implementation',
-                    is_active=True
-                ).order_by('-updated_at')[:2]
-            )
+            # 2. Fallback: use single source_document FK if no M2M links
+            if not linked_docs:
+                source_doc = await sync_to_async(lambda: self.ticket.source_document)()
+                if source_doc:
+                    linked_docs = [source_doc]
 
-            if prd_files or impl_files:
-                project_context = "\n\n📋 PROJECT DOCUMENTATION:\n"
-
-                for prd in prd_files:
-                    project_context += f"\n--- PRD: {prd.name} ---\n"
-                    project_context += prd.file_content[:5000]
-                    if len(prd.file_content) > 5000:
-                        project_context += "\n...(truncated for brevity)\n"
+            if linked_docs:
+                project_context = "\n\nPROJECT DOCUMENTATION:\n"
+                for doc in linked_docs:
+                    label = await sync_to_async(lambda d=doc: d.get_file_type_display() if hasattr(d, 'get_file_type_display') else d.file_type)()
+                    project_context += f"\n--- {label}: {doc.name} ---\n"
+                    content = doc.file_content or ''
+                    project_context += content[:5000]
+                    if len(content) > 5000:
+                        project_context += "\n...(truncated)\n"
                     project_context += "\n"
+                logger.info(f"Added {len(linked_docs)} ticket-linked document(s) to context")
+            else:
+                # 3. Fall back to project-level docs
+                prd_files = await sync_to_async(list)(
+                    ProjectFile.objects.filter(
+                        project=self.project,
+                        file_type='prd',
+                        is_active=True
+                    ).order_by('-updated_at')[:2]
+                )
 
-                for impl in impl_files:
-                    project_context += f"\n--- Technical Implementation: {impl.name} ---\n"
-                    project_context += impl.file_content[:5000]
-                    if len(impl.file_content) > 5000:
-                        project_context += "\n...(truncated for brevity)\n"
-                    project_context += "\n"
+                impl_files = await sync_to_async(list)(
+                    ProjectFile.objects.filter(
+                        project=self.project,
+                        file_type='implementation',
+                        is_active=True
+                    ).order_by('-updated_at')[:2]
+                )
 
-                logger.info(f"Added project context: {len(prd_files)} PRDs, {len(impl_files)} impl docs")
+                if prd_files or impl_files:
+                    project_context = "\n\nPROJECT DOCUMENTATION:\n"
+
+                    for prd in prd_files:
+                        project_context += f"\n--- PRD: {prd.name} ---\n"
+                        content = prd.file_content or ''
+                        project_context += content[:5000]
+                        if len(content) > 5000:
+                            project_context += "\n...(truncated)\n"
+                        project_context += "\n"
+
+                    for impl in impl_files:
+                        project_context += f"\n--- Technical Plan: {impl.name} ---\n"
+                        content = impl.file_content or ''
+                        project_context += content[:5000]
+                        if len(content) > 5000:
+                            project_context += "\n...(truncated)\n"
+                        project_context += "\n"
+
+                    logger.info(f"Added project-level context: {len(prd_files)} PRDs, {len(impl_files)} impl docs")
 
         except Exception as e:
             logger.warning(f"Could not fetch project documentation: {str(e)}")

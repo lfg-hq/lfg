@@ -2159,6 +2159,7 @@ async def create_tickets(function_args, project_id, conversation_id=None):
 
     checklist_tickets = function_args.get('tickets', [])
     source_document_id = function_args.get('source_document_id')
+    source_document_ids = function_args.get('source_document_ids', [])
     # Use passed conversation_id or fall back to function_args (for tool-based calls)
     conversation_id = conversation_id or function_args.get('conversation_id')
 
@@ -2168,17 +2169,24 @@ async def create_tickets(function_args, project_id, conversation_id=None):
             "message_to_agent": "Error: tickets must be a list"
         }
 
-    # Get the source document (PRD) if provided
+    # Merge single and array doc IDs into one list
+    all_doc_ids = list(source_document_ids) if source_document_ids else []
+    if source_document_id and source_document_id not in all_doc_ids:
+        all_doc_ids.insert(0, source_document_id)
+
+    # Fetch all linked documents
+    linked_documents = []
     source_document = None
-    if source_document_id:
+    if all_doc_ids:
         try:
-            source_document = await sync_to_async(ProjectFile.objects.get)(
-                id=source_document_id,
-                project=project
+            linked_documents = await sync_to_async(list)(
+                ProjectFile.objects.filter(id__in=all_doc_ids, project=project)
             )
-            logger.info(f"Linking tickets to source document: {source_document.name} (ID: {source_document_id})")
-        except ProjectFile.DoesNotExist:
-            logger.warning(f"Source document with ID {source_document_id} not found")
+            if linked_documents:
+                source_document = linked_documents[0]
+                logger.info(f"Linking tickets to {len(linked_documents)} document(s): {[d.name for d in linked_documents]}")
+        except Exception as e:
+            logger.warning(f"Could not fetch linked documents {all_doc_ids}: {e}")
 
     # Get the conversation if provided
     conversation = None
@@ -2222,6 +2230,9 @@ async def create_tickets(function_args, project_id, conversation_id=None):
                     # complexity=details.get('complexity', 'medium'),
                     # requires_worktree=details.get('requires_worktree', True)
                 )
+                # Link all documents via M2M
+                if linked_documents:
+                    await sync_to_async(new_ticket.linked_documents.add)(*linked_documents)
                 created_tickets.append(new_ticket.id)
 
         # Second pass: update dependencies with actual ticket IDs

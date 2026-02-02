@@ -511,6 +511,16 @@ LOGGING = {
             'level': 'INFO',
             'propagate': False,
         },
+        'tasks': {
+            'handlers': ['console', 'easylogs'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'factory.claude_code_utils': {
+            'handlers': ['console', 'easylogs'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
     },
 }
 

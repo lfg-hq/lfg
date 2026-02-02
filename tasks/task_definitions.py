@@ -4125,31 +4125,49 @@ def execute_ticket_chat_cli(
 
         # Build prompt with ticket context for new sessions
         if not session_id:
-            # Fetch project documentation (PRD + implementation/technical plan)
+            # Fetch documentation: prefer ticket-linked docs, then source_document FK, then project-level
             project_context = ""
             try:
                 from projects.models import ProjectFile
-                prd_files = ProjectFile.objects.filter(
-                    project=project, file_type='prd', is_active=True
-                ).order_by('-updated_at')[:2]
-                impl_files = ProjectFile.objects.filter(
-                    project=project, file_type='implementation', is_active=True
-                ).order_by('-updated_at')[:2]
+                linked_docs = list(ticket.linked_documents.all())
 
-                if prd_files or impl_files:
+                if not linked_docs and ticket.source_document:
+                    # Backward compat: use the single source_document FK
+                    linked_docs = [ticket.source_document]
+
+                if linked_docs:
+                    # Use ticket-specific linked documents
                     project_context = "\n\nPROJECT DOCUMENTATION:\n"
-                    for prd in prd_files:
-                        project_context += f"\n--- PRD: {prd.name} ---\n"
-                        content = prd.file_content or ''
+                    for doc in linked_docs:
+                        label = doc.get_file_type_display() if hasattr(doc, 'get_file_type_display') else doc.file_type
+                        project_context += f"\n--- {label}: {doc.name} ---\n"
+                        content = doc.file_content or ''
                         project_context += content[:5000]
                         if len(content) > 5000:
                             project_context += "\n...(truncated)\n"
-                    for impl in impl_files:
-                        project_context += f"\n--- Technical Plan: {impl.name} ---\n"
-                        content = impl.file_content or ''
-                        project_context += content[:5000]
-                        if len(content) > 5000:
-                            project_context += "\n...(truncated)\n"
+                else:
+                    # Fall back to project-level docs (no linked docs at all)
+                    prd_files = ProjectFile.objects.filter(
+                        project=project, file_type='prd', is_active=True
+                    ).order_by('-updated_at')[:2]
+                    impl_files = ProjectFile.objects.filter(
+                        project=project, file_type='implementation', is_active=True
+                    ).order_by('-updated_at')[:2]
+
+                    if prd_files or impl_files:
+                        project_context = "\n\nPROJECT DOCUMENTATION:\n"
+                        for prd in prd_files:
+                            project_context += f"\n--- PRD: {prd.name} ---\n"
+                            content = prd.file_content or ''
+                            project_context += content[:5000]
+                            if len(content) > 5000:
+                                project_context += "\n...(truncated)\n"
+                        for impl in impl_files:
+                            project_context += f"\n--- Technical Plan: {impl.name} ---\n"
+                            content = impl.file_content or ''
+                            project_context += content[:5000]
+                            if len(content) > 5000:
+                                project_context += "\n...(truncated)\n"
             except Exception as e:
                 logger.warning(f"[CLI_CHAT] Could not fetch project docs: {e}")
 
