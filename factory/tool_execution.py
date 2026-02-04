@@ -179,6 +179,7 @@ def get_notification_type_for_tool(tool_name: str) -> Optional[str]:
         "create_prd": "prd",
         "stream_implementation_content": "implementation_stream",  # Stream implementation content to implementation tab
         "stream_prd_content": "prd_stream",  # Stream PRD content to PRD tab
+        "stream_document_content": "file_stream",  # Stream generic document content
         "start_server": "apps",  # Server starts should show in apps/preview tab
         # "execute_command": "toolhistory",  # Show command execution in tool history
         "save_implementation": "implementation",
@@ -223,6 +224,7 @@ def map_notification_type_to_tab(notification_type: str) -> str:
         # "project_name_saved": "toolhistory",
         "prd_stream": "prd_stream",  # Map prd_stream to prd tab
         "implementation_stream": "implementation_stream",  # Map implementation_stream to implementation tab
+        "file_stream": "file_stream",  # Map file_stream for generic document streaming
         "design_preview": "design_preview",  # Map design_preview for design previews
         # Add more custom mappings as needed
     }
@@ -418,6 +420,21 @@ async def execute_tool_call(
                     "IMPLEMENTATION_STREAM in notification handler: chunk_length=%s, is_complete=%s, file_id=%s",
                     len(notification_payload['content_chunk']),
                     notification_payload['is_complete'],
+                    notification_payload.get('file_id', 'None')
+                )
+            elif raw_notification_type == "file_stream":
+                notification_payload["content_chunk"] = tool_result.get("content_chunk", "")
+                notification_payload["is_complete"] = tool_result.get("is_complete", False)
+                notification_payload["file_type"] = tool_result.get("file_type", "other")
+                notification_payload["file_name"] = tool_result.get("file_name", "Document")
+                if "file_id" in tool_result:
+                    notification_payload["file_id"] = tool_result.get("file_id")
+                    logger.info(f"FILE_STREAM: Including file_id {tool_result.get('file_id')} in notification")
+                logger.info(
+                    "FILE_STREAM in notification handler: chunk_length=%s, is_complete=%s, file_name=%s, file_id=%s",
+                    len(notification_payload['content_chunk']),
+                    notification_payload['is_complete'],
+                    notification_payload.get('file_name', 'Not specified'),
                     notification_payload.get('file_id', 'None')
                 )
             

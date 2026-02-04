@@ -325,7 +325,10 @@ create_tickets = {
                             "description": {"type": "string", "description": "The user-story of the ticket to be implemented"},
                             "role": {"type": "string", "enum": ["agent", "user"]},
                             "dependencies": {"type": "array", "items": {"type": "string"}, "description": "List of ticket dependencies using 1-based position numbers (e.g., ['1', '2'] means this ticket depends on the 1st and 2nd tickets in this batch). Use empty array [] if no dependencies."},
-                            "priority": {"type": "string", "enum": ["High", "Medium", "Low"]}
+                            "priority": {"type": "string", "enum": ["High", "Medium", "Low"]},
+                            "acceptance_criteria": {"type": "array", "items": {"type": "string"}, "description": "List of testable acceptance criteria. Always provide at least 2-3 per ticket."},
+                            "complexity": {"type": "string", "enum": ["simple", "medium", "complex"], "description": "Estimated complexity of the ticket"},
+                            "details": {"type": "object", "description": "Technical context: files to modify, patterns to follow, dependencies to install, etc."}
                         },
                         "required": ["name", "description", "role", "dependencies", "priority"]
                     }
@@ -406,6 +409,158 @@ get_pending_tickets = {
         "parameters": {
             "type": "object",
             "properties": {}
+        }
+    }
+}
+
+get_ticket_details = {
+    "type": "function",
+    "function": {
+        "name": "get_ticket_details",
+        "description": "Get full ticket state including status, description, notes, acceptance_criteria, todos, linked documents, and recent execution logs. Use this to understand a ticket before updating, retrying, or diagnosing issues.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "ticket_id": {
+                    "type": "integer",
+                    "description": "The ID of the ticket to get details for"
+                }
+            },
+            "required": ["ticket_id"]
+        }
+    }
+}
+
+get_project_dashboard = {
+    "type": "function",
+    "function": {
+        "name": "get_project_dashboard",
+        "description": "Get a dashboard view of the project: all tickets grouped by status, completion percentage, and list of project documents. Use this at the start of every conversation to assess project state.",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
+    }
+}
+
+get_ticket_execution_log = {
+    "type": "function",
+    "function": {
+        "name": "get_ticket_execution_log",
+        "description": "Read execution log entries (commands, AI responses) for a ticket. Use this to diagnose failures, understand what happened during execution, and decide whether to retry.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "ticket_id": {
+                    "type": "integer",
+                    "description": "The ID of the ticket to get logs for"
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of log entries to return (default 20)",
+                    "default": 20
+                },
+                "log_type": {
+                    "type": "string",
+                    "enum": ["all", "command", "ai_response", "user_message"],
+                    "description": "Filter logs by type. Use 'all' for everything (default)",
+                    "default": "all"
+                }
+            },
+            "required": ["ticket_id"]
+        }
+    }
+}
+
+retry_ticket = {
+    "type": "function",
+    "function": {
+        "name": "retry_ticket",
+        "description": "Reset a failed or blocked ticket, optionally append additional context, and re-queue it for execution. Use this after diagnosing failures via get_ticket_execution_log.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "ticket_id": {
+                    "type": "integer",
+                    "description": "The ID of the ticket to retry"
+                },
+                "additional_context": {
+                    "type": "string",
+                    "description": "Optional additional context or instructions to append to the ticket description before retrying (e.g., 'Use port 3001 instead of 3000', 'Skip database seeding step')"
+                }
+            },
+            "required": ["ticket_id"]
+        }
+    }
+}
+
+schedule_tickets = {
+    "type": "function",
+    "function": {
+        "name": "schedule_tickets",
+        "description": "Schedule tickets for execution with dependency awareness. Checks if each ticket's dependencies are satisfied before queueing. Use this instead of queue_ticket_execution when tickets have dependencies.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "ticket_ids": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "List of ticket IDs to schedule for execution"
+                },
+                "strategy": {
+                    "type": "string",
+                    "enum": ["sequential", "parallel", "dependency_wave"],
+                    "description": "Scheduling strategy: 'sequential' queues only the first ready ticket, 'parallel' queues all ready tickets at once, 'dependency_wave' queues all tickets whose dependencies are met (default)",
+                    "default": "dependency_wave"
+                }
+            },
+            "required": ["ticket_ids"]
+        }
+    }
+}
+
+update_ticket_details = {
+    "type": "function",
+    "function": {
+        "name": "update_ticket_details",
+        "description": "Update ticket fields: description, acceptance_criteria, priority, complexity, status, or append notes. Notes are appended with a timestamp, never replaced. Use this for enriching tickets with more detail or correcting information.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "ticket_id": {
+                    "type": "integer",
+                    "description": "The ID of the ticket to update"
+                },
+                "description": {
+                    "type": "string",
+                    "description": "New ticket description (replaces existing)"
+                },
+                "acceptance_criteria": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of testable acceptance criteria"
+                },
+                "priority": {
+                    "type": "string",
+                    "enum": ["High", "Medium", "Low"],
+                    "description": "Ticket priority"
+                },
+                "complexity": {
+                    "type": "string",
+                    "enum": ["simple", "medium", "complex"],
+                    "description": "Estimated ticket complexity"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": ["open", "in_progress", "review", "done", "failed", "blocked"],
+                    "description": "Ticket status"
+                },
+                "notes": {
+                    "type": "string",
+                    "description": "Notes to append (with timestamp) to existing notes, not replace"
+                }
+            },
+            "required": ["ticket_id"]
         }
     }
 }
@@ -1400,20 +1555,35 @@ tools_product_ = [get_file_list, get_codebase_summary, search_existing_code, get
                  get_linear_issues, get_linear_issue_details]
 
 tools_product = [
+    # Project state
     get_file_list,
     get_file_content,
+    get_project_dashboard,
+    # Documents
+    create_prd,
+    get_prd,
+    create_implementation,
+    get_implementation,
+    extract_features,
+    extract_personas,
+    # Tickets
     create_tickets,
+    get_pending_tickets,
+    get_ticket_details,
+    update_ticket,
+    update_ticket_details,
+    update_all_tickets,
+    # Orchestration
+    queue_ticket_execution,
+    schedule_tickets,
+    retry_ticket,
+    get_ticket_execution_log,
+    # Codebase
     search_existing_code,
     get_codebase_summary,
     ask_codebase,
-    get_pending_tickets,
-    update_ticket,
-    update_all_tickets,
-    # provision_workspace,
-    # ssh_command,
-    # new_dev_sandbox,
-    queue_ticket_execution,
-    lookup_technology_specs
+    # Research
+    lookup_technology_specs,
 ]
 
 tools_turbo_ = [

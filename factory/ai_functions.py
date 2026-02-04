@@ -821,6 +821,494 @@ def execute_local_server_command(command: str, workspace_path: str) -> tuple[boo
         return False, "", f"Error executing server command: {str(e)}"
 
 # ============================================================================
+# PRODUCT MANAGER ORCHESTRATION TOOLS
+# ============================================================================
+
+async def get_ticket_details_tool(function_args, project_id, conversation_id):
+    """Get full ticket state: status, notes, logs, acceptance_criteria, todos, linked docs."""
+    logger.info("get_ticket_details_tool called")
+
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+
+    ticket_id = function_args.get('ticket_id')
+    if not ticket_id:
+        return {"is_notification": False, "message_to_agent": "Error: ticket_id is required"}
+
+    project = await get_project(project_id)
+    if not project:
+        return {"is_notification": False, "message_to_agent": f"Error: Project with ID {project_id} does not exist"}
+
+    def _fetch():
+        try:
+            ticket = ProjectTicket.objects.get(id=ticket_id, project=project)
+        except ProjectTicket.DoesNotExist:
+            return None
+
+        # Linked documents
+        linked_docs = list(ticket.linked_documents.values('id', 'name', 'file_type'))
+
+        # Recent logs (last 5)
+        recent_logs = list(
+            TicketLog.objects.filter(ticket=ticket)
+            .order_by('-created_at')[:5]
+            .values('id', 'log_type', 'command', 'explanation', 'output', 'exit_code', 'created_at')
+        )
+        for log in recent_logs:
+            if log.get('output') and len(log['output']) > 2000:
+                log['output'] = log['output'][:2000] + '... (truncated)'
+            log['created_at'] = str(log['created_at'])
+
+        # Todos
+        todos = list(
+            ProjectTodoList.objects.filter(ticket=ticket)
+            .values('id', 'description', 'status', 'order')
+        )
+
+        return {
+            'id': ticket.id,
+            'name': ticket.name,
+            'status': ticket.status,
+            'priority': ticket.priority,
+            'complexity': ticket.complexity,
+            'role': ticket.role,
+            'description': ticket.description,
+            'acceptance_criteria': ticket.acceptance_criteria,
+            'details': ticket.details,
+            'notes': ticket.notes,
+            'dependencies': ticket.dependencies,
+            'queue_status': ticket.queue_status,
+            'linked_documents': linked_docs,
+            'recent_logs': recent_logs,
+            'todos': todos,
+            'created_at': str(ticket.created_at),
+            'updated_at': str(ticket.updated_at),
+        }
+
+    result = await sync_to_async(_fetch)()
+    if result is None:
+        return {"is_notification": False, "message_to_agent": f"Error: Ticket {ticket_id} not found in this project"}
+
+    return {
+        "is_notification": False,
+        "message_to_agent": json.dumps(result, indent=2)
+    }
+
+
+async def get_project_dashboard_tool(function_args, project_id, conversation_id):
+    """Get project dashboard: tickets grouped by status, completion %, documents list."""
+    logger.info("get_project_dashboard_tool called")
+
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+
+    project = await get_project(project_id)
+    if not project:
+        return {"is_notification": False, "message_to_agent": f"Error: Project with ID {project_id} does not exist"}
+
+    def _fetch():
+        tickets = ProjectTicket.objects.filter(project=project)
+        total = tickets.count()
+
+        # Group by status
+        status_groups = {}
+        for ticket in tickets.values('id', 'name', 'status', 'priority', 'role', 'complexity', 'queue_status'):
+            status = ticket['status']
+            if status not in status_groups:
+                status_groups[status] = []
+            status_groups[status].append(ticket)
+
+        # Completion %
+        done_count = len(status_groups.get('done', []))
+        completion_pct = round((done_count / total * 100), 1) if total > 0 else 0
+
+        # Documents
+        documents = list(
+            ProjectFile.objects.filter(project=project, is_active=True)
+            .values('id', 'name', 'file_type', 'created_at', 'updated_at')
+        )
+        for doc in documents:
+            doc['created_at'] = str(doc['created_at'])
+            doc['updated_at'] = str(doc['updated_at'])
+
+        return {
+            'project_name': project.name,
+            'total_tickets': total,
+            'completion_percentage': completion_pct,
+            'tickets_by_status': {
+                status: {
+                    'count': len(tix),
+                    'tickets': tix
+                } for status, tix in status_groups.items()
+            },
+            'documents': documents,
+        }
+
+    result = await sync_to_async(_fetch)()
+
+    return {
+        "is_notification": False,
+        "message_to_agent": json.dumps(result, indent=2)
+    }
+
+
+async def get_ticket_execution_log_tool(function_args, project_id, conversation_id):
+    """Read TicketLog entries for a ticket."""
+    logger.info("get_ticket_execution_log_tool called")
+
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+
+    ticket_id = function_args.get('ticket_id')
+    if not ticket_id:
+        return {"is_notification": False, "message_to_agent": "Error: ticket_id is required"}
+
+    limit = function_args.get('limit', 20)
+    log_type = function_args.get('log_type', 'all')
+
+    project = await get_project(project_id)
+    if not project:
+        return {"is_notification": False, "message_to_agent": f"Error: Project with ID {project_id} does not exist"}
+
+    def _fetch():
+        try:
+            ticket = ProjectTicket.objects.get(id=ticket_id, project=project)
+        except ProjectTicket.DoesNotExist:
+            return None
+
+        qs = TicketLog.objects.filter(ticket=ticket)
+        if log_type != 'all':
+            qs = qs.filter(log_type=log_type)
+
+        logs = list(
+            qs.order_by('-created_at')[:limit]
+            .values('id', 'log_type', 'command', 'explanation', 'output', 'exit_code', 'created_at')
+        )
+        for log in logs:
+            if log.get('output') and len(log['output']) > 2000:
+                log['output'] = log['output'][:2000] + '... (truncated)'
+            log['created_at'] = str(log['created_at'])
+
+        return {
+            'ticket_id': ticket.id,
+            'ticket_name': ticket.name,
+            'ticket_status': ticket.status,
+            'log_count': len(logs),
+            'logs': logs,
+        }
+
+    result = await sync_to_async(_fetch)()
+    if result is None:
+        return {"is_notification": False, "message_to_agent": f"Error: Ticket {ticket_id} not found in this project"}
+
+    return {
+        "is_notification": False,
+        "message_to_agent": json.dumps(result, indent=2)
+    }
+
+
+async def retry_ticket_tool(function_args, project_id, conversation_id):
+    """Reset a failed/blocked ticket, append context, and re-queue."""
+    logger.info("retry_ticket_tool called")
+
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+
+    ticket_id = function_args.get('ticket_id')
+    if not ticket_id:
+        return {"is_notification": False, "message_to_agent": "Error: ticket_id is required"}
+
+    additional_context = function_args.get('additional_context', '')
+
+    project = await get_project(project_id)
+    if not project:
+        return {"is_notification": False, "message_to_agent": f"Error: Project with ID {project_id} does not exist"}
+
+    if not conversation_id:
+        return {"is_notification": False, "message_to_agent": "Error: conversation_id is required for retry"}
+
+    def _reset_and_prepare():
+        try:
+            ticket = ProjectTicket.objects.get(id=ticket_id, project=project)
+        except ProjectTicket.DoesNotExist:
+            return None, "Ticket not found"
+
+        if ticket.status not in ('failed', 'blocked', 'open'):
+            return None, f"Cannot retry ticket with status '{ticket.status}'. Only failed, blocked, or open tickets can be retried."
+
+        timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
+
+        # Append additional context to description
+        if additional_context:
+            ticket.description += f"\n\n---\n**[Retry Context — {timestamp}]**\n{additional_context}"
+
+        # Append retry note
+        retry_note = f"[{timestamp}] Ticket retried by product manager."
+        if additional_context:
+            retry_note += f" Additional context provided."
+        if ticket.notes:
+            ticket.notes += f"\n{retry_note}"
+        else:
+            ticket.notes = retry_note
+
+        # Reset status and queue
+        ticket.status = 'open'
+        ticket.queue_status = 'none'
+        ticket.save(update_fields=['description', 'notes', 'status', 'queue_status', 'updated_at'])
+
+        return ticket.id, None
+
+    result_id, error = await sync_to_async(_reset_and_prepare)()
+    if error:
+        return {"is_notification": False, "message_to_agent": f"Error: {error}"}
+
+    # Re-queue via TaskManager (same pattern as queue_ticket_execution_tool)
+    try:
+        task_id = await sync_to_async(TaskManager.publish_task)(
+            'tasks.task_definitions.execute_ticket_implementation',
+            result_id,
+            project.id,
+            conversation_id,
+            task_name=f"Retry Ticket #{result_id} for {project.name}",
+            timeout=7200
+        )
+
+        # Update queue_status
+        def _mark_queued():
+            ProjectTicket.objects.filter(id=result_id).update(queue_status='queued')
+        await sync_to_async(_mark_queued)()
+
+        return {
+            "is_notification": True,
+            "notification_type": "checklist",
+            "status": "queued",
+            "message_to_agent": f"Ticket #{result_id} has been reset and re-queued for execution (task: {task_id}).",
+            "ticket_id": result_id,
+            "task_id": task_id,
+            "notification_marker": "__NOTIFICATION__"
+        }
+    except Exception as exc:
+        logger.exception(f"Failed to re-queue ticket {result_id}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Ticket #{result_id} was reset to 'open' but failed to queue: {str(exc)}. You can try queue_ticket_execution() manually."
+        }
+
+
+async def schedule_tickets_tool(function_args, project_id, conversation_id):
+    """Dependency-aware ticket scheduling."""
+    logger.info("schedule_tickets_tool called")
+
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+
+    ticket_ids = function_args.get('ticket_ids', [])
+    strategy = function_args.get('strategy', 'dependency_wave')
+
+    if not ticket_ids:
+        return {"is_notification": False, "message_to_agent": "Error: ticket_ids is required and must not be empty"}
+
+    project = await get_project(project_id)
+    if not project:
+        return {"is_notification": False, "message_to_agent": f"Error: Project with ID {project_id} does not exist"}
+
+    if not conversation_id:
+        return {"is_notification": False, "message_to_agent": "Error: conversation_id is required for scheduling"}
+
+    def _analyze_deps():
+        # Fetch requested tickets
+        requested = list(ProjectTicket.objects.filter(id__in=ticket_ids, project=project))
+        requested_map = {t.id: t for t in requested}
+
+        # Get all project ticket statuses for dependency checking
+        all_statuses = dict(
+            ProjectTicket.objects.filter(project=project).values_list('id', 'status')
+        )
+
+        ready = []
+        blocked = []
+        skipped = []
+
+        for tid in ticket_ids:
+            ticket = requested_map.get(tid)
+            if not ticket:
+                skipped.append({'ticket_id': tid, 'reason': 'not found'})
+                continue
+            if ticket.status in ('done', 'in_progress'):
+                skipped.append({'ticket_id': tid, 'name': ticket.name, 'reason': f'status is {ticket.status}'})
+                continue
+
+            # Check dependencies
+            deps = ticket.dependencies or []
+            unmet = []
+            for dep_id in deps:
+                try:
+                    dep_id_int = int(dep_id)
+                except (TypeError, ValueError):
+                    continue
+                dep_status = all_statuses.get(dep_id_int)
+                if dep_status != 'done':
+                    unmet.append({'id': dep_id_int, 'status': dep_status or 'not found'})
+
+            if unmet:
+                blocked.append({'ticket_id': tid, 'name': ticket.name, 'unmet_dependencies': unmet})
+            else:
+                ready.append({'ticket_id': tid, 'name': ticket.name})
+
+        return ready, blocked, skipped
+
+    ready, blocked, skipped = await sync_to_async(_analyze_deps)()
+
+    if not ready:
+        return {
+            "is_notification": False,
+            "message_to_agent": json.dumps({
+                'status': 'no_tickets_ready',
+                'blocked': blocked,
+                'skipped': skipped,
+                'message': 'No tickets are ready to execute. All have unmet dependencies or are already done/in_progress.'
+            }, indent=2)
+        }
+
+    # Determine which tickets to queue based on strategy
+    if strategy == 'sequential':
+        to_queue = [ready[0]]
+    else:  # parallel or dependency_wave
+        to_queue = ready
+
+    # Queue the tickets
+    task_ids = []
+    failed = []
+    queued_ids = []
+
+    for item in to_queue:
+        tid = item['ticket_id']
+        try:
+            task_id = await sync_to_async(TaskManager.publish_task)(
+                'tasks.task_definitions.execute_ticket_implementation',
+                tid,
+                project.id,
+                conversation_id,
+                task_name=f"Scheduled Ticket #{tid} for {project.name}",
+                timeout=7200
+            )
+            task_ids.append(task_id)
+            queued_ids.append(tid)
+        except Exception as exc:
+            logger.exception(f"Failed to queue ticket {tid}")
+            failed.append({'ticket_id': tid, 'error': str(exc)})
+
+    # Update queue_status
+    if queued_ids:
+        def _mark():
+            ProjectTicket.objects.filter(id__in=queued_ids).update(queue_status='queued')
+        await sync_to_async(_mark)()
+
+    result = {
+        'status': 'scheduled',
+        'strategy': strategy,
+        'queued': [{'ticket_id': tid} for tid in queued_ids],
+        'blocked': blocked,
+        'skipped': skipped,
+        'failed': failed,
+        'summary': f"Queued {len(queued_ids)} ticket(s), {len(blocked)} blocked, {len(skipped)} skipped."
+    }
+
+    return {
+        "is_notification": True if queued_ids else False,
+        "notification_type": "checklist",
+        "status": "queued",
+        "message_to_agent": json.dumps(result, indent=2),
+        "ticket_ids": queued_ids,
+        "task_ids": task_ids,
+        "notification_marker": "__NOTIFICATION__"
+    }
+
+
+async def update_ticket_details_tool(function_args, project_id, conversation_id):
+    """Update ticket fields: description, acceptance_criteria, priority, complexity, status, notes."""
+    logger.info("update_ticket_details_tool called")
+
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+
+    ticket_id = function_args.get('ticket_id')
+    if not ticket_id:
+        return {"is_notification": False, "message_to_agent": "Error: ticket_id is required"}
+
+    project = await get_project(project_id)
+    if not project:
+        return {"is_notification": False, "message_to_agent": f"Error: Project with ID {project_id} does not exist"}
+
+    def _update():
+        try:
+            ticket = ProjectTicket.objects.get(id=ticket_id, project=project)
+        except ProjectTicket.DoesNotExist:
+            return None, "Ticket not found"
+
+        update_fields = ['updated_at']
+        changes = []
+
+        if 'description' in function_args:
+            ticket.description = function_args['description']
+            update_fields.append('description')
+            changes.append('description')
+
+        if 'acceptance_criteria' in function_args:
+            ticket.acceptance_criteria = function_args['acceptance_criteria']
+            update_fields.append('acceptance_criteria')
+            changes.append('acceptance_criteria')
+
+        if 'priority' in function_args:
+            ticket.priority = function_args['priority']
+            update_fields.append('priority')
+            changes.append('priority')
+
+        if 'complexity' in function_args:
+            ticket.complexity = function_args['complexity']
+            update_fields.append('complexity')
+            changes.append('complexity')
+
+        if 'status' in function_args:
+            ticket.status = function_args['status']
+            update_fields.append('status')
+            changes.append('status')
+
+        if 'notes' in function_args:
+            timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
+            new_note = f"[{timestamp}] {function_args['notes']}"
+            if ticket.notes:
+                ticket.notes += f"\n{new_note}"
+            else:
+                ticket.notes = new_note
+            update_fields.append('notes')
+            changes.append('notes')
+
+        if len(update_fields) <= 1:
+            return ticket.id, "No fields to update. Provide at least one field to change."
+
+        ticket.save(update_fields=update_fields)
+        return ticket.id, f"Updated: {', '.join(changes)}"
+
+    result_id, message = await sync_to_async(_update)()
+    if result_id is None:
+        return {"is_notification": False, "message_to_agent": f"Error: {message}"}
+
+    return {
+        "is_notification": True,
+        "notification_type": "checklist",
+        "message_to_agent": f"Ticket #{result_id}: {message}",
+        "notification_marker": "__NOTIFICATION__"
+    }
+
+
+# ============================================================================
 # MAIN DISPATCHER
 # ============================================================================
 
@@ -893,6 +1381,24 @@ async def app_functions(function_name, function_args, project_id, conversation_i
 
         case "queue_ticket_execution":
             return await queue_ticket_execution_tool(function_args, project_id, conversation_id)
+
+        case "get_ticket_details":
+            return await get_ticket_details_tool(function_args, project_id, conversation_id)
+
+        case "get_project_dashboard":
+            return await get_project_dashboard_tool(function_args, project_id, conversation_id)
+
+        case "get_ticket_execution_log":
+            return await get_ticket_execution_log_tool(function_args, project_id, conversation_id)
+
+        case "retry_ticket":
+            return await retry_ticket_tool(function_args, project_id, conversation_id)
+
+        case "schedule_tickets":
+            return await schedule_tickets_tool(function_args, project_id, conversation_id)
+
+        case "update_ticket_details":
+            return await update_ticket_details_tool(function_args, project_id, conversation_id)
 
         case "open_app_in_artifacts":
             return await open_app_in_artifacts_tool(function_args, project_id, conversation_id)
@@ -2091,30 +2597,61 @@ async def stream_document_content(function_args, project_id):
         
         if full_document_content:
             try:
+                # Map document_type to valid ProjectFile.FILE_TYPES
+                FILE_TYPE_MAP = {
+                    'prd': 'prd',
+                    'technical_spec': 'implementation',
+                    'implementation': 'implementation',
+                    'design': 'design',
+                    'design_doc': 'design',
+                    'test': 'test',
+                    'test_plan': 'test',
+                }
+                db_file_type = FILE_TYPE_MAP.get(document_type, 'other')
+
                 # Save to ProjectFile
                 file_obj, file_created = await sync_to_async(
                     lambda: ProjectFile.objects.update_or_create(
                         project=project,
                         name=document_name,
-                        file_type=document_type,
+                        file_type=db_file_type,
                         defaults={
                             'content': full_document_content,
-                            'mime_type': 'text/markdown'
                         }
                     )
                 )()
-                
+
                 file_id = file_obj.id
                 logger.info(f"Document file {'created' if file_created else 'updated'} with ID: {file_id}")
-                
+
+                # If document_type is 'prd', also save to ProjectPRD for backward compatibility
+                if document_type == 'prd':
+                    try:
+                        prd_created = await sync_to_async(lambda: (
+                            lambda: (
+                                lambda prd, created: created
+                            )(*ProjectPRD.objects.get_or_create(
+                                project=project,
+                                name=document_name,
+                                defaults={'prd': full_document_content}
+                            ))
+                        )())()
+                        if not prd_created:
+                            await sync_to_async(lambda: (
+                                ProjectPRD.objects.filter(project=project, name=document_name).update(prd=full_document_content)
+                            ))()
+                        logger.info(f"PRD '{document_name}' also saved to ProjectPRD table")
+                    except Exception as e:
+                        logger.warning(f"Could not save to ProjectPRD: {e}")
+
                 # Clear the cache
                 cache.delete(cache_key)
                 logger.info(f"Cleared cache for document stream: {cache_key}")
-                
+
             except Exception as e:
                 logger.error(f"Error saving document to database: {str(e)}", exc_info=True)
                 # Don't fail the stream, just log the error
-    
+
     # Build the result for streaming notification
     result = {
         "is_notification": True,
@@ -2122,16 +2659,17 @@ async def stream_document_content(function_args, project_id):
         "content_chunk": content_chunk,
         "is_complete": is_complete,
         "file_type": document_type,
-        "file_name": document_name
+        "file_name": document_name,
+        "message_to_agent": f"Document '{document_name}' chunk streamed" if not is_complete else f"Document '{document_name}' streaming complete and saved"
     }
-    
+
     # Add file_id to result if streaming is complete and we have a file_id
     if is_complete and file_id:
         result["file_id"] = file_id
         logger.info(f"[DOCUMENT_STREAM] Including file_id {file_id} in completion notification")
     elif is_complete:
         logger.warning(f"[DOCUMENT_STREAM] Completion notification but no file_id available")
-    
+
     logger.info(f"[DOCUMENT_STREAM] Returning stream result: is_complete={is_complete}, has_file_id={'file_id' in result}, keys={list(result.keys())}")
     return result
 
@@ -2222,13 +2760,12 @@ async def create_tickets(function_args, project_id, conversation_id=None):
                     source_document=source_document,  # Link to PRD
                     conversation=conversation,  # Link to conversation
                     # Enhanced fields
-                    # details=details,
+                    details=details,
                     ui_requirements=ticket.get('ui_requirements', {}),
                     component_specs=ticket.get('component_specs', {}),
                     acceptance_criteria=ticket.get('acceptance_criteria', []),
                     dependencies=[],  # Will be updated in second pass
-                    # complexity=details.get('complexity', 'medium'),
-                    # requires_worktree=details.get('requires_worktree', True)
+                    complexity=ticket.get('complexity', 'medium'),
                 )
                 # Link all documents via M2M
                 if linked_documents:
