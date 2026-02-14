@@ -100,6 +100,12 @@ def cli_stream_log(request):
     ticket_id = body.get('ticket_id')
     log_type = body.get('type')
     data = body.get('data', {})
+    logger.info(
+        "[CLI API] /stream received user=%s ticket_id=%s type=%s",
+        getattr(getattr(request, 'cli_user', None), 'id', None),
+        ticket_id,
+        log_type,
+    )
 
     if not ticket_id:
         return JsonResponse({'error': 'ticket_id required'}, status=400)
@@ -237,6 +243,13 @@ def cli_update_task(request):
     task_content = body.get('task')
     status = body.get('status', 'pending')
     task_id = body.get('task_id')
+    logger.info(
+        "[CLI API] /task received user=%s ticket_id=%s task_id=%s status=%s",
+        getattr(getattr(request, 'cli_user', None), 'id', None),
+        ticket_id,
+        task_id,
+        status,
+    )
 
     if not ticket_id:
         return JsonResponse({'error': 'ticket_id required'}, status=400)
@@ -319,6 +332,12 @@ def cli_update_status(request):
     ticket_id = body.get('ticket_id')
     status = body.get('status')
     summary = body.get('summary', '')
+    logger.info(
+        "[CLI API] /status received user=%s ticket_id=%s status=%s",
+        getattr(getattr(request, 'cli_user', None), 'id', None),
+        ticket_id,
+        status,
+    )
 
     if not ticket_id:
         return JsonResponse({'error': 'ticket_id required'}, status=400)
@@ -399,6 +418,12 @@ def cli_bulk_tasks(request):
 
     ticket_id = body.get('ticket_id')
     tasks = body.get('tasks', [])
+    logger.info(
+        "[CLI API] /tasks/bulk received user=%s ticket_id=%s task_count=%s",
+        getattr(getattr(request, 'cli_user', None), 'id', None),
+        ticket_id,
+        len(tasks) if isinstance(tasks, list) else 'invalid',
+    )
 
     if not ticket_id:
         return JsonResponse({'error': 'ticket_id required'}, status=400)
@@ -493,6 +518,13 @@ def cli_create_user_action_ticket(request):
     action_type = body.get('action_type', 'other')
     priority = body.get('priority', 'high')
     metadata = body.get('metadata', {})
+    logger.info(
+        "[CLI API] /user-action received user=%s project_id=%s parent_ticket_id=%s action_type=%s",
+        getattr(getattr(request, 'cli_user', None), 'id', None),
+        project_id,
+        parent_ticket_id,
+        action_type,
+    )
 
     if not project_id:
         return JsonResponse({'error': 'project_id required'}, status=400)
@@ -629,6 +661,12 @@ def cli_request_user_input(request):
     question = body.get('question')
     options = body.get('options', [])
     context = body.get('context', '')
+    logger.info(
+        "[CLI API] /request-input received user=%s ticket_id=%s options=%s",
+        getattr(getattr(request, 'cli_user', None), 'id', None),
+        ticket_id,
+        len(options) if isinstance(options, list) else 'invalid',
+    )
 
     if not ticket_id:
         return JsonResponse({'error': 'ticket_id required'}, status=400)

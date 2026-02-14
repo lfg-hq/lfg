@@ -313,7 +313,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 # Get or create conversation
                 if conversation_id and not self.conversation:
                     self.conversation = await self.get_conversation(conversation_id)
-                
+                elif not conversation_id and self.conversation:
+                    # Client explicitly sent no conversation_id (e.g. "New Chat")
+                    # Reset so a new conversation is created
+                    self.conversation = None
+
                 if not self.conversation:
                     # Require a project_id to create a conversation
                     if not project_id:

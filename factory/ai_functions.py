@@ -30,13 +30,20 @@ from django.utils import timezone
 from tasks.task_manager import TaskManager
 from factory.stack_configs import get_stack_config
 
-try:
-    from magpie import Magpie
-except ImportError:  # pragma: no cover - Magpie is optional in some environments
-    Magpie = None
-
 # Configure logger
 logger = logging.getLogger(__name__)
+
+# Mags API imports
+try:
+    from factory.mags import (
+        run_command as mags_run_command, get_or_create_workspace_job,
+        workspace_name_for_preview, get_http_proxy_url,
+        MAGS_WORKING_DIR, PREVIEW_SETUP_SCRIPT, MagsAPIError,
+    )
+    _mags_available = True
+except ImportError:
+    logger.warning("Mags API not available")
+    _mags_available = False
 
 # Import codebase indexing functions
 try:
@@ -56,48 +63,8 @@ except ImportError as e:
 
 
 # ============================================================================
-# MAGPIE WORKSPACE CONSTANTS & HELPERS
+# WORKSPACE HELPERS
 # ============================================================================
-
-DEFAULT_MAGPIE_API_KEY = "e1e90cc27dfe6a50cc28699cdcb937ef8c443567b62cf064a063f9b34af0b91b"
-MAGPIE_API_KEY = getattr(settings, "MAGPIE_API_KEY", os.getenv("MAGPIE_API_KEY", DEFAULT_MAGPIE_API_KEY))
-
-MAGPIE_NODE_VERSION = "20.18.0"
-MAGPIE_NODE_DISTRO = "linux-x64"
-MAGPIE_WORKSPACE_DIR = "/workspace/nextjs-app"
-
-MAGPIE_NODE_ENV_LINES = [
-    "export PATH=/workspace/node/current/bin:$PATH",
-    "export npm_config_prefix=/workspace/.npm-global",
-    "export npm_config_cache=/workspace/.npm-cache",
-    "export NODE_ENV=development",
-    "mkdir -p /workspace/.npm-global/lib /workspace/.npm-cache",
-]
-
-MAGPIE_BOOTSTRAP_SCRIPT = """#!/bin/sh
-set -eux
-cd /workspace
-echo "VM ready for Next.js provisioning" > /workspace/READY
-
-# keep the job marked running so SSH window stays open for orchestration
-while :; do sleep 3600 & wait $!; done
-"""
-
-
-def magpie_available() -> bool:
-    """Return True when the Magpie SDK and API key are configured."""
-    return Magpie is not None and bool(MAGPIE_API_KEY)
-
-
-def get_magpie_client():
-    """Instantiate a Magpie client or raise a helpful error."""
-    if not magpie_available():
-        raise RuntimeError("Magpie SDK or MAGPIE_API_KEY is not configured")
-    # Create client with extended timeout for long-running commands (npm install, build, etc.)
-    # The Magpie client uses self.timeout in _make_request(), so we pass it to __init__
-    client = Magpie(api_key=MAGPIE_API_KEY, timeout=600)  # 10 minutes for npm install, builds, etc.
-    return client
-
 
 def _slugify_project_name(name: str) -> str:
     slug = re.sub(r'[^a-z0-9]+', '-', name.lower())
@@ -105,340 +72,15 @@ def _slugify_project_name(name: str) -> str:
     return slug or "turbo-app"
 
 
-def _generate_proxy_subdomain(workspace: MagpieWorkspace) -> str:
-    """
-    Generate a custom subdomain for proxy URL based on project name.
-    Format: {project-slug}-preview-{short-id}
-    """
-    import uuid
-
-    # Get project name
-    project_name = "app"
-    if workspace.project:
-        project_name = workspace.project.provided_name or workspace.project.name or "app"
-    elif workspace.metadata and workspace.metadata.get('project_name'):
-        project_name = workspace.metadata.get('project_name')
-
-    # Slugify the project name
-    slug = _slugify_project_name(project_name)
-
-    # Add a short unique suffix to avoid collisions
-    short_id = str(uuid.uuid4())[:6]
-
-    # Create subdomain: max 63 chars for DNS labels
-    subdomain = f"{slug}-preview-{short_id}"
-    if len(subdomain) > 63:
-        subdomain = f"{slug[:50]}-preview-{short_id}"
-
-    return subdomain
-
-
-def _call_magpie_proxy_api(method: str, endpoint: str, data: dict = None) -> dict | None:
-    """
-    Make direct HTTP calls to Magpie API for proxy targets.
-    This bypasses SDK version issues by calling the API directly.
-    """
-    import requests
-
-    base_url = "https://api.magpiecloud.com"
-    url = f"{base_url}{endpoint}"
-    headers = {
-        "Authorization": f"Bearer {MAGPIE_API_KEY}",
-        "Content-Type": "application/json",
-    }
-
-    try:
-        if method == "GET":
-            response = requests.get(url, headers=headers, timeout=30)
-        elif method == "POST":
-            response = requests.post(url, headers=headers, json=data, timeout=30)
-        elif method == "PUT":
-            response = requests.put(url, headers=headers, json=data, timeout=30)
-        else:
+async def async_get_or_fetch_proxy_url(workspace: MagpieWorkspace, port: int = 3000, **kwargs) -> str | None:
+    """Get preview URL for a workspace via Mags HTTP access."""
+    job_id = workspace.mags_job_id or workspace.job_id
+    def _get():
+        try:
+            return get_http_proxy_url(job_id, port)
+        except Exception:
             return None
-
-        logger.info(f"[PROXY API] {method} {endpoint} -> {response.status_code}")
-
-        if response.status_code == 404:
-            logger.warning(f"[PROXY API] Endpoint not found: {endpoint}")
-            return None
-        elif response.status_code >= 400:
-            logger.error(f"[PROXY API] Error {response.status_code}: {response.text}")
-            return None
-
-        return response.json() if response.text else {}
-    except Exception as e:
-        logger.error(f"[PROXY API] Request failed: {e}")
-        return None
-
-
-def get_or_create_proxy_url(workspace: MagpieWorkspace, port: int = 3000, client=None, force_refresh: bool = False) -> str | None:
-    """
-    Get the proxy URL for a workspace from database. If not exists, create a new
-    proxy target with a custom subdomain name.
-
-    Args:
-        workspace: The MagpieWorkspace instance
-        port: The port number for the proxy (default: 3000)
-        client: Optional Magpie client. If not provided, one will be created.
-        force_refresh: If True, clear existing proxy_url and create a new one
-
-    Returns:
-        The proxy URL string, or None if unavailable
-    """
-    # Clear existing proxy URL if force_refresh is requested
-    if force_refresh and workspace.proxy_url:
-        logger.info(f"[PROXY] Force refresh requested, clearing existing proxy URL for workspace {workspace.workspace_id}")
-        workspace.proxy_url = ''
-        workspace.save(update_fields=['proxy_url', 'updated_at'])
-
-    # Return existing proxy URL if available in database
-    if workspace.proxy_url:
-        logger.debug(f"[PROXY] Using existing proxy URL for workspace {workspace.workspace_id}: {workspace.proxy_url}")
-        return workspace.proxy_url
-
-    # No proxy URL in DB - create a new one
-    try:
-        if client is None:
-            client = get_magpie_client()
-
-        # Check if workspace has IPv6 address
-        if not workspace.ipv6_address:
-            logger.warning(f"[PROXY] Cannot create proxy - workspace {workspace.workspace_id} has no IPv6 address")
-            return None
-
-        ipv6 = workspace.ipv6_address.strip('[]')
-        proxy_url = None
-        logger.info(f"[PROXY] Starting proxy setup for workspace {workspace.workspace_id}, IPv6={ipv6}, port={port}, force_refresh={force_refresh}")
-
-        # Try direct API calls first (bypasses SDK version issues)
-        logger.info(f"[PROXY] Trying direct API calls to Magpie proxy-targets endpoint")
-
-        # List existing proxy targets
-        list_response = _call_magpie_proxy_api("GET", "/api/v1/proxy-targets")
-
-        if list_response is not None:
-            # API endpoint exists - look for matching target
-            existing_targets = list_response.get("proxy_targets", [])
-            logger.info(f"[PROXY] Found {len(existing_targets)} existing proxy targets")
-
-            matching_target = None
-            for target in existing_targets:
-                target_ipv6 = (target.get('ipv6_address') or '').strip('[]')
-                if target_ipv6 == ipv6:
-                    matching_target = target
-                    break
-
-            if matching_target:
-                # Found existing proxy target - check if port needs update
-                target_id = matching_target.get('id') or matching_target.get('target_id')
-                current_port = matching_target.get('port')
-                logger.info(f"[PROXY] Found existing proxy target {target_id} for IPv6 {ipv6}, current port={current_port}, desired port={port}")
-
-                if target_id and current_port != port:
-                    # Update port
-                    logger.info(f"[PROXY] Updating proxy target {target_id} to port {port}")
-                    update_response = _call_magpie_proxy_api("PUT", f"/api/v1/proxy-targets/{target_id}", {"port": port})
-                    if update_response:
-                        proxy_url = update_response.get('proxy_url')
-                        if not proxy_url and update_response.get('subdomain'):
-                            proxy_url = f"https://{update_response['subdomain']}.app.lfg.run"
-                        logger.info(f"[PROXY] Updated proxy target to port {port}: {proxy_url}")
-                else:
-                    # Port already correct
-                    proxy_url = matching_target.get('proxy_url')
-                    if not proxy_url and matching_target.get('subdomain'):
-                        proxy_url = f"https://{matching_target['subdomain']}.app.lfg.run"
-                    logger.info(f"[PROXY] Using existing proxy target (port already correct): {proxy_url}")
-            else:
-                # No existing proxy target - create new one
-                subdomain = _generate_proxy_subdomain(workspace)
-                logger.info(f"[PROXY] Creating new proxy target: subdomain={subdomain}, IPv6={ipv6}, port={port}")
-
-                create_data = {
-                    "ipv6_address": ipv6,
-                    "port": port,
-                    "subdomain": subdomain,
-                    "name": f"LFG Preview - {subdomain}",
-                }
-                create_response = _call_magpie_proxy_api("POST", "/api/v1/proxy-targets", create_data)
-
-                if create_response:
-                    proxy_url = create_response.get('proxy_url')
-                    if not proxy_url and create_response.get('subdomain'):
-                        proxy_url = f"https://{create_response['subdomain']}.app.lfg.run"
-                    elif not proxy_url:
-                        proxy_url = f"https://{subdomain}.app.lfg.run"
-                    logger.info(f"[PROXY] Created new proxy target: {proxy_url}")
-        else:
-            logger.warning(f"[PROXY] Direct API calls failed, proxy-targets endpoint may not exist")
-
-        # Fallback: try SDK's proxy_targets if available
-        if not proxy_url and hasattr(client, 'proxy_targets'):
-            logger.info(f"[PROXY] Trying SDK proxy_targets API")
-            try:
-                existing_targets = client.proxy_targets.list()
-                matching_target = None
-                for target in existing_targets:
-                    target_ipv6 = getattr(target, 'ipv6_address', '') or ''
-                    if target_ipv6.strip('[]') == ipv6:
-                        matching_target = target
-                        break
-
-                if matching_target:
-                    target_id = getattr(matching_target, 'id', None) or getattr(matching_target, 'target_id', None)
-                    current_port = getattr(matching_target, 'port', None)
-                    if target_id and current_port != port:
-                        updated_target = client.proxy_targets.update(target_id, port=port)
-                        proxy_url = getattr(updated_target, 'proxy_url', None)
-                        if not proxy_url and hasattr(updated_target, 'subdomain'):
-                            proxy_url = f"https://{updated_target.subdomain}.app.lfg.run"
-                    else:
-                        proxy_url = getattr(matching_target, 'proxy_url', None)
-                        if not proxy_url and hasattr(matching_target, 'subdomain'):
-                            proxy_url = f"https://{matching_target.subdomain}.app.lfg.run"
-                else:
-                    subdomain = _generate_proxy_subdomain(workspace)
-                    target = client.proxy_targets.create(
-                        ipv6_address=ipv6,
-                        port=port,
-                        name=f"LFG Preview - {subdomain}",
-                        subdomain=subdomain
-                    )
-                    proxy_url = getattr(target, 'proxy_url', None)
-                    if not proxy_url:
-                        proxy_url = f"https://{subdomain}.app.lfg.run"
-                logger.info(f"[PROXY] SDK proxy_targets succeeded: {proxy_url}")
-            except Exception as e:
-                logger.error(f"[PROXY] SDK proxy_targets failed: {e}")
-
-        # Last resort: use get_proxy_url for existing jobs (WARNING: port may be wrong)
-        if not proxy_url:
-            job_id = workspace.job_id
-            logger.warning(f"[PROXY] All proxy target methods failed, trying jobs.get_proxy_url() for job {job_id}")
-            logger.warning(f"[PROXY] WARNING: This fallback may not use port {port} - the proxy might point to wrong port!")
-            try:
-                proxy_url = client.jobs.get_proxy_url(job_id)
-                if proxy_url:
-                    logger.warning(f"[PROXY] Using job proxy URL (port may not be {port}): {proxy_url}")
-            except Exception as e:
-                logger.error(f"[PROXY] jobs.get_proxy_url() also failed: {e}")
-
-        if proxy_url:
-            # Store the proxy URL in the database
-            workspace.proxy_url = proxy_url
-            workspace.save(update_fields=['proxy_url', 'updated_at'])
-            logger.info(f"[PROXY] Stored proxy URL for workspace {workspace.workspace_id}: {proxy_url}")
-            return proxy_url
-        else:
-            logger.warning(f"[PROXY] No proxy URL obtained for workspace {workspace.workspace_id}")
-            return None
-
-    except Exception as e:
-        logger.error(f"[PROXY] Failed to get/create proxy URL for workspace {workspace.workspace_id}: {e}", exc_info=True)
-        return None
-
-
-# Keep old function name as alias for backward compatibility
-def get_or_fetch_proxy_url(workspace: MagpieWorkspace, port: int = 3000, client=None, force_refresh: bool = False) -> str | None:
-    """Alias for get_or_create_proxy_url for backward compatibility."""
-    return get_or_create_proxy_url(workspace, port, client, force_refresh)
-
-
-async def async_get_or_fetch_proxy_url(workspace: MagpieWorkspace, port: int = 3000, client=None, force_refresh: bool = False) -> str | None:
-    """Async version of get_or_create_proxy_url."""
-    return await sync_to_async(get_or_fetch_proxy_url, thread_sensitive=True)(workspace, port, client, force_refresh)
-
-
-def remap_proxy_to_new_ipv6(old_proxy_url: str, new_ipv6: str, port: int = 3000) -> str | None:
-    """
-    Remap an existing proxy URL to point to a new IPv6 address.
-    This is used when a workspace is reprovisioned and we want to keep the same proxy URL.
-
-    Args:
-        old_proxy_url: The existing proxy URL (e.g., https://project-preview-abc123.app.lfg.run)
-        new_ipv6: The new IPv6 address to point to
-        port: The port number for the proxy
-
-    Returns:
-        The proxy URL string (same as old), or None if remapping failed
-    """
-    if not old_proxy_url or not new_ipv6:
-        logger.warning(f"[PROXY REMAP] Missing required parameters: old_proxy_url={old_proxy_url}, new_ipv6={new_ipv6}")
-        return None
-
-    try:
-        # Extract subdomain from old proxy URL
-        # Format: https://project-preview-abc123.app.lfg.run
-        import re
-        match = re.match(r'https://([^.]+)\.app\.lfg\.run', old_proxy_url)
-        if not match:
-            logger.warning(f"[PROXY REMAP] Could not parse subdomain from URL: {old_proxy_url}")
-            return None
-
-        subdomain = match.group(1)
-        new_ipv6 = new_ipv6.strip('[]')
-
-        logger.info(f"[PROXY REMAP] Remapping subdomain {subdomain} from old IP to {new_ipv6}:{port}")
-
-        # List existing proxy targets to find the one with matching subdomain
-        list_response = _call_magpie_proxy_api("GET", "/api/v1/proxy-targets")
-
-        if list_response is None:
-            logger.error(f"[PROXY REMAP] Failed to list proxy targets")
-            return None
-
-        existing_targets = list_response.get("proxy_targets", [])
-        matching_target = None
-
-        for target in existing_targets:
-            target_subdomain = target.get('subdomain', '')
-            if target_subdomain == subdomain:
-                matching_target = target
-                break
-
-        if matching_target:
-            # Found existing proxy target - update its IPv6 and port
-            target_id = matching_target.get('id') or matching_target.get('target_id')
-            logger.info(f"[PROXY REMAP] Found existing target {target_id}, updating to IPv6={new_ipv6}, port={port}")
-
-            update_data = {
-                "ipv6_address": new_ipv6,
-                "port": port
-            }
-            update_response = _call_magpie_proxy_api("PUT", f"/api/v1/proxy-targets/{target_id}", update_data)
-
-            if update_response:
-                logger.info(f"[PROXY REMAP] Successfully remapped {subdomain} to {new_ipv6}:{port}")
-                return old_proxy_url
-            else:
-                logger.error(f"[PROXY REMAP] Failed to update proxy target {target_id}")
-                return None
-        else:
-            # No existing target found - create new one with the same subdomain
-            logger.info(f"[PROXY REMAP] No existing target for {subdomain}, creating new one")
-
-            create_data = {
-                "ipv6_address": new_ipv6,
-                "port": port,
-                "subdomain": subdomain,
-                "name": f"LFG Preview - {subdomain}",
-            }
-            create_response = _call_magpie_proxy_api("POST", "/api/v1/proxy-targets", create_data)
-
-            if create_response:
-                proxy_url = create_response.get('proxy_url')
-                if not proxy_url:
-                    proxy_url = f"https://{subdomain}.app.lfg.run"
-                logger.info(f"[PROXY REMAP] Created new proxy target: {proxy_url}")
-                return proxy_url
-            else:
-                logger.error(f"[PROXY REMAP] Failed to create proxy target")
-                return None
-
-    except Exception as e:
-        logger.error(f"[PROXY REMAP] Error remapping proxy: {e}", exc_info=True)
-        return None
+    return await sync_to_async(_get, thread_sensitive=True)()
 
 
 def _sanitize_string(value: str) -> str:
@@ -476,36 +118,6 @@ def _format_command_output(stdout: str, stderr: str, limit: int = 6000) -> str:
     return "\n\n".join(parts) if parts else "(no output)"
 
 
-def _run_magpie_ssh(client, job_id: str, command: str, timeout: int = 300, with_node_env: bool = True, project_id = None):
-    env_lines = ["set -e", "cd /workspace"]
-    if with_node_env:
-        env_lines.extend(MAGPIE_NODE_ENV_LINES)
-
-    # Add project-specific environment variables if project_id provided
-    if project_id:
-        project_env_exports = get_project_env_exports(project_id)
-        if project_env_exports:
-            env_lines.extend(project_env_exports)
-            logger.info(f"[MAGPIE][SSH] Injecting {len(project_env_exports)} project env vars")
-
-    wrapped = "\n".join(env_lines + [command])
-    logger.info("[MAGPIE][SSH] job_id=%s timeout=%s command=%s", job_id, timeout, command.split('\n')[0][:120])
-    print("[MAGPIE][SSH] Job prints", wrapped)
-    result = client.jobs.ssh(job_id, wrapped, timeout=timeout)
-    logger.debug(
-        "[MAGPIE][SSH RESULT] job_id=%s exit_code=%s stdout_len=%s stderr_len=%s",
-        job_id,
-        getattr(result, 'exit_code', None),
-        len(getattr(result, 'stdout', '') or ''),
-        len(getattr(result, 'stderr', '') or ''),
-    )
-    return {
-        "exit_code": getattr(result, 'exit_code', 0),
-        "stdout": getattr(result, 'stdout', '') or '',
-        "stderr": getattr(result, 'stderr', '') or ''
-    }
-
-
 def _extract_pid_from_output(output: str) -> str:
     if not output:
         return ""
@@ -529,82 +141,6 @@ def _build_log_entries_from_steps(steps):
             "exit_code": result.get("exit_code")
         })
     return log_entries
-
-
-def _bootstrap_magpie_workspace(client, job_id: str):
-    """Install Node, scaffold the Next.js app, add Prisma, and launch the dev server."""
-    steps = []
-
-    install_node_cmd = textwrap.dedent(
-        f"""
-        mkdir -p node
-        cd node
-        if [ ! -d node-v{MAGPIE_NODE_VERSION}-{MAGPIE_NODE_DISTRO} ]; then
-            if ! command -v curl >/dev/null 2>&1 || ! command -v xz >/dev/null 2>&1; then
-                apk update
-                apk add --no-cache curl xz
-            fi
-            curl -fsSL https://nodejs.org/dist/v{MAGPIE_NODE_VERSION}/node-v{MAGPIE_NODE_VERSION}-{MAGPIE_NODE_DISTRO}.tar.xz -o node.tar.xz
-            tar -xf node.tar.xz
-            rm node.tar.xz
-            ln -sfn node-v{MAGPIE_NODE_VERSION}-{MAGPIE_NODE_DISTRO} current
-        fi
-        mkdir -p /workspace/.npm-global /workspace/.npm-cache
-        """
-    )
-    install_result = _run_magpie_ssh(client, job_id, install_node_cmd, timeout=240, with_node_env=False)
-    install_result["command"] = install_node_cmd
-    steps.append(("Install Node.js", install_result))
-
-    scaffold_cmd = textwrap.dedent(
-        """
-        rm -rf nextjs-app
-        """
-    )
-    scaffold_result = _run_magpie_ssh(client, job_id, scaffold_cmd, timeout=360)
-    scaffold_result["command"] = scaffold_cmd
-    steps.append(("Write Next.js project skeleton", scaffold_result))
-
-    install_dependencies_cmd = "cd nextjs-app && npm config set cache /workspace/.npm-cache && npm install"
-    deps_result = _run_magpie_ssh(client, job_id, install_dependencies_cmd, timeout=480)
-    deps_result["command"] = install_dependencies_cmd
-    steps.append(("Install npm dependencies", deps_result))
-
-    start_server_cmd = textwrap.dedent(
-        """
-        cd nextjs-app
-        # Set npm cache to /workspace to avoid disk space issues
-        npm config set cache /workspace/.npm-cache
-        if [ -f .devserver_pid ]; then
-          old_pid=$(cat .devserver_pid)
-          if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
-            kill "$old_pid" || true
-          fi
-        fi
-        : > /workspace/nextjs-app/dev.log
-        nohup npm run dev -- --hostname :: --port 3000 > /workspace/nextjs-app/dev.log 2>&1 &
-        pid=$!
-        echo "$pid" > .devserver_pid
-        echo "PID:$pid"
-        """
-    )
-    start_result = _run_magpie_ssh(client, job_id, start_server_cmd, timeout=120)
-    start_result["command"] = start_server_cmd
-    steps.append(("Launch dev server", start_result))
-
-    # Allow the dev server a few seconds to boot
-    time.sleep(5)
-
-    preview_cmd = "cd nextjs-app && curl -s --max-time 5 http://127.0.0.1:3000 | head -n 20"
-    preview_result = _run_magpie_ssh(client, job_id, preview_cmd, timeout=120)
-    preview_result["command"] = preview_cmd
-    steps.append(("Fetch preview", preview_result))
-
-    return {
-        "steps": steps,
-        "pid": _extract_pid_from_output(start_result.get("stdout", "")),
-        "preview": preview_result.get("stdout", "")
-    }
 
 
 def _update_workspace_metadata(workspace, **metadata):
@@ -1387,6 +923,9 @@ async def app_functions(function_name, function_args, project_id, conversation_i
 
         case "get_project_dashboard":
             return await get_project_dashboard_tool(function_args, project_id, conversation_id)
+
+        case "set_project_stack":
+            return await set_project_stack(function_args, project_id, conversation_id)
 
         case "get_ticket_execution_log":
             return await get_ticket_execution_log_tool(function_args, project_id, conversation_id)
@@ -3370,7 +2909,7 @@ async def server_command_in_k8s(command: str, project_id: int | str = None, conv
     }
 
 async def ssh_command_tool(function_args, project_id, conversation_id, ticket_id=None):
-    """Execute a command inside the Magpie workspace via SSH."""
+    """Execute a command inside the remote workspace via SSH."""
 
     # Try to get ticket_id from context variable if not passed
     if ticket_id is None:
@@ -3393,17 +2932,16 @@ async def ssh_command_tool(function_args, project_id, conversation_id, ticket_id
         except Exception as e:
             logger.debug(f"[SSH_COMMAND_TOOL] Could not get workspace_id from context: {e}")
 
-    if not magpie_available():
+    if not _mags_available:
         return {
             "is_notification": False,
-            "message_to_agent": "Magpie command execution is not available. Configure the Magpie SDK and API key."
+            "message_to_agent": "Workspace command execution is not available. Check server configuration."
         }
 
     command = function_args.get('command')
     original_command = command  # Save original command for logging
     explanation = function_args.get('explanation')
     timeout = function_args.get('timeout', 300)
-    with_node_env = function_args.get('with_node_env', True)
 
     # Check if user has requested to stop execution
     if ticket_id:
@@ -3418,14 +2956,14 @@ async def ssh_command_tool(function_args, project_id, conversation_id, ticket_id
                 "message_to_agent": "STOP REQUESTED: User has interrupted the execution. Please acknowledge the stop request and end your current task gracefully. Respond with: IMPLEMENTATION_STATUS: STOPPED - User requested interruption"
             }
 
-    # Prepend cd /workspace && to ensure all commands run in workspace directory
-    if command and not command.strip().startswith('cd /workspace'):
-        command = f"cd /workspace && {command}"
+    # Prepend cd to working dir to ensure all commands run in workspace directory
+    if command and not command.strip().startswith(f'cd {MAGS_WORKING_DIR}'):
+        command = f"cd {MAGS_WORKING_DIR} && {command}"
 
     if not command:
         return {
             "is_notification": False,
-            "message_to_agent": "command is required to run a Magpie SSH command."
+            "message_to_agent": "command is required to run an SSH command."
         }
 
     # Lazy workspace initialization: if no workspace_id but we have ticket_id, create workspace on-demand
@@ -3460,7 +2998,7 @@ async def ssh_command_tool(function_args, project_id, conversation_id, ticket_id
 
     workspace = await _fetch_workspace(workspace_id=workspace_id)
     if not workspace:
-        error_msg = f"No Magpie workspace found for ID {workspace_id}. Provision one first."
+        error_msg = f"No workspace found for ID {workspace_id}. Provision one first."
 
         # Log this failure to TicketLog if ticket_id is available
         if ticket_id:
@@ -3482,49 +3020,22 @@ async def ssh_command_tool(function_args, project_id, conversation_id, ticket_id
             "message_to_agent": error_msg
         }
 
-    try:
-        client = get_magpie_client()
-    except RuntimeError as exc:
-        logger.error("Magpie client configuration error: %s", exc)
-        error_msg = f"Magpie client error: {exc}"
-
-        # Log this failure to TicketLog if ticket_id is available
-        if ticket_id:
-            try:
-                ticket = await sync_to_async(ProjectTicket.objects.get, thread_sensitive=True)(id=ticket_id)
-                await sync_to_async(TicketLog.objects.create, thread_sensitive=True)(
-                    ticket=ticket,
-                    command=original_command,
-                    explanation=explanation or "Magpie client error",
-                    output=error_msg,
-                    exit_code=-1
-                )
-                logger.info(f"[SSH_COMMAND_TOOL] TicketLog created for Magpie client error")
-            except Exception as e:
-                logger.error(f"[SSH_COMMAND_TOOL] Error creating TicketLog for failure: {e}")
-
-        return {
-            "is_notification": False,
-            "message_to_agent": error_msg
-        }
+    ws_id = workspace.mags_workspace_id or workspace.workspace_id
 
     try:
         result = await asyncio.to_thread(
-            _run_magpie_ssh,
-            client,
-            workspace.job_id,
+            mags_run_command,
+            ws_id,
             command,
             timeout,
-            with_node_env,
-            project_id,
         )
         logger.info(
-            "[MAGPIE][SSH COMMAND] workspace=%s exit_code=%s",
+            "[SSH COMMAND] workspace=%s exit_code=%s",
             workspace.workspace_id,
             result.get('exit_code')
         )
     except Exception as exc:
-        logger.exception("Magpie SSH command failed")
+        logger.exception("SSH command failed")
         await sync_to_async(workspace.mark_error, thread_sensitive=True)(metadata={"last_error": str(exc)})
 
         # Provide specific guidance for different error types
@@ -3539,13 +3050,13 @@ async def ssh_command_tool(function_args, project_id, conversation_id, ticket_id
             )
         elif "500" in error_msg or "failed to execute ssh command" in error_msg:
             agent_message = (
-                f"Magpie API error (500): Command was too long or complex. "
+                f"API error (500): Command was too long or complex. "
                 f"You likely tried to create multiple files in one ssh_command. "
                 f"Create ONE file per ssh_command instead. "
                 f"DO NOT retry the exact same command."
             )
         else:
-            agent_message = f"Magpie SSH command failed: {exc}"
+            agent_message = f"SSH command failed: {exc}"
 
         # Log this failure to TicketLog if ticket_id is available
         if ticket_id:
@@ -3568,7 +3079,7 @@ async def ssh_command_tool(function_args, project_id, conversation_id, ticket_id
             "notification_marker": "__NOTIFICATION__",
             "function_name": "ssh_command",
             "status": "failed",
-            "message": "Magpie SSH command could not be executed. The remote workspace is unavailable.",
+            "message": "SSH command could not be executed. The remote workspace is unavailable.",
             "error": error_msg,
             "message_to_agent": agent_message
         }
@@ -3589,7 +3100,7 @@ async def ssh_command_tool(function_args, project_id, conversation_id, ticket_id
             logger.info(f"[SSH_COMMAND_TOOL] Found ticket: {ticket.name} (id={ticket.id})")
             log_entry = await sync_to_async(TicketLog.objects.create, thread_sensitive=True)(
                 ticket=ticket,
-                command=original_command,  # Use original command without cd /workspace prefix
+                command=original_command,  # Use original command without cd prefix
                 explanation=explanation,
                 output=_truncate_output(result.get('stdout') or result.get('stderr'), 4000),
                 exit_code=result.get('exit_code')
@@ -3648,14 +3159,14 @@ async def ssh_command_tool(function_args, project_id, conversation_id, ticket_id
 
 
 async def new_dev_sandbox_tool(function_args, project_id, conversation_id):
-    """Set up the dev sandbox for the Magpie workspace based on the project's stack."""
+    """Set up the dev sandbox for the workspace based on the project's stack."""
 
     logger.info(f"[DEV_SANDBOX] Setting up dev sandbox for workspace: {function_args.get('workspace_id')}")
 
-    if not magpie_available():
+    if not _mags_available:
         return {
             "is_notification": False,
-            "message_to_agent": "Magpie workspace tools are unavailable. Configure the Magpie SDK and API key."
+            "message_to_agent": "Workspace tools are unavailable. Check server configuration."
         }
 
     workspace_id = function_args.get('workspace_id')
@@ -3672,7 +3183,7 @@ async def new_dev_sandbox_tool(function_args, project_id, conversation_id):
     if not workspace:
         return {
             "is_notification": False,
-            "message_to_agent": f"No Magpie workspace found for ID {workspace_id}. Provision one first."
+            "message_to_agent": f"No workspace found for ID {workspace_id}. Provision one first."
         }
 
     # Get stack configuration from project
@@ -3684,21 +3195,14 @@ async def new_dev_sandbox_tool(function_args, project_id, conversation_id):
 
     logger.info(f"[DEV_SANDBOX] Stack: {stack}, Project dir: {project_dir}")
 
-    try:
-        client = get_magpie_client()
-    except RuntimeError as exc:
-        logger.error("Magpie client configuration error: %s", exc)
-        return {
-            "is_notification": False,
-            "message_to_agent": f"Magpie client error: {exc}"
-        }
+    ws_id = workspace.mags_workspace_id or workspace.workspace_id
 
     # Build stack-aware setup command
     pre_dev_cmd = stack_config.get('pre_dev_cmd', '')
 
     restart_cmd = textwrap.dedent(
         f"""
-        cd /workspace
+        cd {MAGS_WORKING_DIR}
         # Kill any existing dev server
         if [ -f {project_dir}/.devserver_pid ]; then
           old_pid=$(cat {project_dir}/.devserver_pid)
@@ -3710,23 +3214,20 @@ async def new_dev_sandbox_tool(function_args, project_id, conversation_id):
         {pre_dev_cmd if pre_dev_cmd else '# No pre-dev command for this stack'}
         # Configure npm cache if Node.js based
         if command -v npm &> /dev/null; then
-          npm config set cache /workspace/.npm-cache 2>/dev/null || true
+          npm config set cache {MAGS_WORKING_DIR}/.npm-cache 2>/dev/null || true
         fi
         """
     )
 
     try:
         result = await asyncio.to_thread(
-            _run_magpie_ssh,
-            client,
-            workspace.job_id,
+            mags_run_command,
+            ws_id,
             restart_cmd,
             240,
-            True,
-            project_id,
         )
         logger.info(
-            "[MAGPIE][DEV RESTART] workspace=%s exit_code=%s",
+            "[DEV_SANDBOX][DEV RESTART] workspace=%s exit_code=%s",
             workspace.workspace_id,
             result.get('exit_code')
         )
@@ -3739,7 +3240,7 @@ async def new_dev_sandbox_tool(function_args, project_id, conversation_id):
             "notification_marker": "__NOTIFICATION__",
             "function_name": "new_dev_sandbox",
             "status": "failed",
-            "message": "Dev sandbox creation failed because the Magpie workspace is unavailable.",
+            "message": "Dev sandbox creation failed because the workspace is unavailable.",
             "error": str(exc),
             "message_to_agent": f"Dev sandbox creation failed: {exc}"
         }
@@ -3777,7 +3278,7 @@ async def new_dev_sandbox_tool(function_args, project_id, conversation_id):
     if not preview_url:
         preview_url = f"http://[{workspace.ipv6_address}]:{default_port}" if workspace.ipv6_address else "(URL pending)"
     status_text = "completed successfully" if result.get('exit_code') == 0 else f"exited with code {result.get('exit_code')}"
-    workspace_dir = f"/workspace/{project_dir}"
+    workspace_dir = f"{MAGS_WORKING_DIR}/{project_dir}"
     message_lines = [
         f"Dev sandbox setup {status_text} 🚀",
         f"Workspace ID: {workspace.workspace_id}",
@@ -4810,20 +4311,20 @@ Please go to Project Settings → Environment tab and provide values for the mis
 
 async def run_code_server_tool(function_args, project_id, conversation_id):
     """
-    Execute code via SSH on the Magpie server and open the app in the artifacts panel.
-    Uses default values if not specified: command='cd /workspace/nextjs-app && npm run dev', port=3000
+    Execute code via SSH on the workspace and open the app in the artifacts panel.
+    Uses default values if not specified: command='cd /root/project && npm run dev', port=3000
     """
     logger.info("Run code server tool called")
     logger.debug(f"Function arguments: {function_args}")
 
-    if not magpie_available():
+    if not _mags_available:
         return {
             "is_notification": False,
-            "message_to_agent": "Magpie workspace is not available. Configure the Magpie SDK and API key to run apps."
+            "message_to_agent": "Workspace service is not available. Check server configuration."
         }
 
     # Get parameters with defaults
-    command = function_args.get('command', 'cd /workspace/nextjs-app && npm run dev')
+    command = function_args.get('command', f'cd {MAGS_WORKING_DIR}/project && npm run dev')
     port = function_args.get('port', 3000)
     description = function_args.get('description', 'Starting development server')
 
@@ -4835,7 +4336,7 @@ async def run_code_server_tool(function_args, project_id, conversation_id):
     if not workspace:
         return {
             "is_notification": False,
-            "message_to_agent": "No Magpie workspace found. Workspaces are automatically created during ticket execution."
+            "message_to_agent": "No workspace found. Workspaces are automatically created during ticket execution."
         }
 
     if workspace.status != 'ready':
@@ -4844,16 +4345,10 @@ async def run_code_server_tool(function_args, project_id, conversation_id):
             "message_to_agent": f"Workspace is not ready yet (status: {workspace.status}). Wait for provisioning to complete."
         }
 
-    if not workspace.ipv6_address:
-        return {
-            "is_notification": False,
-            "message_to_agent": "Workspace IPv6 address is not available. Try restarting the workspace."
-        }
+    ws_id = workspace.mags_workspace_id or workspace.workspace_id
 
-    # Execute the command via SSH with environment variables
+    # Execute the command via SDK exec with environment variables
     try:
-        client = get_magpie_client()
-
         # Build command with project environment variables
         env_exports = get_project_env_exports(project_id) if project_id else []
         if env_exports:
@@ -4865,15 +4360,11 @@ async def run_code_server_tool(function_args, project_id, conversation_id):
 
         logger.info(f"Executing command on workspace: {command}")
 
-        # Execute the command using _run_magpie_ssh for proper env injection
         result = await asyncio.to_thread(
-            _run_magpie_ssh,
-            client,
-            workspace.job_id,
+            mags_run_command,
+            ws_id,
             full_command,
             30,  # Short timeout as server runs in background
-            True,  # with_node_env
-            project_id,
         )
 
         logger.info(f"Command execution result: exit_code={result.get('exit_code')}")
@@ -4885,11 +4376,10 @@ async def run_code_server_tool(function_args, project_id, conversation_id):
             "message_to_agent": f"Error executing command: {str(exc)}"
         }
 
-    # Use proxy URL if available, otherwise fall back to IPv6
-    app_url = await async_get_or_fetch_proxy_url(workspace, port=port)
+    # Get preview URL via Mags HTTP access
+    app_url = await _async_get_mags_preview_url(workspace, port=port)
     if not app_url:
-        ipv6 = workspace.ipv6_address.strip('[]')
-        app_url = f"http://[{ipv6}]:{port}"
+        app_url = f'http://localhost:{port}'
 
     logger.info(f"App should be available at: {app_url}")
 
@@ -4909,13 +4399,13 @@ async def run_code_server_tool(function_args, project_id, conversation_id):
 async def open_app_in_artifacts_tool(function_args, project_id, conversation_id):
     """
     Open the app in the artifacts panel.
-    Fetches the workspace and constructs the app URL from the IPv6 address.
+    Fetches the workspace and constructs the app URL.
     Can optionally start the dev server if not already running.
     """
-    if not magpie_available():
+    if not _mags_available:
         return {
             "is_notification": False,
-            "message_to_agent": "Magpie workspace is not available. Configure the Magpie SDK and API key to run apps."
+            "message_to_agent": "Workspace service is not available. Check server configuration."
         }
 
     project = await get_project(project_id) if project_id else None
@@ -4930,7 +4420,7 @@ async def open_app_in_artifacts_tool(function_args, project_id, conversation_id)
     if not workspace:
         return {
             "is_notification": False,
-            "message_to_agent": "No Magpie workspace found. Workspaces are automatically created during ticket execution."
+            "message_to_agent": "No workspace found. Workspaces are automatically created during ticket execution."
         }
 
     if workspace.status != 'ready':
@@ -4939,27 +4429,14 @@ async def open_app_in_artifacts_tool(function_args, project_id, conversation_id)
             "message_to_agent": f"Workspace is not ready yet (status: {workspace.status}). Wait for provisioning to complete."
         }
 
-    if not workspace.ipv6_address:
-        return {
-            "is_notification": False,
-            "message_to_agent": "Workspace IPv6 address is not available. Try restarting the workspace."
-        }
+    ws_id = workspace.mags_workspace_id or workspace.workspace_id
 
     # Optionally start the dev server
     if start_server:
-        try:
-            client = get_magpie_client()
-        except RuntimeError as exc:
-            logger.error("Magpie client configuration error: %s", exc)
-            return {
-                "is_notification": False,
-                "message_to_agent": f"Magpie client error: {exc}"
-            }
-
         # Start the server in background
         start_cmd = textwrap.dedent(
             f"""
-            cd nextjs-app
+            cd {MAGS_WORKING_DIR}/project
             if [ -f .devserver_pid ]; then
               old_pid=$(cat .devserver_pid)
               if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
@@ -4967,8 +4444,8 @@ async def open_app_in_artifacts_tool(function_args, project_id, conversation_id)
                 exit 0
               fi
             fi
-            : > /workspace/nextjs-app/dev.log
-            nohup {server_command} -- --hostname :: --port {port} > /workspace/nextjs-app/dev.log 2>&1 &
+            : > {MAGS_WORKING_DIR}/project/dev.log
+            nohup {server_command} -- --hostname :: --port {port} > {MAGS_WORKING_DIR}/project/dev.log 2>&1 &
             pid=$!
             echo "$pid" > .devserver_pid
             echo "PID:$pid"
@@ -4978,16 +4455,13 @@ async def open_app_in_artifacts_tool(function_args, project_id, conversation_id)
 
         try:
             result = await asyncio.to_thread(
-                _run_magpie_ssh,
-                client,
-                workspace.job_id,
+                mags_run_command,
+                ws_id,
                 start_cmd,
                 120,
-                True,
-                project_id,
             )
             logger.info(
-                "[MAGPIE][START SERVER] workspace=%s exit_code=%s",
+                "[DEV_SERVER][START SERVER] workspace=%s exit_code=%s",
                 workspace.workspace_id,
                 result.get('exit_code')
             )
@@ -5007,10 +4481,10 @@ async def open_app_in_artifacts_tool(function_args, project_id, conversation_id)
             logger.exception("Failed to start dev server")
             # Continue anyway - maybe server is already running
 
-    # Use proxy URL if available, otherwise fall back to IPv6
-    app_url = await async_get_or_fetch_proxy_url(workspace, port=port)
+    # Get preview URL via Mags HTTP access
+    app_url = await _async_get_mags_preview_url(workspace, port=port)
     if not app_url:
-        app_url = f"http://[{workspace.ipv6_address}]:{port}"
+        app_url = f'http://localhost:{port}'
 
     logger.info(f"Opening app in artifacts panel: {app_url}")
 
@@ -6087,10 +5561,59 @@ async def web_search(queries, conversation_id=None):
             "message_to_agent": f"Error performing web searches: {str(e)}"
         }
 
+async def set_project_stack(function_args, project_id, conversation_id=None):
+    """
+    Set the technology stack for a project.
+    """
+    logger.info(f"set_project_stack called for project {project_id}")
+
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+
+    validation_error = validate_function_args(function_args, ['stack'])
+    if validation_error:
+        return validation_error
+
+    project = await get_project(project_id)
+    if not project:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Project with ID {project_id} does not exist"
+        }
+
+    stack = function_args.get('stack')
+    valid_stacks = {k: v for k, v in Project.STACK_CHOICES if k}  # Exclude empty/unset
+    if stack not in valid_stacks:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Invalid stack '{stack}'. Must be one of: {', '.join(valid_stacks.keys())}"
+        }
+
+    old_stack = project.stack
+    project.stack = stack
+    await sync_to_async(project.save)(update_fields=['stack'])
+
+    from factory.stack_configs import get_stack_config
+    config = get_stack_config(stack, project)
+
+    logger.info(f"[SET_STACK] Project {project_id}: {old_stack} -> {stack}")
+
+    return {
+        "is_notification": True,
+        "notification_type": "set_project_stack",
+        "message_to_agent": (
+            f"Project stack set to **{valid_stacks[stack]}**. "
+            f"Workspace will use: project_dir='{config['project_dir']}', "
+            f"install='{config['install_cmd']}', dev='{config['dev_cmd']}', port={config['default_port']}."
+        )
+    }
+
+
 async def get_file_list(project_id, file_type="all", limit=10):
     """
     Get the list of files in the project
-    
+
     Args:
         project_id: The project ID
         file_type: Type of files to retrieve ("prd", "implementation", "design", "all")

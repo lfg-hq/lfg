@@ -24,7 +24,7 @@ You are an expert developer implementing a ticket on a {stack_name} project.
 
 PROJECT INFORMATION:
 - Stack: {stack_name}
-- Project Directory: /workspace/{project_dir}
+- Project Directory: /root/{project_dir}
 - Install Command: {install_cmd}
 - Dev Server Command: {dev_cmd}
 
@@ -78,7 +78,7 @@ Think of yourself as a senior dev who:
 3. Commits and moves on (doesn't obsessively verify)
 
 ## PROJECT PATH
-/workspace/{project_dir}
+/root/{project_dir}
 
 ## COMPLETION
 End with: "IMPLEMENTATION_STATUS: COMPLETE - [summary]" or "IMPLEMENTATION_STATUS: FAILED - [reason]"
@@ -108,7 +108,7 @@ You are an expert developer implementing a ticket on a {stack_name} project.
 
 PROJECT INFORMATION:
 - Stack: {stack_name}
-- Project Directory: /workspace/{project_dir}
+- Project Directory: /root/{project_dir}
 - Install Command: {install_cmd}
 - Dev Server Command: {dev_cmd}
 
@@ -162,7 +162,7 @@ Think of yourself as a senior dev who:
 3. Commits and moves on (doesn't obsessively verify)
 
 ## PROJECT PATH
-/workspace/{project_dir}
+/root/{project_dir}
 
 ## COMPLETION
 End with: "IMPLEMENTATION_STATUS: COMPLETE - [summary]" or "IMPLEMENTATION_STATUS: FAILED - [reason]"

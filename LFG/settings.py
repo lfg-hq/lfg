@@ -32,7 +32,7 @@ ALLOWED_HOSTS = [
     'www.lfg.run',
     'localhost',
     'dev-rocks.lfg.run',
-    '3a35ec4d3dc3.ngrok-free.app'
+    'cdc2-2607-fea8-55dc-c800-748d-75fe-d23c-713a.ngrok-free.app'
 ]
 
 # LFG API Base URL for CLI callbacks from VMs

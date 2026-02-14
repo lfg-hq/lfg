@@ -4,7 +4,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('projects', '0058_projectticket_linked_documents'),
+        ('projects', '0059_add_astro_stack_choice'),
     ]
 
     operations = [
@@ -12,7 +12,9 @@ class Migration(migrations.Migration):
             model_name='project',
             name='stack',
             field=models.CharField(
+                blank=True,
                 choices=[
+                    ('', 'Not set'),
                     ('nextjs', 'Next.js'),
                     ('astro', 'Astro'),
                     ('python-django', 'Python (Django)'),
@@ -22,8 +24,8 @@ class Migration(migrations.Migration):
                     ('ruby-rails', 'Ruby on Rails'),
                     ('custom', 'Custom/Existing Repo'),
                 ],
-                default='nextjs',
-                help_text='Technology stack for this project',
+                default='',
+                help_text='Technology stack for this project. Must be set before ticket execution.',
                 max_length=50,
             ),
         ),

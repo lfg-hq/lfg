@@ -11,6 +11,7 @@
             </button>
         </div>
         <div class="project-selector-section">
+            {% if current_project %}
             <div class="nav-dropdown-container" id="projectDropdownContainer">
                 <button class="project-dropdown-trigger" id="projectDropdownTrigger" title="{% if current_project %}Project Options{% else %}All Projects{% endif %}">
                     <i class="fas fa-folder{% if current_project %}-open{% endif %}"></i>
@@ -30,6 +31,12 @@
                     {% endif %}
                 </div>
             </div>
+            {% else %}
+            <a href="{% url 'projects:project_list' %}" class="project-dropdown-trigger" title="All Projects">
+                <i class="fas fa-folder"></i>
+                <span class="project-name-text">All Projects</span>
+            </a>
+            {% endif %}
         </div>
         {% if current_project %}
         <div class="new-chat-section">
@@ -42,6 +49,10 @@
             <a href="#" class="nav-link chat-link{% if request.resolver_match.url_name == 'index' or request.resolver_match.url_name == 'conversation_detail' or request.resolver_match.url_name == 'create_conversation' %} active{% endif %}" title="Chat">
                 <i class="fas fa-comments"></i>
                 <span class="nav-text">Chat</span>
+            </a>
+            <a href="{% url 'projects:project_detail' project_id=current_project.project_id %}" class="nav-link{% if request.resolver_match.url_name == 'project_detail' %} active{% endif %}" title="Project Dashboard">
+                <i class="fas fa-tachometer-alt"></i>
+                <span class="nav-text">Project Dashboard</span>
             </a>
             <a href="{% url 'projects:project_tickets_list' project_id=current_project.project_id %}" class="nav-link{% if request.resolver_match.url_name == 'project_tickets_list' %} active{% endif %}" title="Tickets">
                 <i class="fas fa-tasks"></i>

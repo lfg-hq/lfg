@@ -12,29 +12,29 @@ STACK_CONFIGS: Dict[str, Dict[str, Any]] = {
     'nextjs': {
         'name': 'Next.js',
         'template_repo': 'lfg-hq/nextjs-template',
-        'project_dir': 'nextjs-app',
+        'project_dir': 'project',
         'install_cmd': 'npm install',
         'dev_cmd': 'npm run dev',
         'build_cmd': 'npm run build',
         'default_port': 3000,
         'language': 'javascript',
         'package_manager': 'npm',
-        'bootstrap_packages': [],  # Node.js is pre-installed in Magpie
+        'bootstrap_packages': [],  # Node.js is pre-installed in base workspace
         'bootstrap_script': '''#!/bin/sh
 set -eux
-cd /workspace
-# Configure npm to use /workspace for all storage
-mkdir -p /workspace/.npm-global /workspace/.npm-cache
-npm config set prefix /workspace/.npm-global
-npm config set cache /workspace/.npm-cache
-echo 'export PATH=/workspace/.npm-global/bin:$PATH' >> ~/.bashrc
+cd /root
+# Configure npm to use /root for all storage
+mkdir -p /root/.npm-global /root/.npm-cache
+npm config set prefix /root/.npm-global
+npm config set cache /root/.npm-cache
+echo 'export PATH=/root/.npm-global/bin:$PATH' >> ~/.bashrc
 echo "VM ready for Next.js development"
 ''',
         'health_check': 'curl -sf http://localhost:3000 > /dev/null',
         'file_patterns': ['package.json', 'next.config.js', 'next.config.mjs', 'next.config.ts'],
         'env_file': '.env.local',
         'gitignore_extras': ['node_modules/', '.next/', '.env.local'],
-        'pre_dev_cmd': 'export PATH=/workspace/.npm-global/bin:$PATH',
+        'pre_dev_cmd': 'export PATH=/root/.npm-global/bin:$PATH',
     },
 
     'python-django': {
@@ -50,20 +50,20 @@ echo "VM ready for Next.js development"
         'bootstrap_packages': ['python3', 'python3-pip', 'python3-venv'],
         'bootstrap_script': '''#!/bin/sh
 set -eux
-cd /workspace
-# Create virtualenv in /workspace for persistence
-python3 -m venv /workspace/venv || true
-# Configure pip to cache in /workspace
-mkdir -p /workspace/.pip-cache
-echo 'export PIP_CACHE_DIR=/workspace/.pip-cache' >> ~/.bashrc
-echo 'source /workspace/venv/bin/activate' >> ~/.bashrc
+cd /root
+# Create virtualenv in /root for persistence
+python3 -m venv /root/venv || true
+# Configure pip to cache in /root
+mkdir -p /root/.pip-cache
+echo 'export PIP_CACHE_DIR=/root/.pip-cache' >> ~/.bashrc
+echo 'source /root/venv/bin/activate' >> ~/.bashrc
 echo "VM ready for Django development"
 ''',
         'health_check': 'curl -sf http://localhost:8000 > /dev/null',
         'file_patterns': ['manage.py', 'requirements.txt', 'settings.py'],
         'env_file': '.env',
         'gitignore_extras': ['venv/', '*.pyc', '__pycache__/', '.env', 'db.sqlite3'],
-        'pre_dev_cmd': 'source /workspace/venv/bin/activate && export PIP_CACHE_DIR=/workspace/.pip-cache',
+        'pre_dev_cmd': 'source /root/venv/bin/activate && export PIP_CACHE_DIR=/root/.pip-cache',
     },
 
     'python-fastapi': {
@@ -79,20 +79,20 @@ echo "VM ready for Django development"
         'bootstrap_packages': ['python3', 'python3-pip', 'python3-venv'],
         'bootstrap_script': '''#!/bin/sh
 set -eux
-cd /workspace
-# Create virtualenv in /workspace for persistence
-python3 -m venv /workspace/venv || true
-# Configure pip to cache in /workspace
-mkdir -p /workspace/.pip-cache
-echo 'export PIP_CACHE_DIR=/workspace/.pip-cache' >> ~/.bashrc
-echo 'source /workspace/venv/bin/activate' >> ~/.bashrc
+cd /root
+# Create virtualenv in /root for persistence
+python3 -m venv /root/venv || true
+# Configure pip to cache in /root
+mkdir -p /root/.pip-cache
+echo 'export PIP_CACHE_DIR=/root/.pip-cache' >> ~/.bashrc
+echo 'source /root/venv/bin/activate' >> ~/.bashrc
 echo "VM ready for FastAPI development"
 ''',
         'health_check': 'curl -sf http://localhost:8000/health > /dev/null || curl -sf http://localhost:8000/docs > /dev/null',
         'file_patterns': ['main.py', 'requirements.txt', 'app.py'],
         'env_file': '.env',
         'gitignore_extras': ['venv/', '*.pyc', '__pycache__/', '.env'],
-        'pre_dev_cmd': 'source /workspace/venv/bin/activate && export PIP_CACHE_DIR=/workspace/.pip-cache',
+        'pre_dev_cmd': 'source /root/venv/bin/activate && export PIP_CACHE_DIR=/root/.pip-cache',
     },
 
     'go': {
@@ -108,28 +108,28 @@ echo "VM ready for FastAPI development"
         'bootstrap_packages': [],
         'bootstrap_script': '''#!/bin/sh
 set -eux
-cd /workspace
-# Install Go to /workspace if not present
-mkdir -p /workspace/go-sdk /workspace/go
-if [ ! -f /workspace/go-sdk/bin/go ]; then
-    echo "Installing Go to /workspace/go-sdk..."
+cd /root
+# Install Go to /root if not present
+mkdir -p /root/go-sdk /root/go
+if [ ! -f /root/go-sdk/bin/go ]; then
+    echo "Installing Go to /root/go-sdk..."
     wget -q https://go.dev/dl/go1.22.0.linux-amd64.tar.gz -O /tmp/go.tar.gz
-    tar -C /workspace/go-sdk --strip-components=1 -xzf /tmp/go.tar.gz
+    tar -C /root/go-sdk --strip-components=1 -xzf /tmp/go.tar.gz
     rm /tmp/go.tar.gz
 fi
-# Set Go environment to use /workspace
-echo 'export GOROOT=/workspace/go-sdk' >> ~/.bashrc
-echo 'export GOPATH=/workspace/go' >> ~/.bashrc
-echo 'export GOCACHE=/workspace/.go-cache' >> ~/.bashrc
-echo 'export PATH=/workspace/go-sdk/bin:/workspace/go/bin:$PATH' >> ~/.bashrc
-mkdir -p /workspace/.go-cache
+# Set Go environment to use /root
+echo 'export GOROOT=/root/go-sdk' >> ~/.bashrc
+echo 'export GOPATH=/root/go' >> ~/.bashrc
+echo 'export GOCACHE=/root/.go-cache' >> ~/.bashrc
+echo 'export PATH=/root/go-sdk/bin:/root/go/bin:$PATH' >> ~/.bashrc
+mkdir -p /root/.go-cache
 echo "VM ready for Go development"
 ''',
         'health_check': 'curl -sf http://localhost:8080 > /dev/null',
         'file_patterns': ['go.mod', 'go.sum', 'main.go'],
         'env_file': '.env',
         'gitignore_extras': ['app', '*.exe', '.env'],
-        'pre_dev_cmd': 'export GOROOT=/workspace/go-sdk && export GOPATH=/workspace/go && export GOCACHE=/workspace/.go-cache && export PATH=/workspace/go-sdk/bin:/workspace/go/bin:$PATH',
+        'pre_dev_cmd': 'export GOROOT=/root/go-sdk && export GOPATH=/root/go && export GOCACHE=/root/.go-cache && export PATH=/root/go-sdk/bin:/root/go/bin:$PATH',
     },
 
     'rust': {
@@ -145,32 +145,32 @@ echo "VM ready for Go development"
         'bootstrap_packages': [],
         'bootstrap_script': '''#!/bin/sh
 set -eux
-cd /workspace
-# Install Rust to /workspace
-export RUSTUP_HOME=/workspace/.rustup
-export CARGO_HOME=/workspace/.cargo
+cd /root
+# Install Rust to /root
+export RUSTUP_HOME=/root/.rustup
+export CARGO_HOME=/root/.cargo
 mkdir -p $RUSTUP_HOME $CARGO_HOME
-if [ ! -f /workspace/.cargo/bin/rustc ]; then
-    echo "Installing Rust to /workspace..."
+if [ ! -f /root/.cargo/bin/rustc ]; then
+    echo "Installing Rust to /root..."
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path
 fi
-echo 'export RUSTUP_HOME=/workspace/.rustup' >> ~/.bashrc
-echo 'export CARGO_HOME=/workspace/.cargo' >> ~/.bashrc
-echo 'export PATH=/workspace/.cargo/bin:$PATH' >> ~/.bashrc
+echo 'export RUSTUP_HOME=/root/.rustup' >> ~/.bashrc
+echo 'export CARGO_HOME=/root/.cargo' >> ~/.bashrc
+echo 'export PATH=/root/.cargo/bin:$PATH' >> ~/.bashrc
 echo "VM ready for Rust development"
 ''',
         'health_check': 'curl -sf http://localhost:8080 > /dev/null',
         'file_patterns': ['Cargo.toml', 'Cargo.lock', 'src/main.rs'],
         'env_file': '.env',
         'gitignore_extras': ['target/', '.env'],
-        'pre_dev_cmd': 'export RUSTUP_HOME=/workspace/.rustup && export CARGO_HOME=/workspace/.cargo && export PATH=/workspace/.cargo/bin:$PATH',
+        'pre_dev_cmd': 'export RUSTUP_HOME=/root/.rustup && export CARGO_HOME=/root/.cargo && export PATH=/root/.cargo/bin:$PATH',
     },
 
     'ruby-rails': {
         'name': 'Ruby on Rails',
         'template_repo': 'lfg-hq/rails-template',
         'project_dir': 'rails-app',
-        'install_cmd': 'bundle install --path /workspace/.bundle',
+        'install_cmd': 'bundle install --path /root/.bundle',
         'dev_cmd': 'rails server -b 0.0.0.0 -p 3000',
         'build_cmd': 'rails assets:precompile',
         'default_port': 3000,
@@ -179,53 +179,53 @@ echo "VM ready for Rust development"
         'bootstrap_packages': ['ruby', 'ruby-dev', 'build-essential'],
         'bootstrap_script': '''#!/bin/sh
 set -eux
-cd /workspace
-# Configure Ruby/Bundler to use /workspace
-mkdir -p /workspace/.gem /workspace/.bundle
-export GEM_HOME=/workspace/.gem
-export GEM_PATH=/workspace/.gem
-export BUNDLE_PATH=/workspace/.bundle
-echo 'export GEM_HOME=/workspace/.gem' >> ~/.bashrc
-echo 'export GEM_PATH=/workspace/.gem' >> ~/.bashrc
-echo 'export BUNDLE_PATH=/workspace/.bundle' >> ~/.bashrc
-echo 'export PATH=/workspace/.gem/bin:$PATH' >> ~/.bashrc
-# Install bundler to /workspace
-gem install bundler --install-dir /workspace/.gem || true
+cd /root
+# Configure Ruby/Bundler to use /root
+mkdir -p /root/.gem /root/.bundle
+export GEM_HOME=/root/.gem
+export GEM_PATH=/root/.gem
+export BUNDLE_PATH=/root/.bundle
+echo 'export GEM_HOME=/root/.gem' >> ~/.bashrc
+echo 'export GEM_PATH=/root/.gem' >> ~/.bashrc
+echo 'export BUNDLE_PATH=/root/.bundle' >> ~/.bashrc
+echo 'export PATH=/root/.gem/bin:$PATH' >> ~/.bashrc
+# Install bundler to /root
+gem install bundler --install-dir /root/.gem || true
 echo "VM ready for Rails development"
 ''',
         'health_check': 'curl -sf http://localhost:3000 > /dev/null',
         'file_patterns': ['Gemfile', 'Gemfile.lock', 'config/routes.rb'],
         'env_file': '.env',
         'gitignore_extras': ['vendor/bundle/', 'log/', 'tmp/', '.env'],
-        'pre_dev_cmd': 'export GEM_HOME=/workspace/.gem && export GEM_PATH=/workspace/.gem && export BUNDLE_PATH=/workspace/.bundle && export PATH=/workspace/.gem/bin:$PATH',
+        'pre_dev_cmd': 'export GEM_HOME=/root/.gem && export GEM_PATH=/root/.gem && export BUNDLE_PATH=/root/.bundle && export PATH=/root/.gem/bin:$PATH',
     },
 
     'astro': {
         'name': 'Astro',
         'template_repo': 'lfg-hq/astro-template',
-        'project_dir': 'astro-app',
+        'project_dir': 'project',
         'install_cmd': 'npm install',
         'dev_cmd': 'npx astro dev --host 0.0.0.0',
         'build_cmd': 'npx astro build',
         'default_port': 4321,
         'language': 'javascript',
         'package_manager': 'npm',
-        'bootstrap_packages': [],  # Node.js is pre-installed in Magpie
+        'bootstrap_packages': [],  # Node.js is pre-installed in base workspace
         'bootstrap_script': '''#!/bin/sh
 set -eux
-cd /workspace
-# Configure npm to use /workspace for all storage
-mkdir -p /workspace/.npm-global /workspace/.npm-cache
-npm config set prefix /workspace/.npm-global
-npm config set cache /workspace/.npm-cache
-echo 'export PATH=/workspace/.npm-global/bin:$PATH' >> ~/.bashrc
+cd /root
+# Configure npm to use /root for all storage
+mkdir -p /root/.npm-global /root/.npm-cache
+npm config set prefix /root/.npm-global
+npm config set cache /root/.npm-cache
+echo 'export PATH=/root/.npm-global/bin:$PATH' >> ~/.bashrc
 echo "VM ready for Astro development"
 ''',
         'health_check': 'curl -sf http://localhost:4321 > /dev/null',
         'file_patterns': ['astro.config.mjs', 'astro.config.js', 'astro.config.ts', 'package.json'],
         'env_file': '.env',
         'gitignore_extras': ['node_modules/', 'dist/', '.astro/', '.env'],
-        'pre_dev_cmd': 'export PATH=/workspace/.npm-global/bin:$PATH',
+        'pre_dev_cmd': 'export PATH=/root/.npm-global/bin:$PATH',
     },
 
     'custom': {
@@ -241,7 +241,7 @@ echo "VM ready for Astro development"
         'bootstrap_packages': [],
         'bootstrap_script': '''#!/bin/sh
 set -eux
-cd /workspace
+cd /root
 echo "VM ready for custom project"
 ''',
         'health_check': '',
@@ -262,10 +262,29 @@ def get_stack_config(stack: str, project=None) -> Dict[str, Any]:
         project: Optional Project model instance for custom overrides
 
     Returns:
-        Stack configuration dictionary. Falls back to 'nextjs' if unknown.
+        Stack configuration dictionary. Falls back to a minimal default if unknown.
         If project is provided, custom overrides from DB will be applied.
     """
-    config = STACK_CONFIGS.get(stack, STACK_CONFIGS['nextjs']).copy()
+    # Fall back to a minimal default instead of assuming Next.js
+    fallback = {
+        'name': stack,
+        'template_repo': None,
+        'project_dir': 'project',
+        'install_cmd': '',
+        'dev_cmd': '',
+        'build_cmd': '',
+        'default_port': 3000,
+        'language': 'unknown',
+        'package_manager': 'unknown',
+        'bootstrap_packages': [],
+        'bootstrap_script': '',
+        'health_check': '',
+        'file_patterns': [],
+        'env_file': '.env',
+        'gitignore_extras': ['.env'],
+        'pre_dev_cmd': '',
+    }
+    config = STACK_CONFIGS.get(stack, fallback).copy()
 
     # Apply project-specific overrides from database
     if project:
@@ -362,11 +381,11 @@ def get_dev_server_command(stack: str, project_dir: Optional[str] = None) -> str
     dev_cmd = config['dev_cmd']
 
     if not dev_cmd:
-        return f"cd /workspace/{dir_name} && echo 'No dev command configured for this stack'"
+        return f"cd /root/{dir_name} && echo 'No dev command configured for this stack'"
 
     if pre_cmd:
-        return f"cd /workspace/{dir_name} && {pre_cmd} && {dev_cmd}"
-    return f"cd /workspace/{dir_name} && {dev_cmd}"
+        return f"cd /root/{dir_name} && {pre_cmd} && {dev_cmd}"
+    return f"cd /root/{dir_name} && {dev_cmd}"
 
 
 def get_install_command(stack: str, project_dir: Optional[str] = None) -> str:
@@ -386,11 +405,11 @@ def get_install_command(stack: str, project_dir: Optional[str] = None) -> str:
     install_cmd = config['install_cmd']
 
     if not install_cmd:
-        return f"cd /workspace/{dir_name} && echo 'No install command configured for this stack'"
+        return f"cd /root/{dir_name} && echo 'No install command configured for this stack'"
 
     if pre_cmd:
-        return f"cd /workspace/{dir_name} && {pre_cmd} && {install_cmd}"
-    return f"cd /workspace/{dir_name} && {install_cmd}"
+        return f"cd /root/{dir_name} && {pre_cmd} && {install_cmd}"
+    return f"cd /root/{dir_name} && {install_cmd}"
 
 
 def get_bootstrap_script(stack: str) -> str:

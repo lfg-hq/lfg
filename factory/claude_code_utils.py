@@ -2,13 +2,14 @@
 Claude Code CLI Utilities
 
 Provides functions for:
-- Claude Code CLI authentication in Magpie workspaces
-- S3 backup/restore of Claude auth folder (/root/.claude)
-- Running Claude CLI commands with streaming output
+- Claude Code CLI authentication in Mags workspaces
+- Running Claude CLI commands with streaming output via paramiko
 - Parsing Claude CLI JSON stream output
+
+Note: S3 backup/restore is no longer needed — Mags workspace overlays
+auto-persist .claude/ credentials across sessions.
 """
 
-import base64
 import json
 import logging
 import re
@@ -16,286 +17,13 @@ import time
 from typing import Dict, Any, Optional, List, Callable
 from datetime import datetime
 
-import boto3
-from botocore.exceptions import ClientError
-from django.conf import settings
-
-from factory.ai_functions import get_magpie_client, _run_magpie_ssh
+from factory.mags import (
+    run_command,
+    MAGS_WORKING_DIR,
+    MAGS_PROJECT_DIR,
+)
 
 logger = logging.getLogger(__name__)
-
-# S3 configuration
-S3_CLAUDE_AUTH_PREFIX = "claude-auth"
-
-
-def get_s3_client():
-    """Get configured S3 client."""
-    return boto3.client(
-        's3',
-        aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-        region_name=getattr(settings, 'AWS_S3_REGION_NAME', 'us-east-1'),
-    )
-
-
-def get_s3_bucket_name():
-    """Get S3 bucket name from settings."""
-    return getattr(settings, 'AWS_STORAGE_BUCKET_NAME', None)
-
-
-# ============================================================================
-# S3 Backup/Restore Functions
-# ============================================================================
-
-def backup_claude_auth_to_s3(workspace_id: str, user_id: int) -> Dict[str, Any]:
-    """
-    Backup /root/.claude folder from workspace to S3.
-
-    This preserves Claude Code authentication across workspace recreations.
-
-    Args:
-        workspace_id: Magpie workspace ID
-        user_id: User ID for S3 key namespace
-
-    Returns:
-        Dict with status, s3_key, and any error message
-    """
-    logger.info(f"[CLAUDE_AUTH] Backing up Claude auth for user {user_id} from workspace {workspace_id}")
-
-    try:
-        client = get_magpie_client()
-
-        # Check if .claude folder exists
-        check_result = _run_magpie_ssh(
-            client, workspace_id,
-            "[ -d /root/.claude ] && echo 'EXISTS' || echo 'NOT_FOUND'",
-            timeout=30, with_node_env=False
-        )
-
-        if 'NOT_FOUND' in check_result.get('stdout', ''):
-            return {
-                'status': 'error',
-                'error': 'Claude auth folder not found. User may not be authenticated.'
-            }
-
-        # Create tar archive of .claude folder
-        tar_result = _run_magpie_ssh(
-            client, workspace_id,
-            "cd /root && tar -czf /tmp/claude-auth.tar.gz .claude && echo 'TAR_SUCCESS'",
-            timeout=60, with_node_env=False
-        )
-
-        if tar_result.get('exit_code') != 0 or 'TAR_SUCCESS' not in tar_result.get('stdout', ''):
-            return {
-                'status': 'error',
-                'error': f"Failed to create tar archive: {tar_result.get('stderr', tar_result.get('stdout', 'Unknown error'))}"
-            }
-
-        # Read tar file as base64
-        base64_result = _run_magpie_ssh(
-            client, workspace_id,
-            "base64 /tmp/claude-auth.tar.gz",
-            timeout=120, with_node_env=False
-        )
-
-        if base64_result.get('exit_code') != 0:
-            return {
-                'status': 'error',
-                'error': f"Failed to encode tar archive: {base64_result.get('stderr', 'Unknown error')}"
-            }
-
-        base64_content = base64_result.get('stdout', '').strip()
-        if not base64_content:
-            return {
-                'status': 'error',
-                'error': 'Empty base64 content received'
-            }
-
-        # Decode base64 to bytes
-        try:
-            tar_bytes = base64.b64decode(base64_content)
-        except Exception as e:
-            return {
-                'status': 'error',
-                'error': f"Failed to decode base64: {str(e)}"
-            }
-
-        # Upload to S3
-        bucket_name = get_s3_bucket_name()
-        if not bucket_name:
-            return {
-                'status': 'error',
-                'error': 'S3 bucket not configured'
-            }
-
-        s3_key = f"{S3_CLAUDE_AUTH_PREFIX}/{user_id}/claude-config.tar.gz"
-
-        try:
-            s3_client = get_s3_client()
-            s3_client.put_object(
-                Bucket=bucket_name,
-                Key=s3_key,
-                Body=tar_bytes,
-                ContentType='application/gzip',
-                Metadata={
-                    'user_id': str(user_id),
-                    'workspace_id': workspace_id,
-                    'backup_time': datetime.now().isoformat()
-                }
-            )
-            logger.info(f"[CLAUDE_AUTH] Successfully backed up to S3: {s3_key}")
-        except ClientError as e:
-            return {
-                'status': 'error',
-                'error': f"S3 upload failed: {str(e)}"
-            }
-
-        # Cleanup temp file
-        _run_magpie_ssh(
-            client, workspace_id,
-            "rm -f /tmp/claude-auth.tar.gz",
-            timeout=30, with_node_env=False
-        )
-
-        return {
-            'status': 'success',
-            's3_key': s3_key,
-            'message': 'Claude auth backed up successfully'
-        }
-
-    except Exception as e:
-        logger.error(f"[CLAUDE_AUTH] Backup failed: {str(e)}", exc_info=True)
-        return {
-            'status': 'error',
-            'error': str(e)
-        }
-
-
-def restore_claude_auth_from_s3(workspace_id: str, user_id: int, s3_key: str = None) -> Dict[str, Any]:
-    """
-    Restore /root/.claude folder from S3 to workspace.
-
-    Uses a pre-signed URL so the VM can download directly from S3 (much faster).
-
-    Args:
-        workspace_id: Magpie workspace ID
-        user_id: User ID for S3 key namespace
-        s3_key: Optional specific S3 key (defaults to user's backup)
-
-    Returns:
-        Dict with status and any error message
-    """
-    logger.info(f"[CLAUDE_AUTH] Restoring Claude auth for user {user_id} to workspace {workspace_id}")
-
-    try:
-        bucket_name = get_s3_bucket_name()
-        if not bucket_name:
-            return {
-                'status': 'error',
-                'error': 'S3 bucket not configured'
-            }
-
-        if not s3_key:
-            s3_key = f"{S3_CLAUDE_AUTH_PREFIX}/{user_id}/claude-config.tar.gz"
-
-        # Generate a pre-signed URL (5 minutes expiry)
-        try:
-            s3_client = get_s3_client()
-
-            # First check if the object exists
-            try:
-                s3_client.head_object(Bucket=bucket_name, Key=s3_key)
-            except ClientError as e:
-                if e.response['Error']['Code'] == '404':
-                    return {
-                        'status': 'not_found',
-                        'error': 'No Claude auth backup found for this user'
-                    }
-                raise
-
-            # Generate pre-signed URL (5 minutes = 300 seconds)
-            presigned_url = s3_client.generate_presigned_url(
-                'get_object',
-                Params={'Bucket': bucket_name, 'Key': s3_key},
-                ExpiresIn=300
-            )
-            logger.info(f"[CLAUDE_AUTH] Generated pre-signed URL for {s3_key}")
-
-        except ClientError as e:
-            return {
-                'status': 'error',
-                'error': f"S3 error: {str(e)}"
-            }
-
-        client = get_magpie_client()
-
-        # Have the VM download directly using wget/curl and extract
-        # Using curl with the pre-signed URL
-        restore_script = f"""
-        set -e
-        echo "Downloading from S3..."
-        curl -sS -o /tmp/claude-auth.tar.gz '{presigned_url}'
-
-        if [ ! -f /tmp/claude-auth.tar.gz ]; then
-            echo "DOWNLOAD_FAILED"
-            exit 1
-        fi
-
-        FILE_SIZE=$(stat -c%s /tmp/claude-auth.tar.gz 2>/dev/null || stat -f%z /tmp/claude-auth.tar.gz 2>/dev/null || echo "0")
-        echo "Downloaded file size: $FILE_SIZE bytes"
-
-        if [ "$FILE_SIZE" -lt 1000 ]; then
-            echo "DOWNLOAD_TOO_SMALL"
-            cat /tmp/claude-auth.tar.gz
-            exit 1
-        fi
-
-        echo "Extracting to /root/.claude..."
-        rm -rf /root/.claude
-        # Use verbose mode and continue on errors for debugging
-        tar -xzvf /tmp/claude-auth.tar.gz -C /root 2>&1 | tail -20 || echo "TAR_HAD_WARNINGS"
-
-        if [ -d /root/.claude ]; then
-            echo "RESTORE_SUCCESS"
-            ls -la /root/.claude/ | head -5
-        else
-            echo "EXTRACT_FAILED"
-            exit 1
-        fi
-
-        rm -f /tmp/claude-auth.tar.gz
-        """
-
-        extract_result = _run_magpie_ssh(
-            client, workspace_id,
-            restore_script,
-            timeout=120, with_node_env=False
-        )
-
-        stdout = extract_result.get('stdout', '')
-        stderr = extract_result.get('stderr', '')
-        logger.info(f"[CLAUDE_AUTH] Restore output: {stdout[:500]}")
-        if stderr:
-            logger.warning(f"[CLAUDE_AUTH] Restore stderr: {stderr[:500]}")
-
-        if extract_result.get('exit_code') != 0 or 'RESTORE_SUCCESS' not in stdout:
-            return {
-                'status': 'error',
-                'error': f"Failed to restore: {stdout[:200]} stderr: {stderr[:200]}"
-            }
-
-        logger.info(f"[CLAUDE_AUTH] Successfully restored Claude auth from S3")
-        return {
-            'status': 'success',
-            'message': 'Claude auth restored successfully'
-        }
-
-    except Exception as e:
-        logger.error(f"[CLAUDE_AUTH] Restore failed: {str(e)}", exc_info=True)
-        return {
-            'status': 'error',
-            'error': str(e)
-        }
 
 
 # ============================================================================
@@ -304,13 +32,13 @@ def restore_claude_auth_from_s3(workspace_id: str, user_id: int, s3_key: str = N
 
 def start_claude_auth(workspace_id: str) -> Dict[str, Any]:
     """
-    Start Claude Code authentication process on workspace.
+    Start Claude Code authentication process on a Mags workspace.
 
     This runs `claude` in a background expect process and captures the OAuth URL.
     The expect process waits for a code file to be written, then submits the code.
 
     Args:
-        workspace_id: Magpie workspace ID
+        workspace_id: Mags workspace overlay name
 
     Returns:
         Dict with status and oauth_url (if authentication needed)
@@ -318,8 +46,6 @@ def start_claude_auth(workspace_id: str) -> Dict[str, Any]:
     logger.info(f"[CLAUDE_AUTH] Starting auth on workspace {workspace_id}")
 
     try:
-        client = get_magpie_client()
-
         # First check if already authenticated
         check_result = check_claude_auth_status(workspace_id)
         if check_result.get('authenticated'):
@@ -360,8 +86,7 @@ exec claude "$@"
 WRAPPEREOF
         chmod +x /tmp/claude_wrapper.sh
 
-        # Create the expect script - use a different approach to avoid escaping issues
-        # Write expect script using echo commands
+        # Create the expect script
         cat > /tmp/claude_auth.exp << 'EXPECTSCRIPT'
 log_user 1
 set timeout 300
@@ -457,10 +182,9 @@ EXPECTSCRIPT
         echo "SETUP_COMPLETE"
         """
 
-        result = _run_magpie_ssh(
-            client, workspace_id,
-            setup_script,
-            timeout=60, with_node_env=False
+        result = run_command(
+            workspace_id, setup_script,
+            timeout=60, with_node_env=False,
         )
 
         stdout = result.get('stdout', '').strip()
@@ -487,10 +211,9 @@ EXPECTSCRIPT
         echo "BG_PID=$!"
         """
 
-        bg_result = _run_magpie_ssh(
-            client, workspace_id,
-            bg_script,
-            timeout=30, with_node_env=False
+        bg_result = run_command(
+            workspace_id, bg_script,
+            timeout=30, with_node_env=False,
         )
 
         logger.info(f"[CLAUDE_AUTH] Background process started: {bg_result.get('stdout', '')[:100]}")
@@ -502,7 +225,6 @@ EXPECTSCRIPT
         # Wait for URL file to appear (poll for up to 60 seconds)
         for i in range(60):
             time.sleep(1)
-            # Check files and also try to extract URL from log if not found
             check_script = r"""
             # First check if URL file exists AND has full URL (>100 chars)
             if [ -f /tmp/claude_url.txt ]; then
@@ -512,7 +234,6 @@ EXPECTSCRIPT
                     echo "$FILE_URL"
                     exit 0
                 else
-                    # URL in file is truncated, delete and re-extract from log
                     rm -f /tmp/claude_url.txt
                 fi
             fi
@@ -526,11 +247,8 @@ EXPECTSCRIPT
 
             # Try to extract URL from log file
             if [ -f /tmp/claude_auth.log ]; then
-                # Remove lines with known non-URL text, join remaining, extract URL
                 URL=$(grep -v -E 'WAITING|LOG_|CAPTURED|Paste|code here|prompted|spawn|expect' /tmp/claude_auth.log | tr -d '\n\r' | grep -oE 'https://claude\.ai/oauth[A-Za-z0-9_.~:/?#@!$&()*+,;=%=-]+' | head -1)
-                # Truncate at any obvious garbage (lowercase words that aren't URL params)
                 URL=$(echo "$URL" | sed 's/Paste.*//; s/code.*here.*//; s/prompted.*//')
-                # Verify it looks like a complete URL (should end with state= parameter)
                 if ! echo "$URL" | grep -q 'state='; then
                     URL=""
                 fi
@@ -552,24 +270,19 @@ EXPECTSCRIPT
                 pgrep -a expect || echo "NO_EXPECT_RUNNING"
             fi
             """
-            check_result = _run_magpie_ssh(
-                client, workspace_id,
-                check_script,
-                timeout=10, with_node_env=False
+            check_result = run_command(
+                workspace_id, check_script,
+                timeout=10, with_node_env=False,
             )
             check_stdout = check_result.get('stdout', '').strip()
 
             if 'URL_FOUND' in check_stdout:
-                # Extract URL from output
                 lines = check_stdout.split('\n')
                 for line in lines:
                     line = line.strip()
                     if line.startswith('https://claude.ai/oauth'):
-                        # Clean any stray ANSI codes or control characters
-                        import re as regex
-                        clean_url = regex.sub(r'\x1b\[[0-9;]*m', '', line)
-                        clean_url = regex.sub(r'[\x00-\x1f\x7f]', '', clean_url)
-                        # Log the FULL URL for debugging
+                        clean_url = re.sub(r'\x1b\[[0-9;]*m', '', line)
+                        clean_url = re.sub(r'[\x00-\x1f\x7f]', '', clean_url)
                         logger.info(f"[CLAUDE_AUTH] Got OAuth URL (full, {len(clean_url)} chars): {clean_url}")
                         return {
                             'status': 'pending',
@@ -577,18 +290,14 @@ EXPECTSCRIPT
                             'message': 'Open the URL and authenticate, then paste the code'
                         }
 
-            # Log debug info on first few iterations
             if i < 3 and 'WAITING' in check_stdout:
-                # Print full stdout for debugging (first 3 iterations only)
                 logger.info(f"[CLAUDE_AUTH] Full debug output ({i}s, {len(check_stdout)} chars):\n{check_stdout}")
             elif 'WAITING' in check_stdout:
-                # Check if expect process died and needs restart
                 if 'NO_EXPECT_RUNNING' in check_stdout:
                     if expect_restart_count < max_expect_restarts:
                         expect_restart_count += 1
                         logger.warning(f"[CLAUDE_AUTH] Expect process died, restarting (attempt {expect_restart_count}/{max_expect_restarts})")
 
-                        # Clean up and restart expect
                         restart_script = """
                         pkill -9 claude 2>/dev/null || true
                         pkill -9 expect 2>/dev/null || true
@@ -602,13 +311,12 @@ EXPECTSCRIPT
                         nohup expect /tmp/claude_auth.exp > /tmp/claude_auth.log 2>&1 &
                         echo "RESTARTED_PID=$!"
                         """
-                        restart_result = _run_magpie_ssh(
-                            client, workspace_id,
-                            restart_script,
-                            timeout=30, with_node_env=False
+                        restart_result = run_command(
+                            workspace_id, restart_script,
+                            timeout=30, with_node_env=False,
                         )
                         logger.info(f"[CLAUDE_AUTH] Restart result: {restart_result.get('stdout', '')[:100]}")
-                        time.sleep(3)  # Give it time to start
+                        time.sleep(3)
                     else:
                         logger.error(f"[CLAUDE_AUTH] Max restarts ({max_expect_restarts}) exceeded, giving up")
                         return {
@@ -650,11 +358,8 @@ def submit_claude_auth_code(workspace_id: str, auth_code: str) -> Dict[str, Any]
     """
     Submit the OAuth code to complete Claude authentication.
 
-    This writes the code to a file that the background expect process is watching.
-    The expect process will read the code and submit it to Claude.
-
     Args:
-        workspace_id: Magpie workspace ID
+        workspace_id: Mags workspace overlay name
         auth_code: OAuth code from user
 
     Returns:
@@ -663,21 +368,16 @@ def submit_claude_auth_code(workspace_id: str, auth_code: str) -> Dict[str, Any]
     logger.info(f"[CLAUDE_AUTH] Submitting auth code to workspace {workspace_id}")
 
     try:
-        client = get_magpie_client()
-
-        # Clean the auth code
         auth_code = auth_code.strip()
 
-        # Write the code to the file that expect is watching
         write_script = f"""
         echo '{auth_code}' > /tmp/claude_code.txt
         echo "CODE_WRITTEN"
         """
 
-        result = _run_magpie_ssh(
-            client, workspace_id,
-            write_script,
-            timeout=30, with_node_env=False
+        result = run_command(
+            workspace_id, write_script,
+            timeout=30, with_node_env=False,
         )
 
         if 'CODE_WRITTEN' not in result.get('stdout', ''):
@@ -688,8 +388,6 @@ def submit_claude_auth_code(workspace_id: str, auth_code: str) -> Dict[str, Any]
 
         logger.info(f"[CLAUDE_AUTH] Code written, waiting for auth to complete...")
 
-        # Wait for status file to appear (poll for up to 120 seconds)
-        expect_restart_attempted = False
         for i in range(120):
             time.sleep(1)
             check_script = """
@@ -698,7 +396,6 @@ def submit_claude_auth_code(workspace_id: str, auth_code: str) -> Dict[str, Any]
                 cat /tmp/claude_status.txt
             else
                 echo "WAITING"
-                # Check if expect is still running
                 if pgrep -x expect > /dev/null; then
                     echo "EXPECT_RUNNING"
                 else
@@ -706,10 +403,9 @@ def submit_claude_auth_code(workspace_id: str, auth_code: str) -> Dict[str, Any]
                 fi
             fi
             """
-            check_result = _run_magpie_ssh(
-                client, workspace_id,
-                check_script,
-                timeout=10, with_node_env=False
+            check_result = run_command(
+                workspace_id, check_script,
+                timeout=10, with_node_env=False,
             )
             check_stdout = check_result.get('stdout', '').strip()
 
@@ -731,8 +427,7 @@ def submit_claude_auth_code(workspace_id: str, auth_code: str) -> Dict[str, Any]
                         'error': 'Authentication timed out'
                     }
 
-            # Check if expect process died
-            if 'EXPECT_DEAD' in check_stdout and not expect_restart_attempted:
+            if 'EXPECT_DEAD' in check_stdout:
                 logger.warning(f"[CLAUDE_AUTH] Expect process died, cannot complete auth")
                 return {
                     'status': 'error',
@@ -760,21 +455,20 @@ def check_claude_auth_status(workspace_id: str) -> Dict[str, Any]:
     Check if Claude Code is authenticated on the workspace.
 
     Args:
-        workspace_id: Magpie workspace ID
+        workspace_id: Mags workspace overlay name
 
     Returns:
         Dict with authenticated status
     """
-    logger.info(f"[CLAUDE_AUTH] Checking auth status on workspace {workspace_id}")
+    logger.info(f"[CLAUDE_AUTH] Checking auth status on {workspace_id}")
+
+    def _exec(cmd, timeout=15):
+        return run_command(workspace_id=workspace_id, command=cmd, timeout=timeout, with_node_env=False)
 
     try:
-        client = get_magpie_client()
-
-        # First, quick check - see if credentials file exists (doesn't run Claude)
         quick_check_cmd = """
         if [ -f ~/.claude/.credentials.json ] && [ -s ~/.claude/.credentials.json ]; then
             echo "CREDS_EXIST"
-            # Check if the file has valid JSON with accessToken
             if grep -q "accessToken" ~/.claude/.credentials.json 2>/dev/null; then
                 echo "HAS_TOKEN"
             fi
@@ -782,37 +476,26 @@ def check_claude_auth_status(workspace_id: str) -> Dict[str, Any]:
             echo "NO_CREDS"
         fi
         """
-        quick_result = _run_magpie_ssh(
-            client, workspace_id,
-            quick_check_cmd,
-            timeout=15, with_node_env=False
-        )
+        quick_result = _exec(quick_check_cmd, timeout=15)
         quick_stdout = quick_result.get('stdout', '').strip()
         logger.info(f"[CLAUDE_AUTH] Quick check result: {quick_stdout}")
 
-        # If no credentials file, definitely not authenticated
         if 'NO_CREDS' in quick_stdout:
             return {
                 'status': 'success',
                 'authenticated': False,
-                'message': 'Claude Code is not authenticated (no credentials)'
+                'message': 'Claude Code is not authenticated (no credentials)',
             }
 
-        # If credentials exist with token, try to verify by running Claude
         if 'HAS_TOKEN' in quick_stdout:
-            # Run a simple test command - source profiles and run from home directory
             check_cmd = """
             [ -f /etc/profile ] && . /etc/profile
             [ -f ~/.profile ] && . ~/.profile
             [ -f ~/.bashrc ] && . ~/.bashrc
             cd ~
-            timeout 30 claude -p "reply just the word Hello" 2>&1 | head -20
+            timeout 12 claude -p "reply just the word Hello" 2>&1 | head -20
             """
-            result = _run_magpie_ssh(
-                client, workspace_id,
-                check_cmd,
-                timeout=60, with_node_env=False
-            )
+            result = _exec(check_cmd, timeout=20)
 
             stdout = result.get('stdout', '').strip()
             exit_code = result.get('exit_code', 1)
@@ -821,25 +504,22 @@ def check_claude_auth_status(workspace_id: str) -> Dict[str, Any]:
 
             stdout_lower = stdout.lower()
 
-            # Check if response contains "hello"
             if exit_code == 0 and 'hello' in stdout_lower:
                 logger.info(f"[CLAUDE_AUTH] Authentication confirmed")
                 return {
                     'status': 'success',
                     'authenticated': True,
-                    'message': 'Claude Code is authenticated'
+                    'message': 'Claude Code is authenticated',
                 }
 
-            # If Claude was killed or timed out but credentials exist, assume authenticated
             if 'killed' in stdout_lower or exit_code == 137 or exit_code == 124:
                 logger.warning(f"[CLAUDE_AUTH] Claude process was killed, but credentials exist - assuming authenticated")
                 return {
                     'status': 'success',
                     'authenticated': True,
-                    'message': 'Claude Code credentials found (verification skipped due to resource limits)'
+                    'message': 'Claude Code credentials found (verification skipped due to resource limits)',
                 }
 
-            # Check for common error messages including token expiration
             if ('not logged in' in stdout_lower or
                 'authenticate' in stdout_lower or
                 'oauth' in stdout_lower or
@@ -851,22 +531,20 @@ def check_claude_auth_status(workspace_id: str) -> Dict[str, Any]:
                     'status': 'success',
                     'authenticated': False,
                     'message': 'Claude Code token expired or invalid. Please reconnect.',
-                    'token_expired': True
+                    'token_expired': True,
                 }
 
-            # If we have credentials but couldn't verify, assume authenticated
             logger.warning(f"[CLAUDE_AUTH] Couldn't verify but credentials exist - assuming authenticated")
             return {
                 'status': 'success',
                 'authenticated': True,
-                'message': 'Claude Code credentials found'
+                'message': 'Claude Code credentials found',
             }
 
-        # Credentials file exists but no token - not authenticated
         return {
             'status': 'success',
             'authenticated': False,
-            'message': 'Claude Code credentials incomplete'
+            'message': 'Claude Code credentials incomplete',
         }
 
     except Exception as e:
@@ -874,7 +552,7 @@ def check_claude_auth_status(workspace_id: str) -> Dict[str, Any]:
         return {
             'status': 'error',
             'authenticated': False,
-            'error': str(e)
+            'error': str(e),
         }
 
 
@@ -887,78 +565,54 @@ def run_claude_cli(
     prompt: str,
     session_id: str = None,
     timeout: int = 1200,
-    working_dir: str = "/workspace/nextjs-app",
+    working_dir: str = None,
     project_id: str = None,
     poll_callback: Callable = None,
-    lfg_env: Dict[str, str] = None
+    lfg_env: Dict[str, str] = None,
 ) -> Dict[str, Any]:
     """
-    Run Claude Code CLI with a prompt.
+    Run Claude Code CLI with a prompt using Mags SDK native execution.
 
-    This runs Claude in background and polls for output to avoid
-    the 300-second Magpie API timeout on long-running commands.
+    Claude CLI runs in the background with output redirected to a JSONL file.
+    A shell polling loop reads new content every ~5 seconds and echoes it to
+    stdout, which is captured by the Mags SDK log polling.
 
     Args:
-        workspace_id: Magpie workspace ID
+        workspace_id: Mags workspace overlay name (e.g. "ticket-147-p13")
         prompt: The prompt to send to Claude
         session_id: Optional session ID to resume
         timeout: Command timeout in seconds
-        working_dir: Working directory for Claude
+        working_dir: Working directory for Claude (defaults to MAGS_WORKING_DIR)
         project_id: Optional project ID for environment variables
         poll_callback: Optional callback for progress updates (receives output lines)
-        lfg_env: Dict of LFG environment variables (LFG_API_URL, LFG_API_KEY, LFG_TICKET_ID)
+        lfg_env: Dict of LFG environment variables
 
     Returns:
         Dict with status, output, session_id, and parsed messages
     """
+    import base64
+
+    if working_dir is None:
+        working_dir = MAGS_WORKING_DIR
+
     logger.info(f"[CLAUDE_CLI] Running on workspace {workspace_id}, session={session_id}, timeout={timeout}")
 
     try:
-        client = get_magpie_client()
-
-        # Create a unique timestamp for all temp files
         timestamp = int(time.time())
-
-        # Create a unique output file for this run
-        output_file = f"/tmp/claude_output_{timestamp}.jsonl"
-        pid_file = f"/tmp/claude_pid_{timestamp}.txt"
-        exit_code_file = f"/tmp/claude_exit_{timestamp}.txt"
-
-        # Escape the prompt for shell - write to file to avoid escaping issues
         prompt_file = f"/tmp/claude_prompt_{timestamp}.txt"
 
-        # Write prompt to file first
-        write_prompt_cmd = f"""
-cat > {prompt_file} << 'PROMPT_EOF'
-{prompt}
-PROMPT_EOF
-echo "PROMPT_WRITTEN"
-"""
-        write_result = _run_magpie_ssh(
-            client, workspace_id,
-            write_prompt_cmd,
-            timeout=30, with_node_env=False
-        )
-
-        if 'PROMPT_WRITTEN' not in write_result.get('stdout', ''):
-            return {
-                'status': 'error',
-                'error': f"Failed to write prompt file: {write_result.get('stderr', '')}"
-            }
-
-        # Build the Claude command
-        # NOTE: --dangerously-skip-permissions cannot be used when running as root
-        # We'll create a non-root user and run Claude as that user
+        # Build Claude command arguments
         claude_args = [
             "--model claude-opus-4-5-20251101",
             "--output-format stream-json",
             "--verbose",
-            # "--max-turns 25",
             "--dangerously-skip-permissions"
         ]
 
         if session_id:
             claude_args.insert(0, f"--resume {session_id}")
+
+        claude_args_str = ' '.join(claude_args)
 
         # Build LFG environment variable exports
         lfg_env_exports = ""
@@ -966,352 +620,309 @@ echo "PROMPT_WRITTEN"
             for key, value in lfg_env.items():
                 lfg_env_exports += f"export {key}='{value}'\n"
 
-        # Start Claude in background with output to file
-        # Use a wrapper script that captures exit code
-        # NOTE: Claude CLI requires -p flag with prompt, not stdin redirection
-        # NOTE: --dangerously-skip-permissions requires non-root user, so we create one
         env_file = f"/tmp/claude_env_{timestamp}.sh"
-        wrapper_script = f"/tmp/claude_wrapper_{timestamp}.sh"
+        runner_script = f"/tmp/claude_runner_{timestamp}.sh"
+        output_file = f"/tmp/claude_output_{timestamp}.jsonl"
 
-        start_cmd = f"""
-        [ -f /etc/profile ] && . /etc/profile
-        [ -f ~/.profile ] && . ~/.profile
-        [ -f ~/.bashrc ] && . ~/.bashrc
+        # Known claude binary location (installed in base workspace)
+        claude_bin_path = "/usr/local/bin/claude"
 
-        # Create non-root user for Claude (--dangerously-skip-permissions requires non-root)
-        if ! id -u claudeuser > /dev/null 2>&1; then
-            # Try useradd (Debian/Ubuntu) first, then adduser (Alpine)
-            useradd -m -s /bin/bash claudeuser 2>/dev/null || \
-            adduser -D -h /home/claudeuser -s /bin/bash claudeuser 2>/dev/null || \
-            echo "Warning: Could not create claudeuser"
-        fi
-
-        # Verify user was created
-        if ! id -u claudeuser > /dev/null 2>&1; then
-            echo "ERROR: Failed to create claudeuser"
-            exit 1
-        fi
-
-        # Ensure home directory exists (Alpine adduser may not create it)
-        if [ ! -d /home/claudeuser ]; then
-            mkdir -p /home/claudeuser
-            chown claudeuser:claudeuser /home/claudeuser
-        fi
-
-        # Sync Claude credentials to claudeuser's home
-        # IMPORTANT: Only sync credentials file, NOT the entire directory (to preserve session data)
-        if [ -d /root/.claude ]; then
-            # Sync filesystem to ensure any pending credential writes are flushed
-            sync 2>/dev/null || true
-
-            # Create .claude directory if it doesn't exist
-            mkdir -p /home/claudeuser/.claude
-            chown claudeuser:claudeuser /home/claudeuser/.claude
-
-            # Copy only the credentials file (preserves existing session data)
-            if [ -f /root/.claude/.credentials.json ]; then
-                cp /root/.claude/.credentials.json /home/claudeuser/.claude/.credentials.json
-                chown claudeuser:claudeuser /home/claudeuser/.claude/.credentials.json
-            fi
-
-            # Copy settings if they exist
-            if [ -f /root/.claude/settings.json ]; then
-                cp /root/.claude/settings.json /home/claudeuser/.claude/settings.json
-                chown claudeuser:claudeuser /home/claudeuser/.claude/settings.json
-            fi
-
-            # Copy local binary directory if it exists (but don't overwrite if already there)
-            if [ -d /root/.claude/local ] && [ ! -d /home/claudeuser/.claude/local ]; then
-                cp -r /root/.claude/local /home/claudeuser/.claude/local
-                chown -R claudeuser:claudeuser /home/claudeuser/.claude/local
-            fi
-
-            # Make the binary executable if it exists
-            chmod +x /home/claudeuser/.claude/local/claude 2>/dev/null || true
-
-            # Verify credentials were copied correctly
-            if [ ! -f /home/claudeuser/.claude/.credentials.json ]; then
-                echo "ERROR: Credentials file not found after copy"
-                exit 1
-            fi
-
-            echo "CREDENTIALS_SYNCED_OK"
-        else
-            echo "ERROR: No credentials found at /root/.claude"
-            exit 1
-        fi
-
-        # Give claudeuser access to workspace
-        chown -R claudeuser:claudeuser {working_dir} 2>/dev/null || true
-        chmod -R 755 {working_dir} 2>/dev/null || true
-
-        # Make temp files accessible to all
-        chmod 666 {prompt_file} 2>/dev/null || true
-        touch {output_file} && chmod 666 {output_file}
-        touch {exit_code_file} && chmod 666 {exit_code_file}
-
-        # Write env vars to a file that claudeuser can source
-        cat > {env_file} << 'ENVEOF'
-{lfg_env_exports}
-ENVEOF
-        chmod 644 {env_file}
-
-        # Find the actual path to claude binary
-        # Check claudeuser's home first (copied), then root locations
-        CLAUDE_BIN=""
-        for path in /home/claudeuser/.claude/local/claude /root/.claude/local/claude /root/.local/bin/claude /usr/local/bin/claude $(which claude 2>/dev/null); do
-            if [ -x "$path" ]; then
-                CLAUDE_BIN="$path"
-                break
-            fi
-        done
-
-        if [ -z "$CLAUDE_BIN" ]; then
-            echo "ERROR: Could not find claude binary"
-            echo "Checked paths: /home/claudeuser/.claude/local/claude, /root/.claude/local/claude, /root/.local/bin/claude, /usr/local/bin/claude"
-            exit 1
-        fi
-        echo "FOUND_CLAUDE=$CLAUDE_BIN"
-
-        # If using root's claude binary, ensure it's accessible
-        if [[ "$CLAUDE_BIN" == /root/* ]]; then
-            chmod 755 /root 2>/dev/null || true
-            chmod -R 755 $(dirname "$CLAUDE_BIN") 2>/dev/null || true
-        fi
-
-        # Create wrapper script that claudeuser will run
-        # Use the absolute path to claude to avoid PATH issues
-        cat > {wrapper_script} << WRAPPEREOF
-#!/bin/bash
-# Ensure HOME is set correctly for claudeuser (claude looks for config in HOME/.claude)
+        # Step 3: Start Claude CLI in background via exec()
+        # Claude CLI refuses --dangerously-skip-permissions as root, so we run
+        # as a non-root user (claudeuser) created in CLAUDE_AUTH_SETUP_SCRIPT.
+        #
+        # Strategy: write a small runner script, start it via nohup/su in
+        # background, then poll the output file via exec() for streaming.
+        # This avoids relying on Mags logs() API (which only returns platform
+        # logs, not script stdout).
+        runner_content = f"""#!/bin/bash
 export HOME=/home/claudeuser
+export PATH=/root/node/current/bin:/root/.npm-global/bin:$PATH
+export NPM_CONFIG_CACHE=/home/claudeuser/.npm
+export npm_config_cache=/home/claudeuser/.npm
+umask 000
 source {env_file}
 cd {working_dir}
-$CLAUDE_BIN -p "\\$(cat {prompt_file})" {' '.join(claude_args)}
-WRAPPEREOF
-        chmod 755 {wrapper_script}
+{claude_bin_path} -p "$(cat {prompt_file})" {claude_args_str} > {output_file} 2>&1
+CLAUDE_EXIT=$?
+echo "" >> {output_file}
+echo "___CLAUDE_EXIT_CODE=$CLAUDE_EXIT" >> {output_file}
+"""
+        runner_b64 = base64.b64encode(runner_content.encode('utf-8')).decode('ascii')
+        prompt_b64 = base64.b64encode(prompt.encode('utf-8')).decode('ascii')
+        env_b64 = base64.b64encode(lfg_env_exports.encode('utf-8')).decode('ascii') if lfg_env_exports else ""
 
-        # Run Claude as non-root user in background
-        (
-            su - claudeuser -c "{wrapper_script}" > {output_file} 2>&1
-            echo $? > {exit_code_file}
-        ) &
+        # Single combined command: write all files + setup user + launch Claude
+        # This replaces 3 separate exec() calls with 1.
+        start_cmd = f"""export HOME=/root
 
-        CLAUDE_PID=$!
-        echo $CLAUDE_PID > {pid_file}
-        echo "STARTED_PID=$CLAUDE_PID"
-        """
+# Write prompt and env files via base64 (avoids shell escaping issues)
+echo '{prompt_b64}' | base64 -d > {prompt_file}
+echo '{env_b64}' | base64 -d > {env_file}
 
-        start_result = _run_magpie_ssh(
-            client, workspace_id,
-            start_cmd,
-            timeout=60, with_node_env=True, project_id=project_id
+# Verify credentials exist
+if [ ! -f /root/.claude/.credentials.json ]; then
+    echo "ERROR: No credentials found at /root/.claude"
+    exit 1
+fi
+
+# Verify claude binary exists
+if [ ! -x {claude_bin_path} ]; then
+    echo "ERROR: Claude binary not found at {claude_bin_path}"
+    exit 1
+fi
+
+# Setup non-root user for Claude CLI
+CLAUDE_USER=claudeuser
+CLAUDE_HOME=/home/$CLAUDE_USER
+id $CLAUDE_USER >/dev/null 2>&1 || adduser -D -h $CLAUDE_HOME -s /bin/bash $CLAUDE_USER
+
+# Copy credential files
+mkdir -p $CLAUDE_HOME/.claude
+for f in .credentials.json settings.json statsig.json; do
+    [ -f /root/.claude/$f ] && cp /root/.claude/$f $CLAUDE_HOME/.claude/$f
+done
+chown -R $CLAUDE_USER:$CLAUDE_USER $CLAUDE_HOME/.claude
+
+# Set permissions — MUST NOT add group/other write to /root (breaks SSH StrictModes)
+chmod o+rx /root 2>/dev/null || true
+if [ -d {working_dir}/project ]; then
+    chown -R $CLAUDE_USER:$CLAUDE_USER {working_dir}/project 2>/dev/null || chmod -R o+rwx {working_dir}/project 2>/dev/null || true
+fi
+mkdir -p $CLAUDE_HOME/.npm
+chown -R $CLAUDE_USER:$CLAUDE_USER $CLAUDE_HOME/.npm
+chmod 666 {prompt_file} 2>/dev/null || true
+chmod 644 {env_file} 2>/dev/null || true
+chmod o+rx /root/node /root/node/current /root/node/current/bin /root/node/current/lib 2>/dev/null || true
+chmod o+rx /root/node/current/bin/* 2>/dev/null || true
+chmod o+rx $(dirname {claude_bin_path}) {claude_bin_path} 2>/dev/null || true
+chmod o+rx /root/.npm-global /root/.npm-global/bin /root/.npm-global/lib 2>/dev/null || true
+chmod o+rx /root/.npm-global/bin/* 2>/dev/null || true
+
+# Create output file + write runner script
+touch {output_file}
+chmod 666 {output_file}
+echo '{runner_b64}' | base64 -d > {runner_script}
+chmod 755 {runner_script}
+
+# Start Claude CLI in background
+nohup su -s /bin/bash $CLAUDE_USER -c "bash {runner_script}" > /dev/null 2>&1 &
+echo "___CLAUDE_BG_PID=$!"
+echo "CLAUDE_STARTED"
+"""
+
+        start_result = run_command(
+            workspace_id, start_cmd,
+            timeout=180, with_node_env=True,
+            project_id=project_id,
         )
-
         start_stdout = start_result.get('stdout', '')
-        start_stderr = start_result.get('stderr', '')
-        logger.info(f"[CLAUDE_CLI] Start result: {start_stdout[:500]}")
-        if start_stderr:
-            logger.info(f"[CLAUDE_CLI] Start stderr: {start_stderr[:200]}")
 
         # Check for specific errors
-        if 'ERROR: Could not find claude binary' in start_stdout:
-            return {
-                'status': 'error',
-                'error': 'Claude CLI not installed. Please ensure Claude Code is installed in the workspace.'
-            }
-
-        if 'ERROR: Failed to create claudeuser' in start_stdout:
-            return {
-                'status': 'error',
-                'error': 'Could not create non-root user for Claude CLI execution.'
-            }
-
-        if 'ERROR: Failed to copy credentials' in start_stdout:
-            return {
-                'status': 'error',
-                'error': 'Failed to copy Claude credentials. Please try reconnecting Claude Code in Settings.'
-            }
-
-        if 'ERROR: Credentials file not found' in start_stdout:
-            return {
-                'status': 'error',
-                'error': 'Claude credentials not found after copy. Please reconnect Claude Code in Settings.'
-            }
-
         if 'ERROR: No credentials found' in start_stdout:
+            return {'status': 'error', 'error': 'No Claude credentials found. Please connect Claude Code in Settings first.'}
+        if 'ERROR: Claude binary not found' in start_stdout:
+            return {'status': 'error', 'error': 'Claude CLI not installed in workspace.'}
+        if 'CLAUDE_STARTED' not in start_stdout:
             return {
                 'status': 'error',
-                'error': 'No Claude credentials found. Please connect Claude Code in Settings first.'
+                'error': f"Failed to start Claude CLI: {start_stdout[:300]}"
             }
 
-        if 'STARTED_PID=' not in start_stdout:
-            return {
-                'status': 'error',
-                'error': f"Failed to start Claude: {start_stderr if start_stderr else start_stdout[:300]}"
-            }
+        # Extract background PID for process checking
+        bg_pid = None
+        for line in start_stdout.split('\n'):
+            if line.strip().startswith('___CLAUDE_BG_PID='):
+                try:
+                    bg_pid = int(line.strip().split('=', 1)[1])
+                except (ValueError, IndexError):
+                    pass
+                break
 
-        # Poll for completion
-        poll_interval = 5  # seconds
-        max_polls = timeout // poll_interval
-        last_output_size = 0
-        all_output = ""
+        logger.info(f"[CLAUDE_CLI] Claude started in background, PID={bg_pid}")
 
-        for poll_num in range(max_polls):
-            time.sleep(poll_interval)
-
-            # Check if process is still running and get new output
-            poll_cmd = f"""
-            # Check if process is running
-            if [ -f {pid_file} ]; then
-                PID=$(cat {pid_file})
-                if kill -0 $PID 2>/dev/null; then
-                    echo "STATUS=RUNNING"
-                else
-                    echo "STATUS=DONE"
-                fi
-            else
-                echo "STATUS=NO_PID"
-            fi
-
-            # Check for exit code
-            if [ -f {exit_code_file} ]; then
-                echo "EXIT_CODE=$(cat {exit_code_file})"
-            fi
-
-            # Get output file size
-            if [ -f {output_file} ]; then
-                echo "OUTPUT_SIZE=$(wc -c < {output_file})"
-                # Read new output (from last position)
-                tail -c +{last_output_size + 1} {output_file} 2>/dev/null || cat {output_file}
-            else
-                echo "OUTPUT_SIZE=0"
-            fi
-            """
-
-            poll_result = _run_magpie_ssh(
-                client, workspace_id,
-                poll_cmd,
-                timeout=60, with_node_env=False
+        # Verify workspace is still accessible with a quick probe before polling
+        try:
+            probe_result = run_command(
+                workspace_id, f"ls -la {output_file} 2>&1 && echo PROBE_OK",
+                timeout=30, with_node_env=False
             )
+            probe_out = probe_result.get('stdout', '')
+            probe_exit = probe_result.get('exit_code', -1)
+            probe_stderr = probe_result.get('stderr', '')
+            logger.info(
+                f"[CLAUDE_CLI] Probe: exit={probe_exit} stdout={probe_out[:200]} stderr={probe_stderr[:200]}"
+            )
+            if probe_exit == 255:
+                logger.error(f"[CLAUDE_CLI] SSH probe failed — workspace may be unreachable: {probe_stderr[:200]}")
+        except Exception as probe_err:
+            logger.warning(f"[CLAUDE_CLI] Probe error: {probe_err}")
 
-            poll_stdout = poll_result.get('stdout', '')
+        # Step 4: Poll output file via exec() — real-time streaming to callback
+        # The runner writes Claude's stream-json output to output_file.
+        # We periodically exec() into the VM to read new bytes and feed them
+        # to the callback, which creates TicketLog entries + WebSocket broadcasts.
+        offset = 0
+        all_output = ""
+        poll_start = time.time()
+        consecutive_ssh_failures = 0
+        MAX_SSH_FAILURES = 5
 
-            # Parse status
-            status_match = re.search(r'STATUS=(\w+)', poll_stdout)
-            status = status_match.group(1) if status_match else 'UNKNOWN'
+        while time.time() - poll_start < timeout:
+            time.sleep(5)
 
-            # Parse output size
-            size_match = re.search(r'OUTPUT_SIZE=(\d+)', poll_stdout)
-            current_size = int(size_match.group(1)) if size_match else 0
+            # Read new bytes from output file + check process status
+            pid_check = f'kill -0 {bg_pid} 2>/dev/null && echo "yes" || echo "no"' if bg_pid else 'echo "unknown"'
+            poll_cmd = f"""CURSIZE=$(wc -c < {output_file} 2>/dev/null || echo 0)
+NEWBYTES=$((CURSIZE - {offset}))
+if [ "$NEWBYTES" -gt 0 ]; then
+    tail -c +{offset + 1} {output_file} | head -c $NEWBYTES
+fi
+ALIVE=$({pid_check})
+printf '\\n__MAGS_POLL_BOUNDARY__\\nSIZE=%s ALIVE=%s\\n' "$CURSIZE" "$ALIVE"
+"""
 
-            # Parse exit code if available
-            exit_match = re.search(r'EXIT_CODE=(\d+)', poll_stdout)
-            exit_code = int(exit_match.group(1)) if exit_match else None
+            try:
+                poll_result = run_command(workspace_id, poll_cmd, timeout=30, with_node_env=False)
+                poll_exit = poll_result.get('exit_code', -1)
+                poll_stdout = poll_result.get('stdout', '')
+                poll_stderr = poll_result.get('stderr', '')
 
-            # Extract new output (everything after the STATUS and OUTPUT_SIZE lines)
-            new_output_lines = []
-            capture_output = False
-            for line in poll_stdout.split('\n'):
-                if capture_output:
-                    new_output_lines.append(line)
-                elif line.startswith('OUTPUT_SIZE='):
-                    capture_output = True
+                # Detect SSH-level failures (exit_code=255 or -1 with empty stdout)
+                if poll_exit in (255, -1) and not poll_stdout:
+                    consecutive_ssh_failures += 1
+                    logger.warning(
+                        f"[CLAUDE_CLI] Poll SSH failure #{consecutive_ssh_failures}/{MAX_SSH_FAILURES}: "
+                        f"exit={poll_exit} stderr={poll_stderr[:200]}"
+                    )
+                    if consecutive_ssh_failures >= MAX_SSH_FAILURES:
+                        logger.error("[CLAUDE_CLI] Too many consecutive SSH failures, aborting poll loop")
+                        break
+                    continue  # Skip parsing, retry on next iteration
+                consecutive_ssh_failures = 0  # Reset on any successful exec
 
-            new_output = '\n'.join(new_output_lines)
+                POLL_BOUNDARY = '__MAGS_POLL_BOUNDARY__'
+                new_content = ""
+                poll_size = offset
+                process_alive = True
 
-            # Log extraction details for debugging
-            if current_size > last_output_size:
-                logger.info(f"[CLAUDE_CLI] Poll {poll_num}: output grew {last_output_size} -> {current_size} (+{current_size - last_output_size} bytes)")
-                logger.info(f"[CLAUDE_CLI] Extracted {len(new_output)} chars, lines captured: {len(new_output_lines)}")
-                if new_output_lines:
-                    first_line = new_output_lines[0][:100] if new_output_lines[0] else "(empty)"
-                    logger.info(f"[CLAUDE_CLI] First extracted line: {first_line}")
+                if POLL_BOUNDARY in poll_stdout:
+                    boundary_idx = poll_stdout.rfind(POLL_BOUNDARY)
+                    new_content = poll_stdout[:boundary_idx].rstrip('\n')
+                    meta_str = poll_stdout[boundary_idx + len(POLL_BOUNDARY):]
 
-            if new_output.strip():
-                all_output += new_output
+                    size_match = re.search(r'SIZE=(\d+)', meta_str)
+                    alive_match = re.search(r'ALIVE=(\w+)', meta_str)
+                    if size_match:
+                        poll_size = int(size_match.group(1))
+                    if alive_match:
+                        process_alive = alive_match.group(1) == 'yes'
+
+                if new_content:
+                    offset = poll_size
+                    all_output += new_content + '\n'
+                    if poll_callback:
+                        try:
+                            poll_callback(new_content + '\n')
+                        except Exception as cb_err:
+                            logger.warning(f"[CLAUDE_CLI] Callback error: {cb_err}")
+                else:
+                    offset = poll_size
+
+                logger.debug(
+                    f"[CLAUDE_CLI] Poll: offset={offset}, new={len(new_content)}, "
+                    f"total={len(all_output)}, alive={process_alive}"
+                )
+
+                # Check completion
+                if '___CLAUDE_EXIT_CODE=' in all_output:
+                    break
+
+                if not process_alive:
+                    # Process finished — wait for final writes then exit
+                    time.sleep(2)
+                    break
+
+            except Exception as poll_err:
+                logger.debug(f"[CLAUDE_CLI] Poll error: {poll_err}")
+
+        # Final read to catch any remaining output after loop exit
+        try:
+            final_cmd = f"""CURSIZE=$(wc -c < {output_file} 2>/dev/null || echo 0)
+if [ "$CURSIZE" -gt {offset} ]; then
+    tail -c +{offset + 1} {output_file}
+fi
+"""
+            fr = run_command(workspace_id, final_cmd, timeout=30, with_node_env=False)
+            fc = fr.get('stdout', '').rstrip('\n')
+            if fc:
+                all_output += fc + '\n'
                 if poll_callback:
                     try:
-                        # Log what we're sending to callback for debugging
-                        json_line_count = sum(1 for line in new_output.split('\n') if line.strip().startswith('{'))
-                        logger.info(f"[CLAUDE_CLI] Sending {len(new_output)} bytes ({json_line_count} JSON lines) to callback")
-                        poll_callback(new_output)
-                    except Exception as e:
-                        logger.warning(f"[CLAUDE_CLI] Poll callback error: {e}")
+                        poll_callback(fc + '\n')
+                    except Exception:
+                        pass
+        except Exception:
+            pass
 
-            last_output_size = current_size
+        # Extract exit code from output marker
+        exit_code = -1
+        for line in reversed(all_output.split('\n')):
+            line_s = line.strip()
+            if line_s.startswith('___CLAUDE_EXIT_CODE='):
+                try:
+                    exit_code = int(line_s.split('=', 1)[1])
+                except (ValueError, IndexError):
+                    pass
+                break
 
-            # Log progress
-            if poll_num % 6 == 0:  # Log every 30 seconds
-                logger.info(f"[CLAUDE_CLI] Poll {poll_num}: status={status}, output_size={current_size}, exit_code={exit_code}")
+        # If we never got the exit code marker (SSH died mid-execution) but
+        # collected substantial output, check if Claude produced a final result.
+        # A {"type":"result"} JSON line indicates Claude completed normally.
+        if exit_code == -1 and len(all_output) > 1000:
+            import json as _json
+            for line in reversed(all_output.split('\n')):
+                line_s = line.strip()
+                if not line_s:
+                    continue
+                try:
+                    obj = _json.loads(line_s)
+                    if obj.get('type') == 'result':
+                        logger.info("[CLAUDE_CLI] Found result object in output — treating as success despite missing exit code")
+                        exit_code = 0
+                        break
+                except (ValueError, _json.JSONDecodeError):
+                    continue
 
-            # Check if done
-            if status == 'DONE' or exit_code is not None:
-                logger.info(f"[CLAUDE_CLI] Completed with exit_code={exit_code}")
+        logger.info(f"[CLAUDE_CLI] Completed: exit_code={exit_code}, output_len={len(all_output)}")
 
-                # Always get full output when done for accuracy
-                final_cmd = f"cat {output_file} 2>/dev/null || echo ''"
-                final_result = _run_magpie_ssh(
-                    client, workspace_id,
-                    final_cmd,
-                    timeout=60, with_node_env=False
-                )
-                all_output = final_result.get('stdout', '')
+        # Cleanup temp files (including the output JSONL file)
+        cleanup_cmd = f"rm -f {prompt_file} {env_file} {runner_script} {output_file}"
+        try:
+            run_command(workspace_id, cleanup_cmd, timeout=30, with_node_env=False)
+        except Exception:
+            pass  # Cleanup failure is non-fatal
 
-                # Log the actual output for debugging (especially important for errors)
-                output_preview = all_output[:1000] if all_output else "(empty)"
-                logger.info(f"[CLAUDE_CLI] Output ({len(all_output)} bytes): {output_preview}")
+        # Filter wrapper control markers before parsing JSON stream
+        filtered_lines = []
+        for line in all_output.split('\n'):
+            if line.strip().startswith('___CLAUDE_'):
+                continue
+            filtered_lines.append(line)
+        filtered_output = '\n'.join(filtered_lines)
 
-                # Clean up temp files (including wrapper script and env file)
-                cleanup_cmd = f"rm -f {prompt_file} {output_file} {pid_file} {exit_code_file} {env_file} {wrapper_script}"
-                _run_magpie_ssh(client, workspace_id, cleanup_cmd, timeout=30, with_node_env=False)
-
-                # Parse the JSON stream output
-                parsed = parse_claude_json_stream(all_output)
-
-                return {
-                    'status': 'success' if exit_code == 0 else 'error',
-                    'exit_code': exit_code or 0,
-                    'stdout': all_output,
-                    'stderr': '',
-                    'session_id': parsed.get('session_id'),
-                    'messages': parsed.get('messages', []),
-                    'final_result': parsed.get('final_result'),
-                    'error': None if exit_code == 0 else f"Claude exited with code {exit_code}"
-                }
-
-        # Timeout - kill the process
-        logger.warning(f"[CLAUDE_CLI] Timeout after {timeout}s, killing process")
-
-        kill_cmd = f"""
-        if [ -f {pid_file} ]; then
-            PID=$(cat {pid_file})
-            kill -9 $PID 2>/dev/null || true
-        fi
-        # Get whatever output we have
-        cat {output_file} 2>/dev/null || echo ''
-        # Cleanup
-        rm -f {prompt_file} {output_file} {pid_file} {exit_code_file} {env_file} {wrapper_script}
-        """
-
-        kill_result = _run_magpie_ssh(
-            client, workspace_id,
-            kill_cmd,
-            timeout=60, with_node_env=False
-        )
-
-        all_output = kill_result.get('stdout', '')
-        parsed = parse_claude_json_stream(all_output)
+        # Parse the JSON stream output
+        parsed = parse_claude_json_stream(filtered_output)
 
         return {
-            'status': 'error',
-            'exit_code': -1,
+            'status': 'success' if exit_code == 0 else 'error',
+            'exit_code': exit_code,
             'stdout': all_output,
             'stderr': '',
             'session_id': parsed.get('session_id'),
             'messages': parsed.get('messages', []),
             'final_result': parsed.get('final_result'),
-            'error': f'Timeout after {timeout} seconds'
+            'error': None if exit_code == 0 else f"Claude exited with code {exit_code}"
         }
 
     except Exception as e:
@@ -1363,7 +974,6 @@ def parse_claude_json_stream(output: str) -> Dict[str, Any]:
                 })
 
             elif msg_type == 'assistant':
-                # Parse content blocks from assistant message
                 content_blocks = msg.get('message', {}).get('content', [])
                 if not isinstance(content_blocks, list):
                     content_blocks = [content_blocks] if content_blocks else []
@@ -1374,17 +984,13 @@ def parse_claude_json_stream(output: str) -> Dict[str, Any]:
                         block_type = block.get('type')
 
                         if block_type == 'text':
-                            # Text content
                             text = block.get('text', '')
                             if text:
                                 text_parts.append(text)
 
                         elif block_type == 'tool_use':
-                            # Tool use is inside assistant message content
                             tool_name = block.get('name', 'unknown')
                             tool_input = block.get('input', {})
-
-                            # Add as separate tool_use message
                             result['messages'].append({
                                 'type': 'tool_use',
                                 'name': tool_name,
@@ -1395,7 +1001,6 @@ def parse_claude_json_stream(output: str) -> Dict[str, Any]:
                     elif isinstance(block, str):
                         text_parts.append(block)
 
-                # If there was text content, add as assistant message
                 if text_parts:
                     content = '\n'.join(text_parts)
                     result['messages'].append({
@@ -1405,7 +1010,6 @@ def parse_claude_json_stream(output: str) -> Dict[str, Any]:
                     })
 
             elif msg_type == 'user':
-                # Parse content blocks from user message (usually tool results)
                 content_blocks = msg.get('message', {}).get('content', [])
                 if not isinstance(content_blocks, list):
                     content_blocks = [content_blocks] if content_blocks else []
@@ -1416,12 +1020,11 @@ def parse_claude_json_stream(output: str) -> Dict[str, Any]:
 
                         if block_type == 'tool_result':
                             tool_content = block.get('content', '')
-                            # Handle content that might be a list or dict
                             if isinstance(tool_content, (list, dict)):
                                 tool_content = json.dumps(tool_content, indent=2)
                             result['messages'].append({
                                 'type': 'tool_result',
-                                'content': str(tool_content)[:5000],  # Truncate long results
+                                'content': str(tool_content)[:5000],
                                 'is_error': block.get('is_error', False),
                                 'timestamp': datetime.now().isoformat()
                             })
@@ -1435,7 +1038,6 @@ def parse_claude_json_stream(output: str) -> Dict[str, Any]:
                 })
 
         except json.JSONDecodeError:
-            # Non-JSON line, might be raw output
             if line and not line.startswith('{'):
                 result['messages'].append({
                     'type': 'raw_output',
@@ -1478,17 +1080,15 @@ def create_ticket_logs_from_claude_output(
                 log_entry = TicketLog.objects.create(
                     ticket_id=ticket_id,
                     log_type='ai_response',
-                    command='Claude Code',  # Short command name
-                    output=content[:10000]  # Full content in output
+                    command='Claude Code',
+                    output=content[:10000]
                 )
 
         elif msg_type == 'tool_use':
             tool_name = msg.get('name', 'unknown')
             tool_input = msg.get('input', {})
 
-            # Format tool input nicely
             if tool_name == 'Bash':
-                # For bash commands, show the command itself
                 command_text = tool_input.get('command', '')
                 description = tool_input.get('description', '')
                 explanation = description if description else f"Running: {command_text[:100]}"
@@ -1533,7 +1133,6 @@ def create_ticket_logs_from_claude_output(
             content = msg.get('content', '')
             is_error = msg.get('is_error', False)
 
-            # Only log tool results if they're errors or significant
             if is_error or len(str(content)) > 100:
                 log_entry = TicketLog.objects.create(
                     ticket_id=ticket_id,
@@ -1550,7 +1149,6 @@ def create_ticket_logs_from_claude_output(
                 'created_at': log_entry.created_at.isoformat()
             })
 
-            # Broadcast via WebSocket
             if broadcast_func:
                 try:
                     broadcast_func(ticket_id, {
@@ -1558,7 +1156,7 @@ def create_ticket_logs_from_claude_output(
                         'log_type': log_entry.log_type,
                         'command': log_entry.command,
                         'explanation': getattr(log_entry, 'explanation', ''),
-                        'output': log_entry.output[:2000],  # Truncate for WebSocket
+                        'output': log_entry.output[:2000],
                         'created_at': log_entry.created_at.isoformat()
                     })
                 except Exception as e:

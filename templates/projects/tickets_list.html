@@ -3432,6 +3432,13 @@
                 hideAiTypingIndicator();
             }
 
+            // Hide typing indicator when processing is fully complete
+            if (log.log_type === 'chat_complete') {
+                hideAiTypingIndicator();
+                setAiProcessingState(false);
+                return;  // Don't render this log in the UI
+            }
+
             // Hide typing indicator for errors only (not system messages - agent may still be working)
             if (log.log_type === 'error') {
                 hideAiTypingIndicator();
@@ -4227,9 +4234,16 @@
                 }
 
                 // Restore typing indicator if AI is currently processing
+                // But not if the agent already responded (post-processing like git commit may still be running)
                 if (data.is_ai_processing) {
-                    console.log('[LOGS] AI is currently processing, showing typing indicator');
-                    showAiTypingIndicator();
+                    const lastLog = data.commands && data.commands.length > 0 ? data.commands[data.commands.length - 1] : null;
+                    const lastLogType = lastLog ? lastLog.log_type : null;
+                    if (lastLogType !== 'ai_response' && lastLogType !== 'git' && lastLogType !== 'chat_complete') {
+                        console.log('[LOGS] AI is currently processing, showing typing indicator');
+                        showAiTypingIndicator();
+                    } else {
+                        console.log('[LOGS] AI processing flag set but agent already responded, skipping indicator');
+                    }
                 }
 
                 // Scroll to bottom to show latest logs
@@ -5653,7 +5667,7 @@
 
                     <!-- Footer hint -->
                     <div style="font-size: 0.75rem; color: var(--text-tertiary, #666);">
-                        <i class="fas fa-info-circle"></i> Logs are from <code style="background: var(--surface-secondary); padding: 0.1rem 0.3rem; border-radius: 3px;">/workspace/nextjs-app/dev.log</code>
+                        <i class="fas fa-info-circle"></i> Logs are from <code style="background: var(--surface-secondary); padding: 0.1rem 0.3rem; border-radius: 3px;">/workspace/project/dev.log</code>
                     </div>
                 </div>
             `;

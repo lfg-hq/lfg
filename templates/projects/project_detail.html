@@ -677,6 +677,7 @@
                 <div class="form-group">
                     <label for="stackSelect" class="form-label">Technology Stack</label>
                     <select class="form-control" id="stackSelect" onchange="updateStackDefaults()">
+                        <option value="">Not set</option>
                         <option value="nextjs">Next.js</option>
                         <option value="astro">Astro</option>
                         <option value="python-django">Python (Django)</option>
@@ -738,8 +739,9 @@ function closeStackEditModal() {
 
 // Stack defaults for placeholder updates
 const stackDefaults = {
-    'nextjs': { dir: 'nextjs-app', install: 'npm install', dev: 'npm run dev', port: 3000 },
-    'astro': { dir: 'astro-app', install: 'npm install', dev: 'npx astro dev --host 0.0.0.0', port: 4321 },
+    '': { dir: 'project', install: '', dev: '', port: 3000 },
+    'nextjs': { dir: 'project', install: 'npm install', dev: 'npm run dev', port: 3000 },
+    'astro': { dir: 'project', install: 'npm install', dev: 'npx astro dev --host 0.0.0.0', port: 4321 },
     'python-django': { dir: 'django-app', install: 'pip install -r requirements.txt', dev: 'python manage.py runserver 0.0.0.0:8000', port: 8000 },
     'python-fastapi': { dir: 'fastapi-app', install: 'pip install -r requirements.txt', dev: 'uvicorn main:app --host 0.0.0.0 --port 8000 --reload', port: 8000 },
     'go': { dir: 'go-app', install: 'go mod download', dev: 'go run .', port: 8080 },

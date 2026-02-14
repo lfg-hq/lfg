@@ -290,42 +290,50 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     // New chat button click handler
-    newChatBtn.addEventListener('click', () => {
+    newChatBtn.addEventListener('click', (e) => {
+        e.preventDefault();  // Prevent <a href="#"> from firing
+
         // Reset conversation ID but keep project ID
         currentConversationId = null;
         window.currentConversationId = null;  // Sync to global
-        
+
         // Project ID should always be available from path
         const pathProjectId = extractProjectIdFromPath();
         if (!pathProjectId) {
             console.error('No project ID found in path during new chat creation');
         }
-        
+
         // Clear chat messages and show welcome message
         clearChatMessages();
-        
+
         // Add welcome message
         const welcomeMessage = document.createElement('div');
         welcomeMessage.className = 'welcome-message';
         welcomeMessage.innerHTML = '<h2>LFG 🚀🚀</h2><p>Start a conversation with the AI assistant below.</p>';
         messageContainer.appendChild(welcomeMessage);
-        
-        // Reset WebSocket connection to ensure clean session
+
+        // Close existing WebSocket so the server-side consumer resets self.conversation
+        if (socket) {
+            socket.close();
+            socket = null;
+        }
+
+        // Reconnect WebSocket to ensure clean session (no conversation on server)
         connectWebSocket();
-        
+
         // Update URL to remove conversation_id param
         const url = new URL(window.location);
         url.searchParams.delete('conversation_id');
         window.history.pushState({}, '', url);
-        
+
         // Remove active class from all conversations in sidebar
         document.querySelectorAll('.conversation-item').forEach(item => {
             item.classList.remove('active');
         });
-        
+
         // Focus on input for immediate typing
         chatInput.focus();
-        
+
         console.log('New chat session started with project ID:', currentProjectId);
     });
     

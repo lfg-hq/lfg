@@ -24,6 +24,7 @@ class Project(models.Model):
 
     # Stack/Technology configuration
     STACK_CHOICES = [
+        ('', 'Not set'),
         ('nextjs', 'Next.js'),
         ('astro', 'Astro'),
         ('python-django', 'Python (Django)'),
@@ -36,8 +37,9 @@ class Project(models.Model):
     stack = models.CharField(
         max_length=50,
         choices=STACK_CHOICES,
-        default='nextjs',
-        help_text="Technology stack for this project"
+        default='',
+        blank=True,
+        help_text="Technology stack for this project. Must be set before ticket execution."
     )
 
     # Custom stack overrides (if blank, uses defaults from stack_config)

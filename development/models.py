@@ -148,6 +148,7 @@ class MagpieWorkspace(models.Model):
     STATUS_CHOICES = (
         ('provisioning', 'Provisioning'),
         ('ready', 'Ready'),
+        ('sleeping', 'Sleeping'),
         ('stopped', 'Stopped'),
         ('error', 'Error'),
     )
@@ -196,6 +197,42 @@ class MagpieWorkspace(models.Model):
         unique=True,
         help_text="Workspace identifier used by the AI agent"
     )
+    # Mags API fields
+    mags_job_id = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Mags job request_id"
+    )
+    mags_workspace_id = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        db_index=True,
+        help_text="Mags workspace overlay name"
+    )
+    mags_base_workspace_id = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Mags base workspace (for forked workspaces)"
+    )
+    ssh_host = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="SSH host for Mags workspace"
+    )
+    ssh_port = models.IntegerField(
+        blank=True,
+        null=True,
+        help_text="SSH port for Mags workspace"
+    )
+    ssh_private_key = models.TextField(
+        blank=True,
+        null=True,
+        help_text="SSH private key for Mags workspace"
+    )
     ipv6_address = models.CharField(
         max_length=128,
         blank=True,
@@ -243,19 +280,19 @@ class MagpieWorkspace(models.Model):
         ]
         constraints = [
             models.UniqueConstraint(
-                fields=['project'],
-                condition=models.Q(project__isnull=False),
-                name='unique_project_magpie_workspace'
-            ),
-            models.UniqueConstraint(
                 fields=['conversation_id'],
                 condition=models.Q(conversation_id__isnull=False),
                 name='unique_conversation_magpie_workspace'
             ),
             models.UniqueConstraint(
                 fields=['user', 'workspace_type'],
-                condition=models.Q(user__isnull=False),
+                condition=models.Q(user__isnull=False, workspace_type='claude_auth'),
                 name='unique_user_workspace_type'
+            ),
+            models.UniqueConstraint(
+                fields=['mags_workspace_id'],
+                condition=models.Q(mags_workspace_id__isnull=False),
+                name='unique_mags_workspace_id'
             ),
         ]
         verbose_name = "Magpie Workspace"
@@ -264,6 +301,23 @@ class MagpieWorkspace(models.Model):
     def __str__(self):
         identifier = self.project.provided_name if self.project and self.project.provided_name else self.workspace_id
         return f"Magpie Workspace {identifier} ({self.status})"
+
+    def get_ssh_credentials(self) -> dict | None:
+        """Return SSH credentials dict if all fields are set, else None."""
+        if self.ssh_host and self.ssh_port and self.ssh_private_key:
+            return {
+                "ssh_host": self.ssh_host,
+                "ssh_port": self.ssh_port,
+                "ssh_private_key": self.ssh_private_key,
+            }
+        return None
+
+    def save_ssh_credentials(self, credentials: dict):
+        """Save SSH credentials from Mags enable_ssh_access response."""
+        self.ssh_host = credentials.get("ssh_host")
+        self.ssh_port = credentials.get("ssh_port")
+        self.ssh_private_key = credentials.get("ssh_private_key")
+        self.save(update_fields=["ssh_host", "ssh_port", "ssh_private_key", "updated_at"])
 
     def mark_ready(self, ipv6=None, project_path=None, metadata=None, proxy_url=None):
         """Mark the workspace as ready and update connection details."""

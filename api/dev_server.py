@@ -1,5 +1,5 @@
 """
-API endpoints for managing development servers for ticket previews using Magpie workspaces.
+API endpoints for managing development servers for ticket previews using Mags workspaces.
 """
 import logging
 import os
@@ -16,16 +16,24 @@ from projects.websocket_utils import send_workspace_progress
 
 logger = logging.getLogger(__name__)
 
-# Import Magpie utilities from factory/ai_functions.py
+# Import Mags utilities
 try:
-    from factory.ai_functions import get_magpie_client, _run_magpie_ssh, magpie_available, _fetch_workspace, get_or_fetch_proxy_url
+    from factory.mags import (
+        run_command, get_or_create_workspace_job,
+        workspace_name_for_preview, get_http_proxy_url,
+        MAGS_WORKING_DIR, PREVIEW_SETUP_SCRIPT, MagsAPIError,
+    )
+    mags_available = True
 except ImportError:
-    logger.error("Failed to import Magpie utilities from factory.ai_functions")
-    get_magpie_client = None
-    _run_magpie_ssh = None
-    magpie_available = lambda: False
+    logger.error("Failed to import Mags utilities from factory.mags")
+    run_command = None
+    mags_available = False
+
+# Import _fetch_workspace for backward compat during migration
+try:
+    from factory.ai_functions import _fetch_workspace
+except ImportError:
     _fetch_workspace = None
-    get_or_fetch_proxy_url = None
 
 # Import git setup function
 try:
@@ -35,7 +43,7 @@ except ImportError:
     setup_git_in_workspace = None
 
 
-def _ensure_code_in_workspace(client, workspace, project, user, ticket=None, send_progress=True):
+def _ensure_code_in_workspace(workspace, project, user, ticket=None, send_progress=True):
     """
     Ensure code exists in the workspace and is on the correct branch.
     - If ticket has github_branch, use that
@@ -44,10 +52,10 @@ def _ensure_code_in_workspace(client, workspace, project, user, ticket=None, sen
     """
     from factory.stack_configs import get_stack_config
 
-    job_id = workspace.job_id
+    workspace_id = workspace.mags_workspace_id or workspace.workspace_id
     stack_config = get_stack_config(project.stack, project)
     project_dir = stack_config['project_dir']
-    workspace_path = f"/workspace/{project_dir}"
+    workspace_path = f"{MAGS_WORKING_DIR}/{project_dir}"
     project_id = str(project.project_id)
 
     logger.info(f"[CODE_SETUP] Project stack: {project.stack}, project_dir: {project_dir}")
@@ -69,7 +77,7 @@ def _ensure_code_in_workspace(client, workspace, project, user, ticket=None, sen
     # Check for first file pattern (most common indicator file)
     check_file = file_patterns[0] if file_patterns else 'package.json'
     check_cmd = f"test -d {workspace_path} && test -f {workspace_path}/{check_file} && echo 'EXISTS' || echo 'MISSING'"
-    check_result = _run_magpie_ssh(client, job_id, check_cmd, timeout=30, with_node_env=False)
+    check_result = run_command(workspace_id, check_cmd, timeout=30)
 
     code_exists = 'EXISTS' in check_result.get('stdout', '')
 
@@ -162,7 +170,7 @@ git remote set-url origin "https://github.com/{owner}/{repo}.git" || true
 
 echo "SWITCH_COMPLETE"
 '''
-            switch_result = _run_magpie_ssh(client, job_id, switch_cmd, timeout=120, with_node_env=False)
+            switch_result = run_command(workspace_id, switch_cmd, timeout=120)
             stdout = switch_result.get('stdout', '')
             stderr = switch_result.get('stderr', '')
             exit_code = switch_result.get('exit_code', -1)
@@ -177,10 +185,10 @@ echo "SWITCH_COMPLETE"
             # Run npm install after branch switch to ensure dependencies are up to date
             progress('downloading_dependencies', 'Installing dependencies (npm install)...')
             logger.info(f"[CODE_SETUP] Running npm install after branch switch...")
-            npm_result = _run_magpie_ssh(
-                client, job_id,
-                f"cd {workspace_path} && npm config set cache /workspace/.npm-cache && npm install",
-                timeout=300, with_node_env=True
+            npm_result = run_command(
+                workspace_id,
+                f"cd {workspace_path} && npm config set cache {MAGS_WORKING_DIR}/.npm-cache && npm install",
+                timeout=300,
             )
             if npm_result.get('exit_code', 0) != 0:
                 logger.warning(f"[CODE_SETUP] npm install warning: {npm_result.get('stderr', '')[:200]}")
@@ -200,21 +208,21 @@ echo "SWITCH_COMPLETE"
 
             if setup_git_in_workspace:
                 git_result = setup_git_in_workspace(
-                    workspace_id=job_id,
+                    job_id=workspace_id,
                     owner=owner,
                     repo_name=repo,
                     branch_name=target_branch,
                     token=github_token,
-                    stack=project.stack  # Use project's actual stack
+                    stack=project.stack,
                 )
 
                 if git_result.get('status') == 'success':
                     # Run npm install
                     logger.info(f"[CODE_SETUP] Running npm install...")
-                    npm_result = _run_magpie_ssh(
-                        client, job_id,
-                        f"cd {workspace_path} && npm config set cache /workspace/.npm-cache && npm install",
-                        timeout=300, with_node_env=True
+                    npm_result = run_command(
+                        workspace_id,
+                        f"cd {workspace_path} && npm config set cache {MAGS_WORKING_DIR}/.npm-cache && npm install",
+                        timeout=300,
                     )
                     if npm_result.get('exit_code', 0) == 0:
                         # Update workspace metadata
@@ -242,7 +250,7 @@ echo "SWITCH_COMPLETE"
         gitignore_content = get_gitignore_content(project.stack)
 
         empty_project_cmd = f'''
-cd /workspace
+cd {MAGS_WORKING_DIR}
 if [ ! -d {project_dir} ]; then
     mkdir -p {project_dir}
     cat > {project_dir}/.gitignore << 'GITIGNORE_EOF'
@@ -260,7 +268,7 @@ else
     echo "ALREADY_EXISTS"
 fi
 '''
-        result = _run_magpie_ssh(client, job_id, empty_project_cmd, timeout=60, with_node_env=False)
+        result = run_command(workspace_id, empty_project_cmd, timeout=60)
 
         if result.get('exit_code', 0) == 0:
             # Update workspace metadata
@@ -297,50 +305,41 @@ def start_dev_server(request, ticket_id):
 
         project = ticket.project
 
-        # Check if Magpie is available
-        if not magpie_available():
+        # Check if Mags is available
+        if not mags_available:
             return JsonResponse(
-                {'error': 'Magpie workspace execution is not available. Configure the Magpie SDK and API key.'},
+                {'error': 'Workspace service is not available. Please check configuration.'},
                 status=503
             )
 
-        # Get the MagpieWorkspace for this project using _fetch_workspace
-        # This matches the pattern from execute_ticket_implementation
-        magpie_workspace = async_to_sync(_fetch_workspace)(project=project)
+        # Get the MagpieWorkspace for this project
+        magpie_workspace = async_to_sync(_fetch_workspace)(project=project) if _fetch_workspace else None
 
         if not magpie_workspace:
             return JsonResponse(
-                {'error': 'No Magpie workspace found for this project. Please provision a workspace first.'},
+                {'error': 'No workspace found for this project. Please provision a workspace first.'},
                 status=400
             )
 
-        # Use workspace regardless of status (matches task_definitions.py behavior)
-        # Just log a warning if not ready
-        if magpie_workspace.status != 'ready':
-            logger.warning(f"Using workspace with status '{magpie_workspace.status}' (not 'ready')")
+        # Ensure workspace job is running
+        workspace_id = magpie_workspace.mags_workspace_id or magpie_workspace.workspace_id
+        job_id = magpie_workspace.mags_job_id or magpie_workspace.job_id
 
         # Get stack configuration
         from factory.stack_configs import get_stack_config
         stack_config = get_stack_config(project.stack, project)
         project_dir = stack_config['project_dir']
-        workspace_path = f"/workspace/{project_dir}"
-        job_id = magpie_workspace.job_id
+        workspace_path = f"{MAGS_WORKING_DIR}/{project_dir}"
 
         logger.info(f"[DEV_SERVER] Starting dev server for ticket {ticket_id}")
         logger.info(f"[DEV_SERVER] Project stack: {project.stack}, project_dir: {project_dir}")
-        logger.info(f"[DEV_SERVER] Workspace ID: {magpie_workspace.workspace_id}")
-        logger.info(f"[DEV_SERVER] Workspace status: {magpie_workspace.status}")
         logger.info(f"[DEV_SERVER] Job ID: {job_id}")
         logger.info(f"[DEV_SERVER] Workspace path: {workspace_path}")
-        logger.info(f"[DEV_SERVER] IPv6: {magpie_workspace.ipv6_address}")
-
-        # Get Magpie client
-        client = get_magpie_client()
 
         # Step 0: Ensure code exists in workspace and is on correct branch
         logger.info(f"[DEV_SERVER] Checking workspace structure...")
         logger.info(f"[DEV_SERVER] Ticket branch: {ticket.github_branch or 'not set (will use lfg-agent)'}")
-        code_success, code_message = _ensure_code_in_workspace(client, magpie_workspace, project, request.user, ticket=ticket)
+        code_success, code_message = _ensure_code_in_workspace(magpie_workspace, project, request.user, ticket=ticket)
         logger.info(f"[DEV_SERVER] Code setup result: {code_success}, {code_message}")
 
         if not code_success:
@@ -349,21 +348,6 @@ def start_dev_server(request, ticket_id):
                 {'error': f'Failed to set up code in workspace: {code_message}'},
                 status=500
             )
-        # verify_command = textwrap.dedent(f"""
-        #     echo "=== Workspace verification ==="
-        #     echo "Current directory: $(pwd)"
-        #     echo "Workspace path exists: $(test -d {workspace_path} && echo 'YES' || echo 'NO')"
-        #     echo "Contents of /workspace:"
-        #     ls -la /workspace/ || echo "Failed to list /workspace"
-        #     echo "Node installed: $(which node || echo 'NOT FOUND')"
-        #     echo "NPM installed: $(which npm || echo 'NOT FOUND')"
-        #     echo "Package.json exists: $(test -f {workspace_path}/package.json && echo 'YES' || echo 'NO')"
-        # """)
-
-        # verify_result = _run_magpie_ssh(client, job_id, verify_command, timeout=30, with_node_env=True)
-        # logger.info(f"[VERIFY] Stdout:\n{verify_result.get('stdout', '')}")
-        # logger.info(f"[VERIFY] Stderr:\n{verify_result.get('stderr', '')}")
-
         project_id = str(project.project_id)
 
         # Step 0.5: Run bootstrap script to ensure stack tools are installed
@@ -372,9 +356,7 @@ def start_dev_server(request, ticket_id):
             send_workspace_progress(project_id, 'installing_tools', f'Checking/installing {stack_config["name"]} tools...')
             logger.info(f"[DEV_SERVER] Running bootstrap script for {project.stack}")
 
-            bootstrap_result = _run_magpie_ssh(
-                client, job_id, bootstrap_script, timeout=300, with_node_env=False, project_id=project.id
-            )
+            bootstrap_result = run_command(workspace_id, bootstrap_script, timeout=300)
             if bootstrap_result.get('exit_code', 0) != 0:
                 logger.warning(f"[DEV_SERVER] Bootstrap warning: {bootstrap_result.get('stderr', '')[:200]}")
             else:
@@ -388,7 +370,7 @@ def start_dev_server(request, ticket_id):
         default_port = project.custom_default_port or stack_config.get('default_port', 3000)
         if project.stack == 'nextjs':
             cleanup_extras = """
-            npm config set cache /workspace/.npm-cache
+            npm config set cache {MAGS_WORKING_DIR}/.npm-cache
             killall -9 node 2>/dev/null || true
             pkill -9 node 2>/dev/null || true
             rm -rf .next || true
@@ -434,7 +416,7 @@ def start_dev_server(request, ticket_id):
             echo "Cleanup completed"
         """)
 
-        cleanup_result = _run_magpie_ssh(client, job_id, cleanup_command, timeout=60, with_node_env=(project.stack == 'nextjs'), project_id=project.id)
+        cleanup_result = run_command(workspace_id, cleanup_command, timeout=60)
         
         logger.info(f"[CLEANUP] Result: {cleanup_result}")
         logger.info(f"[CLEANUP] Exit code: {cleanup_result.get('exit_code')}")
@@ -493,7 +475,7 @@ def start_dev_server(request, ticket_id):
             fi
         """)
 
-        start_result = _run_magpie_ssh(client, job_id, start_command, timeout=120, with_node_env=True, project_id=project.id)
+        start_result = run_command(workspace_id, start_command, timeout=120)
 
         logger.info(f"[START] Result: {start_result}")
         logger.info(f"[START] Exit code: {start_result.get('exit_code')}")
@@ -521,13 +503,15 @@ def start_dev_server(request, ticket_id):
 
         logger.info(f"Dev server started successfully with PID: {pid}")
 
-        # Get proxy URL, force refresh to ensure it points to current IPv6/port
+        # Get preview URL via Mags HTTP access
         send_workspace_progress(project_id, 'assigning_proxy', 'Getting preview URL...')
         preview_url = None
-        if get_or_fetch_proxy_url:
-            preview_url = get_or_fetch_proxy_url(magpie_workspace, port=default_port, client=client, force_refresh=True)
+        try:
+            preview_url = get_http_proxy_url(job_id, default_port)
+        except Exception as e:
+            logger.warning(f"[DEV_SERVER] Failed to get HTTP proxy URL: {e}")
         if not preview_url:
-            preview_url = f'http://[{magpie_workspace.ipv6_address}]:{default_port}' if magpie_workspace.ipv6_address else f'http://localhost:{default_port}'
+            preview_url = f'http://localhost:{default_port}'
 
         # Send completion notification
         send_workspace_progress(project_id, 'complete', 'Dev server is ready!', extra_data={'url': preview_url})
@@ -573,19 +557,19 @@ def stop_dev_server(request, ticket_id):
 
         project = ticket.project
 
-        # Check if Magpie is available
-        if not magpie_available():
+        # Check if Mags is available
+        if not mags_available:
             return JsonResponse(
-                {'error': 'Magpie workspace execution is not available.'},
+                {'error': 'Workspace service is not available. Please check configuration.'},
                 status=503
             )
 
         # Get the MagpieWorkspace for this project using _fetch_workspace
-        magpie_workspace = async_to_sync(_fetch_workspace)(project=project)
+        magpie_workspace = async_to_sync(_fetch_workspace)(project=project) if _fetch_workspace else None
 
         if not magpie_workspace:
             return JsonResponse(
-                {'error': 'No Magpie workspace found for this project.'},
+                {'error': 'No workspace found for this project.'},
                 status=400
             )
 
@@ -597,13 +581,10 @@ def stop_dev_server(request, ticket_id):
         from factory.stack_configs import get_stack_config
         stack_config = get_stack_config(project.stack, project)
         project_dir = stack_config['project_dir']
-        workspace_path = f"/workspace/{project_dir}"
-        job_id = magpie_workspace.job_id
+        workspace_path = f"{MAGS_WORKING_DIR}/{project_dir}"
+        workspace_id = magpie_workspace.mags_workspace_id or magpie_workspace.workspace_id
 
-        logger.info(f"Stopping dev server for ticket {ticket_id} in Magpie workspace {magpie_workspace.workspace_id}")
-
-        # Get Magpie client
-        client = get_magpie_client()
+        logger.info(f"Stopping dev server for ticket {ticket_id} in workspace {workspace_id}")
 
         # Stop dev server
         stop_command = textwrap.dedent(f"""
@@ -628,7 +609,7 @@ def stop_dev_server(request, ticket_id):
             echo "Dev server stopped"
         """)
 
-        stop_result = _run_magpie_ssh(client, job_id, stop_command, timeout=60, with_node_env=True, project_id=project.id)
+        stop_result = run_command(workspace_id, stop_command, timeout=60)
 
         if stop_result.get('exit_code') != 0:
             logger.warning(f"Stop command had non-zero exit code: {stop_result.get('stderr')}")
@@ -673,19 +654,19 @@ def get_dev_server_logs(request, ticket_id):
 
         project = ticket.project
 
-        # Check if Magpie is available
-        if not magpie_available():
+        # Check if Mags is available
+        if not mags_available:
             return JsonResponse(
-                {'error': 'Magpie workspace execution is not available.'},
+                {'error': 'Workspace service is not available. Please check configuration.'},
                 status=503
             )
 
         # Get the MagpieWorkspace for this project
-        magpie_workspace = async_to_sync(_fetch_workspace)(project=project)
+        magpie_workspace = async_to_sync(_fetch_workspace)(project=project) if _fetch_workspace else None
 
         if not magpie_workspace:
             return JsonResponse(
-                {'error': 'No Magpie workspace found for this project.'},
+                {'error': 'No workspace found for this project.'},
                 status=400
             )
 
@@ -693,22 +674,19 @@ def get_dev_server_logs(request, ticket_id):
         from factory.stack_configs import get_stack_config
         stack_config = get_stack_config(project.stack, project)
         project_dir = stack_config['project_dir']
-        workspace_path = f"/workspace/{project_dir}"
+        workspace_path = f"{MAGS_WORKING_DIR}/{project_dir}"
         log_file_path = f"{workspace_path}/dev.log"
-        job_id = magpie_workspace.job_id
+        workspace_id = magpie_workspace.mags_workspace_id or magpie_workspace.workspace_id
 
         # Get number of lines from query param (default 100, max 500)
         lines = min(int(request.GET.get('lines', 100)), 500)
 
         logger.info(f"Fetching {lines} lines of dev server logs for ticket {ticket_id}")
 
-        # Get Magpie client
-        client = get_magpie_client()
-
         # Tail the dev.log file
         log_command = f"tail -n {lines} {log_file_path} 2>/dev/null || echo ''"
 
-        log_result = _run_magpie_ssh(client, job_id, log_command, timeout=30, with_node_env=False, project_id=project.id)
+        log_result = run_command(workspace_id, log_command, timeout=30)
 
         logs = log_result.get('stdout', '')
 
@@ -725,7 +703,7 @@ def get_dev_server_logs(request, ticket_id):
                 echo "stopped"
             fi
         """
-        status_result = _run_magpie_ssh(client, job_id, status_command, timeout=10, with_node_env=False, project_id=project.id)
+        status_result = run_command(workspace_id, status_command, timeout=10)
         status_output = status_result.get('stdout', '').strip()
 
         is_running = status_output.startswith('running')
@@ -771,10 +749,10 @@ def get_workspace_dev_server_logs(request, workspace_id):
                 status=403
             )
 
-        # Check if Magpie is available
-        if not magpie_available():
+        # Check if Mags is available
+        if not mags_available:
             return JsonResponse(
-                {'error': 'Magpie workspace execution is not available.'},
+                {'error': 'Workspace service is not available. Please check configuration.'},
                 status=503
             )
 
@@ -783,22 +761,19 @@ def get_workspace_dev_server_logs(request, workspace_id):
         project = workspace.project
         stack_config = get_stack_config(project.stack, project)
         project_dir = stack_config['project_dir']
-        workspace_path = f"/workspace/{project_dir}"
+        workspace_path = f"{MAGS_WORKING_DIR}/{project_dir}"
         log_file_path = f"{workspace_path}/dev.log"
-        job_id = workspace.job_id
+        ws_id = workspace.mags_workspace_id or workspace.workspace_id
 
         # Get number of lines from query param (default 100, max 500)
         lines = min(int(request.GET.get('lines', 100)), 500)
 
         logger.info(f"Fetching {lines} lines of dev server logs for workspace {workspace_id}")
 
-        # Get Magpie client
-        client = get_magpie_client()
-
         # Tail the dev.log file
         log_command = f"tail -n {lines} {log_file_path} 2>/dev/null || echo ''"
 
-        log_result = _run_magpie_ssh(client, job_id, log_command, timeout=30, with_node_env=False, project_id=project.id)
+        log_result = run_command(ws_id, log_command, timeout=30)
 
         logs = log_result.get('stdout', '')
 
@@ -815,7 +790,7 @@ def get_workspace_dev_server_logs(request, workspace_id):
                 echo "stopped"
             fi
         """
-        status_result = _run_magpie_ssh(client, job_id, status_command, timeout=10, with_node_env=False, project_id=workspace.project.id)
+        status_result = run_command(ws_id, status_command, timeout=10)
         status_output = status_result.get('stdout', '').strip()
 
         is_running = status_output.startswith('running')

@@ -178,9 +178,8 @@ class AsyncTicketExecutor:
         """
         Check if the user prefers Claude Code CLI mode for execution.
 
-        Returns True if:
-        1. User has enabled claude_code_enabled in ApplicationState
-        2. User has authenticated Claude Code (claude_code_authenticated in Profile)
+        Returns True if user has enabled claude_code_enabled in ApplicationState.
+        Authentication readiness is validated inside the CLI execution flow itself.
 
         Args:
             project_id: The project database ID
@@ -190,7 +189,7 @@ class AsyncTicketExecutor:
         """
         from asgiref.sync import sync_to_async
         from projects.models import Project
-        from accounts.models import ApplicationState, Profile
+        from accounts.models import ApplicationState
 
         try:
             # Get project owner
@@ -202,13 +201,6 @@ class AsyncTicketExecutor:
                 lambda: ApplicationState.objects.filter(user=user).first()
             )()
             if not app_state or not app_state.claude_code_enabled:
-                return False
-
-            # Check Profile for authentication status
-            profile = await sync_to_async(
-                lambda: Profile.objects.filter(user=user).first()
-            )()
-            if not profile or not profile.claude_code_authenticated:
                 return False
 
             logger.info(f"[EXECUTOR] CLI mode enabled for user {user.id}")

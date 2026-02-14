@@ -32,7 +32,11 @@ from claude_agent_sdk import (
 )
 
 from projects.models import ProjectTicket, Project, ProjectFile
-from factory.ai_functions import new_dev_sandbox_tool, _fetch_workspace, get_magpie_client, _slugify_project_name, MAGPIE_BOOTSTRAP_SCRIPT
+from factory.mags import (
+    get_or_create_workspace_job,
+    workspace_name_for_claude_auth, workspace_name_for_ticket, get_latest_claude_auth_workspace_id,
+    CLAUDE_AUTH_SETUP_SCRIPT, MAGS_WORKING_DIR, MagsAPIError,
+)
 from factory.stack_configs import get_stack_config
 from development.models import MagpieWorkspace
 
@@ -202,7 +206,7 @@ TICKET DESCRIPTION:
 {ticket.description}
 
 PROJECT STACK: {stack_config['name']}
-PROJECT PATH: /workspace/{project_dir}
+PROJECT PATH: {MAGS_WORKING_DIR}/{project_dir}
 DEV COMMAND: {dev_cmd}
 {project_context}
 {previous_attempt_context}
@@ -245,6 +249,19 @@ Remember:
             self.ticket = await sync_to_async(ProjectTicket.objects.get)(id=ticket_id)
             self.project = await sync_to_async(Project.objects.get)(id=project_id)
 
+            # GUARD: Block execution if tech stack is not set
+            if not self.project.stack:
+                error_msg = "Cannot execute ticket: project tech stack is not set. Use the product chat to set the stack before executing tickets."
+                logger.error(f"[SDK] {error_msg}")
+                self.ticket.status = 'failed'
+                await sync_to_async(self.ticket.save)(update_fields=['status'])
+                return {
+                    "status": "error",
+                    "ticket_id": ticket_id,
+                    "error": error_msg,
+                    "execution_time": "0s"
+                }
+
             # 2. CHECK IF ALREADY COMPLETED
             if self.ticket.status == 'done':
                 logger.info(f"Ticket #{ticket_id} already completed, skipping")
@@ -272,64 +289,46 @@ Remember:
                 'refresh_checklist': True
             })
 
-            # 5. GET OR CREATE WORKSPACE
-            workspace = await _fetch_workspace(project=self.project, conversation_id=self.conversation_id)
-
-            if not workspace:
-                # Create new Magpie workspace
-                try:
-                    client = get_magpie_client()
-                    project_name = self.project.provided_name or self.project.name
-                    slug = _slugify_project_name(project_name)
-                    workspace_name = f"{slug}-{self.project.id}"
-
-                    vm_handle = await asyncio.to_thread(
-                        client.jobs.create_persistent_vm,
-                        name=workspace_name,
-                        script=MAGPIE_BOOTSTRAP_SCRIPT,
-                        stateful=True,
-                        workspace_size_gb=10,
-                        vcpus=2,
-                        memory_mb=2048,
-                        poll_timeout=180,
-                        poll_interval=5,
-                    )
-                    logger.info(f"[MAGPIE][CREATE] vm_handle: {vm_handle}")
-
-                    run_id = vm_handle.request_id
-                    workspace_identifier = run_id
-                    ipv6 = vm_handle.ip_address
-
-                    if not ipv6:
-                        raise Exception(f"VM provisioning timed out - no IP address received")
-
-                    workspace = await asyncio.to_thread(
-                        MagpieWorkspace.objects.create,
-                        project=self.project,
-                        conversation_id=str(self.conversation_id) if self.conversation_id else None,
-                        job_id=run_id,
-                        workspace_id=workspace_identifier,
-                        status='ready',
-                        ipv6_address=ipv6,
-                        project_path='/workspace',
-                        metadata={'project_name': project_name}
-                    )
-                    logger.info(f"[MAGPIE][READY] Workspace ready: {workspace.workspace_id}, IP: {ipv6}")
-                except Exception as e:
-                    raise Exception(f"Workspace provisioning failed: {str(e)}")
-
-            self.workspace_id = workspace.workspace_id
-            logger.info(f"Workspace ready: {self.workspace_id}")
-
-            # 5b. SETUP DEV SANDBOX
-            sandbox_result = await new_dev_sandbox_tool(
-                {'workspace_id': self.workspace_id},
-                self.project.project_id,
-                self.conversation_id
+            # 5. GET OR CREATE PER-TICKET WORKSPACE (forked from claude-auth)
+            user = await sync_to_async(lambda: self.project.owner)()
+            base_ws = get_latest_claude_auth_workspace_id(user.id) or workspace_name_for_claude_auth(user.id)
+            ticket_ws = workspace_name_for_ticket(ticket_id)
+            logger.info(
+                "[AGENT EXECUTOR] Resolved base workspace for ticket %s (user=%s): base=%s ticket_ws=%s",
+                ticket_id, user.id, base_ws, ticket_ws
             )
 
-            if sandbox_result.get('status') == 'failed':
-                raise Exception(f"Dev sandbox setup failed: {sandbox_result.get('message_to_agent')}")
+            try:
+                job = await asyncio.to_thread(
+                    get_or_create_workspace_job,
+                    workspace_id=ticket_ws,
+                    base_workspace_id=base_ws,
+                    script=CLAUDE_AUTH_SETUP_SCRIPT,
+                    persistent=True,
+                )
+                job_id = job["request_id"]
+
+                workspace, _ = await sync_to_async(MagpieWorkspace.objects.update_or_create)(
+                    mags_workspace_id=ticket_ws,
+                    defaults={
+                        'project': self.project,
+                        'user': user,
+                        'job_id': job_id,
+                        'workspace_id': ticket_ws,
+                        'mags_job_id': job_id,
+                        'mags_workspace_id': ticket_ws,
+                        'mags_base_workspace_id': base_ws,
+                        'workspace_type': 'ticket',
+                        'status': 'ready',
+                        'project_path': MAGS_WORKING_DIR,
+                    }
+                )
+                logger.info(f"[MAGS][READY] Ticket workspace ready: {ticket_ws} (job {job_id})")
+            except MagsAPIError as e:
+                raise Exception(f"Workspace provisioning failed: {str(e)}")
+
+            self.workspace_id = ticket_ws
+            logger.info(f"Workspace ready: {self.workspace_id}")
 
             # 6. FETCH PROJECT DOCUMENTATION
             project_context = await self.get_project_context()
@@ -360,8 +359,8 @@ You are an expert developer working on a {stack_config['name']} codebase. You im
 
 🔍 MANDATORY FIRST STEP - ALWAYS CHECK STATE:
 Before EVERY ticket implementation, you MUST:
-1. Make sure the parent folder is /workspace/{project_dir}/
-2. Run `ls -la /workspace/{project_dir}/` to check what exists
+1. Make sure the parent folder is {MAGS_WORKING_DIR}/{project_dir}/
+2. Run `ls -la {MAGS_WORKING_DIR}/{project_dir}/` to check what exists
 3. Assess whether this is a NEW project or an EXISTING project
 4. This is NOT optional - you MUST check before doing any work!
 
@@ -462,7 +461,7 @@ REMEMBER: Check state first. For new projects, build the foundation. For existin
                 logger.error("Marking as FAILED due to missing explicit completion status")
 
             # 10. EXTRACT IMPLEMENTATION DETAILS (stack-aware)
-            files_created = re.findall(rf'cat > (/workspace/{re.escape(project_dir)}/[\w\-\./]+)', content)
+            files_created = re.findall(rf'cat > ({re.escape(MAGS_WORKING_DIR)}/{re.escape(project_dir)}/[\w\-\./]+)', content)
             # Extract dependencies based on stack package manager
             if stack_config.get('package_manager') == 'npm':
                 deps_installed = re.findall(r'npm install ([\w\-\s@/]+)', content)

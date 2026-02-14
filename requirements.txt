@@ -16,7 +16,8 @@ websockets==15.0.1
 google-genai==1.9.0
 stripe==7.9.0
 paramiko==4.0.0
-magpie-cloud==0.1.4
+magpie-mags>=0.1.0
+
 asgiref>=3.6.0
 kubernetes>=28.1.0
 urllib3>=1.26.0

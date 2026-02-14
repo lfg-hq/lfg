@@ -1,0 +1,1252 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="facebook-domain-verification" content="zgzf8wxei6ozhhphlm5udn6zaw1ect" />
+    <title>LFG | AI Agents Build Your Software. Humans Verify.</title>
+    <meta name="description" content="LFG is an AI-first software factory. Autonomous agents handle requirements, ticketing, coding, and testing. Humans verify. Ship 10x faster at 80% less cost.">
+    <link rel="icon" type="image/x-icon" href="/static/images/favicon.ico">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Manrope', 'sans-serif'],
+              display: ['Sora', 'sans-serif'],
+              mono: ['JetBrains Mono', 'monospace'],
+            },
+            colors: {
+              brand: {
+                50: '#eef2ff',
+                100: '#e0e7ff',
+                200: '#c7d2fe',
+                300: '#a5b4fc',
+                400: '#818cf8',
+                500: '#6366f1',
+                600: '#4f46e5',
+                700: '#4338ca',
+                800: '#3730a3',
+                900: '#312e81'
+              },
+              ink: {
+                900: '#0f172a'
+              },
+              accent: {
+                500: '#ec4899',
+                600: '#db2777'
+              }
+            },
+            animation: {
+              'fade-in': 'fadeIn 0.5s ease-out',
+              'fade-up': 'fadeUp 0.6s ease-out both',
+              'drift': 'drift 8s ease-in-out infinite',
+              'pulse-slow': 'pulse 3s ease-in-out infinite',
+              'slide-right': 'slideRight 1.5s ease-in-out infinite',
+              'typewriter': 'typewriter 3s steps(30) infinite',
+              'blink': 'blink 1s step-end infinite',
+            },
+            keyframes: {
+              fadeIn: {
+                '0%': { opacity: '0' },
+                '100%': { opacity: '1' }
+              },
+              fadeUp: {
+                '0%': { opacity: '0', transform: 'translateY(20px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' }
+              },
+              drift: {
+                '0%, 100%': { transform: 'translateY(0px)' },
+                '50%': { transform: 'translateY(-10px)' }
+              },
+              slideRight: {
+                '0%': { transform: 'translateX(0)', opacity: '1' },
+                '50%': { transform: 'translateX(6px)', opacity: '0.6' },
+                '100%': { transform: 'translateX(0)', opacity: '1' }
+              },
+              typewriter: {
+                '0%': { width: '0' },
+                '50%': { width: '100%' },
+                '90%': { width: '100%' },
+                '100%': { width: '0' }
+              },
+              blink: {
+                '50%': { borderColor: 'transparent' }
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+      body {
+        background: radial-gradient(circle at 20% 0%, #eef2ff 0%, #f8fafc 38%, #ffffff 100%);
+        overflow-x: hidden;
+      }
+      .mesh {
+        background-image:
+          radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.14), transparent 40%),
+          radial-gradient(circle at 80% 0%, rgba(236, 72, 153, 0.12), transparent 35%);
+      }
+      .glass {
+        background: rgba(255, 255, 255, 0.85);
+        border: 1px solid rgba(148, 163, 184, 0.24);
+        backdrop-filter: blur(10px);
+      }
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+      .glow-brand {
+        box-shadow: 0 0 30px rgba(99, 102, 241, 0.15), 0 0 60px rgba(99, 102, 241, 0.05);
+      }
+      .glow-green {
+        box-shadow: 0 0 12px rgba(34, 197, 94, 0.4);
+      }
+      .pipeline-line {
+        background: linear-gradient(90deg, #6366f1, #ec4899);
+      }
+
+      @keyframes progress {
+        0% { width: 0%; }
+        100% { width: 100%; }
+      }
+      .animate-progress {
+        animation: progress 2s ease-out forwards;
+      }
+
+      .stat-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 30px rgba(99, 102, 241, 0.12);
+      }
+
+      .step-card {
+        transition: all 0.3s ease;
+      }
+      .step-card:hover {
+        border-color: #6366f1;
+        transform: translateY(-3px);
+        box-shadow: 0 12px 40px rgba(99, 102, 241, 0.1);
+      }
+
+      .terminal-line {
+        opacity: 0;
+        animation: fadeUp 0.4s ease-out forwards;
+      }
+    </style>
+</head>
+<body class="text-slate-900 font-sans selection:bg-indigo-600 selection:text-white">
+
+    <!-- Navigation -->
+    <nav id="navbar" class="fixed top-0 left-0 right-0 z-50 transition-all duration-300 bg-transparent py-5">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center">
+        <a href="/" class="flex items-center gap-2 group">
+          <div class="bg-brand-600 text-white p-1.5 rounded-lg transform group-hover:rotate-12 transition-transform">
+            <i data-lucide="rocket" class="w-5 h-5"></i>
+          </div>
+          <span class="font-display font-bold text-xl tracking-tight text-slate-900">LFG</span>
+        </a>
+
+        <div class="hidden md:flex items-center gap-6">
+          <a href="#how-it-works" class="text-sm font-medium text-slate-600 hover:text-brand-600 transition-colors">How It Works</a>
+          <a href="#agents" class="text-sm font-medium text-slate-600 hover:text-brand-600 transition-colors">AI Agents</a>
+          <a href="#pricing" class="text-sm font-medium text-slate-600 hover:text-brand-600 transition-colors">Pricing</a>
+
+          <div class="flex items-center gap-4 ml-2">
+            <a href="https://github.com/lfg-hq/lfg" target="_blank" rel="noopener noreferrer" class="text-slate-500 hover:text-slate-900 transition-colors">
+              <i data-lucide="github" class="w-5 h-5"></i>
+            </a>
+            <a href="/accounts/auth/" class="bg-slate-900 hover:bg-brand-700 text-white px-5 py-2 rounded-full text-sm font-semibold transition-all shadow-lg">
+              Launch Platform
+            </a>
+          </div>
+        </div>
+
+        <div class="md:hidden">
+          <button id="mobile-menu-btn" class="text-slate-600">
+            <i data-lucide="menu" class="w-6 h-6"></i>
+          </button>
+        </div>
+      </div>
+
+      <div id="mobile-menu" class="hidden md:hidden absolute top-full left-0 w-full bg-white border-b border-slate-200 p-4 flex-col gap-3 shadow-xl">
+        <a href="#how-it-works" class="text-base font-medium text-slate-700 py-2 mobile-link">How It Works</a>
+        <a href="#agents" class="text-base font-medium text-slate-700 py-2 mobile-link">AI Agents</a>
+        <a href="#pricing" class="text-base font-medium text-slate-700 py-2 mobile-link">Pricing</a>
+        <a href="/accounts/auth/" class="bg-brand-600 text-white w-full py-3 rounded-lg font-semibold text-center block">Launch Platform</a>
+      </div>
+    </nav>
+
+    <main>
+        <!-- ==================== HERO ==================== -->
+        <section class="relative pt-28 sm:pt-40 pb-20 sm:pb-28 overflow-hidden mesh">
+            <div class="absolute -top-10 right-[8%] w-72 h-72 rounded-full bg-brand-100 blur-3xl animate-drift"></div>
+            <div class="absolute top-20 left-[5%] w-80 h-80 rounded-full bg-pink-100 blur-3xl animate-drift" style="animation-delay:1s"></div>
+            <div class="absolute bottom-10 right-[15%] w-48 h-48 rounded-full bg-indigo-100 blur-3xl animate-drift" style="animation-delay:2s"></div>
+
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+                <div class="text-center max-w-4xl mx-auto">
+                    <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full glass shadow-sm mb-8 animate-fade-up">
+                        <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                        <span class="text-xs font-bold text-slate-600 uppercase tracking-wider">Agents active — building right now</span>
+                    </div>
+
+                    <h1 class="font-display font-extrabold text-4xl sm:text-5xl md:text-6xl lg:text-7xl leading-[1.05] tracking-tight text-slate-900 animate-fade-up" style="animation-delay: 0.1s">
+                        AI agents build your software.<br>
+                        <span class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-pink-500">Humans just verify.</span>
+                    </h1>
+
+                    <p class="text-lg sm:text-xl text-slate-600 mt-7 max-w-2xl mx-auto leading-relaxed animate-fade-up" style="animation-delay: 0.2s">
+                        LFG is an AI-first software factory. Autonomous agents analyze requirements, create tickets, write code in sandboxed environments, and ship tested features. Your team reviews. That's it.
+                    </p>
+
+                    <div class="mt-10 flex flex-wrap items-center justify-center gap-4 animate-fade-up" style="animation-delay: 0.3s">
+                        <a href="#start" class="px-8 py-3.5 rounded-full bg-brand-600 text-white font-semibold hover:bg-brand-700 transition-all inline-flex items-center gap-2 shadow-lg shadow-brand-600/25">
+                            Start Building <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                        </a>
+                        <a href="#how-it-works" class="px-8 py-3.5 rounded-full bg-white border border-slate-200 text-slate-700 font-semibold hover:border-brand-300 hover:text-brand-700 transition-colors inline-flex items-center gap-2">
+                            See How It Works
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Stats Bar -->
+                <div class="mt-16 grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto animate-fade-up" style="animation-delay: 0.4s">
+                    <div class="stat-card glass rounded-xl p-5 text-center transition-all cursor-default">
+                        <p class="font-display font-extrabold text-3xl sm:text-4xl text-brand-600">80%</p>
+                        <p class="text-sm font-medium text-slate-500 mt-1">Cost Savings</p>
+                    </div>
+                    <div class="stat-card glass rounded-xl p-5 text-center transition-all cursor-default">
+                        <p class="font-display font-extrabold text-3xl sm:text-4xl text-brand-600">10x</p>
+                        <p class="text-sm font-medium text-slate-500 mt-1">Faster Delivery</p>
+                    </div>
+                    <div class="stat-card glass rounded-xl p-5 text-center transition-all cursor-default">
+                        <p class="font-display font-extrabold text-3xl sm:text-4xl text-brand-600">24/7</p>
+                        <p class="text-sm font-medium text-slate-500 mt-1">Agents Working</p>
+                    </div>
+                    <div class="stat-card glass rounded-xl p-5 text-center transition-all cursor-default">
+                        <p class="font-display font-extrabold text-3xl sm:text-4xl text-brand-600">0</p>
+                        <p class="text-sm font-medium text-slate-500 mt-1">Idle Downtime</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== LIVE AGENT TERMINAL ==================== -->
+        <section class="py-16 bg-white border-t border-slate-100">
+            <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center mb-10">
+                    <p class="text-sm font-bold text-brand-600 uppercase tracking-wider mb-2">What it looks like</p>
+                    <h2 class="font-display font-bold text-3xl md:text-4xl text-slate-900">Your agents, always shipping</h2>
+                </div>
+
+                <div class="bg-[#0f172a] rounded-2xl shadow-2xl overflow-hidden border border-slate-800 glow-brand">
+                    <div class="flex items-center gap-2 px-5 py-3 bg-[#1e293b] border-b border-slate-700">
+                        <div class="w-3 h-3 rounded-full bg-[#ff5f56]"></div>
+                        <div class="w-3 h-3 rounded-full bg-[#ffbd2e]"></div>
+                        <div class="w-3 h-3 rounded-full bg-[#27c93f]"></div>
+                        <span class="ml-3 text-xs text-slate-400 font-mono">lfg-agent — live pipeline</span>
+                        <div class="ml-auto flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+                            <span class="text-xs text-green-400 font-mono">running</span>
+                        </div>
+                    </div>
+                    <div id="agent-terminal" class="p-6 font-mono text-sm leading-7 min-h-[280px] text-slate-300">
+                        <!-- Lines injected by JS -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== HOW IT WORKS — PIPELINE ==================== -->
+        <section id="how-it-works" class="py-20 bg-slate-50">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center max-w-3xl mx-auto mb-16">
+                    <p class="text-sm font-bold text-brand-600 uppercase tracking-wider mb-2">The AI pipeline</p>
+                    <h2 class="font-display font-bold text-3xl md:text-4xl text-slate-900">From idea to shipped product — fully automated</h2>
+                    <p class="text-slate-600 text-lg mt-4">You describe what you need. AI agents handle every step. You review and approve.</p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-5">
+                    <!-- Step 1 -->
+                    <article class="step-card bg-white rounded-xl p-6 border border-slate-200 shadow-sm relative">
+                        <div class="w-10 h-10 rounded-lg bg-brand-100 text-brand-700 flex items-center justify-center mb-4">
+                            <i data-lucide="message-square-text" class="w-5 h-5"></i>
+                        </div>
+                        <p class="text-xs uppercase font-bold tracking-wider text-brand-600 mb-2">01 — You</p>
+                        <h3 class="font-display font-bold text-lg mb-2">Describe your idea</h3>
+                        <p class="text-sm text-slate-600">Tell us what you need in plain English. A product concept, a feature, a whole system.</p>
+                        <div class="hidden lg:block absolute -right-3 top-1/2 -translate-y-1/2 text-brand-300 z-10">
+                            <i data-lucide="chevron-right" class="w-5 h-5"></i>
+                        </div>
+                    </article>
+
+                    <!-- Step 2 -->
+                    <article class="step-card bg-white rounded-xl p-6 border border-slate-200 shadow-sm relative">
+                        <div class="w-10 h-10 rounded-lg bg-brand-100 text-brand-700 flex items-center justify-center mb-4">
+                            <i data-lucide="file-text" class="w-5 h-5"></i>
+                        </div>
+                        <p class="text-xs uppercase font-bold tracking-wider text-brand-600 mb-2">02 — Agent</p>
+                        <h3 class="font-display font-bold text-lg mb-2">PRD & analysis</h3>
+                        <p class="text-sm text-slate-600">AI agents generate a full PRD, break down requirements, define architecture, and create a technical plan.</p>
+                        <div class="hidden lg:block absolute -right-3 top-1/2 -translate-y-1/2 text-brand-300 z-10">
+                            <i data-lucide="chevron-right" class="w-5 h-5"></i>
+                        </div>
+                    </article>
+
+                    <!-- Step 3 -->
+                    <article class="step-card bg-white rounded-xl p-6 border border-slate-200 shadow-sm relative">
+                        <div class="w-10 h-10 rounded-lg bg-brand-100 text-brand-700 flex items-center justify-center mb-4">
+                            <i data-lucide="list-checks" class="w-5 h-5"></i>
+                        </div>
+                        <p class="text-xs uppercase font-bold tracking-wider text-brand-600 mb-2">03 — Agent</p>
+                        <h3 class="font-display font-bold text-lg mb-2">Tickets created</h3>
+                        <p class="text-sm text-slate-600">The plan is broken into granular tickets. Each ticket is scoped, prioritized, and queued for execution.</p>
+                        <div class="hidden lg:block absolute -right-3 top-1/2 -translate-y-1/2 text-brand-300 z-10">
+                            <i data-lucide="chevron-right" class="w-5 h-5"></i>
+                        </div>
+                    </article>
+
+                    <!-- Step 4 -->
+                    <article class="step-card bg-white rounded-xl p-6 border border-slate-200 shadow-sm relative">
+                        <div class="w-10 h-10 rounded-lg bg-brand-100 text-brand-700 flex items-center justify-center mb-4">
+                            <i data-lucide="code-2" class="w-5 h-5"></i>
+                        </div>
+                        <p class="text-xs uppercase font-bold tracking-wider text-brand-600 mb-2">04 — Agent</p>
+                        <h3 class="font-display font-bold text-lg mb-2">Code & test</h3>
+                        <p class="text-sm text-slate-600">Agents spin up sandboxed environments, write code, run tests, fix bugs, and commit working features.</p>
+                        <div class="hidden lg:block absolute -right-3 top-1/2 -translate-y-1/2 text-brand-300 z-10">
+                            <i data-lucide="chevron-right" class="w-5 h-5"></i>
+                        </div>
+                    </article>
+
+                    <!-- Step 5 -->
+                    <article class="step-card bg-white rounded-xl p-6 border border-brand-200 shadow-sm bg-brand-50">
+                        <div class="w-10 h-10 rounded-lg bg-brand-600 text-white flex items-center justify-center mb-4">
+                            <i data-lucide="check-circle-2" class="w-5 h-5"></i>
+                        </div>
+                        <p class="text-xs uppercase font-bold tracking-wider text-brand-700 mb-2">05 — You</p>
+                        <h3 class="font-display font-bold text-lg mb-2">Review & ship</h3>
+                        <p class="text-sm text-slate-700">You review the working product. Approve and ship, or leave feedback. Agents iterate instantly.</p>
+                    </article>
+                </div>
+
+                <div class="mt-10 text-center">
+                    <p class="text-slate-500 text-sm font-medium">
+                        <span class="text-brand-600 font-bold">You touch 2 of 5 steps.</span> The rest is fully autonomous.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== AI AGENTS DETAIL ==================== -->
+        <section id="agents" class="py-20 bg-white border-t border-slate-100">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center max-w-3xl mx-auto mb-14">
+                    <p class="text-sm font-bold text-brand-600 uppercase tracking-wider mb-2">Meet the agents</p>
+                    <h2 class="font-display font-bold text-3xl md:text-4xl text-slate-900">A full engineering team that never sleeps</h2>
+                    <p class="text-slate-600 text-lg mt-4">Each agent is purpose-built for a stage of the development lifecycle. They coordinate, hand off work, and keep building around the clock.</p>
+                </div>
+
+                <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div class="rounded-2xl border border-slate-200 p-6 hover:border-brand-300 transition-colors">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-100 text-brand-700 flex items-center justify-center">
+                                <i data-lucide="brain" class="w-5 h-5"></i>
+                            </div>
+                            <h3 class="font-display font-bold text-lg">Product Analyst</h3>
+                        </div>
+                        <p class="text-sm text-slate-600 leading-relaxed">Ingests your idea, researches the market, and generates a comprehensive PRD with user stories, acceptance criteria, and technical recommendations.</p>
+                    </div>
+
+                    <div class="rounded-2xl border border-slate-200 p-6 hover:border-brand-300 transition-colors">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-100 text-brand-700 flex items-center justify-center">
+                                <i data-lucide="git-branch" class="w-5 h-5"></i>
+                            </div>
+                            <h3 class="font-display font-bold text-lg">Architect</h3>
+                        </div>
+                        <p class="text-sm text-slate-600 leading-relaxed">Designs system architecture, selects the stack, defines data models, maps APIs, and structures the entire codebase before a single line is written.</p>
+                    </div>
+
+                    <div class="rounded-2xl border border-slate-200 p-6 hover:border-brand-300 transition-colors">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-100 text-brand-700 flex items-center justify-center">
+                                <i data-lucide="list-todo" class="w-5 h-5"></i>
+                            </div>
+                            <h3 class="font-display font-bold text-lg">Ticket Manager</h3>
+                        </div>
+                        <p class="text-sm text-slate-600 leading-relaxed">Breaks the plan into atomic, dependency-aware tickets. Prioritizes them, estimates scope, and queues them for builder agents to pick up.</p>
+                    </div>
+
+                    <div class="rounded-2xl border border-slate-200 p-6 hover:border-brand-300 transition-colors">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-100 text-brand-700 flex items-center justify-center">
+                                <i data-lucide="code-2" class="w-5 h-5"></i>
+                            </div>
+                            <h3 class="font-display font-bold text-lg">Builder Agent</h3>
+                        </div>
+                        <p class="text-sm text-slate-600 leading-relaxed">Spins up an isolated sandbox, writes production-grade code, installs dependencies, runs the app, fixes errors, and commits clean, working features.</p>
+                    </div>
+
+                    <div class="rounded-2xl border border-slate-200 p-6 hover:border-brand-300 transition-colors">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-100 text-brand-700 flex items-center justify-center">
+                                <i data-lucide="shield-check" class="w-5 h-5"></i>
+                            </div>
+                            <h3 class="font-display font-bold text-lg">QA Agent</h3>
+                        </div>
+                        <p class="text-sm text-slate-600 leading-relaxed">Reviews code for quality, runs tests, checks for regressions, validates against acceptance criteria, and either approves or sends back for fixes.</p>
+                    </div>
+
+                    <div class="rounded-2xl border border-slate-200 p-6 hover:border-brand-300 transition-colors">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-100 text-brand-700 flex items-center justify-center">
+                                <i data-lucide="rocket" class="w-5 h-5"></i>
+                            </div>
+                            <h3 class="font-display font-bold text-lg">Release Agent</h3>
+                        </div>
+                        <p class="text-sm text-slate-600 leading-relaxed">Packages the build, prepares release notes, handles deployment configuration, and delivers a working product update you can preview instantly.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== COMPARISON ==================== -->
+        <section class="py-20 bg-slate-50">
+            <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center max-w-3xl mx-auto mb-14">
+                    <p class="text-sm font-bold text-brand-600 uppercase tracking-wider mb-2">Why it matters</p>
+                    <h2 class="font-display font-bold text-3xl md:text-4xl text-slate-900">Traditional dev vs. AI-first</h2>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6">
+                    <!-- Traditional -->
+                    <div class="rounded-2xl border border-slate-200 bg-white p-8">
+                        <div class="flex items-center gap-3 mb-6">
+                            <div class="w-10 h-10 rounded-xl bg-slate-100 text-slate-500 flex items-center justify-center">
+                                <i data-lucide="clock" class="w-5 h-5"></i>
+                            </div>
+                            <h3 class="font-display text-xl font-bold text-slate-400">Traditional</h3>
+                        </div>
+                        <ul class="space-y-4">
+                            <li class="flex items-start gap-3 text-slate-500">
+                                <i data-lucide="x" class="w-5 h-5 text-red-400 mt-0.5 shrink-0"></i>
+                                <span>Weeks to hire and onboard engineers</span>
+                            </li>
+                            <li class="flex items-start gap-3 text-slate-500">
+                                <i data-lucide="x" class="w-5 h-5 text-red-400 mt-0.5 shrink-0"></i>
+                                <span>$15K-50K+ monthly engineering payroll</span>
+                            </li>
+                            <li class="flex items-start gap-3 text-slate-500">
+                                <i data-lucide="x" class="w-5 h-5 text-red-400 mt-0.5 shrink-0"></i>
+                                <span>Manual requirements, manual ticketing</span>
+                            </li>
+                            <li class="flex items-start gap-3 text-slate-500">
+                                <i data-lucide="x" class="w-5 h-5 text-red-400 mt-0.5 shrink-0"></i>
+                                <span>Developers idle during reviews and blockers</span>
+                            </li>
+                            <li class="flex items-start gap-3 text-slate-500">
+                                <i data-lucide="x" class="w-5 h-5 text-red-400 mt-0.5 shrink-0"></i>
+                                <span>Months from idea to first working version</span>
+                            </li>
+                            <li class="flex items-start gap-3 text-slate-500">
+                                <i data-lucide="x" class="w-5 h-5 text-red-400 mt-0.5 shrink-0"></i>
+                                <span>8 hours/day, 5 days/week</span>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <!-- LFG -->
+                    <div class="rounded-2xl border border-brand-200 bg-brand-50 p-8 glow-brand">
+                        <div class="flex items-center gap-3 mb-6">
+                            <div class="w-10 h-10 rounded-xl bg-brand-600 text-white flex items-center justify-center">
+                                <i data-lucide="zap" class="w-5 h-5"></i>
+                            </div>
+                            <h3 class="font-display text-xl font-bold text-brand-700">LFG AI-First</h3>
+                        </div>
+                        <ul class="space-y-4">
+                            <li class="flex items-start gap-3 text-slate-700">
+                                <i data-lucide="check" class="w-5 h-5 text-green-600 mt-0.5 shrink-0"></i>
+                                <span>Agents start building in minutes, not weeks</span>
+                            </li>
+                            <li class="flex items-start gap-3 text-slate-700">
+                                <i data-lucide="check" class="w-5 h-5 text-green-600 mt-0.5 shrink-0"></i>
+                                <span><strong>80% lower cost</strong> — tokens, not salaries</span>
+                            </li>
+                            <li class="flex items-start gap-3 text-slate-700">
+                                <i data-lucide="check" class="w-5 h-5 text-green-600 mt-0.5 shrink-0"></i>
+                                <span>AI auto-generates PRDs, tickets, and plans</span>
+                            </li>
+                            <li class="flex items-start gap-3 text-slate-700">
+                                <i data-lucide="check" class="w-5 h-5 text-green-600 mt-0.5 shrink-0"></i>
+                                <span>Zero idle time — agents parallelize work</span>
+                            </li>
+                            <li class="flex items-start gap-3 text-slate-700">
+                                <i data-lucide="check" class="w-5 h-5 text-green-600 mt-0.5 shrink-0"></i>
+                                <span>Days from idea to working product</span>
+                            </li>
+                            <li class="flex items-start gap-3 text-slate-700">
+                                <i data-lucide="check" class="w-5 h-5 text-green-600 mt-0.5 shrink-0"></i>
+                                <span><strong>24/7/365</strong> — agents never stop</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== ENGAGEMENT OPTIONS ==================== -->
+        <section id="pricing" class="py-20 bg-[#0f172a] text-white">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center max-w-3xl mx-auto mb-14">
+                    <p class="text-sm font-bold text-brand-400 uppercase tracking-wider mb-2">Get started</p>
+                    <h2 class="font-display font-bold text-3xl md:text-4xl">Choose how you want to build</h2>
+                    <p class="text-slate-400 text-lg mt-4">Whether you want us to build it or run the platform yourself.</p>
+                </div>
+
+                <div class="grid lg:grid-cols-3 gap-6">
+                    <article class="bg-white/5 border border-white/10 rounded-2xl p-7 hover:border-white/20 transition-colors">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
+                                <i data-lucide="users" class="w-5 h-5 text-white"></i>
+                            </div>
+                            <h3 class="font-display font-bold text-2xl">Custom Build</h3>
+                        </div>
+                        <p class="text-slate-300 mb-6">We build your product end-to-end. Our team + AI agents handle everything. You review and approve.</p>
+                        <ul class="space-y-3 text-sm text-slate-300 mb-8">
+                            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-400 mt-0.5"></i> Full product delivery</li>
+                            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-400 mt-0.5"></i> Senior engineering oversight</li>
+                            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-400 mt-0.5"></i> AI agents do the heavy lifting</li>
+                            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-400 mt-0.5"></i> Fixed scope, fast turnaround</li>
+                        </ul>
+                        <a href="/services/" class="inline-flex items-center gap-2 text-white font-semibold hover:text-brand-300 transition-colors">
+                            Book a build <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                        </a>
+                    </article>
+
+                    <article class="bg-brand-600/20 border border-brand-500/40 rounded-2xl p-7 relative overflow-hidden">
+                        <div class="absolute top-4 right-4">
+                            <span class="text-xs font-bold uppercase bg-brand-500 text-white px-2.5 py-1 rounded-full">Popular</span>
+                        </div>
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 rounded-xl bg-brand-500/30 flex items-center justify-center">
+                                <i data-lucide="bot" class="w-5 h-5 text-brand-300"></i>
+                            </div>
+                            <h3 class="font-display font-bold text-2xl">Agent Platform</h3>
+                        </div>
+                        <p class="text-indigo-100 mb-6">Run LFG yourself. Subscription access to the full AI agent pipeline — idea to shipped code, on your terms.</p>
+                        <ul class="space-y-3 text-sm text-indigo-100 mb-8">
+                            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-300 mt-0.5"></i> Autonomous agent pipeline</li>
+                            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-300 mt-0.5"></i> PRD, tickets, sandbox coding</li>
+                            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-300 mt-0.5"></i> Automated testing & QA</li>
+                            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-300 mt-0.5"></i> Self-host or cloud</li>
+                        </ul>
+                        <a href="/accounts/auth/" class="inline-flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white px-5 py-2.5 rounded-lg font-semibold transition-colors">
+                            Start free <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                        </a>
+                    </article>
+
+                    <article class="bg-pink-500/15 border border-pink-400/30 rounded-2xl p-7 hover:border-pink-400/50 transition-colors">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 rounded-xl bg-pink-500/20 flex items-center justify-center">
+                                <i data-lucide="handshake" class="w-5 h-5 text-pink-300"></i>
+                            </div>
+                            <h3 class="font-display font-bold text-2xl">Revenue Share</h3>
+                        </div>
+                        <p class="text-pink-100 mb-6">For select startups — we build your product with no upfront cost in exchange for shared upside.</p>
+                        <ul class="space-y-3 text-sm text-pink-100 mb-8">
+                            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-pink-300 mt-0.5"></i> Zero upfront cost</li>
+                            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-pink-300 mt-0.5"></i> Full LFG team + agents</li>
+                            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-pink-300 mt-0.5"></i> Founder alignment</li>
+                            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-pink-300 mt-0.5"></i> Shared upside model</li>
+                        </ul>
+                        <a href="/venture-studio/" class="inline-flex items-center gap-2 text-white font-semibold hover:text-pink-300 transition-colors">
+                            Apply now <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                        </a>
+                    </article>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== INTAKE FORM CTA ==================== -->
+        <section id="start" class="py-20 bg-white border-t border-slate-100">
+            <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="glass rounded-2xl p-8 sm:p-10 shadow-2xl border border-slate-200/70 glow-brand">
+                    <div class="text-center mb-8">
+                        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-50 border border-green-200 mb-5">
+                            <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                            <span class="text-xs font-bold text-green-700 uppercase tracking-wider">Agents ready</span>
+                        </div>
+                        <h2 class="font-display font-bold text-3xl md:text-4xl text-slate-900">Tell us what to build</h2>
+                        <p class="text-slate-500 mt-3">Describe your product and agents will start analyzing immediately.</p>
+                    </div>
+
+                    <form id="hero-form" class="space-y-4">
+                        <textarea
+                            id="hero-input"
+                            placeholder="Describe your product or feature..."
+                            data-placeholder-mobile="Describe your product..."
+                            data-placeholder-desktop="Describe what you need built. Example: Multi-tenant customer portal with billing, role permissions, and admin workflows"
+                            class="w-full resize-none rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none text-base text-slate-800 placeholder:text-slate-400 p-4 min-h-[140px] bg-white"
+                            required
+                        ></textarea>
+                        <div class="hidden sm:flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                            <button type="button" onclick="setInput('A B2B onboarding workflow app with approvals, audit trail, and role permissions')" class="whitespace-nowrap text-xs font-semibold px-3 py-1.5 bg-slate-100 rounded-md text-slate-600 hover:bg-brand-50 hover:text-brand-700 transition-colors">
+                                B2B onboarding
+                            </button>
+                            <button type="button" onclick="setInput('A field-service operations dashboard with mobile inspections and reporting')" class="whitespace-nowrap text-xs font-semibold px-3 py-1.5 bg-slate-100 rounded-md text-slate-600 hover:bg-brand-50 hover:text-brand-700 transition-colors">
+                                Field operations
+                            </button>
+                            <button type="button" onclick="setInput('An AI-powered SaaS with user management, Stripe billing, and analytics dashboard')" class="whitespace-nowrap text-xs font-semibold px-3 py-1.5 bg-slate-100 rounded-md text-slate-600 hover:bg-brand-50 hover:text-brand-700 transition-colors">
+                                AI SaaS platform
+                            </button>
+                            <button type="button" onclick="setInput('A marketplace with vendor onboarding, order tracking, and payment splitting')" class="whitespace-nowrap text-xs font-semibold px-3 py-1.5 bg-slate-100 rounded-md text-slate-600 hover:bg-brand-50 hover:text-brand-700 transition-colors">
+                                Marketplace
+                            </button>
+                        </div>
+                        <button type="submit" class="w-full inline-flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-700 text-white px-6 py-3.5 rounded-lg font-semibold transition-all shadow-lg shadow-brand-600/25">
+                            <i data-lucide="sparkles" class="w-4 h-4"></i>
+                            <span>Start Build Intake</span>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== OPEN SOURCE ==================== -->
+        <section class="py-16 bg-slate-50 border-t border-slate-100">
+            <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex flex-col md:flex-row items-center justify-between mb-8 gap-6">
+                    <div>
+                        <h2 class="font-display font-bold text-2xl text-slate-900 mb-1">Open source. Self-host it.</h2>
+                        <p class="text-slate-500 text-sm">LFG is open source. Clone it, run it, own it.</p>
+                    </div>
+                    <button onclick="copyCommands(this)" class="flex items-center gap-2 text-sm font-medium text-brand-700 bg-brand-50 hover:bg-brand-100 px-4 py-2 rounded-lg transition-colors shrink-0">
+                        <i data-lucide="copy" class="w-4 h-4"></i>
+                        <span class="btn-text">Copy Commands</span>
+                    </button>
+                </div>
+
+                <div class="bg-[#0f172a] rounded-xl shadow-2xl overflow-hidden border border-slate-800 font-mono text-sm leading-relaxed">
+                    <div class="flex items-center gap-2 px-4 py-3 bg-[#1e293b] border-b border-slate-700">
+                        <div class="w-3 h-3 rounded-full bg-[#ff5f56]"></div>
+                        <div class="w-3 h-3 rounded-full bg-[#ffbd2e]"></div>
+                        <div class="w-3 h-3 rounded-full bg-[#27c93f]"></div>
+                        <span class="ml-2 text-xs text-slate-400">bash — lfg</span>
+                    </div>
+                    <div class="p-6 text-slate-300 overflow-x-auto">
+<pre id="command-block">
+# Clone the repository
+git clone https://github.com/lfg-hq/lfg.git
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run migrations
+python manage.py migrate
+
+# Start server
+uvicorn LFG.asgi:application --host 0.0.0.0 --port 8000
+</pre>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- ==================== FOOTER ==================== -->
+    <footer class="bg-slate-900 border-t border-slate-800 pt-16 pb-8">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
+                <div class="col-span-1 md:col-span-2">
+                    <div class="flex items-center gap-2 mb-4 text-white font-bold text-xl">
+                        <i data-lucide="rocket" class="w-6 h-6 text-brand-500"></i>
+                        <span>LFG</span>
+                    </div>
+                    <p class="text-slate-400 max-w-sm leading-relaxed">
+                        AI-first software factory. Agents build. Humans verify. Ship faster than you thought possible.
+                    </p>
+                </div>
+
+                <div>
+                    <h4 class="font-bold text-white mb-4 uppercase text-xs tracking-wider">Company</h4>
+                    <ul class="space-y-3 text-sm text-slate-400">
+                        <li><a href="#how-it-works" class="hover:text-brand-400 transition-colors">How it works</a></li>
+                        <li><a href="/services/" class="hover:text-brand-400 transition-colors">Custom builds</a></li>
+                        <li><a href="/venture-studio/" class="hover:text-brand-400 transition-colors">Revenue share</a></li>
+                        <li><a href="/docs/" class="hover:text-brand-400 transition-colors">Docs</a></li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h4 class="font-bold text-white mb-4 uppercase text-xs tracking-wider">Community</h4>
+                    <ul class="space-y-3 text-sm text-slate-400">
+                        <li><a href="https://github.com/lfg-hq/lfg" target="_blank" rel="noopener noreferrer" class="hover:text-brand-400 transition-colors flex items-center gap-2"><i data-lucide="github" class="w-4 h-4"></i> GitHub</a></li>
+                        <li><a href="/accounts/auth/" class="hover:text-brand-400 transition-colors flex items-center gap-2"><i data-lucide="rocket" class="w-4 h-4"></i> Platform</a></li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="border-t border-slate-800 pt-8 text-center text-sm text-slate-500">
+                &copy; 2026 LFG Inc. Open Source Apache 2.0.
+            </div>
+        </div>
+    </footer>
+
+    <!-- ==================== ONBOARDING MODAL ==================== -->
+    <div id="onboarding-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onclick="closeModal()"></div>
+
+        <div class="bg-white w-full max-w-lg rounded-2xl shadow-2xl relative z-10 overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                <div class="flex items-center gap-2 text-brand-700 font-bold">
+                    <i data-lucide="rocket" class="w-5 h-5"></i> LFG
+                </div>
+                <button onclick="closeModal()" class="text-slate-400 hover:text-slate-600 transition-colors">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="px-8 py-4">
+                <div class="flex items-center justify-between relative">
+                    <div class="absolute left-0 top-1/2 -translate-y-1/2 w-full h-0.5 bg-slate-100 -z-10"></div>
+                    <div class="step-indicator w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors bg-brand-600 border-brand-600 text-white" id="indicator-1">1</div>
+                    <div class="step-indicator w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors bg-white border-slate-200 text-slate-300" id="indicator-2">2</div>
+                    <div class="step-indicator w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors bg-white border-slate-200 text-slate-300" id="indicator-3">3</div>
+                </div>
+                <div class="flex justify-between text-[10px] uppercase font-bold text-slate-400 mt-2">
+                    <span>Account</span>
+                    <span>Verify</span>
+                    <span>Project</span>
+                </div>
+            </div>
+
+            <div class="p-8 overflow-y-auto">
+                <div id="step-1" class="modal-step-content animate-fade-in">
+                    <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                        <div>
+                            <h2 class="text-2xl font-bold text-slate-900">Create your account</h2>
+                            <p class="text-slate-500 text-sm">Start building with AI agents.</p>
+                        </div>
+                        <div class="flex items-center bg-slate-100 rounded-lg p-1">
+                            <button type="button" class="auth-tab register-tab px-3 py-1.5 text-xs font-semibold rounded-md bg-white shadow-sm text-slate-900" onclick="switchAuthTab('register')">Register</button>
+                            <button type="button" class="auth-tab login-tab px-3 py-1.5 text-xs font-semibold rounded-md text-slate-500 hover:text-slate-900" onclick="switchAuthTab('login')">Login</button>
+                        </div>
+                    </div>
+
+                    <div class="auth-forms space-y-6">
+                        <div class="auth-form register-form space-y-4">
+                            <a href="{% url 'accounts:google_login' %}?from_landing=true" onclick="handleGoogleLogin()" class="w-full flex items-center justify-center gap-3 bg-white border border-slate-200 p-3 rounded-lg text-slate-700 font-medium hover:bg-slate-50 transition-colors">
+                                <img src="https://www.google.com/favicon.ico" alt="Google" class="w-5 h-5" />
+                                Sign up with Google
+                            </a>
+                            <div class="relative">
+                                <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-slate-200"></div></div>
+                                <div class="relative flex justify-center text-xs uppercase"><span class="bg-white px-2 text-slate-400">Or continue with email</span></div>
+                            </div>
+                            <form id="quick-register-form" class="space-y-4">
+                                <input id="register-email" type="email" placeholder="Email address" class="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none" required />
+                                <input id="register-password1" type="password" placeholder="Create a password" class="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none" required />
+                                <input id="register-password2" type="password" placeholder="Confirm password" class="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none" required />
+                                <button type="submit" class="w-full bg-brand-600 text-white p-3 rounded-lg font-bold hover:bg-brand-700 transition-colors">Create Account</button>
+                            </form>
+                        </div>
+
+                        <div class="auth-form login-form hidden space-y-4">
+                            <a href="{% url 'accounts:google_login' %}?from_landing=true" onclick="handleGoogleLogin()" class="w-full flex items-center justify-center gap-3 bg-white border border-slate-200 p-3 rounded-lg text-slate-700 font-medium hover:bg-slate-50 transition-colors">
+                                <img src="https://www.google.com/favicon.ico" alt="Google" class="w-5 h-5" />
+                                Sign in with Google
+                            </a>
+                            <div class="relative">
+                                <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-slate-200"></div></div>
+                                <div class="relative flex justify-center text-xs uppercase"><span class="bg-white px-2 text-slate-400">Or continue with email</span></div>
+                            </div>
+                            <form id="quick-login-form" class="space-y-4">
+                                <input id="login-email" type="email" placeholder="Email address" class="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none" required />
+                                <input id="login-password" type="password" placeholder="Password" class="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none" required />
+                                <div class="flex items-center justify-between text-xs text-slate-500">
+                                    <label class="flex items-center gap-2">
+                                        <input type="checkbox" class="rounded border-slate-300 text-brand-600 focus:ring-brand-500" />
+                                        <span>Remember me</span>
+                                    </label>
+                                    <a href="/accounts/password-reset/" target="_blank" class="hover:text-brand-700 font-semibold">Forgot password?</a>
+                                </div>
+                                <button type="submit" class="w-full bg-slate-900 text-white p-3 rounded-lg font-bold hover:bg-slate-800 transition-colors">Sign In</button>
+                            </form>
+                        </div>
+                    </div>
+                    <p class="text-xs text-slate-400 mt-6 text-center">By continuing, you agree to LFG's Terms of Service and Privacy Policy.</p>
+                </div>
+
+                <div id="step-2" class="modal-step-content hidden animate-fade-in">
+                    <div class="text-center mb-6">
+                        <div class="w-16 h-16 bg-brand-50 text-brand-700 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <i data-lucide="mail" class="w-7 h-7"></i>
+                        </div>
+                        <h2 class="text-2xl font-bold text-slate-900 mb-1">Verify your email</h2>
+                        <p class="text-slate-500 text-sm">Enter the 6-digit code we sent to <span class="font-semibold text-slate-700" id="verification-email"></span></p>
+                    </div>
+                    <form id="verification-form" class="space-y-4">
+                        <div class="flex justify-center gap-3">
+                            <input type="text" maxlength="1" inputmode="numeric" class="code-input w-12 h-12 text-center text-xl font-bold border border-slate-200 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none" />
+                            <input type="text" maxlength="1" inputmode="numeric" class="code-input w-12 h-12 text-center text-xl font-bold border border-slate-200 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none" />
+                            <input type="text" maxlength="1" inputmode="numeric" class="code-input w-12 h-12 text-center text-xl font-bold border border-slate-200 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none" />
+                            <input type="text" maxlength="1" inputmode="numeric" class="code-input w-12 h-12 text-center text-xl font-bold border border-slate-200 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none" />
+                            <input type="text" maxlength="1" inputmode="numeric" class="code-input w-12 h-12 text-center text-xl font-bold border border-slate-200 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none" />
+                            <input type="text" maxlength="1" inputmode="numeric" class="code-input w-12 h-12 text-center text-xl font-bold border border-slate-200 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none" />
+                        </div>
+                        <div class="verification-error text-red-500 text-sm text-center hidden"></div>
+                        <div class="flex items-center justify-between">
+                            <button type="button" onclick="resendVerificationCode(event)" class="text-sm font-semibold text-brand-700 hover:text-brand-800">Resend code</button>
+                            <button type="submit" class="bg-brand-600 text-white px-6 py-2.5 rounded-lg font-semibold hover:bg-brand-700 transition-colors">Verify & Continue</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div id="step-3" class="modal-step-content hidden animate-fade-in">
+                    <h2 class="text-2xl font-bold text-slate-900 mb-2">Ready to Build</h2>
+                    <p class="text-slate-500 mb-6 text-sm">Confirm your project and agents will begin immediately.</p>
+                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6">
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-2">Project Requirement</label>
+                        <textarea id="project-requirement-display" class="w-full p-3 rounded-lg border border-slate-200 focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none bg-white text-slate-900 font-medium min-h-[120px]" placeholder="Describe what you want to build..."></textarea>
+                    </div>
+                    <button onclick="handleLaunchProject(this)" class="w-full bg-gradient-to-r from-indigo-600 to-pink-500 text-white p-4 rounded-lg font-bold hover:opacity-90 transition-opacity shadow-lg">
+                        Launch Project
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        // ── Responsive placeholder ──
+        function updateHeroPlaceholder() {
+            const heroInput = document.getElementById('hero-input');
+            if (heroInput) {
+                heroInput.placeholder = window.innerWidth < 640
+                    ? heroInput.dataset.placeholderMobile
+                    : heroInput.dataset.placeholderDesktop;
+            }
+        }
+        updateHeroPlaceholder();
+        window.addEventListener('resize', updateHeroPlaceholder);
+
+        // ── State ──
+        let userRequirements = '';
+        let isAuthenticated = false;
+        let emailVerified = false;
+        let isRegistering = false;
+        let environment = '{{ ENVIRONMENT|default:"local" }}';
+        let userProjects = [];
+
+        // ── Nav scroll effect ──
+        window.addEventListener('scroll', () => {
+            const nav = document.getElementById('navbar');
+            if (window.scrollY > 20) {
+                nav.classList.add('bg-white/90', 'backdrop-blur-md', 'border-b', 'border-slate-200', 'shadow-sm', 'py-3');
+                nav.classList.remove('bg-transparent', 'py-5');
+            } else {
+                nav.classList.remove('bg-white/90', 'backdrop-blur-md', 'border-b', 'border-slate-200', 'shadow-sm', 'py-3');
+                nav.classList.add('bg-transparent', 'py-5');
+            }
+        });
+
+        // ── Mobile menu ──
+        const mobileBtn = document.getElementById('mobile-menu-btn');
+        const mobileMenu = document.getElementById('mobile-menu');
+        const mobileLinks = document.querySelectorAll('.mobile-link');
+        mobileBtn.addEventListener('click', () => {
+            mobileMenu.classList.toggle('hidden');
+            mobileMenu.classList.toggle('flex');
+        });
+        mobileLinks.forEach(link => {
+            link.addEventListener('click', () => {
+                mobileMenu.classList.add('hidden');
+                mobileMenu.classList.remove('flex');
+            });
+        });
+
+        // ── Agent terminal animation ──
+        const terminalLines = [
+            { text: '$ lfg analyze --input "Customer portal with billing and admin"', color: 'text-green-400', delay: 0 },
+            { text: '  Generating PRD ... done (12s)', color: 'text-slate-400', delay: 800 },
+            { text: '  Creating technical architecture ... done', color: 'text-slate-400', delay: 1400 },
+            { text: '$ lfg tickets --create --from-prd', color: 'text-green-400', delay: 2200 },
+            { text: '  Created 14 tickets across 3 milestones', color: 'text-slate-400', delay: 3000 },
+            { text: '$ lfg build --ticket TKT-001 "User auth with JWT + OAuth"', color: 'text-green-400', delay: 3800 },
+            { text: '  Sandbox spun up ... installing dependencies', color: 'text-slate-400', delay: 4600 },
+            { text: '  Writing auth module ... 847 lines', color: 'text-slate-400', delay: 5400 },
+            { text: '  Running tests ... 23/23 passed', color: 'text-emerald-400', delay: 6200 },
+            { text: '  Committed to feature/auth-system', color: 'text-emerald-400', delay: 6800 },
+            { text: '$ lfg build --ticket TKT-002 "Stripe billing integration"', color: 'text-green-400', delay: 7600 },
+            { text: '  Writing billing module ... 634 lines', color: 'text-slate-400', delay: 8400 },
+            { text: '  Running tests ... 18/18 passed', color: 'text-emerald-400', delay: 9200 },
+            { text: '  Ready for review', color: 'text-brand-400', delay: 9800 },
+        ];
+
+        function runTerminalAnimation() {
+            const terminal = document.getElementById('agent-terminal');
+            terminal.innerHTML = '';
+
+            terminalLines.forEach((line, i) => {
+                setTimeout(() => {
+                    const el = document.createElement('div');
+                    el.className = `terminal-line ${line.color}`;
+                    el.style.animationDelay = '0s';
+                    el.textContent = line.text;
+                    terminal.appendChild(el);
+                    terminal.scrollTop = terminal.scrollHeight;
+                }, line.delay);
+            });
+
+            // Restart after full cycle
+            setTimeout(runTerminalAnimation, 13000);
+        }
+
+        // Start when terminal scrolls into view
+        const terminalObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    runTerminalAnimation();
+                    terminalObserver.unobserve(entry.target);
+                }
+            });
+        }, { threshold: 0.3 });
+        terminalObserver.observe(document.getElementById('agent-terminal'));
+
+        // ── Form & modal logic ──
+        const heroForm = document.getElementById('hero-form');
+        const heroInput = document.getElementById('hero-input');
+        const modal = document.getElementById('onboarding-modal');
+        const requirementDisplay = document.getElementById('project-requirement-display');
+
+        requirementDisplay.addEventListener('input', () => {
+            const val = requirementDisplay.value.trim();
+            if (val) {
+                userRequirements = val;
+                sessionStorage.setItem('pendingRequirements', val);
+            }
+        });
+
+        window.addEventListener('load', () => {
+            const storedRequirements = sessionStorage.getItem('pendingRequirements');
+            if (storedRequirements) userRequirements = storedRequirements;
+            refreshAuthStatus();
+            setupVerificationInputs();
+        });
+
+        function refreshAuthStatus() {
+            fetch('/accounts/api/auth/status/', {
+                credentials: 'include',
+                headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }
+            }).then(res => res.json())
+            .then(data => {
+                isAuthenticated = data.authenticated || false;
+                emailVerified = data.email_verified || false;
+            }).catch(() => {
+                isAuthenticated = false;
+                emailVerified = false;
+            });
+        }
+
+        function setInput(text) {
+            heroInput.value = text;
+            heroInput.focus();
+        }
+
+        heroForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const val = heroInput.value.trim();
+            if (val) {
+                userRequirements = val;
+                sessionStorage.setItem('pendingRequirements', userRequirements);
+                openModal(val);
+            }
+        });
+
+        function openModal(prompt = '') {
+            modal.classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+            const heroVal = heroInput.value.trim();
+            if (prompt) {
+                requirementDisplay.value = prompt;
+                userRequirements = prompt;
+            } else if (heroVal) {
+                requirementDisplay.value = heroVal;
+                userRequirements = heroVal;
+            } else if (userRequirements) {
+                requirementDisplay.value = userRequirements;
+            }
+            switchAuthTab('register');
+            if (isAuthenticated) {
+                setStep(emailVerified ? 3 : 2);
+            } else {
+                setStep(1);
+            }
+        }
+
+        function closeModal() {
+            modal.classList.add('hidden');
+            document.body.style.overflow = 'auto';
+        }
+
+        function setStep(step) {
+            document.querySelectorAll('.modal-step-content').forEach(el => el.classList.add('hidden'));
+            document.getElementById(`step-${step}`).classList.remove('hidden');
+            for (let i = 1; i <= 3; i++) {
+                const el = document.getElementById(`indicator-${i}`);
+                el.className = i === step
+                    ? 'step-indicator w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors bg-brand-600 border-brand-600 text-white'
+                    : 'step-indicator w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors bg-white border-slate-200 text-slate-300';
+                el.innerHTML = i;
+            }
+            lucide.createIcons();
+        }
+
+        function switchAuthTab(tab) {
+            const loginTab = document.querySelector('.login-tab');
+            const registerTab = document.querySelector('.register-tab');
+            const loginForm = document.querySelector('.login-form');
+            const registerForm = document.querySelector('.register-form');
+            if (tab === 'login') {
+                loginTab.classList.add('bg-white', 'text-slate-900', 'shadow-sm');
+                loginTab.classList.remove('text-slate-500');
+                registerTab.classList.add('text-slate-500');
+                registerTab.classList.remove('bg-white', 'text-slate-900', 'shadow-sm');
+                loginForm.classList.remove('hidden');
+                registerForm.classList.add('hidden');
+            } else {
+                registerTab.classList.add('bg-white', 'text-slate-900', 'shadow-sm');
+                registerTab.classList.remove('text-slate-500');
+                loginTab.classList.add('text-slate-500');
+                loginTab.classList.remove('bg-white', 'text-slate-900', 'shadow-sm');
+                registerForm.classList.remove('hidden');
+                loginForm.classList.add('hidden');
+            }
+        }
+
+        function handleGoogleLogin() {
+            if (heroInput.value.trim()) sessionStorage.setItem('pendingRequirements', heroInput.value.trim());
+        }
+
+        function handlePostAuth() { setStep(3); }
+
+        document.getElementById('quick-login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+            try {
+                const response = await fetch('/accounts/auth/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': getCookie('csrftoken') },
+                    body: `form_type=login&username=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`,
+                    credentials: 'include'
+                });
+                if (response.ok) {
+                    await refreshAuthStatus();
+                    isAuthenticated = true;
+                    isRegistering = false;
+                    userRequirements = heroInput.value.trim() || userRequirements;
+                    if (!emailVerified && environment !== 'local') { setStep(2); } else { handlePostAuth(); }
+                } else { alert('Login failed. Please check your credentials.'); }
+            } catch (error) {
+                console.error('Login error:', error);
+                alert('An error occurred. Please try again.');
+            }
+        });
+
+        document.getElementById('quick-register-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('register-email').value;
+            const password1 = document.getElementById('register-password1').value;
+            const password2 = document.getElementById('register-password2').value;
+            if (password1 !== password2) { alert('Passwords do not match.'); return; }
+            try {
+                const response = await fetch('/accounts/auth/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': getCookie('csrftoken') },
+                    body: `form_type=register&email=${encodeURIComponent(email)}&password1=${encodeURIComponent(password1)}&password2=${encodeURIComponent(password2)}`,
+                    credentials: 'include'
+                });
+                if (response.ok) {
+                    await refreshAuthStatus();
+                    isAuthenticated = true;
+                    isRegistering = true;
+                    emailVerified = environment === 'local';
+                    userRequirements = heroInput.value.trim() || userRequirements;
+                    if (environment === 'local') { handlePostAuth(); } else {
+                        document.getElementById('verification-email').textContent = email;
+                        setStep(2);
+                    }
+                } else { alert('Registration failed. The email may already be in use or password requirements not met.'); }
+            } catch (error) {
+                console.error('Registration error:', error);
+                alert('An error occurred. Please try again.');
+            }
+        });
+
+        document.getElementById('verification-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const inputs = document.querySelectorAll('.code-input');
+            const code = Array.from(inputs).map(input => input.value).join('');
+            if (code.length !== 6) { showVerificationError('Please enter all 6 digits'); return; }
+            try {
+                const response = await fetch('/accounts/verify-email-code/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+                    body: JSON.stringify({ code }),
+                    credentials: 'include'
+                });
+                if (response.ok) { emailVerified = true; handlePostAuth(); }
+                else { showVerificationError('Invalid code. Please try again.'); }
+            } catch (error) {
+                console.error('Verification error:', error);
+                showVerificationError('An error occurred. Please try again.');
+            }
+        });
+
+        function showVerificationError(message) {
+            const errorDiv = document.querySelector('.verification-error');
+            if (errorDiv) {
+                errorDiv.textContent = message;
+                errorDiv.classList.remove('hidden');
+                setTimeout(() => errorDiv.classList.add('hidden'), 4000);
+            }
+        }
+
+        async function resendVerificationCode(e) {
+            const button = e.target;
+            button.disabled = true;
+            try {
+                const response = await fetch('/accounts/resend-verification-code/', {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': getCookie('csrftoken') },
+                    credentials: 'include'
+                });
+                if (response.ok) {
+                    button.textContent = 'Code Sent!';
+                    setTimeout(() => { button.textContent = 'Resend code'; button.disabled = false; }, 2500);
+                } else { alert('Failed to resend code. Please try again.'); button.disabled = false; }
+            } catch (error) {
+                console.error('Resend error:', error);
+                alert('An error occurred. Please try again.');
+                button.disabled = false;
+            }
+        }
+
+        function setupVerificationInputs() {
+            const inputs = document.querySelectorAll('.code-input');
+            inputs.forEach((input, index) => {
+                input.addEventListener('input', (e) => {
+                    const value = e.target.value.replace(/\D/g, '');
+                    e.target.value = value.slice(0, 1);
+                    if (value && index < inputs.length - 1) inputs[index + 1].focus();
+                });
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Backspace' && !e.target.value && index > 0) inputs[index - 1].focus();
+                });
+                input.addEventListener('paste', (e) => {
+                    e.preventDefault();
+                    const pasted = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '').slice(0, 6);
+                    pasted.split('').forEach((digit, i) => { if (inputs[i]) inputs[i].value = digit; });
+                    if (pasted.length > 0 && inputs[Math.min(pasted.length - 1, inputs.length - 1)]) {
+                        inputs[Math.min(pasted.length - 1, inputs.length - 1)].focus();
+                    }
+                });
+            });
+        }
+
+        async function checkExistingProjects() {
+            try {
+                const response = await fetch('/projects/api/create/', {
+                    method: 'POST', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+                    body: JSON.stringify({ check_existing: true })
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.projects) userProjects = data.projects;
+                    return Boolean(data.has_existing_projects);
+                }
+            } catch (error) { console.error('Error checking existing projects:', error); }
+            return false;
+        }
+
+        async function createProjectAndRedirect() {
+            const req = requirementDisplay.value.trim() || userRequirements || heroInput.value.trim() || '';
+            userRequirements = req;
+            try {
+                const response = await fetch('/projects/api/create/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+                    body: JSON.stringify({ name: 'First Project', description: 'Created from landing modal', requirements: req }),
+                    credentials: 'include'
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    redirectToChat(data.project_id);
+                } else { window.location.href = '/accounts/integrations/'; }
+            } catch (error) {
+                console.error('Error creating project:', error);
+                window.location.href = '/accounts/integrations/';
+            }
+        }
+
+        function redirectToChat(projectId) {
+            const requirements = requirementDisplay.value.trim() || userRequirements || heroInput.value.trim() || sessionStorage.getItem('pendingRequirements') || '';
+            sessionStorage.removeItem('pendingRequirements');
+            window.location.href = `/chat/project/${projectId}/?requirements=${encodeURIComponent(requirements)}`;
+        }
+
+        async function handleLaunchProject(btn) {
+            const reqVal = requirementDisplay.value.trim();
+            if (reqVal) { userRequirements = reqVal; sessionStorage.setItem('pendingRequirements', reqVal); }
+            if (btn) { btn.disabled = true; btn.textContent = 'Launching...'; }
+            try {
+                const hasProjects = await checkExistingProjects();
+                if (hasProjects && userProjects.length) { redirectToChat(userProjects[0].id); return; }
+                await createProjectAndRedirect();
+            } catch (error) {
+                console.error('Launch error:', error);
+                if (btn) { btn.disabled = false; btn.textContent = 'Launch Project'; }
+                alert('Unable to launch project. Please try again.');
+            }
+        }
+
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+
+        function copyCommands(btn) {
+            const commands = `# Clone the repository\ngit clone https://github.com/lfg-hq/lfg.git\n\n# Install dependencies\npip install -r requirements.txt\n\n# Run migrations\npython manage.py migrate\n\n# Start server\nuvicorn LFG.asgi:application --host 0.0.0.0 --port 8000`;
+            navigator.clipboard.writeText(commands);
+            const textSpan = btn.querySelector('.btn-text');
+            if (textSpan) {
+                textSpan.textContent = 'Copied!';
+                setTimeout(() => { textSpan.textContent = 'Copy Commands'; }, 2000);
+            }
+        }
+    </script>
+</body>
+</html>

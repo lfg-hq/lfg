@@ -13,6 +13,7 @@ from chat.models import AgentRole
 import requests
 import uuid
 import json
+import time
 from urllib.parse import urlencode
 from django.http import JsonResponse
 from django.core.mail import send_mail
@@ -59,8 +60,8 @@ def register(request):
             # Auto-login the user
             login(request, user)
             
-            # Redirect to email verification page
-            return redirect('accounts:email_verification_required')
+            # Redirect new users to Projects landing
+            return redirect('projects:project_list')
     else:
         form = UserRegisterForm()
     return render(request, 'accounts/auth.html', {'form': form, 'active_tab': 'register'})
@@ -111,8 +112,8 @@ def auth(request):
                 # Auto-login the user
                 login(request, user)
                 
-                # Redirect to email verification page
-                return redirect('accounts:email_verification_required')
+                # Redirect new users to Projects landing
+                return redirect('projects:project_list')
     
     # Render the template with both forms
     context = {
@@ -1610,136 +1611,132 @@ def claude_code_start_auth(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
 
-    from development.models import MagpieWorkspace
-    from factory.claude_code_utils import start_claude_auth, restore_claude_auth_from_s3
-    from factory.ai_functions import get_magpie_client, _run_magpie_ssh, MAGPIE_BOOTSTRAP_SCRIPT
-
     try:
-        client = get_magpie_client()
+        from development.models import MagpieWorkspace
+        from factory.claude_code_utils import start_claude_auth, check_claude_auth_status
+        from factory.mags import (
+            get_or_create_workspace_job, run_command, workspace_name_for_claude_auth,
+            generate_unique_claude_auth_workspace_name,
+            CLAUDE_AUTH_SETUP_SCRIPT, MagsAPIError, force_sync_workspace,
+        )
 
         # Check if we have an existing Claude auth workspace for this user
         workspace = MagpieWorkspace.objects.filter(
             user=request.user,
             workspace_type='claude_auth',
-            status='ready'
-        ).first()
+        ).order_by('-updated_at').first()
 
-        workspace_id = None
+        job_id = None
         use_existing = False
 
-        if workspace:
-            workspace_id = workspace.workspace_id
-            logger.info(f"[CLAUDE_CODE] Checking existing Claude auth workspace {workspace_id} for user {request.user.id}")
+        if workspace and workspace.mags_job_id:
+            job_id = workspace.mags_job_id
+            ws_name = workspace.mags_workspace_id or workspace_name_for_claude_auth(request.user.id)
+            logger.info(f"[CLAUDE_CODE] Checking existing Mags workspace {ws_name}, job={job_id}")
 
-            # Verify workspace is actually accessible with a simple test
+            # Verify workspace is accessible via SDK exec (short timeout for health check)
             try:
-                test_result = _run_magpie_ssh(
-                    client, workspace_id, "echo 'WORKSPACE_OK'",
-                    timeout=30, with_node_env=False
+                test_result = run_command(
+                    ws_name, "echo 'WORKSPACE_OK'",
+                    timeout=20, with_node_env=False,
                 )
                 if test_result.get('exit_code') == 0 and 'WORKSPACE_OK' in test_result.get('stdout', ''):
                     use_existing = True
-                    logger.info(f"[CLAUDE_CODE] Existing workspace {workspace_id} is accessible")
+                    logger.info(f"[CLAUDE_CODE] Existing workspace is accessible")
+                    workspace.status = 'ready'
+                    workspace.mags_workspace_id = ws_name
+                    workspace.mags_job_id = job_id
+                    workspace.save(update_fields=['status', 'mags_workspace_id', 'mags_job_id'])
                 else:
-                    logger.warning(f"[CLAUDE_CODE] Existing workspace {workspace_id} not responding correctly")
+                    logger.warning(f"[CLAUDE_CODE] Existing workspace not responding (exit_code={test_result.get('exit_code')}), marking as error")
+                    workspace.status = 'error'
+                    workspace.save(update_fields=['status'])
             except Exception as e:
-                logger.warning(f"[CLAUDE_CODE] Existing workspace {workspace_id} not accessible: {e}")
-                # Mark workspace as not ready
+                logger.warning(f"[CLAUDE_CODE] Existing workspace not accessible: {e}")
                 workspace.status = 'error'
                 workspace.save(update_fields=['status'])
 
         if not use_existing:
-            # Create a new workspace for Claude Code authentication
+            # Create a new Mags workspace for Claude Code authentication
+            ws_name = generate_unique_claude_auth_workspace_name()
             logger.info(f"[CLAUDE_CODE] Creating Claude auth workspace for user {request.user.id}")
 
-            workspace_name = f"claude-auth-{request.user.id}"
-            vm_handle = client.jobs.create_persistent_vm(
-                name=workspace_name,
-                script=MAGPIE_BOOTSTRAP_SCRIPT,
-                stateful=True,
-                workspace_size_gb=5,
-                vcpus=1,
-                memory_mb=1024,
-                poll_timeout=120,
-                poll_interval=5,
-            )
+            try:
+                job = get_or_create_workspace_job(
+                    workspace_id=ws_name,
+                    script=CLAUDE_AUTH_SETUP_SCRIPT,
+                    persistent=True,
+                )
+                job_id = job.get("request_id") or job.get("id")
 
-            workspace_id = vm_handle.request_id
-            ipv6 = vm_handle.ip_address
+                if not job_id:
+                    return JsonResponse({
+                        'status': 'error',
+                        'error': 'Failed to create workspace - no job ID received'
+                    }, status=500)
 
-            if not ipv6:
+                # Persist row first so we never end up with remote VM but no DB row.
+                workspace, _ = MagpieWorkspace.objects.update_or_create(
+                    user=request.user,
+                    workspace_type='claude_auth',
+                    defaults={
+                        'job_id': job_id,
+                        'workspace_id': ws_name,
+                        'mags_job_id': job_id,
+                        'mags_workspace_id': ws_name,
+                        'status': 'ready',
+                    }
+                )
+                logger.info(f"[CLAUDE_CODE] Created and saved workspace, job_id={job_id}")
+
+            except Exception as e:
+                logger.error(f"[CLAUDE_CODE] Failed during auth workspace provisioning: {e}", exc_info=True)
+                try:
+                    MagpieWorkspace.objects.filter(
+                        user=request.user,
+                        workspace_type='claude_auth',
+                    ).update(status='error')
+                except Exception:
+                    pass
                 return JsonResponse({
                     'status': 'error',
-                    'error': 'Failed to create workspace - no IP address received'
+                    'error': f'Failed to create workspace: {str(e)}'
                 }, status=500)
-
-            # Save workspace to database (delete old one first if exists)
-            MagpieWorkspace.objects.filter(
-                user=request.user,
-                workspace_type='claude_auth'
-            ).delete()
-
-            MagpieWorkspace.objects.create(
-                user=request.user,
-                workspace_type='claude_auth',
-                job_id=workspace_id,
-                workspace_id=workspace_id,
-                ipv6_address=ipv6,
-                status='ready'
-            )
-            logger.info(f"[CLAUDE_CODE] Created and saved workspace {workspace_id}")
-
-            # Wait a moment for workspace to be fully ready
-            import time
-            time.sleep(3)
 
         # Kill any existing claude processes first
         logger.info(f"[CLAUDE_CODE] Killing any existing claude processes...")
-        _run_magpie_ssh(
-            client, workspace_id,
+        run_command(
+            ws_name,
             "pkill -9 claude 2>/dev/null; pkill -9 expect 2>/dev/null; rm -f /tmp/claude_*.txt /tmp/claude_*.log 2>/dev/null; echo 'CLEANUP_DONE'",
-            timeout=15, with_node_env=False
+            timeout=15, with_node_env=False,
         )
 
-        # Try to restore existing auth from S3 first
+        # Check if already authenticated (overlay persists .claude/ credentials)
         profile = request.user.profile
-        from factory.claude_code_utils import check_claude_auth_status
+        logger.info(f"[CLAUDE_CODE] Checking if already authenticated (overlay persistence)...")
+        check_result = check_claude_auth_status(ws_name)
 
-        # Try S3 restore - use profile key if set, otherwise try default path
-        s3_key = profile.claude_code_s3_key or f"claude-auth/{request.user.id}/claude-config.tar.gz"
-        logger.info(f"[CLAUDE_CODE] Attempting to restore from S3: {s3_key}")
+        if check_result.get('authenticated'):
+            try:
+                force_sync_workspace(ws_name or job_id)
+            except Exception as sync_err:
+                logger.warning(f"[CLAUDE_CODE] Force sync failed after auth check: {sync_err}")
+            profile.claude_code_authenticated = True
+            profile.save(update_fields=['claude_code_authenticated'])
+            return JsonResponse({
+                'status': 'already_authenticated',
+                'message': 'Claude Code is already authenticated'
+            })
 
-        restore_result = restore_claude_auth_from_s3(
-            workspace_id, request.user.id, s3_key
-        )
-        logger.info(f"[CLAUDE_CODE] S3 restore result: {restore_result}")
-
-        if restore_result.get('status') == 'success':
-            # Auth restored, verify it works
-            logger.info(f"[CLAUDE_CODE] S3 restore successful, verifying auth...")
-            check_result = check_claude_auth_status(workspace_id)
-            logger.info(f"[CLAUDE_CODE] Auth check result: {check_result}")
-
-            if check_result.get('authenticated'):
-                # Update DB to reflect authenticated state
-                profile.claude_code_authenticated = True
-                profile.claude_code_s3_key = s3_key  # Save the key if it worked
-                profile.save(update_fields=['claude_code_authenticated', 'claude_code_s3_key'])
-                return JsonResponse({
-                    'status': 'already_authenticated',
-                    'message': 'Claude Code authentication restored from backup'
-                })
-            else:
-                logger.warning(f"[CLAUDE_CODE] S3 restore succeeded but auth check failed")
-        else:
-            logger.warning(f"[CLAUDE_CODE] S3 restore failed: {restore_result.get('error', 'unknown')}")
-
-        # Start the authentication flow (OAuth) since restore didn't work
+        # Start the authentication flow (OAuth)
         logger.info(f"[CLAUDE_CODE] Starting OAuth flow...")
-        auth_result = start_claude_auth(workspace_id)
+        auth_result = start_claude_auth(ws_name)
 
-        # If already authenticated, update DB
         if auth_result.get('status') == 'already_authenticated':
+            try:
+                force_sync_workspace(ws_name or job_id)
+            except Exception as sync_err:
+                logger.warning(f"[CLAUDE_CODE] Force sync failed after already-auth response: {sync_err}")
             profile.claude_code_authenticated = True
             profile.save(update_fields=['claude_code_authenticated'])
 
@@ -1762,7 +1759,8 @@ def claude_code_submit_code(request):
         return JsonResponse({'error': 'Method not allowed'}, status=405)
 
     from development.models import MagpieWorkspace
-    from factory.claude_code_utils import submit_claude_auth_code, backup_claude_auth_to_s3, check_claude_auth_status
+    from factory.claude_code_utils import submit_claude_auth_code, check_claude_auth_status
+    from factory.mags import force_sync_workspace
 
     try:
         data = json.loads(request.body)
@@ -1774,11 +1772,11 @@ def claude_code_submit_code(request):
                 'error': 'Authentication code is required'
             }, status=400)
 
-        # Get workspace ID from database
+        # Get workspace from database
         workspace = MagpieWorkspace.objects.filter(
             user=request.user,
             workspace_type='claude_auth',
-            status='ready'
+            status__in=['ready', 'sleeping'],
         ).first()
 
         if not workspace:
@@ -1787,45 +1785,44 @@ def claude_code_submit_code(request):
                 'error': 'No active authentication workspace. Please start again.'
             }, status=400)
 
-        workspace_id = workspace.workspace_id
+        ws_name = workspace.mags_workspace_id or workspace.workspace_id
 
         # Submit the auth code
-        logger.info(f"[CLAUDE_CODE] Submitting auth code for user {request.user.id}, workspace {workspace_id}")
-        result = submit_claude_auth_code(workspace_id, auth_code)
+        logger.info(f"[CLAUDE_CODE] Submitting auth code for user {request.user.id}, workspace={ws_name}")
+        result = submit_claude_auth_code(ws_name, auth_code)
         logger.info(f"[CLAUDE_CODE] Submit result: {result.get('status')}")
 
         if result.get('status') == 'success':
             # Verify authentication worked
-            check_result = check_claude_auth_status(workspace_id)
+            check_result = check_claude_auth_status(ws_name)
             logger.info(f"[CLAUDE_CODE] Auth check result: authenticated={check_result.get('authenticated')}")
 
             if check_result.get('authenticated'):
-                # Backup auth to S3
-                backup_result = backup_claude_auth_to_s3(workspace_id, request.user.id)
+                try:
+                    force_sync_workspace(workspace.mags_workspace_id or job_id)
+                except Exception as sync_err:
+                    logger.warning(f"[CLAUDE_CODE] Force sync failed after submit-code auth: {sync_err}")
+                # No S3 backup needed — Mags workspace overlay auto-persists .claude/
 
                 # Update user profile
                 profile = request.user.profile
                 logger.info(f"[CLAUDE_CODE] Setting profile.claude_code_authenticated=True for user {request.user.id}")
                 profile.claude_code_authenticated = True
-                if backup_result.get('status') == 'success':
-                    profile.claude_code_s3_key = backup_result.get('s3_key')
-                profile.save(update_fields=['claude_code_authenticated', 'claude_code_s3_key'])
+                profile.save(update_fields=['claude_code_authenticated'])
                 logger.info(f"[CLAUDE_CODE] Profile saved - claude_code_authenticated=True for user {request.user.id}")
 
-                # Clear CLI session IDs and workspace IDs for all user's tickets to prevent stale session auth
-                # When OAuth is refreshed, old sessions may have cached invalid tokens
+                # Clear CLI session IDs for all user's tickets to prevent stale session auth
                 from projects.models import ProjectTicket
                 cleared_count = ProjectTicket.objects.filter(
                     project__owner=request.user,
                     cli_session_id__isnull=False
                 ).update(cli_session_id=None, cli_workspace_id=None)
                 if cleared_count > 0:
-                    logger.info(f"[CLAUDE_CODE] Cleared {cleared_count} CLI session IDs and workspace IDs after auth refresh for user {request.user.id}")
+                    logger.info(f"[CLAUDE_CODE] Cleared {cleared_count} CLI session IDs after auth refresh for user {request.user.id}")
 
                 return JsonResponse({
                     'status': 'success',
                     'message': 'Claude Code authenticated successfully',
-                    'backed_up': backup_result.get('status') == 'success'
                 })
             else:
                 return JsonResponse({
@@ -1956,161 +1953,108 @@ def claude_code_disconnect(request):
 def claude_code_verify(request):
     """
     Verify Claude Code authentication by running a test command.
-    If not authenticated, try restoring from S3 first.
-    If successful, backup auth to S3 and update profile.
+    With Mags, the workspace overlay persists .claude/ credentials automatically —
+    no S3 backup/restore needed. If no workspace exists, spin one up via Mags.
     """
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
 
     from development.models import MagpieWorkspace
-    from factory.claude_code_utils import check_claude_auth_status, backup_claude_auth_to_s3, restore_claude_auth_from_s3
+    from factory.claude_code_utils import check_claude_auth_status
+    from factory.mags import (
+        get_or_create_workspace_job, run_command, workspace_name_for_claude_auth,
+        generate_unique_claude_auth_workspace_name,
+        CLAUDE_AUTH_SETUP_SCRIPT, MagsAPIError, force_sync_workspace,
+    )
 
     try:
         profile = request.user.profile
 
-        # Get workspace
+        # Get existing workspace
         workspace = MagpieWorkspace.objects.filter(
             user=request.user,
             workspace_type='claude_auth',
-            status='ready'
-        ).first()
+        ).order_by('-updated_at').first()
 
         if not workspace:
-            # Try to create a workspace if we have S3 backup
-            if profile.claude_code_s3_key:
-                logger.info(f"[CLAUDE_CODE] No workspace but have S3 backup, creating workspace...")
-                from factory.ai_functions import get_magpie_client, MAGPIE_BOOTSTRAP_SCRIPT
-                client = get_magpie_client()
-
-                # Create new workspace
-                create_result = client.jobs.create(
-                    name=f"claude-auth-{request.user.id}",
-                    command=MAGPIE_BOOTSTRAP_SCRIPT,
-                    wait_for_ready=True,
-                    timeout=300
+            # No workspace record — create one via Mags (overlay may already have auth)
+            ws_name = generate_unique_claude_auth_workspace_name()
+            logger.info(f"[CLAUDE_CODE] No workspace found, creating via Mags for user {request.user.id}")
+            try:
+                job = get_or_create_workspace_job(
+                    workspace_id=ws_name,
+                    script=CLAUDE_AUTH_SETUP_SCRIPT,
+                    persistent=True,
                 )
-                workspace_id = create_result.get('run_id')
-
-                if workspace_id:
-                    # Save workspace to DB
-                    workspace = MagpieWorkspace.objects.create(
-                        user=request.user,
-                        workspace_id=workspace_id,
-                        workspace_type='claude_auth',
-                        status='ready'
-                    )
-                    logger.info(f"[CLAUDE_CODE] Created workspace {workspace_id}")
-
-                    # Wait for workspace to be ready
-                    import time
-                    time.sleep(3)
-                else:
-                    return JsonResponse({
-                        'status': 'error',
-                        'authenticated': False,
-                        'error': 'Failed to create workspace'
-                    })
-            else:
+                job_id = job["request_id"]
+                workspace, _ = MagpieWorkspace.objects.update_or_create(
+                    user=request.user,
+                    workspace_type='claude_auth',
+                    defaults={
+                        'job_id': job_id,
+                        'workspace_id': ws_name,
+                        'mags_job_id': job_id,
+                        'mags_workspace_id': ws_name,
+                        'status': 'ready',
+                    }
+                )
+                logger.info(f"[CLAUDE_CODE] Created Mags workspace {ws_name} (job {job_id})")
+            except MagsAPIError as e:
+                logger.error(f"[CLAUDE_CODE] Failed to create workspace: {e}")
                 return JsonResponse({
                     'status': 'error',
                     'authenticated': False,
-                    'error': 'No active workspace and no backup available'
+                    'error': f'Failed to create workspace: {e}',
                 })
+        else:
+            # Ensure workspace job is running (may have been sleeping)
+            ws_name = workspace.mags_workspace_id or workspace_name_for_claude_auth(request.user.id)
+            try:
+                job = get_or_create_workspace_job(
+                    workspace_id=ws_name,
+                    script=CLAUDE_AUTH_SETUP_SCRIPT,
+                    persistent=True,
+                )
+                job_id = job["request_id"]
 
-        workspace_id = workspace.workspace_id
-
-        # Kill any existing claude processes first
-        from factory.ai_functions import get_magpie_client, _run_magpie_ssh, MAGPIE_BOOTSTRAP_SCRIPT
-        client = get_magpie_client()
-
-        # Test if workspace is accessible
-        try:
-            logger.info(f"[CLAUDE_CODE] Testing workspace accessibility...")
-            test_result = _run_magpie_ssh(
-                client, workspace_id,
-                "echo 'WORKSPACE_OK'",
-                timeout=15, with_node_env=False
-            )
-            if test_result.get('exit_code') != 0 or 'WORKSPACE_OK' not in test_result.get('stdout', ''):
-                raise Exception("Workspace not responding")
-        except Exception as e:
-            logger.warning(f"[CLAUDE_CODE] Workspace {workspace_id} not accessible: {e}, creating new one...")
-
-            # Mark old workspace as error
-            workspace.status = 'error'
-            workspace.save(update_fields=['status'])
-
-            # Create new workspace
-            workspace_name = f"claude-auth-{request.user.id}"
-            vm_handle = client.jobs.create_persistent_vm(
-                name=workspace_name,
-                script=MAGPIE_BOOTSTRAP_SCRIPT,
-                stateful=True,
-                workspace_size_gb=5,
-                vcpus=1,
-                memory_mb=1024,
-                poll_timeout=120,
-                poll_interval=5,
-            )
-
-            workspace_id = vm_handle.request_id
-            ipv6 = vm_handle.ip_address
-
-            if not workspace_id:
+                # Update workspace record
+                workspace.mags_job_id = job_id
+                workspace.mags_workspace_id = ws_name
+                workspace.status = 'ready'
+                workspace.save(update_fields=['mags_job_id', 'mags_workspace_id', 'status'])
+            except MagsAPIError as e:
+                logger.error(f"[CLAUDE_CODE] Failed to ensure workspace running: {e}")
                 return JsonResponse({
                     'status': 'error',
                     'authenticated': False,
-                    'error': 'Failed to create new workspace'
+                    'error': f'Workspace not accessible: {e}',
                 })
 
-            # Delete old workspace record and create new one
-            MagpieWorkspace.objects.filter(user=request.user, workspace_type='claude_auth').delete()
-            workspace = MagpieWorkspace.objects.create(
-                user=request.user,
-                workspace_type='claude_auth',
-                job_id=workspace_id,
-                workspace_id=workspace_id,
-                ipv6_address=ipv6,
-                status='ready'
-            )
-            logger.info(f"[CLAUDE_CODE] Created new workspace {workspace_id}")
+        ws_name = workspace.mags_workspace_id or workspace.workspace_id
 
-            # Wait for workspace to be ready
-            import time
-            time.sleep(3)
-
+        # Clean up existing processes
         logger.info(f"[CLAUDE_CODE] Cleaning up existing processes...")
-        _run_magpie_ssh(
-            client, workspace_id,
-            "pkill -9 claude 2>/dev/null; pkill -9 expect 2>/dev/null; rm -f /tmp/claude_*.txt /tmp/claude_*.log 2>/dev/null; echo 'CLEANUP_DONE'",
-            timeout=15, with_node_env=False
-        )
+        try:
+            run_command(
+                ws_name,
+                "pkill -9 claude 2>/dev/null; pkill -9 expect 2>/dev/null; rm -f /tmp/claude_*.txt /tmp/claude_*.log 2>/dev/null; echo 'CLEANUP_DONE'",
+                timeout=15, with_node_env=False,
+            )
+        except Exception:
+            pass  # Cleanup is best-effort
 
-        # Run test command first
+        # Check authentication status
         logger.info(f"[CLAUDE_CODE] Verifying auth for user {request.user.id}")
-        check_result = check_claude_auth_status(workspace_id)
-
-        # If not authenticated, try to restore from S3
-        if not check_result.get('authenticated'):
-            # Try S3 restore - use profile key if set, otherwise try default path
-            s3_key = profile.claude_code_s3_key or f"claude-auth/{request.user.id}/claude-config.tar.gz"
-            logger.info(f"[CLAUDE_CODE] Not authenticated, trying to restore from S3: {s3_key}")
-            restore_result = restore_claude_auth_from_s3(workspace_id, request.user.id, s3_key)
-
-            if restore_result.get('status') == 'success':
-                # Check again after restore
-                check_result = check_claude_auth_status(workspace_id)
-                logger.info(f"[CLAUDE_CODE] After restore, authenticated: {check_result.get('authenticated')}")
+        check_result = check_claude_auth_status(ws_name)
 
         if check_result.get('authenticated'):
-            # Backup to S3 (refresh the backup)
-            backup_result = backup_claude_auth_to_s3(workspace_id, request.user.id)
-
-            # Update profile
+            try:
+                force_sync_workspace(workspace.mags_workspace_id or job_id)
+            except Exception as sync_err:
+                logger.warning(f"[CLAUDE_CODE] Force sync failed during verify: {sync_err}")
+            # Update profile — no S3 backup needed, overlay auto-persists
             profile.claude_code_authenticated = True
-            if backup_result.get('status') == 'success':
-                profile.claude_code_s3_key = backup_result.get('s3_key')
-            profile.save(update_fields=['claude_code_authenticated', 'claude_code_s3_key'])
+            profile.save(update_fields=['claude_code_authenticated'])
 
             # Clear CLI session IDs and workspace IDs for all user's tickets to prevent stale session auth
             from projects.models import ProjectTicket
@@ -2121,12 +2065,11 @@ def claude_code_verify(request):
             if cleared_count > 0:
                 logger.info(f"[CLAUDE_CODE] Cleared {cleared_count} CLI session IDs and workspace IDs after verify for user {request.user.id}")
 
-            logger.info(f"[CLAUDE_CODE] User {request.user.id} verified and backed up")
+            logger.info(f"[CLAUDE_CODE] User {request.user.id} verified successfully")
 
             return JsonResponse({
                 'status': 'success',
                 'authenticated': True,
-                'backed_up': backup_result.get('status') == 'success'
             })
         else:
             return JsonResponse({

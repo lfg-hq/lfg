@@ -536,7 +536,7 @@ class ProjectTicketViewSet(viewsets.ReadOnlyModelViewSet):
         conversation_id = request.data.get('conversation_id')
 
         try:
-            from tasks.task_manager import TaskManager
+            from tasks.dispatch import dispatch_tickets
             from django.core.cache import cache
 
             # Check if ticket is already queued (prevent duplicates)
@@ -551,17 +551,23 @@ class ProjectTicketViewSet(viewsets.ReadOnlyModelViewSet):
             # Set AI processing flag BEFORE queueing to prevent race conditions
             cache.set(ai_processing_key, True, timeout=7200)
 
-            # Queue the ticket execution with project-based group
-            # Tasks in the same group execute sequentially, different groups execute in parallel
-            task_id = TaskManager.publish_task(
-                'tasks.task_definitions.execute_ticket_implementation',
-                ticket.id,
-                project.id,
-                conversation_id,
-                task_name=f"Ticket #{ticket.id} execution for {project.name}",
-                group=f'project_{project.id}',  # ← Key: Group by project ID
-                timeout=7200  # 2 hour timeout
+            # Queue via dispatcher so execution mode is decided centrally
+            # (CLI if enabled, otherwise API).
+            success = dispatch_tickets(
+                project_id=project.id,
+                ticket_ids=[ticket.id],
+                conversation_id=conversation_id or 0
             )
+            if not success:
+                cache.delete(ai_processing_key)
+                return Response({
+                    'status': 'error',
+                    'message': 'Failed to queue ticket',
+                    'ticket_id': ticket.id
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            ticket.refresh_from_db(fields=['queue_task_id'])
+            task_id = ticket.queue_task_id
 
             return Response({
                 'status': 'queued',
@@ -797,6 +803,16 @@ class ProjectTicketViewSet(viewsets.ReadOnlyModelViewSet):
                     finally:
                         # Clear processing flag when done
                         cache.delete(ai_processing_key)
+                        # Notify frontend that processing is fully complete
+                        try:
+                            send_ticket_log_notification(ticket.id, {
+                                'log_type': 'chat_complete',
+                                'command': '',
+                                'explanation': '',
+                                'output': '',
+                            })
+                        except Exception:
+                            pass
 
                 thread = threading.Thread(target=run_cli_chat, daemon=True)
                 thread.start()

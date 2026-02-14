@@ -431,6 +431,25 @@ get_ticket_details = {
     }
 }
 
+set_project_stack = {
+    "type": "function",
+    "function": {
+        "name": "set_project_stack",
+        "description": "Set the technology stack for the current project. Call this BEFORE creating tickets when you've determined the tech stack (from PRD, user request, or technical spec). This configures the workspace with the correct install commands, dev server, port, and bootstrap scripts.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "stack": {
+                    "type": "string",
+                    "enum": ["nextjs", "astro", "python-django", "python-fastapi", "go", "rust", "ruby-rails", "custom"],
+                    "description": "Technology stack identifier. Use 'custom' if the stack is not in the list."
+                }
+            },
+            "required": ["stack"]
+        }
+    }
+}
+
 get_project_dashboard = {
     "type": "function",
     "function": {
@@ -720,13 +739,13 @@ ssh_command = {
     "type": "function",
     "function": {
         "name": "ssh_command",
-        "description": "Execute a shell command inside the Magpie workspace via SSH. Use this for writing files, installing dependencies, running Prisma migrations, and verifying the app. The workspace is automatically determined from execution context.",
+        "description": "Execute a shell command inside the remote workspace via SSH. Use this for writing files, installing dependencies, running Prisma migrations, and verifying the app. The workspace is automatically determined from execution context.",
         "parameters": {
             "type": "object",
             "properties": {
                 "command": {
                     "type": "string",
-                    "description": "Shell command to run inside /workspace. Favor heredocs for file writes and descriptive scripts."
+                    "description": "Shell command to run inside /root. Favor heredocs for file writes and descriptive scripts."
                 },
                 "explanation": {
                     "type": "string",
@@ -750,17 +769,17 @@ new_dev_sandbox = {
     "type": "function",
     "function": {
         "name": "new_dev_sandbox",
-        "description": "Clone the Next.js template project and start the dev server on the Magpie workspace. Returns connection details plus recent logs.",
+        "description": "Clone the Next.js template project and start the dev server on the remote workspace. Returns connection details plus recent logs.",
         "parameters": {
             "type": "object",
             "properties": {
                 "workspace_id": {
                     "type": "string",
-                    "description": "Workspace identifier for the Magpie VM."
+                    "description": "Workspace identifier for the remote VM."
                 },
                 "log_tail_lines": {
                     "type": "integer",
-                    "description": "Number of lines to tail from /workspace/nextjs-app/dev.log after startup (default 60)."
+                    "description": "Number of lines to tail from /root/project/dev.log after startup (default 60)."
                 },
                 "environment": {
                     "type": "string",
@@ -889,7 +908,7 @@ record_ticket_summary = {
                         "type": "object",
                         "properties": {
                             "filename": {"type": "string", "description": "Name of the file (e.g., 'index.tsx')"},
-                            "path": {"type": "string", "description": "Full path to the file (e.g., '/workspace/nextjs-app/src/components/index.tsx')"},
+                            "path": {"type": "string", "description": "Full path to the file (e.g., '/root/project/src/components/index.tsx')"},
                             "action": {"type": "string", "enum": ["created", "modified", "deleted"], "description": "What was done to the file"}
                         },
                         "required": ["filename", "path"]
@@ -950,13 +969,13 @@ run_code_server = {
     "type": "function",
     "function": {
         "name": "run_code_server",
-        "description": "Execute code/commands via SSH on the remote Magpie server and start a development server. This will run the specified command and make the app available at the given port. The app URL will be opened in the artifacts browser panel.",
+        "description": "Execute code/commands via SSH on the remote server and start a development server. This will run the specified command and make the app available at the given port. The app URL will be opened in the artifacts browser panel.",
         "parameters": {
             "type": "object",
             "properties": {
                 "command": {
                     "type": "string",
-                    "description": "The shell command to execute (e.g., 'cd /workspace/nextjs-app && npm run dev'). Default: 'cd /workspace/nextjs-app && npm run dev'"
+                    "description": "The shell command to execute (e.g., 'cd /root/project && npm run dev'). Default: 'cd /root/project && npm run dev'"
                 },
                 "port": {
                     "type": "integer",
@@ -1559,6 +1578,7 @@ tools_product = [
     get_file_list,
     get_file_content,
     get_project_dashboard,
+    set_project_stack,
     # Documents
     create_prd,
     get_prd,

@@ -39,7 +39,13 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Import the functions from ai_functions
-from factory.ai_functions import execute_local_command, restart_server_from_config, get_magpie_client, _run_magpie_ssh, get_or_fetch_proxy_url, remap_proxy_to_new_ipv6, MAGPIE_BOOTSTRAP_SCRIPT, _slugify_project_name, magpie_available
+from factory.ai_functions import execute_local_command, restart_server_from_config, _slugify_project_name
+from factory.mags import (
+    run_command, get_or_create_workspace_job,
+    workspace_name_for_preview, get_http_proxy_url,
+    MAGS_WORKING_DIR, PREVIEW_SETUP_SCRIPT, MagsAPIError,
+)
+mags_available = True
 from factory.llm_config import get_llm_model_config
 from chat.models import ModelSelection
 from accounts.models import ApplicationState
@@ -360,6 +366,7 @@ def project_detail(request, project_id):
     logger.info(f"Project direct conversations: {project.direct_conversations.all()}", extra={'easylogs_metadata': {'project_id': project.id, 'project_name': project.name}})
     return render(request, 'projects/project_detail.html', {
         'project': project,
+        'current_project': project,
         'indexed_repository': indexed_repository,
         'repository_insights': repository_insights,
         'code_chunks': code_chunks,
@@ -1270,10 +1277,13 @@ def app_preview(request, project_id):
     workspace_data = None
     if workspace:
         ipv6 = workspace.ipv6_address.strip('[]') if workspace.ipv6_address else None
-        # Use proxy URL if available, otherwise fall back to IPv6
-        preview_url = get_or_fetch_proxy_url(workspace, port=preview_port)
-        if not preview_url:
-            preview_url = f"http://[{ipv6}]:{preview_port}" if ipv6 else None
+        # Get preview URL via Mags HTTP access
+        preview_url = None
+        try:
+            ws_job_id = workspace.mags_job_id or workspace.job_id
+            preview_url = get_http_proxy_url(ws_job_id, preview_port)
+        except Exception:
+            pass
         workspace_data = {
             'id': workspace.id,
             'workspace_id': workspace.workspace_id,
@@ -1497,62 +1507,42 @@ def _reprovision_crashed_workspace(project, old_workspace, user, send_progress_f
         logger.info(f"[REPROVISION] {step}: {message}")
 
     try:
-        # Check if Magpie is available
-        if not magpie_available():
-            return None, "Magpie workspace service is not configured"
+        # Check if Mags is available
+        if not mags_available:
+            return None, "Workspace service is not configured"
 
         send_progress('checking_workspace', 'Workspace unresponsive, provisioning new workspace...')
 
-        # Get old proxy URL and metadata before we update the workspace
-        old_proxy_url = old_workspace.proxy_url
+        # Get old metadata before we update the workspace
         old_metadata = old_workspace.metadata or {}
 
-        # Get Magpie client
-        client = get_magpie_client()
-        if not client:
-            return None, "Failed to initialize Magpie client"
-
-        # Create workspace name
-        project_name = project.provided_name or project.name
-        slug = _slugify_project_name(project_name)
-        workspace_name = f"{slug}-{project.id}"
+        # Create workspace via Mags
+        ws_name = workspace_name_for_preview(project.id)
 
         send_progress('checking_workspace', 'Creating new workspace VM...')
-        logger.info(f"[REPROVISION] Creating workspace for project {project.project_id}: {workspace_name}")
+        logger.info(f"[REPROVISION] Creating workspace for project {project.project_id}: {ws_name}")
 
-        # Create the Magpie persistent VM
-        vm_handle = client.jobs.create_persistent_vm(
-            name=workspace_name,
-            script=MAGPIE_BOOTSTRAP_SCRIPT,
-            stateful=True,
-            workspace_size_gb=10,
-            vcpus=2,
-            memory_mb=2048,
-            poll_timeout=180,
-            poll_interval=5,
+        job = get_or_create_workspace_job(
+            workspace_id=ws_name,
+            script=PREVIEW_SETUP_SCRIPT,
+            persistent=True,
         )
 
-        run_id = vm_handle.request_id
+        run_id = job["request_id"]
         if not run_id:
             return None, "Failed to create workspace - no job ID returned"
 
         logger.info(f"[REPROVISION] Job created: {run_id}")
 
-        # Get IP from the handle
-        ipv6 = vm_handle.ip_address
-        if not ipv6:
-            return None, "Workspace provisioning timed out - no IP address received"
-
-        logger.info(f"[REPROVISION] VM ready with IP: {ipv6}")
-
-        # Update the existing workspace record instead of creating new one
-        # (there's a unique constraint on project_id)
+        # Update the existing workspace record
         old_job_id = old_workspace.job_id
+        project_name = project.provided_name or project.name
         old_workspace.job_id = run_id
+        old_workspace.mags_job_id = run_id
+        old_workspace.mags_workspace_id = ws_name
         old_workspace.workspace_id = run_id
         old_workspace.status = 'ready'
-        old_workspace.ipv6_address = ipv6
-        old_workspace.project_path = '/workspace'
+        old_workspace.project_path = MAGS_WORKING_DIR
         old_workspace.metadata = old_workspace.metadata or {}
         old_workspace.metadata.update({
             'project_name': project_name,
@@ -1560,20 +1550,6 @@ def _reprovision_crashed_workspace(project, old_workspace, user, send_progress_f
             'previous_job_id': old_job_id,
             'reprovisioned_at': timezone.now().isoformat(),
         })
-
-        # Remap the old proxy URL to the new workspace if it exists
-        if old_proxy_url:
-            send_progress('assigning_proxy', 'Remapping proxy URL to new workspace...')
-            # Get the correct port from project settings or stack config
-            from factory.stack_configs import get_stack_config
-            stack_config = get_stack_config(project.stack, project)
-            preview_port = project.custom_default_port or stack_config.get('default_port', 3000)
-            remapped_url = remap_proxy_to_new_ipv6(old_proxy_url, ipv6, port=preview_port)
-            if remapped_url:
-                old_workspace.proxy_url = remapped_url
-                logger.info(f"[REPROVISION] Successfully remapped proxy URL: {remapped_url}")
-            else:
-                logger.warning(f"[REPROVISION] Failed to remap proxy URL, will create new one later")
 
         old_workspace.save()
         new_workspace = old_workspace  # Use the updated workspace
@@ -1584,8 +1560,8 @@ def _reprovision_crashed_workspace(project, old_workspace, user, send_progress_f
         ssh_ready = False
         for attempt in range(max_retries):
             try:
-                logger.info(f"[REPROVISION] Testing SSH connectivity, attempt {attempt + 1}/{max_retries}")
-                test_result = _run_magpie_ssh(client, run_id, "echo 'SSH_READY'", timeout=30)
+                logger.info(f"[REPROVISION] Testing connectivity, attempt {attempt + 1}/{max_retries}")
+                test_result = run_command(ws_name, "echo 'SSH_READY'", timeout=30, with_node_env=False)
                 if test_result.get('exit_code', -1) == 0 and 'SSH_READY' in test_result.get('stdout', ''):
                     ssh_ready = True
                     logger.info(f"[REPROVISION] SSH connectivity confirmed")
@@ -1593,7 +1569,7 @@ def _reprovision_crashed_workspace(project, old_workspace, user, send_progress_f
             except Exception as ssh_err:
                 logger.warning(f"[REPROVISION] SSH test failed (attempt {attempt + 1}): {ssh_err}")
 
-            # Wait before retrying (10-15 seconds for workspace to stabilize)
+            # Wait before retrying
             if attempt < max_retries - 1:
                 time.sleep(12)
 
@@ -1621,12 +1597,12 @@ def _reprovision_crashed_workspace(project, old_workspace, user, send_progress_f
                     logger.info(f"[REPROVISION] Setting up git for {owner}/{repo} on branch {branch_name}")
 
                     git_result = setup_git_in_workspace(
-                        workspace_id=run_id,
+                        job_id=ws_name,
                         owner=owner,
                         repo_name=repo,
                         branch_name=branch_name,
                         token=github_token,
-                        stack=project.stack  # Use project's actual stack
+                        stack=project.stack,
                     )
 
                     if git_result.get('status') == 'success':
@@ -1637,7 +1613,6 @@ def _reprovision_crashed_workspace(project, old_workspace, user, send_progress_f
                         logger.info(f"[REPROVISION] Git configured on branch {branch_name}")
             else:
                 # No GitHub repo - create empty project directory with minimal files
-                # AI will generate the codebase based on requirements
                 logger.info(f"[REPROVISION] No GitHub repo configured, creating empty project directory")
 
                 from factory.stack_configs import get_gitignore_content
@@ -1646,7 +1621,7 @@ def _reprovision_crashed_workspace(project, old_workspace, user, send_progress_f
                 gitignore_content = get_gitignore_content(project.stack)
 
                 empty_project_cmd = f'''
-cd /workspace
+cd {MAGS_WORKING_DIR}
 if [ ! -d {project_dir} ]; then
     mkdir -p {project_dir}
     cat > {project_dir}/.gitignore << 'GITIGNORE_EOF'
@@ -1664,7 +1639,7 @@ else
     echo "Directory already exists"
 fi
 '''
-                result = _run_magpie_ssh(client, run_id, empty_project_cmd, timeout=60)
+                result = run_command(ws_name, empty_project_cmd, timeout=60)
 
                 if result.get('exit_code', 0) == 0:
                     git_setup_success = True
@@ -1724,13 +1699,14 @@ class WorkspaceUnresponsiveError(Exception):
     pass
 
 
-def _run_ssh_with_recovery_check(client, workspace, command, timeout=300, with_node_env=True, project_id=None, check_unresponsive=True):
+def _run_ssh_with_recovery_check(workspace, command, timeout=300, check_unresponsive=True):
     """
-    Run SSH command on workspace with automatic detection of unresponsive workspace.
+    Run command on workspace with automatic detection of unresponsive workspace.
     Raises WorkspaceUnresponsiveError if the workspace appears to be crashed.
     """
+    workspace_id = workspace.mags_workspace_id or workspace.workspace_id
     try:
-        result = _run_magpie_ssh(client, workspace.job_id, command, timeout=timeout, with_node_env=with_node_env, project_id=project_id)
+        result = run_command(workspace_id, command, timeout=timeout)
         return result
     except Exception as e:
         error_str = str(e)
@@ -1790,20 +1766,11 @@ def start_dev_server_api(request, project_id):
 
         send_workspace_progress(project_id, 'checking_workspace', 'Workspace found, connecting...')
 
-        # Get Magpie client
-        client = get_magpie_client()
-        if not client:
-            send_workspace_progress(project_id, 'error', error='Magpie client not configured.')
-            return JsonResponse({
-                'success': False,
-                'error': 'Magpie client not configured. Check server settings.'
-            })
-
         # Get stack configuration for this project
         from factory.stack_configs import get_stack_config
         stack_config = get_stack_config(project.stack, project)
         project_dir = stack_config['project_dir']
-        workspace_path = f"/workspace/{project_dir}"
+        workspace_path = f"{MAGS_WORKING_DIR}/{project_dir}"
         port = requested_port or stack_config.get('default_port', 3000)
 
         logger.info(f"[PREVIEW] Project stack: {project.stack}, project_dir: {project_dir}, port: {port}")
@@ -1829,7 +1796,7 @@ def start_dev_server_api(request, project_id):
 
             # Clone repo if missing, then switch to lfg-agent and pull latest
             git_sync_command = f'''
-cd /workspace
+cd {MAGS_WORKING_DIR}
 
 # Check if code exists - if not, clone the connected GitHub repo
 if [ -d {project_dir}/.git ]; then
@@ -1909,7 +1876,7 @@ git remote set-url origin "https://github.com/{owner}/{repo_name}.git" || true
 
 echo "SWITCH_COMPLETE"
 '''
-            git_result = _run_ssh_with_recovery_check(client, workspace, git_sync_command, timeout=300, check_unresponsive=not is_retry)
+            git_result = _run_ssh_with_recovery_check(workspace, git_sync_command, timeout=300, check_unresponsive=not is_retry)
             stdout = git_result.get('stdout', '')
             stderr = git_result.get('stderr', '')
             logger.info(f"[PREVIEW] Git sync result: {stdout[:500]}")
@@ -1936,10 +1903,9 @@ echo "SWITCH_COMPLETE"
                 logger.info(f"[PREVIEW] Running bootstrap script for {project.stack}")
 
                 bootstrap_result = _run_ssh_with_recovery_check(
-                    client, workspace,
+                    workspace,
                     bootstrap_script,
                     timeout=300,
-                    with_node_env=False,
                     check_unresponsive=not is_retry
                 )
                 if bootstrap_result.get('exit_code', 0) != 0:
@@ -1962,12 +1928,12 @@ echo "SWITCH_COMPLETE"
 
                 # Add npm cache config for Node.js projects
                 if stack_config['package_manager'] == 'npm':
-                    full_install_cmd = f"cd {workspace_path} && npm config set cache /workspace/.npm-cache && {install_cmd}"
+                    full_install_cmd = f"cd {workspace_path} && npm config set cache {MAGS_WORKING_DIR}/.npm-cache && {install_cmd}"
 
                 install_result = _run_ssh_with_recovery_check(
-                    client, workspace,
+                    workspace,
                     full_install_cmd,
-                    timeout=300, with_node_env=(stack_config['language'] == 'javascript'),
+                    timeout=300,
                     check_unresponsive=not is_retry
                 )
                 if install_result.get('exit_code', 0) != 0:
@@ -1989,7 +1955,7 @@ echo "SWITCH_COMPLETE"
             final_dev_cmd = f"npm run dev -- --hostname :: --port {port}"
             cache_clear = "rm -rf .next 2>/dev/null || true"
             kill_processes = 'pkill -f "npm run dev" 2>/dev/null || true\npkill -f "next dev" 2>/dev/null || true'
-            npm_cache = "npm config set cache /workspace/.npm-cache"
+            npm_cache = f"npm config set cache {MAGS_WORKING_DIR}/.npm-cache"
         elif project.stack in ('python-django', 'python-fastapi'):
             # Python: replace default port in command
             final_dev_cmd = dev_cmd.replace(str(default_port), str(port)) if dev_cmd else f"python manage.py runserver 0.0.0.0:{port}"
@@ -2067,15 +2033,18 @@ echo "Dev server started"
 """
 
         send_workspace_progress(project_id, 'starting_server', 'Starting development server...')
-        result = _run_ssh_with_recovery_check(client, workspace, start_command, timeout=30, project_id=project.id, check_unresponsive=not is_retry)
+        result = _run_ssh_with_recovery_check(workspace, start_command, timeout=30, check_unresponsive=not is_retry)
 
-        # Use proxy URL if available, otherwise fall back to IPv6
-        # Force refresh the proxy URL to ensure it points to current IPv6/port
-        send_workspace_progress(project_id, 'assigning_proxy', 'Assigning proxy URL...')
-        preview_url = get_or_fetch_proxy_url(workspace, port=port, client=client, force_refresh=True)
+        # Get preview URL via Mags HTTP access
+        job_id = workspace.mags_job_id or workspace.job_id
+        send_workspace_progress(project_id, 'assigning_proxy', 'Getting preview URL...')
+        preview_url = None
+        try:
+            preview_url = get_http_proxy_url(job_id, port)
+        except Exception as e:
+            logger.warning(f"[PREVIEW] Failed to get HTTP proxy URL: {e}")
         if not preview_url:
-            ipv6 = workspace.ipv6_address.strip('[]')
-            preview_url = f"http://[{ipv6}]:{port}"
+            preview_url = f'http://localhost:{port}'
 
         send_workspace_progress(project_id, 'complete', f'Server started on {target_branch}', extra_data={'url': preview_url, 'branch': target_branch})
 
@@ -2160,19 +2129,12 @@ def stop_dev_server_api(request, project_id):
                 'error': 'No workspace found.'
             })
 
-        # Get Magpie client
-        client = get_magpie_client()
-        if not client:
-            return JsonResponse({
-                'success': False,
-                'error': 'Magpie client not configured.'
-            })
-
         # Get stack configuration
         from factory.stack_configs import get_stack_config
         stack_config = get_stack_config(project.stack, project)
         project_dir = stack_config['project_dir']
-        workspace_path = f"/workspace/{project_dir}"
+        workspace_path = f"{MAGS_WORKING_DIR}/{project_dir}"
+        workspace_id = workspace.mags_workspace_id or workspace.workspace_id
 
         # Build stack-specific kill pattern (avoid too generic patterns like just "go")
         if project.stack == 'nextjs':
@@ -2223,7 +2185,7 @@ echo "Server stopped"
 """
 
         try:
-            result = _run_magpie_ssh(client, workspace.job_id, stop_command, timeout=10, project_id=project.id)
+            result = run_command(workspace_id, stop_command, timeout=10)
             return JsonResponse({
                 'success': True,
                 'message': 'Server stopped',
@@ -2694,7 +2656,7 @@ def queue_checklist_items_api(request, project_id):
 
     try:
         import json
-        from tasks.task_manager import TaskManager
+        from tasks.dispatch import dispatch_tickets
         from chat.models import Conversation
 
         data = json.loads(request.body)
@@ -2727,30 +2689,21 @@ def queue_checklist_items_api(request, project_id):
                 'error': 'No valid tickets found'
             }, status=400)
 
-        # Queue each ticket for execution
-        queued_count = 0
-        failed_tickets = []
-
-        for ticket_id in valid_ticket_ids:
-            try:
-                TaskManager.publish_task(
-                    'tasks.task_definitions.execute_ticket_implementation',
-                    ticket_id,
-                    project.id,
-                    conversation_id,
-                )
-
-                # Update ticket status to indicate it's queued
-                ProjectTicket.objects.filter(id=ticket_id).update(status='agent', queue_status='queued')
-                queued_count += 1
-            except Exception as e:
-                failed_tickets.append({'id': ticket_id, 'error': str(e)})
+        # Queue as a batch via dispatcher so mode selection is centralized
+        # (CLI when enabled, API otherwise).
+        dispatch_ok = dispatch_tickets(
+            project_id=project.id,
+            ticket_ids=valid_ticket_ids,
+            conversation_id=conversation_id or 0
+        )
+        queued_count = len(valid_ticket_ids) if dispatch_ok else 0
+        failed_tickets = [] if dispatch_ok else [{'id': tid, 'error': 'Failed to queue ticket'} for tid in valid_ticket_ids]
 
         return JsonResponse({
-            'success': True,
+            'success': dispatch_ok,
             'queued_count': queued_count,
             'failed_tickets': failed_tickets,
-            'message': f'{queued_count} ticket(s) queued for build'
+            'message': f'{queued_count} ticket(s) queued for build' if dispatch_ok else 'Failed to queue tickets'
         })
     except json.JSONDecodeError:
         return JsonResponse({
@@ -4191,8 +4144,6 @@ def ticket_git_status_api(request, project_id, ticket_id):
     from accounts.models import GitHubToken
     from development.models import MagpieWorkspace
     from codebase_index.models import IndexedRepository
-    from factory.ai_functions import get_magpie_client, _run_magpie_ssh
-
     project = get_object_or_404(Project, project_id=project_id)
     ticket = get_object_or_404(ProjectTicket, id=ticket_id, project=project)
 
@@ -4249,28 +4200,24 @@ def ticket_git_status_api(request, project_id, ticket_id):
     if workspace:
         try:
             from factory.stack_configs import get_stack_config
-            client = get_magpie_client()
             stack_config = get_stack_config(project.stack, project)
             project_dir = stack_config['project_dir']
-            workspace_path = f"/workspace/{project_dir}"
+            workspace_path = f"{MAGS_WORKING_DIR}/{project_dir}"
+            ws_id = workspace.mags_workspace_id or workspace.workspace_id
 
             # Get current branch in workspace
-            branch_result = _run_magpie_ssh(
-                client,
-                workspace.workspace_id,
+            branch_result = run_command(
+                ws_id,
                 f"cd {workspace_path} && git branch --show-current 2>/dev/null || echo ''",
                 timeout=30,
-                with_node_env=False
             )
             response_data['current_branch'] = branch_result.get('stdout', '').strip()
 
             # Get git status (check for uncommitted changes)
-            status_result = _run_magpie_ssh(
-                client,
-                workspace.workspace_id,
+            status_result = run_command(
+                ws_id,
                 f"cd {workspace_path} && git status --porcelain 2>/dev/null | head -20",
                 timeout=30,
-                with_node_env=False
             )
             status_output = status_result.get('stdout', '').strip()
             response_data['has_uncommitted_changes'] = len(status_output) > 0
@@ -4278,12 +4225,10 @@ def ticket_git_status_api(request, project_id, ticket_id):
                 response_data['uncommitted_files'] = [f for f in status_output.split('\n') if f.strip()]
 
             # Get recent commits on this branch (last 5)
-            log_result = _run_magpie_ssh(
-                client,
-                workspace.workspace_id,
+            log_result = run_command(
+                ws_id,
                 f"cd {workspace_path} && git log --oneline -5 2>/dev/null || echo ''",
                 timeout=30,
-                with_node_env=False
             )
             log_output = log_result.get('stdout', '').strip()
             if log_output:
@@ -4737,7 +4682,6 @@ def set_preview_ticket_api(request, project_id):
     # Switch branch if requested and ticket has a branch
     if switch_branch and ticket.github_branch:
         from development.models import MagpieWorkspace
-        from factory.ai_functions import get_magpie_client, _run_magpie_ssh
         from factory.stack_configs import get_stack_config
 
         # Get workspace
@@ -4751,19 +4695,18 @@ def set_preview_ticket_api(request, project_id):
                 stack_config = get_stack_config(project.stack, project)
                 project_dir = stack_config.get('project_dir', 'app')
 
-                client = get_magpie_client()
-                workspace_id = workspace.workspace_id
+                ws_id = workspace.mags_workspace_id or workspace.workspace_id
 
                 # Switch to the ticket's branch
                 branch_cmd = f"""
-                cd /workspace/{project_dir}
+                cd {MAGS_WORKING_DIR}/{project_dir}
                 git fetch origin 2>/dev/null || true
                 git checkout {ticket.github_branch} 2>/dev/null || git checkout -b {ticket.github_branch} origin/{ticket.github_branch} 2>/dev/null || echo "BRANCH_SWITCH_FAILED"
                 git pull origin {ticket.github_branch} 2>/dev/null || true
                 git branch --show-current
                 """
 
-                result = _run_magpie_ssh(client, workspace_id, branch_cmd, timeout=60, with_node_env=False)
+                result = run_command(ws_id, branch_cmd, timeout=60)
                 stdout = result.get('stdout', '').strip()
                 exit_code = result.get('exit_code', 1)
 
@@ -5671,7 +5614,6 @@ def provision_workspace_api(request, project_id):
     Provision a new Magpie workspace for preview when one doesn't exist.
     This creates a workspace on-the-fly so users don't have to run a ticket build first.
     """
-    from factory.ai_functions import MAGPIE_BOOTSTRAP_SCRIPT, _slugify_project_name, magpie_available
     from tasks.task_definitions import setup_git_in_workspace, push_template_and_create_branch
 
     project = get_object_or_404(Project, project_id=project_id)
@@ -5680,28 +5622,33 @@ def provision_workspace_api(request, project_id):
     if not project.can_user_access(request.user):
         return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
 
-    # Check if Magpie is available
-    if not magpie_available():
+    # Check if Mags is available
+    if not mags_available:
         return JsonResponse({
             'success': False,
-            'error': 'Magpie workspace service is not configured. Please contact support.'
+            'error': 'Workspace service is not configured. Please contact support.'
         }, status=503)
 
     # Check if workspace already exists
     existing_workspace = MagpieWorkspace.objects.filter(
         project=project,
-        ipv6_address__isnull=False
-    ).exclude(ipv6_address='').order_by('-updated_at').first()
+        status__in=['ready', 'sleeping'],
+    ).order_by('-updated_at').first()
 
     if existing_workspace:
-        ipv6 = existing_workspace.ipv6_address.strip('[]') if existing_workspace.ipv6_address else None
         # Get the correct port from project settings or stack config
         from factory.stack_configs import get_stack_config
         stack_config = get_stack_config(project.stack, project)
         preview_port = project.custom_default_port or stack_config.get('default_port', 3000)
-        preview_url = get_or_fetch_proxy_url(existing_workspace, port=preview_port)
-        if not preview_url:
-            preview_url = f"http://[{ipv6}]:{preview_port}" if ipv6 else None
+        ex_job_id = existing_workspace.mags_job_id or existing_workspace.job_id
+        ex_ws_id = existing_workspace.mags_workspace_id or existing_workspace.workspace_id
+
+        # Get preview URL via Mags HTTP access
+        preview_url = None
+        try:
+            preview_url = get_http_proxy_url(ex_job_id, preview_port)
+        except Exception:
+            pass
 
         # Check if workspace needs code setup (no git_configured, template_installed, or empty_project_created)
         metadata = existing_workspace.metadata or {}
@@ -5710,7 +5657,6 @@ def provision_workspace_api(request, project_id):
         git_setup_message = None
         if needs_code_setup:
             try:
-                client = get_magpie_client()
                 indexed_repo = getattr(project, 'indexed_repository', None)
 
                 if indexed_repo and indexed_repo.github_url:
@@ -5725,12 +5671,12 @@ def provision_workspace_api(request, project_id):
                         logger.info(f"[PROVISION] Setting up git for existing workspace {owner}/{repo}")
 
                         git_result = setup_git_in_workspace(
-                            workspace_id=existing_workspace.job_id,
+                            job_id=ex_ws_id,
                             owner=owner,
                             repo_name=repo,
                             branch_name=branch_name,
                             token=github_token,
-                            stack=project.stack  # Use project's actual stack
+                            stack=project.stack,
                         )
                         if git_result.get('status') == 'success':
                             git_setup_message = f"Git configured on branch {branch_name}"
@@ -5740,14 +5686,13 @@ def provision_workspace_api(request, project_id):
                             existing_workspace.save()
                 else:
                     # No GitHub - create empty project directory with minimal files
-                    # AI will generate the codebase based on requirements
                     logger.info(f"[PROVISION] Creating empty project directory for existing workspace")
                     from factory.stack_configs import get_gitignore_content
                     project_dir = stack_config['project_dir']
                     gitignore_content = get_gitignore_content(project.stack)
 
                     empty_project_cmd = f'''
-cd /workspace
+cd {MAGS_WORKING_DIR}
 if [ ! -d {project_dir} ]; then
     mkdir -p {project_dir}
     cat > {project_dir}/.gitignore << 'GITIGNORE_EOF'
@@ -5765,7 +5710,7 @@ else
     echo "Directory already exists"
 fi
 '''
-                    result = _run_magpie_ssh(client, existing_workspace.job_id, empty_project_cmd, timeout=60)
+                    result = run_command(ex_ws_id, empty_project_cmd, timeout=60)
                     if result.get('exit_code', 0) == 0:
                         git_setup_message = "Empty project directory created"
                         metadata['empty_project_created'] = True
@@ -5786,40 +5731,24 @@ fi
                 'id': existing_workspace.id,
                 'workspace_id': existing_workspace.workspace_id,
                 'status': existing_workspace.status,
-                'ipv6_address': ipv6,
                 'preview_url': preview_url,
             }
         })
 
     try:
-        # Get Magpie client
-        client = get_magpie_client()
-        if not client:
-            return JsonResponse({
-                'success': False,
-                'error': 'Failed to initialize Magpie client'
-            }, status=500)
-
-        # Create workspace name
+        # Create workspace via Mags
+        ws_name = workspace_name_for_preview(project.id)
         project_name = project.provided_name or project.name
-        slug = _slugify_project_name(project_name)
-        workspace_name = f"{slug}-{project.id}"
 
-        logger.info(f"[PROVISION] Creating workspace for project {project_id}: {workspace_name}")
+        logger.info(f"[PROVISION] Creating workspace for project {project_id}: {ws_name}")
 
-        # Create the Magpie persistent VM (polls internally until ready)
-        vm_handle = client.jobs.create_persistent_vm(
-            name=workspace_name,
-            script=MAGPIE_BOOTSTRAP_SCRIPT,
-            stateful=True,
-            workspace_size_gb=10,
-            vcpus=2,
-            memory_mb=2048,
-            poll_timeout=180,
-            poll_interval=5,
+        job = get_or_create_workspace_job(
+            workspace_id=ws_name,
+            script=PREVIEW_SETUP_SCRIPT,
+            persistent=True,
         )
 
-        run_id = vm_handle.request_id
+        run_id = job["request_id"]
         if not run_id:
             return JsonResponse({
                 'success': False,
@@ -5828,25 +5757,15 @@ fi
 
         logger.info(f"[PROVISION] Job created: {run_id}")
 
-        # Get IP from the handle (already populated after polling)
-        ipv6 = vm_handle.ip_address
-
-        if not ipv6:
-            return JsonResponse({
-                'success': False,
-                'error': 'Workspace provisioning timed out - no IP address received'
-            }, status=500)
-
-        logger.info(f"[PROVISION] VM ready with IP: {ipv6}")
-
-        # Create DB record and mark as ready (proxy_url will be set when server is started)
+        # Create DB record
         workspace = MagpieWorkspace.objects.create(
             project=project,
             job_id=run_id,
+            mags_job_id=run_id,
+            mags_workspace_id=ws_name,
             workspace_id=run_id,
             status='ready',
-            ipv6_address=ipv6,
-            project_path='/workspace',
+            project_path=MAGS_WORKING_DIR,
             metadata={'project_name': project_name, 'created_for_preview': True}
         )
 
@@ -5867,12 +5786,12 @@ fi
                     logger.info(f"[PROVISION] Setting up git for {owner}/{repo} on branch {branch_name}")
 
                     git_result = setup_git_in_workspace(
-                        workspace_id=run_id,
+                        job_id=ws_name,
                         owner=owner,
                         repo_name=repo,
                         branch_name=branch_name,
                         token=github_token,
-                        stack=project.stack  # Use project's actual stack
+                        stack=project.stack,
                     )
 
                     if git_result.get('status') == 'success':
@@ -5885,7 +5804,6 @@ fi
                         git_setup_message = f"Git setup warning: {git_result.get('message', 'unknown error')}"
             else:
                 # No GitHub repo - create empty project directory with minimal files
-                # AI will generate the codebase based on requirements
                 logger.info(f"[PROVISION] No GitHub repo configured, creating empty project directory")
 
                 from factory.stack_configs import get_stack_config, get_gitignore_content
@@ -5894,7 +5812,7 @@ fi
                 gitignore_content = get_gitignore_content(project.stack)
 
                 empty_project_cmd = f'''
-cd /workspace
+cd {MAGS_WORKING_DIR}
 if [ ! -d {project_dir} ]; then
     mkdir -p {project_dir}
     cat > {project_dir}/.gitignore << 'GITIGNORE_EOF'
@@ -5912,7 +5830,7 @@ else
     echo "Directory already exists"
 fi
 '''
-                result = _run_magpie_ssh(client, run_id, empty_project_cmd, timeout=60)
+                result = run_command(ws_name, empty_project_cmd, timeout=60)
 
                 if result.get('exit_code', 0) == 0:
                     git_setup_message = "Empty project directory created"
@@ -5927,13 +5845,15 @@ fi
             logger.warning(f"[PROVISION] Code setup error (non-fatal): {git_err}")
             git_setup_message = f"Code setup skipped: {str(git_err)}"
 
-        # Get preview URL with correct port from project settings or stack config
+        # Get preview URL via Mags HTTP access
         from factory.stack_configs import get_stack_config
         stack_config = get_stack_config(project.stack, project)
         preview_port = project.custom_default_port or stack_config.get('default_port', 3000)
-        preview_url = get_or_fetch_proxy_url(workspace, port=preview_port)
-        if not preview_url:
-            preview_url = f"http://[{ipv6}]:{preview_port}" if ipv6 else None
+        preview_url = None
+        try:
+            preview_url = get_http_proxy_url(run_id, preview_port)
+        except Exception:
+            pass
 
         return JsonResponse({
             'success': True,
@@ -5943,7 +5863,6 @@ fi
                 'id': workspace.id,
                 'workspace_id': workspace.workspace_id,
                 'status': workspace.status,
-                'ipv6_address': ipv6.strip('[]') if ipv6 else None,
                 'preview_url': preview_url,
             }
         })
