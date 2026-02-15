@@ -1113,6 +1113,7 @@ def run_command(
             new_resp = client.new(
                 workspace_id,
                 base_workspace_id=base_workspace_id,
+                disk_gb=10,
                 timeout=min(timeout, 120),
             )
             new_request_id = new_resp.get("request_id")

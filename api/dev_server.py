@@ -8,7 +8,6 @@ from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse
-from asgiref.sync import async_to_sync
 from projects.models import ProjectTicket
 from development.models import MagpieWorkspace
 from accounts.models import ExternalServicesAPIKeys, GitHubToken
@@ -29,18 +28,58 @@ except ImportError:
     run_command = None
     mags_available = False
 
-# Import _fetch_workspace for backward compat during migration
-try:
-    from factory.ai_functions import _fetch_workspace
-except ImportError:
-    _fetch_workspace = None
-
 # Import git setup function
 try:
     from tasks.task_definitions import setup_git_in_workspace
 except ImportError:
     logger.error("Failed to import setup_git_in_workspace from tasks.task_definitions")
     setup_git_in_workspace = None
+
+
+def _get_ticket_workspace(ticket):
+    """
+    Get the MagpieWorkspace for a ticket's CLI workspace.
+    Falls back to any project workspace if ticket has no CLI workspace.
+    Returns (workspace, error_response) — error_response is None on success.
+    """
+    # 1. Try ticket's own CLI workspace first
+    if ticket.cli_workspace_id:
+        ws = MagpieWorkspace.objects.filter(
+            mags_workspace_id=ticket.cli_workspace_id
+        ).first()
+        if ws:
+            return ws, None
+
+    # 2. Fall back: find any ticket-type workspace for this project
+    ws = MagpieWorkspace.objects.filter(
+        project=ticket.project,
+        workspace_type='ticket',
+    ).order_by('-updated_at').first()
+    if ws:
+        return ws, None
+
+    # 3. Last resort: any workspace for the project
+    ws = MagpieWorkspace.objects.filter(
+        project=ticket.project,
+    ).order_by('-updated_at').first()
+    if ws:
+        return ws, None
+
+    return None, JsonResponse(
+        {'error': 'No workspace found. Please run the ticket first to create a workspace.'},
+        status=400
+    )
+
+
+def _get_job_request_id(workspace_id):
+    """Get the Mags job request_id for a workspace overlay name."""
+    from factory.mags import _find_existing_workspace_job
+    try:
+        job = _find_existing_workspace_job(workspace_id)
+        return job.get('request_id') or job.get('id')
+    except Exception as e:
+        logger.warning(f"[DEV_SERVER] Could not find job for workspace {workspace_id}: {e}")
+        return None
 
 
 def _ensure_code_in_workspace(workspace, project, user, ticket=None, send_progress=True):
@@ -312,14 +351,10 @@ def start_dev_server(request, ticket_id):
                 status=503
             )
 
-        # Get the MagpieWorkspace for this project
-        magpie_workspace = async_to_sync(_fetch_workspace)(project=project) if _fetch_workspace else None
-
-        if not magpie_workspace:
-            return JsonResponse(
-                {'error': 'No workspace found for this project. Please provision a workspace first.'},
-                status=400
-            )
+        # Get the MagpieWorkspace for this ticket
+        magpie_workspace, err_resp = _get_ticket_workspace(ticket)
+        if err_resp:
+            return err_resp
 
         # Ensure workspace job is running
         workspace_id = magpie_workspace.mags_workspace_id or magpie_workspace.workspace_id
@@ -507,7 +542,9 @@ def start_dev_server(request, ticket_id):
         send_workspace_progress(project_id, 'assigning_proxy', 'Getting preview URL...')
         preview_url = None
         try:
-            preview_url = get_http_proxy_url(job_id, default_port)
+            # job_id from DB may be workspace name, resolve actual Mags request_id
+            actual_job_id = _get_job_request_id(workspace_id) or job_id
+            preview_url = get_http_proxy_url(actual_job_id, default_port)
         except Exception as e:
             logger.warning(f"[DEV_SERVER] Failed to get HTTP proxy URL: {e}")
         if not preview_url:
@@ -564,14 +601,10 @@ def stop_dev_server(request, ticket_id):
                 status=503
             )
 
-        # Get the MagpieWorkspace for this project using _fetch_workspace
-        magpie_workspace = async_to_sync(_fetch_workspace)(project=project) if _fetch_workspace else None
-
-        if not magpie_workspace:
-            return JsonResponse(
-                {'error': 'No workspace found for this project.'},
-                status=400
-            )
+        # Get the MagpieWorkspace for this ticket
+        magpie_workspace, err_resp = _get_ticket_workspace(ticket)
+        if err_resp:
+            return err_resp
 
         # Use workspace regardless of status
         if magpie_workspace.status != 'ready':
@@ -661,14 +694,10 @@ def get_dev_server_logs(request, ticket_id):
                 status=503
             )
 
-        # Get the MagpieWorkspace for this project
-        magpie_workspace = async_to_sync(_fetch_workspace)(project=project) if _fetch_workspace else None
-
-        if not magpie_workspace:
-            return JsonResponse(
-                {'error': 'No workspace found for this project.'},
-                status=400
-            )
+        # Get the MagpieWorkspace for this ticket
+        magpie_workspace, err_resp = _get_ticket_workspace(ticket)
+        if err_resp:
+            return err_resp
 
         # Get stack configuration
         from factory.stack_configs import get_stack_config

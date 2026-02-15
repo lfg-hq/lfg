@@ -2611,25 +2611,30 @@ Using Claude Code CLI mode
         else:
             attachments_summary = "No attachments were provided for this ticket."
 
-        logger.info(f"\n[CLI STEP 3/7] Creating per-ticket Mags workspace...")
-        _emit_cli_status("Provisioning sandbox workspace...")
-        # 3. CREATE PER-TICKET WORKSPACE (forked from claude-auth base)
+        logger.info(f"\n[CLI STEP 3/7] Setting up per-ticket Mags workspace...")
+        # 3. CREATE OR REUSE PER-TICKET WORKSPACE (forked from claude-auth base)
         from development.models import MagpieWorkspace
 
         base_ws = get_latest_claude_auth_workspace_id(user.id) or workspace_name_for_claude_auth(user.id)
-        # Always create a fresh unique workspace per execution run to avoid
-        # "already in use" conflicts with stale/zombie jobs.
-        ticket_ws = workspace_name_for_ticket(ticket.id)  # generates {ticket_id}-{uuid8}
+        # Reuse existing ticket workspace if available, otherwise create a fresh one
+        previous_ticket_ws = ticket.cli_workspace_id
+        ticket_ws = previous_ticket_ws or workspace_name_for_ticket(ticket.id)
+        is_reuse = bool(previous_ticket_ws)
         logger.info(
-            "[CLI STEP 3/7] Resolved base workspace for ticket %s (user=%s): base=%s ticket_ws=%s",
-            ticket.id, user.id, base_ws, ticket_ws
+            "[CLI STEP 3/7] Resolved workspace for ticket %s (user=%s): base=%s ticket_ws=%s reuse=%s",
+            ticket.id, user.id, base_ws, ticket_ws, is_reuse
         )
+        if is_reuse:
+            _emit_cli_status("Reconnecting to existing sandbox...")
+        else:
+            _emit_cli_status("Provisioning sandbox workspace...")
         workspace_id = ticket_ws  # SDK uses overlay name directly
 
         try:
             # Verify workspace is accessible by running a quick probe command.
             # run_command handles workspace creation (with base_workspace_id) on
             # first run and transparently retries without base on conflict.
+            # When reusing, pass base_workspace_id=None to avoid re-creating.
             # Timeout is 180s because new workspace provisioning (VM boot +
             # overlay restore from base) can take 1-2 minutes.
             probe_result = run_command(
@@ -2637,13 +2642,32 @@ Using Claude Code CLI mode
                 command='echo "WORKSPACE_READY"',
                 timeout=180,
                 with_node_env=False,
-                base_workspace_id=base_ws,
+                base_workspace_id=None if is_reuse else base_ws,
             )
             if 'WORKSPACE_READY' not in probe_result.get('stdout', ''):
-                raise MagsAPIError(
-                    f"Workspace probe failed: exit={probe_result.get('exit_code')}, "
-                    f"stderr={probe_result.get('stderr', '')[:200]}"
-                )
+                if is_reuse:
+                    # Existing workspace is gone — fall back to creating a fresh one
+                    logger.warning(f"[CLI STEP 3/7] Reuse of {ticket_ws} failed, creating fresh workspace...")
+                    _emit_cli_status("Existing sandbox unavailable, provisioning new one...")
+                    ticket_ws = workspace_name_for_ticket(ticket.id)
+                    workspace_id = ticket_ws
+                    is_reuse = False
+                    # Clear stale session since workspace changed
+                    ticket.cli_session_id = None
+                    ticket.cli_workspace_id = None
+                    ticket.save(update_fields=['cli_session_id', 'cli_workspace_id'])
+                    probe_result = run_command(
+                        workspace_id=ticket_ws,
+                        command='echo "WORKSPACE_READY"',
+                        timeout=180,
+                        with_node_env=False,
+                        base_workspace_id=base_ws,
+                    )
+                if 'WORKSPACE_READY' not in probe_result.get('stdout', ''):
+                    raise MagsAPIError(
+                        f"Workspace probe failed: exit={probe_result.get('exit_code')}, "
+                        f"stderr={probe_result.get('stderr', '')[:200]}"
+                    )
 
             # Create or update workspace record
             ticket_workspace, _ = MagpieWorkspace.objects.update_or_create(
@@ -2784,76 +2808,111 @@ Mode: Claude Code CLI
         auth_check = check_claude_auth_status(workspace_id)
 
         if not auth_check.get('authenticated'):
-                error_msg = "Claude Code is not authenticated. Please reconnect in Settings."
-                logger.error(f"[CLI STEP 4/7] ✗ {error_msg}")
+                # Ticket sandbox auth failed — check if the central claude-auth workspace works
+                logger.warning(f"[CLI STEP 4/7] Ticket sandbox auth failed, checking central claude-auth workspace...")
+                _emit_cli_status("Refreshing Claude credentials from central workspace...")
 
-                # Mark the user as not authenticated so Settings page shows correct status
-                profile.claude_code_authenticated = False
-                profile.save(update_fields=['claude_code_authenticated'])
-                logger.info(f"[CLI STEP 4/7] Marked user as not authenticated")
-
-                # Create a visible TicketLog so the error shows on the Actions tab
-                auth_error_log = TicketLog.objects.create(
-                    ticket=ticket,
-                    log_type='error',
-                    command='Claude Authentication',
-                    explanation='Authentication expired — please reconnect',
-                    output=(
-                        "Claude Code OAuth token has expired.\n\n"
-                        "To fix this:\n"
-                        "1. Go to Settings > Claude Code\n"
-                        "2. Click 'Connect Claude Code'\n"
-                        "3. Complete the authentication flow\n"
-                        "4. Re-run the ticket"
-                    ),
-                )
+                auth_recovered = False
                 try:
-                    async_to_sync(async_send_ticket_log_notification)(ticket.id, {
-                        'id': auth_error_log.id,
-                        'log_type': auth_error_log.log_type,
-                        'command': auth_error_log.command,
-                        'explanation': auth_error_log.explanation or '',
-                        'output': auth_error_log.output or '',
-                        'created_at': auth_error_log.created_at.isoformat()
-                    })
-                except Exception:
-                    pass
+                    base_auth_check = check_claude_auth_status(base_ws)
+                    if base_auth_check.get('authenticated'):
+                        # Central auth works — copy credentials to ticket sandbox
+                        logger.info(f"[CLI STEP 4/7] Central workspace {base_ws} auth OK, copying credentials to {workspace_id}")
+                        creds_result = run_command(base_ws, "cat ~/.claude/.credentials.json", timeout=15, with_node_env=False)
+                        creds_content = creds_result.get('stdout', '').strip()
+                        if creds_content and creds_result.get('exit_code') == 0:
+                            import json as _json
+                            # Validate it's actual JSON before copying
+                            _json.loads(creds_content)
+                            # Write credentials to ticket workspace (base64 to avoid shell escaping issues)
+                            import base64
+                            creds_b64 = base64.b64encode(creds_content.encode()).decode()
+                            write_cmd = f'mkdir -p ~/.claude && echo "{creds_b64}" | base64 -d > ~/.claude/.credentials.json'
+                            write_result = run_command(workspace_id, write_cmd, timeout=15, with_node_env=False)
+                            if write_result.get('exit_code') == 0:
+                                # Re-verify auth after copying credentials
+                                recheck = check_claude_auth_status(workspace_id)
+                                if recheck.get('authenticated'):
+                                    logger.info(f"[CLI STEP 4/7] ✓ Auth recovered after copying credentials from {base_ws}")
+                                    auth_recovered = True
+                                else:
+                                    logger.warning(f"[CLI STEP 4/7] Auth still failing after credential copy: {recheck}")
+                    else:
+                        logger.warning(f"[CLI STEP 4/7] Central workspace {base_ws} auth also failed")
+                except Exception as e:
+                    logger.warning(f"[CLI STEP 4/7] Error during auth recovery attempt: {e}")
 
-                ticket.status = 'blocked'
-                ticket.queue_status = 'none'
-                ticket.notes = (ticket.notes or "") + f"""
+                if not auth_recovered:
+                    error_msg = "Claude Code is not authenticated. Please reconnect in Settings."
+                    logger.error(f"[CLI STEP 4/7] ✗ {error_msg}")
+
+                    # Mark the user as not authenticated so Settings page shows correct status
+                    profile.claude_code_authenticated = False
+                    profile.save(update_fields=['claude_code_authenticated'])
+                    logger.info(f"[CLI STEP 4/7] Marked user as not authenticated")
+
+                    # Create a visible TicketLog so the error shows on the Actions tab
+                    auth_error_log = TicketLog.objects.create(
+                        ticket=ticket,
+                        log_type='error',
+                        command='Claude Authentication',
+                        explanation='Authentication expired — please reconnect',
+                        output=(
+                            "Claude Code OAuth token has expired.\n\n"
+                            "To fix this:\n"
+                            "1. Go to Settings > Claude Code\n"
+                            "2. Click 'Connect Claude Code'\n"
+                            "3. Complete the authentication flow\n"
+                            "4. Re-run the ticket"
+                        ),
+                    )
+                    try:
+                        async_to_sync(async_send_ticket_log_notification)(ticket.id, {
+                            'id': auth_error_log.id,
+                            'log_type': auth_error_log.log_type,
+                            'command': auth_error_log.command,
+                            'explanation': auth_error_log.explanation or '',
+                            'output': auth_error_log.output or '',
+                            'created_at': auth_error_log.created_at.isoformat()
+                        })
+                    except Exception:
+                        pass
+
+                    ticket.status = 'blocked'
+                    ticket.queue_status = 'none'
+                    ticket.notes = (ticket.notes or "") + f"""
 ---
 [{datetime.now().strftime('%Y-%m-%d %H:%M')}] ❌ BLOCKED - Claude Auth Failed
 Reason: {error_msg}
 Mode: Claude Code CLI
 Action: Please go to Settings > Claude Code and reconnect
 """
-                ticket.save(update_fields=['status', 'queue_status', 'notes'])
+                    ticket.save(update_fields=['status', 'queue_status', 'notes'])
 
-                broadcast_ticket_notification(conversation_id, {
-                    'is_notification': True,
-                    'notification_type': 'claude_auth_required',
-                    'function_name': 'ticket_execution',
-                    'status': 'failed',
-                    'message': f"⚠️ Claude Code authentication required. Please reconnect in Settings.",
-                    'ticket_id': ticket.id,
-                    'ticket_name': ticket.name,
-                    'queue_status': 'none',
-                    'settings_url': '/settings/#claude-code',
-                    'refresh_checklist': True
-                })
+                    broadcast_ticket_notification(conversation_id, {
+                        'is_notification': True,
+                        'notification_type': 'claude_auth_required',
+                        'function_name': 'ticket_execution',
+                        'status': 'failed',
+                        'message': f"⚠️ Claude Code authentication required. Please reconnect in Settings.",
+                        'ticket_id': ticket.id,
+                        'ticket_name': ticket.name,
+                        'queue_status': 'none',
+                        'settings_url': '/settings/#claude-code',
+                        'refresh_checklist': True
+                    })
 
-                broadcast_ticket_status_change(ticket_id, 'blocked', 'none', error_reason=error_msg)
+                    broadcast_ticket_status_change(ticket_id, 'blocked', 'none', error_reason=error_msg)
 
-                return {
-                    "status": "error",
-                    "ticket_id": ticket_id,
-                    "error": error_msg,
-                    "cli_error": True,
-                    "auth_required": True,
-                    "settings_url": "/settings/#claude-code",
-                    "execution_time": f"{time.time() - start_time:.2f}s"
-                }
+                    return {
+                        "status": "error",
+                        "ticket_id": ticket_id,
+                        "error": error_msg,
+                        "cli_error": True,
+                        "auth_required": True,
+                        "settings_url": "/settings/#claude-code",
+                        "execution_time": f"{time.time() - start_time:.2f}s"
+                    }
 
         logger.info(f"[CLI STEP 4/7] ✓ Claude auth verified")
 

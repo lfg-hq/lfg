@@ -3521,7 +3521,10 @@
                 if (executeBtn) {
                     if (effectiveQueueStatus === 'none') {
                         executeBtn.disabled = false;
-                        executeBtn.innerHTML = '<i class="fas fa-hammer"></i> Build Ticket';
+                        const hasBeenBuilt = currentTicket && (currentTicket.has_logs || currentTicket.last_execution_at);
+                        executeBtn.innerHTML = hasBeenBuilt
+                            ? '<i class="fas fa-play"></i> Continue'
+                            : '<i class="fas fa-hammer"></i> Build Ticket';
                         executeBtn.classList.remove('stop-mode');
                         // Update currentTicket's queue_status
                         currentTicket.queue_status = 'none';
@@ -4397,7 +4400,10 @@
                     executeBtn.classList.add('stop-mode');
                 } else {
                     executeBtn.disabled = false;
-                    executeBtn.innerHTML = '<i class="fas fa-hammer"></i> Build Ticket';
+                    const hasBeenBuilt = ticket.has_logs || ticket.last_execution_at;
+                    executeBtn.innerHTML = hasBeenBuilt
+                        ? '<i class="fas fa-play"></i> Continue'
+                        : '<i class="fas fa-hammer"></i> Build Ticket';
                     executeBtn.classList.remove('stop-mode');
                 }
             }
