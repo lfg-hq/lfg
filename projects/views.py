@@ -26,12 +26,14 @@ import time
 from pathlib import Path
 from django.views.decorators.csrf import csrf_exempt
 from django.utils import timezone
+from django_q.tasks import async_task
 import json
 import mimetypes
 import os
+import uuid
 
-# Import ServerConfig and MagpieWorkspace from development app
-from development.models import ServerConfig, MagpieWorkspace
+# Import ServerConfig and Sandbox from development app
+from development.models import ServerConfig, Sandbox
 from accounts.models import LLMApiKeys, ExternalServicesAPIKeys, GitHubToken
 from rest_framework_simplejwt.tokens import RefreshToken
 import logging
@@ -364,6 +366,15 @@ def project_detail(request, project_id):
         logger.debug(f"Could not get stack config: {e}")
 
     logger.info(f"Project direct conversations: {project.direct_conversations.all()}", extra={'easylogs_metadata': {'project_id': project.id, 'project_name': project.name}})
+
+    # Get instant apps count
+    instant_apps_count = 0
+    try:
+        from development.models import InstantApp
+        instant_apps_count = InstantApp.objects.filter(project=project).count()
+    except Exception:
+        pass
+
     return render(request, 'projects/project_detail.html', {
         'project': project,
         'current_project': project,
@@ -373,6 +384,7 @@ def project_detail(request, project_id):
         'total_chunks': code_chunks.__len__() if code_chunks else 0,
         'codebase_map': codebase_map,
         'stack_config': stack_config,
+        'instant_apps_count': instant_apps_count,
     })
 
 @login_required
@@ -1269,7 +1281,7 @@ def app_preview(request, project_id):
     preview_port = project.custom_default_port or stack_config.get('default_port', 3000)
 
     # Get Magpie workspace for this project (any workspace with an IPv6 address)
-    workspace = MagpieWorkspace.objects.filter(
+    workspace = Sandbox.objects.filter(
         project=project,
         ipv6_address__isnull=False
     ).exclude(ipv6_address='').order_by('-updated_at').first()
@@ -1492,7 +1504,7 @@ def _reprovision_crashed_workspace(project, old_workspace, user, send_progress_f
 
     Args:
         project: The Project instance
-        old_workspace: The crashed MagpieWorkspace instance
+        old_workspace: The crashed Sandbox instance
         user: The user making the request
         send_progress_fn: Optional function to send progress updates
 
@@ -1745,7 +1757,7 @@ def start_dev_server_api(request, project_id):
         send_workspace_progress(project_id, 'checking_workspace', 'Looking for existing workspace...')
 
         # Find the Magpie workspace for this project (any workspace with IPv6)
-        workspace = MagpieWorkspace.objects.filter(
+        workspace = Sandbox.objects.filter(
             project=project,
             ipv6_address__isnull=False
         ).exclude(ipv6_address='').order_by('-updated_at').first()
@@ -1803,8 +1815,15 @@ if [ -d {project_dir}/.git ]; then
     echo "Git repo exists, updating..."
     cd {project_dir}
     git remote set-url origin "{auth_remote_url}"
+elif [ -d {project_dir} ] && [ "$(ls -A {project_dir} 2>/dev/null)" ]; then
+    echo "Directory exists with files but no .git, initializing git in-place..."
+    cd {project_dir}
+    git init
+    git remote add origin "{auth_remote_url}" 2>/dev/null || \
+        git remote set-url origin "{auth_remote_url}"
+    git fetch origin 2>/dev/null || echo "FETCH_SKIPPED (remote may not exist)"
 elif [ -d {project_dir} ]; then
-    echo "Directory exists but not a git repo, removing and cloning..."
+    echo "Directory exists but is empty, cloning..."
     rm -rf {project_dir}
     echo "CLONING_REPO"
     git clone "{auth_remote_url}" {project_dir}
@@ -2118,7 +2137,7 @@ def stop_dev_server_api(request, project_id):
 
     try:
         # Find the Magpie workspace for this project (any workspace with IPv6)
-        workspace = MagpieWorkspace.objects.filter(
+        workspace = Sandbox.objects.filter(
             project=project,
             ipv6_address__isnull=False
         ).exclude(ipv6_address='').order_by('-updated_at').first()
@@ -3488,7 +3507,12 @@ def ticket_chat_api(request, project_id, ticket_id):
             })
             logger.info(f"[TICKET CHAT] Saved user message as log {user_log.id}")
 
-            session_id = ticket.cli_session_id  # May be None for new conversation
+            # Look up CLI session from the ticket's sandbox
+            _ticket_sandbox = Sandbox.objects.filter(
+                mags_workspace_id__startswith=f'{ticket.id}-',
+                workspace_type='ticket',
+            ).order_by('-updated_at').first()
+            session_id = _ticket_sandbox.cli_session_id if _ticket_sandbox else None
 
             def run_cli_chat():
                 try:
@@ -4142,7 +4166,7 @@ def ticket_git_status_api(request, project_id, ticket_id):
         - has_uncommitted_changes: Whether there are uncommitted changes in workspace
     """
     from accounts.models import GitHubToken
-    from development.models import MagpieWorkspace
+    from development.models import Sandbox
     from codebase_index.models import IndexedRepository
     project = get_object_or_404(Project, project_id=project_id)
     ticket = get_object_or_404(ProjectTicket, id=ticket_id, project=project)
@@ -4191,7 +4215,7 @@ def ticket_git_status_api(request, project_id, ticket_id):
         response_data['lfg_agent_url'] = f"https://github.com/{github_owner}/{github_repo}/tree/lfg-agent"
 
     # Get workspace info for live git status
-    workspace = MagpieWorkspace.objects.filter(
+    workspace = Sandbox.objects.filter(
         project=project,
         status='ready'
     ).order_by('-updated_at').first()
@@ -4254,7 +4278,7 @@ def push_to_lfg_agent_api(request, project_id, ticket_id):
     4. Merge feature branch into lfg-agent
     """
     from accounts.models import GitHubToken
-    from development.models import MagpieWorkspace
+    from development.models import Sandbox
     from codebase_index.models import IndexedRepository
     from tasks.task_definitions import commit_and_push_changes, merge_feature_to_lfg_agent
 
@@ -4295,7 +4319,7 @@ def push_to_lfg_agent_api(request, project_id, ticket_id):
         }, status=400)
 
     # Get workspace
-    workspace = MagpieWorkspace.objects.filter(
+    workspace = Sandbox.objects.filter(
         project=project,
         status='ready'
     ).order_by('-updated_at').first()
@@ -4681,11 +4705,11 @@ def set_preview_ticket_api(request, project_id):
 
     # Switch branch if requested and ticket has a branch
     if switch_branch and ticket.github_branch:
-        from development.models import MagpieWorkspace
+        from development.models import Sandbox
         from factory.stack_configs import get_stack_config
 
         # Get workspace
-        workspace = MagpieWorkspace.objects.filter(
+        workspace = Sandbox.objects.filter(
             project=project,
             ipv6_address__isnull=False
         ).exclude(ipv6_address='').order_by('-updated_at').first()
@@ -5630,7 +5654,7 @@ def provision_workspace_api(request, project_id):
         }, status=503)
 
     # Check if workspace already exists
-    existing_workspace = MagpieWorkspace.objects.filter(
+    existing_workspace = Sandbox.objects.filter(
         project=project,
         status__in=['ready', 'sleeping'],
     ).order_by('-updated_at').first()
@@ -5758,7 +5782,7 @@ fi
         logger.info(f"[PROVISION] Job created: {run_id}")
 
         # Create DB record
-        workspace = MagpieWorkspace.objects.create(
+        workspace = Sandbox.objects.create(
             project=project,
             job_id=run_id,
             mags_job_id=run_id,

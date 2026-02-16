@@ -51,33 +51,29 @@
     <!-- Navbar -->
     <nav id="navbar" class="fixed top-0 left-0 right-0 z-50 transition-all duration-300 bg-white/95 backdrop-blur-md border-b border-indigo-100 shadow-sm py-3">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center">
-        <!-- Logo -->
         <a href="/" class="flex items-center gap-2 group">
           <div class="bg-indigo-600 text-white p-1.5 rounded-lg transform group-hover:rotate-12 transition-transform">
             <i data-lucide="rocket" class="w-5 h-5"></i>
           </div>
-          <span class="font-display font-bold text-xl tracking-tight text-slate-900">
-            LFG
-          </span>
+          <span class="font-display font-bold text-xl tracking-tight text-slate-900">LFG</span>
         </a>
 
-        <!-- Desktop Nav -->
         <div class="hidden md:flex items-center gap-6">
-          <a href="/#factory" class="text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">Factory Model</a>
-          <a href="/services/" class="text-sm font-medium bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-4 py-2 rounded-full transition-colors">Custom Services</a>
-          <a href="/venture-studio/" class="text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">Rev-Share Studio</a>
-          
+          <a href="/" class="text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">Home</a>
+          <a href="/agent/" class="text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">Agent</a>
+          <a href="/services/" class="text-sm font-medium text-indigo-600 font-semibold">Services</a>
+          <a href="/blog/" class="text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">Blog</a>
+          <a href="/#portfolio" class="text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">Portfolio</a>
           <div class="flex items-center gap-4 ml-2">
             <a href="https://github.com/lfg-hq/lfg" target="_blank" rel="noopener noreferrer" class="text-slate-500 hover:text-slate-900 transition-colors">
               <i data-lucide="github" class="w-5 h-5"></i>
             </a>
-            <a href="/accounts/auth/" class="bg-slate-900 hover:bg-indigo-600 text-white px-5 py-2 rounded-full text-sm font-semibold transition-all shadow-lg hover:shadow-indigo-500/25 active:scale-95">
-              Launch Agent Platform
+            <a href="/#hero-form" class="bg-slate-900 hover:bg-indigo-600 text-white px-5 py-2 rounded-full text-sm font-semibold transition-all shadow-lg hover:shadow-indigo-500/25 active:scale-95">
+              Submit Your Idea
             </a>
           </div>
         </div>
 
-        <!-- Mobile Toggle -->
         <div class="md:hidden">
           <button id="mobile-menu-btn" class="text-slate-600">
             <i data-lucide="menu" class="w-6 h-6"></i>
@@ -85,13 +81,14 @@
         </div>
       </div>
 
-      <!-- Mobile Menu -->
       <div id="mobile-menu" class="hidden md:hidden absolute top-full left-0 w-full bg-white border-b border-slate-200 p-4 flex-col gap-4 shadow-xl">
-        <a href="/#factory" class="text-base font-medium text-slate-600 py-2 mobile-link">Factory Model</a>
-        <a href="/services/" class="text-base font-medium text-slate-600 py-2 mobile-link">Custom Services</a>
-        <a href="/venture-studio/" class="text-base font-medium text-slate-600 py-2 mobile-link">Rev-Share Studio</a>
-        <a href="/accounts/auth/" class="bg-indigo-600 text-white w-full py-3 rounded-lg font-semibold text-center block">
-          Launch Agent Platform
+        <a href="/" class="text-base font-medium text-slate-600 py-2 mobile-link">Home</a>
+        <a href="/agent/" class="text-base font-medium text-slate-600 py-2 mobile-link">Agent</a>
+        <a href="/services/" class="text-base font-medium text-slate-600 py-2 mobile-link">Services</a>
+        <a href="/blog/" class="text-base font-medium text-slate-600 py-2 mobile-link">Blog</a>
+        <a href="/#portfolio" class="text-base font-medium text-slate-600 py-2 mobile-link">Portfolio</a>
+        <a href="/#hero-form" class="bg-indigo-600 text-white w-full py-3 rounded-lg font-semibold text-center block mobile-link">
+          Submit Your Idea
         </a>
       </div>
     </nav>
@@ -145,14 +142,14 @@
           </div>
 
           <div class="flex flex-wrap items-center gap-4">
-            <a href="#services-form" class="px-6 py-3 rounded-full bg-indigo-600 text-white font-semibold shadow-glow hover:bg-indigo-700">Claim the $999 offer</a>
+            <a href="#services-form" class="px-6 py-3 rounded-full bg-indigo-600 text-white font-semibold shadow-glow hover:bg-indigo-700">Start your build</a>
             <div class="text-sm text-slate-500">Limited seats. We reply within 24 hours.</div>
           </div>
         </div>
         <div class="glass rounded-2xl shadow-2xl p-6 border border-indigo-50">
           <div class="flex items-center gap-2 text-indigo-600 font-semibold mb-4">
             <i data-lucide="clipboard-list" class="w-5 h-5"></i>
-            <span>Tell us about your build</span>
+            <span>Tell us about your project requirements</span>
           </div>
           <form id="services-form" class="space-y-4">
             <div class="grid sm:grid-cols-2 gap-4">
@@ -182,7 +179,7 @@
               </div>
               <div>
                 <label class="text-sm font-semibold text-slate-700">Budget</label>
-                <input name="budget" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="$999 intro or custom" />
+                <input name="budget" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="e.g. $999 intro or custom" />
               </div>
             </div>
             <div>
@@ -328,8 +325,8 @@
         <div class="mt-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div class="space-y-1">
             <p class="text-indigo-600 font-semibold uppercase tracking-wide text-xs">Introductory offer</p>
-            <h3 class="font-display text-2xl font-bold">$999 for up to 5 features</h3>
-            <p class="text-slate-600 text-sm">Includes deployment, documentation, and source code handover.</p>
+            <h3 class="font-display text-2xl font-bold">$999 to ship your production app in less than a week</h3>
+            <p class="text-slate-600 text-sm">*Limited features. Includes deployment, documentation, and source code handover.</p>
           </div>
           <a href="#services-form" class="px-6 py-3 rounded-full bg-slate-900 text-white font-semibold hover:bg-slate-800">Start my build</a>
         </div>
@@ -388,10 +385,12 @@
             <div>
                 <h4 class="font-bold text-white mb-4 uppercase text-xs tracking-wider">Company</h4>
                 <ul class="space-y-3 text-sm text-slate-400">
-                    <li><a href="/#factory" class="hover:text-indigo-400 transition-colors">Factory model</a></li>
-                    <li><a href="/services/" class="hover:text-indigo-400 transition-colors">Custom services</a></li>
-                    <li><a href="/venture-studio/" class="hover:text-indigo-400 transition-colors">Rev-share studio</a></li>
-                    <li><a href="/docs/" class="hover:text-indigo-400 transition-colors">Docs & PRDs</a></li>
+                    <li><a href="/agent/" class="hover:text-indigo-400 transition-colors">Agent</a></li>
+                    <li><a href="/services/" class="hover:text-indigo-400 transition-colors">Services</a></li>
+                    <li><a href="/blog/" class="hover:text-indigo-400 transition-colors">Blog</a></li>
+                    <li><a href="/#portfolio" class="hover:text-indigo-400 transition-colors">Portfolio</a></li>
+                    <li><a href="/#book-demo" class="hover:text-indigo-400 transition-colors">Book demo</a></li>
+                    <li><a href="/venture-studio/" class="hover:text-indigo-400 transition-colors">Venture studio</a></li>
                 </ul>
             </div>
 

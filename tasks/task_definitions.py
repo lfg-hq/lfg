@@ -76,7 +76,7 @@ from factory.mags import (
 from factory.prompts.builder_prompt import get_system_builder_mode
 from factory.ai_tools import tools_builder
 from factory.stack_configs import get_stack_config, get_bootstrap_script, get_gitignore_content
-from development.models import MagpieWorkspace
+from development.models import Sandbox
 import time
 
 # Context variables to store execution context
@@ -240,7 +240,7 @@ def get_github_token(user) -> Optional[str]:
 def get_or_create_github_repo(project, user, stack: str = None) -> Dict[str, Any]:
     """
     Get existing GitHub repo or create a new one for the project.
-    If creating new, initialize it with the appropriate template for the stack.
+    New repos are created empty — scaffolding happens in the workspace via push_template_and_create_branch().
 
     Args:
         project: The Project instance
@@ -256,9 +256,7 @@ def get_or_create_github_repo(project, user, stack: str = None) -> Dict[str, Any
     from codebase_index.models import IndexedRepository
 
     # Get stack config
-    stack = stack or getattr(project, 'stack', 'nextjs')
-    stack_config = get_stack_config(stack)
-    template_repo = stack_config['template_repo']
+    stack = stack or getattr(project, 'stack', '') or 'custom'
 
     # Check if project already has a GitHub repo linked
     try:
@@ -275,26 +273,53 @@ def get_or_create_github_repo(project, user, stack: str = None) -> Dict[str, Any
             'Accept': 'application/vnd.github.v3+json'
         }
 
-        # Try to get the main branch to see if repo has content
+        # Check if the repo still exists on GitHub
         try:
-            main_response = requests.get(
-                f'https://api.github.com/repos/{indexed_repo.github_owner}/{indexed_repo.github_repo_name}/git/refs/heads/main',
+            repo_response = requests.get(
+                f'https://api.github.com/repos/{indexed_repo.github_owner}/{indexed_repo.github_repo_name}',
                 headers=headers,
                 timeout=10
             )
-            repo_has_content = (main_response.status_code == 200)
-        except:
-            repo_has_content = False
 
-        logger.info(f"Existing repo has content: {repo_has_content}")
+            if repo_response.status_code == 404:
+                # Repo was deleted from GitHub — remove stale DB record and recreate
+                logger.warning(
+                    f"GitHub repo {indexed_repo.github_owner}/{indexed_repo.github_repo_name} "
+                    f"no longer exists (404). Deleting DB record and recreating."
+                )
+                indexed_repo.delete()
+                # Fall through to creation below
+            else:
+                # Repo exists — check if it has content (main branch)
+                try:
+                    main_response = requests.get(
+                        f'https://api.github.com/repos/{indexed_repo.github_owner}/{indexed_repo.github_repo_name}/git/refs/heads/main',
+                        headers=headers,
+                        timeout=10
+                    )
+                    repo_has_content = (main_response.status_code == 200)
+                except:
+                    repo_has_content = False
 
-        return {
-            'owner': indexed_repo.github_owner,
-            'repo_name': indexed_repo.github_repo_name,
-            'url': indexed_repo.github_url,
-            'created': False,
-            'needs_template': not repo_has_content  # If no content, needs template
-        }
+                logger.info(f"Existing repo has content: {repo_has_content}")
+
+                return {
+                    'owner': indexed_repo.github_owner,
+                    'repo_name': indexed_repo.github_repo_name,
+                    'url': indexed_repo.github_url,
+                    'created': False,
+                    'needs_template': not repo_has_content
+                }
+        except requests.exceptions.RequestException:
+            # Network error — assume repo exists, return what we have
+            logger.warning(f"Could not verify GitHub repo exists, returning existing record")
+            return {
+                'owner': indexed_repo.github_owner,
+                'repo_name': indexed_repo.github_repo_name,
+                'url': indexed_repo.github_url,
+                'created': False,
+                'needs_template': False
+            }
     except IndexedRepository.DoesNotExist:
         logger.info(f"No existing GitHub repo found for project {project.name}, will create new one")
 
@@ -340,62 +365,7 @@ def get_or_create_github_repo(project, user, stack: str = None) -> Dict[str, Any
 
         logger.info(f"Created empty GitHub repo: {owner}/{repo_name}")
 
-        # Step 2: Initialize repo with template using GitHub API
-        # This is a template repository, so we use the GitHub template API
-        repo_needs_template = True
-
-        # Only use template if one is configured for this stack
-        if template_repo:
-            try:
-                # First, delete the empty repo we just created
-                delete_response = requests.delete(
-                    f'https://api.github.com/repos/{owner}/{repo_name}',
-                    headers=headers,
-                    timeout=10
-                )
-
-                if delete_response.status_code not in [204, 404]:
-                    logger.warning(f"Failed to delete empty repo (will continue): {delete_response.status_code}")
-
-                # Now create from template
-                logger.info(f"Creating repo from template: {template_repo}")
-                template_response = requests.post(
-                    f'https://api.github.com/repos/{template_repo}/generate',
-                    headers=headers,
-                    json={
-                        'owner': owner,
-                        'name': repo_name,
-                        'description': f'LFG Project: {project.name}',
-                        'private': True
-                    },
-                    timeout=30
-                )
-
-                if template_response.status_code == 201:
-                    repo_data = template_response.json()
-                    repo_url = repo_data['html_url']
-                    logger.info(f"Successfully created repo from template: {owner}/{repo_name}")
-                    repo_needs_template = False  # Template was successfully applied
-                else:
-                    # If template creation fails, fall back to the empty repo
-                    error_detail = template_response.json().get('message', '') if template_response.text else ''
-                    logger.warning(f"Template creation failed ({template_response.status_code}): {error_detail}. Will push template from workspace.")
-                    # Recreate the empty repo
-                    response = requests.post(
-                        'https://api.github.com/user/repos',
-                        headers=headers,
-                        json=data,
-                        timeout=10
-                    )
-                    if response.status_code == 201:
-                        repo_data = response.json()
-                        repo_url = repo_data['html_url']
-
-            except Exception as e:
-                logger.warning(f"Failed to use template repository: {str(e)}. Will push template from workspace.")
-        else:
-            # No template configured for this stack (e.g., 'custom')
-            logger.info(f"No template configured for stack '{stack}', using empty repo")
+        # Scaffolding happens in push_template_and_create_branch() via scaffold_cmd
 
         # Create IndexedRepository record
         IndexedRepository.objects.create(
@@ -412,7 +382,7 @@ def get_or_create_github_repo(project, user, stack: str = None) -> Dict[str, Any
             'repo_name': repo_name,
             'url': repo_url,
             'created': True,
-            'needs_template': repo_needs_template
+            'needs_template': True  # Always scaffold in workspace
         }
     elif response.status_code == 422:
         # Repo already exists, get user info first to determine owner
@@ -577,7 +547,7 @@ def get_github_user_info(token: str) -> Dict[str, str]:
     return {'name': 'LFG Agent', 'email': 'agent@lfg.ai'}
 
 
-def push_template_and_create_branch(job_id: str, owner: str, repo_name: str, branch_name: str, token: str, stack: str = 'nextjs', project=None) -> Dict[str, Any]:
+def push_template_and_create_branch(job_id: str, owner: str, repo_name: str, branch_name: str, token: str, stack: str = 'custom', project=None) -> Dict[str, Any]:
     """
     Initialize an empty repository and create the feature branch.
 
@@ -630,13 +600,42 @@ Project generated by LFG.
 This project structure will be generated by AI based on your requirements.
 """
 
+    # Run scaffold command if available for this stack
+    scaffold_cmd = stack_config.get('scaffold_cmd')
+    scaffolded = False
+
+    if scaffold_cmd:
+        logger.info(f"[TEMPLATE] Scaffolding {stack_name} project with: {scaffold_cmd}")
+        scaffold_script = f"""
+cd {MAGS_WORKING_DIR}
+rm -rf {project_dir}
+export PATH=/root/.npm-global/bin:$PATH
+export npm_config_cache=/root/.npm-cache
+{scaffold_cmd}
+ls -la {MAGS_WORKING_DIR}/{project_dir}/ 2>/dev/null && echo "SCAFFOLD_OK" || echo "SCAFFOLD_FAILED"
+"""
+        scaffold_result = run_command(workspace_id=job_id, command=scaffold_script, timeout=180)
+        stdout = scaffold_result.get('stdout', '')
+        if 'SCAFFOLD_OK' in stdout:
+            logger.info(f"[TEMPLATE] Scaffold complete for {stack_name}")
+            scaffolded = True
+        else:
+            logger.warning(f"[TEMPLATE] Scaffold failed, falling back to empty dir: {stdout[:200]}")
+            run_command(workspace_id=job_id, command=f"mkdir -p {MAGS_WORKING_DIR}/{project_dir}", timeout=10)
+    else:
+        # No scaffold — create empty directory (current behavior)
+        run_command(workspace_id=job_id, command=f"mkdir -p {MAGS_WORKING_DIR}/{project_dir}", timeout=10)
+
     commands = [
-        # Create empty project directory
-        f"mkdir -p {MAGS_WORKING_DIR}/{project_dir}",
         # Create .gitignore file with stack-specific content
         f"cat > {MAGS_WORKING_DIR}/{project_dir}/.gitignore << 'GITIGNORE_EOF'\n{gitignore_content}\nGITIGNORE_EOF",
-        # Create README.md
-        f"cat > {MAGS_WORKING_DIR}/{project_dir}/README.md << 'README_EOF'\n{readme_content}\nREADME_EOF",
+    ]
+
+    # Only create README.md if we didn't scaffold (scaffold likely has its own)
+    if not scaffolded:
+        commands.append(f"cat > {MAGS_WORKING_DIR}/{project_dir}/README.md << 'README_EOF'\n{readme_content}\nREADME_EOF")
+
+    commands += [
         # Initialize new git repo
         f"cd {MAGS_WORKING_DIR}/{project_dir} && git init -b main",
         # Configure git user with actual GitHub account info
@@ -722,7 +721,7 @@ This project structure will be generated by AI based on your requirements.
         return {'status': 'error', 'message': str(e)}
 
 
-def setup_git_in_workspace(job_id: str, owner: str, repo_name: str, branch_name: str, token: str, stack: str = 'nextjs') -> Dict[str, Any]:
+def setup_git_in_workspace(job_id: str, owner: str, repo_name: str, branch_name: str, token: str, stack: str = 'custom') -> Dict[str, Any]:
     """
     Setup git repository in workspace and checkout the feature branch.
 
@@ -770,26 +769,14 @@ if [ -d {project_dir}/.git ]; then
     git remote set-url origin https://{token}@github.com/{owner}/{repo_name}.git
     git fetch origin
     git checkout {escaped_branch} || git checkout -b {escaped_branch} origin/{escaped_branch} || (git fetch origin {escaped_branch} && git checkout {escaped_branch})
-elif [ -d {project_dir} ]; then
-    echo "Directory exists but not a git repo, removing and cloning..."
-    rm -rf {project_dir}
-    # Try to clone, handle empty repo case
-    if git clone https://{token}@github.com/{owner}/{repo_name}.git {project_dir} 2>/dev/null; then
-        cd {project_dir}
-        # Check if the repo has any commits
-        if git rev-parse HEAD >/dev/null 2>&1; then
-            git checkout {escaped_branch} || git checkout -b {escaped_branch}
-        else
-            echo "Empty repo, initializing with minimal files..."
-            git checkout -b main
-        fi
-    else
-        echo "Clone failed (possibly empty repo), initializing fresh..."
-        mkdir -p {project_dir}
-        cd {project_dir}
-        git init -b main
-        git remote add origin https://{token}@github.com/{owner}/{repo_name}.git
-    fi
+elif [ -d {project_dir} ] && [ "$(ls -A {project_dir} 2>/dev/null)" ]; then
+    echo "Directory exists with files but no .git, initializing git in-place..."
+    cd {project_dir}
+    git init
+    git remote add origin https://{token}@github.com/{owner}/{repo_name}.git 2>/dev/null || \
+        git remote set-url origin https://{token}@github.com/{owner}/{repo_name}.git
+    git fetch origin 2>/dev/null || echo "FETCH_SKIPPED (remote may not exist)"
+    git checkout {escaped_branch} 2>/dev/null || git checkout -b {escaped_branch}
 else
     echo "Directory doesn't exist, cloning..."
     # Try to clone, handle empty repo case
@@ -858,7 +845,7 @@ git branch --show-current
         return {'status': 'error', 'message': str(e)}
 
 
-def resolve_merge_conflict(job_id: str, feature_branch: str, ticket_id: int, project_id: str, conversation_id: int, stack: str = 'nextjs') -> Dict[str, Any]:
+def resolve_merge_conflict(job_id: str, feature_branch: str, ticket_id: int, project_id: str, conversation_id: int, stack: str = 'custom') -> Dict[str, Any]:
     """
     Resolve merge conflicts by having AI fix them in the workspace.
 
@@ -1086,6 +1073,51 @@ def merge_feature_to_lfg_agent(token: str, owner: str, repo_name: str, feature_b
                 'message': 'Already up to date - no merge needed',
                 'merge_commit_sha': None,
             }
+        elif response.status_code == 404:
+            # Base branch (lfg-agent) doesn't exist — create it from the feature branch and retry
+            logger.warning(f"lfg-agent branch does not exist, creating from {feature_branch}...")
+            try:
+                # Get feature branch HEAD SHA
+                ref_response = requests.get(
+                    f'https://api.github.com/repos/{owner}/{repo_name}/git/refs/heads/{feature_branch}',
+                    headers=headers,
+                    timeout=10
+                )
+                if ref_response.status_code != 200:
+                    logger.error(f"Failed to get {feature_branch} ref: {ref_response.status_code}")
+                    return {'status': 'error', 'message': f'Cannot create lfg-agent: feature branch {feature_branch} not found on remote'}
+
+                feature_sha = ref_response.json()['object']['sha']
+
+                # Create lfg-agent branch pointing at the feature branch SHA
+                create_response = requests.post(
+                    f'https://api.github.com/repos/{owner}/{repo_name}/git/refs',
+                    headers=headers,
+                    json={'ref': 'refs/heads/lfg-agent', 'sha': feature_sha},
+                    timeout=10
+                )
+                if create_response.status_code == 201:
+                    logger.info(f"Created lfg-agent branch from {feature_branch} (SHA: {feature_sha[:8]})")
+                    # Also create main branch if it doesn't exist
+                    requests.post(
+                        f'https://api.github.com/repos/{owner}/{repo_name}/git/refs',
+                        headers=headers,
+                        json={'ref': 'refs/heads/main', 'sha': feature_sha},
+                        timeout=10
+                    )
+                    # Branches now point at the same commit — merge is a no-op
+                    return {
+                        'status': 'success',
+                        'message': f'Created lfg-agent from {feature_branch} (identical commits, no merge needed)',
+                        'merge_commit_sha': feature_sha,
+                    }
+                else:
+                    error_detail = create_response.json().get('message', '') if create_response.text else ''
+                    logger.error(f"Failed to create lfg-agent branch: {create_response.status_code} - {error_detail}")
+                    return {'status': 'error', 'message': f'Failed to create lfg-agent branch: {error_detail}'}
+            except Exception as e:
+                logger.error(f"Exception creating lfg-agent branch: {e}", exc_info=True)
+                return {'status': 'error', 'message': f'Failed to create lfg-agent: {str(e)}'}
         elif response.status_code == 409:
             logger.warning(f"Merge conflict detected for {feature_branch} → lfg-agent")
             return {
@@ -1321,7 +1353,91 @@ def revert_merge_on_branch(token: str, owner: str, repo_name: str, branch: str,
         return {'status': 'error', 'message': str(e)}
 
 
-def commit_and_push_changes(job_id: str, branch_name: str, commit_message: str, ticket_id: int, stack: str = 'nextjs', github_token: str = None, github_owner: str = None, github_repo: str = None) -> Dict[str, Any]:
+def _recreate_github_repo_for_push(job_id: str, github_owner: str, github_repo: str, github_token: str, stack: str = 'custom') -> bool:
+    """
+    Recreate a GitHub repo that was deleted, and clean up the stale IndexedRepository record.
+    Called when `git push` fails with 'Repository not found'.
+
+    Returns True if the repo was successfully recreated.
+    """
+    from codebase_index.models import IndexedRepository
+
+    if not github_token or not github_owner or not github_repo:
+        return False
+
+    headers = {
+        'Authorization': f'token {github_token}',
+        'Accept': 'application/vnd.github.v3+json'
+    }
+
+    try:
+        # Verify repo is actually gone (404)
+        check = requests.get(
+            f'https://api.github.com/repos/{github_owner}/{github_repo}',
+            headers=headers, timeout=10,
+        )
+        if check.status_code != 404:
+            logger.warning(f"[REPO_RECREATE] Repo {github_owner}/{github_repo} returned {check.status_code}, not 404")
+            return False
+
+        # Delete stale IndexedRepository record
+        deleted_count, _ = IndexedRepository.objects.filter(
+            github_owner=github_owner, github_repo_name=github_repo,
+        ).delete()
+        logger.info(f"[REPO_RECREATE] Deleted {deleted_count} stale IndexedRepository record(s)")
+
+        # Create new repo on GitHub
+        data = {
+            'name': github_repo,
+            'description': f'LFG Project (recreated)',
+            'private': True,
+            'auto_init': False,
+        }
+        create_resp = requests.post(
+            'https://api.github.com/user/repos',
+            headers=headers, json=data, timeout=10,
+        )
+
+        if create_resp.status_code == 201:
+            repo_data = create_resp.json()
+            owner = repo_data['owner']['login']
+            repo_url = repo_data['html_url']
+            logger.info(f"[REPO_RECREATE] ✓ Created new repo: {owner}/{github_repo}")
+
+            # Find the project from the workspace and create new IndexedRepository
+            try:
+                from development.models import Sandbox
+                sandbox = Sandbox.objects.filter(
+                    models.Q(mags_workspace_id=job_id) | models.Q(workspace_id=job_id) | models.Q(job_id=job_id)
+                ).first()
+                if sandbox and sandbox.project:
+                    IndexedRepository.objects.create(
+                        project=sandbox.project,
+                        github_url=repo_url,
+                        github_owner=owner,
+                        github_repo_name=github_repo,
+                        github_branch='main',
+                    )
+                    logger.info(f"[REPO_RECREATE] ✓ Created IndexedRepository for project {sandbox.project.name}")
+            except Exception as e:
+                logger.warning(f"[REPO_RECREATE] Could not create IndexedRepository: {e}")
+
+            return True
+        elif create_resp.status_code == 422:
+            # Repo name already taken (maybe recreated by another process)
+            logger.info(f"[REPO_RECREATE] Repo {github_repo} already exists (422), likely recreated elsewhere")
+            return True
+        else:
+            error = create_resp.json().get('message', create_resp.text) if create_resp.text else 'Unknown'
+            logger.error(f"[REPO_RECREATE] ✗ Failed to create repo: {create_resp.status_code} - {error}")
+            return False
+
+    except Exception as e:
+        logger.error(f"[REPO_RECREATE] ✗ Exception: {e}", exc_info=True)
+        return False
+
+
+def commit_and_push_changes(job_id: str, branch_name: str, commit_message: str, ticket_id: int, stack: str = 'custom', github_token: str = None, github_owner: str = None, github_repo: str = None) -> Dict[str, Any]:
     """
     Commit all changes in workspace and push to GitHub.
 
@@ -1350,12 +1466,53 @@ def commit_and_push_changes(job_id: str, branch_name: str, commit_message: str, 
     # Properly escape branch name for shell (handles special characters like &, spaces, etc.)
     escaped_branch = shlex.quote(branch_name)
 
+    # Build the authenticated remote URL (needed for git init and push)
+    remote_url = None
+    if github_token and github_owner and github_repo:
+        remote_url = f"https://{github_token}@github.com/{github_owner}/{github_repo}.git"
+    elif github_owner and github_repo:
+        remote_url = f"https://github.com/{github_owner}/{github_repo}.git"
+
     # Build commands list
     # IMPORTANT: Order matters! We must commit local changes BEFORE pulling,
     # because git pull fails when there are uncommitted changes.
     commands = [
         # Fix git "dubious ownership" error (happens when directory ownership changed for claudeuser)
         f"git config --global --add safe.directory {MAGS_WORKING_DIR}/{project_dir}",
+        # Set git user identity (needed for fresh git init where no global config exists)
+        f'git config --global user.email "lfg-bot@lfg.run" 2>/dev/null; git config --global user.name "LFG Bot" 2>/dev/null; echo "git config set"',
+    ]
+
+    # Initialize git if .git doesn't exist, and always ensure origin remote is configured
+    if remote_url:
+        init_script = (
+            f'cd {MAGS_WORKING_DIR}/{project_dir} && '
+            f'if [ ! -d ".git" ]; then '
+            f'  echo "GIT_INIT: No .git found, initializing..." && '
+            f'  git init && '
+            f'  git remote add origin {remote_url} && '
+            f'  echo "GIT_INIT: Done"; '
+            f'else '
+            f'  echo "GIT_INIT: .git exists" && '
+            f'  git remote add origin {remote_url} 2>/dev/null || '
+            f'  git remote set-url origin {remote_url} && '
+            f'  echo "GIT_INIT: origin remote ensured"; '
+            f'fi'
+        )
+    else:
+        init_script = (
+            f'cd {MAGS_WORKING_DIR}/{project_dir} && '
+            f'if [ ! -d ".git" ]; then '
+            f'  echo "GIT_INIT: No .git found, initializing..." && '
+            f'  git init && '
+            f'  echo "GIT_INIT: Done (no remote configured)"; '
+            f'else '
+            f'  echo "GIT_INIT: .git exists"; '
+            f'fi'
+        )
+    commands.append(init_script)
+
+    commands.extend([
         # Fetch latest from remote to ensure we have remote branch refs
         f"cd {MAGS_WORKING_DIR}/{project_dir} && git fetch origin 2>/dev/null || true",
         # Checkout feature branch with proper fallback order:
@@ -1369,12 +1526,13 @@ def commit_and_push_changes(job_id: str, branch_name: str, commit_message: str, 
         f"cd {MAGS_WORKING_DIR}/{project_dir} && git add -A",
         # Commit local changes FIRST (before pulling - git pull fails with uncommitted changes)
         f'cd {MAGS_WORKING_DIR}/{project_dir} && git commit -m "{escaped_message}" || echo "No changes to commit"',
-    ]
+    ])
 
-    # If we have GitHub token, update remote URL to include auth before pulling/pushing
+    # If we have GitHub token, ensure remote URL includes auth before pulling/pushing
     if github_token and github_owner and github_repo:
+        auth_url = f"https://{github_token}@github.com/{github_owner}/{github_repo}.git"
         commands.append(
-            f"cd {MAGS_WORKING_DIR}/{project_dir} && git remote set-url origin https://{github_token}@github.com/{github_owner}/{github_repo}.git"
+            f"cd {MAGS_WORKING_DIR}/{project_dir} && (git remote set-url origin {auth_url} 2>/dev/null || git remote add origin {auth_url})"
         )
 
     # Pull with rebase to integrate remote changes (now safe since local changes are committed)
@@ -1446,6 +1604,34 @@ def commit_and_push_changes(job_id: str, branch_name: str, commit_message: str, 
                 elif 'No changes to commit' in stdout:
                     logger.info(f"  No changes to commit")
                     continue
+                elif 'git push' in cmd and ('Repository not found' in stderr or 'not found' in stderr):
+                    # GitHub repo was deleted — recreate it and retry push
+                    logger.warning(f"  Repository not found on push, attempting to recreate...")
+                    recreated = _recreate_github_repo_for_push(
+                        job_id, github_owner, github_repo, github_token, stack,
+                    )
+                    if recreated:
+                        new_url = f"https://{github_token}@github.com/{github_owner}/{github_repo}.git"
+                        run_command(job_id, f"cd {MAGS_WORKING_DIR}/{project_dir} && git remote set-url origin {new_url}", timeout=30)
+                        retry = run_command(job_id, cmd, timeout=120)
+                        if retry.get('exit_code', 0) == 0:
+                            logger.info(f"  ✓ Push succeeded after repo recreation")
+                            # Also create main and lfg-agent branches from this push
+                            branch_setup = (
+                                f"cd {MAGS_WORKING_DIR}/{project_dir} && "
+                                f"git push origin {shlex.quote(branch_name)}:main 2>/dev/null; "
+                                f"git push origin {shlex.quote(branch_name)}:lfg-agent 2>/dev/null; "
+                                f"echo 'BRANCHES_CREATED'"
+                            )
+                            br_result = run_command(job_id, branch_setup, timeout=60)
+                            logger.info(f"  Branch setup after repo recreation: {br_result.get('stdout', '').strip()}")
+                            continue
+                        else:
+                            logger.error(f"  ✗ Push still failed after repo recreation: {retry.get('stderr', '')}")
+                            return {'status': 'error', 'message': retry.get('stderr', '') or 'Push failed after repo recreation'}
+                    else:
+                        logger.error(f"  ✗ Could not recreate GitHub repo")
+                        return {'status': 'error', 'message': 'Repository not found and could not recreate it'}
                 else:
                     logger.error(f"  ✗ Git command failed: {stderr or stdout}")
                     return {'status': 'error', 'message': stderr or stdout or 'Git command failed'}
@@ -1480,7 +1666,7 @@ def ensure_workspace_available(ticket_id: int) -> Dict[str, Any]:
             - workspace_id: The workspace identifier (if success)
             - error: Error message (if error)
     """
-    from development.models import MagpieWorkspace
+    from development.models import Sandbox
 
     logger.info(f"[ENSURE_WORKSPACE] Checking workspace for ticket #{ticket_id}")
 
@@ -1489,7 +1675,7 @@ def ensure_workspace_available(ticket_id: int) -> Dict[str, Any]:
         project = ticket.project
 
         # Check if workspace already exists
-        workspace = MagpieWorkspace.objects.filter(
+        workspace = Sandbox.objects.filter(
             project=project,
             status='ready'
         ).order_by('-updated_at').first()
@@ -1568,7 +1754,7 @@ def setup_ticket_workspace(
         Dict with:
             - status: 'success' or 'error'
             - workspace_id: The workspace identifier
-            - workspace: The MagpieWorkspace instance
+            - workspace: The Sandbox instance
             - github_owner: GitHub repository owner
             - github_repo: GitHub repository name
             - feature_branch: Feature branch name
@@ -1577,10 +1763,10 @@ def setup_ticket_workspace(
             - git_setup_error: Any git setup errors (for AI to fix)
             - error: Error message if status is 'error'
     """
-    from development.models import MagpieWorkspace
+    from development.models import Sandbox
 
     # Get stack configuration
-    stack = getattr(project, 'stack', 'nextjs')
+    stack = getattr(project, 'stack', '') or 'custom'
     stack_config = get_stack_config(stack)
 
     logger.info(f"\n{'='*60}\n[WORKSPACE SETUP] Starting for ticket #{ticket.id} (stack: {stack})\n{'='*60}")
@@ -1683,7 +1869,7 @@ def setup_ticket_workspace(
         job_id = job["request_id"]
 
         # Create or update workspace record
-        workspace, _ = MagpieWorkspace.objects.update_or_create(
+        workspace, _ = Sandbox.objects.update_or_create(
             mags_workspace_id=ticket_ws,
             defaults={
                 'project': project,
@@ -2195,7 +2381,7 @@ Action required: Check workspace configuration and GitHub access
         tool_calls_count = content.count('ssh_command') + content.count('Tool call')
         logger.info(f"Estimated tool calls: {tool_calls_count}, Files created: {len(files_created)}, Dependencies: {len(dependencies)}")
 
-        # 12. COMMIT AND PUSH TO GITHUB (if configured and ticket completed)
+        # 12. COMMIT AND PUSH TO GITHUB (always push after execution, regardless of status)
         commit_sha = None
         merge_status = None
 
@@ -2212,11 +2398,12 @@ Action required: Check workspace configuration and GitHub access
                 "execution_time": f"{time.time() - start_time:.2f}s"
             }
 
-        if completed and not failed and github_owner and github_repo and github_token and feature_branch_name:
+        if github_owner and github_repo and github_token and feature_branch_name:
             logger.info(f"\n[COMMIT] Committing and pushing changes to GitHub...")
 
-            # Commit and push changes
-            commit_message = f"feat: {ticket.name}\n\nImplemented ticket #{ticket_id}\n\n{ticket.description[:200]}"
+            # Commit and push changes — always push regardless of completion status
+            commit_prefix = "feat" if completed and not failed else "wip"
+            commit_message = f"{commit_prefix}: {ticket.name}\n\nTicket #{ticket_id}\n\n{ticket.description[:200]}"
             commit_result = commit_and_push_changes(workspace_id, feature_branch_name, commit_message, ticket_id, stack=stack, github_token=github_token, github_owner=github_owner, github_repo=github_repo)
 
             if commit_result['status'] == 'success':
@@ -2227,35 +2414,33 @@ Action required: Check workspace configuration and GitHub access
                 ticket.github_commit_sha = commit_sha
                 ticket.save(update_fields=['github_commit_sha'])
 
-                # Merge feature branch into lfg-agent
-                logger.info(f"[COMMIT] Merging {feature_branch_name} into lfg-agent...")
-                merge_result = merge_feature_to_lfg_agent(github_token, github_owner, github_repo, feature_branch_name)
+                # Only merge to lfg-agent if ticket completed successfully
+                if completed and not failed:
+                    logger.info(f"[COMMIT] Merging {feature_branch_name} into lfg-agent...")
+                    merge_result = merge_feature_to_lfg_agent(github_token, github_owner, github_repo, feature_branch_name)
 
-                if merge_result['status'] == 'success':
-                    logger.info(f"[COMMIT] ✓ Merged {feature_branch_name} into lfg-agent")
-                    merge_status = 'merged'
-                elif merge_result['status'] == 'conflict':
-                    # Try to resolve conflict locally in workspace
-                    logger.warning(f"[COMMIT] ⚠ Merge conflict detected via API, attempting AI-based resolution...")
-                    resolution_result = resolve_merge_conflict(workspace_id, feature_branch_name, ticket_id, project.project_id, conversation_id, stack=stack)
-
-                    if resolution_result['status'] == 'success':
-                        logger.info(f"[COMMIT] ✓ Conflicts resolved and merged locally")
+                    if merge_result['status'] == 'success':
+                        logger.info(f"[COMMIT] ✓ Merged {feature_branch_name} into lfg-agent")
                         merge_status = 'merged'
-                    else:
-                        logger.error(f"[COMMIT] ✗ Could not resolve conflicts: {resolution_result.get('message')}")
-                        merge_status = 'conflict'
-                        # Add conflict details to ticket notes
-                        if 'conflicted_files' in resolution_result:
-                            ticket.notes += f"\n\n⚠ MERGE CONFLICTS:\nFiles: {', '.join(resolution_result['conflicted_files'])}"
-                            ticket.save(update_fields=['notes'])
-                else:
-                    logger.error(f"[COMMIT] ✗ Merge failed: {merge_result.get('message')}")
-                    merge_status = 'failed'
+                    elif merge_result['status'] == 'conflict':
+                        logger.warning(f"[COMMIT] ⚠ Merge conflict detected via API, attempting AI-based resolution...")
+                        resolution_result = resolve_merge_conflict(workspace_id, feature_branch_name, ticket_id, project.project_id, conversation_id, stack=stack)
 
-                # Save merge status to ticket
-                ticket.github_merge_status = merge_status
-                ticket.save(update_fields=['github_merge_status'])
+                        if resolution_result['status'] == 'success':
+                            logger.info(f"[COMMIT] ✓ Conflicts resolved and merged locally")
+                            merge_status = 'merged'
+                        else:
+                            logger.error(f"[COMMIT] ✗ Could not resolve conflicts: {resolution_result.get('message')}")
+                            merge_status = 'conflict'
+                            if 'conflicted_files' in resolution_result:
+                                ticket.notes += f"\n\n⚠ MERGE CONFLICTS:\nFiles: {', '.join(resolution_result['conflicted_files'])}"
+                                ticket.save(update_fields=['notes'])
+                    else:
+                        logger.error(f"[COMMIT] ✗ Merge failed: {merge_result.get('message')}")
+                        merge_status = 'failed'
+
+                    ticket.github_merge_status = merge_status
+                    ticket.save(update_fields=['github_merge_status'])
             else:
                 logger.error(f"[COMMIT] ✗ Failed to commit changes: {commit_result.get('message')}")
 
@@ -2613,11 +2798,15 @@ Using Claude Code CLI mode
 
         logger.info(f"\n[CLI STEP 3/7] Setting up per-ticket Mags workspace...")
         # 3. CREATE OR REUSE PER-TICKET WORKSPACE (forked from claude-auth base)
-        from development.models import MagpieWorkspace
+        from development.models import Sandbox
 
         base_ws = get_latest_claude_auth_workspace_id(user.id) or workspace_name_for_claude_auth(user.id)
-        # Reuse existing ticket workspace if available, otherwise create a fresh one
-        previous_ticket_ws = ticket.cli_workspace_id
+        # Reuse existing ticket sandbox if available, otherwise create a fresh one
+        prev_sandbox = Sandbox.objects.filter(
+            mags_workspace_id__startswith=f'{ticket.id}-',
+            workspace_type='ticket',
+        ).order_by('-updated_at').first()
+        previous_ticket_ws = prev_sandbox.mags_workspace_id if prev_sandbox else None
         ticket_ws = previous_ticket_ws or workspace_name_for_ticket(ticket.id)
         is_reuse = bool(previous_ticket_ws)
         logger.info(
@@ -2653,9 +2842,9 @@ Using Claude Code CLI mode
                     workspace_id = ticket_ws
                     is_reuse = False
                     # Clear stale session since workspace changed
-                    ticket.cli_session_id = None
-                    ticket.cli_workspace_id = None
-                    ticket.save(update_fields=['cli_session_id', 'cli_workspace_id'])
+                    if prev_sandbox:
+                        prev_sandbox.cli_session_id = None
+                        prev_sandbox.save(update_fields=['cli_session_id'])
                     probe_result = run_command(
                         workspace_id=ticket_ws,
                         command='echo "WORKSPACE_READY"',
@@ -2670,7 +2859,7 @@ Using Claude Code CLI mode
                     )
 
             # Create or update workspace record
-            ticket_workspace, _ = MagpieWorkspace.objects.update_or_create(
+            ticket_workspace, _ = Sandbox.objects.update_or_create(
                 mags_workspace_id=ticket_ws,
                 defaults={
                     'project': project,
@@ -2684,9 +2873,6 @@ Using Claude Code CLI mode
                 }
             )
             logger.info(f"[CLI STEP 3/7] ✓ Ticket workspace ready: {ticket_ws}")
-            if ticket.cli_workspace_id != ticket_ws:
-                ticket.cli_workspace_id = ticket_ws
-                ticket.save(update_fields=['cli_workspace_id'])
 
         except MagsAPIError as e:
             error_msg = f"Failed to create ticket workspace: {str(e)}"
@@ -2740,12 +2926,22 @@ Mode: Claude Code CLI
             git_setup_script = f"""
             cd {MAGS_WORKING_DIR}
 
-            # Check if repo already cloned
             if [ -d "{project_dir}/.git" ]; then
+                # Repo already cloned — just fetch latest
                 echo "REPO_EXISTS"
                 cd {project_dir}
                 git fetch origin
+            elif [ -d "{project_dir}" ] && [ "$(ls -A {project_dir} 2>/dev/null)" ]; then
+                # Directory has files but no .git (e.g. scaffolded with --no-git).
+                # Initialise git in-place and add the remote — do NOT delete the files.
+                echo "INIT_EXISTING_DIR"
+                cd {project_dir}
+                git init
+                git remote add origin https://{github_token}@github.com/{github_owner}/{github_repo}.git 2>/dev/null || \
+                    git remote set-url origin https://{github_token}@github.com/{github_owner}/{github_repo}.git
+                git fetch origin
             else
+                # Directory is empty or missing — clone from scratch
                 echo "CLONING_REPO"
                 rm -rf {project_dir}
                 git clone https://{github_token}@github.com/{github_owner}/{github_repo}.git {project_dir}
@@ -3061,6 +3257,13 @@ curl -X POST "$LFG_API_URL/api/v1/cli/request-input/" \\
 ```
 This will block the ticket until the user responds.
 
+## ENVIRONMENT
+
+- You are running inside a cloud sandbox (Mags VM). The preview proxy routes external traffic to **port 8080**.
+- ALWAYS configure the dev server to listen on **port 8080** and bind to **0.0.0.0** (not localhost).
+- For frameworks with host allowlists (Vite, Astro, etc.), allow ALL hosts so the proxy URL works.
+  Examples: Vite/Astro `server.allowedHosts: true`, Django `ALLOWED_HOSTS = ['*']`.
+
 ## INSTRUCTIONS
 
 1. Navigate to the project directory: cd {MAGS_WORKING_DIR}/{project_dir}
@@ -3080,8 +3283,23 @@ You can also output (for logging purposes):
 ❌ IMPLEMENTATION_STATUS: FAILED - [reason]"""
 
         logger.info(f"\n[CLI STEP 7/7] Running Claude Code CLI...")
-        _emit_cli_status("Starting Claude Code execution...")
         # 7. RUN CLAUDE CODE CLI
+        # Check for existing session — if found, resume with a continuation prompt
+        # instead of the full builder prompt so Claude retains context.
+        existing_session_id = ticket_workspace.cli_session_id if ticket_workspace else None
+        if existing_session_id:
+            logger.info(f"[CLI STEP 7/7] Resuming existing session {existing_session_id[:20]}...")
+            _emit_cli_status("Resuming existing Claude session...")
+            implementation_prompt = (
+                f"Continue implementing ticket #{ticket.id}: {ticket.name}\n\n"
+                f"The user clicked 'Continue' to resume execution. "
+                f"Check the current state of the project at {MAGS_WORKING_DIR}/{project_dir}, "
+                f"review what has already been done, and continue implementing any remaining work. "
+                f"When done, call the status API to mark the ticket complete."
+            )
+        else:
+            logger.info(f"[CLI STEP 7/7] Starting new session...")
+            _emit_cli_status("Starting Claude Code execution...")
         cli_start = time.time()
 
         # Real-time streaming callback to create logs and broadcast to UI
@@ -3388,6 +3606,7 @@ You can also output (for logging purposes):
         cli_result = run_claude_cli(
             workspace_id=workspace_id,
             prompt=implementation_prompt,
+            session_id=existing_session_id,  # None = new session, otherwise resume
             timeout=max_execution_time,
             working_dir=MAGS_WORKING_DIR,
             project_id=str(project.project_id),
@@ -3436,12 +3655,67 @@ You can also output (for logging purposes):
                 "auth_expired": True
             }
 
-        # Save session_id and workspace_id for potential resume (allows chat replies to continue conversation)
+        # Handle stale session: if we tried to resume but session no longer exists,
+        # retry with the full builder prompt (no session_id).
+        cli_stdout_check = cli_result.get('stdout') or ''
+        if existing_session_id and 'No conversation found with session ID' in cli_stdout_check:
+            logger.warning(f"[CLI] Stale session {existing_session_id[:20]}... — retrying with full prompt")
+            _emit_cli_status("Session expired, restarting with full context...")
+            ticket_workspace.cli_session_id = None
+            ticket_workspace.save(update_fields=['cli_session_id'])
+            existing_session_id = None
+
+            # Re-build the full implementation prompt (variable was overwritten above for resume)
+            implementation_prompt = f"""You are implementing ticket #{ticket.id}: {ticket.name}
+
+TICKET DESCRIPTION:
+{ticket.description}
+
+PROJECT STACK: {stack_config['name']}
+PROJECT PATH: {MAGS_WORKING_DIR}/{project_dir}
+{project_context}
+{git_error_context}
+
+ATTACHMENTS:
+{attachments_summary}
+
+## ENVIRONMENT
+
+- You are running inside a cloud sandbox (Mags VM). The preview proxy routes external traffic to **port 8080**.
+- ALWAYS configure the dev server to listen on **port 8080** and bind to **0.0.0.0** (not localhost).
+- For frameworks with host allowlists (Vite, Astro, etc.), allow ALL hosts so the proxy URL works.
+  Examples: Vite/Astro `server.allowedHosts: true`, Django `ALLOWED_HOSTS = ['*']`.
+
+## INSTRUCTIONS
+
+1. Navigate to the project directory: cd {MAGS_WORKING_DIR}/{project_dir}
+2. Understand the existing codebase structure
+3. Create tasks to track your implementation progress (using TodoWrite or the API)
+4. Implement the required changes for this ticket
+5. DO NOT commit changes - that will be handled automatically
+6. When done, call the status API to mark complete (or failed)"""
+
+            cli_result = run_claude_cli(
+                workspace_id=workspace_id,
+                prompt=implementation_prompt,
+                session_id=None,
+                timeout=max_execution_time,
+                working_dir=MAGS_WORKING_DIR,
+                project_id=str(project.project_id),
+                poll_callback=stream_output_callback,
+                lfg_env={
+                    'LFG_API_URL': api_base_url,
+                    'LFG_API_KEY': cli_api_key,
+                    'LFG_TICKET_ID': str(ticket.id),
+                    'LFG_PROJECT_ID': str(project.project_id)
+                }
+            )
+
+        # Save session_id on sandbox for potential resume (allows chat replies to continue conversation)
         session_id = cli_result.get('session_id')
         if session_id:
-            ticket.cli_session_id = session_id
-            ticket.cli_workspace_id = ticket_ws  # Track workspace overlay ID for session resume
-            ticket.save(update_fields=['cli_session_id', 'cli_workspace_id'])
+            ticket_workspace.cli_session_id = session_id
+            ticket_workspace.save(update_fields=['cli_session_id'])
             logger.info(f"[CLI] Saved session_id: {session_id} for workspace {ticket_ws}")
 
         # Only create logs from full output if streaming didn't capture any
@@ -3503,10 +3777,11 @@ You can also output (for logging purposes):
                 "execution_time": f"{execution_time:.2f}s"
             }
 
-        if completed and not failed and github_owner and github_repo and github_token and feature_branch_name:
+        if github_owner and github_repo and github_token and feature_branch_name:
             logger.info(f"\n[CLI COMMIT] Committing and pushing changes...")
 
-            commit_message = f"feat: {ticket.name}\n\nImplemented ticket #{ticket_id} (via Claude Code CLI)\n\n{ticket.description[:200]}"
+            commit_prefix = "feat" if completed and not failed else "wip"
+            commit_message = f"{commit_prefix}: {ticket.name}\n\nTicket #{ticket_id} (via Claude Code CLI)\n\n{ticket.description[:200]}"
             commit_result = commit_and_push_changes(
                 workspace_id, feature_branch_name, commit_message, ticket_id,
                 stack=stack, github_token=github_token,
@@ -3520,24 +3795,25 @@ You can also output (for logging purposes):
                 ticket.github_commit_sha = commit_sha
                 ticket.save(update_fields=['github_commit_sha'])
 
-                # Merge to lfg-agent
-                merge_result = merge_feature_to_lfg_agent(github_token, github_owner, github_repo, feature_branch_name)
+                # Only merge to lfg-agent if ticket completed successfully
+                if completed and not failed:
+                    merge_result = merge_feature_to_lfg_agent(github_token, github_owner, github_repo, feature_branch_name)
 
-                if merge_result['status'] == 'success':
-                    logger.info(f"[CLI COMMIT] ✓ Merged to lfg-agent")
-                    merge_status = 'merged'
-                elif merge_result['status'] == 'conflict':
-                    logger.warning(f"[CLI COMMIT] ⚠ Merge conflict, attempting resolution...")
-                    resolution_result = resolve_merge_conflict(
-                        workspace_id, feature_branch_name, ticket_id,
-                        project.project_id, conversation_id, stack=stack,
-                    )
-                    merge_status = 'merged' if resolution_result['status'] == 'success' else 'conflict'
-                else:
-                    merge_status = 'failed'
+                    if merge_result['status'] == 'success':
+                        logger.info(f"[CLI COMMIT] ✓ Merged to lfg-agent")
+                        merge_status = 'merged'
+                    elif merge_result['status'] == 'conflict':
+                        logger.warning(f"[CLI COMMIT] ⚠ Merge conflict, attempting resolution...")
+                        resolution_result = resolve_merge_conflict(
+                            workspace_id, feature_branch_name, ticket_id,
+                            project.project_id, conversation_id, stack=stack,
+                        )
+                        merge_status = 'merged' if resolution_result['status'] == 'success' else 'conflict'
+                    else:
+                        merge_status = 'failed'
 
-                ticket.github_merge_status = merge_status
-                ticket.save(update_fields=['github_merge_status'])
+                    ticket.github_merge_status = merge_status
+                    ticket.save(update_fields=['github_merge_status'])
             else:
                 logger.error(f"[CLI COMMIT] ✗ Commit failed: {commit_result.get('message')}")
 
@@ -3764,7 +4040,7 @@ def execute_ticket_chat_cli(
     import time
     from projects.models import ProjectTicket, Project, TicketLog
     from accounts.models import Profile
-    from development.models import MagpieWorkspace
+    from development.models import Sandbox
     from factory.claude_code_utils import run_claude_cli
     from projects.websocket_utils import async_send_ticket_log_notification
     from asgiref.sync import async_to_sync
@@ -3791,9 +4067,13 @@ def execute_ticket_chat_cli(
 
         # Create or resume per-ticket workspace (forked from claude-auth)
         base_ws = get_latest_claude_auth_workspace_id(user.id) or workspace_name_for_claude_auth(user.id)
-        # For chat: reuse existing workspace when resuming a session,
+        # For chat: reuse existing sandbox when resuming a session,
         # otherwise create fresh unique workspace.
-        previous_ticket_ws = ticket.cli_workspace_id
+        prev_sandbox = Sandbox.objects.filter(
+            mags_workspace_id__startswith=f'{ticket.id}-',
+            workspace_type='ticket',
+        ).order_by('-updated_at').first()
+        previous_ticket_ws = prev_sandbox.mags_workspace_id if prev_sandbox else None
         ticket_ws = previous_ticket_ws or workspace_name_for_ticket(ticket.id)  # {ticket_id}-{uuid8}
         logger.info(
             "[CLI_CHAT] Resolved base workspace for ticket %s (user=%s): base=%s ticket_ws=%s",
@@ -3834,8 +4114,9 @@ def execute_ticket_chat_cli(
                     if session_id:
                         logger.info(f"[CLI_CHAT] Workspace recreated, clearing stale session_id")
                         session_id = None
-                        ticket.cli_session_id = None
-                        ticket.save(update_fields=['cli_session_id'])
+                        if prev_sandbox:
+                            prev_sandbox.cli_session_id = None
+                            prev_sandbox.save(update_fields=['cli_session_id'])
                 else:
                     raise MagsAPIError(
                         f"Workspace probe failed: exit={probe_result.get('exit_code')}, "
@@ -3843,7 +4124,7 @@ def execute_ticket_chat_cli(
                     )
 
             # Create or update workspace record
-            ticket_workspace, _ = MagpieWorkspace.objects.update_or_create(
+            ticket_workspace, _ = Sandbox.objects.update_or_create(
                 mags_workspace_id=ticket_ws,
                 defaults={
                     'project': project,
@@ -3858,17 +4139,12 @@ def execute_ticket_chat_cli(
             )
             logger.info(f"[CLI_CHAT] Ticket workspace ready: {ticket_ws}")
 
-            # Check if workspace matches the ticket's stored workspace for session resume
+            # Check if workspace changed — if so, old session is stale
             if session_id and previous_ticket_ws and previous_ticket_ws != ticket_ws:
                 logger.info(f"[CLI_CHAT] Workspace changed: {previous_ticket_ws} -> {ticket_ws}, clearing old session")
                 session_id = None
-                ticket.cli_session_id = None
-                ticket.cli_workspace_id = None
-                ticket.save(update_fields=['cli_session_id', 'cli_workspace_id'])
-
-            if ticket.cli_workspace_id != ticket_ws:
-                ticket.cli_workspace_id = ticket_ws
-                ticket.save(update_fields=['cli_workspace_id'])
+                ticket_workspace.cli_session_id = None
+                ticket_workspace.save(update_fields=['cli_session_id'])
 
         except MagsAPIError as e:
             logger.error(f"[CLI_CHAT] Failed to create ticket workspace: {e}")
@@ -3899,11 +4175,19 @@ def execute_ticket_chat_cli(
 
         # Ensure project directory exists in workspace (handles workspace resets)
         try:
-            dir_check = run_command(workspace_id=workspace_id, command=f"ls -d {MAGS_WORKING_DIR}/{project_dir}/.git 2>/dev/null && echo DIR_EXISTS || echo DIR_MISSING", timeout=10, with_node_env=False)
+            # Check if project dir has ANY files (not just .git) — the project
+            # may have been scaffolded without git init (e.g. npm create --no-git).
+            dir_check = run_command(
+                workspace_id=workspace_id,
+                command=f"test -d {MAGS_WORKING_DIR}/{project_dir} && ls {MAGS_WORKING_DIR}/{project_dir}/ 2>/dev/null | head -3 && echo HAS_FILES || echo DIR_EMPTY",
+                timeout=10, with_node_env=False,
+            )
             dir_stdout = dir_check.get('stdout', '')
+            has_project_files = 'HAS_FILES' in dir_stdout and 'DIR_EMPTY' not in dir_stdout
 
-            if 'DIR_MISSING' in dir_stdout or 'DIR_EXISTS' not in dir_stdout:
-                logger.info(f"[CLI_CHAT] Project directory {MAGS_WORKING_DIR}/{project_dir} missing, setting up git repo...")
+            if not has_project_files:
+                # Project directory is truly empty or missing — clone from GitHub
+                logger.info(f"[CLI_CHAT] Project directory {MAGS_WORKING_DIR}/{project_dir} empty/missing, setting up from git...")
 
                 # Send notification to user
                 setup_code_log = TicketLog.objects.create(
@@ -3949,27 +4233,35 @@ def execute_ticket_chat_cli(
                 if session_id:
                     logger.info(f"[CLI_CHAT] Clearing stale session_id (project dir was missing)")
                     session_id = None
-                    ticket.cli_session_id = None
-                    ticket.save(update_fields=['cli_session_id'])
+                    ticket_workspace.cli_session_id = None
+                    ticket_workspace.save(update_fields=['cli_session_id'])
             else:
-                # Directory exists - ensure correct branch is checked out
+                # Directory has files — just ensure correct branch if git is set up
+                logger.info(f"[CLI_CHAT] Project directory exists with files, skipping clone")
                 branch_name = ticket.github_branch
                 if branch_name:
-                    import shlex
-                    escaped_branch = shlex.quote(branch_name)
-                    branch_check = run_command(
+                    # Only try branch switch if .git exists
+                    git_check = run_command(
                         workspace_id=workspace_id,
-                        command=f"cd {MAGS_WORKING_DIR}/{project_dir} && git rev-parse --abbrev-ref HEAD",
+                        command=f"test -d {MAGS_WORKING_DIR}/{project_dir}/.git && echo GIT_YES || echo GIT_NO",
                         timeout=10, with_node_env=False,
                     )
-                    current_branch = branch_check.get('stdout', '').strip()
-                    if current_branch and current_branch != branch_name:
-                        logger.info(f"[CLI_CHAT] Switching branch from {current_branch} to {branch_name}")
-                        run_command(
+                    if 'GIT_YES' in git_check.get('stdout', ''):
+                        import shlex
+                        escaped_branch = shlex.quote(branch_name)
+                        branch_check = run_command(
                             workspace_id=workspace_id,
-                            command=f"cd {MAGS_WORKING_DIR}/{project_dir} && git fetch origin && git checkout {escaped_branch} 2>/dev/null || git checkout -b {escaped_branch} origin/{escaped_branch}",
-                            timeout=30, with_node_env=False,
+                            command=f"cd {MAGS_WORKING_DIR}/{project_dir} && git rev-parse --abbrev-ref HEAD",
+                            timeout=10, with_node_env=False,
                         )
+                        current_branch = branch_check.get('stdout', '').strip()
+                        if current_branch and current_branch != branch_name:
+                            logger.info(f"[CLI_CHAT] Switching branch from {current_branch} to {branch_name}")
+                            run_command(
+                                workspace_id=workspace_id,
+                                command=f"cd {MAGS_WORKING_DIR}/{project_dir} && git fetch origin && git checkout {escaped_branch} 2>/dev/null || git checkout -b {escaped_branch} origin/{escaped_branch}",
+                                timeout=30, with_node_env=False,
+                            )
         except Exception as e:
             logger.warning(f"[CLI_CHAT] Project directory check failed: {e}")
 
@@ -4309,8 +4601,8 @@ Please respond to the user's message in the context of this ticket."""
 
         if session_not_found:
             logger.warning(f"[CLI_CHAT] Session not found error - retrying with full context")
-            ticket.cli_session_id = None
-            ticket.save(update_fields=['cli_session_id'])
+            ticket_workspace.cli_session_id = None
+            ticket_workspace.save(update_fields=['cli_session_id'])
 
             # Notify user about session recovery
             recovery_log = TicketLog.objects.create(
@@ -4402,12 +4694,11 @@ Note: The previous conversation session was lost. The conversation history above
             # Fall through to save new session_id below
 
         if not session_not_found or cli_result.get('session_id'):
-            # Save session_id and workspace_id for future resume
+            # Save session_id on sandbox for future resume
             new_session_id = cli_result.get('session_id')
             if new_session_id:
-                ticket.cli_session_id = new_session_id
-                ticket.cli_workspace_id = ticket_ws  # Track workspace overlay ID for session resume
-                ticket.save(update_fields=['cli_session_id', 'cli_workspace_id'])
+                ticket_workspace.cli_session_id = new_session_id
+                ticket_workspace.save(update_fields=['cli_session_id'])
                 logger.info(f"[CLI_CHAT] Saved session_id: {new_session_id[:20]}... for workspace {ticket_ws}")
 
         # Check for uncommitted changes and auto-commit if there are any
@@ -4961,9 +5252,9 @@ def continue_ticket_with_message(ticket_id: int, project_id: int, user_message: 
         logger.info(f"[TICKET CHAT] User message: {user_message[:200]}...")
 
         # 2. CHECK FOR EXISTING WORKSPACE (don't create yet - lazy initialization)
-        from development.models import MagpieWorkspace
+        from development.models import Sandbox
 
-        workspace = MagpieWorkspace.objects.filter(
+        workspace = Sandbox.objects.filter(
             project=project,
             status='ready'
         ).order_by('-updated_at').first()
@@ -5046,7 +5337,7 @@ def continue_ticket_with_message(ticket_id: int, project_id: int, user_message: 
                 logger.info(f"[TICKET CHAT] Including {len(attachment_files)} attachments in context")
 
         # 5. GET STACK CONFIGURATION FOR CORRECT PROJECT DIRECTORY
-        stack = getattr(project, 'stack', 'nextjs')
+        stack = getattr(project, 'stack', '') or 'custom'
         stack_config = get_stack_config(stack)
         project_dir = stack_config['project_dir']
         logger.info(f"[TICKET CHAT] Using stack: {stack}, project_dir: {project_dir}")
@@ -5268,14 +5559,14 @@ def continue_ticket_with_message(ticket_id: int, project_id: int, user_message: 
                 logger.info(f"[TICKET CHAT] Got workspace from context variable: {workspace_id}")
             else:
                 # Fall back to database query - check 'ready' first, then any usable workspace
-                workspace = MagpieWorkspace.objects.filter(
+                workspace = Sandbox.objects.filter(
                     project=project,
                     status='ready'
                 ).order_by('-updated_at').first()
 
                 if not workspace:
                     # Also check for workspaces in 'error' or 'provisioning' state - they might still be usable
-                    workspace = MagpieWorkspace.objects.filter(
+                    workspace = Sandbox.objects.filter(
                         project=project,
                         status__in=['error', 'provisioning']
                     ).order_by('-updated_at').first()
@@ -5430,4 +5721,218 @@ Status: ✓ Complete
             "error": error_msg,
             "workspace_id": workspace_id,
             "execution_time": f"{execution_time:.2f}s"
+        }
+
+
+# ============================================================================
+# INSTANT MODE
+# ============================================================================
+
+def execute_instant_app(instant_app_id: int) -> Dict[str, Any]:
+    """
+    Execute an Instant Mode app build.
+
+    1. Look up InstantApp + user's claude-auth base workspace
+    2. Create a Mags workspace (fork from auth base)
+    3. Run Claude CLI with the app requirements as prompt
+    4. Poll for dev server, get preview URL
+    5. Update InstantApp record with preview_url and status='running'
+    6. Broadcast preview URL to the conversation WebSocket
+    """
+    from development.models import InstantApp, Sandbox
+    from factory.claude_code_utils import run_claude_cli
+    from factory.mags import (
+        get_or_create_workspace_job, get_http_proxy_url,
+        workspace_name_for_ticket, get_latest_claude_auth_workspace_id,
+        MAGS_WORKING_DIR,
+    )
+    from accounts.models import Profile
+
+    start_time = time.time()
+    workspace_id = None
+
+    try:
+        app = InstantApp.objects.get(id=instant_app_id)
+        project = app.project
+        user = app.user
+        conversation_id = app.conversation_id
+
+        logger.info(
+            f"\n{'='*80}\n[INSTANT START] App #{app.id} '{app.name}' | "
+            f"Project #{project.id} | User {user.username}\n{'='*80}"
+        )
+
+        # Broadcast building status
+        if conversation_id:
+            broadcast_ticket_notification(conversation_id, {
+                'notification_type': 'instant_app_status',
+                'instant_app_id': str(app.app_id),
+                'instant_app_status': 'building',
+                'message': f"Provisioning sandbox for {app.name}...",
+            })
+
+        # 1. Get claude-auth base workspace
+        profile = Profile.objects.get(user=user)
+        if not profile.cli_api_key:
+            profile.generate_cli_api_key()
+
+        claude_auth_sandbox = Sandbox.objects.filter(
+            user=user,
+            workspace_type='claude_auth',
+        ).first()
+
+        if not claude_auth_sandbox or not claude_auth_sandbox.mags_workspace_id:
+            raise RuntimeError(
+                "No claude-auth workspace found. Please run a ticket first "
+                "to set up your Claude Code authentication."
+            )
+
+        base_workspace_id = claude_auth_sandbox.mags_workspace_id
+
+        # 2. Create workspace
+        ws_suffix = uuid.uuid4().hex[:8]
+        workspace_id = f"instant-{ws_suffix}"
+
+        logger.info(f"[INSTANT] Creating workspace {workspace_id} from base {base_workspace_id}")
+
+        job_info = get_or_create_workspace_job(
+            workspace_id=workspace_id,
+            base_workspace_id=base_workspace_id,
+            persistent=True,
+        )
+        job_id = job_info.get("request_id") or job_info.get("id", "")
+
+        # Create Sandbox record
+        sandbox = Sandbox.objects.create(
+            project=project,
+            user=user,
+            workspace_type='execute',
+            job_id=workspace_id,
+            workspace_id=workspace_id,
+            mags_workspace_id=workspace_id,
+            mags_job_id=job_id,
+            mags_base_workspace_id=base_workspace_id,
+            status='provisioning',
+        )
+        app.sandbox = sandbox
+        app.save(update_fields=['sandbox'])
+
+        # Wait for VM to boot
+        logger.info(f"[INSTANT] Waiting for VM to boot...")
+        time.sleep(8)
+
+        # 3. Run Claude CLI with requirements prompt
+        prompt = f"""You are building a full-stack Next.js application with SQLite.
+
+## App: {app.name}
+
+## Requirements
+{app.requirements}
+
+## Instructions
+1. Create a new Next.js project at /root/project using: npx create-next-app@latest project --typescript --tailwind --eslint --app --src-dir --import-alias "@/*" --use-npm --yes
+2. cd /root/project
+3. Install better-sqlite3: npm install better-sqlite3
+4. Implement ALL the requirements above — create all pages, API routes, database schema, and UI components
+5. Use Tailwind CSS for styling
+6. After implementing everything, start the dev server: cd /root/project && npm run dev -- -p 3000
+
+IMPORTANT: You MUST start the dev server as the final step. The app must be accessible on port 3000.
+"""
+
+        if conversation_id:
+            broadcast_ticket_notification(conversation_id, {
+                'notification_type': 'instant_app_status',
+                'instant_app_id': str(app.app_id),
+                'instant_app_status': 'building',
+                'message': f"Running Claude Code to build {app.name}...",
+            })
+
+        # Build LFG env vars for Claude CLI
+        lfg_env = {
+            'LFG_API_KEY': profile.cli_api_key,
+            'LFG_API_URL': os.getenv('LFG_API_URL', 'https://app.lfg.run'),
+            'LFG_PROJECT_ID': str(project.project_id),
+        }
+
+        cli_result = run_claude_cli(
+            workspace_id=workspace_id,
+            prompt=prompt,
+            timeout=1200,
+            working_dir=MAGS_WORKING_DIR,
+            project_id=str(project.id),
+            lfg_env=lfg_env,
+        )
+
+        session_id = cli_result.get("session_id")
+        if session_id:
+            sandbox.cli_session_id = session_id
+            sandbox.save(update_fields=['cli_session_id'])
+
+        # 4. Get preview URL
+        preview_url = ""
+        if job_id:
+            try:
+                preview_url = get_http_proxy_url(job_id, 3000)
+                logger.info(f"[INSTANT] Preview URL: {preview_url}")
+            except Exception as e:
+                logger.warning(f"[INSTANT] Could not get preview URL: {e}")
+
+        # 5. Update app status
+        app.status = 'running'
+        app.preview_url = preview_url
+        app.save(update_fields=['status', 'preview_url', 'updated_at'])
+
+        sandbox.status = 'ready'
+        sandbox.proxy_url = preview_url
+        sandbox.project_path = '/root/project'
+        sandbox.save(update_fields=['status', 'proxy_url', 'project_path', 'updated_at'])
+
+        # 6. Broadcast preview URL
+        if conversation_id:
+            broadcast_ticket_notification(conversation_id, {
+                'notification_type': 'instant_app_ready',
+                'instant_app_id': str(app.app_id),
+                'instant_app_status': 'running',
+                'preview_url': preview_url,
+                'app_name': app.name,
+                'message': f"{app.name} is now running!",
+            })
+
+        execution_time = time.time() - start_time
+        logger.info(f"[INSTANT] Completed in {execution_time:.1f}s — preview: {preview_url}")
+
+        return {
+            "status": "success",
+            "app_id": str(app.app_id),
+            "preview_url": preview_url,
+            "execution_time": f"{execution_time:.1f}s",
+        }
+
+    except Exception as e:
+        execution_time = time.time() - start_time
+        error_msg = str(e)
+        logger.error(f"[INSTANT] Error: {error_msg}", exc_info=True)
+
+        # Update app status to error
+        try:
+            app = InstantApp.objects.get(id=instant_app_id)
+            app.status = 'error'
+            app.metadata = {**(app.metadata or {}), 'error': error_msg}
+            app.save(update_fields=['status', 'metadata', 'updated_at'])
+
+            if app.conversation_id:
+                broadcast_ticket_notification(app.conversation_id, {
+                    'notification_type': 'instant_app_status',
+                    'instant_app_id': str(app.app_id),
+                    'instant_app_status': 'error',
+                    'message': f"Error building {app.name}: {error_msg}",
+                })
+        except Exception:
+            pass
+
+        return {
+            "status": "error",
+            "error": error_msg,
+            "execution_time": f"{execution_time:.1f}s",
         }

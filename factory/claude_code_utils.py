@@ -64,6 +64,10 @@ def start_claude_auth(workspace_id: str) -> Dict[str, Any]:
         # Clean up any previous auth attempt
         rm -f /tmp/claude_url.txt /tmp/claude_code.txt /tmp/claude_status.txt /tmp/claude_auth.exp
 
+        # Ensure PTYs are available (containers may not have /dev/pts mounted)
+        mkdir -p /dev/pts 2>/dev/null
+        mount -t devpts devpts /dev/pts 2>/dev/null || true
+
         # Check if expect is available, install if not
         if ! command -v expect >/dev/null 2>&1; then
             apk add --no-cache expect >/dev/null 2>&1 || echo "EXPECT_INSTALL_FAILED"
@@ -527,10 +531,24 @@ def check_claude_auth_status(workspace_id: str) -> Dict[str, Any]:
                 'authentication_error' in stdout_lower or
                 'please run /login' in stdout_lower):
                 logger.warning(f"[CLAUDE_AUTH] Auth error detected in output: {stdout[:300]}")
+                # Remove stale credentials so the next auth attempt starts fresh
+                _exec("rm -f ~/.claude/.credentials.json", timeout=10)
+                logger.info("[CLAUDE_AUTH] Removed stale credentials file")
                 return {
                     'status': 'success',
                     'authenticated': False,
                     'message': 'Claude Code token expired or invalid. Please reconnect.',
+                    'token_expired': True,
+                }
+
+            # If exit_code != 0 and we didn't get "hello", credentials are likely invalid
+            if exit_code != 0:
+                logger.warning(f"[CLAUDE_AUTH] Verification failed (exit_code={exit_code}), removing stale credentials")
+                _exec("rm -f ~/.claude/.credentials.json", timeout=10)
+                return {
+                    'status': 'success',
+                    'authenticated': False,
+                    'message': 'Claude Code verification failed. Please reconnect.',
                     'token_expired': True,
                 }
 
@@ -686,9 +704,9 @@ chown -R $CLAUDE_USER:$CLAUDE_USER $CLAUDE_HOME/.claude
 
 # Set permissions — MUST NOT add group/other write to /root (breaks SSH StrictModes)
 chmod o+rx /root 2>/dev/null || true
-if [ -d {working_dir}/project ]; then
-    chown -R $CLAUDE_USER:$CLAUDE_USER {working_dir}/project 2>/dev/null || chmod -R o+rwx {working_dir}/project 2>/dev/null || true
-fi
+# Pre-create and own the project dir so claudeuser can write to it from the start
+mkdir -p {working_dir}/project
+chown -R $CLAUDE_USER:$CLAUDE_USER {working_dir}/project 2>/dev/null || chmod -R o+rwx {working_dir}/project 2>/dev/null || true
 mkdir -p $CLAUDE_HOME/.npm
 chown -R $CLAUDE_USER:$CLAUDE_USER $CLAUDE_HOME/.npm
 chmod 666 {prompt_file} 2>/dev/null || true

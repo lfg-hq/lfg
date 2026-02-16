@@ -15,7 +15,7 @@ from projects.models import Project, ProjectFeature, ProjectPersona, \
                             ProjectDesignFeature
 from projects.websocket_utils import async_send_ticket_log_notification
 
-from development.models import ServerConfig, MagpieWorkspace
+from development.models import ServerConfig, Sandbox
 
 from django.conf import settings
 from django.core.cache import cache
@@ -72,7 +72,7 @@ def _slugify_project_name(name: str) -> str:
     return slug or "turbo-app"
 
 
-async def async_get_or_fetch_proxy_url(workspace: MagpieWorkspace, port: int = 3000, **kwargs) -> str | None:
+async def async_get_or_fetch_proxy_url(workspace: Sandbox, port: int = 3000, **kwargs) -> str | None:
     """Get preview URL for a workspace via Mags HTTP access."""
     job_id = workspace.mags_job_id or workspace.job_id
     def _get():
@@ -153,12 +153,12 @@ def _update_workspace_metadata(workspace, **metadata):
 
 
 async def _fetch_workspace(project=None, conversation_id=None, workspace_id=None):
-    """Fetch a MagpieWorkspace by workspace_id, project, or conversation."""
+    """Fetch a Sandbox by workspace_id, project, or conversation."""
 
     logger.info(f"[FETCH_WORKSPACE] Called with workspace_id={workspace_id}, project={project.id if project else None}, conversation_id={conversation_id}")
 
     def _query():
-        qs = MagpieWorkspace.objects.all()
+        qs = Sandbox.objects.all()
         if workspace_id:
             logger.info(f"[FETCH_WORKSPACE] Querying by workspace_id: {workspace_id}")
             result = qs.filter(workspace_id=workspace_id).first()
@@ -1093,6 +1093,20 @@ async def app_functions(function_name, function_args, project_id, conversation_i
         # Design preview generation
         case "generate_design_preview":
             return await generate_design_preview(function_args, project_id, conversation_id)
+
+        # Instant Mode
+        case "create_instant_app":
+            # Resolve user_id from project owner
+            _project = await sync_to_async(Project.objects.get)(id=project_id)
+            _user_id = await sync_to_async(lambda: _project.owner_id)()
+            return await handle_create_instant_app(
+                app_name=function_args.get("name", "instant-app"),
+                requirements=function_args.get("requirements", ""),
+                project_id=project_id,
+                conversation_id=conversation_id,
+                user_id=_user_id,
+                env_vars=function_args.get("env_vars"),
+            )
 
         # case "implement_ticket_async":
         #     ticket_id = function_args.get('ticket_id')
@@ -3187,9 +3201,9 @@ async def new_dev_sandbox_tool(function_args, project_id, conversation_id):
         }
 
     # Get stack configuration from project
-    stack = 'nextjs'  # Default
+    stack = 'custom'  # Default
     if workspace.project:
-        stack = getattr(workspace.project, 'stack', 'nextjs')
+        stack = getattr(workspace.project, 'stack', '') or 'custom'
     stack_config = get_stack_config(stack)
     project_dir = stack_config['project_dir']
 
@@ -7364,4 +7378,82 @@ async def generate_design_preview(function_args, project_id, conversation_id=Non
         return {
             "is_notification": False,
             "message_to_agent": f"Error generating design preview: {str(e)}"
+        }
+
+
+# ============================================================================
+# INSTANT MODE
+# ============================================================================
+
+async def handle_create_instant_app(
+    app_name: str,
+    requirements: str,
+    project_id: int,
+    conversation_id: int,
+    user_id: int,
+    env_vars: dict | None = None,
+) -> dict:
+    """
+    Handle the create_instant_app tool call.
+
+    1. Create InstantApp record with status='building'
+    2. Fork a Mags workspace from the user's claude-auth base
+    3. Kick off execute_instant_app Celery task
+    4. Return notification payload with app_id
+    """
+    from development.models import InstantApp, Sandbox
+    from django.contrib.auth.models import User
+    import uuid
+
+    try:
+        user = await sync_to_async(User.objects.get)(id=user_id)
+        project = await sync_to_async(Project.objects.get)(id=project_id)
+        conversation = await sync_to_async(
+            lambda: Conversation.objects.filter(id=conversation_id).first()
+        )()
+
+        # Create InstantApp record
+        app = await sync_to_async(InstantApp.objects.create)(
+            name=app_name,
+            description=requirements[:500],
+            project=project,
+            user=user,
+            conversation=conversation,
+            status='building',
+            requirements=requirements,
+            env_vars=env_vars or {},
+        )
+
+        app_id = str(app.app_id)
+        logger.info(f"[INSTANT] Created InstantApp id={app.id} app_id={app_id} name={app_name}")
+
+        # Queue the background execution task
+        from tasks.task_definitions import execute_instant_app
+        task_manager = TaskManager()
+        task_manager.submit(
+            execute_instant_app,
+            app.id,
+            task_name=f"instant-app-{app_id[:8]}",
+        )
+
+        return {
+            "is_notification": True,
+            "notification_type": "instant_app_building",
+            "message_to_agent": (
+                f"Instant app **{app_name}** is now being built! "
+                f"The sandbox is being provisioned and Claude Code will scaffold and run the app. "
+                f"The user will see a live preview once the dev server is running."
+            ),
+            "data": {
+                "app_id": app_id,
+                "app_name": app_name,
+                "status": "building",
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"[INSTANT] Error creating instant app: {e}", exc_info=True)
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error creating instant app: {str(e)}"
         }

@@ -11,8 +11,8 @@ from typing import Dict, Any, Optional
 STACK_CONFIGS: Dict[str, Dict[str, Any]] = {
     'nextjs': {
         'name': 'Next.js',
-        'template_repo': 'lfg-hq/nextjs-template',
         'project_dir': 'project',
+        'scaffold_cmd': 'cd /root && rm -rf project && npx create-next-app@latest project --ts --tailwind --eslint --app --no-git --use-npm --no-import-alias',
         'install_cmd': 'npm install',
         'dev_cmd': 'npm run dev',
         'build_cmd': 'npm run build',
@@ -39,8 +39,8 @@ echo "VM ready for Next.js development"
 
     'python-django': {
         'name': 'Python (Django)',
-        'template_repo': 'lfg-hq/django-template',
         'project_dir': 'django-app',
+        'scaffold_cmd': 'cd /root && rm -rf django-app && pip install django && django-admin startproject app django-app',
         'install_cmd': 'pip install -r requirements.txt',
         'dev_cmd': 'python manage.py runserver 0.0.0.0:8000',
         'build_cmd': 'python manage.py collectstatic --noinput',
@@ -68,8 +68,8 @@ echo "VM ready for Django development"
 
     'python-fastapi': {
         'name': 'Python (FastAPI)',
-        'template_repo': 'lfg-hq/fastapi-template',
         'project_dir': 'fastapi-app',
+        'scaffold_cmd': 'cd /root && rm -rf fastapi-app && mkdir -p fastapi-app && pip install fastapi uvicorn && cat > fastapi-app/main.py << \'PYEOF\'\nfrom fastapi import FastAPI\n\napp = FastAPI()\n\n@app.get("/")\ndef read_root():\n    return {"message": "Hello World"}\nPYEOF\ncat > fastapi-app/requirements.txt << \'REQEOF\'\nfastapi\nuvicorn[standard]\nREQEOF',
         'install_cmd': 'pip install -r requirements.txt',
         'dev_cmd': 'uvicorn main:app --host 0.0.0.0 --port 8000 --reload',
         'build_cmd': '',  # No build step for FastAPI
@@ -97,8 +97,8 @@ echo "VM ready for FastAPI development"
 
     'go': {
         'name': 'Go',
-        'template_repo': 'lfg-hq/go-template',
         'project_dir': 'go-app',
+        'scaffold_cmd': None,
         'install_cmd': 'go mod download',
         'dev_cmd': 'go run .',
         'build_cmd': 'go build -o app .',
@@ -134,8 +134,8 @@ echo "VM ready for Go development"
 
     'rust': {
         'name': 'Rust',
-        'template_repo': 'lfg-hq/rust-template',
         'project_dir': 'rust-app',
+        'scaffold_cmd': 'cd /root && rm -rf rust-app && cargo init rust-app',
         'install_cmd': 'cargo build',
         'dev_cmd': 'cargo run',
         'build_cmd': 'cargo build --release',
@@ -168,8 +168,8 @@ echo "VM ready for Rust development"
 
     'ruby-rails': {
         'name': 'Ruby on Rails',
-        'template_repo': 'lfg-hq/rails-template',
         'project_dir': 'rails-app',
+        'scaffold_cmd': 'cd /root && rm -rf rails-app && gem install rails && rails new rails-app --skip-git --minimal',
         'install_cmd': 'bundle install --path /root/.bundle',
         'dev_cmd': 'rails server -b 0.0.0.0 -p 3000',
         'build_cmd': 'rails assets:precompile',
@@ -202,8 +202,8 @@ echo "VM ready for Rails development"
 
     'astro': {
         'name': 'Astro',
-        'template_repo': 'lfg-hq/astro-template',
         'project_dir': 'project',
+        'scaffold_cmd': 'cd /root && rm -rf project && npm create astro@latest project -- --template minimal --no-git --install -y',
         'install_cmd': 'npm install',
         'dev_cmd': 'npx astro dev --host 0.0.0.0',
         'build_cmd': 'npx astro build',
@@ -230,8 +230,8 @@ echo "VM ready for Astro development"
 
     'custom': {
         'name': 'Custom/Existing Repo',
-        'template_repo': None,  # User provides their own repo
         'project_dir': 'app',
+        'scaffold_cmd': None,
         'install_cmd': '',  # Will be detected or user-provided
         'dev_cmd': '',  # Will be detected or user-provided
         'build_cmd': '',
@@ -268,7 +268,6 @@ def get_stack_config(stack: str, project=None) -> Dict[str, Any]:
     # Fall back to a minimal default instead of assuming Next.js
     fallback = {
         'name': stack,
-        'template_repo': None,
         'project_dir': 'project',
         'install_cmd': '',
         'dev_cmd': '',

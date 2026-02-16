@@ -787,7 +787,13 @@ class ProjectTicketViewSet(viewsets.ReadOnlyModelViewSet):
                 import threading
                 from tasks.task_definitions import execute_ticket_chat_cli
 
-                session_id = ticket.cli_session_id  # May be None for new conversation
+                # Look up CLI session from the ticket's sandbox
+                from development.models import Sandbox
+                _ticket_sandbox = Sandbox.objects.filter(
+                    mags_workspace_id__startswith=f'{ticket.id}-',
+                    workspace_type='ticket',
+                ).order_by('-updated_at').first()
+                session_id = _ticket_sandbox.cli_session_id if _ticket_sandbox else None
 
                 def run_cli_chat():
                     try:

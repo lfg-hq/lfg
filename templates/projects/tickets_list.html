@@ -5731,11 +5731,18 @@
                     })
                 });
 
-                if (!response.ok) {
-                    throw new Error('Failed to start dev server');
+                const data = await response.json();
+
+                if (data.auto_fix) {
+                    // Claude is automatically fixing the error — switch to Actions tab
+                    showToast('Dev server failed — Claude is fixing it. Check the Actions tab.', 'warning');
+                    switchTab('logs');
+                    return;
                 }
 
-                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || 'Failed to start dev server');
+                }
 
                 // Get the dev server URL from response (supports IPv6)
                 const devServerUrl = data.url || 'http://localhost:3000';

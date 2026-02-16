@@ -6,18 +6,6 @@
     <meta name="facebook-domain-verification" content="zgzf8wxei6ozhhphlm5udn6zaw1ect" />
     <title>LFG | AI First Engineering That Ships in Days</title>
     <meta name="description" content="From brief to working product in days. LFG runs an AI-first engineering pipeline with transparent tickets, sandboxed code sessions, and senior review.">
-
-    <meta property="og:title" content="LFG | AI First Engineering That Ships in Days">
-    <meta property="og:description" content="From brief to working product in days. LFG runs an AI-first engineering pipeline with transparent tickets, sandboxed code sessions, and senior review.">
-    <meta property="og:type" content="website">
-    <meta property="og:url" content="https://lfg.run/">
-    <meta property="og:image" content="https://lfg.run/static/images/logo_lfg.png">
-
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="LFG | AI First Engineering That Ships in Days">
-    <meta name="twitter:description" content="From brief to working product in days. AI-first engineering pipeline with transparent tickets, sandboxed code sessions, and senior review.">
-    <meta name="twitter:image" content="https://lfg.run/static/images/logo_lfg.png">
-
     <link rel="icon" type="image/x-icon" href="/static/images/favicon.ico">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -110,11 +98,11 @@
         </a>
 
         <div class="hidden md:flex items-center gap-6">
-          <a href="/" class="text-sm font-medium text-brand-600 font-semibold">Home</a>
-          <a href="/agent/" class="text-sm font-medium text-slate-600 hover:text-brand-600 transition-colors">Agent</a>
-          <a href="/services/" class="text-sm font-medium text-slate-600 hover:text-brand-600 transition-colors">Services</a>
+          <a href="/#agent-flow" class="text-sm font-medium text-slate-600 hover:text-brand-600 transition-colors">Agent Flow</a>
+          <a href="/#transparency" class="text-sm font-medium text-slate-600 hover:text-brand-600 transition-colors">Transparency</a>
           <a href="/blog/" class="text-sm font-medium text-slate-600 hover:text-brand-600 transition-colors">Blog</a>
           <a href="/#portfolio" class="text-sm font-medium text-slate-600 hover:text-brand-600 transition-colors">Portfolio</a>
+          <a href="/services/" class="text-sm font-medium text-slate-600 hover:text-brand-600 transition-colors">Services</a>
 
           <div class="flex items-center gap-4 ml-2">
             <a href="https://github.com/lfg-hq/lfg" target="_blank" rel="noopener noreferrer" class="text-slate-500 hover:text-slate-900 transition-colors">
@@ -134,11 +122,11 @@
       </div>
 
       <div id="mobile-menu" class="hidden md:hidden absolute top-full left-0 w-full bg-white border-b border-slate-200 p-4 flex-col gap-3 shadow-xl">
-        <a href="/" class="text-base font-medium text-slate-700 py-2 mobile-link">Home</a>
-        <a href="/agent/" class="text-base font-medium text-slate-700 py-2 mobile-link">Agent</a>
-        <a href="/services/" class="text-base font-medium text-slate-700 py-2 mobile-link">Services</a>
+        <a href="/#agent-flow" class="text-base font-medium text-slate-700 py-2 mobile-link">Agent Flow</a>
+        <a href="/#transparency" class="text-base font-medium text-slate-700 py-2 mobile-link">Transparency</a>
         <a href="/blog/" class="text-base font-medium text-slate-700 py-2 mobile-link">Blog</a>
         <a href="/#portfolio" class="text-base font-medium text-slate-700 py-2 mobile-link">Portfolio</a>
+        <a href="/services/" class="text-base font-medium text-slate-700 py-2 mobile-link">Services</a>
         <a href="#hero-form" class="bg-brand-600 text-white w-full py-3 rounded-lg font-semibold text-center block mobile-link">Submit Your Idea</a>
       </div>
     </nav>
@@ -155,12 +143,12 @@
                             <span class="w-2 h-2 rounded-full bg-brand-500 animate-pulse"></span>
                             <span class="text-xs font-bold text-slate-600 uppercase tracking-wider">AI first engineering</span>
                         </div>
-                        <h1 class="font-display font-semibold text-3xl sm:text-4xl lg:text-5xl leading-[1.1] tracking-tight text-slate-900 animate-fade-up">
+                        <h1 class="font-display font-bold text-4xl sm:text-5xl lg:text-6xl leading-[1.07] tracking-tight text-slate-900 animate-fade-up">
                             From brief to working product
                             <span class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-pink-500">in days, not months.</span>
                         </h1>
                         <p class="text-base sm:text-lg text-slate-600 mt-6 max-w-2xl leading-relaxed animate-fade-up">
-                            LFG is an AI-first software agency. We use our custom built AI agent to research, plan, build, and ship production software — with engineers as quality control. Faster delivery, lower cost, real products.
+                            LFG Agent runs an autonomous delivery loop: research, PRD, ticketing, sandboxed Claude Code execution, review, and release. Senior engineers stay in the loop as quality control.
                         </p>
 
                         <div class="mt-8 animate-fade-up">
@@ -186,10 +174,11 @@
                     </div>
 
                     <div class="glass rounded-2xl p-5 sm:p-6 shadow-2xl border border-slate-200/70">
-                        <div class="mb-4">
+                        <div class="flex items-center justify-between mb-4">
                             <h2 class="font-display text-xl font-bold text-slate-900">Tell us what to build</h2>
-                            <p class="text-sm text-slate-500 mt-1">Describe your development needs. We'll send you a PRD + plan — and we might build it for free.</p>
+                            <span class="text-xs font-bold uppercase text-brand-700 bg-brand-50 px-2 py-1 rounded-full">Primary CTA</span>
                         </div>
+                        <p class="text-sm text-slate-500 mb-4">Share your idea. We convert it into a plan and start the AI first engineering pipeline.</p>
 
                         <form id="hero-form" class="space-y-3">
                             <textarea
@@ -200,13 +189,6 @@
                                 class="w-full resize-none rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none text-base text-slate-800 placeholder:text-slate-400 p-4 min-h-[120px] bg-white"
                                 required
                             ></textarea>
-                            <input
-                                id="hero-email"
-                                type="email"
-                                placeholder="you@company.com"
-                                class="w-full rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none text-base text-slate-800 placeholder:text-slate-400 p-4 bg-white"
-                                required
-                            />
                             <div class="hidden sm:flex gap-2 overflow-x-auto no-scrollbar pb-1">
                                 <button type="button" onclick="setInput('A B2B onboarding workflow app with approvals, audit trail, and role permissions')" class="whitespace-nowrap text-xs font-semibold px-3 py-1.5 bg-slate-100 rounded-md text-slate-600 hover:bg-brand-50 hover:text-brand-700 transition-colors">
                                     B2B onboarding
@@ -218,55 +200,12 @@
                                     Legacy modernization
                                 </button>
                             </div>
-                            <button type="submit" class="w-full inline-flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-700 text-white px-5 py-3 rounded-lg font-semibold transition-all">
+                            <button type="submit" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-700 text-white px-5 py-3 rounded-lg font-semibold transition-all">
                                 <i data-lucide="sparkles" class="w-4 h-4"></i>
-                                <span id="hero-btn-text">Get Your Free Plan</span>
+                                <span>Submit Your Idea</span>
                             </button>
                         </form>
                     </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- ==================== WHY LFG ==================== -->
-        <section class="py-20 bg-white border-t border-slate-100">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="text-center max-w-3xl mx-auto mb-14">
-                    <p class="text-xs font-bold text-brand-600 uppercase tracking-wider mb-2">Why LFG</p>
-                    <h2 class="font-display font-bold text-3xl md:text-4xl text-slate-900">An AI-first software agency</h2>
-                    <p class="text-slate-600 text-lg mt-4">LFG Labs uses AI to build products fast and at scale. At the heart of it is the <strong>LFG Agent</strong> — an AI product manager that coordinates a swarm of AI agents to take your idea from brief to working product.</p>
-                </div>
-
-                <div class="grid md:grid-cols-3 gap-6">
-                    <div class="rounded-2xl border border-slate-200 bg-slate-50 p-6 hover:border-brand-300 transition-colors">
-                        <div class="w-10 h-10 rounded-lg bg-brand-100 text-brand-700 flex items-center justify-center mb-4">
-                            <i data-lucide="bot" class="w-5 h-5"></i>
-                        </div>
-                        <h3 class="font-display font-bold text-lg mb-2">AI product manager</h3>
-                        <p class="text-sm text-slate-600 leading-relaxed">LFG Agent analyzes your requirements, generates PRDs, creates technical architecture, and breaks work into prioritized tickets — like a senior PM, but instant.</p>
-                    </div>
-
-                    <div class="rounded-2xl border border-slate-200 bg-slate-50 p-6 hover:border-brand-300 transition-colors">
-                        <div class="w-10 h-10 rounded-lg bg-brand-100 text-brand-700 flex items-center justify-center mb-4">
-                            <i data-lucide="cpu" class="w-5 h-5"></i>
-                        </div>
-                        <h3 class="font-display font-bold text-lg mb-2">Swarm of AI agents</h3>
-                        <p class="text-sm text-slate-600 leading-relaxed">Each ticket is executed by Claude Code in isolated sandboxes. Multiple agents work in parallel — building, testing, and iterating autonomously.</p>
-                    </div>
-
-                    <div class="rounded-2xl border border-slate-200 bg-slate-50 p-6 hover:border-brand-300 transition-colors">
-                        <div class="w-10 h-10 rounded-lg bg-brand-100 text-brand-700 flex items-center justify-center mb-4">
-                            <i data-lucide="shield-check" class="w-5 h-5"></i>
-                        </div>
-                        <h3 class="font-display font-bold text-lg mb-2">Senior engineers verify</h3>
-                        <p class="text-sm text-slate-600 leading-relaxed">Every release goes through human review. Senior engineers verify code quality, security, and product fit before anything ships to production.</p>
-                    </div>
-                </div>
-
-                <div class="mt-10 text-center">
-                    <a href="/agent/" class="inline-flex items-center gap-2 text-sm font-semibold text-brand-700 hover:text-brand-800 transition-colors">
-                        Learn more about LFG Agent <i data-lucide="arrow-right" class="w-4 h-4"></i>
-                    </a>
                 </div>
             </div>
         </section>
@@ -328,30 +267,6 @@
             </div>
         </section>
 
-        <section id="platform-preview" class="hidden py-20 bg-slate-50 border-t border-slate-100">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="text-center max-w-3xl mx-auto mb-10">
-                    <p class="text-xs font-bold uppercase tracking-wider text-brand-700 mb-2">Platform</p>
-                    <h2 class="font-display font-bold text-3xl md:text-4xl text-slate-900">See it in action</h2>
-                    <p class="text-slate-600 text-lg mt-4">From idea intake to live product, every step is visible.</p>
-                </div>
-                <div id="screenshot-gallery" class="grid md:grid-cols-2 gap-8">
-                    <!-- Drop screenshots into static/images/screenshots/ and add <img> tags here -->
-                    <!-- Each image wraps in a browser-frame mockup -->
-                    <!--
-                    <div class="rounded-xl border border-slate-200 bg-white shadow-lg overflow-hidden">
-                        <div class="flex items-center gap-1.5 px-4 py-2.5 bg-slate-100 border-b border-slate-200">
-                            <span class="w-2.5 h-2.5 rounded-full bg-red-400"></span>
-                            <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
-                            <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
-                        </div>
-                        <img src="/static/images/screenshots/example.png" alt="Platform screenshot" class="w-full" />
-                    </div>
-                    -->
-                </div>
-            </div>
-        </section>
-
         <section id="transparency" class="py-20 bg-slate-50">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="grid lg:grid-cols-2 gap-10 items-center">
@@ -370,22 +285,22 @@
                             <h3 class="font-display font-bold text-xl text-slate-900">Live build board</h3>
                             <span class="text-xs font-bold uppercase text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full">Real-time</span>
                         </div>
-                        <div id="build-board" class="space-y-3 mt-4 text-sm">
+                        <div class="space-y-3 mt-4 text-sm">
                             <div class="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
                                 <span class="font-semibold text-slate-700">PRD approval</span>
-                                <span class="board-badge transition-all duration-500 px-2 py-1 rounded-full text-xs font-bold text-emerald-700 bg-emerald-100">Complete</span>
+                                <span class="text-emerald-700 bg-emerald-100 px-2 py-1 rounded-full text-xs font-bold">Complete</span>
                             </div>
                             <div class="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
                                 <span class="font-semibold text-slate-700">Auth + billing tickets</span>
-                                <span class="board-badge transition-all duration-500 px-2 py-1 rounded-full text-xs font-bold text-indigo-700 bg-indigo-100">Running</span>
+                                <span class="text-indigo-700 bg-indigo-100 px-2 py-1 rounded-full text-xs font-bold">Running</span>
                             </div>
                             <div class="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
                                 <span class="font-semibold text-slate-700">QA and release gate</span>
-                                <span class="board-badge transition-all duration-500 px-2 py-1 rounded-full text-xs font-bold text-amber-700 bg-amber-100">Queued</span>
+                                <span class="text-amber-700 bg-amber-100 px-2 py-1 rounded-full text-xs font-bold">Queued</span>
                             </div>
                             <div class="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
                                 <span class="font-semibold text-slate-700">Client review notes</span>
-                                <span class="board-badge transition-all duration-500 px-2 py-1 rounded-full text-xs font-bold text-slate-700 bg-slate-200">Open</span>
+                                <span class="text-slate-700 bg-slate-200 px-2 py-1 rounded-full text-xs font-bold">Open</span>
                             </div>
                         </div>
                     </div>
@@ -417,6 +332,30 @@
                             <li class="flex gap-3"><i data-lucide="check" class="w-5 h-5 text-brand-600 mt-0.5"></i><span>Scope and product choices are validated with business context.</span></li>
                             <li class="flex gap-3"><i data-lucide="check" class="w-5 h-5 text-brand-600 mt-0.5"></i><span>You get accountability, not just automation.</span></li>
                         </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="free-prd" class="py-20 bg-white border-t border-slate-100">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="grid lg:grid-cols-2 gap-10 items-center">
+                    <div>
+                        <p class="text-xs font-bold uppercase tracking-wider text-brand-700 mb-3">Free PRD</p>
+                        <h2 class="font-display font-bold text-3xl md:text-4xl text-slate-900">Get a free PRD for your product idea</h2>
+                        <p class="text-slate-600 text-lg mt-4 leading-relaxed">Describe your product, verify your email, and we will send your free PRD scope draft.</p>
+                        <ul class="mt-6 space-y-3 text-slate-700">
+                            <li class="flex gap-3"><i data-lucide="check-circle-2" class="w-5 h-5 text-brand-600 mt-0.5"></i><span>Covers key user flows and requirements.</span></li>
+                            <li class="flex gap-3"><i data-lucide="check-circle-2" class="w-5 h-5 text-brand-600 mt-0.5"></i><span>Maps first implementation milestones.</span></li>
+                            <li class="flex gap-3"><i data-lucide="check-circle-2" class="w-5 h-5 text-brand-600 mt-0.5"></i><span>Built with the same AI first engineering process.</span></li>
+                        </ul>
+                    </div>
+                    <div class="rounded-2xl border border-slate-200 bg-slate-50 p-8">
+                        <h3 class="font-display font-bold text-2xl text-slate-900 mb-3">Start in under 2 minutes</h3>
+                        <p class="text-slate-600 mb-6">Three steps: project idea, email, verification code.</p>
+                        <button onclick="openFreePrdModal()" class="w-full inline-flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors">
+                            Get My Free PRD <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -485,6 +424,52 @@
             </div>
         </section>
 
+        <section class="py-20 bg-[#111827] text-white">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center max-w-3xl mx-auto mb-10">
+                    <h2 class="font-display font-bold text-3xl md:text-4xl">Engagement options</h2>
+                    <p class="text-slate-300 text-lg mt-4">Choose your model after intake. Start with one action: submit your idea.</p>
+                </div>
+
+                <div class="grid lg:grid-cols-3 gap-6">
+                    <article class="bg-white/5 border border-white/10 rounded-2xl p-6">
+                        <h3 class="font-display font-bold text-2xl mb-2">Custom Services</h3>
+                        <p class="text-slate-300 mb-4">Primary offer: we build with you and stay accountable for delivery.</p>
+                        <ul class="space-y-2 text-sm text-slate-300">
+                            <li>Scope + architecture + execution</li>
+                            <li>AI first engineering production workflow</li>
+                            <li>Senior engineering accountability</li>
+                        </ul>
+                    </article>
+
+                    <article class="bg-brand-700/30 border border-brand-500/40 rounded-2xl p-6">
+                        <h3 class="font-display font-bold text-2xl mb-2">Agent Platform</h3>
+                        <p class="text-indigo-100 mb-4">For teams that want to run the same pipeline internally.</p>
+                        <ul class="space-y-2 text-sm text-indigo-100">
+                            <li>Idea to PRD and technical plan</li>
+                            <li>Ticket tracking and sandbox coding</li>
+                            <li>Checks, approvals, and release support</li>
+                        </ul>
+                    </article>
+
+                    <article class="bg-pink-500/20 border border-amber-400/30 rounded-2xl p-6">
+                        <h3 class="font-display font-bold text-2xl mb-2">Venture Studio</h3>
+                        <p class="text-pink-50 mb-4">For selected startups, we can build with no upfront fee in exchange for revenue share.</p>
+                        <ul class="space-y-2 text-sm text-pink-50">
+                            <li>Founder/operator alignment</li>
+                            <li>Execution by LFG team + agents</li>
+                            <li>Shared upside model</li>
+                        </ul>
+                    </article>
+                </div>
+                <div class="text-center mt-12">
+                    <a href="#hero-form" class="inline-flex items-center gap-2 px-7 py-3 rounded-full bg-white text-slate-900 font-semibold hover:bg-slate-100 transition-colors">
+                        Submit Your Idea <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                    </a>
+                </div>
+            </div>
+        </section>
+
         <section id="book-demo" class="py-14 bg-black">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="rounded-3xl p-[1px] bg-gradient-to-r from-rose-500 via-fuchsia-500 to-indigo-500">
@@ -493,16 +478,16 @@
                             <div>
                                 <h2 class="font-display text-4xl md:text-5xl font-bold text-white tracking-tight">Let's Get Started</h2>
                                 <div class="mt-6 flex flex-wrap items-center gap-4">
-                                    <a href="#hero-form" class="inline-flex items-center gap-2 rounded-2xl bg-white text-indigo-700 px-6 py-3 text-lg font-semibold hover:bg-slate-100 transition-colors">
-                                        Submit Your Idea
-                                    </a>
-                                    <a href="/services/" class="inline-flex items-center gap-2 rounded-2xl border border-white/30 text-white px-6 py-3 text-lg font-semibold hover:bg-white/10 transition-colors">
+                                    <a href="/services/" class="inline-flex items-center gap-2 rounded-2xl bg-white text-indigo-700 px-6 py-3 text-lg font-semibold hover:bg-slate-100 transition-colors">
                                         Schedule a Demo
+                                    </a>
+                                    <a href="mailto:hello@lfg.run?subject=Discuss%20Implementation%20Needs" class="text-slate-300 font-semibold hover:text-white transition-colors">
+                                        Discuss implementation needs
                                     </a>
                                 </div>
                             </div>
                             <p class="text-2xl leading-snug text-slate-400 max-w-xl">
-                                Share your idea and our AI first engineering pipeline starts working. See results in days, not months.
+                                Connect with our team to discuss your implementation needs. We'll help you build agents that work in production, not just demos.
                             </p>
                         </div>
                     </div>
@@ -520,19 +505,21 @@
                         <span>LFG</span>
                     </div>
                     <p class="text-slate-400 max-w-sm leading-relaxed">
-                        AI first engineering with autonomous delivery and human oversight.
+                        AI first engineering with autonomous delivery and senior oversight.
                     </p>
                 </div>
 
                 <div>
                     <h4 class="font-bold text-white mb-4 uppercase text-xs tracking-wider">Company</h4>
                     <ul class="space-y-3 text-sm text-slate-400">
-                        <li><a href="/agent/" class="hover:text-brand-400 transition-colors">Agent</a></li>
-                        <li><a href="/services/" class="hover:text-brand-400 transition-colors">Services</a></li>
+                        <li><a href="/#agent-flow" class="hover:text-brand-400 transition-colors">Agent flow</a></li>
+                        <li><a href="/#transparency" class="hover:text-brand-400 transition-colors">Transparency</a></li>
+                        <li><a href="/#free-prd" class="hover:text-brand-400 transition-colors">Free PRD</a></li>
                         <li><a href="/blog/" class="hover:text-brand-400 transition-colors">Blog</a></li>
                         <li><a href="/#portfolio" class="hover:text-brand-400 transition-colors">Portfolio</a></li>
+                        <li><a href="/services/" class="hover:text-brand-400 transition-colors">Custom services</a></li>
                         <li><a href="/#book-demo" class="hover:text-brand-400 transition-colors">Book demo</a></li>
-                        <li><a href="/venture-studio/" class="hover:text-brand-400 transition-colors">Venture studio</a></li>
+                        <li><a href="/venture-studio/" class="hover:text-brand-400 transition-colors">Rev-share studio</a></li>
                     </ul>
                 </div>
 
@@ -777,48 +764,6 @@
         let environment = '{{ ENVIRONMENT|default:"local" }}';
         let userProjects = [];
 
-        // (Hero tabs removed — single merged CTA form now)
-
-        // Build board animation
-        (function initBuildBoardAnimation() {
-            const statusCycle = [
-                { text: 'Queued',   textClass: 'text-amber-700',   bgClass: 'bg-amber-100'   },
-                { text: 'Running',  textClass: 'text-indigo-700',  bgClass: 'bg-indigo-100'  },
-                { text: 'Complete', textClass: 'text-emerald-700', bgClass: 'bg-emerald-100' }
-            ];
-
-            // Initial state indices for each row: PRD=2(Complete), Auth=1(Running), QA=0(Queued), Review=open(special)
-            const boardStates = [2, 1, 0, -1]; // -1 = "Open" special state
-            const openState = { text: 'Open', textClass: 'text-slate-700', bgClass: 'bg-slate-200' };
-
-            const badges = document.querySelectorAll('#build-board .board-badge');
-            if (!badges.length) return;
-
-            function applyState(badge, state) {
-                // Remove old status classes
-                badge.className = 'board-badge transition-all duration-500 px-2 py-1 rounded-full text-xs font-bold';
-                badge.classList.add(state.textClass, state.bgClass);
-                badge.textContent = state.text;
-            }
-
-            // Advance each row one step every 3 seconds
-            setInterval(() => {
-                for (let i = badges.length - 1; i >= 0; i--) {
-                    if (boardStates[i] === -1) {
-                        // Move from Open to Queued
-                        boardStates[i] = 0;
-                    } else {
-                        boardStates[i] = (boardStates[i] + 1) % (statusCycle.length + 1);
-                        if (boardStates[i] === statusCycle.length) {
-                            boardStates[i] = -1; // wrap back to Open
-                        }
-                    }
-                    const state = boardStates[i] === -1 ? openState : statusCycle[boardStates[i]];
-                    applyState(badges[i], state);
-                }
-            }, 3000);
-        })();
-
         window.addEventListener('scroll', () => {
             const nav = document.getElementById('navbar');
             if (window.scrollY > 20) {
@@ -987,26 +932,6 @@
 
             refreshAuthStatus();
             setupVerificationInputs();
-
-            // Handle redirect from agent page with prd_sent param
-            const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.get('prd_sent') === '1') {
-                const email = urlParams.get('email') || '';
-                const requestId = urlParams.get('request_id') || '';
-                if (email && requestId) {
-                    freePrdRequestId = requestId;
-                    freePrdEmailValue = email;
-                    const emailDisplay = document.getElementById('free-prd-email-display');
-                    if (emailDisplay) emailDisplay.textContent = email;
-                    if (freePrdEmailInput) freePrdEmailInput.value = email;
-                    freePrdModal.classList.remove('hidden');
-                    document.body.style.overflow = 'hidden';
-                    clearFreePrdErrors();
-                    setFreePrdStep(3);
-                    // Clean URL
-                    window.history.replaceState({}, '', '/');
-                }
-            }
         });
 
         function refreshAuthStatus() {
@@ -1032,62 +957,13 @@
             heroInput.focus();
         }
 
-        heroForm.addEventListener('submit', async (e) => {
+        heroForm.addEventListener('submit', (e) => {
             e.preventDefault();
-            const idea = heroInput.value.trim();
-            const email = document.getElementById('hero-email').value.trim();
-            if (!idea || !email) return;
-
-            userRequirements = idea;
-            sessionStorage.setItem('pendingRequirements', idea);
-
-            // Pre-fill the Free PRD modal state and skip step 1
-            freePrdIdeaValue = idea;
-            if (freePrdIdeaInput) freePrdIdeaInput.value = idea;
-
-            // Open modal and go straight to email/send step
-            freePrdModal.classList.remove('hidden');
-            document.body.style.overflow = 'hidden';
-            freePrdRequestId = null;
-            clearFreePrdErrors();
-
-            if (freePrdEmailInput) freePrdEmailInput.value = email;
-            setFreePrdStep(2);
-
-            // Auto-trigger send verification code
-            const sendBtn = document.getElementById('free-prd-send-btn');
-            const heroBtnText = document.getElementById('hero-btn-text');
-            if (heroBtnText) heroBtnText.textContent = 'Sending...';
-            if (sendBtn) {
-                sendBtn.disabled = true;
-                sendBtn.textContent = 'Sending...';
-            }
-            try {
-                const response = await fetch('/free-prd/request-code/', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': getCookie('csrftoken')
-                    },
-                    body: JSON.stringify({ project_idea: idea, email }),
-                    credentials: 'include'
-                });
-                const data = await response.json();
-                if (!response.ok || !data.success) {
-                    showFreePrdError(data.error || 'Unable to send code. Please try again.');
-                    return;
-                }
-                freePrdRequestId = data.request_id;
-                freePrdEmailValue = email;
-                const emailDisplay = document.getElementById('free-prd-email-display');
-                if (emailDisplay) emailDisplay.textContent = email;
-                setFreePrdStep(3);
-            } catch (error) {
-                console.error('Free PRD send code error:', error);
-                showFreePrdError('Unable to send code. Please try again.');
-            } finally {
-                if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = 'Send Code'; }
-                if (heroBtnText) heroBtnText.textContent = 'Get Your Free Plan';
+            const val = heroInput.value.trim();
+            if (val) {
+                userRequirements = val;
+                sessionStorage.setItem('pendingRequirements', userRequirements);
+                openModal(val);
             }
         });
 

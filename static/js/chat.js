@@ -54,7 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Get or create the send button
     const sendBtn = document.getElementById('send-btn') || createSendButton();
     let stopBtn = null; // Will be created when needed
-    
+
     // Button state machine to prevent race conditions
     const ButtonState = {
         SEND: 'send',
@@ -131,7 +131,24 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Load agent settings and initialize turbo mode
     loadAgentSettings();
-    
+
+    function isInstantModeEnabled() {
+        return document.getElementById('turbo-mode-toggle')?.checked || false;
+    }
+
+    function updateArtifactsForInstantMode(isInstantMode) {
+        const appTab = document.getElementById('apps');
+
+        if (appTab) {
+            const restartBtn = appTab.querySelector('#app-restart-server-btn');
+            const showConsoleBtn = appTab.querySelector('#show-console-btn');
+            const consolePanel = appTab.querySelector('#console-panel');
+            if (restartBtn) restartBtn.style.display = isInstantMode ? 'none' : '';
+            if (showConsoleBtn) showConsoleBtn.style.display = isInstantMode ? 'none' : '';
+            if (consolePanel && isInstantMode) consolePanel.style.display = 'none';
+        }
+    }
+
     // Test backend notification sending
     window.testBackendNotification = function() {
         if (socket && socket.readyState === WebSocket.OPEN) {
@@ -353,7 +370,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     });
-    
+
     // Set up provider selection
     const providerOptions = document.querySelectorAll('input[name="ai-provider"]');
     providerOptions.forEach(option => {
@@ -4209,6 +4226,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         
                         // Update role dropdown visibility based on turbo mode
                         updateRoleDropdownVisibility(data.turbo_mode);
+                        updateArtifactsForInstantMode(data.turbo_mode);
                     }
                     
                     // Set role dropdown value if not in turbo mode
@@ -4254,8 +4272,10 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Update role dropdown visibility
             updateRoleDropdownVisibility(isEnabled);
+            updateArtifactsForInstantMode(isEnabled);
         });
     }
+    updateArtifactsForInstantMode(isInstantModeEnabled());
     
     // Helper function to create recording indicator
     function createRecordingIndicator() {

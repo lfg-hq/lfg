@@ -3,6 +3,7 @@ from . import views
 from .views.main import user_agent_role, user_model_selection, available_models, latest_conversation, daily_token_usage, user_turbo_mode, complete_onboarding
 from .views.files_extra import get_file_url
 from .views.transcribe_fixed import transcribe_file
+from .views.instant import instant_mode, instant_app_detail, instant_apps_list_api, instant_app_env_vars_api
 
 
 urlpatterns = [
@@ -38,4 +39,10 @@ urlpatterns = [
 
     # Onboarding API
     path('api/complete-onboarding/', complete_onboarding, name='complete_onboarding'),
-] 
+
+    # Instant Mode
+    path('instant/project/<str:project_id>/', instant_mode, name='instant_mode'),
+    path('instant/project/<str:project_id>/app/<str:app_id>/', instant_app_detail, name='instant_app_detail'),
+    path('api/instant/<str:project_id>/apps/', instant_apps_list_api, name='instant_apps_list'),
+    path('api/instant/<str:project_id>/apps/<str:app_id>/env/', instant_app_env_vars_api, name='instant_app_env_vars'),
+]

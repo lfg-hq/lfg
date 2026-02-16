@@ -8,10 +8,10 @@ from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse
-from projects.models import ProjectTicket
-from development.models import MagpieWorkspace
+from projects.models import ProjectTicket, TicketLog
+from development.models import Sandbox
 from accounts.models import ExternalServicesAPIKeys, GitHubToken
-from projects.websocket_utils import send_workspace_progress
+from projects.websocket_utils import send_workspace_progress, send_ticket_log_notification
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +20,7 @@ try:
     from factory.mags import (
         run_command, get_or_create_workspace_job,
         workspace_name_for_preview, get_http_proxy_url,
+        create_preview_url_alias,
         MAGS_WORKING_DIR, PREVIEW_SETUP_SCRIPT, MagsAPIError,
     )
     mags_available = True
@@ -38,28 +39,28 @@ except ImportError:
 
 def _get_ticket_workspace(ticket):
     """
-    Get the MagpieWorkspace for a ticket's CLI workspace.
-    Falls back to any project workspace if ticket has no CLI workspace.
+    Get the Sandbox for a ticket's CLI workspace.
+    Falls back to any project workspace if ticket has no dedicated sandbox.
     Returns (workspace, error_response) — error_response is None on success.
     """
-    # 1. Try ticket's own CLI workspace first
-    if ticket.cli_workspace_id:
-        ws = MagpieWorkspace.objects.filter(
-            mags_workspace_id=ticket.cli_workspace_id
-        ).first()
-        if ws:
-            return ws, None
+    # 1. Try ticket's own sandbox by naming convention ({ticket_id}-{uuid8})
+    ws = Sandbox.objects.filter(
+        mags_workspace_id__startswith=f'{ticket.id}-',
+        workspace_type='ticket',
+    ).order_by('-updated_at').first()
+    if ws:
+        return ws, None
 
-    # 2. Fall back: find any ticket-type workspace for this project
-    ws = MagpieWorkspace.objects.filter(
+    # 2. Fall back: find any ticket-type sandbox for this project
+    ws = Sandbox.objects.filter(
         project=ticket.project,
         workspace_type='ticket',
     ).order_by('-updated_at').first()
     if ws:
         return ws, None
 
-    # 3. Last resort: any workspace for the project
-    ws = MagpieWorkspace.objects.filter(
+    # 3. Last resort: any sandbox for the project
+    ws = Sandbox.objects.filter(
         project=ticket.project,
     ).order_by('-updated_at').first()
     if ws:
@@ -72,8 +73,25 @@ def _get_ticket_workspace(ticket):
 
 
 def _get_job_request_id(workspace_id):
-    """Get the Mags job request_id for a workspace overlay name."""
-    from factory.mags import _find_existing_workspace_job
+    """Get the Mags job request_id for a workspace overlay name.
+
+    Uses client.find_job() for a direct lookup by workspace name,
+    falling back to listing all jobs if that fails.
+    """
+    from factory.mags import _get_mags_client, _find_existing_workspace_job
+    # 1. Direct lookup via find_job (fast, reliable)
+    try:
+        client = _get_mags_client()
+        job = client.find_job(workspace_id)
+        if job:
+            req_id = job.get('request_id') or job.get('id')
+            if req_id:
+                logger.info(f"[DEV_SERVER] find_job resolved {workspace_id} -> {req_id}")
+                return req_id
+    except Exception as e:
+        logger.debug(f"[DEV_SERVER] find_job failed for {workspace_id}: {e}")
+
+    # 2. Fallback: scan all running jobs
     try:
         job = _find_existing_workspace_job(workspace_id)
         return job.get('request_id') or job.get('id')
@@ -325,11 +343,11 @@ fi
 @require_http_methods(["POST"])
 def start_dev_server(request, ticket_id):
     """
-    Start a development server for the ticket's project using Magpie workspace.
+    Start a development server for the ticket's project using sandbox workspace.
     This will:
-    1. Get the MagpieWorkspace for the project
+    1. Get the Sandbox for the project
     2. Kill any existing npm/node processes and remove lock files
-    3. Start 'npm run dev' via SSH in the Magpie workspace
+    3. Start 'npm run dev' via SSH in the sandbox workspace
     """
     try:
         # Get the ticket
@@ -351,14 +369,14 @@ def start_dev_server(request, ticket_id):
                 status=503
             )
 
-        # Get the MagpieWorkspace for this ticket
-        magpie_workspace, err_resp = _get_ticket_workspace(ticket)
+        # Get the Sandbox for this ticket
+        sandbox, err_resp = _get_ticket_workspace(ticket)
         if err_resp:
             return err_resp
 
         # Ensure workspace job is running
-        workspace_id = magpie_workspace.mags_workspace_id or magpie_workspace.workspace_id
-        job_id = magpie_workspace.mags_job_id or magpie_workspace.job_id
+        workspace_id = sandbox.mags_workspace_id or sandbox.workspace_id
+        job_id = sandbox.mags_job_id or sandbox.job_id
 
         # Get stack configuration
         from factory.stack_configs import get_stack_config
@@ -371,38 +389,48 @@ def start_dev_server(request, ticket_id):
         logger.info(f"[DEV_SERVER] Job ID: {job_id}")
         logger.info(f"[DEV_SERVER] Workspace path: {workspace_path}")
 
-        # Step 0: Ensure code exists in workspace and is on correct branch
-        logger.info(f"[DEV_SERVER] Checking workspace structure...")
-        logger.info(f"[DEV_SERVER] Ticket branch: {ticket.github_branch or 'not set (will use lfg-agent)'}")
-        code_success, code_message = _ensure_code_in_workspace(magpie_workspace, project, request.user, ticket=ticket)
-        logger.info(f"[DEV_SERVER] Code setup result: {code_success}, {code_message}")
-
-        if not code_success:
-            send_workspace_progress(str(project.project_id), 'error', f'Failed to set up code: {code_message}', error=code_message)
-            return JsonResponse(
-                {'error': f'Failed to set up code in workspace: {code_message}'},
-                status=500
-            )
         project_id = str(project.project_id)
 
-        # Step 0.5: Run bootstrap script to ensure stack tools are installed
-        bootstrap_script = stack_config.get('bootstrap_script', '')
-        if bootstrap_script and project.stack != 'nextjs':  # Node.js is pre-installed
-            send_workspace_progress(project_id, 'installing_tools', f'Checking/installing {stack_config["name"]} tools...')
-            logger.info(f"[DEV_SERVER] Running bootstrap script for {project.stack}")
+        # If this is the ticket's own workspace (code already built by Claude),
+        # skip the heavy code setup. Only run it for non-ticket workspaces.
+        sandbox_ws_id = sandbox.mags_workspace_id or sandbox.workspace_id
+        is_ticket_workspace = (
+            sandbox.workspace_type == 'ticket' and
+            sandbox_ws_id and str(sandbox_ws_id).startswith(f'{ticket.id}-')
+        )
 
-            bootstrap_result = run_command(workspace_id, bootstrap_script, timeout=300)
-            if bootstrap_result.get('exit_code', 0) != 0:
-                logger.warning(f"[DEV_SERVER] Bootstrap warning: {bootstrap_result.get('stderr', '')[:200]}")
-            else:
-                logger.info(f"[DEV_SERVER] Bootstrap completed successfully")
+        if not is_ticket_workspace:
+            # Step 0: Ensure code exists in workspace and is on correct branch
+            logger.info(f"[DEV_SERVER] Non-ticket workspace, running code setup...")
+            code_success, code_message = _ensure_code_in_workspace(sandbox, project, request.user, ticket=ticket)
+            logger.info(f"[DEV_SERVER] Code setup result: {code_success}, {code_message}")
+
+            if not code_success:
+                send_workspace_progress(project_id, 'error', f'Failed to set up code: {code_message}', error=code_message)
+                return JsonResponse(
+                    {'error': f'Failed to set up code in workspace: {code_message}'},
+                    status=500
+                )
+
+            # Step 0.5: Run bootstrap script to ensure stack tools are installed
+            bootstrap_script = stack_config.get('bootstrap_script', '')
+            if bootstrap_script and project.stack != 'nextjs':
+                send_workspace_progress(project_id, 'installing_tools', f'Checking/installing {stack_config["name"]} tools...')
+                bootstrap_result = run_command(workspace_id, bootstrap_script, timeout=300)
+                if bootstrap_result.get('exit_code', 0) != 0:
+                    logger.warning(f"[DEV_SERVER] Bootstrap warning: {bootstrap_result.get('stderr', '')[:200]}")
+        else:
+            logger.info(f"[DEV_SERVER] Using ticket's own workspace — skipping code setup")
 
         # Step 1: Kill existing processes and remove lock files
         send_workspace_progress(project_id, 'clearing_cache', 'Clearing cache and stopping existing processes...')
 
         # Build stack-specific cleanup command
-        # Use custom_default_port if set, otherwise fall back to stack default
-        default_port = project.custom_default_port or stack_config.get('default_port', 3000)
+        # Use port 8080 — this is the Mags default proxy port. The URL alias
+        # (*.app.lfg.run) routes to 8080 automatically, so running the dev
+        # server on 8080 means the preview works without custom port mapping.
+        MAGS_PROXY_PORT = 8080
+        default_port = project.custom_default_port or MAGS_PROXY_PORT
         if project.stack == 'nextjs':
             cleanup_extras = """
             npm config set cache {MAGS_WORKING_DIR}/.npm-cache
@@ -466,7 +494,7 @@ def start_dev_server(request, ticket_id):
 
         # Get the dev command from stack config
         dev_cmd = stack_config['dev_cmd']
-        default_port = stack_config.get('default_port', 3000)
+        # default_port is already set to MAGS_PROXY_PORT (8080) above
         pre_dev_cmd = stack_config.get('pre_dev_cmd', '')
 
         # Customize dev command for different stacks
@@ -522,11 +550,72 @@ def start_dev_server(request, ticket_id):
             stderr = start_result.get('stderr', '')
             error_msg = stderr or stdout or 'Unknown error - command exited with non-zero status'
             logger.error(f"Failed to start dev server (exit {start_result.get('exit_code')}): stdout={stdout}, stderr={stderr}")
-            send_workspace_progress(project_id, 'error', f'Failed to start server: {error_msg[:100]}', error=error_msg)
-            return JsonResponse(
-                {'error': f'Failed to start dev server: {error_msg}'},
-                status=500
+
+            # Extract just the error from dev.log output (between the === markers)
+            dev_log_error = ''
+            if '=== Last' in stdout and '=== End' in stdout:
+                dev_log_error = stdout.split('=== Last')[1].split('===')[1].strip('= \n')
+                if dev_log_error.startswith('of dev.log'):
+                    dev_log_error = dev_log_error[len('of dev.log'):].strip('= \n')
+
+            # Pipe the error to the ticket's chat agent so Claude can fix it
+            fix_message = (
+                f"The dev server failed to start with the following error:\n\n"
+                f"```\n{dev_log_error or error_msg[:500]}\n```\n\n"
+                f"Please fix this error so the dev server can run successfully. "
+                f"The dev command is: `{full_dev_cmd}`"
             )
+            logger.info(f"[DEV_SERVER] Piping server error to ticket chat agent for auto-fix")
+            send_workspace_progress(project_id, 'fixing_error', 'Dev server failed — asking Claude to fix it...')
+
+            try:
+                # Create a system message log entry
+                fix_log = TicketLog.objects.create(
+                    ticket=ticket,
+                    log_type='user_message',
+                    command=fix_message,
+                    explanation='Auto-fix request from Preview (dev server failed to start)',
+                )
+                send_ticket_log_notification(ticket.id, {
+                    'id': fix_log.id,
+                    'log_type': 'user_message',
+                    'command': fix_message,
+                    'explanation': fix_log.explanation,
+                    'output': '',
+                    'exit_code': None,
+                    'created_at': fix_log.created_at.isoformat()
+                })
+
+                # Trigger Claude CLI chat in background thread
+                import threading
+                from tasks.task_definitions import execute_ticket_chat_cli
+
+                session_id = sandbox.cli_session_id
+
+                def run_auto_fix():
+                    try:
+                        execute_ticket_chat_cli(
+                            ticket_id=ticket.id,
+                            project_id=project.id,
+                            conversation_id=ticket.id,
+                            message=fix_message,
+                            session_id=session_id,
+                        )
+                    except Exception as e:
+                        logger.error(f"[DEV_SERVER] Auto-fix chat error: {e}", exc_info=True)
+
+                thread = threading.Thread(target=run_auto_fix, daemon=True)
+                thread.start()
+
+            except Exception as e:
+                logger.error(f"[DEV_SERVER] Failed to trigger auto-fix: {e}", exc_info=True)
+
+            return JsonResponse({
+                'success': False,
+                'auto_fix': True,
+                'message': 'Dev server failed to start. Claude is working on a fix...',
+                'error': error_msg[:200],
+            }, status=200)
 
         # Extract PID from output
         stdout = start_result.get('stdout', '')
@@ -538,17 +627,105 @@ def start_dev_server(request, ticket_id):
 
         logger.info(f"Dev server started successfully with PID: {pid}")
 
-        # Get preview URL via Mags HTTP access
+        # Get preview URL via Mags HTTP access + stable alias
         send_workspace_progress(project_id, 'assigning_proxy', 'Getting preview URL...')
         preview_url = None
-        try:
-            # job_id from DB may be workspace name, resolve actual Mags request_id
-            actual_job_id = _get_job_request_id(workspace_id) or job_id
-            preview_url = get_http_proxy_url(actual_job_id, default_port)
-        except Exception as e:
-            logger.warning(f"[DEV_SERVER] Failed to get HTTP proxy URL: {e}")
+
+        # Step A: Enable HTTP access on the port. Since we run the dev server
+        # on 8080 (the Mags default), the URL alias routes there automatically.
+        # enable_access is still called to ensure the port is open and to
+        # capture the raw proxy URL as a fallback.
+        mags_job_id = sandbox.mags_job_id or sandbox.job_id
+
+        # Attempt 1: use stored mags_job_id (the original request_id)
+        if mags_job_id:
+            try:
+                logger.info(f"[DEV_SERVER] Enabling HTTP access: mags_job_id={mags_job_id}, port={default_port}")
+                raw_url = get_http_proxy_url(mags_job_id, default_port)
+                if raw_url and not raw_url.startswith('http://localhost'):
+                    preview_url = raw_url
+                    logger.info(f"[DEV_SERVER] enable_access returned URL: {raw_url}")
+            except Exception as e:
+                logger.warning(f"[DEV_SERVER] enable_access failed for job {mags_job_id}: {e}")
+
+        # Attempt 2: resolve a fresh request_id via find_job (handles stale mags_job_id)
         if not preview_url:
+            try:
+                from factory.mags import _get_mags_client
+                client = _get_mags_client()
+                job = client.find_job(workspace_id)
+                if job:
+                    fresh_id = job.get('request_id') or job.get('id')
+                    if fresh_id and fresh_id != mags_job_id:
+                        logger.info(f"[DEV_SERVER] Retrying enable_access with fresh request_id={fresh_id}, port={default_port}")
+                        raw_url = get_http_proxy_url(fresh_id, default_port)
+                        if raw_url and not raw_url.startswith('http://localhost'):
+                            preview_url = raw_url
+                        # Save the fresh request_id regardless of URL response
+                        sandbox.mags_job_id = fresh_id
+                        sandbox.save(update_fields=['mags_job_id', 'updated_at'])
+                        logger.info(f"[DEV_SERVER] Updated mags_job_id to {fresh_id}")
+            except Exception as e:
+                logger.warning(f"[DEV_SERVER] Fallback enable_access also failed: {e}")
+
+        # Step B: Create a stable URL alias (uses workspace_id, not request_id).
+        # This maps <subdomain>.app.lfg.run to the workspace's active job.
+        # Always attempt this — it's the primary way to get a working preview URL.
+        alias_url = create_preview_url_alias(workspace_id, project_id)
+        if alias_url:
+            logger.info(f"[DEV_SERVER] Using stable alias URL: {alias_url}")
+            preview_url = alias_url
+
+        if not preview_url:
+            logger.warning(f"[DEV_SERVER] Could not obtain proxy URL, falling back to localhost:{default_port}")
             preview_url = f'http://localhost:{default_port}'
+
+        # Save proxy_url on the sandbox for future use
+        if preview_url and not preview_url.startswith('http://localhost'):
+            sandbox.proxy_url = preview_url
+            sandbox.save(update_fields=['proxy_url', 'updated_at'])
+
+        # Step C: Ask Claude to whitelist the proxy URL in the project config
+        # (e.g. Vite allowedHosts, Django ALLOWED_HOSTS, etc.)
+        # Run in background so we don't block the response.
+        if preview_url and not preview_url.startswith('http://localhost'):
+            try:
+                from urllib.parse import urlparse
+                proxy_host = urlparse(preview_url).hostname
+                if proxy_host:
+                    import threading
+                    from tasks.task_definitions import execute_ticket_chat_cli
+
+                    whitelist_message = (
+                        f"The dev server preview is being served through a proxy at {preview_url} "
+                        f"(hostname: {proxy_host}). "
+                        f"Please ensure this hostname is whitelisted/allowed in the project configuration "
+                        f"so the server accepts requests from it. For example:\n"
+                        f"- Vite/Astro: add `server.allowedHosts` or `vite.server.allowedHosts` in the config\n"
+                        f"- Django: add to ALLOWED_HOSTS\n"
+                        f"- Next.js: usually no change needed\n\n"
+                        f"Check the project config at {workspace_path} and make the necessary change. "
+                        f"Do NOT restart the server — just update the config file."
+                    )
+                    whitelist_session_id = sandbox.cli_session_id
+
+                    def run_whitelist_fix():
+                        try:
+                            execute_ticket_chat_cli(
+                                ticket_id=ticket.id,
+                                project_id=project.id,
+                                conversation_id=ticket.id,
+                                message=whitelist_message,
+                                session_id=whitelist_session_id,
+                            )
+                        except Exception as e:
+                            logger.warning(f"[DEV_SERVER] Whitelist fix error: {e}")
+
+                    thread = threading.Thread(target=run_whitelist_fix, daemon=True)
+                    thread.start()
+                    logger.info(f"[DEV_SERVER] Started whitelist fix thread for host {proxy_host}")
+            except Exception as e:
+                logger.warning(f"[DEV_SERVER] Could not start whitelist fix: {e}")
 
         # Send completion notification
         send_workspace_progress(project_id, 'complete', 'Dev server is ready!', extra_data={'url': preview_url})
@@ -557,7 +734,7 @@ def start_dev_server(request, ticket_id):
             'success': True,
             'message': 'Dev server started successfully',
             'pid': pid,
-            'workspace_id': magpie_workspace.workspace_id,
+            'workspace_id': sandbox.workspace_id,
             'url': preview_url
         })
 
@@ -601,21 +778,21 @@ def stop_dev_server(request, ticket_id):
                 status=503
             )
 
-        # Get the MagpieWorkspace for this ticket
-        magpie_workspace, err_resp = _get_ticket_workspace(ticket)
+        # Get the Sandbox for this ticket
+        sandbox, err_resp = _get_ticket_workspace(ticket)
         if err_resp:
             return err_resp
 
         # Use workspace regardless of status
-        if magpie_workspace.status != 'ready':
-            logger.warning(f"Stopping dev server on workspace with status '{magpie_workspace.status}'")
+        if sandbox.status != 'ready':
+            logger.warning(f"Stopping dev server on workspace with status '{sandbox.status}'")
 
         # Get stack configuration
         from factory.stack_configs import get_stack_config
         stack_config = get_stack_config(project.stack, project)
         project_dir = stack_config['project_dir']
         workspace_path = f"{MAGS_WORKING_DIR}/{project_dir}"
-        workspace_id = magpie_workspace.mags_workspace_id or magpie_workspace.workspace_id
+        workspace_id = sandbox.mags_workspace_id or sandbox.workspace_id
 
         logger.info(f"Stopping dev server for ticket {ticket_id} in workspace {workspace_id}")
 
@@ -694,8 +871,8 @@ def get_dev_server_logs(request, ticket_id):
                 status=503
             )
 
-        # Get the MagpieWorkspace for this ticket
-        magpie_workspace, err_resp = _get_ticket_workspace(ticket)
+        # Get the Sandbox for this ticket
+        sandbox, err_resp = _get_ticket_workspace(ticket)
         if err_resp:
             return err_resp
 
@@ -705,7 +882,7 @@ def get_dev_server_logs(request, ticket_id):
         project_dir = stack_config['project_dir']
         workspace_path = f"{MAGS_WORKING_DIR}/{project_dir}"
         log_file_path = f"{workspace_path}/dev.log"
-        workspace_id = magpie_workspace.mags_workspace_id or magpie_workspace.workspace_id
+        workspace_id = sandbox.mags_workspace_id or sandbox.workspace_id
 
         # Get number of lines from query param (default 100, max 500)
         lines = min(int(request.GET.get('lines', 100)), 500)
@@ -769,7 +946,7 @@ def get_workspace_dev_server_logs(request, workspace_id):
     """
     try:
         # Get the workspace
-        workspace = MagpieWorkspace.objects.select_related('project').get(workspace_id=workspace_id)
+        workspace = Sandbox.objects.select_related('project').get(workspace_id=workspace_id)
 
         # Check permissions - user must own the project
         if workspace.project.owner != request.user:
@@ -833,7 +1010,7 @@ def get_workspace_dev_server_logs(request, workspace_id):
             'lines_requested': lines
         })
 
-    except MagpieWorkspace.DoesNotExist:
+    except Sandbox.DoesNotExist:
         return JsonResponse(
             {'error': 'Workspace not found'},
             status=404

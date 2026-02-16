@@ -1,7 +1,7 @@
 from factory.stack_configs import get_stack_config
 
 
-async def get_system_builder_mode(stack: str = 'nextjs'):
+async def get_system_builder_mode(stack: str = 'custom'):
     """
     Get the system prompt for the LFG Builder Agent.
 
@@ -27,6 +27,12 @@ PROJECT INFORMATION:
 - Project Directory: /root/{project_dir}
 - Install Command: {install_cmd}
 - Dev Server Command: {dev_cmd}
+
+ENVIRONMENT:
+- You are running inside a cloud sandbox. The preview proxy routes traffic to **port 8080**.
+- ALWAYS configure the dev server to listen on port 8080 and bind to 0.0.0.0 (not localhost).
+- For frameworks with host allowlists (Vite, Astro, etc.), set allowedHosts to allow all hosts.
+  Examples: Vite/Astro `server.allowedHosts: true`, Django `ALLOWED_HOSTS = ['*']`.
 
 ## WORKFLOW
 
@@ -85,7 +91,7 @@ End with: "IMPLEMENTATION_STATUS: COMPLETE - [summary]" or "IMPLEMENTATION_STATU
 """
 
 
-def get_system_builder_mode_sync(stack: str = 'nextjs') -> str:
+def get_system_builder_mode_sync(stack: str = 'custom') -> str:
     """
     Synchronous version of get_system_builder_mode for use in non-async contexts.
 
@@ -111,6 +117,12 @@ PROJECT INFORMATION:
 - Project Directory: /root/{project_dir}
 - Install Command: {install_cmd}
 - Dev Server Command: {dev_cmd}
+
+ENVIRONMENT:
+- You are running inside a cloud sandbox. The preview proxy routes traffic to **port 8080**.
+- ALWAYS configure the dev server to listen on port 8080 and bind to 0.0.0.0 (not localhost).
+- For frameworks with host allowlists (Vite, Astro, etc.), set allowedHosts to allow all hosts.
+  Examples: Vite/Astro `server.allowedHosts: true`, Django `ALLOWED_HOSTS = ['*']`.
 
 ## WORKFLOW
 

@@ -46,6 +46,10 @@
             </a>
         </div>
         <div class="sidebar-nav">
+            <a href="{% url 'instant_mode' project_id=current_project.project_id %}" class="nav-link{% if request.resolver_match.url_name == 'instant_mode' or request.resolver_match.url_name == 'instant_app_detail' %} active{% endif %}" title="Instant">
+                <i class="fas fa-bolt"></i>
+                <span class="nav-text">Instant</span>
+            </a>
             <a href="#" class="nav-link chat-link{% if request.resolver_match.url_name == 'index' or request.resolver_match.url_name == 'conversation_detail' or request.resolver_match.url_name == 'create_conversation' %} active{% endif %}" title="Chat">
                 <i class="fas fa-comments"></i>
                 <span class="nav-text">Chat</span>

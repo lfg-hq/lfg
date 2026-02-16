@@ -14,12 +14,39 @@
 </head>
 <body class="font-sans text-slate-900 bg-slate-50">
     <nav class="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-slate-200">
-        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
             <a href="/" class="flex items-center gap-2">
                 <i data-lucide="rocket" class="w-5 h-5 text-indigo-600"></i>
                 <span class="font-display font-bold text-lg">LFG</span>
             </a>
-            <a href="/" class="text-sm font-semibold text-slate-600 hover:text-indigo-600">Back to home</a>
+            <div class="hidden md:flex items-center gap-6">
+                <a href="/" class="text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">Home</a>
+                <a href="/agent/" class="text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">Agent</a>
+                <a href="/services/" class="text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">Services</a>
+                <a href="/blog/" class="text-sm font-medium text-indigo-600 font-semibold">Blog</a>
+                <a href="/#portfolio" class="text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">Portfolio</a>
+                <div class="flex items-center gap-4 ml-2">
+                    <a href="https://github.com/lfg-hq/lfg" target="_blank" rel="noopener noreferrer" class="text-slate-500 hover:text-slate-900 transition-colors">
+                        <i data-lucide="github" class="w-5 h-5"></i>
+                    </a>
+                    <a href="/#hero-form" class="bg-slate-900 hover:bg-indigo-700 text-white px-5 py-2 rounded-full text-sm font-semibold transition-all shadow-lg">
+                        Submit Your Idea
+                    </a>
+                </div>
+            </div>
+            <div class="md:hidden">
+                <button id="mobile-menu-btn" class="text-slate-600">
+                    <i data-lucide="menu" class="w-6 h-6"></i>
+                </button>
+            </div>
+        </div>
+        <div id="mobile-menu" class="hidden md:hidden absolute top-full left-0 w-full bg-white border-b border-slate-200 p-4 flex-col gap-3 shadow-xl z-50">
+            <a href="/" class="text-base font-medium text-slate-700 py-2 mobile-link">Home</a>
+            <a href="/agent/" class="text-base font-medium text-slate-700 py-2 mobile-link">Agent</a>
+            <a href="/services/" class="text-base font-medium text-slate-700 py-2 mobile-link">Services</a>
+            <a href="/blog/" class="text-base font-medium text-slate-700 py-2 mobile-link">Blog</a>
+            <a href="/#portfolio" class="text-base font-medium text-slate-700 py-2 mobile-link">Portfolio</a>
+            <a href="/#hero-form" class="bg-indigo-600 text-white w-full py-3 rounded-lg font-semibold text-center block mobile-link">Submit Your Idea</a>
         </div>
     </nav>
 
@@ -55,6 +82,14 @@
 
     <script>
       lucide.createIcons();
+      const mobileBtn = document.getElementById('mobile-menu-btn');
+      const mobileMenu = document.getElementById('mobile-menu');
+      if (mobileBtn && mobileMenu) {
+          mobileBtn.addEventListener('click', () => { mobileMenu.classList.toggle('hidden'); mobileMenu.classList.toggle('flex'); });
+          document.querySelectorAll('.mobile-link').forEach(link => {
+              link.addEventListener('click', () => { mobileMenu.classList.add('hidden'); mobileMenu.classList.remove('flex'); });
+          });
+      }
     </script>
 </body>
 </html>

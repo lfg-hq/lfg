@@ -60,6 +60,13 @@
                 <span class="tab-status tab-status-active"></span>
             {% endif %}
         </a>
+        <a href="#instant-apps" class="tab-item" data-section="instant-apps">
+            <i class="fas fa-bolt"></i>
+            Instant Apps
+            {% if instant_apps_count %}
+                <span class="tab-count">{{ instant_apps_count }}</span>
+            {% endif %}
+        </a>
         <a href="#environment" class="tab-item" data-section="environment">
             <i class="fas fa-key"></i>
             Environment
@@ -273,7 +280,7 @@
                                 </button>
                             </div>
                             <div style="display: flex; align-items: center; gap: 8px;">
-                                {% with workspace=project.magpie_workspaces.first %}
+                                {% with workspace=project.sandboxes.first %}
                                 {% if workspace and workspace.proxy_url %}
                                 <a href="{{ workspace.proxy_url }}" target="_blank" class="btn btn-sm btn-primary" style="display: inline-flex; align-items: center; gap: 6px;">
                                     <i class="fas fa-external-link-alt"></i> Preview App
@@ -303,7 +310,7 @@
                                 <span style="color: #94a3b8; min-width: 100px;">Default Port:</span>
                                 <code style="background: rgba(0,0,0,0.3); padding: 2px 8px; border-radius: 4px; color: #e0e0e0;">{{ stack_config.default_port }}</code>
                             </div>
-                            {% with workspace=project.magpie_workspaces.first %}
+                            {% with workspace=project.sandboxes.first %}
                             {% if workspace and workspace.proxy_url %}
                             <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
                                 <span style="color: #94a3b8; min-width: 100px;">Preview URL:</span>
@@ -445,6 +452,33 @@
         {% endif %}
     </div>
     
+    <!-- Instant Apps Section -->
+    <div class="project-section" id="instant-apps-section">
+        <div class="section-header">
+            <h2 class="section-title">Instant Apps</h2>
+            <a href="{% url 'instant_mode' project_id=project.project_id %}" class="btn btn-primary btn-sm" style="display: inline-flex; align-items: center; gap: 6px;">
+                <i class="fas fa-bolt"></i> <span>New Instant App</span>
+            </a>
+        </div>
+
+        <div id="instant-apps-list">
+            <!-- Loaded dynamically via JS -->
+        </div>
+
+        <div class="empty-state" id="instant-apps-empty" style="display: none;">
+            <div class="empty-state-icon">
+                <i class="fas fa-bolt"></i>
+            </div>
+            <h3 class="empty-state-title">No instant apps yet</h3>
+            <div class="empty-state-text">
+                Use Instant Mode to quickly build full-stack apps through a conversational interface.
+            </div>
+            <a href="{% url 'instant_mode' project_id=project.project_id %}" class="btn btn-primary" style="display: inline-flex; align-items: center; gap: 6px;">
+                <i class="fas fa-bolt"></i> <span>Launch Instant Mode</span>
+            </a>
+        </div>
+    </div>
+
     <!-- Integrations Section -->
     <div class="project-section" id="integrations-section">
         <div class="section-header">
@@ -2146,4 +2180,48 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <!-- Include CSRF Token -->
 {% csrf_token %}
+
+<script>
+// Load instant apps when the tab is shown
+document.addEventListener('DOMContentLoaded', function() {
+    const instantTab = document.querySelector('[data-section="instant-apps"]');
+    if (instantTab) {
+        instantTab.addEventListener('click', loadInstantApps);
+    }
+});
+
+async function loadInstantApps() {
+    const listEl = document.getElementById('instant-apps-list');
+    const emptyEl = document.getElementById('instant-apps-empty');
+    if (!listEl) return;
+
+    try {
+        const resp = await fetch('/api/instant/{{ project.project_id }}/apps/');
+        const data = await resp.json();
+        const apps = data.apps || [];
+
+        if (apps.length === 0) {
+            listEl.innerHTML = '';
+            emptyEl.style.display = '';
+            return;
+        }
+
+        emptyEl.style.display = 'none';
+        listEl.innerHTML = apps.map(app => `
+            <a href="/instant/project/{{ project.project_id }}/app/${app.app_id}/" class="conversation-row" style="display:flex;align-items:center;padding:0.75rem 1rem;border-bottom:1px solid var(--border-color,#333);text-decoration:none;gap:0.75rem;">
+                <div style="flex:1;min-width:0;">
+                    <div style="display:flex;align-items:center;gap:0.5rem;">
+                        <span class="conversation-row-title">${app.name}</span>
+                        <span class="project-status project-status-${app.status}" style="font-size:0.7rem;padding:2px 6px;">${app.status}</span>
+                    </div>
+                    <span class="conversation-row-meta">${app.description ? app.description.substring(0, 80) : 'No description'}</span>
+                </div>
+                <i class="fas fa-chevron-right conversation-row-arrow"></i>
+            </a>
+        `).join('');
+    } catch (e) {
+        console.error('Error loading instant apps:', e);
+    }
+}
+</script>
 {% endblock %}

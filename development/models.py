@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import models
 from django.utils import timezone
 
@@ -142,8 +144,8 @@ class DockerPortMapping(models.Model):
         return f"{self.host_port}:{self.container_port} for {self.sandbox.container_name}"
 
 
-class MagpieWorkspace(models.Model):
-    """Persistent Magpie VM used for Turbo mode remote environments."""
+class Sandbox(models.Model):
+    """Persistent Mags VM used for Turbo mode remote environments."""
 
     STATUS_CHOICES = (
         ('provisioning', 'Provisioning'),
@@ -162,18 +164,18 @@ class MagpieWorkspace(models.Model):
     project = models.ForeignKey(
         Project,
         on_delete=models.CASCADE,
-        related_name="magpie_workspaces",
+        related_name="sandboxes",
         blank=True,
         null=True,
-        help_text="Project associated with this Magpie workspace"
+        help_text="Project associated with this sandbox"
     )
     user = models.ForeignKey(
         'auth.User',
         on_delete=models.CASCADE,
-        related_name="magpie_workspaces",
+        related_name="sandboxes",
         blank=True,
         null=True,
-        help_text="User associated with this workspace (for user-level workspaces like Claude auth)"
+        help_text="User associated with this sandbox (for user-level workspaces like Claude auth)"
     )
     workspace_type = models.CharField(
         max_length=20,
@@ -262,6 +264,12 @@ class MagpieWorkspace(models.Model):
         null=True,
         help_text="Arbitrary metadata including project summary, last restart, etc."
     )
+    cli_session_id = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        help_text="Claude Code CLI session ID for resuming conversations"
+    )
     last_seen_at = models.DateTimeField(
         blank=True,
         null=True,
@@ -271,6 +279,7 @@ class MagpieWorkspace(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        db_table = "development_sandbox"
         indexes = [
             models.Index(fields=['project']),
             models.Index(fields=['conversation_id']),
@@ -282,7 +291,7 @@ class MagpieWorkspace(models.Model):
             models.UniqueConstraint(
                 fields=['conversation_id'],
                 condition=models.Q(conversation_id__isnull=False),
-                name='unique_conversation_magpie_workspace'
+                name='unique_sandbox_conversation'
             ),
             models.UniqueConstraint(
                 fields=['user', 'workspace_type'],
@@ -295,12 +304,12 @@ class MagpieWorkspace(models.Model):
                 name='unique_mags_workspace_id'
             ),
         ]
-        verbose_name = "Magpie Workspace"
-        verbose_name_plural = "Magpie Workspaces"
+        verbose_name = "Sandbox"
+        verbose_name_plural = "Sandboxes"
 
     def __str__(self):
         identifier = self.project.provided_name if self.project and self.project.provided_name else self.workspace_id
-        return f"Magpie Workspace {identifier} ({self.status})"
+        return f"Sandbox {identifier} ({self.status})"
 
     def get_ssh_credentials(self) -> dict | None:
         """Return SSH credentials dict if all fields are set, else None."""
@@ -528,6 +537,63 @@ class CommandExecutionOld(models.Model):
 
     def __str__(self):
         return f"Command: {self.command[:50]}{'...' if len(self.command) > 50 else ''}"
+
+
+class InstantApp(models.Model):
+    """Instant Mode app — a lightweight, self-contained app with its own sandbox."""
+
+    STATUS_CHOICES = (
+        ('gathering', 'Gathering Requirements'),
+        ('building', 'Building'),
+        ('running', 'Running'),
+        ('stopped', 'Stopped'),
+        ('error', 'Error'),
+    )
+
+    app_id = models.CharField(max_length=36, unique=True, default=uuid.uuid4, db_index=True)
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True, null=True)
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name="instant_apps",
+    )
+    user = models.ForeignKey(
+        'auth.User',
+        on_delete=models.CASCADE,
+        related_name="instant_apps",
+    )
+    sandbox = models.OneToOneField(
+        Sandbox,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="instant_app",
+    )
+    conversation = models.OneToOneField(
+        'chat.Conversation',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='gathering')
+    requirements = models.TextField(blank=True, null=True)
+    env_vars = models.JSONField(default=dict, blank=True)
+    preview_url = models.URLField(max_length=512, blank=True, null=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['project']),
+            models.Index(fields=['user']),
+            models.Index(fields=['status']),
+        ]
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"InstantApp {self.name} ({self.status})"
 
 
 class ServerConfig(models.Model):

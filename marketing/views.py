@@ -11,12 +11,13 @@ from django.core.mail import send_mail
 from django.http import Http404
 from django.http import JsonResponse
 from django.shortcuts import render
+from django.utils import timezone
 from django.utils.safestring import mark_safe
 from django.utils.text import slugify
-from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_protect
+from django.views.decorators.http import require_http_methods
 
-from .models import ServiceInquiry
+from .models import FreePRDRequest, FreePRDVerificationCode, ServiceInquiry
 
 logger = logging.getLogger(__name__)
 
@@ -268,3 +269,177 @@ def health_check(request):
         "status": "healthy",
         "message": "Application is running correctly"
     })
+
+
+@require_http_methods(["POST"])
+@csrf_protect
+def request_free_prd_code(request):
+    """Create a free PRD request record and send email verification code."""
+    try:
+        payload = json.loads(request.body.decode('utf-8'))
+    except json.JSONDecodeError:
+        payload = request.POST
+
+    project_idea = payload.get('project_idea', '').strip()
+    email = payload.get('email', '').strip().lower()
+
+    if not project_idea or not email:
+        return JsonResponse(
+            {'success': False, 'error': 'Project idea and email are required.'},
+            status=400
+        )
+
+    prd_request = FreePRDRequest.objects.create(
+        email=email,
+        project_idea=project_idea,
+    )
+    verification = FreePRDVerificationCode.create_code(prd_request)
+
+    from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'no-reply@lfg.run')
+    subject = "Your LFG free PRD verification code"
+    body = f"""Your verification code is: {verification.code}
+
+This code expires in 30 minutes.
+
+We will use it to confirm your email before delivering your free PRD.
+"""
+    try:
+        send_mail(
+            subject=subject,
+            message=body,
+            from_email=from_email,
+            recipient_list=[email],
+            fail_silently=False,
+        )
+    except Exception as exc:
+        logger.error("Failed to send free PRD verification code", exc_info=exc)
+        return JsonResponse(
+            {'success': False, 'error': 'Unable to send verification code right now.'},
+            status=500
+        )
+
+    return JsonResponse({
+        'success': True,
+        'request_id': prd_request.id,
+    })
+
+
+@require_http_methods(["POST"])
+@csrf_protect
+def verify_free_prd_code(request):
+    """Verify code for a free PRD request and mark lead as verified."""
+    try:
+        payload = json.loads(request.body.decode('utf-8'))
+    except json.JSONDecodeError:
+        payload = request.POST
+
+    request_id = payload.get('request_id')
+    code = str(payload.get('code', '')).strip()
+
+    if not request_id or not code:
+        return JsonResponse(
+            {'success': False, 'error': 'Request ID and code are required.'},
+            status=400
+        )
+    if len(code) != 6 or not code.isdigit():
+        return JsonResponse({'success': False, 'error': 'Please enter a valid 6-digit code.'}, status=400)
+    try:
+        request_id = int(request_id)
+    except (TypeError, ValueError):
+        return JsonResponse({'success': False, 'error': 'Invalid request ID.'}, status=400)
+
+    try:
+        prd_request = FreePRDRequest.objects.get(id=request_id)
+    except FreePRDRequest.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Request not found.'}, status=404)
+
+    if prd_request.email_verified:
+        return JsonResponse({'success': True, 'already_verified': True})
+
+    verification = (
+        FreePRDVerificationCode.objects
+        .filter(
+            request=prd_request,
+            code=code,
+            used=False,
+            expires_at__gt=timezone.now(),
+        )
+        .order_by('-created_at')
+        .first()
+    )
+    if not verification:
+        return JsonResponse({'success': False, 'error': 'Invalid or expired code.'}, status=400)
+
+    verification.used = True
+    verification.save(update_fields=['used'])
+
+    prd_request.email_verified = True
+    prd_request.verified_at = timezone.now()
+    prd_request.save(update_fields=['email_verified', 'verified_at', 'updated_at'])
+
+    from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'no-reply@lfg.run')
+    try:
+        send_mail(
+            subject="Thanks - your free PRD request is confirmed",
+            message=(
+                "Thank you for your request. We received your product idea and will prepare your free PRD.\n\n"
+                "— Team LFG"
+            ),
+            from_email=from_email,
+            recipient_list=[prd_request.email],
+            fail_silently=False,
+        )
+    except Exception as exc:
+        logger.warning("Failed to send free PRD confirmation email", exc_info=exc)
+
+    return JsonResponse({'success': True})
+
+
+@require_http_methods(["POST"])
+@csrf_protect
+def resend_free_prd_code(request):
+    """Resend verification code for an existing free PRD request."""
+    try:
+        payload = json.loads(request.body.decode('utf-8'))
+    except json.JSONDecodeError:
+        payload = request.POST
+
+    request_id = payload.get('request_id')
+    if not request_id:
+        return JsonResponse({'success': False, 'error': 'Request ID is required.'}, status=400)
+    try:
+        request_id = int(request_id)
+    except (TypeError, ValueError):
+        return JsonResponse({'success': False, 'error': 'Invalid request ID.'}, status=400)
+
+    try:
+        prd_request = FreePRDRequest.objects.get(id=request_id)
+    except FreePRDRequest.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Request not found.'}, status=404)
+
+    if prd_request.email_verified:
+        return JsonResponse({'success': True, 'already_verified': True})
+
+    verification = FreePRDVerificationCode.create_code(prd_request)
+    from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'no-reply@lfg.run')
+    subject = "Your new LFG free PRD verification code"
+    body = f"""Your verification code is: {verification.code}
+
+This code expires in 30 minutes.
+"""
+    try:
+        send_mail(
+            subject=subject,
+            message=body,
+            from_email=from_email,
+            recipient_list=[prd_request.email],
+            fail_silently=False,
+        )
+    except Exception as exc:
+        logger.error("Failed to resend free PRD verification code", exc_info=exc)
+        return JsonResponse(
+            {'success': False, 'error': 'Unable to resend code right now.'},
+            status=500
+        )
+
+    return JsonResponse({'success': True})

@@ -136,10 +136,17 @@
         box-shadow: 0 12px 40px rgba(99, 102, 241, 0.1);
       }
 
-      .terminal-line {
-        opacity: 0;
-        animation: fadeUp 0.4s ease-out forwards;
+      @keyframes slideUp {
+        from { opacity: 0; transform: translateY(24px); }
+        to { opacity: 1; transform: translateY(0); }
       }
+      .pipeline-step {
+        opacity: 0;
+      }
+      .pipeline-step.animate {
+        animation: slideUp 0.5s ease-out forwards;
+      }
+
     </style>
 </head>
 <body class="text-slate-900 font-sans selection:bg-indigo-600 selection:text-white">
@@ -155,16 +162,18 @@
         </a>
 
         <div class="hidden md:flex items-center gap-6">
-          <a href="#how-it-works" class="text-sm font-medium text-slate-600 hover:text-brand-600 transition-colors">How It Works</a>
-          <a href="#agents" class="text-sm font-medium text-slate-600 hover:text-brand-600 transition-colors">AI Agents</a>
-          <a href="#pricing" class="text-sm font-medium text-slate-600 hover:text-brand-600 transition-colors">Pricing</a>
+          <a href="/" class="text-sm font-medium text-slate-600 hover:text-brand-600 transition-colors">Home</a>
+          <a href="/agent/" class="text-sm font-medium text-brand-600 font-semibold">Agent</a>
+          <a href="/services/" class="text-sm font-medium text-slate-600 hover:text-brand-600 transition-colors">Services</a>
+          <a href="/blog/" class="text-sm font-medium text-slate-600 hover:text-brand-600 transition-colors">Blog</a>
+          <a href="/#portfolio" class="text-sm font-medium text-slate-600 hover:text-brand-600 transition-colors">Portfolio</a>
 
           <div class="flex items-center gap-4 ml-2">
             <a href="https://github.com/lfg-hq/lfg" target="_blank" rel="noopener noreferrer" class="text-slate-500 hover:text-slate-900 transition-colors">
               <i data-lucide="github" class="w-5 h-5"></i>
             </a>
-            <a href="/accounts/auth/" class="bg-slate-900 hover:bg-brand-700 text-white px-5 py-2 rounded-full text-sm font-semibold transition-all shadow-lg">
-              Launch Platform
+            <a href="/#hero-form" class="bg-slate-900 hover:bg-brand-700 text-white px-5 py-2 rounded-full text-sm font-semibold transition-all shadow-lg">
+              Submit Your Idea
             </a>
           </div>
         </div>
@@ -177,10 +186,12 @@
       </div>
 
       <div id="mobile-menu" class="hidden md:hidden absolute top-full left-0 w-full bg-white border-b border-slate-200 p-4 flex-col gap-3 shadow-xl">
-        <a href="#how-it-works" class="text-base font-medium text-slate-700 py-2 mobile-link">How It Works</a>
-        <a href="#agents" class="text-base font-medium text-slate-700 py-2 mobile-link">AI Agents</a>
-        <a href="#pricing" class="text-base font-medium text-slate-700 py-2 mobile-link">Pricing</a>
-        <a href="/accounts/auth/" class="bg-brand-600 text-white w-full py-3 rounded-lg font-semibold text-center block">Launch Platform</a>
+        <a href="/" class="text-base font-medium text-slate-700 py-2 mobile-link">Home</a>
+        <a href="/agent/" class="text-base font-medium text-slate-700 py-2 mobile-link">Agent</a>
+        <a href="/services/" class="text-base font-medium text-slate-700 py-2 mobile-link">Services</a>
+        <a href="/blog/" class="text-base font-medium text-slate-700 py-2 mobile-link">Blog</a>
+        <a href="/#portfolio" class="text-base font-medium text-slate-700 py-2 mobile-link">Portfolio</a>
+        <a href="/#hero-form" class="bg-brand-600 text-white w-full py-3 rounded-lg font-semibold text-center block mobile-link">Submit Your Idea</a>
       </div>
     </nav>
 
@@ -195,24 +206,23 @@
                 <div class="text-center max-w-4xl mx-auto">
                     <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full glass shadow-sm mb-8 animate-fade-up">
                         <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                        <span class="text-xs font-bold text-slate-600 uppercase tracking-wider">Agents active — building right now</span>
+                        <span class="text-xs font-bold text-slate-600 uppercase tracking-wider">Your AI product manager</span>
                     </div>
 
-                    <h1 class="font-display font-extrabold text-4xl sm:text-5xl md:text-6xl lg:text-7xl leading-[1.05] tracking-tight text-slate-900 animate-fade-up" style="animation-delay: 0.1s">
-                        AI agents build your software.<br>
-                        <span class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-pink-500">Humans just verify.</span>
+                    <h1 class="font-display font-semibold text-3xl sm:text-4xl md:text-5xl lg:text-6xl leading-[1.1] tracking-tight text-slate-900 animate-fade-up" style="animation-delay: 0.1s">
+                        Your AI product manager that helps your team <span class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-pink-500">build</span>
                     </h1>
 
                     <p class="text-lg sm:text-xl text-slate-600 mt-7 max-w-2xl mx-auto leading-relaxed animate-fade-up" style="animation-delay: 0.2s">
-                        LFG is an AI-first software factory. Autonomous agents analyze requirements, create tickets, write code in sandboxed environments, and ship tested features. Your team reviews. That's it.
+                        LFG Agent is your AI product manager. It analyzes requirements, creates PRDs and technical plans, generates prioritized tickets, and orchestrates Claude Code sessions to build your product. You stay in control.
                     </p>
 
                     <div class="mt-10 flex flex-wrap items-center justify-center gap-4 animate-fade-up" style="animation-delay: 0.3s">
                         <a href="#start" class="px-8 py-3.5 rounded-full bg-brand-600 text-white font-semibold hover:bg-brand-700 transition-all inline-flex items-center gap-2 shadow-lg shadow-brand-600/25">
-                            Start Building <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                            Try LFG Agent <i data-lucide="arrow-right" class="w-4 h-4"></i>
                         </a>
-                        <a href="#how-it-works" class="px-8 py-3.5 rounded-full bg-white border border-slate-200 text-slate-700 font-semibold hover:border-brand-300 hover:text-brand-700 transition-colors inline-flex items-center gap-2">
-                            See How It Works
+                        <a href="#features" class="px-8 py-3.5 rounded-full bg-white border border-slate-200 text-slate-700 font-semibold hover:border-brand-300 hover:text-brand-700 transition-colors inline-flex items-center gap-2">
+                            See Features
                         </a>
                     </div>
                 </div>
@@ -220,358 +230,283 @@
                 <!-- Stats Bar -->
                 <div class="mt-16 grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto animate-fade-up" style="animation-delay: 0.4s">
                     <div class="stat-card glass rounded-xl p-5 text-center transition-all cursor-default">
-                        <p class="font-display font-extrabold text-3xl sm:text-4xl text-brand-600">80%</p>
-                        <p class="text-sm font-medium text-slate-500 mt-1">Cost Savings</p>
+                        <p class="font-display font-semibold text-2xl sm:text-3xl text-brand-600">PRDs</p>
+                        <p class="text-sm font-medium text-slate-500 mt-1">Auto-generated</p>
                     </div>
                     <div class="stat-card glass rounded-xl p-5 text-center transition-all cursor-default">
-                        <p class="font-display font-extrabold text-3xl sm:text-4xl text-brand-600">10x</p>
-                        <p class="text-sm font-medium text-slate-500 mt-1">Faster Delivery</p>
+                        <p class="font-display font-semibold text-2xl sm:text-3xl text-brand-600">Tickets</p>
+                        <p class="text-sm font-medium text-slate-500 mt-1">Created & prioritized</p>
                     </div>
                     <div class="stat-card glass rounded-xl p-5 text-center transition-all cursor-default">
-                        <p class="font-display font-extrabold text-3xl sm:text-4xl text-brand-600">24/7</p>
-                        <p class="text-sm font-medium text-slate-500 mt-1">Agents Working</p>
+                        <p class="font-display font-semibold text-2xl sm:text-3xl text-brand-600">Code</p>
+                        <p class="text-sm font-medium text-slate-500 mt-1">Sandboxed sessions</p>
                     </div>
                     <div class="stat-card glass rounded-xl p-5 text-center transition-all cursor-default">
-                        <p class="font-display font-extrabold text-3xl sm:text-4xl text-brand-600">0</p>
-                        <p class="text-sm font-medium text-slate-500 mt-1">Idle Downtime</p>
+                        <p class="font-display font-semibold text-2xl sm:text-3xl text-brand-600">Ship</p>
+                        <p class="text-sm font-medium text-slate-500 mt-1">Review & merge</p>
                     </div>
                 </div>
             </div>
         </section>
 
-        <!-- ==================== LIVE AGENT TERMINAL ==================== -->
+        <!-- ==================== SCREENSHOTS — SEE IT IN ACTION ==================== -->
         <section class="py-16 bg-white border-t border-slate-100">
-            <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="text-center mb-10">
-                    <p class="text-sm font-bold text-brand-600 uppercase tracking-wider mb-2">What it looks like</p>
-                    <h2 class="font-display font-bold text-3xl md:text-4xl text-slate-900">Your agents, always shipping</h2>
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center mb-12">
+                    <p class="text-sm font-bold text-brand-600 uppercase tracking-wider mb-2">See it in action</p>
+                    <h2 class="font-display font-bold text-3xl md:text-4xl text-slate-900">Your AI product manager at work</h2>
+                    <p class="text-slate-600 text-lg mt-4">From requirements analysis to ticket execution, every step is visible and trackable.</p>
                 </div>
 
-                <div class="bg-[#0f172a] rounded-2xl shadow-2xl overflow-hidden border border-slate-800 glow-brand">
-                    <div class="flex items-center gap-2 px-5 py-3 bg-[#1e293b] border-b border-slate-700">
-                        <div class="w-3 h-3 rounded-full bg-[#ff5f56]"></div>
-                        <div class="w-3 h-3 rounded-full bg-[#ffbd2e]"></div>
-                        <div class="w-3 h-3 rounded-full bg-[#27c93f]"></div>
-                        <span class="ml-3 text-xs text-slate-400 font-mono">lfg-agent — live pipeline</span>
-                        <div class="ml-auto flex items-center gap-2">
-                            <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
-                            <span class="text-xs text-green-400 font-mono">running</span>
+                <div class="space-y-16">
+                    <!-- Screenshot 1: PRD & Chat -->
+                    <div class="grid lg:grid-cols-2 gap-10 items-center">
+                        <div class="order-2 lg:order-1">
+                            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-50 border border-brand-200 mb-4">
+                                <i data-lucide="file-text" class="w-4 h-4 text-brand-600"></i>
+                                <span class="text-xs font-bold text-brand-700 uppercase tracking-wider">PRD generation</span>
+                            </div>
+                            <h3 class="font-display font-bold text-2xl text-slate-900 mb-3">Analyze requirements. Generate PRDs.</h3>
+                            <p class="text-slate-600 leading-relaxed mb-4">
+                                Feed your idea into the AI chat. LFG Agent reads through your context-heavy data, analyzes requirements, and generates a comprehensive product requirements document with feature breakdowns, technical approach, and stack recommendations.
+                            </p>
+                            <ul class="space-y-2 text-sm text-slate-600">
+                                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-600 mt-0.5 shrink-0"></i> Full PRD with features, priorities, and acceptance criteria</li>
+                                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-600 mt-0.5 shrink-0"></i> Technical analysis with stack and architecture decisions</li>
+                                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-600 mt-0.5 shrink-0"></i> Document versioning — iterate and refine with the agent</li>
+                            </ul>
+                        </div>
+                        <div class="order-1 lg:order-2">
+                            <div class="rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden">
+                                <div class="flex items-center gap-1.5 px-4 py-2.5 bg-slate-100 border-b border-slate-200">
+                                    <span class="w-2.5 h-2.5 rounded-full bg-red-400"></span>
+                                    <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+                                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                                    <span class="ml-2 text-xs text-slate-400">LFG Agent — PRD & Analysis</span>
+                                </div>
+                                <img src="/static/images/screenshots/agent-prd-chat.png" alt="LFG Agent generating a PRD with feature breakdown and technical analysis" class="w-full" />
+                            </div>
                         </div>
                     </div>
-                    <div id="agent-terminal" class="p-6 font-mono text-sm leading-7 min-h-[280px] text-slate-300">
-                        <!-- Lines injected by JS -->
+
+                    <!-- Screenshot 2: Ticket Board -->
+                    <div class="grid lg:grid-cols-2 gap-10 items-center">
+                        <div>
+                            <div class="rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden">
+                                <div class="flex items-center gap-1.5 px-4 py-2.5 bg-slate-100 border-b border-slate-200">
+                                    <span class="w-2.5 h-2.5 rounded-full bg-red-400"></span>
+                                    <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+                                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                                    <span class="ml-2 text-xs text-slate-400">LFG Agent — Ticket Board</span>
+                                </div>
+                                <img src="/static/images/screenshots/agent-ticket-board.png" alt="LFG ticket board with Open, In Progress, Review, and Done columns" class="w-full" />
+                            </div>
+                        </div>
+                        <div>
+                            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-50 border border-brand-200 mb-4">
+                                <i data-lucide="list-checks" class="w-4 h-4 text-brand-600"></i>
+                                <span class="text-xs font-bold text-brand-700 uppercase tracking-wider">Ticket management</span>
+                            </div>
+                            <h3 class="font-display font-bold text-2xl text-slate-900 mb-3">Create and prioritize tickets automatically.</h3>
+                            <p class="text-slate-600 leading-relaxed mb-4">
+                                Once the PRD is approved, LFG Agent breaks it into user stories and implementation tickets — scoped, prioritized, and ready for execution. All within the app. No external tools needed.
+                            </p>
+                            <ul class="space-y-2 text-sm text-slate-600">
+                                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-600 mt-0.5 shrink-0"></i> User stories with acceptance criteria auto-generated</li>
+                                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-600 mt-0.5 shrink-0"></i> Kanban board with Open, In Progress, Review, Done</li>
+                                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-600 mt-0.5 shrink-0"></i> Priority and dependency-aware ordering</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Screenshot 3: Ticket Execution -->
+                    <div class="grid lg:grid-cols-2 gap-10 items-center">
+                        <div class="order-2 lg:order-1">
+                            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-50 border border-brand-200 mb-4">
+                                <i data-lucide="terminal" class="w-4 h-4 text-brand-600"></i>
+                                <span class="text-xs font-bold text-brand-700 uppercase tracking-wider">Agent execution</span>
+                            </div>
+                            <h3 class="font-display font-bold text-2xl text-slate-900 mb-3">Track and course-correct Claude Code sessions.</h3>
+                            <p class="text-slate-600 leading-relaxed mb-4">
+                                Each ticket is executed by Claude Code in a sandboxed environment. LFG Agent tracks progress, shows you exactly what was built, and lets you continue, restart, or course-correct at any point.
+                            </p>
+                            <ul class="space-y-2 text-sm text-slate-600">
+                                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-600 mt-0.5 shrink-0"></i> Sandboxed Claude Code sessions per ticket</li>
+                                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-600 mt-0.5 shrink-0"></i> Live execution logs, git diffs, and server preview</li>
+                                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-600 mt-0.5 shrink-0"></i> Continue or restart sessions with full context</li>
+                            </ul>
+                        </div>
+                        <div class="order-1 lg:order-2">
+                            <div class="rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden">
+                                <div class="flex items-center gap-1.5 px-4 py-2.5 bg-slate-100 border-b border-slate-200">
+                                    <span class="w-2.5 h-2.5 rounded-full bg-red-400"></span>
+                                    <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+                                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                                    <span class="ml-2 text-xs text-slate-400">LFG Agent — Ticket Execution</span>
+                                </div>
+                                <img src="/static/images/screenshots/agent-ticket-execution.png" alt="LFG ticket execution showing Claude Code session with completed implementation" class="w-full" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== FEATURES ==================== -->
+        <section id="features" class="py-20 bg-slate-50">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center max-w-3xl mx-auto mb-16">
+                    <p class="text-sm font-bold text-brand-600 uppercase tracking-wider mb-2">What LFG Agent does</p>
+                    <h2 class="font-display font-bold text-3xl md:text-4xl text-slate-900">Your AI product manager, end to end</h2>
+                    <p class="text-slate-600 text-lg mt-4">LFG Agent handles the entire product lifecycle — from understanding what needs to be built to making sure it gets built right.</p>
+                </div>
+
+                <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div class="step-card rounded-2xl border border-slate-200 bg-white p-6">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-100 text-brand-700 flex items-center justify-center">
+                                <i data-lucide="brain" class="w-5 h-5"></i>
+                            </div>
+                            <h3 class="font-display font-bold text-lg">Requirements Analysis</h3>
+                        </div>
+                        <p class="text-sm text-slate-600 leading-relaxed">Reads through your context-heavy data — briefs, docs, conversations — and distills it into clear, structured requirements. Asks the right questions so nothing gets missed.</p>
+                    </div>
+
+                    <div class="step-card rounded-2xl border border-slate-200 bg-white p-6">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-100 text-brand-700 flex items-center justify-center">
+                                <i data-lucide="file-text" class="w-5 h-5"></i>
+                            </div>
+                            <h3 class="font-display font-bold text-lg">PRD Generation</h3>
+                        </div>
+                        <p class="text-sm text-slate-600 leading-relaxed">Generates comprehensive product requirement documents with feature tables, priority levels, technical approach, and stack recommendations. Iterate and version them with the agent.</p>
+                    </div>
+
+                    <div class="step-card rounded-2xl border border-slate-200 bg-white p-6">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-100 text-brand-700 flex items-center justify-center">
+                                <i data-lucide="git-branch" class="w-5 h-5"></i>
+                            </div>
+                            <h3 class="font-display font-bold text-lg">Technical Planning</h3>
+                        </div>
+                        <p class="text-sm text-slate-600 leading-relaxed">Selects the right stack, designs system architecture, maps data models and APIs. Produces a technical plan that becomes the blueprint for implementation tickets.</p>
+                    </div>
+
+                    <div class="step-card rounded-2xl border border-slate-200 bg-white p-6">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-100 text-brand-700 flex items-center justify-center">
+                                <i data-lucide="list-todo" class="w-5 h-5"></i>
+                            </div>
+                            <h3 class="font-display font-bold text-lg">Ticket Creation</h3>
+                        </div>
+                        <p class="text-sm text-slate-600 leading-relaxed">Breaks the plan into scoped, dependency-aware tickets with user stories and acceptance criteria. All created within the app — no external project management tool needed.</p>
+                    </div>
+
+                    <div class="step-card rounded-2xl border border-slate-200 bg-white p-6">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-100 text-brand-700 flex items-center justify-center">
+                                <i data-lucide="terminal" class="w-5 h-5"></i>
+                            </div>
+                            <h3 class="font-display font-bold text-lg">Claude Code Sessions</h3>
+                        </div>
+                        <p class="text-sm text-slate-600 leading-relaxed">Each ticket is handed off to Claude Code running in a sandboxed environment. Track execution logs, view git diffs, preview the running server, and course-correct when needed.</p>
+                    </div>
+
+                    <div class="step-card rounded-2xl border border-slate-200 bg-white p-6">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-100 text-brand-700 flex items-center justify-center">
+                                <i data-lucide="history" class="w-5 h-5"></i>
+                            </div>
+                            <h3 class="font-display font-bold text-lg">Versioning & Iteration</h3>
+                        </div>
+                        <p class="text-sm text-slate-600 leading-relaxed">PRDs and technical documents are versioned as you iterate. Refine scope, adjust priorities, and re-plan — the agent keeps full context across every revision.</p>
                     </div>
                 </div>
             </div>
         </section>
 
         <!-- ==================== HOW IT WORKS — PIPELINE ==================== -->
-        <section id="how-it-works" class="py-20 bg-slate-50">
+        <section id="how-it-works" class="py-20 bg-white border-t border-slate-100">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="text-center max-w-3xl mx-auto mb-16">
-                    <p class="text-sm font-bold text-brand-600 uppercase tracking-wider mb-2">The AI pipeline</p>
-                    <h2 class="font-display font-bold text-3xl md:text-4xl text-slate-900">From idea to shipped product — fully automated</h2>
-                    <p class="text-slate-600 text-lg mt-4">You describe what you need. AI agents handle every step. You review and approve.</p>
+                    <p class="text-sm font-bold text-brand-600 uppercase tracking-wider mb-2">The pipeline</p>
+                    <h2 class="font-display font-bold text-3xl md:text-4xl text-slate-900">From idea to working product</h2>
+                    <p class="text-slate-600 text-lg mt-4">You describe what you need. LFG Agent handles every step. You review and approve.</p>
                 </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-5">
-                    <!-- Step 1 -->
-                    <article class="step-card bg-white rounded-xl p-6 border border-slate-200 shadow-sm relative">
-                        <div class="w-10 h-10 rounded-lg bg-brand-100 text-brand-700 flex items-center justify-center mb-4">
-                            <i data-lucide="message-square-text" class="w-5 h-5"></i>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-0 items-stretch">
+                    <div class="pipeline-step relative flex flex-col" style="animation-delay: 0s">
+                        <article class="step-card bg-white rounded-xl p-6 border border-slate-200 shadow-sm flex-1">
+                            <div class="w-10 h-10 rounded-lg bg-brand-100 text-brand-700 flex items-center justify-center mb-4">
+                                <i data-lucide="message-square-text" class="w-5 h-5"></i>
+                            </div>
+                            <p class="text-xs uppercase font-bold tracking-wider text-brand-600 mb-2">01 — You</p>
+                            <h3 class="font-display font-bold text-lg mb-2">Describe your idea</h3>
+                            <p class="text-sm text-slate-600">Share what you need in plain English. A product concept, a feature set, a whole system.</p>
+                        </article>
+                        <div class="hidden lg:flex items-center justify-center absolute -right-3 top-1/2 -translate-y-1/2 z-10 w-6 h-6 rounded-full bg-white border border-slate-200 shadow-sm text-brand-500">
+                            <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
                         </div>
-                        <p class="text-xs uppercase font-bold tracking-wider text-brand-600 mb-2">01 — You</p>
-                        <h3 class="font-display font-bold text-lg mb-2">Describe your idea</h3>
-                        <p class="text-sm text-slate-600">Tell us what you need in plain English. A product concept, a feature, a whole system.</p>
-                        <div class="hidden lg:block absolute -right-3 top-1/2 -translate-y-1/2 text-brand-300 z-10">
-                            <i data-lucide="chevron-right" class="w-5 h-5"></i>
-                        </div>
-                    </article>
+                    </div>
 
-                    <!-- Step 2 -->
-                    <article class="step-card bg-white rounded-xl p-6 border border-slate-200 shadow-sm relative">
-                        <div class="w-10 h-10 rounded-lg bg-brand-100 text-brand-700 flex items-center justify-center mb-4">
-                            <i data-lucide="file-text" class="w-5 h-5"></i>
+                    <div class="pipeline-step relative flex flex-col" style="animation-delay: 0.1s">
+                        <article class="step-card bg-white rounded-xl p-6 border border-slate-200 shadow-sm flex-1">
+                            <div class="w-10 h-10 rounded-lg bg-brand-100 text-brand-700 flex items-center justify-center mb-4">
+                                <i data-lucide="file-text" class="w-5 h-5"></i>
+                            </div>
+                            <p class="text-xs uppercase font-bold tracking-wider text-brand-600 mb-2">02 — Agent</p>
+                            <h3 class="font-display font-bold text-lg mb-2">PRD & plan</h3>
+                            <p class="text-sm text-slate-600">Agent generates a full PRD, technical architecture, and implementation plan you can review and iterate on.</p>
+                        </article>
+                        <div class="hidden lg:flex items-center justify-center absolute -right-3 top-1/2 -translate-y-1/2 z-10 w-6 h-6 rounded-full bg-white border border-slate-200 shadow-sm text-brand-500">
+                            <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
                         </div>
-                        <p class="text-xs uppercase font-bold tracking-wider text-brand-600 mb-2">02 — Agent</p>
-                        <h3 class="font-display font-bold text-lg mb-2">PRD & analysis</h3>
-                        <p class="text-sm text-slate-600">AI agents generate a full PRD, break down requirements, define architecture, and create a technical plan.</p>
-                        <div class="hidden lg:block absolute -right-3 top-1/2 -translate-y-1/2 text-brand-300 z-10">
-                            <i data-lucide="chevron-right" class="w-5 h-5"></i>
-                        </div>
-                    </article>
+                    </div>
 
-                    <!-- Step 3 -->
-                    <article class="step-card bg-white rounded-xl p-6 border border-slate-200 shadow-sm relative">
-                        <div class="w-10 h-10 rounded-lg bg-brand-100 text-brand-700 flex items-center justify-center mb-4">
-                            <i data-lucide="list-checks" class="w-5 h-5"></i>
+                    <div class="pipeline-step relative flex flex-col" style="animation-delay: 0.2s">
+                        <article class="step-card bg-white rounded-xl p-6 border border-slate-200 shadow-sm flex-1">
+                            <div class="w-10 h-10 rounded-lg bg-brand-100 text-brand-700 flex items-center justify-center mb-4">
+                                <i data-lucide="list-checks" class="w-5 h-5"></i>
+                            </div>
+                            <p class="text-xs uppercase font-bold tracking-wider text-brand-600 mb-2">03 — Agent</p>
+                            <h3 class="font-display font-bold text-lg mb-2">Tickets created</h3>
+                            <p class="text-sm text-slate-600">The plan is broken into prioritized tickets with user stories. Each is scoped and queued for execution.</p>
+                        </article>
+                        <div class="hidden lg:flex items-center justify-center absolute -right-3 top-1/2 -translate-y-1/2 z-10 w-6 h-6 rounded-full bg-white border border-slate-200 shadow-sm text-brand-500">
+                            <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
                         </div>
-                        <p class="text-xs uppercase font-bold tracking-wider text-brand-600 mb-2">03 — Agent</p>
-                        <h3 class="font-display font-bold text-lg mb-2">Tickets created</h3>
-                        <p class="text-sm text-slate-600">The plan is broken into granular tickets. Each ticket is scoped, prioritized, and queued for execution.</p>
-                        <div class="hidden lg:block absolute -right-3 top-1/2 -translate-y-1/2 text-brand-300 z-10">
-                            <i data-lucide="chevron-right" class="w-5 h-5"></i>
-                        </div>
-                    </article>
+                    </div>
 
-                    <!-- Step 4 -->
-                    <article class="step-card bg-white rounded-xl p-6 border border-slate-200 shadow-sm relative">
-                        <div class="w-10 h-10 rounded-lg bg-brand-100 text-brand-700 flex items-center justify-center mb-4">
-                            <i data-lucide="code-2" class="w-5 h-5"></i>
+                    <div class="pipeline-step relative flex flex-col" style="animation-delay: 0.3s">
+                        <article class="step-card bg-white rounded-xl p-6 border border-slate-200 shadow-sm flex-1">
+                            <div class="w-10 h-10 rounded-lg bg-brand-100 text-brand-700 flex items-center justify-center mb-4">
+                                <i data-lucide="terminal" class="w-5 h-5"></i>
+                            </div>
+                            <p class="text-xs uppercase font-bold tracking-wider text-brand-600 mb-2">04 — Agent</p>
+                            <h3 class="font-display font-bold text-lg mb-2">Code & test</h3>
+                            <p class="text-sm text-slate-600">Claude Code executes each ticket in a sandbox. You can watch, course-correct, or let it run autonomously.</p>
+                        </article>
+                        <div class="hidden lg:flex items-center justify-center absolute -right-3 top-1/2 -translate-y-1/2 z-10 w-6 h-6 rounded-full bg-white border border-slate-200 shadow-sm text-brand-500">
+                            <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
                         </div>
-                        <p class="text-xs uppercase font-bold tracking-wider text-brand-600 mb-2">04 — Agent</p>
-                        <h3 class="font-display font-bold text-lg mb-2">Code & test</h3>
-                        <p class="text-sm text-slate-600">Agents spin up sandboxed environments, write code, run tests, fix bugs, and commit working features.</p>
-                        <div class="hidden lg:block absolute -right-3 top-1/2 -translate-y-1/2 text-brand-300 z-10">
-                            <i data-lucide="chevron-right" class="w-5 h-5"></i>
-                        </div>
-                    </article>
+                    </div>
 
-                    <!-- Step 5 -->
-                    <article class="step-card bg-white rounded-xl p-6 border border-brand-200 shadow-sm bg-brand-50">
-                        <div class="w-10 h-10 rounded-lg bg-brand-600 text-white flex items-center justify-center mb-4">
-                            <i data-lucide="check-circle-2" class="w-5 h-5"></i>
-                        </div>
-                        <p class="text-xs uppercase font-bold tracking-wider text-brand-700 mb-2">05 — You</p>
-                        <h3 class="font-display font-bold text-lg mb-2">Review & ship</h3>
-                        <p class="text-sm text-slate-700">You review the working product. Approve and ship, or leave feedback. Agents iterate instantly.</p>
-                    </article>
+                    <div class="pipeline-step relative flex flex-col" style="animation-delay: 0.4s">
+                        <article class="step-card bg-white rounded-xl p-6 border border-brand-200 shadow-sm bg-brand-50 flex-1">
+                            <div class="w-10 h-10 rounded-lg bg-brand-600 text-white flex items-center justify-center mb-4">
+                                <i data-lucide="check-circle-2" class="w-5 h-5"></i>
+                            </div>
+                            <p class="text-xs uppercase font-bold tracking-wider text-brand-700 mb-2">05 — You</p>
+                            <h3 class="font-display font-bold text-lg mb-2">Review & ship</h3>
+                            <p class="text-sm text-slate-700">Review the working product. Approve and merge, or leave feedback. The agent iterates instantly.</p>
+                        </article>
+                    </div>
                 </div>
 
                 <div class="mt-10 text-center">
                     <p class="text-slate-500 text-sm font-medium">
                         <span class="text-brand-600 font-bold">You touch 2 of 5 steps.</span> The rest is fully autonomous.
                     </p>
-                </div>
-            </div>
-        </section>
-
-        <!-- ==================== AI AGENTS DETAIL ==================== -->
-        <section id="agents" class="py-20 bg-white border-t border-slate-100">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="text-center max-w-3xl mx-auto mb-14">
-                    <p class="text-sm font-bold text-brand-600 uppercase tracking-wider mb-2">Meet the agents</p>
-                    <h2 class="font-display font-bold text-3xl md:text-4xl text-slate-900">A full engineering team that never sleeps</h2>
-                    <p class="text-slate-600 text-lg mt-4">Each agent is purpose-built for a stage of the development lifecycle. They coordinate, hand off work, and keep building around the clock.</p>
-                </div>
-
-                <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <div class="rounded-2xl border border-slate-200 p-6 hover:border-brand-300 transition-colors">
-                        <div class="flex items-center gap-3 mb-4">
-                            <div class="w-10 h-10 rounded-xl bg-indigo-100 text-brand-700 flex items-center justify-center">
-                                <i data-lucide="brain" class="w-5 h-5"></i>
-                            </div>
-                            <h3 class="font-display font-bold text-lg">Product Analyst</h3>
-                        </div>
-                        <p class="text-sm text-slate-600 leading-relaxed">Ingests your idea, researches the market, and generates a comprehensive PRD with user stories, acceptance criteria, and technical recommendations.</p>
-                    </div>
-
-                    <div class="rounded-2xl border border-slate-200 p-6 hover:border-brand-300 transition-colors">
-                        <div class="flex items-center gap-3 mb-4">
-                            <div class="w-10 h-10 rounded-xl bg-indigo-100 text-brand-700 flex items-center justify-center">
-                                <i data-lucide="git-branch" class="w-5 h-5"></i>
-                            </div>
-                            <h3 class="font-display font-bold text-lg">Architect</h3>
-                        </div>
-                        <p class="text-sm text-slate-600 leading-relaxed">Designs system architecture, selects the stack, defines data models, maps APIs, and structures the entire codebase before a single line is written.</p>
-                    </div>
-
-                    <div class="rounded-2xl border border-slate-200 p-6 hover:border-brand-300 transition-colors">
-                        <div class="flex items-center gap-3 mb-4">
-                            <div class="w-10 h-10 rounded-xl bg-indigo-100 text-brand-700 flex items-center justify-center">
-                                <i data-lucide="list-todo" class="w-5 h-5"></i>
-                            </div>
-                            <h3 class="font-display font-bold text-lg">Ticket Manager</h3>
-                        </div>
-                        <p class="text-sm text-slate-600 leading-relaxed">Breaks the plan into atomic, dependency-aware tickets. Prioritizes them, estimates scope, and queues them for builder agents to pick up.</p>
-                    </div>
-
-                    <div class="rounded-2xl border border-slate-200 p-6 hover:border-brand-300 transition-colors">
-                        <div class="flex items-center gap-3 mb-4">
-                            <div class="w-10 h-10 rounded-xl bg-indigo-100 text-brand-700 flex items-center justify-center">
-                                <i data-lucide="code-2" class="w-5 h-5"></i>
-                            </div>
-                            <h3 class="font-display font-bold text-lg">Builder Agent</h3>
-                        </div>
-                        <p class="text-sm text-slate-600 leading-relaxed">Spins up an isolated sandbox, writes production-grade code, installs dependencies, runs the app, fixes errors, and commits clean, working features.</p>
-                    </div>
-
-                    <div class="rounded-2xl border border-slate-200 p-6 hover:border-brand-300 transition-colors">
-                        <div class="flex items-center gap-3 mb-4">
-                            <div class="w-10 h-10 rounded-xl bg-indigo-100 text-brand-700 flex items-center justify-center">
-                                <i data-lucide="shield-check" class="w-5 h-5"></i>
-                            </div>
-                            <h3 class="font-display font-bold text-lg">QA Agent</h3>
-                        </div>
-                        <p class="text-sm text-slate-600 leading-relaxed">Reviews code for quality, runs tests, checks for regressions, validates against acceptance criteria, and either approves or sends back for fixes.</p>
-                    </div>
-
-                    <div class="rounded-2xl border border-slate-200 p-6 hover:border-brand-300 transition-colors">
-                        <div class="flex items-center gap-3 mb-4">
-                            <div class="w-10 h-10 rounded-xl bg-indigo-100 text-brand-700 flex items-center justify-center">
-                                <i data-lucide="rocket" class="w-5 h-5"></i>
-                            </div>
-                            <h3 class="font-display font-bold text-lg">Release Agent</h3>
-                        </div>
-                        <p class="text-sm text-slate-600 leading-relaxed">Packages the build, prepares release notes, handles deployment configuration, and delivers a working product update you can preview instantly.</p>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- ==================== COMPARISON ==================== -->
-        <section class="py-20 bg-slate-50">
-            <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="text-center max-w-3xl mx-auto mb-14">
-                    <p class="text-sm font-bold text-brand-600 uppercase tracking-wider mb-2">Why it matters</p>
-                    <h2 class="font-display font-bold text-3xl md:text-4xl text-slate-900">Traditional dev vs. AI-first</h2>
-                </div>
-
-                <div class="grid md:grid-cols-2 gap-6">
-                    <!-- Traditional -->
-                    <div class="rounded-2xl border border-slate-200 bg-white p-8">
-                        <div class="flex items-center gap-3 mb-6">
-                            <div class="w-10 h-10 rounded-xl bg-slate-100 text-slate-500 flex items-center justify-center">
-                                <i data-lucide="clock" class="w-5 h-5"></i>
-                            </div>
-                            <h3 class="font-display text-xl font-bold text-slate-400">Traditional</h3>
-                        </div>
-                        <ul class="space-y-4">
-                            <li class="flex items-start gap-3 text-slate-500">
-                                <i data-lucide="x" class="w-5 h-5 text-red-400 mt-0.5 shrink-0"></i>
-                                <span>Weeks to hire and onboard engineers</span>
-                            </li>
-                            <li class="flex items-start gap-3 text-slate-500">
-                                <i data-lucide="x" class="w-5 h-5 text-red-400 mt-0.5 shrink-0"></i>
-                                <span>$15K-50K+ monthly engineering payroll</span>
-                            </li>
-                            <li class="flex items-start gap-3 text-slate-500">
-                                <i data-lucide="x" class="w-5 h-5 text-red-400 mt-0.5 shrink-0"></i>
-                                <span>Manual requirements, manual ticketing</span>
-                            </li>
-                            <li class="flex items-start gap-3 text-slate-500">
-                                <i data-lucide="x" class="w-5 h-5 text-red-400 mt-0.5 shrink-0"></i>
-                                <span>Developers idle during reviews and blockers</span>
-                            </li>
-                            <li class="flex items-start gap-3 text-slate-500">
-                                <i data-lucide="x" class="w-5 h-5 text-red-400 mt-0.5 shrink-0"></i>
-                                <span>Months from idea to first working version</span>
-                            </li>
-                            <li class="flex items-start gap-3 text-slate-500">
-                                <i data-lucide="x" class="w-5 h-5 text-red-400 mt-0.5 shrink-0"></i>
-                                <span>8 hours/day, 5 days/week</span>
-                            </li>
-                        </ul>
-                    </div>
-
-                    <!-- LFG -->
-                    <div class="rounded-2xl border border-brand-200 bg-brand-50 p-8 glow-brand">
-                        <div class="flex items-center gap-3 mb-6">
-                            <div class="w-10 h-10 rounded-xl bg-brand-600 text-white flex items-center justify-center">
-                                <i data-lucide="zap" class="w-5 h-5"></i>
-                            </div>
-                            <h3 class="font-display text-xl font-bold text-brand-700">LFG AI-First</h3>
-                        </div>
-                        <ul class="space-y-4">
-                            <li class="flex items-start gap-3 text-slate-700">
-                                <i data-lucide="check" class="w-5 h-5 text-green-600 mt-0.5 shrink-0"></i>
-                                <span>Agents start building in minutes, not weeks</span>
-                            </li>
-                            <li class="flex items-start gap-3 text-slate-700">
-                                <i data-lucide="check" class="w-5 h-5 text-green-600 mt-0.5 shrink-0"></i>
-                                <span><strong>80% lower cost</strong> — tokens, not salaries</span>
-                            </li>
-                            <li class="flex items-start gap-3 text-slate-700">
-                                <i data-lucide="check" class="w-5 h-5 text-green-600 mt-0.5 shrink-0"></i>
-                                <span>AI auto-generates PRDs, tickets, and plans</span>
-                            </li>
-                            <li class="flex items-start gap-3 text-slate-700">
-                                <i data-lucide="check" class="w-5 h-5 text-green-600 mt-0.5 shrink-0"></i>
-                                <span>Zero idle time — agents parallelize work</span>
-                            </li>
-                            <li class="flex items-start gap-3 text-slate-700">
-                                <i data-lucide="check" class="w-5 h-5 text-green-600 mt-0.5 shrink-0"></i>
-                                <span>Days from idea to working product</span>
-                            </li>
-                            <li class="flex items-start gap-3 text-slate-700">
-                                <i data-lucide="check" class="w-5 h-5 text-green-600 mt-0.5 shrink-0"></i>
-                                <span><strong>24/7/365</strong> — agents never stop</span>
-                            </li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- ==================== ENGAGEMENT OPTIONS ==================== -->
-        <section id="pricing" class="py-20 bg-[#0f172a] text-white">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="text-center max-w-3xl mx-auto mb-14">
-                    <p class="text-sm font-bold text-brand-400 uppercase tracking-wider mb-2">Get started</p>
-                    <h2 class="font-display font-bold text-3xl md:text-4xl">Choose how you want to build</h2>
-                    <p class="text-slate-400 text-lg mt-4">Whether you want us to build it or run the platform yourself.</p>
-                </div>
-
-                <div class="grid lg:grid-cols-3 gap-6">
-                    <article class="bg-white/5 border border-white/10 rounded-2xl p-7 hover:border-white/20 transition-colors">
-                        <div class="flex items-center gap-3 mb-4">
-                            <div class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
-                                <i data-lucide="users" class="w-5 h-5 text-white"></i>
-                            </div>
-                            <h3 class="font-display font-bold text-2xl">Custom Build</h3>
-                        </div>
-                        <p class="text-slate-300 mb-6">We build your product end-to-end. Our team + AI agents handle everything. You review and approve.</p>
-                        <ul class="space-y-3 text-sm text-slate-300 mb-8">
-                            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-400 mt-0.5"></i> Full product delivery</li>
-                            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-400 mt-0.5"></i> Senior engineering oversight</li>
-                            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-400 mt-0.5"></i> AI agents do the heavy lifting</li>
-                            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-400 mt-0.5"></i> Fixed scope, fast turnaround</li>
-                        </ul>
-                        <a href="/services/" class="inline-flex items-center gap-2 text-white font-semibold hover:text-brand-300 transition-colors">
-                            Book a build <i data-lucide="arrow-right" class="w-4 h-4"></i>
-                        </a>
-                    </article>
-
-                    <article class="bg-brand-600/20 border border-brand-500/40 rounded-2xl p-7 relative overflow-hidden">
-                        <div class="absolute top-4 right-4">
-                            <span class="text-xs font-bold uppercase bg-brand-500 text-white px-2.5 py-1 rounded-full">Popular</span>
-                        </div>
-                        <div class="flex items-center gap-3 mb-4">
-                            <div class="w-10 h-10 rounded-xl bg-brand-500/30 flex items-center justify-center">
-                                <i data-lucide="bot" class="w-5 h-5 text-brand-300"></i>
-                            </div>
-                            <h3 class="font-display font-bold text-2xl">Agent Platform</h3>
-                        </div>
-                        <p class="text-indigo-100 mb-6">Run LFG yourself. Subscription access to the full AI agent pipeline — idea to shipped code, on your terms.</p>
-                        <ul class="space-y-3 text-sm text-indigo-100 mb-8">
-                            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-300 mt-0.5"></i> Autonomous agent pipeline</li>
-                            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-300 mt-0.5"></i> PRD, tickets, sandbox coding</li>
-                            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-300 mt-0.5"></i> Automated testing & QA</li>
-                            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-brand-300 mt-0.5"></i> Self-host or cloud</li>
-                        </ul>
-                        <a href="/accounts/auth/" class="inline-flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white px-5 py-2.5 rounded-lg font-semibold transition-colors">
-                            Start free <i data-lucide="arrow-right" class="w-4 h-4"></i>
-                        </a>
-                    </article>
-
-                    <article class="bg-pink-500/15 border border-pink-400/30 rounded-2xl p-7 hover:border-pink-400/50 transition-colors">
-                        <div class="flex items-center gap-3 mb-4">
-                            <div class="w-10 h-10 rounded-xl bg-pink-500/20 flex items-center justify-center">
-                                <i data-lucide="handshake" class="w-5 h-5 text-pink-300"></i>
-                            </div>
-                            <h3 class="font-display font-bold text-2xl">Revenue Share</h3>
-                        </div>
-                        <p class="text-pink-100 mb-6">For select startups — we build your product with no upfront cost in exchange for shared upside.</p>
-                        <ul class="space-y-3 text-sm text-pink-100 mb-8">
-                            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-pink-300 mt-0.5"></i> Zero upfront cost</li>
-                            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-pink-300 mt-0.5"></i> Full LFG team + agents</li>
-                            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-pink-300 mt-0.5"></i> Founder alignment</li>
-                            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-pink-300 mt-0.5"></i> Shared upside model</li>
-                        </ul>
-                        <a href="/venture-studio/" class="inline-flex items-center gap-2 text-white font-semibold hover:text-pink-300 transition-colors">
-                            Apply now <i data-lucide="arrow-right" class="w-4 h-4"></i>
-                        </a>
-                    </article>
                 </div>
             </div>
         </section>
@@ -586,7 +521,7 @@
                             <span class="text-xs font-bold text-green-700 uppercase tracking-wider">Agents ready</span>
                         </div>
                         <h2 class="font-display font-bold text-3xl md:text-4xl text-slate-900">Tell us what to build</h2>
-                        <p class="text-slate-500 mt-3">Describe your product and agents will start analyzing immediately.</p>
+                        <p class="text-slate-500 mt-3">Describe your development needs. We'll send you a PRD + plan — and we might build it for free.</p>
                     </div>
 
                     <form id="hero-form" class="space-y-4">
@@ -598,6 +533,13 @@
                             class="w-full resize-none rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none text-base text-slate-800 placeholder:text-slate-400 p-4 min-h-[140px] bg-white"
                             required
                         ></textarea>
+                        <input
+                            id="hero-email"
+                            type="email"
+                            placeholder="you@company.com"
+                            class="w-full rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none text-base text-slate-800 placeholder:text-slate-400 p-4 bg-white"
+                            required
+                        />
                         <div class="hidden sm:flex gap-2 overflow-x-auto no-scrollbar pb-1">
                             <button type="button" onclick="setInput('A B2B onboarding workflow app with approvals, audit trail, and role permissions')" class="whitespace-nowrap text-xs font-semibold px-3 py-1.5 bg-slate-100 rounded-md text-slate-600 hover:bg-brand-50 hover:text-brand-700 transition-colors">
                                 B2B onboarding
@@ -614,7 +556,7 @@
                         </div>
                         <button type="submit" class="w-full inline-flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-700 text-white px-6 py-3.5 rounded-lg font-semibold transition-all shadow-lg shadow-brand-600/25">
                             <i data-lucide="sparkles" class="w-4 h-4"></i>
-                            <span>Start Build Intake</span>
+                            <span id="hero-btn-text">Get Your Free Plan</span>
                         </button>
                     </form>
                 </div>
@@ -679,10 +621,12 @@ uvicorn LFG.asgi:application --host 0.0.0.0 --port 8000
                 <div>
                     <h4 class="font-bold text-white mb-4 uppercase text-xs tracking-wider">Company</h4>
                     <ul class="space-y-3 text-sm text-slate-400">
-                        <li><a href="#how-it-works" class="hover:text-brand-400 transition-colors">How it works</a></li>
-                        <li><a href="/services/" class="hover:text-brand-400 transition-colors">Custom builds</a></li>
-                        <li><a href="/venture-studio/" class="hover:text-brand-400 transition-colors">Revenue share</a></li>
-                        <li><a href="/docs/" class="hover:text-brand-400 transition-colors">Docs</a></li>
+                        <li><a href="/agent/" class="hover:text-brand-400 transition-colors">Agent</a></li>
+                        <li><a href="/services/" class="hover:text-brand-400 transition-colors">Services</a></li>
+                        <li><a href="/blog/" class="hover:text-brand-400 transition-colors">Blog</a></li>
+                        <li><a href="/#portfolio" class="hover:text-brand-400 transition-colors">Portfolio</a></li>
+                        <li><a href="/#book-demo" class="hover:text-brand-400 transition-colors">Book demo</a></li>
+                        <li><a href="/venture-studio/" class="hover:text-brand-400 transition-colors">Venture studio</a></li>
                     </ul>
                 </div>
 
@@ -829,6 +773,21 @@ uvicorn LFG.asgi:application --host 0.0.0.0 --port 8000
     <script>
         lucide.createIcons();
 
+        // ── Pipeline step animation on scroll ──
+        const pipelineObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const steps = entry.target.querySelectorAll('.pipeline-step');
+                    steps.forEach(step => {
+                        step.classList.add('animate');
+                    });
+                    pipelineObserver.unobserve(entry.target);
+                }
+            });
+        }, { threshold: 0.2 });
+        const pipelineGrid = document.querySelector('#how-it-works .grid');
+        if (pipelineGrid) pipelineObserver.observe(pipelineGrid);
+
         // ── Responsive placeholder ──
         function updateHeroPlaceholder() {
             const heroInput = document.getElementById('hero-input');
@@ -876,54 +835,6 @@ uvicorn LFG.asgi:application --host 0.0.0.0 --port 8000
             });
         });
 
-        // ── Agent terminal animation ──
-        const terminalLines = [
-            { text: '$ lfg analyze --input "Customer portal with billing and admin"', color: 'text-green-400', delay: 0 },
-            { text: '  Generating PRD ... done (12s)', color: 'text-slate-400', delay: 800 },
-            { text: '  Creating technical architecture ... done', color: 'text-slate-400', delay: 1400 },
-            { text: '$ lfg tickets --create --from-prd', color: 'text-green-400', delay: 2200 },
-            { text: '  Created 14 tickets across 3 milestones', color: 'text-slate-400', delay: 3000 },
-            { text: '$ lfg build --ticket TKT-001 "User auth with JWT + OAuth"', color: 'text-green-400', delay: 3800 },
-            { text: '  Sandbox spun up ... installing dependencies', color: 'text-slate-400', delay: 4600 },
-            { text: '  Writing auth module ... 847 lines', color: 'text-slate-400', delay: 5400 },
-            { text: '  Running tests ... 23/23 passed', color: 'text-emerald-400', delay: 6200 },
-            { text: '  Committed to feature/auth-system', color: 'text-emerald-400', delay: 6800 },
-            { text: '$ lfg build --ticket TKT-002 "Stripe billing integration"', color: 'text-green-400', delay: 7600 },
-            { text: '  Writing billing module ... 634 lines', color: 'text-slate-400', delay: 8400 },
-            { text: '  Running tests ... 18/18 passed', color: 'text-emerald-400', delay: 9200 },
-            { text: '  Ready for review', color: 'text-brand-400', delay: 9800 },
-        ];
-
-        function runTerminalAnimation() {
-            const terminal = document.getElementById('agent-terminal');
-            terminal.innerHTML = '';
-
-            terminalLines.forEach((line, i) => {
-                setTimeout(() => {
-                    const el = document.createElement('div');
-                    el.className = `terminal-line ${line.color}`;
-                    el.style.animationDelay = '0s';
-                    el.textContent = line.text;
-                    terminal.appendChild(el);
-                    terminal.scrollTop = terminal.scrollHeight;
-                }, line.delay);
-            });
-
-            // Restart after full cycle
-            setTimeout(runTerminalAnimation, 13000);
-        }
-
-        // Start when terminal scrolls into view
-        const terminalObserver = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    runTerminalAnimation();
-                    terminalObserver.unobserve(entry.target);
-                }
-            });
-        }, { threshold: 0.3 });
-        terminalObserver.observe(document.getElementById('agent-terminal'));
-
         // ── Form & modal logic ──
         const heroForm = document.getElementById('hero-form');
         const heroInput = document.getElementById('hero-input');
@@ -964,13 +875,40 @@ uvicorn LFG.asgi:application --host 0.0.0.0 --port 8000
             heroInput.focus();
         }
 
-        heroForm.addEventListener('submit', (e) => {
+        heroForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const val = heroInput.value.trim();
-            if (val) {
-                userRequirements = val;
-                sessionStorage.setItem('pendingRequirements', userRequirements);
-                openModal(val);
+            const idea = heroInput.value.trim();
+            const email = document.getElementById('hero-email').value.trim();
+            if (!idea || !email) return;
+
+            userRequirements = idea;
+            sessionStorage.setItem('pendingRequirements', idea);
+
+            const heroBtnText = document.getElementById('hero-btn-text');
+            if (heroBtnText) heroBtnText.textContent = 'Sending...';
+
+            try {
+                const response = await fetch('/free-prd/request-code/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: JSON.stringify({ project_idea: idea, email }),
+                    credentials: 'include'
+                });
+                const data = await response.json();
+                if (response.ok && data.success) {
+                    // Redirect to landing page with verification flow
+                    window.location.href = `/?prd_sent=1&email=${encodeURIComponent(email)}&request_id=${encodeURIComponent(data.request_id)}`;
+                } else {
+                    alert(data.error || 'Unable to send code. Please try again.');
+                }
+            } catch (error) {
+                console.error('Free PRD send code error:', error);
+                alert('Unable to send code. Please try again.');
+            } finally {
+                if (heroBtnText) heroBtnText.textContent = 'Get Your Free Plan';
             }
         });
 

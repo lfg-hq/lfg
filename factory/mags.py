@@ -54,6 +54,10 @@ set -eux
 # Install system packages
 apk update && apk add --no-cache curl xz git expect bash openssh-client
 
+# Ensure PTYs are available (needed by expect for Claude CLI auth)
+mkdir -p /dev/pts 2>/dev/null || true
+mount -t devpts devpts /dev/pts 2>/dev/null || true
+
 # Install Node.js
 cd /root && mkdir -p node && cd node
 if [ ! -d node-v{MAGS_NODE_VERSION}-{MAGS_NODE_DISTRO} ]; then
@@ -833,10 +837,10 @@ def get_latest_claude_auth_workspace_id(user_id: int) -> Optional[str]:
     Returns None when no valid workspace record exists.
     """
     try:
-        from development.models import MagpieWorkspace
+        from development.models import Sandbox
 
         workspace = (
-            MagpieWorkspace.objects.filter(
+            Sandbox.objects.filter(
                 user_id=user_id,
                 workspace_type='claude_auth',
             )
@@ -1027,6 +1031,7 @@ def run_command(
     with_node_env: bool = True,
     project_id=None,
     base_workspace_id: str = None,
+    max_retries: int = 10,
 ) -> dict:
     """
     Execute a command on a Mags workspace using the SDK.
@@ -1142,7 +1147,7 @@ def run_command(
     # exec() runs the command on the running/sleeping VM via SSH (handled internally by SDK).
     # After new(), the VM may need a few seconds to fully boot — retry on transient errors.
     # Use more retries with longer delay for "no VM" since provisioning can be slow.
-    max_exec_attempts = 10
+    max_exec_attempts = max_retries
     for attempt in range(1, max_exec_attempts + 1):
         try:
             resp = client.exec(workspace_id, exec_command, timeout=timeout)
@@ -1166,6 +1171,27 @@ def run_command(
             return {"exit_code": exit_code, "stdout": stdout, "stderr": stderr}
         except Exception as exec_err:
             err_str = str(exec_err).lower()
+            # "no vm_id" on a sleeping VM — wake it via enable_access then retry
+            if "no vm_id" in err_str and attempt == 1:
+                try:
+                    job = client.find_job(workspace_id)
+                    if job and job.get("status") == "sleeping":
+                        request_id = job.get("request_id") or job.get("id")
+                        logger.info("[MAGS][CMD] Waking sleeping VM %s (job %s)...", workspace_id, request_id)
+                        client.enable_access(request_id, port=22)
+                        # Wait for VM to boot after wake
+                        for _ in range(20):
+                            time.sleep(1)
+                            st = client.status(request_id)
+                            if st.get("vm_id"):
+                                logger.info("[MAGS][CMD] VM %s awake (vm_id=%s)", workspace_id, st["vm_id"])
+                                break
+                        else:
+                            logger.warning("[MAGS][CMD] VM %s still no vm_id after wake attempt", workspace_id)
+                        continue  # retry exec
+                except Exception as wake_err:
+                    logger.warning("[MAGS][CMD] Failed to wake VM %s: %s", workspace_id, wake_err)
+
             # "no vm associated" / "not found" are transient — VM still booting
             is_transient = "no vm" in err_str or "not found" in err_str or "not running" in err_str
             if is_transient and attempt < max_exec_attempts:
@@ -1373,3 +1399,43 @@ def get_http_proxy_url(job_id: str, port: int) -> str:
     """
     access = enable_http_access(job_id, port)
     return access.get("url", "")
+
+
+def create_preview_url_alias(workspace_id: str, project_id: str) -> str:
+    """
+    Create a stable URL alias for a project's preview on app.lfg.run.
+
+    Uses a deterministic subdomain based on project_id so the URL stays the
+    same across different sandbox workspaces.  If the alias already exists
+    (e.g. from a previous sandbox), it is deleted and recreated so it points
+    to the current workspace.
+
+    Args:
+        workspace_id: The Mags workspace overlay name
+        project_id: The project UUID string
+
+    Returns:
+        The stable alias URL, or empty string on failure.
+    """
+    client = _get_mags_client()
+    # Use first 12 chars of project UUID for a short, unique subdomain
+    subdomain = f"lfg-{str(project_id).replace('-', '')[:12]}"
+
+    def _create():
+        result = client.url_alias_create(subdomain, workspace_id, domain="app.lfg.run")
+        url = result.get("url", "")
+        logger.info("[MAGS] URL alias created: %s -> workspace %s (url=%s)", subdomain, workspace_id, url)
+        return url
+
+    try:
+        # Always remove existing alias first so it points to the current workspace
+        try:
+            client.url_alias_delete(subdomain)
+            logger.info("[MAGS] Deleted existing alias %s before recreating", subdomain)
+        except Exception:
+            pass  # Alias didn't exist — that's fine
+
+        return _create()
+    except Exception as e:
+        logger.warning("[MAGS] Failed to create URL alias %s for workspace %s: %s", subdomain, workspace_id, e)
+        return ""

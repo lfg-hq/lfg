@@ -1612,7 +1612,7 @@ def claude_code_start_auth(request):
         return JsonResponse({'error': 'Method not allowed'}, status=405)
 
     try:
-        from development.models import MagpieWorkspace
+        from development.models import Sandbox
         from factory.claude_code_utils import start_claude_auth, check_claude_auth_status
         from factory.mags import (
             get_or_create_workspace_job, run_command, workspace_name_for_claude_auth,
@@ -1621,7 +1621,7 @@ def claude_code_start_auth(request):
         )
 
         # Check if we have an existing Claude auth workspace for this user
-        workspace = MagpieWorkspace.objects.filter(
+        workspace = Sandbox.objects.filter(
             user=request.user,
             workspace_type='claude_auth',
         ).order_by('-updated_at').first()
@@ -1639,6 +1639,7 @@ def claude_code_start_auth(request):
                 test_result = run_command(
                     ws_name, "echo 'WORKSPACE_OK'",
                     timeout=20, with_node_env=False,
+                    max_retries=1,
                 )
                 if test_result.get('exit_code') == 0 and 'WORKSPACE_OK' in test_result.get('stdout', ''):
                     use_existing = True
@@ -1676,7 +1677,7 @@ def claude_code_start_auth(request):
                     }, status=500)
 
                 # Persist row first so we never end up with remote VM but no DB row.
-                workspace, _ = MagpieWorkspace.objects.update_or_create(
+                workspace, _ = Sandbox.objects.update_or_create(
                     user=request.user,
                     workspace_type='claude_auth',
                     defaults={
@@ -1692,7 +1693,7 @@ def claude_code_start_auth(request):
             except Exception as e:
                 logger.error(f"[CLAUDE_CODE] Failed during auth workspace provisioning: {e}", exc_info=True)
                 try:
-                    MagpieWorkspace.objects.filter(
+                    Sandbox.objects.filter(
                         user=request.user,
                         workspace_type='claude_auth',
                     ).update(status='error')
@@ -1728,6 +1729,43 @@ def claude_code_start_auth(request):
                 'message': 'Claude Code is already authenticated'
             })
 
+        # Auth check failed — destroy the stale workspace and create a fresh one
+        if use_existing:
+            logger.warning(f"[CLAUDE_CODE] Auth failed on existing workspace {ws_name}, destroying and recreating...")
+            try:
+                from factory.mags import _stop_workspace_job
+                from mags import Mags
+                client = Mags()
+                _stop_workspace_job(client, ws_name)
+            except Exception as stop_err:
+                logger.warning(f"[CLAUDE_CODE] Failed to stop old workspace: {stop_err}")
+
+            # Delete old DB record
+            if workspace:
+                workspace.delete()
+
+            # Create a fresh workspace
+            ws_name = generate_unique_claude_auth_workspace_name()
+            logger.info(f"[CLAUDE_CODE] Creating fresh auth workspace {ws_name}")
+            job = get_or_create_workspace_job(
+                workspace_id=ws_name,
+                script=CLAUDE_AUTH_SETUP_SCRIPT,
+                persistent=True,
+            )
+            job_id = job.get("request_id") or job.get("id")
+            workspace, _ = Sandbox.objects.update_or_create(
+                user=request.user,
+                workspace_type='claude_auth',
+                defaults={
+                    'job_id': job_id,
+                    'workspace_id': ws_name,
+                    'mags_job_id': job_id,
+                    'mags_workspace_id': ws_name,
+                    'status': 'ready',
+                }
+            )
+            logger.info(f"[CLAUDE_CODE] Fresh workspace ready: {ws_name}, job_id={job_id}")
+
         # Start the authentication flow (OAuth)
         logger.info(f"[CLAUDE_CODE] Starting OAuth flow...")
         auth_result = start_claude_auth(ws_name)
@@ -1758,7 +1796,7 @@ def claude_code_submit_code(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
 
-    from development.models import MagpieWorkspace
+    from development.models import Sandbox
     from factory.claude_code_utils import submit_claude_auth_code, check_claude_auth_status
     from factory.mags import force_sync_workspace
 
@@ -1773,7 +1811,7 @@ def claude_code_submit_code(request):
             }, status=400)
 
         # Get workspace from database
-        workspace = MagpieWorkspace.objects.filter(
+        workspace = Sandbox.objects.filter(
             user=request.user,
             workspace_type='claude_auth',
             status__in=['ready', 'sleeping'],
@@ -1811,12 +1849,12 @@ def claude_code_submit_code(request):
                 profile.save(update_fields=['claude_code_authenticated'])
                 logger.info(f"[CLAUDE_CODE] Profile saved - claude_code_authenticated=True for user {request.user.id}")
 
-                # Clear CLI session IDs for all user's tickets to prevent stale session auth
-                from projects.models import ProjectTicket
-                cleared_count = ProjectTicket.objects.filter(
+                # Clear CLI session IDs for all user's sandboxes to prevent stale session auth
+                from development.models import Sandbox
+                cleared_count = Sandbox.objects.filter(
                     project__owner=request.user,
                     cli_session_id__isnull=False
-                ).update(cli_session_id=None, cli_workspace_id=None)
+                ).update(cli_session_id=None)
                 if cleared_count > 0:
                     logger.info(f"[CLAUDE_CODE] Cleared {cleared_count} CLI session IDs after auth refresh for user {request.user.id}")
 
@@ -1959,7 +1997,7 @@ def claude_code_verify(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
 
-    from development.models import MagpieWorkspace
+    from development.models import Sandbox
     from factory.claude_code_utils import check_claude_auth_status
     from factory.mags import (
         get_or_create_workspace_job, run_command, workspace_name_for_claude_auth,
@@ -1971,7 +2009,7 @@ def claude_code_verify(request):
         profile = request.user.profile
 
         # Get existing workspace
-        workspace = MagpieWorkspace.objects.filter(
+        workspace = Sandbox.objects.filter(
             user=request.user,
             workspace_type='claude_auth',
         ).order_by('-updated_at').first()
@@ -1987,7 +2025,7 @@ def claude_code_verify(request):
                     persistent=True,
                 )
                 job_id = job["request_id"]
-                workspace, _ = MagpieWorkspace.objects.update_or_create(
+                workspace, _ = Sandbox.objects.update_or_create(
                     user=request.user,
                     workspace_type='claude_auth',
                     defaults={
@@ -2056,14 +2094,14 @@ def claude_code_verify(request):
             profile.claude_code_authenticated = True
             profile.save(update_fields=['claude_code_authenticated'])
 
-            # Clear CLI session IDs and workspace IDs for all user's tickets to prevent stale session auth
-            from projects.models import ProjectTicket
-            cleared_count = ProjectTicket.objects.filter(
+            # Clear CLI session IDs for all user's sandboxes to prevent stale session auth
+            from development.models import Sandbox
+            cleared_count = Sandbox.objects.filter(
                 project__owner=request.user,
                 cli_session_id__isnull=False
-            ).update(cli_session_id=None, cli_workspace_id=None)
+            ).update(cli_session_id=None)
             if cleared_count > 0:
-                logger.info(f"[CLAUDE_CODE] Cleared {cleared_count} CLI session IDs and workspace IDs after verify for user {request.user.id}")
+                logger.info(f"[CLAUDE_CODE] Cleared {cleared_count} CLI session IDs after verify for user {request.user.id}")
 
             logger.info(f"[CLAUDE_CODE] User {request.user.id} verified successfully")
 

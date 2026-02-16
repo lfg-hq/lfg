@@ -38,7 +38,7 @@ from factory.mags import (
     CLAUDE_AUTH_SETUP_SCRIPT, MAGS_WORKING_DIR, MagsAPIError,
 )
 from factory.stack_configs import get_stack_config
-from development.models import MagpieWorkspace
+from development.models import Sandbox
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +176,7 @@ class TicketExecutor:
 
         return project_context
 
-    def create_implementation_prompt(self, ticket: ProjectTicket, workspace_id: str, project_context: str, stack: str = 'nextjs') -> str:
+    def create_implementation_prompt(self, ticket: ProjectTicket, workspace_id: str, project_context: str, stack: str = 'custom') -> str:
         """Create the implementation prompt for the AI."""
 
         # Get stack configuration
@@ -308,7 +308,7 @@ Remember:
                 )
                 job_id = job["request_id"]
 
-                workspace, _ = await sync_to_async(MagpieWorkspace.objects.update_or_create)(
+                workspace, _ = await sync_to_async(Sandbox.objects.update_or_create)(
                     mags_workspace_id=ticket_ws,
                     defaults={
                         'project': self.project,
@@ -334,11 +334,11 @@ Remember:
             project_context = await self.get_project_context()
 
             # 6b. GET STACK CONFIGURATION
-            stack = getattr(self.project, 'stack', 'nextjs')
+            stack = getattr(self.project, 'stack', '') or 'custom'
             stack_config = get_stack_config(stack)
             project_dir = stack_config['project_dir']
-            dev_cmd = stack_config.get('dev_cmd', 'npm run dev')
-            install_cmd = stack_config.get('install_cmd', 'npm install')
+            dev_cmd = stack_config.get('dev_cmd', '')
+            install_cmd = stack_config.get('install_cmd', '')
 
             logger.info(f"Project stack: {stack}, directory: {project_dir}")
 

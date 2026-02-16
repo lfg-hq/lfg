@@ -1,0 +1,393 @@
+/* Instant Mode Layout — mirror .chat-container sidebar offsets from sidebar.css */
+.instant-main {
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+    flex: 1;
+    margin-left: 260px;
+    width: calc(100% - 260px);
+    transition: margin-left 0.2s ease, width 0.2s ease;
+}
+
+.app-container.sidebar-minimized .instant-main {
+    margin-left: 60px;
+    width: calc(100% - 60px);
+}
+
+/* Chat Panel (Left) — reuses .chat-messages, .message, .chat-input-container from chat.css */
+.instant-chat-panel {
+    display: flex;
+    flex-direction: column;
+    border-right: none; /* divider handle replaces this */
+    background: var(--bg-color, #121212);
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+/* Override chat.css centering for the constrained panel */
+.instant-chat-panel .chat-messages {
+    align-items: center;
+    flex: 1;
+    overflow-y: auto;
+}
+
+.instant-chat-panel .message-container {
+    width: 92%;
+    max-width: none;
+    padding-bottom: 20px;
+}
+
+.instant-chat-panel .message-container:after {
+    display: none;
+}
+
+/* Fix the input area — override chat.css absolute positioning that causes clipping */
+.instant-chat-panel .chat-input-container {
+    padding: 0 12px 12px;
+    flex-shrink: 0;
+}
+
+.instant-chat-panel #chat-form {
+    width: 100%;
+    max-width: none;
+    margin-top: 0;
+    padding-top: 8px;
+}
+
+.instant-chat-panel .input-wrapper {
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    width: 100%;
+}
+
+.instant-chat-panel #chat-input-box {
+    min-height: 60px;
+    max-height: 180px;
+    padding: 12px 14px;
+    padding-bottom: 36px; /* space for the bottom bar */
+}
+
+.instant-chat-panel #chat-input {
+    min-height: 30px;
+    padding-bottom: 4px;
+}
+
+.instant-chat-panel .left-actions {
+    left: 6px;
+    bottom: 3px;
+    gap: 6px;
+}
+
+.instant-chat-panel .input-actions {
+    right: 6px;
+    bottom: 3px;
+}
+
+/* App selector in left-actions */
+.instant-app-selector select {
+    background: var(--card-bg, #1e1e1e);
+    color: var(--text-color, #fff);
+    border: 1px solid var(--border-color, #333);
+    border-radius: 6px;
+    padding: 2px 6px;
+    font-size: 10px;
+    cursor: pointer;
+}
+
+/* Build notification in chat */
+.instant-build-notice {
+    align-self: center;
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    border-radius: 8px;
+    padding: 0.6rem 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: #f59e0b;
+    margin-bottom: 20px;
+}
+
+.instant-build-notice .spinner-small {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(245, 158, 11, 0.3);
+    border-top-color: #f59e0b;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+/* ---- Draggable Divider ---- */
+.instant-divider {
+    width: 6px;
+    cursor: col-resize;
+    background: var(--border-color, #333);
+    position: relative;
+    flex-shrink: 0;
+    z-index: 10;
+    transition: background 0.15s;
+}
+
+.instant-divider:hover,
+.instant-divider.dragging {
+    background: var(--primary-color, #bb86fc);
+}
+
+.instant-divider::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 2px;
+    height: 32px;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 1px;
+}
+
+.instant-divider:hover::after,
+.instant-divider.dragging::after {
+    background: rgba(255, 255, 255, 0.4);
+}
+
+/* Preview Panel (Right) */
+.instant-preview-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-color, #121212);
+    min-width: 300px;
+    overflow: hidden;
+}
+
+.instant-preview-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 1rem;
+    border-bottom: 1px solid var(--border-color, #333);
+    background: var(--card-bg, #1e1e1e);
+    flex-shrink: 0;
+}
+
+.instant-preview-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.viewport-toggle {
+    display: flex;
+    background: var(--bg-color, #121212);
+    border-radius: 6px;
+    border: 1px solid var(--border-color, #333);
+    overflow: hidden;
+}
+
+.viewport-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary, #888);
+    padding: 0.4rem 0.6rem;
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: all 0.2s;
+}
+
+.viewport-btn.active {
+    background: var(--primary-color, #bb86fc);
+    color: #121212;
+}
+
+.viewport-btn:hover:not(.active) {
+    color: var(--text-color, #fff);
+}
+
+.preview-url-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--bg-color, #121212);
+    border: 1px solid var(--border-color, #333);
+    border-radius: 6px;
+    padding: 0.35rem 0.75rem;
+    font-size: 0.8rem;
+    color: var(--text-secondary, #888);
+    max-width: 400px;
+    overflow: hidden;
+}
+
+.preview-url-bar a {
+    color: var(--text-secondary, #888);
+    transition: color 0.2s;
+}
+
+.preview-url-bar a:hover {
+    color: var(--text-color, #fff);
+}
+
+.preview-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #888;
+    transition: all 0.3s;
+}
+
+.status-dot.running {
+    background: #22c55e;
+    box-shadow: 0 0 6px #22c55e;
+}
+
+.status-dot.building {
+    background: #f59e0b;
+    animation: pulse-dot 1s infinite;
+}
+
+.status-dot.error {
+    background: #ef4444;
+}
+
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.instant-preview-header .status-text {
+    font-size: 0.8rem;
+    color: var(--text-secondary, #888);
+}
+
+/* Preview Content */
+.instant-preview-content {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+}
+
+.instant-preview-placeholder,
+.instant-preview-building {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 2rem;
+}
+
+.placeholder-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: rgba(187, 134, 252, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1rem;
+    font-size: 1.5rem;
+    color: var(--primary-color, #bb86fc);
+}
+
+.instant-preview-placeholder h3,
+.instant-preview-building h3 {
+    color: var(--text-color, #fff);
+    font-size: 1.1rem;
+    margin-bottom: 0.5rem;
+}
+
+.instant-preview-placeholder p,
+.instant-preview-building p {
+    color: var(--text-secondary, #888);
+    font-size: 0.9rem;
+    max-width: 360px;
+}
+
+.building-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid rgba(245, 158, 11, 0.2);
+    border-top-color: #f59e0b;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-bottom: 1rem;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Iframe */
+.instant-preview-iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: #fff;
+    transition: max-width 0.3s ease;
+}
+
+.instant-preview-iframe.viewport-tablet {
+    max-width: 768px;
+    margin: 0 auto;
+    border-left: 1px solid var(--border-color, #333);
+    border-right: 1px solid var(--border-color, #333);
+}
+
+.instant-preview-iframe.viewport-mobile {
+    max-width: 390px;
+    margin: 0 auto;
+    border-left: 1px solid var(--border-color, #333);
+    border-right: 1px solid var(--border-color, #333);
+    border-radius: 16px;
+}
+
+/* Disable text selection while dragging divider */
+.instant-main.resizing {
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.instant-main.resizing iframe {
+    pointer-events: none;
+}
+
+/* Sidebar preload states — prevent transition flash */
+.sidebar-minimized-preload .instant-main,
+.sidebar-minimized-init .instant-main {
+    margin-left: 60px !important;
+    width: calc(100% - 60px) !important;
+    transition: none !important;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .instant-main {
+        flex-direction: column;
+        margin-left: 0 !important;
+        width: 100% !important;
+    }
+
+    .instant-chat-panel {
+        width: 100% !important; /* override JS inline width */
+        height: 50vh;
+        border-right: none;
+        border-bottom: 1px solid var(--border-color, #333);
+    }
+
+    .instant-divider {
+        display: none;
+    }
+
+    .instant-preview-panel {
+        height: 50vh;
+    }
+}

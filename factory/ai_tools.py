@@ -1858,6 +1858,38 @@ tools_design_chat = [
     edit_design_screen_anthropic
 ]
 
+# ---------------------------------------------------------------------------
+# Instant Mode tools
+# ---------------------------------------------------------------------------
+
+create_instant_app = {
+    "type": "function",
+    "function": {
+        "name": "create_instant_app",
+        "description": "Create a new instant app once you have gathered enough requirements. This will provision a sandbox, scaffold a Next.js + SQLite project, and start the dev server.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Short app name in kebab-case (e.g. 'task-tracker')"
+                },
+                "requirements": {
+                    "type": "string",
+                    "description": "Detailed requirements document with features, data models, pages, and UI specs"
+                },
+                "env_vars": {
+                    "type": "object",
+                    "description": "Environment variables needed by the app (optional)"
+                }
+            },
+            "required": ["name", "requirements"]
+        }
+    }
+}
+
+tools_instant = [create_instant_app]
+
 tools_generate_single_screen = [
     generate_single_screen_anthropic
 ]

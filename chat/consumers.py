@@ -7,6 +7,7 @@ import uuid
 from datetime import datetime
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
+from channels.layers import get_channel_layer
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import User
@@ -28,8 +29,9 @@ from factory.ai_providers import FileHandler
 from factory.prompts import get_system_turbo_mode, \
                                     get_system_prompt_product, \
                                     get_system_prompt_design, \
-                                    get_system_prompt_developer
-from factory.ai_tools import tools_code, tools_product, tools_design, tools_turbo
+                                    get_system_prompt_developer, \
+                                    get_system_instant_mode
+from factory.ai_tools import tools_code, tools_product, tools_design, tools_turbo, tools_instant
 from chat.storage import ChatFileStorage
 from factory.llm_config import get_model_provider_map
 
@@ -37,6 +39,25 @@ from factory.llm_config import get_model_provider_map
 logger = logging.getLogger(__name__)
 
 MODEL_TO_PROVIDER = get_model_provider_map()
+
+
+async def async_send_ticket_log_notification(ticket_id, log_data):
+    """Backward-compatible async helper for legacy imports from chat.consumers."""
+    try:
+        channel_layer = get_channel_layer()
+        if not channel_layer:
+            logger.warning("No channel layer configured, cannot send ticket log notification")
+            return
+
+        await channel_layer.group_send(
+            f'ticket_logs_{ticket_id}',
+            {
+                'type': 'ticket_log_created',
+                'log_data': log_data
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error sending ticket log notification for ticket {ticket_id}: {e}")
 
 
 class ChatConsumer(AsyncWebsocketConsumer):
@@ -297,8 +318,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 mentioned_files = text_data_json.get('mentioned_files', {})  # Get mentioned files
                 user_role = text_data_json.get('user_role')  # Get user role if present
                 turbo_mode = text_data_json.get('turbo_mode', False)  # Get turbo mode state
+                instant_mode = text_data_json.get('instant_mode', False)  # Get instant mode state
                 canvas_id = text_data_json.get('canvas_id')  # Get canvas ID for design features
-                logger.info(f"[receive] Message received - canvas_id: {canvas_id}, turbo_mode: {turbo_mode}")
+                logger.info(f"[receive] Message received - canvas_id: {canvas_id}, turbo_mode: {turbo_mode}, instant_mode: {instant_mode}")
                 # file_id = text_data_json.get('file_id')  # Get file_id if present
 
                 
@@ -361,7 +383,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 # Generate AI response in background task
                 # Store the task so we can cancel it if needed
                 self.active_generation_task = asyncio.create_task(
-                    self.generate_ai_response(user_message, provider_name, project_id, user_role, turbo_mode, mentioned_files, canvas_id)
+                    self.generate_ai_response(user_message, provider_name, project_id, user_role, turbo_mode, mentioned_files, canvas_id, instant_mode)
                 )
             
             elif message_type == 'stop_generation':
@@ -445,7 +467,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         }
         
         # Check all possible notification fields
-        notification_fields = ['is_notification', 'notification_type', 'early_notification', 'function_name', 'content_chunk', 'is_complete', 'file_id', 'file_name', 'file_type', 'prd_name', 'project_id']
+        notification_fields = ['is_notification', 'notification_type', 'early_notification', 'function_name', 'content_chunk', 'is_complete', 'file_id', 'file_name', 'file_type', 'prd_name', 'project_id', 'app_url', 'workspace_id', 'port']
         for field in notification_fields:
             if field in event:
                 response_data[field] = event[field]
@@ -550,7 +572,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         except Exception as e:
             logger.error(f"Error joining conversation group {group_name}: {e}")
     
-    async def generate_ai_response(self, user_message, provider_name, project_id=None, user_role=None, turbo_mode=False, mentioned_files=None, canvas_id=None):
+    async def generate_ai_response(self, user_message, provider_name, project_id=None, user_role=None, turbo_mode=False, mentioned_files=None, canvas_id=None, instant_mode=False):
         """
         Generate response from AI
         """
@@ -616,8 +638,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
         logger.debug(f"Agent Role: {agent_role.name}, Turbo Mode: {agent_role.turbo_mode}")
         user_role = agent_role.name
 
-        # Check if turbo mode is enabled first
-        if agent_role.turbo_mode:
+        # Check if instant mode is enabled first
+        if instant_mode:
+            logger.info(f"INSTANT MODE ENABLED for user {self.user.username}")
+            system_prompt = await get_system_instant_mode()
+            tools = tools_instant
+        # Check if turbo mode is enabled
+        elif agent_role.turbo_mode:
             logger.info(f"TURBO MODE ENABLED for user {self.user.username}")
             system_prompt = await get_system_turbo_mode()
             tools = tools_turbo  # Use product tools for turbo mode (includes create_tickets)
