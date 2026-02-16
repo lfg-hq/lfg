@@ -282,7 +282,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const pathParts = window.location.pathname.split('/').filter(part => part);
         if (pathParts.length >= 3 && pathParts[0] === 'chat' && pathParts[1] === 'project') {
             const projectId = pathParts[2];
-            console.log('[ArtifactsLoader] Found project ID in URL path:', projectId);
             return projectId;
         }
         
@@ -319,7 +318,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Initialize the artifact loaders immediately
-    console.log('[ArtifactsLoader] Initializing ArtifactsLoader');
     window.ArtifactsLoader = {
         /**
          * Get the current project ID from various sources
@@ -398,6 +396,77 @@ document.addEventListener('DOMContentLoaded', function() {
                 return escapeHtml(String(value));
             }
 
+            function formatExecutionNotes(notes) {
+                if (!notes || !notes.trim()) {
+                    return '<p class="ticket-modal-empty">No execution notes available.</p>';
+                }
+
+                const lines = notes.split('\n');
+                let formattedHtml = '<div class="execution-notes-timeline">';
+
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i];
+
+                    // Check if this line is a timestamp header like "[2025-01-04 12:30] Message"
+                    const timestampMatch = line.match(/^\[(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\]\s*(.+)$/);
+
+                    if (timestampMatch) {
+                        const timestamp = timestampMatch[1];
+                        const message = timestampMatch[2];
+
+                        // Determine the icon and class based on the message content
+                        let icon = 'circle';
+                        let itemClass = 'note-item';
+
+                        if (message.toLowerCase().includes('started') || message.toLowerCase().includes('beginning')) {
+                            icon = 'play-circle';
+                            itemClass += ' note-item-start';
+                        } else if (message.toLowerCase().includes('completed') || message.toLowerCase().includes('finished') || message.toLowerCase().includes('success')) {
+                            icon = 'check-circle';
+                            itemClass += ' note-item-success';
+                        } else if (message.toLowerCase().includes('error') || message.toLowerCase().includes('failed')) {
+                            icon = 'exclamation-circle';
+                            itemClass += ' note-item-error';
+                        } else if (message.toLowerCase().includes('iteration')) {
+                            icon = 'sync';
+                            itemClass += ' note-item-iteration';
+                        } else if (message.toLowerCase().includes('workspace') || message.toLowerCase().includes('provisioning')) {
+                            icon = 'server';
+                            itemClass += ' note-item-workspace';
+                        }
+
+                        formattedHtml += `
+                            <div class="${itemClass}">
+                                <div class="note-icon">
+                                    <i class="fas fa-${icon}"></i>
+                                </div>
+                                <div class="note-content">
+                                    <div class="note-timestamp">${escapeHtml(timestamp)}</div>
+                                    <div class="note-message">${escapeHtml(message)}</div>
+                                </div>
+                            </div>
+                        `;
+                    } else if (line.trim().startsWith('=') || line.trim().startsWith('-')) {
+                        // Separator lines
+                        if (line.trim().length > 10) {
+                            formattedHtml += `<div class="note-separator"></div>`;
+                        }
+                    } else if (line.trim()) {
+                        // Regular content lines (could be part of a multi-line note)
+                        formattedHtml += `
+                            <div class="note-item note-item-content">
+                                <div class="note-content">
+                                    <div class="note-message">${escapeHtml(line)}</div>
+                                </div>
+                            </div>
+                        `;
+                    }
+                }
+
+                formattedHtml += '</div>';
+                return formattedHtml;
+            }
+
             function formatStatus(value) {
                 if (!value) {
                     return 'Open';
@@ -453,6 +522,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     prevBtn: document.getElementById('ticket-modal-prev'),
                     nextBtn: document.getElementById('ticket-modal-next'),
                     editBtn: document.getElementById('ticket-modal-edit'),
+                    logsBtn: document.getElementById('ticket-modal-logs'),
                     deleteBtn: document.getElementById('ticket-modal-delete'),
                     executeBtn: document.getElementById('ticket-modal-execute'),
                     name: document.getElementById('ticket-modal-name'),
@@ -475,7 +545,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     dependenciesSection: document.getElementById('ticket-modal-dependencies-section'),
                     dependencies: document.getElementById('ticket-modal-dependencies'),
                     linearSection: document.getElementById('ticket-modal-linear-section'),
-                    linear: document.getElementById('ticket-modal-linear')
+                    linear: document.getElementById('ticket-modal-linear'),
+                    notesSection: document.getElementById('ticket-modal-notes-section'),
+                    notes: document.getElementById('ticket-modal-notes')
                 };
                 self._ticketModalElements = modalElements;
             }
@@ -587,7 +659,26 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (modalElements.dependenciesSection) {
                     if (ticket.dependencies && ticket.dependencies.length > 0) {
                         modalElements.dependenciesSection.style.display = '';
-                        modalElements.dependencies.innerHTML = `<ul>${ticket.dependencies.map(dep => `<li>${escapeHtml(dep)}</li>`).join('')}</ul>`;
+                        modalElements.dependencies.innerHTML = `<ul>${ticket.dependencies.map(dep => {
+                            // Check if dependency is a numeric ticket ID
+                            const depId = parseInt(dep, 10);
+                            if (!isNaN(depId)) {
+                                return `<li><a href="#" class="dependency-link" data-ticket-id="${depId}" style="color: #a78bfa; text-decoration: none;">Ticket #${depId}</a></li>`;
+                            }
+                            return `<li>${escapeHtml(dep)}</li>`;
+                        }).join('')}</ul>`;
+
+                        // Add click handlers for dependency links
+                        modalElements.dependencies.querySelectorAll('.dependency-link').forEach(link => {
+                            link.addEventListener('click', (e) => {
+                                e.preventDefault();
+                                const depTicketId = link.dataset.ticketId;
+                                // Try to find and open the dependent ticket
+                                if (window.showTicketDetail && depTicketId) {
+                                    window.showTicketDetail(depTicketId);
+                                }
+                            });
+                        });
                     } else {
                         modalElements.dependenciesSection.style.display = 'none';
                         modalElements.dependencies.innerHTML = '';
@@ -611,6 +702,16 @@ document.addEventListener('DOMContentLoaded', function() {
                     } else {
                         modalElements.linearSection.style.display = 'none';
                         modalElements.linear.innerHTML = '';
+                    }
+                }
+
+                if (modalElements.notesSection) {
+                    if (ticket.notes && ticket.notes.trim()) {
+                        modalElements.notesSection.style.display = '';
+                        modalElements.notes.innerHTML = formatExecutionNotes(ticket.notes);
+                    } else {
+                        modalElements.notesSection.style.display = 'none';
+                        modalElements.notes.innerHTML = '';
                     }
                 }
 
@@ -739,10 +840,23 @@ document.addEventListener('DOMContentLoaded', function() {
                                     </header>
                                     <div id="ticket-modal-linear"></div>
                                 </section>
+                                <section class="ticket-modal-section" id="ticket-modal-notes-section">
+                                    <header class="ticket-section-header">
+                                        <div class="ticket-section-title">
+                                            <i class="fas fa-clipboard-list"></i>
+                                            <h4>Execution Notes</h4>
+                                        </div>
+                                        <span class="ticket-section-label">Build logs & progress</span>
+                                    </header>
+                                    <div id="ticket-modal-notes" class="ticket-execution-notes"></div>
+                                </section>
                             </div>
                             <div class="ticket-modal-footer">
                                 <button type="button" class="ticket-modal-secondary" id="ticket-modal-edit">
                                     <i class="fas fa-pen"></i> Edit ticket
+                                </button>
+                                <button type="button" class="ticket-modal-info" id="ticket-modal-logs" title="View execution logs">
+                                    <i class="fas fa-terminal"></i> View Logs
                                 </button>
                                 <button type="button" class="ticket-modal-danger" id="ticket-modal-delete">
                                     <i class="fas fa-trash"></i> Delete
@@ -816,6 +930,19 @@ document.addEventListener('DOMContentLoaded', function() {
                         });
                     }
 
+                    if (modalElements.logsBtn) {
+                        modalElements.logsBtn.addEventListener('click', function() {
+                            const ticket = helpers.getCurrentTicket();
+                            if (modalState.onViewLogs) {
+                                modalState.onViewLogs(ticket, helpers);
+                            } else {
+                                console.warn('[TicketModal] No onViewLogs handler registered');
+                            }
+                        });
+                    } else {
+                        console.warn('[TicketModal] Logs button element not found');
+                    }
+
                     document.addEventListener('keydown', function(event) {
                         if (!modalElements.overlay || !modalElements.overlay.classList.contains('active')) {
                             return;
@@ -844,6 +971,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     modalState.onEdit = handlers.onEdit || null;
                     modalState.onDelete = handlers.onDelete || null;
                     modalState.onExecute = handlers.onExecute || null;
+                    modalState.onViewLogs = handlers.onViewLogs || null;
                     ensureModal();
                     updateActionVisibility();
                 },
@@ -897,7 +1025,6 @@ document.addEventListener('DOMContentLoaded', function() {
          * @param {number} projectId - The ID of the current project
          */
         loadFeatures: function(projectId) {
-            console.log(`[ArtifactsLoader] loadFeatures called with project ID: ${projectId}`);
             
             if (!projectId) {
                 console.warn('[ArtifactsLoader] No project ID provided for loading features');
@@ -912,30 +1039,24 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             // Show loading state
-            console.log('[ArtifactsLoader] Showing loading state');
             featuresTab.innerHTML = '<div class="loading-state"><div class="spinner"></div><div>Loading features...</div></div>';
             
             // Fetch features from API
             const url = `/projects/${projectId}/api/features/`;
-            console.log(`[ArtifactsLoader] Fetching features from API: ${url}`);
             
             fetch(url)
                 .then(response => {
-                    console.log(`[ArtifactsLoader] API response received, status: ${response.status}`);
                     if (!response.ok) {
                         throw new Error(`Network response was not ok: ${response.status} ${response.statusText}`);
                     }
                     return response.json();
                 })
                 .then(data => {
-                    console.log('[ArtifactsLoader] API data received:', data);
                     // Process features data
                     const features = data.features || [];
-                    console.log(`[ArtifactsLoader] Found ${features.length} features`);
                     
                     if (features.length === 0) {
                         // Show empty state if no features found
-                        console.log('[ArtifactsLoader] No features found, showing empty state');
                         featuresTab.innerHTML = `
                             <div class="empty-state">
                                 <div class="empty-state-icon">
@@ -950,7 +1071,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                     
                     // Create features content
-                    console.log('[ArtifactsLoader] Rendering features to UI');
                     let featuresHtml = '<div class="features-list">';
                     
                     features.forEach(feature => {
@@ -993,7 +1113,6 @@ document.addEventListener('DOMContentLoaded', function() {
          * @param {number} projectId - The ID of the current project
          */
         loadPersonas: function(projectId) {
-            console.log(`[ArtifactsLoader] loadPersonas called with project ID: ${projectId}`);
             
             if (!projectId) {
                 console.warn('[ArtifactsLoader] No project ID provided for loading personas');
@@ -1008,30 +1127,24 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             // Show loading state
-            console.log('[ArtifactsLoader] Showing loading state for personas');
             personasTab.innerHTML = '<div class="loading-state"><div class="spinner"></div><div>Loading personas...</div></div>';
             
             // Fetch personas from API
             const url = `/projects/${projectId}/api/personas/`;
-            console.log(`[ArtifactsLoader] Fetching personas from API: ${url}`);
             
             fetch(url)
                 .then(response => {
-                    console.log(`[ArtifactsLoader] Personas API response received, status: ${response.status}`);
                     if (!response.ok) {
                         throw new Error(`Network response was not ok: ${response.status} ${response.statusText}`);
                     }
                     return response.json();
                 })
                 .then(data => {
-                    console.log('[ArtifactsLoader] Personas API data received:', data);
                     // Process personas data
                     const personas = data.personas || [];
-                    console.log(`[ArtifactsLoader] Found ${personas.length} personas`);
                     
                     if (personas.length === 0) {
                         // Show empty state if no personas found
-                        console.log('[ArtifactsLoader] No personas found, showing empty state');
                         personasTab.innerHTML = `
                             <div class="empty-state">
                                 <div class="empty-state-icon">
@@ -1046,7 +1159,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                     
                     // Create personas content
-                    console.log('[ArtifactsLoader] Rendering personas to UI');
                     let personasHtml = '<div class="personas-list">';
                     
                     personas.forEach(persona => {
@@ -1087,7 +1199,6 @@ document.addEventListener('DOMContentLoaded', function() {
          * @param {string} prdName - Optional PRD name to load (defaults to currently selected)
          */
         loadPRD: function(projectId, prdName = null) {
-            console.log(`[ArtifactsLoader] loadPRD called with project ID: ${projectId}, PRD name: ${prdName}`);
             
             if (!projectId) {
                 console.warn('[ArtifactsLoader] No project ID provided for loading PRD');
@@ -1096,7 +1207,6 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Check if we're currently streaming PRD content
             if (window.prdStreamingState && window.prdStreamingState.isStreaming) {
-                console.log('[ArtifactsLoader] PRD is currently streaming, skipping loadPRD');
                 return;
             }
             
@@ -1124,7 +1234,6 @@ document.addEventListener('DOMContentLoaded', function() {
             if (emptyState) emptyState.style.display = 'none';
             
             // Show loading state using the existing streaming status element
-            console.log('[ArtifactsLoader] Showing loading state for PRD');
             if (prdContainer && streamingStatus) {
                 prdContainer.style.display = 'block';
                 streamingStatus.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Loading PRDs...';
@@ -1133,12 +1242,10 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // First fetch the list of PRDs
             const listUrl = `/projects/${projectId}/api/prd/?list=1`;
-            console.log(`[ArtifactsLoader] Fetching PRD list from API: ${listUrl}`);
             
             fetch(listUrl)
                 .then(response => response.json())
                 .then(listData => {
-                    console.log('[ArtifactsLoader] PRD list received:', listData);
                     const prds = listData.prds || [];
                     
                     // Update PRD selector
@@ -1166,11 +1273,9 @@ document.addEventListener('DOMContentLoaded', function() {
                                 ).join('');
                             }
                             
-                            console.log(`[ArtifactsLoader] Showing PRD selector with ${prds.length} PRDs`);
                         } else {
                             // Hide selector if only one PRD
                             if (selectorWrapper) selectorWrapper.style.display = 'none';
-                            console.log('[ArtifactsLoader] Hiding PRD selector - only one PRD exists');
                         }
                         
                         // Set the current PRD name
@@ -1186,25 +1291,21 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     // Now fetch the specific PRD content
                     const url = `/projects/${projectId}/api/prd/?prd_name=${encodeURIComponent(prdName || 'Main PRD')}`;
-                    console.log(`[ArtifactsLoader] Fetching PRD from API: ${url}`);
                     
                     return fetch(url);
                 })
                 .then(response => {
-                    console.log(`[ArtifactsLoader] PRD API response received, status: ${response.status}`);
                     if (!response.ok) {
                         throw new Error(`Network response was not ok: ${response.status} ${response.statusText}`);
                     }
                     return response.json();
                 })
                 .then(data => {
-                    console.log('[ArtifactsLoader] PRD API data received:', data);
                     // Process PRD data
                     const prdContent = data.content || '';
                     
                     if (!prdContent) {
                         // Show empty state if no PRD found
-                        console.log('[ArtifactsLoader] No PRD found, showing empty state');
                         const emptyState = document.getElementById('prd-empty-state');
                         const prdContainer = document.getElementById('prd-container');
                         
@@ -1272,11 +1373,9 @@ document.addEventListener('DOMContentLoaded', function() {
                                         xhtml: false        // Don't use XHTML compatible tags
                                     });
                                     window.markedConfigured = true;
-                                    console.log('[ArtifactsLoader] Marked.js configured for PRD rendering');
                                 }
                                 
                                 parsedContent = marked.parse(prdContent);
-                                console.log('[ArtifactsLoader] PRD markdown parsed successfully');
                             } catch (e) {
                                 console.error('[ArtifactsLoader] Error parsing PRD markdown:', e);
                                 // Fallback to basic line break conversion
@@ -1390,7 +1489,6 @@ document.addEventListener('DOMContentLoaded', function() {
          * @param {number} fileId - The file ID (optional, provided when document is saved)
          */
         streamDocumentContent: function(contentChunk, isComplete, projectId, documentType, documentName) {
-            console.log(`[ArtifactsLoader] streamDocumentContent called`);
             console.log(`  Type: ${documentType}, Name: ${documentName}`);
             console.log(`  Chunk length: ${contentChunk ? contentChunk.length : 0}, isComplete: ${isComplete}`);
             console.log(`  Project ID: ${projectId}`);
@@ -1400,7 +1498,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const filebrowserTab = document.querySelector('.tab-button[data-tab="filebrowser"]');
             const filebrowserPane = document.getElementById('filebrowser');
             if (filebrowserTab && !filebrowserTab.classList.contains('active')) {
-                console.log('[ArtifactsLoader] Activating filebrowser tab for streaming');
                 document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
                 document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
                 filebrowserTab.classList.add('active');
@@ -1479,7 +1576,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Open artifacts panel if not already open
                 if (window.ArtifactsPanel && !window.ArtifactsPanel.isOpen()) {
                     window.ArtifactsPanel.open();
-                    console.log('[ArtifactsLoader] Opened artifacts panel for document streaming');
                 }
             }
             
@@ -1508,7 +1604,6 @@ document.addEventListener('DOMContentLoaded', function() {
                             const before = viewerMarkdown.scrollTop;
                             const scrollHeight = viewerMarkdown.scrollHeight;
                             viewerMarkdown.scrollTop = scrollHeight;
-                            console.log(`[Stream Scroll] Before: ${before}, Height: ${scrollHeight}, After: ${viewerMarkdown.scrollTop}`);
                         });
                     });
                 }
@@ -1522,36 +1617,21 @@ document.addEventListener('DOMContentLoaded', function() {
                 documentType: documentType,
                 viewerTitle: `${documentType.toUpperCase()} - ${documentName}`
             };
-            console.log(`[ArtifactsLoader] Stored streaming info for ${documentType}:`, window[`${documentType}StreamingInfo`]);
         },
         
         /**
          * Handle save notification after document is saved
          */
         handleDocumentSaved: function(notification) {
-            console.log('[ArtifactsLoader] ==========================================');
-            console.log('[ArtifactsLoader] DOCUMENT SAVED NOTIFICATION RECEIVED!');
-            console.log('[ArtifactsLoader] Notification:', notification);
-            console.log('[ArtifactsLoader] File ID:', notification.file_id);
-            console.log('[ArtifactsLoader] File Type:', notification.file_type);
-            console.log('[ArtifactsLoader] File Name:', notification.file_name);
-            console.log('[ArtifactsLoader] Notification Type:', notification.notification_type);
-            console.log('[ArtifactsLoader] Current Project ID:', window.currentProjectId);
-            console.log('[ArtifactsLoader] ==========================================');
             
             const documentType = notification.file_type || notification.notification_type;
-            console.log('[ArtifactsLoader] Looking for streaming info for type:', documentType);
             console.log('[ArtifactsLoader] Available streaming info keys:', Object.keys(window).filter(k => k.includes('StreamingInfo')));
             
             // Also check for all possible streaming info variations
-            console.log('[ArtifactsLoader] Checking window.prdStreamingInfo:', window.prdStreamingInfo);
-            console.log('[ArtifactsLoader] Checking window.implementationStreamingInfo:', window.implementationStreamingInfo);
             
             const streamingInfo = window[`${documentType}StreamingInfo`];
             
             if (!streamingInfo) {
-                console.log('[ArtifactsLoader] No streaming info found for type:', documentType);
-                console.log('[ArtifactsLoader] Will still try to load the file using file_id');
                 // Don't return, continue to load the file
             }
             
@@ -1574,14 +1654,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
             
-            console.log(`[ArtifactsLoader] Loading saved document with ID: ${fileId}`);
-            console.log(`[ArtifactsLoader] Making API call to: /projects/${projectId}/api/files/${fileId}/content/`);
             
             // Ensure the viewFileContent function is available globally
             if (window.viewFileContent) {
                 // Add a small delay to ensure UI is ready after streaming completes
                 setTimeout(() => {
-                    console.log(`[ArtifactsLoader] Calling viewFileContent after delay`);
                     window.viewFileContent(fileId, documentName);
                 }, 100);
             } else {
@@ -1682,7 +1759,6 @@ document.addEventListener('DOMContentLoaded', function() {
          * @param {number} projectId - The ID of the current project
          */
         loadImplementation: function(projectId) {
-            console.log(`[ArtifactsLoader] loadImplementation called with project ID: ${projectId}`);
             
             if (!projectId) {
                 console.warn('[ArtifactsLoader] No project ID provided for loading implementation');
@@ -1697,29 +1773,24 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             // Show loading state
-            console.log('[ArtifactsLoader] Showing loading state for implementation');
             implementationTab.innerHTML = '<div class="loading-state"><div class="spinner"></div><div>Loading implementation...</div></div>';
             
             // Fetch implementation from API
             const url = `/projects/${projectId}/api/implementation/`;
-            console.log(`[ArtifactsLoader] Fetching implementation from API: ${url}`);
             
             fetch(url)
                 .then(response => {
-                    console.log(`[ArtifactsLoader] Implementation API response received, status: ${response.status}`);
                     if (!response.ok) {
                         throw new Error(`Network response was not ok: ${response.status} ${response.statusText}`);
                     }
                     return response.json();
                 })
                 .then(data => {
-                    console.log('[ArtifactsLoader] Implementation API data received:', data);
                     // Process implementation data
                     const implementationContent = data.content || '';
                     
                     if (!implementationContent) {
                         // Show empty state if no implementation found
-                        console.log('[ArtifactsLoader] No implementation found, showing empty state');
                         implementationTab.innerHTML = `
                             <div class="empty-state">
                                 <div class="empty-state-icon">
@@ -1834,7 +1905,6 @@ document.addEventListener('DOMContentLoaded', function() {
          * @param {number} projectId - The ID of the current project
          */
         loadTickets: function(projectId) {
-            console.log(`[ArtifactsLoader] loadTickets called with project ID: ${projectId}`);
 
             if (!projectId) {
                 console.warn('[ArtifactsLoader] No project ID provided for loading tickets');
@@ -1894,24 +1964,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
             };
 
-            console.log('[ArtifactsLoader] Showing loading state for tickets');
             ticketsTab.innerHTML = '<div class="loading-state"><div class="spinner"></div><div>Loading tickets...</div></div>';
 
             const url = `/projects/${projectId}/api/checklist/`;
-            console.log(`[ArtifactsLoader] Fetching tickets from API: ${url}`);
 
             fetch(url)
                 .then(response => {
-                    console.log(`[ArtifactsLoader] Tickets API response received, status: ${response.status}`);
                     if (!response.ok) {
                         throw new Error(`Network response was not ok: ${response.status} ${response.statusText}`);
                     }
                     return response.json();
                 })
                 .then(data => {
-                    console.log('[ArtifactsLoader] Tickets API data received:', data);
-                    const tickets = data.checklist || [];
-                    console.log(`[ArtifactsLoader] Found ${tickets.length} tickets`);
+                    const tickets = data.tickets || [];
 
                     if (tickets.length === 0) {
                         ticketsTab.innerHTML = `
@@ -1973,8 +2038,12 @@ document.addEventListener('DOMContentLoaded', function() {
                         }),
                         onExecute: (ticket) => {
                             if (ticket) {
-                                modalHelpers.close();
                                 ArtifactsLoader.executeTicket(ticket.id);
+                            }
+                        },
+                        onViewLogs: (ticket) => {
+                            if (ticket) {
+                                ArtifactsLoader.showTicketLogs(ticket.id);
                             }
                         }
                     });
@@ -2162,7 +2231,6 @@ document.addEventListener('DOMContentLoaded', function() {
          * @param {number} projectId - The ID of the current project
          */
         loadDesignSchema: function(projectId) {
-            console.log(`[ArtifactsLoader] loadDesignSchema called with project ID: ${projectId}`);
             
             if (!projectId) {
                 console.warn('[ArtifactsLoader] No project ID provided for loading design schema');
@@ -2177,29 +2245,24 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             // Show loading state
-            console.log('[ArtifactsLoader] Showing loading state for design schema');
             designTab.innerHTML = '<div class="loading-state"><div class="spinner"></div><div>Loading design schema...</div></div>';
             
             // Fetch design schema from API
             const url = `/projects/${projectId}/api/design-schema/`;
-            console.log(`[ArtifactsLoader] Fetching design schema from API: ${url}`);
             
             fetch(url)
                 .then(response => {
-                    console.log(`[ArtifactsLoader] Design schema API response received, status: ${response.status}`);
                     if (!response.ok) {
                         throw new Error(`Network response was not ok: ${response.status} ${response.statusText}`);
                     }
                     return response.json();
                 })
                 .then(data => {
-                    console.log('[ArtifactsLoader] Design schema API data received:', data);
                     // Process design schema data
                     const designSchemaContent = data.content || '';
                     
                     if (!designSchemaContent) {
                         // Show empty state if no design schema found
-                        console.log('[ArtifactsLoader] No design schema found, showing empty state');
                         designTab.innerHTML = `
                             <div class="empty-state">
                                 <div class="empty-state-icon">
@@ -2248,9 +2311,6 @@ document.addEventListener('DOMContentLoaded', function() {
          * @param {number} projectId - The ID of the current project
          */
         loadCodebase: function(projectId) {
-            console.log(`[ArtifactsLoader] loadCodebase called with project ID: ${projectId}`);
-            console.log(`[ArtifactsLoader] Project ID type: ${typeof projectId}`);
-            console.log(`[ArtifactsLoader] Project ID truthy: ${!!projectId}`);
             
             if (!projectId) {
                 console.warn('[ArtifactsLoader] No project ID provided for loading codebase');
@@ -2283,14 +2343,12 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             // Show loading state
-            console.log('[ArtifactsLoader] Showing loading state for codebase');
             codebaseLoading.style.display = 'block';
             codebaseEmpty.style.display = 'none';
             codebaseFrameContainer.style.display = 'none';
             
             // Get conversation ID using the helper function
             const conversationId = getCurrentConversationId();
-            console.log(`[ArtifactsLoader] Conversation ID: ${conversationId}`);
             
             // Build the editor URL with appropriate parameters
             let editorUrl = `/development/editor/?project_id=${projectId}`;
@@ -2298,19 +2356,14 @@ document.addEventListener('DOMContentLoaded', function() {
             // Add conversation ID if available
             if (conversationId) {
                 editorUrl += `&conversation_id=${conversationId}`;
-                console.log(`[ArtifactsLoader] Including conversation ID: ${conversationId}`);
             }
             
-            console.log(`[ArtifactsLoader] Loading codebase explorer from URL: ${editorUrl}`);
-            console.log(`[ArtifactsLoader] About to set iframe.src - this should trigger network request`);
             
             // Set up iframe event handlers
             codebaseIframe.onload = function() {
                 // Hide loading and show iframe when loaded
                 codebaseLoading.style.display = 'none';
                 codebaseFrameContainer.style.display = 'block';
-                console.log('[ArtifactsLoader] Codebase iframe loaded successfully');
-                console.log('[ArtifactsLoader] Iframe content window:', codebaseIframe.contentWindow);
             };
             
             codebaseIframe.onerror = function() {
@@ -2331,9 +2384,7 @@ document.addEventListener('DOMContentLoaded', function() {
             };
             
             // Set the iframe source to load the editor
-            console.log('[ArtifactsLoader] Setting iframe src now...');
             codebaseIframe.src = editorUrl;
-            console.log('[ArtifactsLoader] Iframe src set to:', codebaseIframe.src);
         },
         
         /**
@@ -2371,7 +2422,6 @@ document.addEventListener('DOMContentLoaded', function() {
          * @param {number} projectId - The ID of the current project
          */
         loadChecklist: function(projectId) {
-            console.log(`[ArtifactsLoader] loadChecklist called with project ID: ${projectId}`);
             
             if (!projectId) {
                 console.warn('[ArtifactsLoader] No project ID provided for loading checklist');
@@ -2386,33 +2436,27 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             // Show loading state
-            console.log('[ArtifactsLoader] Showing loading state for checklist');
             checklistTab.innerHTML = '<div class="loading-state"><div class="spinner"></div><div>Loading checklist...</div></div>';
             
             // Fetch checklist from API
             const checklistUrl = `/projects/${projectId}/api/checklist/`;
-            console.log(`[ArtifactsLoader] Fetching checklist from API: ${checklistUrl}`);
             
             fetch(checklistUrl)
                 .then(response => {
-                    console.log(`[ArtifactsLoader] Checklist API response received, status: ${response.status}`);
                     if (!response.ok) {
                         throw new Error(`Network response was not ok: ${response.status} ${response.statusText}`);
                     }
                     return response.json();
                 })
                 .then(data => {
-                    console.log('[ArtifactsLoader] Checklist API data received:', data);
                     // Process checklist data
-                    const checklist = data.checklist || [];
-                    console.log(`[ArtifactsLoader] Found ${checklist.length} checklist items`);
+                    const checklist = data.tickets || [];
 
                     const modalHelpers = this.getTicketModalHelpers();
                     modalHelpers.setProjectId(projectId);
                     
                     if (checklist.length === 0) {
                         // Show empty state if no checklist items found
-                        console.log('[ArtifactsLoader] No checklist items found, showing empty state');
                         checklistTab.innerHTML = `
                             <div class="checklist-empty-state">
                                 <div class="empty-state-icon">
@@ -2430,42 +2474,156 @@ document.addEventListener('DOMContentLoaded', function() {
                     const statuses = [...new Set(checklist.map(item => item.status || 'open'))].sort();
                     const roles = [...new Set(checklist.map(item => item.role || 'user'))].sort();
 
+                    // Extract unique source documents (files) for filter
+                    const sourceDocuments = checklist
+                        .filter(item => item.source_document_id && item.source_document_name)
+                        .reduce((acc, item) => {
+                            if (!acc.find(d => d.id === item.source_document_id)) {
+                                acc.push({ id: item.source_document_id, name: item.source_document_name });
+                            }
+                            return acc;
+                        }, [])
+                        .sort((a, b) => a.name.localeCompare(b.name));
+
+                    // Check if there are any tickets with conversation associations
+                    const hasConversationTickets = checklist.some(item => item.conversation_id);
+
+                    // Get current conversation ID from page context (if available)
+                    // Check multiple sources: window.conversationId, window.currentConversationId, or URL param
+                    let currentConversationId = window.conversationId || window.currentConversationId || null;
+                    if (!currentConversationId) {
+                        const urlParams = new URLSearchParams(window.location.search);
+                        currentConversationId = urlParams.get('conversation_id') || null;
+                    }
+
                     // Create container with filters
+                    // Check current theme for styling
+                    const isLightTheme = document.documentElement.getAttribute('data-theme') === 'light';
+                    const headerBtnBg = isLightTheme ? '#f1f5f9' : 'rgba(40, 40, 40, 0.8)';
+                    const headerBtnColor = isLightTheme ? '#64748b' : '#888';
+                    const headerBtnBorder = isLightTheme ? '1px solid #e2e8f0' : '1px solid rgba(255, 255, 255, 0.08)';
+                    const headerBtnHoverBg = isLightTheme ? '#e2e8f0' : 'rgba(60, 60, 60, 0.9)';
+                    const dropdownBg = isLightTheme ? '#ffffff' : '#1e1e2e';
+                    const dropdownBorder = isLightTheme ? '1px solid #e2e8f0' : '1px solid #313244';
+                    const dropdownItemColor = isLightTheme ? '#374151' : '#cdd6f4';
+                    const dropdownItemHoverBg = isLightTheme ? '#f1f5f9' : '#313244';
+                    const dropdownDividerBg = isLightTheme ? '#e2e8f0' : '#313244';
+
                     let checklistHTML = `
-                        <div class="checklist-wrapper">
-                            <div class="checklist-header" style="display: flex; align-items: center; justify-content: flex-end; padding: 12px 16px;">
-                                <div class="checklist-filters" style="margin-right: 12px;">
-                                    <div class="filter-options">
-                                        <div class="filter-group">
-                                            <select id="status-filter" class="checklist-filter-dropdown">
-                                                <option value="all">All Statuses</option>
-                                                ${statuses.map(status => `<option value="${status}">${status.replace('_', ' ').charAt(0).toUpperCase() + status.replace('_', ' ').slice(1)}</option>`).join('')}
-                                            </select>
-                                            <select id="role-filter" class="checklist-filter-dropdown">
-                                                <option value="all">All Assigned</option>
-                                                ${roles.map(role => `<option value="${role}">${role.charAt(0).toUpperCase() + role.slice(1)}</option>`).join('')}
-                                            </select>
-                                            <button id="clear-checklist-filters" class="clear-filters-btn" title="Clear filters">
-                                                <i class="fas fa-times"></i>
+                        <style>
+                            /* Default: hide checkbox */
+                            .checklist-wrapper .ticket-select-checkbox { display: none !important; }
+
+                            /* Select mode: show checkbox, hide the ::before status indicator */
+                            .checklist-wrapper[data-selection-mode="true"] .ticket-select-checkbox {
+                                display: inline-block !important;
+                                width: 14px;
+                                height: 14px;
+                                accent-color: #8b5cf6;
+                                cursor: pointer;
+                                flex-shrink: 0;
+                            }
+                            .checklist-wrapper[data-selection-mode="true"] .checklist-card::before { display: none !important; }
+
+                            /* Checkbox positioning in selection mode */
+                            .checklist-wrapper[data-selection-mode="true"] .checklist-card {
+                                padding-left: 12px !important;
+                            }
+                            .checklist-wrapper[data-selection-mode="true"] .ticket-select-checkbox {
+                                position: absolute !important;
+                                left: 12px !important;
+                                top: 50% !important;
+                                transform: translateY(-50%) !important;
+                            }
+                            .checklist-wrapper[data-selection-mode="true"] .card-header {
+                                margin-left: 24px !important;
+                            }
+                        </style>
+                        <div class="checklist-wrapper" data-selection-mode="false">
+                            <div class="checklist-header" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: transparent; border: none;">
+                                <!-- Select All (hidden by default, shown in selection mode) -->
+                                <div id="select-all-container" style="display: none; align-items: center; gap: 6px;">
+                                    <input type="checkbox" id="select-all-tickets" class="ticket-checkbox" style="width: 16px; height: 16px; cursor: pointer; accent-color: #8b5cf6;">
+                                    <label for="select-all-tickets" style="font-size: 12px; color: ${isLightTheme ? '#64748b' : '#888'}; cursor: pointer;">Select All</label>
+                                </div>
+                                <div id="header-spacer" style="flex: 1;"></div>
+                                <div style="display: flex; align-items: center;">
+                                    <div class="checklist-filters" style="margin-right: 12px;">
+                                        <div class="filter-options">
+                                            <div class="filter-group">
+                                                <select id="status-filter" class="checklist-filter-dropdown">
+                                                    <option value="all">All Statuses</option>
+                                                    ${statuses.map(status => `<option value="${status}">${status.replace('_', ' ').charAt(0).toUpperCase() + status.replace('_', ' ').slice(1)}</option>`).join('')}
+                                                </select>
+                                                <select id="role-filter" class="checklist-filter-dropdown">
+                                                    <option value="all">All Assigned</option>
+                                                    ${roles.map(role => `<option value="${role}">${role.charAt(0).toUpperCase() + role.slice(1)}</option>`).join('')}
+                                                </select>
+                                                ${sourceDocuments.length > 0 ? `
+                                                <select id="file-filter" class="checklist-filter-dropdown">
+                                                    <option value="all">All Files</option>
+                                                    ${sourceDocuments.map(doc => `<option value="${doc.id}">${doc.name}</option>`).join('')}
+                                                </select>
+                                                ` : ''}
+                                                ${currentConversationId ? `
+                                                <select id="conversation-filter" class="checklist-filter-dropdown">
+                                                    <option value="all">All Tickets</option>
+                                                    <option value="current">This Chat Only</option>
+                                                </select>
+                                                ` : ''}
+                                                <button id="clear-checklist-filters" class="clear-filters-btn" title="Clear filters">
+                                                    <i class="fas fa-times"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="dropdown" style="position: relative;">
+                                        <button class="dropdown-toggle" id="checklist-actions-dropdown" style="background: ${headerBtnBg}; color: ${headerBtnColor}; border: ${headerBtnBorder}; width: 24px; height: 24px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s ease; padding: 0;"
+                                                onmouseover="this.style.background='${headerBtnHoverBg}'; this.style.color='#8b5cf6'; this.style.transform='scale(1.05)';"
+                                                onmouseout="this.style.background='${headerBtnBg}'; this.style.color='${headerBtnColor}'; this.style.transform='scale(1)';">
+                                            <i class="fas fa-ellipsis-v" style="font-size: 9px;"></i>
+                                        </button>
+                                        <div class="dropdown-menu" id="checklist-actions-menu" style="display: none; position: absolute; top: 100%; right: 0; background: ${dropdownBg}; border: ${dropdownBorder}; border-radius: 8px; min-width: 180px; box-shadow: 0 8px 16px rgba(0, 0, 0, ${isLightTheme ? '0.1' : '0.3'}); z-index: 1000; margin-top: 8px; overflow: hidden;">
+                                            <button id="toggle-select-mode" class="dropdown-item" style="display: block; width: 100%; text-align: left; padding: 12px 16px; background: none; border: none; color: ${dropdownItemColor}; cursor: pointer; transition: all 0.2s; font-size: 14px;"
+                                                    onmouseover="this.style.background='${dropdownItemHoverBg}'; this.style.color='${isLightTheme ? '#7c3aed' : '#b4befe'}';" onmouseout="this.style.background='none'; this.style.color='${dropdownItemColor}';">
+                                                <i class="fas fa-check-square" style="margin-right: 10px; width: 14px; text-align: center; color: #8b5cf6;"></i> Select
+                                            </button>
+                                            <div style="height: 1px; background: ${dropdownDividerBg};"></div>
+                                            <button id="sync-checklist-linear" class="dropdown-item" style="display: block; width: 100%; text-align: left; padding: 12px 16px; background: none; border: none; color: ${dropdownItemColor}; cursor: pointer; transition: all 0.2s; font-size: 14px;"
+                                                    onmouseover="this.style.background='${dropdownItemHoverBg}'; this.style.color='${isLightTheme ? '#7c3aed' : '#b4befe'}';" onmouseout="this.style.background='none'; this.style.color='${dropdownItemColor}';">
+                                                <i class="fas fa-sync" style="margin-right: 10px; width: 14px; text-align: center; color: #8b5cf6;"></i> Sync with Linear
+                                            </button>
+                                            <div style="height: 1px; background: ${dropdownDividerBg};"></div>
+                                            <button id="delete-all-checklist" class="dropdown-item" style="display: block; width: 100%; text-align: left; padding: 12px 16px; background: none; border: none; color: ${isLightTheme ? '#dc2626' : '#f38ba8'}; cursor: pointer; transition: all 0.2s; font-size: 14px;"
+                                                    onmouseover="this.style.background='${isLightTheme ? '#fef2f2' : '#313244'}'; this.style.color='${isLightTheme ? '#b91c1c' : '#eba0ac'}';" onmouseout="this.style.background='none'; this.style.color='${isLightTheme ? '#dc2626' : '#f38ba8'}';">
+                                                <i class="fas fa-trash-alt" style="margin-right: 10px; width: 14px; text-align: center;"></i> Delete All
                                             </button>
                                         </div>
                                     </div>
                                 </div>
-                                <div class="dropdown" style="position: relative;">
-                                    <button class="dropdown-toggle" id="checklist-actions-dropdown" style="background: rgba(40, 40, 40, 0.8); color: #888; border: 1px solid rgba(255, 255, 255, 0.08); width: 24px; height: 24px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s ease; padding: 0;"
-                                            onmouseover="this.style.background='rgba(60, 60, 60, 0.9)'; this.style.color='#8b5cf6'; this.style.transform='scale(1.05)';" 
-                                            onmouseout="this.style.background='rgba(40, 40, 40, 0.8)'; this.style.color='#888'; this.style.transform='scale(1)';">
-                                        <i class="fas fa-ellipsis-v" style="font-size: 9px;"></i>
-                                    </button>
-                                    <div class="dropdown-menu" id="checklist-actions-menu" style="display: none; position: absolute; top: 100%; right: 0; background: #1e1e2e; border: 1px solid #313244; border-radius: 8px; min-width: 180px; box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3); z-index: 1000; margin-top: 8px; overflow: hidden;">
-                                        <button id="sync-checklist-linear" class="dropdown-item" style="display: block; width: 100%; text-align: left; padding: 12px 16px; background: none; border: none; color: #cdd6f4; cursor: pointer; transition: all 0.2s; font-size: 14px;" 
-                                                onmouseover="this.style.background='#313244'; this.style.color='#b4befe';" onmouseout="this.style.background='none'; this.style.color='#cdd6f4';">
-                                            <i class="fas fa-sync" style="margin-right: 10px; width: 14px; text-align: center; color: #8b5cf6;"></i> Sync with Linear
+                            </div>
+                            <!-- Floating action bar for selected items (shown when items selected) -->
+                            <div id="checklist-action-bar" class="checklist-action-bar" style="display: none; position: sticky; top: 0; z-index: 100; background: ${isLightTheme ? 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)' : 'linear-gradient(135deg, #1e1e2e 0%, #2a2a3e 100%)'}; border: 1px solid ${isLightTheme ? '#e2e8f0' : '#313244'}; border-radius: 8px; padding: 12px 16px; margin: 0 16px 12px 16px; box-shadow: 0 4px 12px rgba(0, 0, 0, ${isLightTheme ? '0.1' : '0.3'});">
+                                <div style="display: flex; align-items: center; justify-content: space-between;">
+                                    <span id="selected-count" style="font-size: 14px; color: ${isLightTheme ? '#374151' : '#cdd6f4'}; font-weight: 500;">
+                                        <i class="fas fa-check-square" style="margin-right: 8px; color: #8b5cf6;"></i>
+                                        <span id="selected-count-number">0</span> selected
+                                    </span>
+                                    <div style="display: flex; gap: 10px;">
+                                        <button id="queue-selected-btn" class="action-bar-btn" style="display: flex; align-items: center; gap: 6px; padding: 8px 16px; background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.2s ease;"
+                                                onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(139, 92, 246, 0.4)';"
+                                                onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none';">
+                                            <i class="fas fa-play"></i> Queue for Build
                                         </button>
-                                        <div style="height: 1px; background: #313244;"></div>
-                                        <button id="delete-all-checklist" class="dropdown-item" style="display: block; width: 100%; text-align: left; padding: 12px 16px; background: none; border: none; color: #f38ba8; cursor: pointer; transition: all 0.2s; font-size: 14px;"
-                                                onmouseover="this.style.background='#313244'; this.style.color='#eba0ac';" onmouseout="this.style.background='none'; this.style.color='#f38ba8';">
-                                            <i class="fas fa-trash-alt" style="margin-right: 10px; width: 14px; text-align: center;"></i> Delete All
+                                        <button id="delete-selected-btn" class="action-bar-btn" style="display: flex; align-items: center; gap: 6px; padding: 8px 16px; background: ${isLightTheme ? '#fee2e2' : '#3d2a2a'}; color: ${isLightTheme ? '#dc2626' : '#f38ba8'}; border: 1px solid ${isLightTheme ? '#fecaca' : '#5c3a3a'}; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.2s ease;"
+                                                onmouseover="this.style.background='${isLightTheme ? '#fecaca' : '#4d3a3a'}';"
+                                                onmouseout="this.style.background='${isLightTheme ? '#fee2e2' : '#3d2a2a'}';">
+                                            <i class="fas fa-trash"></i> Delete
+                                        </button>
+                                        <button id="cancel-selection-btn" class="action-bar-btn" style="display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: transparent; color: ${isLightTheme ? '#64748b' : '#888'}; border: 1px solid ${isLightTheme ? '#e2e8f0' : '#313244'}; border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.2s ease;"
+                                                onmouseover="this.style.background='${isLightTheme ? '#f1f5f9' : '#313244'}';"
+                                                onmouseout="this.style.background='transparent';">
+                                            <i class="fas fa-times"></i> Cancel
                                         </button>
                                     </div>
                                 </div>
@@ -2482,6 +2640,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     const checklistContent = document.getElementById('checklist-content');
                     const statusFilter = document.getElementById('status-filter');
                     const roleFilter = document.getElementById('role-filter');
+                    const fileFilter = document.getElementById('file-filter');
+                    const conversationFilter = document.getElementById('conversation-filter');
                     const clearFiltersBtn = document.getElementById('clear-checklist-filters');
 
                     const deleteChecklistItem = (item) => {
@@ -2537,27 +2697,45 @@ document.addEventListener('DOMContentLoaded', function() {
                         }),
                         onExecute: (item) => {
                             if (item) {
-                                modalHelpers.close();
                                 ArtifactsLoader.executeTicket(item.id);
+                            }
+                        },
+                        onViewLogs: (item) => {
+                            if (item) {
+                                ArtifactsLoader.showTicketLogs(item.id);
                             }
                         }
                     });
 
                     // Function to render checklist items based on filters
-                    const renderChecklist = (filterStatus = 'all', filterRole = 'all') => {
+                    const renderChecklist = (filterStatus = 'all', filterRole = 'all', filterFile = 'all', filterConversation = 'all') => {
                         let filteredChecklist = [...checklist];
-                        
+
                         // Apply status filter
                         if (filterStatus !== 'all') {
-                            filteredChecklist = filteredChecklist.filter(item => 
+                            filteredChecklist = filteredChecklist.filter(item =>
                                 (item.status || 'open') === filterStatus
                             );
                         }
-                        
+
                         // Apply role filter
                         if (filterRole !== 'all') {
-                            filteredChecklist = filteredChecklist.filter(item => 
+                            filteredChecklist = filteredChecklist.filter(item =>
                                 (item.role || 'user') === filterRole
+                            );
+                        }
+
+                        // Apply file filter
+                        if (filterFile !== 'all') {
+                            filteredChecklist = filteredChecklist.filter(item =>
+                                item.source_document_id && item.source_document_id.toString() === filterFile
+                            );
+                        }
+
+                        // Apply conversation filter
+                        if (filterConversation === 'current' && currentConversationId) {
+                            filteredChecklist = filteredChecklist.filter(item =>
+                                item.conversation_id && item.conversation_id.toString() === currentConversationId.toString()
                             );
                         }
 
@@ -2583,32 +2761,6 @@ document.addEventListener('DOMContentLoaded', function() {
                             const priorityClass = item.priority ? item.priority.toLowerCase() : 'medium';
                             const roleClass = item.role ? item.role.toLowerCase() : 'user';
                             
-                            // Get status icon
-                            let statusIcon = 'fas fa-circle';
-                            switch(statusClass) {
-                                case 'open':
-                                    statusIcon = 'fas fa-circle';
-                                    break;
-                                case 'in-progress':
-                                    statusIcon = 'fas fa-play-circle';
-                                    break;
-                                case 'agent':
-                                    statusIcon = 'fas fa-robot';
-                                    break;
-                                case 'closed':
-                                    statusIcon = 'fas fa-check-circle';
-                                    break;
-                                case 'done':
-                                    statusIcon = 'fas fa-check-circle';
-                                    break;
-                                case 'failed':
-                                    statusIcon = 'fas fa-times-circle';
-                                    break;
-                                case 'blocked':
-                                    statusIcon = 'fas fa-ban';
-                                    break;
-                            }
-                            
                             // Check if this item matches active filters for highlighting
                             const isStatusHighlighted = filterStatus !== 'all' && (item.status || 'open') === filterStatus;
                             const isRoleHighlighted = filterRole !== 'all' && (item.role || 'user') === filterRole;
@@ -2619,7 +2771,13 @@ document.addEventListener('DOMContentLoaded', function() {
                                 dependenciesHtml = `
                                     <div class="card-dependencies">
                                         <span class="dependencies-label"><i class="fas fa-link"></i> Dependencies:</span>
-                                        ${item.dependencies.map(dep => `<span class="dependency-tag">${modalHelpers.escapeHtml(dep)}</span>`).join('')}
+                                        ${item.dependencies.map(dep => {
+                                            const depId = parseInt(dep, 10);
+                                            if (!isNaN(depId)) {
+                                                return `<span class="dependency-tag">Ticket #${depId}</span>`;
+                                            }
+                                            return `<span class="dependency-tag">${modalHelpers.escapeHtml(dep)}</span>`;
+                                        }).join('')}
                                     </div>
                                 `;
                             }
@@ -2652,8 +2810,8 @@ document.addEventListener('DOMContentLoaded', function() {
                             itemsHTML += `
                                 <div class="checklist-card ${statusClass}" data-id="${item.id}">
                                     <div class="card-header">
-                                        <div class="card-status">
-                                            <i class="${statusIcon} status-icon"></i>
+                                        <div class="card-status" style="display: flex; align-items: center; gap: 8px;">
+                                            <input type="checkbox" class="ticket-select-checkbox" data-ticket-id="${item.id}" style="display: none; width: 14px; height: 14px; accent-color: #8b5cf6; cursor: pointer; flex-shrink: 0;" onclick="event.stopPropagation();">
                                             <h3 class="card-title">${modalHelpers.escapeHtml(item.name || 'Untitled Item')}</h3>
                                         </div>
                                         <div class="card-badges">
@@ -2729,7 +2887,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
                         checklistCards.forEach((card, index) => {
                             card.addEventListener('click', function(e) {
-                                if (e.target.closest('.action-btn')) {
+                                if (e.target.closest('.action-btn') || e.target.closest('.ticket-select-checkbox')) {
                                     return;
                                 }
 
@@ -2750,11 +2908,208 @@ document.addEventListener('DOMContentLoaded', function() {
                                 }
                             });
                         });
+
+                        // Multi-select functionality
+                        const wrapper = document.querySelector('.checklist-wrapper');
+                        const actionBar = document.getElementById('checklist-action-bar');
+                        const selectedCountEl = document.getElementById('selected-count-number');
+                        const selectAllCheckbox = document.getElementById('select-all-tickets');
+                        const selectAllContainer = document.getElementById('select-all-container');
+                        const toggleSelectModeBtn = document.getElementById('toggle-select-mode');
+                        const ticketCheckboxes = checklistContent.querySelectorAll('.ticket-select-checkbox');
+
+                        let selectionMode = false;
+
+                        const setSelectionMode = (enabled) => {
+                            selectionMode = enabled;
+                            wrapper.setAttribute('data-selection-mode', enabled ? 'true' : 'false');
+
+                            // Show/hide select all container
+                            if (selectAllContainer) {
+                                selectAllContainer.style.display = enabled ? 'flex' : 'none';
+                            }
+
+                            // Toggle checkbox visibility (status circle hidden via CSS ::before selector)
+                            const checkboxes = checklistContent.querySelectorAll('.ticket-select-checkbox');
+
+                            checkboxes.forEach(checkbox => {
+                                checkbox.style.display = enabled ? 'inline-block' : 'none';
+                                if (!enabled) {
+                                    checkbox.checked = false;
+                                }
+                            });
+
+                            // Reset select all checkbox
+                            if (selectAllCheckbox) {
+                                selectAllCheckbox.checked = false;
+                                selectAllCheckbox.indeterminate = false;
+                            }
+
+                            // Update toggle button text in dropdown
+                            if (toggleSelectModeBtn) {
+                                if (enabled) {
+                                    toggleSelectModeBtn.innerHTML = '<i class="fas fa-times" style="margin-right: 10px; width: 14px; text-align: center; color: #8b5cf6;"></i> Cancel Selection';
+                                } else {
+                                    toggleSelectModeBtn.innerHTML = '<i class="fas fa-check-square" style="margin-right: 10px; width: 14px; text-align: center; color: #8b5cf6;"></i> Select';
+                                }
+                            }
+
+                            // Hide action bar when exiting selection mode
+                            if (!enabled && actionBar) {
+                                actionBar.style.display = 'none';
+                            }
+                        };
+
+                        const updateActionBar = () => {
+                            if (!selectionMode) return;
+
+                            const selectedCheckboxes = checklistContent.querySelectorAll('.ticket-select-checkbox:checked');
+                            const count = selectedCheckboxes.length;
+
+                            if (count > 0) {
+                                actionBar.style.display = 'block';
+                                selectedCountEl.textContent = count;
+                            } else {
+                                actionBar.style.display = 'none';
+                            }
+
+                            // Update select all checkbox state
+                            if (selectAllCheckbox) {
+                                selectAllCheckbox.checked = count > 0 && count === ticketCheckboxes.length;
+                                selectAllCheckbox.indeterminate = count > 0 && count < ticketCheckboxes.length;
+                            }
+                        };
+
+                        // Toggle selection mode button (in dropdown menu)
+                        if (toggleSelectModeBtn) {
+                            toggleSelectModeBtn.addEventListener('click', function() {
+                                // Close the dropdown menu
+                                const dropdownMenu = document.getElementById('checklist-actions-menu');
+                                if (dropdownMenu) {
+                                    dropdownMenu.style.display = 'none';
+                                }
+                                setSelectionMode(!selectionMode);
+                            });
+                        }
+
+                        // Individual checkbox listeners
+                        ticketCheckboxes.forEach(checkbox => {
+                            checkbox.addEventListener('change', updateActionBar);
+                        });
+
+                        // Select all checkbox listener
+                        if (selectAllCheckbox) {
+                            selectAllCheckbox.addEventListener('change', function() {
+                                ticketCheckboxes.forEach(checkbox => {
+                                    checkbox.checked = this.checked;
+                                });
+                                updateActionBar();
+                            });
+                        }
+
+                        // Cancel selection button (in action bar)
+                        const cancelSelectionBtn = document.getElementById('cancel-selection-btn');
+                        if (cancelSelectionBtn) {
+                            cancelSelectionBtn.addEventListener('click', function() {
+                                setSelectionMode(false);
+                            });
+                        }
+
+                        // Queue selected button
+                        const queueSelectedBtn = document.getElementById('queue-selected-btn');
+                        if (queueSelectedBtn) {
+                            queueSelectedBtn.addEventListener('click', function() {
+                                const selectedIds = Array.from(checklistContent.querySelectorAll('.ticket-select-checkbox:checked'))
+                                    .map(cb => parseInt(cb.getAttribute('data-ticket-id'), 10));
+
+                                if (selectedIds.length === 0) {
+                                    window.showToast('No tickets selected', 'warning');
+                                    return;
+                                }
+
+                                if (!confirm(`Queue ${selectedIds.length} ticket(s) for build?`)) {
+                                    return;
+                                }
+
+                                // Call queue API
+                                fetch(`/projects/${projectId}/api/checklist/queue/`, {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'X-CSRFToken': getCsrfToken()
+                                    },
+                                    body: JSON.stringify({ ticket_ids: selectedIds })
+                                })
+                                .then(response => response.json())
+                                .then(data => {
+                                    if (data.success) {
+                                        window.showToast(`${selectedIds.length} ticket(s) queued for build`, 'success');
+                                        // Clear selection
+                                        ticketCheckboxes.forEach(checkbox => {
+                                            checkbox.checked = false;
+                                        });
+                                        if (selectAllCheckbox) {
+                                            selectAllCheckbox.checked = false;
+                                        }
+                                        updateActionBar();
+                                        // Reload checklist to show updated status
+                                        ArtifactsLoader.loadChecklist(projectId);
+                                    } else {
+                                        window.showToast(data.error || 'Failed to queue tickets', 'error');
+                                    }
+                                })
+                                .catch(error => {
+                                    console.error('Error queueing tickets:', error);
+                                    window.showToast('Error queueing tickets', 'error');
+                                });
+                            });
+                        }
+
+                        // Delete selected button
+                        const deleteSelectedBtn = document.getElementById('delete-selected-btn');
+                        if (deleteSelectedBtn) {
+                            deleteSelectedBtn.addEventListener('click', function() {
+                                const selectedIds = Array.from(checklistContent.querySelectorAll('.ticket-select-checkbox:checked'))
+                                    .map(cb => parseInt(cb.getAttribute('data-ticket-id'), 10));
+
+                                if (selectedIds.length === 0) {
+                                    window.showToast('No tickets selected', 'warning');
+                                    return;
+                                }
+
+                                if (!confirm(`Delete ${selectedIds.length} ticket(s)? This action cannot be undone.`)) {
+                                    return;
+                                }
+
+                                // Call bulk delete API
+                                fetch(`/projects/${projectId}/api/checklist/bulk-delete/`, {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'X-CSRFToken': getCsrfToken()
+                                    },
+                                    body: JSON.stringify({ ticket_ids: selectedIds })
+                                })
+                                .then(response => response.json())
+                                .then(data => {
+                                    if (data.success) {
+                                        window.showToast(`${data.deleted_count} ticket(s) deleted`, 'success');
+                                        // Reload checklist
+                                        ArtifactsLoader.loadChecklist(projectId);
+                                    } else {
+                                        window.showToast(data.error || 'Failed to delete tickets', 'error');
+                                    }
+                                })
+                                .catch(error => {
+                                    console.error('Error deleting tickets:', error);
+                                    window.showToast('Error deleting tickets', 'error');
+                                });
+                            });
+                        }
                     };
 
                     // Function to update checklist item status
                     const updateChecklistItemStatus = (itemId, newStatus, oldStatus) => {
-                        console.log(`[ArtifactsLoader] Updating checklist item ${itemId} status from ${oldStatus} to ${newStatus}`);
                         const projectId = getCurrentProjectId();
                         if (!projectId) {
                             console.warn('[ArtifactsLoader] No project ID available for status update');
@@ -2789,25 +3144,12 @@ document.addEventListener('DOMContentLoaded', function() {
                                     item.status = newStatus;
                                     item.updated_at = data.updated_at || new Date().toISOString();
                                 }
-                                // Update the visual state in the main list
+                                // Update the visual state in the main list (status circle color is handled by CSS)
                                 const itemElement = document.querySelector(`[data-id="${itemId}"]`);
                                 if (itemElement) {
                                     itemElement.classList.remove('open', 'in-progress', 'done', 'failed', 'blocked');
                                     itemElement.classList.add(newStatus.replace('_', '-'));
-                                    const statusIcon = itemElement.querySelector('.status-icon');
-                                    if (statusIcon) {
-                                        let newIconClass = 'fas fa-circle';
-                                        switch(newStatus) {
-                                            case 'open': newIconClass = 'fas fa-circle'; break;
-                                            case 'in_progress': newIconClass = 'fas fa-play-circle'; break;
-                                            case 'done': newIconClass = 'fas fa-check-circle'; break;
-                                            case 'failed': newIconClass = 'fas fa-times-circle'; break;
-                                            case 'blocked': newIconClass = 'fas fa-ban'; break;
-                                        }
-                                        statusIcon.className = `${newIconClass} status-icon`;
-                                    }
                                 }
-                                console.log(`[ArtifactsLoader] Status updated successfully to: ${newStatus}`);
                                 showStatusUpdateSuccess(newStatus);
                             } else {
                                 showStatusUpdateError(data.error || 'Failed to update status');
@@ -2828,7 +3170,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
                     // Function to update checklist item role/assignment
                     const updateChecklistItemRole = (itemId, newRole, oldRole) => {
-                        console.log(`[ArtifactsLoader] Updating checklist item ${itemId} role from ${oldRole} to ${newRole}`);
                         const projectId = getCurrentProjectId();
                         if (!projectId) {
                             console.warn('[ArtifactsLoader] No project ID available for role update');
@@ -2874,7 +3215,6 @@ document.addEventListener('DOMContentLoaded', function() {
                                         roleBadge.textContent = newRole.charAt(0).toUpperCase() + newRole.slice(1);
                                     }
                                 }
-                                console.log(`[ArtifactsLoader] Role updated successfully to: ${newRole}`);
                                 showRoleUpdateSuccess(newRole);
                             } else {
                                 showRoleUpdateError(data.error || 'Failed to update role');
@@ -2941,22 +3281,32 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
                     };
 
+                    // Helper to apply all filters
+                    const applyAllFilters = () => {
+                        const filterStatus = statusFilter ? statusFilter.value : 'all';
+                        const filterRole = roleFilter ? roleFilter.value : 'all';
+                        const filterFile = fileFilter ? fileFilter.value : 'all';
+                        const filterConv = conversationFilter ? conversationFilter.value : 'all';
+                        renderChecklist(filterStatus, filterRole, filterFile, filterConv);
+                    };
+
                     // Attach event listeners for filters
-                    statusFilter.addEventListener('change', function() {
-                        const filterStatus = this.value;
-                        const filterRole = roleFilter.value;
-                        renderChecklist(filterStatus, filterRole);
-                    });
-                    
-                    roleFilter.addEventListener('change', function() {
-                        const filterStatus = statusFilter.value;
-                        const filterRole = this.value;
-                        renderChecklist(filterStatus, filterRole);
-                    });
-                    
+                    statusFilter.addEventListener('change', applyAllFilters);
+                    roleFilter.addEventListener('change', applyAllFilters);
+
+                    if (fileFilter) {
+                        fileFilter.addEventListener('change', applyAllFilters);
+                    }
+
+                    if (conversationFilter) {
+                        conversationFilter.addEventListener('change', applyAllFilters);
+                    }
+
                     clearFiltersBtn.addEventListener('click', function() {
                         statusFilter.value = 'all';
                         roleFilter.value = 'all';
+                        if (fileFilter) fileFilter.value = 'all';
+                        if (conversationFilter) conversationFilter.value = 'all';
                         renderChecklist();
                     });
                     
@@ -3447,7 +3797,6 @@ document.addEventListener('DOMContentLoaded', function() {
          * @param {number} conversationId - Optional conversation ID (not used for ServerConfig)
          */
         loadAppPreview: function(projectId, conversationId) {
-            console.log(`[ArtifactsLoader] loadAppPreview called with project ID: ${projectId}, conversation ID: ${conversationId}`);
 
             if (!projectId) {
                 console.warn('[ArtifactsLoader] No project ID provided for loading app preview');
@@ -3473,45 +3822,36 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Fetch server configs from API
             const serverConfigsUrl = `/projects/${projectId}/api/server-configs/`;
-            console.log(`[ArtifactsLoader] Fetching server configs from API: ${serverConfigsUrl}`);
             
             fetch(serverConfigsUrl)
                 .then(response => {
-                    console.log(`[ArtifactsLoader] Server configs API response received, status: ${response.status}`);
                     if (!response.ok) {
                         throw new Error(`Network response was not ok: ${response.status} ${response.statusText}`);
                     }
                     return response.json();
                 })
                 .then(data => {
-                    console.log('[ArtifactsLoader] Server configs API data received:', data);
                     
                     // Process server configs
                     const serverConfigs = data.server_configs || [];
-                    console.log(`[ArtifactsLoader] Found ${serverConfigs.length} server configurations`);
                     
                     if (serverConfigs.length === 0) {
                         // Show empty state if no server configs found
-                        console.log('[ArtifactsLoader] No server configs found, showing empty state');
                         showEmptyState("No application servers found. Start a server using the chat interface by running commands like 'npm start' or 'python manage.py runserver'.");
                         return;
                     }
                     
                     // Find the first application server or use the first config
                     let selectedConfig = serverConfigs.find(config => config.type === 'application') || serverConfigs[0];
-                    console.log(`[ArtifactsLoader] Selected server config:`, selectedConfig);
                     
                     // If there are multiple configs, you could potentially show a selector here
                     if (serverConfigs.length > 1) {
-                        console.log(`[ArtifactsLoader] Multiple server configs available, using: ${selectedConfig.type} on port ${selectedConfig.port}`);
                     }
                     
                     // Construct the URL for the iframe using localhost and the configured port
                     const appUrl = `http://localhost:${selectedConfig.port}/`;
-                    console.log(`[ArtifactsLoader] Loading app from URL: ${appUrl}`);
                     
                     // First, check if the server is actually running by testing the URL
-                    console.log(`[ArtifactsLoader] Testing server connectivity at: ${appUrl}`);
                     
                     // Test server connectivity before loading iframe
                     fetch(appUrl, {
@@ -3520,7 +3860,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         cache: 'no-cache'
                     })
                     .then(() => {
-                        console.log(`[ArtifactsLoader] Server connectivity test passed for ${appUrl}`);
                         loadIframeApp(appUrl, selectedConfig);
                     })
                     .catch((error) => {
@@ -3530,7 +3869,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     // Function to load the app in iframe after connectivity is confirmed
                     function loadIframeApp(iframeUrl, config) {
-                        console.log(`[ArtifactsLoader] Loading verified server in iframe: ${iframeUrl}`);
                         
                         // Use setTimeout to ensure DOM is ready
                         setTimeout(() => {
@@ -3541,7 +3879,6 @@ document.addEventListener('DOMContentLoaded', function() {
                             const restartServerBtn = document.getElementById('app-restart-server-btn');
                             
                             if (urlPanel && urlInput) {
-                                console.log('[ArtifactsLoader] Setting URL in panel to:', iframeUrl);
                                 urlPanel.style.display = 'block';
                                 urlInput.value = iframeUrl;
                             
@@ -3550,7 +3887,6 @@ document.addEventListener('DOMContentLoaded', function() {
                                 if (e.key === 'Enter') {
                                     const newUrl = this.value.trim();
                                     if (newUrl) {
-                                        console.log('[ArtifactsLoader] Navigating to:', newUrl);
                                         appIframe.src = newUrl;
                                     }
                                 }
@@ -3567,7 +3903,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         // Set up refresh button
                         if (refreshBtn) {
                             refreshBtn.onclick = function() {
-                                console.log('[ArtifactsLoader] Refreshing iframe');
                                 // Force reload by clearing and resetting src
                                 const currentSrc = appIframe.src;
                                 appIframe.src = '';
@@ -3588,7 +3923,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         // Set up restart server button
                         if (restartServerBtn) {
                             restartServerBtn.onclick = function() {
-                                console.log('[ArtifactsLoader] Restarting server');
                                 // Disable button and show loading state
                                 this.disabled = true;
                                 this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Restarting...';
@@ -3615,13 +3949,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         
                         // Set up iframe event handlers
                         appIframe.onload = function() {
-                            console.log('[ArtifactsLoader] Iframe onload event triggered');
                             hasLoaded = true;
                             clearTimeout(timeoutId);
                             
                             appLoading.style.display = 'none';
                             appFrameContainer.style.display = 'flex';
-                            console.log('[ArtifactsLoader] App iframe loaded successfully');
                         };
                         
                         appIframe.onerror = function(e) {
@@ -3963,7 +4295,6 @@ document.addEventListener('DOMContentLoaded', function() {
          * @param {number} projectId - The ID of the current project
          */
         checkAndRestartServers: function(projectId) {
-            console.log(`[ArtifactsLoader] checkAndRestartServers called with project ID: ${projectId}`);
             
             if (!projectId) {
                 console.warn('[ArtifactsLoader] No project ID provided for checking servers');
@@ -3990,7 +4321,6 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Call the new check servers API
             const url = `/projects/${projectId}/api/check-servers/`;
-            console.log(`[ArtifactsLoader] Calling server check API: ${url}`);
             
             fetch(url, {
                 method: 'GET',
@@ -4000,19 +4330,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             })
             .then(response => {
-                console.log(`[ArtifactsLoader] Server check API response received, status: ${response.status}`);
                 if (!response.ok) {
                     throw new Error(`Network response was not ok: ${response.status} ${response.statusText}`);
                 }
                 return response.json();
             })
             .then(data => {
-                console.log('[ArtifactsLoader] Server check API data received:', data);
                 
                 // Check the overall status
                 if (data.status === 'all_running') {
                     // All servers are running, reload the app preview
-                    console.log('[ArtifactsLoader] All servers running, reloading app preview');
                     setTimeout(() => {
                         this.loadAppPreview(projectId);
                     }, 1000); // Small delay to ensure servers are fully ready
@@ -4158,11 +4485,122 @@ document.addEventListener('DOMContentLoaded', function() {
         },
 
         /**
+         * Open app in artifacts panel with the given URL
+         * @param {string} appUrl - The URL of the app (with IPv6)
+         * @param {string} workspaceId - The workspace ID
+         * @param {number} port - The port number
+         */
+        openAppInArtifacts: function(appUrl, workspaceId, port) {
+
+            if (!appUrl) {
+                console.error('[ArtifactsLoader] No app URL provided');
+                return;
+            }
+
+            // Switch to the apps tab
+            if (window.switchTab) {
+                window.switchTab('apps');
+            }
+
+            // Open the artifacts panel if not already open
+            const artifactsPanel = document.getElementById('artifacts-panel');
+            const artifactsToggle = document.getElementById('artifacts-toggle');
+            const appContainer = document.querySelector('.app-container');
+
+            if (artifactsPanel && !artifactsPanel.classList.contains('open')) {
+                artifactsPanel.classList.add('open');
+                if (appContainer) appContainer.classList.add('artifacts-expanded');
+                if (artifactsToggle) artifactsToggle.classList.add('active');
+            }
+
+            // Get UI elements
+            const appUrlPanel = document.getElementById('app-url-panel');
+            const appUrlInput = document.getElementById('app-url-input');
+            const appIframe = document.getElementById('app-iframe');
+            const appLoading = document.getElementById('app-loading');
+            const appEmpty = document.getElementById('app-empty');
+            const appFrameContainer = document.getElementById('app-frame-container');
+
+            if (!appIframe || !appUrlInput || !appFrameContainer) {
+                console.error('[ArtifactsLoader] Required app UI elements not found');
+                return;
+            }
+
+            // Show URL panel
+            if (appUrlPanel) {
+                appUrlPanel.style.display = 'block';
+            }
+
+            // Set the URL in the input field
+            appUrlInput.value = appUrl;
+
+            // Show loading state
+            if (appLoading) appLoading.style.display = 'block';
+            if (appEmpty) appEmpty.style.display = 'none';
+            appFrameContainer.style.display = 'none';
+
+            // Set up iframe load handlers
+            let hasLoaded = false;
+            let timeoutId = null;
+
+            appIframe.onload = function() {
+                hasLoaded = true;
+                clearTimeout(timeoutId);
+
+                if (appLoading) appLoading.style.display = 'none';
+                appFrameContainer.style.display = 'flex';
+            };
+
+            appIframe.onerror = function(e) {
+                console.error('[ArtifactsLoader] Error loading app iframe:', e);
+                hasLoaded = true;
+                clearTimeout(timeoutId);
+
+                if (appLoading) appLoading.style.display = 'none';
+                if (appEmpty) {
+                    appEmpty.style.display = 'flex';
+                    appEmpty.querySelector('.empty-state-text').textContent =
+                        `Failed to load app from ${appUrl}. The server may not be running.`;
+                }
+            };
+
+            // Set timeout
+            timeoutId = setTimeout(() => {
+                if (!hasLoaded) {
+                    console.warn('[ArtifactsLoader] App iframe taking too long to load');
+                    if (appLoading) appLoading.style.display = 'none';
+                    appFrameContainer.style.display = 'flex';
+                }
+            }, 15000); // 15 second timeout
+
+            // Load the app in the iframe
+            appIframe.src = appUrl;
+
+            // Set up refresh button
+            const refreshBtn = document.getElementById('app-refresh-btn');
+            if (refreshBtn) {
+                refreshBtn.onclick = function() {
+                    appIframe.src = appIframe.src; // Reload iframe
+                };
+            }
+
+            // Set up restart server button
+            const restartBtn = document.getElementById('app-restart-server-btn');
+            if (restartBtn) {
+                restartBtn.onclick = function() {
+                    // TODO: Implement server restart logic
+                    if (window.showToast) {
+                        window.showToast('Server restart functionality coming soon', 'info');
+                    }
+                };
+            }
+        },
+
+        /**
          * Load Tool Call History for a project
          * @param {number} projectId - The project ID
          */
         loadToolHistory: function(projectId) {
-            console.log(`[ArtifactsLoader] Loading tool history for project ${projectId}`);
             
             const toolhistoryContainer = document.getElementById('toolhistory');
             const toolhistoryLoading = document.getElementById('toolhistory-loading');
@@ -4308,7 +4746,6 @@ document.addEventListener('DOMContentLoaded', function() {
          * @returns {string} - The ID of the pending element
          */
         addPendingToolCall: function(toolName, toolInput) {
-            console.log(`[ArtifactsLoader] Adding pending tool call: ${toolName}`);
             
             const toolhistoryList = document.getElementById('toolhistory-list');
             const toolhistoryEmpty = document.getElementById('toolhistory-empty');
@@ -4367,79 +4804,680 @@ document.addEventListener('DOMContentLoaded', function() {
          * @param {number} ticketId - The ID of the ticket to execute
          */
         executeTicket: function(ticketId) {
-            console.log(`[ArtifactsLoader] Executing ticket ${ticketId}`);
-            
+
             // Find the ticket data
             const projectId = this.getCurrentProjectId();
             if (!projectId) {
                 console.error('[ArtifactsLoader] No project ID found');
-                alert('Unable to execute ticket: No project ID found');
+                if (window.showToast && typeof window.showToast === 'function') {
+                    window.showToast('Unable to execute ticket: No project ID found', 'error');
+                }
                 return;
             }
-            
-            // Get ticket details from the stored tickets data
-            fetch(`/projects/${projectId}/api/checklist/`)
-                .then(response => response.json())
+
+            // Get the execute button to update its state
+            const executeBtn = document.getElementById('ticket-modal-execute');
+            const originalBtnHTML = executeBtn ? executeBtn.innerHTML : null;
+
+            // Show loading state
+            if (executeBtn) {
+                executeBtn.disabled = true;
+                executeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Queueing...';
+            }
+
+            // Get conversation ID if available
+            const conversationId = window.conversationId || null;
+
+            // Queue the ticket for execution via API
+            fetch(`/api/v1/project-tickets/${ticketId}/queue-execution/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({
+                    conversation_id: conversationId
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'queued') {
+
+                    // Show success feedback
+                    if (executeBtn) {
+                        executeBtn.innerHTML = '<i class="fas fa-check"></i> Queued!';
+                        executeBtn.classList.add('success');
+
+                        // Reset button after 2 seconds
+                        setTimeout(() => {
+                            executeBtn.innerHTML = originalBtnHTML;
+                            executeBtn.disabled = false;
+                            executeBtn.classList.remove('success');
+                        }, 2000);
+                    }
+
+                    // Show toast notification
+                    if (window.showToast && typeof window.showToast === 'function') {
+                        window.showToast(`Ticket #${ticketId} has been queued for execution`, 'success');
+                    }
+                } else {
+                    throw new Error(data.message || 'Failed to queue ticket');
+                }
+            })
+            .catch(error => {
+                console.error('[ArtifactsLoader] Error queueing ticket:', error);
+
+                // Show error feedback
+                if (executeBtn) {
+                    executeBtn.innerHTML = '<i class="fas fa-times"></i> Failed';
+                    executeBtn.classList.add('error');
+
+                    // Reset button after 2 seconds
+                    setTimeout(() => {
+                        executeBtn.innerHTML = originalBtnHTML;
+                        executeBtn.disabled = false;
+                        executeBtn.classList.remove('error');
+                    }, 2000);
+                }
+
+                // Show error notification
+                if (window.showNotification && typeof window.showNotification === 'function') {
+                    window.showNotification(`Failed to queue ticket: ${error.message}`, 'error');
+                } else {
+                    alert(`Failed to queue ticket: ${error.message}`);
+                }
+            });
+        },
+
+        /**
+         * Show execution logs for a ticket in a side drawer
+         * @param {number} ticketId - The ID of the ticket to show logs for
+         */
+        showTicketLogs: function(ticketId) {
+
+            const projectId = this.getCurrentProjectId();
+            if (!projectId) {
+                console.error('[ArtifactsLoader] No project ID found');
+                return;
+            }
+
+            // Create side drawer overlay
+            const drawer = document.createElement('div');
+            drawer.id = 'ticket-logs-drawer';
+            drawer.className = 'logs-drawer-overlay';
+            drawer.innerHTML = `
+                <div class="logs-drawer">
+                    <div class="logs-drawer-header">
+                        <h3><i class="fas fa-terminal"></i> Ticket Details</h3>
+                        <div class="logs-drawer-actions">
+                            <button class="logs-drawer-refresh" title="Refresh">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                            <button class="logs-drawer-close" title="Close">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="logs-drawer-tabs">
+                        <button class="logs-tab-btn active" data-tab="logs">
+                            <i class="fas fa-terminal"></i> Logs
+                        </button>
+                        <button class="logs-tab-btn" data-tab="tasks">
+                            <i class="fas fa-list-check"></i> Tasks
+                        </button>
+                    </div>
+                    <div class="logs-drawer-content">
+                        <div id="logs-tab-content" class="tab-content-panel active">
+                            <div class="logs-loading">
+                                <i class="fas fa-spinner fa-spin"></i> Loading logs...
+                            </div>
+                        </div>
+                        <div id="tasks-tab-content" class="tab-content-panel">
+                            <div class="logs-loading">
+                                <i class="fas fa-spinner fa-spin"></i> Loading tasks...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(drawer);
+
+            // Add styles if not already present
+            if (!document.getElementById('ticket-logs-styles')) {
+                const style = document.createElement('style');
+                style.id = 'ticket-logs-styles';
+                style.textContent = `
+                    .logs-drawer-overlay {
+                        position: fixed;
+                        top: 0;
+                        left: 0;
+                        right: 0;
+                        bottom: 0;
+                        background: rgba(0, 0, 0, 0.5);
+                        z-index: 10001;
+                        display: flex;
+                        align-items: center;
+                        justify-content: flex-end;
+                        animation: fadeIn 0.2s ease;
+                    }
+                    .logs-drawer {
+                        background: #1a1a1a;
+                        width: 60%;
+                        max-width: 900px;
+                        height: 100%;
+                        display: flex;
+                        flex-direction: column;
+                        box-shadow: -4px 0 20px rgba(0, 0, 0, 0.5);
+                        animation: slideInRight 0.3s ease;
+                    }
+                    @keyframes slideInRight {
+                        from { transform: translateX(100%); }
+                        to { transform: translateX(0); }
+                    }
+                    .logs-drawer-header {
+                        display: flex;
+                        align-items: center;
+                        justify-content: space-between;
+                        padding: 20px;
+                        border-bottom: 1px solid #333;
+                        background: #222;
+                    }
+                    .logs-drawer-header h3 {
+                        margin: 0;
+                        color: #fff;
+                        font-size: 18px;
+                        display: flex;
+                        align-items: center;
+                        gap: 10px;
+                    }
+                    .logs-drawer-tabs {
+                        display: flex;
+                        gap: 0;
+                        background: #1a1a1a;
+                        border-bottom: 1px solid #333;
+                        padding: 0 20px;
+                    }
+                    .logs-tab-btn {
+                        background: none;
+                        border: none;
+                        color: #999;
+                        padding: 12px 20px;
+                        cursor: pointer;
+                        font-size: 14px;
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                        border-bottom: 2px solid transparent;
+                        transition: all 0.2s;
+                    }
+                    .logs-tab-btn:hover {
+                        color: #fff;
+                        background: rgba(255, 255, 255, 0.05);
+                    }
+                    .logs-tab-btn.active {
+                        color: #4a9eff;
+                        border-bottom-color: #4a9eff;
+                    }
+                    .tab-content-panel {
+                        display: none;
+                    }
+                    .tab-content-panel.active {
+                        display: block;
+                    }
+                    .logs-drawer-actions {
+                        display: flex;
+                        align-items: center;
+                        gap: 10px;
+                    }
+                    .logs-drawer-refresh,
+                    .logs-drawer-close {
+                        background: none;
+                        border: none;
+                        color: #999;
+                        font-size: 20px;
+                        cursor: pointer;
+                        padding: 8px 12px;
+                        transition: all 0.2s;
+                        border-radius: 6px;
+                    }
+                    .logs-drawer-refresh:hover {
+                        color: #4a9eff;
+                        background: rgba(74, 158, 255, 0.1);
+                    }
+                    .logs-drawer-refresh:active {
+                        transform: rotate(180deg);
+                    }
+                    .logs-drawer-refresh.refreshing {
+                        animation: spin 1s linear infinite;
+                    }
+                    @keyframes spin {
+                        from { transform: rotate(0deg); }
+                        to { transform: rotate(360deg); }
+                    }
+                    .logs-drawer-close:hover {
+                        color: #fff;
+                    }
+                    .logs-drawer-content {
+                        flex: 1;
+                        overflow-y: auto;
+                        padding: 20px;
+                        font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+                        font-size: 13px;
+                        line-height: 1.6;
+                    }
+                    .logs-loading {
+                        color: #999;
+                        text-align: center;
+                        padding: 40px;
+                    }
+                    .logs-section {
+                        margin-bottom: 30px;
+                        background: #0d0d0d;
+                        border: 1px solid #333;
+                        border-radius: 6px;
+                        overflow: hidden;
+                    }
+                    .logs-section-header {
+                        background: #1a1a1a;
+                        padding: 12px 16px;
+                        border-bottom: 1px solid #333;
+                        color: #fff;
+                        font-weight: 600;
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                    }
+                    .logs-section-content {
+                        padding: 16px;
+                        color: #ddd;
+                        white-space: pre-wrap;
+                        word-wrap: break-word;
+                    }
+                    .log-command {
+                        color: #4a9eff;
+                        margin-bottom: 8px;
+                    }
+                    .log-output {
+                        color: #9f9;
+                        margin-left: 20px;
+                    }
+                    .log-error {
+                        color: #f99;
+                    }
+                    .log-timestamp {
+                        color: #888;
+                        font-size: 11px;
+                    }
+                    .logs-empty {
+                        text-align: center;
+                        color: #666;
+                        padding: 60px 20px;
+                    }
+                    .task-item {
+                        background: #0d0d0d;
+                        border: 1px solid #333;
+                        border-radius: 6px;
+                        padding: 16px;
+                        margin-bottom: 12px;
+                        display: flex;
+                        align-items: flex-start;
+                        gap: 12px;
+                        transition: all 0.2s;
+                    }
+                    .task-item:hover {
+                        border-color: #4a9eff;
+                        background: #111;
+                    }
+                    .task-icon {
+                        width: 24px;
+                        height: 24px;
+                        border-radius: 50%;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        flex-shrink: 0;
+                        font-size: 12px;
+                        margin-top: 2px;
+                    }
+                    .task-icon.pending {
+                        background: rgba(156, 163, 175, 0.2);
+                        color: #9ca3af;
+                        border: 2px solid #4b5563;
+                    }
+                    .task-icon.in_progress {
+                        background: rgba(59, 130, 246, 0.2);
+                        color: #60a5fa;
+                        border: 2px solid #3b82f6;
+                    }
+                    .task-icon.success {
+                        background: rgba(16, 185, 129, 0.2);
+                        color: #10b981;
+                        border: 2px solid #10b981;
+                    }
+                    .task-icon.fail {
+                        background: rgba(239, 68, 68, 0.2);
+                        color: #ef4444;
+                        border: 2px solid #ef4444;
+                    }
+                    .task-content {
+                        flex: 1;
+                    }
+                    .task-name {
+                        color: #fff;
+                        font-weight: 600;
+                        margin-bottom: 6px;
+                        font-size: 14px;
+                    }
+                    .task-description {
+                        color: #999;
+                        font-size: 13px;
+                        line-height: 1.5;
+                    }
+                    .task-status-badge {
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 6px;
+                        padding: 4px 10px;
+                        border-radius: 12px;
+                        font-size: 11px;
+                        font-weight: 600;
+                        text-transform: uppercase;
+                        letter-spacing: 0.5px;
+                        margin-top: 8px;
+                    }
+                    .task-status-badge.pending {
+                        background: rgba(156, 163, 175, 0.15);
+                        color: #9ca3af;
+                    }
+                    .task-status-badge.in_progress {
+                        background: rgba(59, 130, 246, 0.15);
+                        color: #60a5fa;
+                    }
+                    .task-status-badge.success {
+                        background: rgba(16, 185, 129, 0.15);
+                        color: #10b981;
+                    }
+                    .task-status-badge.fail {
+                        background: rgba(239, 68, 68, 0.15);
+                        color: #ef4444;
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+
+            // Function to load/reload logs
+            const loadLogs = () => {
+                const content = drawer.querySelector('#logs-tab-content');
+                const refreshBtn = drawer.querySelector('.logs-drawer-refresh');
+
+                if (!content) {
+                    console.error('[ArtifactsLoader] #logs-tab-content element not found at start of loadLogs');
+                    return;
+                }
+
+                // Show loading state
+                content.innerHTML = '<div class="logs-loading"><i class="fas fa-spinner fa-spin"></i> Loading logs...</div>';
+
+                // Add refreshing animation
+                if (refreshBtn) {
+                    refreshBtn.classList.add('refreshing');
+                }
+
+                fetch(`/api/v1/project-tickets/${ticketId}/logs/`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    return response.json();
+                })
                 .then(data => {
-                    const tickets = data.checklist || [];
-                    const ticket = tickets.find(t => t.id == ticketId);
-                    
-                    if (!ticket) {
-                        console.error('[ArtifactsLoader] Ticket not found:', ticketId);
-                        alert('Unable to execute ticket: Ticket not found');
+
+                    // Update drawer header with ticket name
+                    const header = drawer.querySelector('.logs-drawer-header h3');
+                    if (header && data.ticket_name) {
+                        header.innerHTML = `<i class="fas fa-terminal"></i> ${data.ticket_name} - Execution Logs`;
+                    }
+
+                    const content = drawer.querySelector('#logs-tab-content');
+                    if (!content) {
+                        console.error('[ArtifactsLoader] #logs-tab-content element not found');
+                        if (refreshBtn) {
+                            refreshBtn.classList.remove('refreshing');
+                        }
                         return;
                     }
-                    
-                    // Construct the command to send
-                    let command = `Build the following feature from ticket #${ticket.id}: "${ticket.name}"\n\n`;
-                    command += `Description: ${ticket.description}\n\n`;
-                    
-                    if (ticket.details && Object.keys(ticket.details).length > 0) {
-                        command += `Technical Details:\n${JSON.stringify(ticket.details, null, 2)}\n\n`;
-                    }
-                    
-                    if (ticket.acceptance_criteria && ticket.acceptance_criteria.length > 0) {
-                        command += `Acceptance Criteria:\n`;
-                        ticket.acceptance_criteria.forEach(criteria => {
-                            command += `- ${criteria}\n`;
-                        });
-                        command += `\n`;
-                    }
-                    
-                    command += `Please implement this feature following the specifications above.`;
-                    
-                    // Close any open ticket modal before sending the command
-                    if (window.ArtifactsLoader && typeof window.ArtifactsLoader.closeTicketModal === 'function') {
-                        window.ArtifactsLoader.closeTicketModal();
-                    }
-                    
-                    // Send the command to the chat
-                    if (window.sendMessage && typeof window.sendMessage === 'function') {
-                        console.log('[ArtifactsLoader] Sending ticket execution command to chat');
-                        window.sendMessage(command);
-                    } else {
-                        // Fallback: try to find the chat input and trigger send
-                        const chatInput = document.getElementById('chat-input');
-                        const sendButton = document.getElementById('send-btn');
-                        
-                        if (chatInput && sendButton) {
-                            chatInput.value = command;
-                            // Trigger input event to update any listeners
-                            chatInput.dispatchEvent(new Event('input', { bubbles: true }));
-                            // Click the send button
-                            sendButton.click();
-                        } else {
-                            console.error('[ArtifactsLoader] Unable to send message - no chat interface found');
-                            alert('Unable to send command to chat. Please copy the command manually.');
+
+                    if (!data.commands || data.commands.length === 0) {
+                        content.innerHTML = `
+                            <div class="logs-empty">
+                                <i class="fas fa-inbox" style="font-size: 48px; margin-bottom: 16px; opacity: 0.3;"></i>
+                                <p>No execution logs available for this ticket yet.</p>
+                                <p style="font-size: 12px; color: #555;">Logs will appear here after the ticket is executed.</p>
+                            </div>
+                        `;
+
+                        // Remove refreshing animation
+                        if (refreshBtn) {
+                            refreshBtn.classList.remove('refreshing');
                         }
+                        return;
+                    }
+
+                    let html = '';
+
+                    // Helper function to escape HTML
+                    const escapeHtml = (text) => {
+                        if (!text) return '';
+                        const div = document.createElement('div');
+                        div.textContent = text;
+                        return div.innerHTML;
+                    };
+
+                    // Show ticket notes if available
+                    // if (data.ticket_notes) {
+                    //     html += `
+                    //         <div class="logs-section">
+                    //             <div class="logs-section-header">
+                    //                 <i class="fas fa-clipboard-list"></i> Execution Summary
+                    //             </div>
+                    //             <div class="logs-section-content">${escapeHtml(data.ticket_notes)}</div>
+                    //         </div>
+                    //     `;
+                    // }
+
+                    // Show command history
+                    data.commands.forEach((cmd, index) => {
+                        const timestamp = new Date(cmd.created_at).toLocaleString();
+                        html += `
+                            <div class="logs-section">
+                                <div class="logs-section-header">
+                                    <i class="fas fa-terminal"></i> Command ${index + 1}
+                                    <span class="log-timestamp" style="margin-left: auto;">${timestamp}</span>
+                                </div>
+                                <div class="logs-section-content">
+                                    <div class="log-command">$ ${escapeHtml(cmd.command)}</div>
+                                    ${cmd.output ? `<div class="log-output">${escapeHtml(cmd.output)}</div>` : '<div class="log-output" style="color: #666;">(no output)</div>'}
+                                </div>
+                            </div>
+                        `;
+                    });
+
+                    content.innerHTML = html;
+
+                    // Remove refreshing animation
+                    if (refreshBtn) {
+                        refreshBtn.classList.remove('refreshing');
                     }
                 })
                 .catch(error => {
-                    console.error('[ArtifactsLoader] Error fetching ticket details:', error);
-                    alert('Error executing ticket: ' + error.message);
+                    console.error('[ArtifactsLoader] Error fetching logs:', error);
+                    const content = drawer.querySelector('#logs-tab-content');
+                    if (content) {
+                        content.innerHTML = `
+                            <div class="logs-empty">
+                                <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 16px; color: #f99;"></i>
+                                <p class="log-error">Failed to load execution logs</p>
+                                <p style="font-size: 12px; color: #888;">${error.message}</p>
+                            </div>
+                        `;
+                    }
+
+                    // Remove refreshing animation
+                    if (refreshBtn) {
+                        refreshBtn.classList.remove('refreshing');
+                    }
                 });
+            };
+
+            // Function to load/reload tasks
+            const loadTasks = () => {
+                const tasksContent = drawer.querySelector('#tasks-tab-content');
+                const refreshBtn = drawer.querySelector('.logs-drawer-refresh');
+
+                if (!tasksContent) {
+                    console.error('[ArtifactsLoader] #tasks-tab-content element not found');
+                    if (refreshBtn) {
+                        refreshBtn.classList.remove('refreshing');
+                    }
+                    return;
+                }
+
+                if (refreshBtn) {
+                    refreshBtn.classList.add('refreshing');
+                }
+
+                tasksContent.innerHTML = '<div class="logs-loading"><i class="fas fa-spinner fa-spin"></i> Loading tasks...</div>';
+
+                fetch(`/api/v1/project-tickets/${ticketId}/tasks/`)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+
+                        if (!data.tasks || data.tasks.length === 0) {
+                            tasksContent.innerHTML = '<div class="logs-empty"><i class="fas fa-info-circle" style="font-size: 32px; margin-bottom: 12px; color: #888;"></i><p>No tasks defined for this ticket yet.</p></div>';
+                            if (refreshBtn) {
+                                refreshBtn.classList.remove('refreshing');
+                            }
+                            return;
+                        }
+
+                        let html = '';
+                        data.tasks.forEach(task => {
+                            const statusIcon = {
+                                'pending': '○',
+                                'in_progress': '◐',
+                                'success': '✓',
+                                'fail': '✗'
+                            }[task.status] || '○';
+
+                            const escapedName = (task.name || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                            const escapedDescription = (task.description || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+                            html += `
+                                <div class="task-item">
+                                    <div class="task-icon ${task.status}">${statusIcon}</div>
+                                    <div class="task-content">
+                                        <div class="task-name">${escapedName}</div>
+                                        ${escapedDescription ? `<div class="task-description">${escapedDescription}</div>` : ''}
+                                        <span class="task-status-badge ${task.status}">${task.status.replace('_', ' ')}</span>
+                                    </div>
+                                </div>
+                            `;
+                        });
+
+                        tasksContent.innerHTML = html;
+
+                        if (refreshBtn) {
+                            refreshBtn.classList.remove('refreshing');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('[ArtifactsLoader] Error loading tasks:', error);
+                        if (tasksContent) {
+                            tasksContent.innerHTML = `
+                                <div class="logs-empty">
+                                    <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 16px; color: #f99;"></i>
+                                    <p class="log-error">Failed to load tasks</p>
+                                    <p style="font-size: 12px; color: #888;">${error.message}</p>
+                                </div>
+                            `;
+                        }
+
+                        if (refreshBtn) {
+                            refreshBtn.classList.remove('refreshing');
+                        }
+                    });
+            };
+
+            // Tab switching logic
+            drawer.querySelectorAll('.logs-tab-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const tab = btn.dataset.tab;
+
+                    // Update active states
+                    drawer.querySelectorAll('.logs-tab-btn').forEach(b => b.classList.remove('active'));
+                    drawer.querySelectorAll('.tab-content-panel').forEach(p => p.classList.remove('active'));
+                    btn.classList.add('active');
+
+                    const tabContent = drawer.querySelector(`#${tab}-tab-content`);
+                    if (tabContent) {
+                        tabContent.classList.add('active');
+                    } else {
+                        console.error(`[ArtifactsLoader] Tab content #${tab}-tab-content not found`);
+                    }
+
+                    // Load tasks when switching to tasks tab for the first time
+                    if (tab === 'tasks') {
+                        const tasksContent = drawer.querySelector('#tasks-tab-content');
+                        if (tasksContent && (!tasksContent.hasChildNodes() || tasksContent.innerHTML.trim() === '')) {
+                            loadTasks();
+                        }
+                    }
+                });
+            });
+
+            // Close button handler
+            drawer.querySelector('.logs-drawer-close').addEventListener('click', () => {
+                drawer.style.animation = 'fadeOut 0.2s ease';
+                drawer.querySelector('.logs-drawer').style.animation = 'slideOutRight 0.3s ease';
+                setTimeout(() => drawer.remove(), 300);
+            });
+
+            // Refresh button handler - updated to work with both tabs
+            const refreshBtn = drawer.querySelector('.logs-drawer-refresh');
+            if (refreshBtn) {
+                refreshBtn.addEventListener('click', () => {
+                    const activeTabBtn = drawer.querySelector('.logs-tab-btn.active');
+                    if (!activeTabBtn) {
+                        console.error('[ArtifactsLoader] No active tab button found');
+                        return;
+                    }
+                    const activeTab = activeTabBtn.dataset.tab;
+
+                    if (activeTab === 'logs') {
+                        loadLogs();
+                    } else if (activeTab === 'tasks') {
+                        loadTasks();
+                    }
+                });
+            }
+
+            // Click outside to close
+            drawer.addEventListener('click', (e) => {
+                if (e.target === drawer) {
+                    drawer.querySelector('.logs-drawer-close').click();
+                }
+            });
+
+            // Initial load - wait for DOM to be ready
+            setTimeout(() => loadLogs(), 100);
         },
-        
+
         /**
          * Download file content as PDF
          * @param {number} projectId - The ID of the current project
@@ -4447,7 +5485,6 @@ document.addEventListener('DOMContentLoaded', function() {
          * @param {string} content - The markdown content
          */
         downloadFileAsPDF: function(projectId, title, content) {
-            console.log('[ArtifactsLoader] downloadFileAsPDF called');
             
             // Check if jsPDF is available
             if (typeof window.jspdf === 'undefined' || typeof window.jspdf.jsPDF === 'undefined') {
@@ -4992,7 +6029,6 @@ document.addEventListener('DOMContentLoaded', function() {
          * @param {string} options.openFileName - File name to open after loading
          */
         loadFileBrowser: function(projectId, options = {}) {
-            console.log(`[ArtifactsLoader] Loading file browser for project ${projectId}`, options);
             
             // Store project ID for use in file operations
             window.currentFileBrowserProjectId = projectId;
@@ -5111,6 +6147,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             // Use the raw type if type_display is not available
                             const displayType = file.type_display || file.type || 'Unknown';
                             typeBadge.textContent = displayType;
+                            typeBadge.title = displayType;
                             fileType.appendChild(typeBadge);
                             
                             // Create owner cell
@@ -5276,10 +6313,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         
                         // Auto-open file if specified
                         if (options.openFileId && options.openFileName) {
-                            console.log(`[ArtifactsLoader] Auto-opening file: ${options.openFileId} - ${options.openFileName}`);
                             // Directly call the API to load the file content
                             setTimeout(() => {
-                                console.log('[ArtifactsLoader] Loading file content via API');
                                 
                                 // Call the file content API directly
                                 fetch(`/projects/${projectId}/api/files/${options.openFileId}/content/`, {
@@ -5359,7 +6394,6 @@ document.addEventListener('DOMContentLoaded', function() {
                                         `;
                                     }
                                     
-                                    console.log('[ArtifactsLoader] File content loaded and displayed');
                                 })
                                 .catch(error => {
                                     console.error('[ArtifactsLoader] Error loading file content:', error);
@@ -5581,14 +6615,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     return;
                 }
                 
-                console.log('[ArtifactsLoader] Viewing file:', { fileId, fileName, projectId });
                 
                 // Ensure artifacts panel is open and documents tab is active
                 const artifactsPanel = document.getElementById('artifacts-panel');
                 const isArtifactsPanelOpen = artifactsPanel && artifactsPanel.classList.contains('expanded');
                 
                 if (!isArtifactsPanelOpen) {
-                    console.log('[ArtifactsLoader] Opening artifacts panel');
                     if (window.ArtifactsPanel && typeof window.ArtifactsPanel.toggle === 'function') {
                         window.ArtifactsPanel.toggle(true); // Force open
                     }
@@ -5597,14 +6629,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Switch to filebrowser tab instead of documents
                 const filebrowserTab = document.querySelector('[data-tab="filebrowser"]');
                 if (filebrowserTab && !filebrowserTab.classList.contains('active')) {
-                    console.log('[ArtifactsLoader] Switching to filebrowser tab');
                     
                     // Try multiple methods to switch tab
                     if (window.switchTab) {
                         window.switchTab('filebrowser');
                     } else {
                         // Fallback: manually trigger tab switch
-                        console.log('[ArtifactsLoader] Using fallback tab switch method');
                         
                         // Remove active class from all tabs and panes
                         document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
@@ -5750,18 +6780,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Render markdown content
                     const content = data.content || 'No content available';
 
-                    console.log('[ArtifactsLoader] Getting Viewer Actions');
                     
                     // Create compact action buttons
                     const viewerActions = document.getElementById('viewer-actions');
 
-                    console.log('[ArtifactsLoader] Getting Viewer Actions', viewerActions);
 
                     if (viewerActions) {
                         // Clear existing buttons
                         viewerActions.innerHTML = '';
 
-                        console.log('[ArtifactsLoader] Viewer Actions', viewerActions);
                         
                         // Common button style
                         const buttonStyle = `
@@ -5777,7 +6804,6 @@ document.addEventListener('DOMContentLoaded', function() {
                             justify-content: center;
                         `;
                         
-                        console.log('[ArtifactsLoader] Button Style', buttonStyle);
 
                         // Edit button with full text
                         const editButton = document.createElement('button');
@@ -6018,7 +7044,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         versionOption.addEventListener('click', () => {
                             dropdownMenu.style.display = 'none';
                             const currentFileId = window.currentFileData ? window.currentFileData.fileId : fileId;
-                            console.log('[VersionButton] Clicked for fileId:', currentFileId);
                             showVersionHistory(currentFileId);
                         });
                         
@@ -6051,7 +7076,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         
                         // Ensure viewer actions are always visible
                         viewerActions.style.display = 'flex';
-                        console.log('[ArtifactsLoader] Viewer actions display set to flex');
                     }
                     
                     // Configure marked if not already configured
@@ -6144,7 +7168,6 @@ document.addEventListener('DOMContentLoaded', function() {
             // Function to perform auto-save
             const performAutoSave = async () => {
                 if (hasUnsavedChanges && window.currentWysiwygEditor) {
-                    console.log('[AutoSave] Performing auto-save...');
                     await saveFileContent(true); // true indicates auto-save
                     hasUnsavedChanges = false;
                 }
@@ -6452,7 +7475,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Start auto-save timer
                 startAutoSave();
-                console.log('[AutoSave] Auto-save timer started');
                 
                 // Reset unsaved changes flag
                 hasUnsavedChanges = false;
@@ -6818,7 +7840,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                     
                     const { fileId, fileName, type } = window.currentFileData;
-                    console.log('[ArtifactsLoader] Saving file:', { fileId, fileName, type, projectId });
                     
                     // Determine the correct API endpoint based on file type
                     let url, method, body;
@@ -6840,8 +7861,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         body = JSON.stringify({ content: content });
                     }
                     
-                    console.log('[ArtifactsLoader] Request URL:', url);
-                    console.log('[ArtifactsLoader] Request method:', method);
                     
                     const response = await fetch(url, {
                         method: method,
@@ -6852,12 +7871,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         body: body
                     });
                     
-                    console.log('[ArtifactsLoader] Response status:', response.status);
                     
                     let data;
                     try {
                         data = await response.json();
-                        console.log('[ArtifactsLoader] Response data:', data);
                     } catch (e) {
                         console.error('[ArtifactsLoader] Failed to parse response:', e);
                         data = { success: false, error: 'Failed to parse server response' };
@@ -6874,7 +7891,6 @@ document.addEventListener('DOMContentLoaded', function() {
                                     autoSaveIndicator.style.display = 'none';
                                 }, 2000);
                             }
-                            console.log('[AutoSave] File auto-saved successfully');
                         } else {
                             // For manual save, show toast
                             if (typeof showToast === 'function') {
@@ -6963,7 +7979,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Stop auto-save timer
                 stopAutoSave();
-                console.log('[AutoSave] Auto-save timer stopped');
                 
                 // Clear reference
                 if (window.currentWysiwygEditor) {
@@ -7036,7 +8051,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         throw new Error(data.error || 'Failed to load versions');
                     }
                     
-                    console.log('[VersionHistory] API Response for file', fileId, ':', data);
                     
                     // Get filename from current file data
                     const fileName = window.currentFileData ? window.currentFileData.fileName : 'Unknown File';
@@ -7052,7 +8066,6 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Create version history drawer
             const createVersionHistoryDrawer = (fileId, fileName, versions) => {
-                console.log('[VersionDrawer] Creating drawer for file:', { fileId, fileName, versionCount: versions.length });
                 
                 // Remove existing drawer and overlay if any
                 const existingDrawer = document.querySelector('.version-drawer');
@@ -7180,7 +8193,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Store current file ID in drawer for verification
                 drawer.dataset.fileId = String(fileId);
-                console.log('[VersionDrawer] Drawer created with fileId:', drawer.dataset.fileId);
                 
                 // Close drawer function
                 const closeDrawer = () => {
@@ -7657,7 +8669,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Check if we're in edit mode with unsaved changes
                     if (window.currentWysiwygEditor && hasUnsavedChanges) {
                         // Auto-save before going back
-                        console.log('[FileBrowser] Auto-saving before navigating back...');
                         await saveFileContent(true); // true for auto-save
                     }
                     
@@ -7718,7 +8729,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }; // End of ArtifactsLoader object
 
     // ArtifactsLoader is now ready to use
-    console.log('[ArtifactsLoader] Loaded and ready');
     
     // Add event handlers for custom PRD selector
     setTimeout(() => {
@@ -7777,7 +8787,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 
                 if (projectId && selectedValue) {
-                    console.log(`[ArtifactsLoader] PRD selection changed to: ${selectedValue} for project: ${projectId}`);
                     window.ArtifactsLoader.loadPRD(projectId, selectedValue);
                 }
             }
@@ -7817,7 +8826,7 @@ window.editChecklistItem = function(itemId) {
     fetch(`/projects/${projectId}/api/checklist/`)
         .then(response => response.json())
         .then(data => {
-            const checklist = data.checklist || [];
+            const checklist = data.tickets || [];
             const item = checklist.find(i => i.id == itemId);
 
             if (!item) {

@@ -12,6 +12,7 @@ from google.genai.types import (
 )
 
 from .base import BaseLLMProvider
+from factory.llm_config import get_provider_model_mapping, get_default_model_key
 
 # Import functions from ai_common and streaming_handlers
 from factory.ai_common import execute_tool_call, get_notification_type_for_tool, track_token_usage
@@ -23,19 +24,17 @@ logger = logging.getLogger(__name__)
 class GoogleGeminiProvider(BaseLLMProvider):
     """Google Gemini provider implementation"""
     
-    MODEL_MAPPING = {
-        "gemini_2.5_pro": "models/gemini-2.5-pro",
-        "gemini_2.5_flash": "models/gemini-2.5-flash",
-        "gemini_2.5_flash_lite": "models/gemini-2.5-flash-lite",
-    }
+    MODEL_MAPPING = get_provider_model_mapping("google")
+    DEFAULT_MODEL_KEY = get_default_model_key("google") or "gemini_2.5_pro"
     
     def __init__(self, selected_model: str, user=None, conversation=None, project=None):
         super().__init__(selected_model, user, conversation, project)
         
         # Map model selection to actual model name
-        self.model = self.MODEL_MAPPING.get(selected_model, "models/gemini-2.5-pro")
+        fallback_model = self.MODEL_MAPPING.get(self.DEFAULT_MODEL_KEY, "models/gemini-2.5-pro")
+        self.model = self.MODEL_MAPPING.get(selected_model, fallback_model)
         if selected_model not in self.MODEL_MAPPING:
-            logger.warning(f"Unknown model {selected_model}, defaulting to gemini-2.5-pro")
+            logger.warning(f"Unknown Google model {selected_model}, defaulting to {self.DEFAULT_MODEL_KEY}")
             
         logger.info(f"Google Gemini Provider initialized with model: {self.model}")
     
@@ -55,16 +54,25 @@ class GoogleGeminiProvider(BaseLLMProvider):
         else:
             logger.warning("No Google API key found")
     
+    def _is_thinking_model(self) -> bool:
+        """Check if the current model requires thought signatures (Gemini 2.5+, 3+)"""
+        thinking_model_patterns = ["gemini-3", "gemini-2.5", "gemini-2.0-flash-thinking"]
+        return any(pattern in self.model.lower() for pattern in thinking_model_patterns)
+
     def _convert_messages_to_provider_format(self, messages: List[Dict[str, Any]]) -> tuple:
         """Convert messages to Google Gemini format
         Returns: (system_instruction, contents)
         """
         system_instruction = ""
         contents = []
-        
+        requires_thought_signatures = self._is_thinking_model()
+
+        # Track tool call IDs that were converted to text (no thought_signature)
+        text_converted_tool_ids = set()
+
         for msg in messages:
             role = msg["role"]
-            
+
             if role == "system":
                 # Google Gemini handles system messages as system_instruction
                 system_instruction = msg["content"]
@@ -73,24 +81,42 @@ class GoogleGeminiProvider(BaseLLMProvider):
                 parts = []
                 if msg.get("content"):
                     parts.append({"text": msg["content"]})
-                
+
                 # Handle tool calls
                 if msg.get("tool_calls"):
                     for tc in msg["tool_calls"]:
-                        parts.append({
-                            "function_call": {
-                                "name": tc["function"]["name"],
-                                "args": json.loads(tc["function"]["arguments"])
+                        has_thought_sig = tc.get("thought_signature")
+
+                        # For thinking models, tool calls without thought_signature
+                        # must be converted to text to avoid API errors
+                        if requires_thought_signatures and not has_thought_sig:
+                            # Convert to text description instead of function_call
+                            tool_name = tc["function"]["name"]
+                            tool_args = tc["function"]["arguments"]
+                            text_converted_tool_ids.add(tc.get("id"))
+                            parts.append({
+                                "text": f"[Called function {tool_name} with args: {tool_args}]"
+                            })
+                            logger.warning(f"[GEMINI] Converted tool call {tool_name} to text (no thought_signature) - this may cause issues!")
+                        else:
+                            part = {
+                                "function_call": {
+                                    "name": tc["function"]["name"],
+                                    "args": json.loads(tc["function"]["arguments"])
+                                }
                             }
-                        })
-                
+                            # Include thought_signature if present (required for Gemini 2.5+)
+                            if has_thought_sig:
+                                part["thought_signature"] = tc["thought_signature"]
+                            parts.append(part)
+
                 if parts:
                     contents.append({"role": "model", "parts": parts})
-                    
+
             elif role == "user":
                 # Handle both string content and array content (for files)
                 parts = []
-                
+
                 if isinstance(msg.get("content"), list):
                     # Content is already in array format (with files)
                     for item in msg["content"]:
@@ -108,21 +134,32 @@ class GoogleGeminiProvider(BaseLLMProvider):
                 else:
                     # Legacy string format
                     parts.append({"text": msg["content"]})
-                
+
                 contents.append({"role": "user", "parts": parts})
-                
+
             elif role == "tool":
-                # Convert tool results
-                contents.append({
-                    "role": "function",
-                    "parts": [{
-                        "function_response": {
-                            "name": msg.get("name", ""),  # Tool name should be in the message
-                            "response": {"result": msg["content"]}
-                        }
-                    }]
-                })
-        
+                tool_call_id = msg.get("tool_call_id")
+
+                # If this tool result corresponds to a text-converted call, convert to user message
+                if tool_call_id in text_converted_tool_ids:
+                    tool_name = msg.get("name", "unknown")
+                    contents.append({
+                        "role": "user",
+                        "parts": [{"text": f"[Result of {tool_name}: {msg['content']}]"}]
+                    })
+                    logger.debug(f"Converted tool result {tool_name} to user message")
+                else:
+                    # Convert tool results normally
+                    contents.append({
+                        "role": "function",
+                        "parts": [{
+                            "function_response": {
+                                "name": msg.get("name", ""),  # Tool name should be in the message
+                                "response": {"result": msg["content"]}
+                            }
+                        }]
+                    })
+
         return system_instruction, contents
     
     def _convert_tools_to_provider_format(self, tools: List[Dict[str, Any]]) -> List[Tool]:
@@ -220,10 +257,11 @@ class GoogleGeminiProvider(BaseLLMProvider):
         
         return gemini_tools
     
-    async def generate_stream(self, messages: List[Dict[str, Any]], 
-                            project_id: Optional[int], 
-                            conversation_id: Optional[int], 
-                            tools: List[Dict[str, Any]]) -> AsyncGenerator[str, None]:
+    async def generate_stream(self, messages: List[Dict[str, Any]],
+                            project_id: Optional[int],
+                            conversation_id: Optional[int],
+                            tools: List[Dict[str, Any]],
+                            ticket_id: Optional[int] = None) -> AsyncGenerator[str, None]:
         """Generate streaming response from Google Gemini"""
         logger.info(f"Google Gemini generate_stream called - Model: {self.model}, Messages: {len(messages)}, Tools: {len(tools) if tools else 0}")
         
@@ -271,26 +309,31 @@ class GoogleGeminiProvider(BaseLLMProvider):
                 "type": "function",
                 "function": {
                     "name": "web_search",
-                    "description": "Search the web for current information",
+                    "description": "Search the web with multiple queries. Each query will be searched independently and results combined.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "query": {
-                                "type": "string",
-                                "description": "The search query"
+                            "queries": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "List of search queries to execute"
                             }
                         },
-                        "required": ["query"]
+                        "required": ["queries"]
                     }
                 }
             }
             tools.append(search_tool)
             logger.info("Added web_search tool to Google Gemini tools")
 
+        iteration_count = 0
         while True: # Loop to handle potential multi-turn tool calls
+            iteration_count += 1
+            logger.info(f"[GEMINI] Starting iteration {iteration_count}")
             try:
                 # Convert messages and tools to Gemini format
                 system_instruction, contents = self._convert_messages_to_provider_format(current_messages)
+                logger.info(f"[GEMINI] Converted {len(current_messages)} messages to {len(contents)} contents")
                 gemini_tools = self._convert_tools_to_provider_format(tools)
                 
                 # Create configuration
@@ -325,6 +368,24 @@ class GoogleGeminiProvider(BaseLLMProvider):
                 # Variables for this specific API call
                 tool_calls_requested = [] # Stores tool call info
                 full_assistant_message = {"role": "assistant", "content": "", "tool_calls": []}
+                agent_followup_messages: List[Dict[str, Any]] = []
+                agent_followup_counter = 0
+                
+                def append_assistant_text(text: Optional[str]):
+                    nonlocal full_assistant_message
+                    if not text:
+                        return
+                    full_assistant_message["content"] = (full_assistant_message.get("content") or "") + text
+
+                def enqueue_agent_followup(message_text: Optional[str]):
+                    nonlocal agent_followup_counter
+                    if not message_text:
+                        return
+                    agent_followup_counter += 1
+                    agent_followup_messages.append({
+                        "role": "system",
+                        "content": message_text
+                    })
                 usage_metadata = None  # Store usage metadata from response
                 
                 # Generate streaming response
@@ -338,6 +399,11 @@ class GoogleGeminiProvider(BaseLLMProvider):
                 except Exception as e:
                     logger.error(f"Error creating stream: {e}")
                     yield f"Error creating Google Gemini stream: {str(e)}"
+                    return
+                
+                if not response_stream:
+                    logger.error("The call to generate_content_stream returned None.")
+                    yield "Error: Failed to get a response stream from Google Gemini."
                     return
                 
                 # Process the stream
@@ -360,6 +426,8 @@ class GoogleGeminiProvider(BaseLLMProvider):
                             
                             # Yield notification if present
                             if notification:
+                                if isinstance(notification, dict):
+                                    enqueue_agent_followup(notification.get("message_to_agent"))
                                 yield format_notification(notification)
                             
                             # Yield output text if present
@@ -370,15 +438,17 @@ class GoogleGeminiProvider(BaseLLMProvider):
                             immediate_notifications = tag_handler.get_immediate_notifications()
                             for immediate_notification in immediate_notifications:
                                 logger.info(f"[GOOGLE] Yielding immediate notification: {immediate_notification.get('notification_type')}")
+                                if isinstance(immediate_notification, dict):
+                                    enqueue_agent_followup(immediate_notification.get("message_to_agent"))
                                 yield format_notification(immediate_notification)
                             
                             # Update the full assistant message with original text (for context)
-                            full_assistant_message["content"] += text
+                            append_assistant_text(text)
                         
                         # Check for function calls
                         if hasattr(chunk, 'candidates') and chunk.candidates:
                             for candidate in chunk.candidates:
-                                if hasattr(candidate, 'content') and candidate.content and hasattr(candidate.content, 'parts'):
+                                if hasattr(candidate, 'content') and candidate.content and hasattr(candidate.content, 'parts') and candidate.content.parts:
                                     for part in candidate.content.parts:
                                         if hasattr(part, 'function_call') and part.function_call:
                                             fc = part.function_call
@@ -386,12 +456,16 @@ class GoogleGeminiProvider(BaseLLMProvider):
                                             if not hasattr(fc, 'name') or not fc.name:
                                                 logger.warning("Function call missing name attribute")
                                                 continue
-                                            
+
                                             # Extract arguments safely
                                             args = {}
                                             if hasattr(fc, 'args'):
                                                 args = fc.args if fc.args else {}
-                                            
+
+                                            # Log part attributes for debugging
+                                            part_attrs = [attr for attr in dir(part) if not attr.startswith('_')]
+                                            logger.info(f"[GEMINI] Function call part attributes: {part_attrs}")
+
                                             tool_call = {
                                                 "id": f"call_{len(tool_calls_requested)}",
                                                 "type": "function",
@@ -400,6 +474,14 @@ class GoogleGeminiProvider(BaseLLMProvider):
                                                     "arguments": json.dumps(args)
                                                 }
                                             }
+
+                                            # Capture thought_signature if present (required for Gemini 2.5+)
+                                            if hasattr(part, 'thought_signature') and part.thought_signature:
+                                                tool_call["thought_signature"] = part.thought_signature
+                                                logger.info(f"[GEMINI] Captured thought_signature for function call: {fc.name}")
+                                            else:
+                                                logger.warning(f"[GEMINI] NO thought_signature for function call: {fc.name}. has_attr={hasattr(part, 'thought_signature')}, value={getattr(part, 'thought_signature', 'N/A')}")
+
                                             tool_calls_requested.append(tool_call)
                                             
                                             # Send early notification
@@ -419,13 +501,18 @@ class GoogleGeminiProvider(BaseLLMProvider):
                 
                 # After stream completes, check if we have tool calls to execute
                 if tool_calls_requested:
+                    logger.info(f"[GEMINI] Tool calls detected: {len(tool_calls_requested)} calls")
+                    for tc in tool_calls_requested:
+                        logger.info(f"[GEMINI] Tool call: {tc['function']['name']}, has_thought_sig: {bool(tc.get('thought_signature'))}")
+
                     # Update assistant message with tool calls
                     full_assistant_message["tool_calls"] = tool_calls_requested
                     if not full_assistant_message["content"]:
                         full_assistant_message.pop("content")
-                    
+
                     current_messages.append(full_assistant_message)
-                    
+                    logger.info(f"[GEMINI] Current messages count after append: {len(current_messages)}")
+
                     # Execute tools
                     tool_results_messages = []
                     for tool_call in tool_calls_requested:
@@ -442,7 +529,12 @@ class GoogleGeminiProvider(BaseLLMProvider):
                         )
                         
                         if yielded_content:
-                            yield yielded_content
+                            if isinstance(yielded_content, (list, tuple)):
+                                for chunk in yielded_content:
+                                    if chunk:
+                                        yield chunk
+                            else:
+                                yield yielded_content
                         
                         # Add tool result message
                         tool_results_messages.append({
@@ -454,10 +546,15 @@ class GoogleGeminiProvider(BaseLLMProvider):
                         
                         if notification_data:
                             logger.debug("YIELDING NOTIFICATION DATA TO CONSUMER")
-                            notification_json = json.dumps(notification_data)
-                            yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                            notification_list = notification_data if isinstance(notification_data, list) else [notification_data]
+                            for notification in notification_list:
+                                if isinstance(notification, dict):
+                                    enqueue_agent_followup(notification.get("message_to_agent"))
+                                formatted = format_notification(notification)
+                                yield formatted
                     
                     current_messages.extend(tool_results_messages)
+                    logger.info(f"[GEMINI] Tool results added. Total messages: {len(current_messages)}. Continuing to next iteration...")
                     # Continue the loop for next iteration
                     continue
                 else:
@@ -480,6 +577,8 @@ class GoogleGeminiProvider(BaseLLMProvider):
                         pending_notifications.append(unclosed_save)
                     for notification in pending_notifications:
                         logger.info(f"[GEMINI] Yielding pending notification: {notification}")
+                        if isinstance(notification, dict):
+                            enqueue_agent_followup(notification.get("message_to_agent"))
                         formatted = format_notification(notification)
                         yield formatted
                     
@@ -495,9 +594,19 @@ class GoogleGeminiProvider(BaseLLMProvider):
                         save_notifications.append(unclosed_save2)
                     for notification in save_notifications:
                         logger.info(f"[GEMINI] Yielding save notification: {notification}")
+                        if isinstance(notification, dict):
+                            enqueue_agent_followup(notification.get("message_to_agent"))
                         formatted = format_notification(notification)
                         yield formatted
-                    
+
+                    if agent_followup_messages:
+                        logger.info("[GEMINI] Continuing conversation to process agent follow-up messages")
+                        message_payload = {k: v for k, v in full_assistant_message.items() if v}
+                        if message_payload:
+                            current_messages.append(message_payload)
+                        current_messages.extend(agent_followup_messages)
+                        continue
+
                     # Track token usage if available
                     # Google Gemini provides token counts in the response
                     if user and usage_metadata:
@@ -514,7 +623,7 @@ class GoogleGeminiProvider(BaseLLMProvider):
                     return
 
             except Exception as e:
-                logger.error(f"Critical Error: {str(e)}\n{traceback.format_exc()}")
+                logger.error(f"[GEMINI] Critical Error on iteration {iteration_count}: {str(e)}\n{traceback.format_exc()}")
                 yield f"Error with Google Gemini stream: {str(e)}"
                 return
     

@@ -16,6 +16,7 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'LFG.settings')
 django.setup()
 
 from subscriptions.models import PaymentPlan
+from subscriptions.constants import DEFAULT_PAYMENT_PLANS
 
 def create_payment_plans():
     """Create the default payment plans"""
@@ -23,29 +24,10 @@ def create_payment_plans():
     # Define plans
     plans_data = [
         {
-            'name': 'Free Tier',
-            'price': 0.00,
-            'credits': 100000,
-            'description': 'Free tier with 100,000 tokens lifetime limit. Only supports gpt-5-mini model.',
-            'is_subscription': False,
-            'is_active': True
-        },
-        {
-            'name': 'Pro Monthly',
-            'price': 9.00,
-            'credits': 300000,
-            'description': 'Pro tier with 300,000 tokens per month. Access to all AI models.',
-            'is_subscription': True,
-            'is_active': True
-        },
-        {
-            'name': 'Additional Credits',
-            'price': 5.00,
-            'credits': 100000,
-            'description': 'Get 100,000 more tokens for $5 (one-time purchase).',
-            'is_subscription': False,
-            'is_active': True
+            **plan,
+            'is_active': True,
         }
+        for plan in DEFAULT_PAYMENT_PLANS
     ]
     
     created_count = 0

@@ -413,3 +413,48 @@ body {
 .card, .main-header, .dropdown-menu, .form-control, .btn {
     transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease, box-shadow 0.3s ease;
 } 
+/* =================================================================
+   Theme Toggle Button
+   ================================================================= */
+
+.theme-toggle-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary, #94a3b8);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-right: 1rem;
+}
+
+.theme-toggle-btn:hover {
+    background: var(--card-bg, #1e1e1e);
+    color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.theme-toggle-btn i {
+    font-size: 16px;
+    transition: transform 0.3s ease;
+}
+
+.theme-toggle-btn:hover i {
+    transform: rotate(15deg);
+}
+
+/* Light mode specific toggle button styling */
+[data-theme="light"] .theme-toggle-btn {
+    border-color: #e2e8f0;
+    color: #475569;
+}
+
+[data-theme="light"] .theme-toggle-btn:hover {
+    background: #f1f5f9;
+    color: #7c3aed;
+    border-color: #7c3aed;
+}

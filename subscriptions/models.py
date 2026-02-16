@@ -2,6 +2,11 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
 
+from .constants import (
+    FREE_TIER_TOKEN_LIMIT,
+    PRO_MONTHLY_TOKEN_LIMIT,
+)
+
 # Create your models here.
 class UserCredit(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='credit')
@@ -42,25 +47,25 @@ class UserCredit(models.Model):
         base_tokens = 0
         
         if self.subscription_tier == 'pro' and self.is_subscribed:
-            # Pro tier: 300K monthly limit
+            # Pro tier monthly limit
             # Check if we need to reset monthly usage
             if self.monthly_reset_date and timezone.now() > self.monthly_reset_date:
                 self.monthly_tokens_used = 0
                 self.monthly_reset_date = timezone.now() + timezone.timedelta(days=30)
                 self.save()
-            base_tokens = max(0, 300000 - self.monthly_tokens_used)
-            
+            base_tokens = max(0, PRO_MONTHLY_TOKEN_LIMIT - self.monthly_tokens_used)
+
             # Add any unused free tier tokens when upgraded to pro
-            unused_free_tokens = max(0, 100000 - self.free_tokens_used)
+            unused_free_tokens = max(0, FREE_TIER_TOKEN_LIMIT - self.free_tokens_used)
             base_tokens += unused_free_tokens
-            
+
         elif self.is_free_tier:
-            # Free tier: 100K lifetime limit
-            base_tokens = max(0, 100000 - self.total_tokens_used)
-        
+            # Free tier lifetime limit
+            base_tokens = max(0, FREE_TIER_TOKEN_LIMIT - self.total_tokens_used)
+
         # Add any additional credits purchased (one-time purchases)
         additional_credits = max(0, self.credits)
-        
+
         return base_tokens + additional_credits
     
     def can_use_model(self, model_name):
@@ -74,7 +79,7 @@ class UserCredit(models.Model):
         """Check if user can use a model with platform-provided API key"""
         # Platform only provides gpt-5-mini for all tiers (free and paid)
         # All other models require user's own API keys
-        return model_name == 'gpt-5-mini'
+        return model_name in ('gpt-5-mini', 'gpt-5.1')
 
 class PaymentPlan(models.Model):
     name = models.CharField(max_length=100)
@@ -169,16 +174,16 @@ class OrganizationCredit(models.Model):
         """Get remaining tokens based on subscription tier and seat count"""
         if self.is_free_tier:
             # Free tier: 100K lifetime limit (same as individual)
-            return max(0, 100000 - self.total_tokens_used)
+            return max(0, FREE_TIER_TOKEN_LIMIT - self.total_tokens_used)
         elif self.has_active_subscription and self.subscription_tier == 'org_pro':
-            # Pro tier: 300K per seat monthly limit
+            # Pro tier monthly limit per seat
             # Check if we need to reset monthly usage
             if self.monthly_reset_date and timezone.now() > self.monthly_reset_date:
                 self.monthly_tokens_used = 0
                 self.monthly_reset_date = timezone.now() + timezone.timedelta(days=30)
                 self.save()
-            
-            monthly_limit = 300000 * self.seat_count
+
+            monthly_limit = PRO_MONTHLY_TOKEN_LIMIT * self.seat_count
             return max(0, monthly_limit - self.monthly_tokens_used)
         return 0
     

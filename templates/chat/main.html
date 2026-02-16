@@ -1,16 +1,25 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}LFG 🚀 Agent{% endblock %}</title>
+    <title>{% block title %}LFG Agent{% endblock %}</title>
+    <!-- Theme Variables (must load first) -->
+    <link rel="stylesheet" href="/static/css/theme-variables.css">
+    <!-- Core Styles -->
     <link rel="stylesheet" href="/static/css/common.css">
     <link rel="stylesheet" href="/static/css/sidebar.css">
     <link rel="stylesheet" href="/static/css/styles.css">
     <link rel="stylesheet" href="/static/css/artifacts.css">
     <link rel="stylesheet" href="/static/css/chat.css">
     <link rel="stylesheet" href="/static/css/artifacts-fix.css">
+    <link rel="stylesheet" href="/static/css/design/design_canvas.css">
+    <!-- Light Mode Overrides -->
+    <link rel="stylesheet" href="/static/css/light/light-mode.css?v=5">
+    <!-- External Resources -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <!-- Theme Switcher (load early) -->
+    <script src="/static/js/theme-switcher.js?v=3"></script>
     <script src="https://kit.fontawesome.com/c10b7e86e5.js" crossorigin="anonymous"></script>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23bb86fc'><path d='M4 6h10v2H4zm0 5h16v2H4zm0 5h10v2H4zm12-9.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5S18.33 8 17.5 8 16 7.33 16 6.5zm0 5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5-.67 1.5-1.5 1.5-1.5-.67-1.5-1.5zm0 5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5-.67 1.5-1.5 1.5-1.5-.67-1.5-1.5z'/></svg>" type="image/svg+xml">
     <link rel="icon" type="image/x-icon" href="/static/images/favicon.ico">
@@ -481,9 +490,23 @@
             cursor: not-allowed;
             pointer-events: none;
         }
-        
+
         .submenu-option.disabled:hover {
             background-color: transparent !important;
+        }
+
+        /* Agent Status Indicator - Function Call Notification */
+        .agent-status-indicator {
+            display: flex;
+            align-items: center;
+            padding: 6px 12px;
+            background: rgba(139, 92, 246, 0.12);
+            border-radius: 6px;
+            color: #a78bfa;
+            font-size: 0.875rem;
+            font-style: italic;
+            margin: 8px 0;
+            width: fit-content;
         }
     </style>
 </head>
@@ -540,7 +563,7 @@
                                 </span>
                                 <span class="status-divider">•</span>
                                 <span class="status-item model-status" id="model-status-btn">
-                                    <span id="current-model-left">GPT-5 mini</span>
+                                    <span id="current-model-left">{{ current_model_label|default:"GPT-5 mini" }}</span>
                                 </span>
                             </span>
                             <div class="settings-dropdown" id="settings-dropdown">
@@ -560,47 +583,31 @@
                                     
                                     <div class="menu-item" data-submenu="model">
                                         <i class="fas fa-robot"></i>
-                                        <span>Model</span>
-                                        <i class="fas fa-chevron-right submenu-arrow"></i>
-                                        
-                                        <div class="submenu" id="model-submenu">
-                                            <div class="submenu-group">Claude</div>
-                                            <button type="button" class="submenu-option{% if is_free_tier %} disabled{% endif %}" data-value="claude_4_sonnet" {% if is_free_tier %}disabled title="Upgrade to Pro to access Claude models"{% endif %}>
-                                                <span>Sonnet 4{% if is_free_tier %} <i class="fas fa-lock" style="color: #6b7280; font-size: 0.8em;"></i>{% endif %}</span>
-                                                <i class="fas fa-check"></i>
-                                            </button>
+                                            <span>Model</span>
+                                            <i class="fas fa-chevron-right submenu-arrow"></i>
                                             
-                                            <div class="submenu-group">OpenAI</div>
-                                            <button type="button" class="submenu-option{% if is_free_tier %} disabled{% endif %}" data-value="gpt-5" {% if is_free_tier %}disabled title="Upgrade to Pro to access GPT-5"{% endif %}>
-                                                <span>GPT-5{% if is_free_tier %} <i class="fas fa-lock" style="color: #6b7280; font-size: 0.8em;"></i>{% endif %}</span>
-                                                <i class="fas fa-check"></i>
-                                            </button>
-                                            <button type="button" class="submenu-option selected" data-value="gpt-5-mini">
-                                                <span>GPT-5 mini</span>
-                                                <i class="fas fa-check"></i>
-                                            </button>
-                                            
-                                            <div class="submenu-group">xAI</div>
-                                            <button type="button" class="submenu-option{% if is_free_tier %} disabled{% endif %}" data-value="grok_4" {% if is_free_tier %}disabled title="Upgrade to Pro to access Grok models"{% endif %}>
-                                                <span>Grok 4{% if is_free_tier %} <i class="fas fa-lock" style="color: #6b7280; font-size: 0.8em;"></i>{% endif %}</span>
-                                                <i class="fas fa-check"></i>
-                                            </button>
-                                            
-                                            <div class="submenu-group">Google</div>
-                                            <button type="button" class="submenu-option{% if is_free_tier %} disabled{% endif %}" data-value="gemini_2.5_pro" {% if is_free_tier %}disabled title="Upgrade to Pro to access Gemini models"{% endif %}>
-                                                <span>Gemini 2.5 Pro{% if is_free_tier %} <i class="fas fa-lock" style="color: #6b7280; font-size: 0.8em;"></i>{% endif %}</span>
-                                                <i class="fas fa-check"></i>
-                                            </button>
-                                            <button type="button" class="submenu-option{% if is_free_tier %} disabled{% endif %}" data-value="gemini_2.5_flash" {% if is_free_tier %}disabled title="Upgrade to Pro to access Gemini models"{% endif %}>
-                                                <span>Gemini 2.5 Flash{% if is_free_tier %} <i class="fas fa-lock" style="color: #6b7280; font-size: 0.8em;"></i>{% endif %}</span>
-                                                <i class="fas fa-check"></i>
-                                            </button>
-                                            <button type="button" class="submenu-option{% if is_free_tier %} disabled{% endif %}" data-value="gemini_2.5_flash_lite" {% if is_free_tier %}disabled title="Upgrade to Pro to access Gemini models"{% endif %}>
-                                                <span>Gemini 2.5 Flash Lite{% if is_free_tier %} <i class="fas fa-lock" style="color: #6b7280; font-size: 0.8em;"></i>{% endif %}</span>
-                                                <i class="fas fa-check"></i>
-                                            </button>
+                                            <div class="submenu" id="model-submenu">
+                                                {% for provider_key, provider in llm_model_config.providers.items %}
+                                                    <div class="submenu-group">{{ provider.label }}</div>
+                                                    {% for model in provider.models %}
+                                                        {% with requires_pro=model.requires_pro %}
+                                                        <button type="button"
+                                                                class="submenu-option{% if is_free_tier and requires_pro %} disabled{% endif %}{% if model_key == model.key %} selected{% endif %}"
+                                                                data-value="{{ model.key }}"
+                                                                {% if is_free_tier and requires_pro %}disabled title="Upgrade to Pro to access {{ model.label }}"{% endif %}>
+                                                            <span>
+                                                                {{ model.label }}
+                                                                {% if is_free_tier and requires_pro %}
+                                                                    <i class="fas fa-lock" style="color: #6b7280; font-size: 0.8em;"></i>
+                                                                {% endif %}
+                                                            </span>
+                                                            <i class="fas fa-check"></i>
+                                                        </button>
+                                                        {% endwith %}
+                                                    {% endfor %}
+                                                {% endfor %}
+                                            </div>
                                         </div>
-                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -618,7 +625,7 @@
                                     <input type="checkbox" id="turbo-mode-toggle">
                                     <span class="turbo-slider"></span>
                                 </label>
-                                <span class="turbo-label">Turbo</span>
+                                <span class="turbo-label">Design</span>
                             </div>
                             <button type="button" id="record-audio-btn" class="action-btn" title="Record audio">
                                 <i class="fas fa-microphone"></i>
@@ -651,7 +658,7 @@
             </div>
         </div>
     </div>
-    
+
     <!-- Upgrade Popup Modal -->
     {% if show_upgrade_popup %}
     <div id="upgrade-popup" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); display: flex; align-items: center; justify-content: center; z-index: 10000;">
@@ -743,6 +750,544 @@
     </div>
     {% endif %}
 
+    <!-- Onboarding Modal -->
+    {% if show_onboarding %}
+    <div id="onboarding-modal" class="onboarding-modal">
+        <div class="onboarding-modal-content">
+            <!-- Progress Indicator -->
+            <div class="onboarding-progress">
+                <div class="progress-dot active" data-step="1"></div>
+                <div class="progress-dot" data-step="2"></div>
+                <div class="progress-dot" data-step="3"></div>
+            </div>
+
+            <!-- Slide 1: Project Name -->
+            <div class="onboarding-slide active" data-slide="1">
+                <div class="onboarding-icon">
+                    <i class="fas fa-rocket"></i>
+                </div>
+                <h2>Welcome to LFG!</h2>
+                <p class="onboarding-subtitle">Let's set up your first project</p>
+
+                <div class="onboarding-form-group">
+                    <label for="onboarding-project-name">Project Name</label>
+                    <input type="text" id="onboarding-project-name" class="onboarding-input"
+                           placeholder="Enter your project name" value="Untitled Project">
+                </div>
+            </div>
+
+            <!-- Slide 2: Features Overview -->
+            <div class="onboarding-slide" data-slide="2">
+                <div class="onboarding-icon">
+                    <i class="fas fa-magic"></i>
+                </div>
+                <h2>How It Works</h2>
+                <p class="onboarding-subtitle">From idea to implementation</p>
+
+                <div class="onboarding-flow">
+                    <div class="flow-step">
+                        <div class="flow-step-icon"><i class="fas fa-file-alt"></i></div>
+                        <div class="flow-step-content">
+                            <strong>Create Documents</strong>
+                            <span>Describe your idea and generate PRDs, specs, and plans</span>
+                        </div>
+                    </div>
+                    <div class="flow-connector"></div>
+                    <div class="flow-step">
+                        <div class="flow-step-icon"><i class="fas fa-tasks"></i></div>
+                        <div class="flow-step-content">
+                            <strong>Create Tickets</strong>
+                            <span>Break down features into actionable development tasks</span>
+                        </div>
+                    </div>
+                    <div class="flow-connector"></div>
+                    <div class="flow-step highlighted">
+                        <div class="flow-step-icon"><i class="fas fa-robot"></i></div>
+                        <div class="flow-step-content">
+                            <strong>Build with LFG Agent</strong>
+                            <span>Let AI implement tickets and write code for you</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Slide 3: Plan Info -->
+            <div class="onboarding-slide" data-slide="3">
+                <div class="onboarding-icon">
+                    <i class="fas fa-gift"></i>
+                </div>
+                <h2>Your Plan</h2>
+                <p class="onboarding-subtitle">You're on the Free Plan</p>
+
+                <div class="onboarding-plan-section">
+                    <!-- Current Plan - Full Width -->
+                    <div class="plan-card-main">
+                        <div class="plan-card-main-header">
+                            <div class="plan-badge-inline">Current Plan</div>
+                            <h3>Free</h3>
+                        </div>
+                        <ul class="plan-features-list">
+                            <li><span class="bullet"></span> One-time 100,000 tokens</li>
+                            <li><span class="bullet"></span> Up to 10 documents, and limited tickets</li>
+                            <li><span class="bullet"></span> gpt-5-mini and Haiku only</li>
+                        </ul>
+                    </div>
+
+                    <!-- Pro Plan - Upgrade Banner -->
+                    <div class="plan-upgrade-banner">
+                        <div class="plan-upgrade-row">
+                            <a href="{% url 'subscriptions:dashboard' %}" class="upgrade-btn-compact">Upgrade for more</a>
+                            <span class="plan-upgrade-price">starting at <strong>$9/mo</strong></span>
+                        </div>
+                        <div class="plan-upgrade-features">
+                            1M tokens<span class="sep">·</span>Bring your own keys<span class="sep">·</span>Create unlimited documents & tickets<span class="sep">·</span>Background dev agents<span class="sep">·</span>Higher tier models
+                        </div>
+                    </div>
+                </div>
+
+                <p class="onboarding-settings-hint">
+                    <i class="fas fa-cog"></i> Update your plan anytime in <strong>Settings</strong>
+                </p>
+            </div>
+
+            <!-- Navigation Buttons -->
+            <div class="onboarding-nav">
+                <button type="button" class="onboarding-btn onboarding-btn-back" id="onboarding-back" style="display: none;">
+                    <i class="fas fa-arrow-left"></i> Back
+                </button>
+                <button type="button" class="onboarding-btn onboarding-btn-next" id="onboarding-next">
+                    Next <i class="fas fa-arrow-right"></i>
+                </button>
+                <button type="button" class="onboarding-btn onboarding-btn-finish" id="onboarding-finish" style="display: none;">
+                    Get Started <i class="fas fa-rocket"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        /* Onboarding Modal Styles */
+        .onboarding-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(17, 24, 39, 0.75);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10002;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .onboarding-modal-content {
+            background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
+            border-radius: 20px;
+            padding: 36px;
+            max-width: 540px;
+            width: 90%;
+            border: 1px solid rgba(148, 163, 184, 0.15);
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.05);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .onboarding-modal-content::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, #818cf8, #60a5fa, #818cf8);
+            background-size: 200% 100%;
+            animation: shimmer 3s infinite linear;
+            opacity: 0.8;
+        }
+
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+
+        /* Progress Indicator */
+        .onboarding-progress {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .progress-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #374151;
+            transition: all 0.3s ease;
+        }
+
+        .progress-dot.active {
+            background: #818cf8;
+            box-shadow: 0 0 8px rgba(129, 140, 248, 0.4);
+        }
+
+        .progress-dot.completed {
+            background: #10b981;
+        }
+
+        /* Slides */
+        .onboarding-slide {
+            display: none;
+            text-align: center;
+            animation: slideIn 0.3s ease;
+        }
+
+        .onboarding-slide.active {
+            display: block;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .onboarding-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 20px;
+            background: linear-gradient(135deg, rgba(129, 140, 248, 0.15) 0%, rgba(96, 165, 250, 0.15) 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 36px;
+            color: #a5b4fc;
+        }
+
+        .onboarding-modal-content h2 {
+            color: #f3f4f6;
+            font-size: 1.75rem;
+            margin: 0 0 8px 0;
+            font-weight: 600;
+        }
+
+        .onboarding-subtitle {
+            color: #9ca3af;
+            font-size: 1rem;
+            margin: 0 0 24px 0;
+        }
+
+        /* Form Group */
+        .onboarding-form-group {
+            text-align: left;
+            margin-bottom: 16px;
+        }
+
+        .onboarding-form-group label {
+            display: block;
+            color: #d1d5db;
+            font-size: 0.875rem;
+            font-weight: 500;
+            margin-bottom: 8px;
+        }
+
+        .onboarding-input {
+            width: 100%;
+            padding: 14px 16px;
+            background: #111827;
+            border: 1px solid #374151;
+            border-radius: 10px;
+            color: #f3f4f6;
+            font-size: 1rem;
+            outline: none;
+            transition: all 0.2s ease;
+            box-sizing: border-box;
+        }
+
+        .onboarding-input:focus {
+            border-color: #818cf8;
+            box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.12);
+        }
+
+        /* Flow/Stepper Design */
+        .onboarding-flow {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            text-align: left;
+            padding: 0 8px;
+        }
+
+        .flow-step {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 12px 0;
+        }
+
+        .flow-step.highlighted .flow-step-content strong {
+            color: #a5b4fc;
+        }
+
+        .flow-step-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+            border-radius: 7px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 0.9rem;
+            flex-shrink: 0;
+        }
+
+        .flow-step.highlighted .flow-step-icon {
+            background: linear-gradient(135deg, #818cf8 0%, #6366f1 100%);
+            box-shadow: 0 0 20px rgba(99, 102, 241, 0.4);
+        }
+
+        .flow-connector {
+            width: 2px;
+            height: 20px;
+            background: rgba(99, 102, 241, 0.3);
+            margin-left: 21px;
+            border-radius: 1px;
+        }
+
+        .flow-step-content {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .flow-step-content strong {
+            color: #f1f5f9;
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        .flow-step-content span {
+            color: #94a3b8;
+            font-size: 0.85rem;
+            line-height: 1.4;
+        }
+
+        /* Plan Section - New Layout */
+        .onboarding-plan-section {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        /* Main Plan Card (Current - Free) */
+        .plan-card-main {
+            padding: 20px 24px;
+            background: rgba(51, 65, 85, 0.3);
+            border-radius: 14px;
+            border: 1px solid rgba(148, 163, 184, 0.15);
+            text-align: left;
+        }
+
+        .plan-card-main-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .plan-badge-inline {
+            background: rgba(99, 102, 241, 0.2);
+            color: #a5b4fc;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.65rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .plan-card-main h3 {
+            color: #f1f5f9;
+            font-size: 1.1rem;
+            margin: 0;
+            font-weight: 600;
+        }
+
+        .plan-features-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .plan-features-list li {
+            color: #cbd5e1;
+            font-size: 0.7rem;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .plan-features-list li .bullet {
+            width: 5px;
+            height: 5px;
+            background: #64748b;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        /* Pro Upgrade Banner */
+        .plan-upgrade-banner {
+            padding: 14px 18px;
+            background: rgba(30, 41, 59, 0.4);
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.08);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .plan-upgrade-row {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .plan-upgrade-price {
+            color: #94a3b8;
+            font-size: 0.85rem;
+        }
+
+        .plan-upgrade-price strong {
+            color: #e2e8f0;
+            font-weight: 600;
+        }
+
+        .plan-upgrade-features {
+            color: #64748b;
+            font-size: 0.8rem;
+        }
+
+        .plan-upgrade-features .sep {
+            color: #475569;
+            margin: 0 8px;
+        }
+
+        .upgrade-btn-compact {
+            padding: 8px 16px;
+            background: transparent;
+            color: #6ee7b7;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 500;
+            font-size: 0.8rem;
+            transition: all 0.2s ease;
+            border: 1px solid rgba(110, 231, 183, 0.25);
+            flex-shrink: 0;
+        }
+
+        .upgrade-btn-compact:hover {
+            background: rgba(110, 231, 183, 0.1);
+            border-color: rgba(110, 231, 183, 0.4);
+        }
+
+        .onboarding-settings-hint {
+            color: #6b7280;
+            font-size: 0.85rem;
+            margin: 0;
+        }
+
+        .onboarding-settings-hint i {
+            margin-right: 6px;
+        }
+
+        /* Navigation Buttons */
+        .onboarding-nav {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 28px;
+            gap: 12px;
+        }
+
+        .onboarding-btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 10px;
+            font-weight: 500;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .onboarding-btn-back {
+            background: #374151;
+            color: #f3f4f6;
+        }
+
+        .onboarding-btn-back:hover {
+            background: #4b5563;
+        }
+
+        .onboarding-btn-next {
+            background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+            color: white;
+            margin-left: auto;
+        }
+
+        .onboarding-btn-next:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
+        }
+
+        .onboarding-btn-finish {
+            background: linear-gradient(135deg, #6ee7b7 0%, #5eead4 100%);
+            color: #064e3b;
+            margin-left: auto;
+        }
+
+        .onboarding-btn-finish:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(110, 231, 183, 0.3);
+        }
+
+        /* Responsive */
+        @media (max-width: 480px) {
+            .plan-upgrade-row {
+                flex-direction: column;
+                gap: 8px;
+            }
+
+            .plan-upgrade-banner {
+                text-align: center;
+            }
+
+            .plan-upgrade-features {
+                font-size: 0.75rem;
+            }
+
+            .onboarding-modal-content {
+                padding: 24px;
+            }
+        }
+    </style>
+    {% endif %}
+
     <script src="/static/js/sidebar.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -756,16 +1301,126 @@
     <script src="/static/js/artifacts-loader.js"></script>
     <script src="/static/js/artifacts-editor.js"></script>
     <script src="/static/js/design-loader.js"></script>
+    <script src="/static/js/design/design_canvas.js"></script>
     <script src="/static/js/role-handler.js"></script>
     <script src="/static/js/model-handler.js"></script>
     <script src="/static/js/turbo-handler.js"></script>
     
     <script>
+        // Pass project ID to JavaScript for design canvas and other components
+        window.projectId = {% if project %}'{{ project.project_id }}'{% else %}null{% endif %};
+
         // Pass user subscription info to JavaScript
         window.isFreeTier = {% if is_free_tier %}true{% else %}false{% endif %};
         window.remainingTokens = {% if remaining_tokens %}{{ remaining_tokens }}{% else %}0{% endif %};
         window.totalTokensLimit = {% if total_tokens_limit %}{{ total_tokens_limit }}{% else %}0{% endif %};
-        
+
+        // Onboarding modal functionality
+        {% if show_onboarding %}
+        document.addEventListener('DOMContentLoaded', function() {
+            const onboardingModal = document.getElementById('onboarding-modal');
+            const slides = document.querySelectorAll('.onboarding-slide');
+            const progressDots = document.querySelectorAll('.progress-dot');
+            const backBtn = document.getElementById('onboarding-back');
+            const nextBtn = document.getElementById('onboarding-next');
+            const finishBtn = document.getElementById('onboarding-finish');
+            const projectNameInput = document.getElementById('onboarding-project-name');
+
+            let currentSlide = 1;
+            const totalSlides = slides.length;
+
+            function updateSlide(newSlide) {
+                // Hide all slides
+                slides.forEach(slide => slide.classList.remove('active'));
+
+                // Show current slide
+                document.querySelector(`.onboarding-slide[data-slide="${newSlide}"]`).classList.add('active');
+
+                // Update progress dots
+                progressDots.forEach((dot, index) => {
+                    dot.classList.remove('active', 'completed');
+                    if (index + 1 < newSlide) {
+                        dot.classList.add('completed');
+                    } else if (index + 1 === newSlide) {
+                        dot.classList.add('active');
+                    }
+                });
+
+                // Update buttons visibility
+                backBtn.style.display = newSlide > 1 ? 'flex' : 'none';
+                nextBtn.style.display = newSlide < totalSlides ? 'flex' : 'none';
+                finishBtn.style.display = newSlide === totalSlides ? 'flex' : 'none';
+
+                currentSlide = newSlide;
+            }
+
+            nextBtn.addEventListener('click', function() {
+                if (currentSlide < totalSlides) {
+                    updateSlide(currentSlide + 1);
+                }
+            });
+
+            backBtn.addEventListener('click', function() {
+                if (currentSlide > 1) {
+                    updateSlide(currentSlide - 1);
+                }
+            });
+
+            finishBtn.addEventListener('click', function() {
+                const projectName = projectNameInput.value.trim() || 'Untitled Project';
+
+                // Send completion request
+                fetch('/api/complete-onboarding/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                    },
+                    body: JSON.stringify({
+                        project_name: projectName
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Update project name display
+                        const projectNameDisplay = document.getElementById('project-name-display');
+                        if (projectNameDisplay) {
+                            projectNameDisplay.textContent = projectName;
+                        }
+                        // Close modal
+                        onboardingModal.style.display = 'none';
+                    } else {
+                        console.error('Onboarding error:', data.error);
+                        onboardingModal.style.display = 'none';
+                    }
+                })
+                .catch(error => {
+                    console.error('Network error:', error);
+                    onboardingModal.style.display = 'none';
+                });
+            });
+
+            // Focus on project name input when modal opens
+            setTimeout(() => {
+                projectNameInput.focus();
+                projectNameInput.select();
+            }, 300);
+
+            // Handle Enter key on project name input
+            projectNameInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (currentSlide < totalSlides) {
+                        updateSlide(currentSlide + 1);
+                    } else {
+                        finishBtn.click();
+                    }
+                }
+            });
+        });
+        {% endif %}
+
         // Project name modal functionality
         document.addEventListener('DOMContentLoaded', function() {
             const editIcon = document.getElementById('project-name-edit-icon');

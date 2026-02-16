@@ -22,6 +22,7 @@ CSRF_TRUSTED_ORIGINS = [
     'http://localhost:8000',
     'http://127.0.0.1:8000',
     'http://localhost:3000',
+    'http://localhost:3001',
     'http://localhost:5173',
     'http://localhost:5174',
     'https://dev-rocks.lfg.run'
@@ -30,8 +31,13 @@ ALLOWED_HOSTS = [
     'lfg.run',
     'www.lfg.run',
     'localhost',
-    'dev-rocks.lfg.run'
+    'dev-rocks.lfg.run',
+    'cdc2-2607-fea8-55dc-c800-748d-75fe-d23c-713a.ngrok-free.app'
 ]
+
+# LFG API Base URL for CLI callbacks from VMs
+# This is the URL that Claude Code CLI running on Magpie VMs will use to call back to LFG
+LFG_API_BASE_URL = os.environ.get('LFG_API_BASE_URL', 'https://www.turboship.ai')
 
 CSRF_COOKIE_SECURE = False
 
@@ -99,6 +105,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'subscriptions.context_processors.user_credits',
+                'projects.context_processors.sidebar_projects',
             ],
         },
     },
@@ -168,6 +175,7 @@ if USE_POSTGRES_DB:
             'PASSWORD': os.environ.get('POSTGRES_PASSWORD', ''),
             'HOST': os.environ.get('POSTGRES_HOST', 'localhost'),
             'PORT': os.environ.get('POSTGRES_PORT', '5432'),
+            'CONN_MAX_AGE': 600,
         }
     }
 else:
@@ -228,7 +236,7 @@ AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID', '')
 AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY', '')
 AWS_S3_REGION_NAME = os.environ.get('AWS_S3_REGION_NAME', 'us-east-1')
 AWS_S3_PROJECT_PREFIX = os.environ.get('AWS_S3_PROJECT_PREFIX', 'projects')
-AWS_S3_PRESIGNED_URL_EXPIRY = int(os.environ.get('AWS_S3_PRESIGNED_URL_EXPIRY', 3600))  # Default 1 hour
+AWS_S3_PRESIGNED_URL_EXPIRY = int(os.environ.get('AWS_S3_PRESIGNED_URL_EXPIRY') or 3600)  # Default 1 hour
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
@@ -240,8 +248,14 @@ CORS_ALLOWED_ORIGINS = [
     'https://www.lfg.run',
     'http://localhost:8000',
     'http://localhost:3000',
+    'http://localhost:3001',
     'http://localhost:5173',
     'http://localhost:5174',
+]
+
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r'^http://localhost:\d+$',
+    r'^http://127\.0\.0\.1:\d+$',
 ]
 CORS_ALLOW_CREDENTIALS = True
 
@@ -352,26 +366,54 @@ K8S_DEFAULT_NAMESPACE = "lfg"
 SSH_USERNAME=os.getenv('SSH_USERNAME', 'root')
 SSH_KEY_STRING=os.getenv('SSH_KEY_STRING', None)
 
+# Q_CLUSTER = {
+#         'name': 'LFG_Tasks',
+#         'workers': 3,  # Optimal for 2CPU/4GB: I/O-bound tasks can over-subscribe CPUs
+#         'recycle': 100,  # Reduced recycle count
+#         'timeout': 1500,   # 25 minutes task timeout
+#         # 'retry': 1800,     # 30 minutes - MUST be larger than timeout to prevent re-triggering
+#         'queue_limit': 10,  # Reduced queue limit
+#         'bulk': 1,       # Single task processing (maintains sequential execution within groups)
+#         'orm': 'default',
+#         'guard_cycle': 10,  # Longer guard cycle
+#         'daemonize_workers': False,  # Disable daemon mode
+#         'max_attempts': 1,
+#         'sync': False,   # Keep async for production
+#         'redis': {
+#             'host': os.getenv('REDIS_HOST', 'localhost'),
+#             'port': int(os.getenv('REDIS_PORT', 6379)),
+#             'db': int(os.getenv('REDIS_DB', 0)),
+#             'password': os.getenv('REDIS_PASSWORD', None),
+#         }
+#     }
+
 Q_CLUSTER = {
         'name': 'LFG_Tasks',
         'workers': 1,  # Reduced to single worker to prevent timer conflicts
         'recycle': 100,  # Reduced recycle count
-        'timeout': 30,   # Reduced timeout
-        'retry': 60,     # Reduced retry time
+        'timeout': 1500,   # Reduced timeout
+        'retry': 1800,     # Reduced retry time
         'queue_limit': 10,  # Reduced queue limit
         'bulk': 1,       # Single task processing
-        'orm': 'default',
+        # 'orm': 'default',
         'guard_cycle': 10,  # Longer guard cycle
         'daemonize_workers': False,  # Disable daemon mode
         'max_attempts': 1,
         'sync': False,   # Keep async for production
         'redis': {
             'host': os.getenv('REDIS_HOST', 'localhost'),
-            'port': int(os.getenv('REDIS_PORT', 6379)),
-            'db': int(os.getenv('REDIS_DB', 0)),
-            'password': os.getenv('REDIS_PASSWORD', None),
+            'port': int(os.getenv('REDIS_PORT') or 6379),
+            'db': int(os.getenv('REDIS_DB') or 0),
+            'password': os.getenv('REDIS_PASSWORD') or None,
         }
     }
+
+# Async Executor Configuration
+# Settings for the parallel ticket executor service
+ASYNC_EXECUTOR = {
+    'max_concurrent_projects': int(os.getenv('EXECUTOR_MAX_CONCURRENT', 200)),
+    'lock_ttl': int(os.getenv('EXECUTOR_LOCK_TTL', 7200)),  # 2 hours default
+}
 
 # Cache Configuration
 # Use Redis cache when available, otherwise use local memory
@@ -467,6 +509,16 @@ LOGGING = {
         'subscriptions': {
             'handlers': ['console', 'easylogs'],
             'level': 'INFO',
+            'propagate': False,
+        },
+        'tasks': {
+            'handlers': ['console', 'easylogs'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'factory.claude_code_utils': {
+            'handlers': ['console', 'easylogs'],
+            'level': 'DEBUG',
             'propagate': False,
         },
     },

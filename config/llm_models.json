@@ -1,0 +1,71 @@
+{
+  "default_model": "gpt-5-mini",
+  "providers": {
+    "anthropic": {
+      "label": "Claude",
+      "default_model": "claude_4.5_sonnet",
+      "models": [
+        {
+          "key": "claude_4.5_opus",
+          "label": "Opus 4.5",
+          "provider_model": "claude-opus-4-5-20251101",
+          "requires_pro": true
+        },
+        {
+          "key": "claude_4.5_sonnet",
+          "label": "Sonnet 4.5",
+          "provider_model": "claude-sonnet-4-5-20250929",
+          "requires_pro": true
+        },
+        {
+          "key": "claude_4.5_haiku",
+          "label": "Haiku 4.5",
+          "provider_model": "claude-haiku-4-5",
+          "requires_pro": true
+        }
+      ]
+    },
+    "openai": {
+      "label": "OpenAI",
+      "default_model": "gpt-5-mini",
+      "models": [
+        {
+          "key": "gpt-5.2",
+          "label": "GPT-5.2",
+          "provider_model": "gpt-5.2",
+          "requires_pro": true
+        },
+        {
+          "key": "gpt-5-mini",
+          "label": "GPT-5 mini",
+          "provider_model": "gpt-5-mini",
+          "requires_pro": false
+        }
+      ]
+    },
+    "google": {
+      "label": "Google",
+      "default_model": "gemini_3_pro",
+      "models": [
+        {
+          "key": "gemini_3_pro",
+          "label": "Gemini 3 Pro",
+          "provider_model": "models/gemini-3-pro-preview",
+          "requires_pro": true
+        },
+        {
+          "key": "gemini_3_flash",
+          "label": "Gemini 3 Flash",
+          "provider_model": "models/gemini-3-flash-preview",
+          "requires_pro": true
+        },
+        {
+          "key": "gemini_2.5_flash_lite",
+          "label": "Gemini 2.5 Flash Lite",
+          "provider_model": "models/gemini-2.5-flash-lite",
+          "requires_pro": true
+        }
+      ]
+    }
+  }
+}

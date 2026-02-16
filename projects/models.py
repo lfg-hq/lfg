@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.urls import reverse
 import uuid
+import os
 
 # Create your models here.
 class Project(models.Model):
@@ -20,12 +21,48 @@ class Project(models.Model):
         ('completed', 'Completed')
     ), default='active')
     icon = models.CharField(max_length=50, default='📋')  # Default icon is a clipboard
-    
+
+    # Stack/Technology configuration
+    STACK_CHOICES = [
+        ('', 'Not set'),
+        ('nextjs', 'Next.js'),
+        ('astro', 'Astro'),
+        ('python-django', 'Python (Django)'),
+        ('python-fastapi', 'Python (FastAPI)'),
+        ('go', 'Go'),
+        ('rust', 'Rust'),
+        ('ruby-rails', 'Ruby on Rails'),
+        ('custom', 'Custom/Existing Repo'),
+    ]
+    stack = models.CharField(
+        max_length=50,
+        choices=STACK_CHOICES,
+        default='',
+        blank=True,
+        help_text="Technology stack for this project. Must be set before ticket execution."
+    )
+
+    # Custom stack overrides (if blank, uses defaults from stack_config)
+    custom_project_dir = models.CharField(max_length=255, blank=True, null=True, help_text="Override project directory")
+    custom_install_cmd = models.CharField(max_length=512, blank=True, null=True, help_text="Override install command")
+    custom_dev_cmd = models.CharField(max_length=512, blank=True, null=True, help_text="Override dev server command")
+    custom_default_port = models.IntegerField(blank=True, null=True, help_text="Override default port")
+
     # Linear integration fields
     linear_team_id = models.CharField(max_length=255, blank=True, null=True, help_text="Linear team ID for syncing")
     linear_project_id = models.CharField(max_length=255, blank=True, null=True, help_text="Linear project ID for syncing")
     linear_sync_enabled = models.BooleanField(default=False, help_text="Enable automatic ticket syncing with Linear")
-    
+
+    # Preview settings
+    preview_ticket = models.ForeignKey(
+        'ProjectTicket',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='preview_projects',
+        help_text="Currently selected ticket for preview (loads its branch)"
+    )
+
     def __str__(self):
         return self.name
     
@@ -75,7 +112,7 @@ class Project(models.Model):
                 'can_invite_members': True,
                 'can_manage_project': True,
                 'can_delete_project': True,
-                'get_permissions': lambda self: {
+                'get_permissions': lambda self=None: {
                     'can_edit_files': True,
                     'can_manage_tickets': True,
                     'can_chat': True,
@@ -189,18 +226,140 @@ class ProjectDesignSchema(models.Model):
 
     def get_design_schema(self):
         return self.design_schema
-    
-    
-class ProjectChecklist(models.Model):
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="checklist")
+
+
+class ProjectDesignFeature(models.Model):
+    """Model to store design features with pages, navigation, and styling as JSON"""
+    PLATFORM_CHOICES = [
+        ('web', 'Web (Responsive)'),
+        ('mobile', 'Mobile (iOS)'),
+    ]
+
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='design_features')
+    conversation = models.ForeignKey('chat.Conversation', on_delete=models.SET_NULL, null=True, blank=True, related_name='design_features')
+    feature_name = models.CharField(max_length=255)
+    feature_description = models.TextField(blank=True, default='')
+    explainer = models.TextField(blank=True, default='')
+    platform = models.CharField(max_length=10, choices=PLATFORM_CHOICES, default='web')
+
+    # All design data stored as JSON
+    css_style = models.TextField(blank=True, default='')
+    common_elements = models.JSONField(default=list)  # Array of common elements (header, footer, sidebar)
+    pages = models.JSONField(default=list)  # Array of page objects with html_content, navigates_to, etc.
+    entry_page_id = models.CharField(max_length=100, blank=True, default='')
+    feature_connections = models.JSONField(default=list)  # Cross-feature navigation links
+    canvas_position = models.JSONField(default=dict)  # {x: 0, y: 0}
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+        unique_together = ['project', 'feature_name']
+        indexes = [
+            models.Index(fields=['project', '-updated_at']),
+            models.Index(fields=['project', 'feature_name']),
+        ]
+
+    def __str__(self):
+        return f"{self.project.name} - {self.feature_name}"
+
+
+class DesignCanvas(models.Model):
+    """Model to store named design canvases with feature positions"""
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='design_canvases')
     name = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default='')
+    is_default = models.BooleanField(default=False)
+
+    # Store positions for each feature on this canvas: {feature_id: {x: 0, y: 0}}
+    feature_positions = models.JSONField(default=dict)
+
+    # Store which features are visible on this canvas (empty = all features)
+    visible_features = models.JSONField(default=list)  # List of feature IDs to show
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+        unique_together = ['project', 'name']
+        indexes = [
+            models.Index(fields=['project', '-updated_at']),
+            models.Index(fields=['project', 'is_default']),
+        ]
+
+    def __str__(self):
+        return f"{self.project.name} - {self.name}"
+
+    def save(self, *args, **kwargs):
+        # Ensure only one default canvas per project
+        if self.is_default:
+            DesignCanvas.objects.filter(project=self.project, is_default=True).exclude(pk=self.pk).update(is_default=False)
+        super().save(*args, **kwargs)
+
+
+class TicketStage(models.Model):
+    """Custom ticket stages per project - allows users to define their own workflow"""
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="ticket_stages")
+    name = models.CharField(max_length=100)
+    color = models.CharField(max_length=7, default='#6366f1', help_text='Hex color code')
+    order = models.IntegerField(default=0, help_text='Display order of the stage')
+    is_default = models.BooleanField(default=False, help_text='If true, new tickets will be assigned this stage')
+    is_completed = models.BooleanField(default=False, help_text='If true, tickets in this stage are considered done')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['order', 'created_at']
+        unique_together = ['project', 'name']
+        verbose_name = 'Ticket Stage'
+        verbose_name_plural = 'Ticket Stages'
+
+    def __str__(self):
+        return f"{self.project.name} - {self.name}"
+
+    @classmethod
+    def get_or_create_defaults(cls, project):
+        """Create default stages for a project if none exist"""
+        if cls.objects.filter(project=project).exists():
+            return cls.objects.filter(project=project)
+
+        default_stages = [
+            {'name': 'Backlog', 'color': '#6b7280', 'order': 0, 'is_default': True},
+            {'name': 'Todo', 'color': '#6366f1', 'order': 1},
+            {'name': 'In Progress', 'color': '#f59e0b', 'order': 2},
+            {'name': 'In Review', 'color': '#8b5cf6', 'order': 3},
+            {'name': 'Done', 'color': '#22c55e', 'order': 4, 'is_completed': True},
+        ]
+
+        stages = []
+        for stage_data in default_stages:
+            stages.append(cls.objects.create(project=project, **stage_data))
+        return stages
+
+
+class ProjectTicket(models.Model):
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="tickets")
+    name = models.CharField(max_length=255)
+    # Legacy status field kept for backward compatibility
     status = models.CharField(max_length=20, choices=(
         ('open', 'Open'),
         ('in_progress', 'In Progress'),
+        ('review', 'Review'),
         ('done', 'Done'),
         ('failed', 'Failed'),
         ('blocked', 'Blocked'),
     ), default='open')
+    # New custom stage field
+    stage = models.ForeignKey(
+        TicketStage,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='tickets',
+        help_text='Custom workflow stage'
+    )
     description = models.TextField()
     priority = models.CharField(max_length=20, choices=(
         ('High', 'High'),
@@ -227,16 +386,75 @@ class ProjectChecklist(models.Model):
         help_text='List of acceptance criteria for ticket completion')
     dependencies = models.JSONField(default=list, blank=True,
         help_text='List of ticket IDs or names this ticket depends on')
+
+    # Source document reference (PRD, implementation plan, etc.)
+    source_document = models.ForeignKey(
+        'ProjectFile',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='tickets',
+        help_text='The document (PRD, spec) this ticket was created from'
+    )
+    linked_documents = models.ManyToManyField(
+        'ProjectFile',
+        blank=True,
+        related_name='linked_tickets',
+        help_text='Documents (PRDs, specs, plans) linked to this ticket'
+    )
+
+    # Conversation reference (to filter tickets by conversation)
+    conversation = models.ForeignKey(
+        'chat.Conversation',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='tickets',
+        help_text='The conversation during which this ticket was created'
+    )
+
+    notes = models.TextField(blank=True, default='',
+        help_text='Execution notes, issues, and progress updates for this ticket')
     
     # Execution metadata
     complexity = models.CharField(max_length=20, choices=(
         ('simple', 'Simple'),
-        ('medium', 'Medium'), 
+        ('medium', 'Medium'),
         ('complex', 'Complex'),
     ), default='medium', help_text='Estimated complexity of the ticket')
     requires_worktree = models.BooleanField(default=True,
         help_text='Whether this ticket requires a git worktree for code changes')
-    
+
+    # Git/GitHub metadata
+    github_branch = models.CharField(max_length=255, blank=True, null=True,
+        help_text='Feature branch name for this ticket (e.g., feature/ticket-name)')
+    github_commit_sha = models.CharField(max_length=40, blank=True, null=True,
+        help_text='Git commit SHA for the ticket implementation')
+    github_merge_status = models.CharField(max_length=20, blank=True, null=True,
+        choices=(
+            ('merged', 'Merged'),
+            ('conflict', 'Conflict'),
+            ('failed', 'Failed'),
+            ('pending', 'Pending'),
+            ('reverted', 'Reverted'),
+        ), help_text='Merge status of feature branch into lfg-agent')
+
+    # Git merge/revert tracking
+    github_merge_commit_sha = models.CharField(max_length=40, blank=True, null=True,
+        help_text='The merge commit SHA on lfg-agent branch (for reverting)')
+    github_last_revert_sha = models.CharField(max_length=40, blank=True, null=True,
+        help_text='SHA of the last revert commit (if any)')
+    github_reverted_at = models.DateTimeField(blank=True, null=True,
+        help_text='When the merge was last reverted')
+    github_reverted_by = models.ForeignKey(
+        'auth.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='reverted_tickets',
+        help_text='User who reverted the merge'
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -248,10 +466,183 @@ class ProjectChecklist(models.Model):
     linear_assignee_id = models.CharField(max_length=255, blank=True, null=True, help_text="Linear user ID of assignee")
     linear_synced_at = models.DateTimeField(blank=True, null=True, help_text="Last time this ticket was synced with Linear")
     linear_sync_enabled = models.BooleanField(default=True, help_text="Whether to sync this specific ticket with Linear")
-    
+
+    # Queue status tracking (for parallel executor)
+    QUEUE_STATUS_CHOICES = [
+        ('none', 'Not Queued'),
+        ('queued', 'Queued'),
+        ('executing', 'Executing'),
+    ]
+    queue_status = models.CharField(
+        max_length=20,
+        choices=QUEUE_STATUS_CHOICES,
+        default='none',
+        help_text='Current queue status for execution'
+    )
+    queued_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When the ticket was added to the execution queue'
+    )
+    queue_task_id = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        help_text='Task ID for tracking in the execution queue'
+    )
+
+    # Execution time tracking
+    execution_time_seconds = models.FloatField(
+        default=0,
+        help_text='Total execution time spent on this ticket in seconds (accumulated across all runs)'
+    )
+    last_execution_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When the ticket was last executed'
+    )
+
     def __str__(self):
         return f"{self.project.name} - {self.name}"
-    
+
+    class Meta:
+        ordering = ['created_at', 'id']
+
+
+class TicketMergeHistory(models.Model):
+    """Track merge and revert history for ticket branches"""
+
+    ACTION_CHOICES = [
+        ('merged', 'Merged'),
+        ('reverted', 'Reverted'),
+    ]
+
+    ticket = models.ForeignKey(
+        ProjectTicket,
+        on_delete=models.CASCADE,
+        related_name='merge_history'
+    )
+    action = models.CharField(max_length=20, choices=ACTION_CHOICES)
+
+    # The merge commit SHA on lfg-agent branch
+    merge_commit_sha = models.CharField(max_length=40, help_text='Merge commit SHA on lfg-agent')
+
+    # For reverts: the revert commit SHA
+    revert_commit_sha = models.CharField(max_length=40, blank=True, null=True,
+        help_text='Revert commit SHA (if reverted)')
+
+    # Who performed the action
+    performed_by = models.ForeignKey(
+        'auth.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='ticket_merge_actions'
+    )
+
+    # Metadata about the merge/revert
+    files_changed = models.JSONField(default=list, help_text='List of files changed in the merge')
+    lines_added = models.IntegerField(default=0)
+    lines_removed = models.IntegerField(default=0)
+
+    # Commit details
+    commit_message = models.TextField(blank=True, default='')
+    commit_author = models.CharField(max_length=255, blank=True, default='')
+    commit_date = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Ticket Merge History'
+        verbose_name_plural = 'Ticket Merge Histories'
+        indexes = [
+            models.Index(fields=['ticket', '-created_at']),
+            models.Index(fields=['merge_commit_sha']),
+        ]
+
+    def __str__(self):
+        return f"{self.ticket.name} - {self.action} at {self.created_at}"
+
+
+class ProjectTodoList(models.Model):
+    """Model to store tasks associated with each project ticket"""
+    ticket = models.ForeignKey(ProjectTicket, on_delete=models.CASCADE, related_name="tasks")
+    description = models.TextField(help_text="Task description")
+    status = models.CharField(max_length=20, choices=(
+        ('pending', 'Pending'),
+        ('in_progress', 'In Progress'),
+        ('success', 'Success'),
+        ('fail', 'Fail'),
+    ), default='pending')
+    order = models.IntegerField(default=0, help_text='Order of task execution')
+    cli_task_id = models.CharField(max_length=50, null=True, blank=True, help_text="Claude CLI task ID for syncing")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.ticket.name} - {self.description[:50]}"
+
+    class Meta:
+        ordering = ['order', 'created_at', 'id']
+
+
+class TicketLog(models.Model):
+    """Model to store execution logs for tickets - includes commands, user messages, and AI responses"""
+
+    LOG_TYPE_CHOICES = [
+        ('command', 'Command'),
+        ('user_message', 'User Message'),
+        ('ai_response', 'AI Response'),
+    ]
+
+    ticket = models.ForeignKey(ProjectTicket, on_delete=models.CASCADE, related_name="logs")
+    task = models.ForeignKey(ProjectTodoList, on_delete=models.SET_NULL, null=True, blank=True, related_name="logs", help_text="Associated task if any")
+    log_type = models.CharField(max_length=20, choices=LOG_TYPE_CHOICES, default='command', help_text="Type of log entry")
+    command = models.TextField(help_text="The command that was executed (or message content for user/ai messages)")
+    explanation = models.TextField(blank=True, null=True, help_text="Explanation of what this command does")
+    output = models.TextField(blank=True, null=True, help_text="Output from the command (or AI response content)")
+    exit_code = models.IntegerField(null=True, blank=True, help_text="Command exit code")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Log for {self.ticket.name} - {self.log_type}: {self.command[:50]}"
+
+    class Meta:
+        ordering = ['created_at', 'id']
+        indexes = [
+            models.Index(fields=['ticket']),
+            models.Index(fields=['task']),
+            models.Index(fields=['log_type']),
+        ]
+
+
+def get_ticket_attachment_upload_path(instance, filename):
+    """Generate path for ticket attachments grouped by ticket ID"""
+    base, ext = os.path.splitext(filename)
+    unique_name = f"{uuid.uuid4().hex}{ext}"
+    return os.path.join('ticket_attachments', str(instance.ticket.id), unique_name)
+
+
+# Import the storage backend that respects FILE_STORAGE_TYPE setting (local or S3)
+from chat.storage import ChatFileStorage
+
+
+class ProjectTicketAttachment(models.Model):
+    """Files/screenshots associated with a ticket"""
+    ticket = models.ForeignKey(ProjectTicket, on_delete=models.CASCADE, related_name="attachments")
+    uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='ticket_attachments')
+    file = models.FileField(upload_to=get_ticket_attachment_upload_path, storage=ChatFileStorage())
+    original_filename = models.CharField(max_length=255, blank=True)
+    file_type = models.CharField(max_length=100, blank=True)
+    file_size = models.PositiveIntegerField(default=0)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-uploaded_at', '-id']
+
+    def __str__(self):
+        return self.original_filename or os.path.basename(self.file.name)
+
 class ProjectCodeGeneration(models.Model):
     project = models.OneToOneField(Project, on_delete=models.CASCADE, related_name="code_generation")
     folder_name = models.CharField(max_length=255, unique=True)
@@ -641,6 +1032,137 @@ class ProjectInvitation(models.Model):
         self.status = 'accepted'
         self.responded_at = timezone.now()
         self.save()
-        
+
         return membership
-    
+
+
+class ProjectEnvironmentVariable(models.Model):
+    """
+    Stores encrypted environment variables for a project.
+
+    These variables are injected into workspaces when they are created
+    or when servers are started.
+    """
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name='environment_variables'
+    )
+    key = models.CharField(
+        max_length=255,
+        help_text="Environment variable name (e.g., DATABASE_URL)"
+    )
+    encrypted_value = models.TextField(
+        help_text="Encrypted value stored securely"
+    )
+    is_secret = models.BooleanField(
+        default=True,
+        help_text="If true, value is masked in UI"
+    )
+    is_required = models.BooleanField(
+        default=False,
+        help_text="If true, this variable is required but may not have a value yet"
+    )
+    has_value = models.BooleanField(
+        default=True,
+        help_text="If false, the variable needs a value to be provided by user"
+    )
+    description = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Optional description of what this variable is for"
+    )
+    created_by = models.ForeignKey(
+        'auth.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='created_env_vars'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ['project', 'key']
+        ordering = ['key']
+        verbose_name = 'Environment Variable'
+        verbose_name_plural = 'Environment Variables'
+
+    def __str__(self):
+        return f"{self.project.name}: {self.key}"
+
+    def set_value(self, plaintext: str):
+        """Encrypt and store a value."""
+        from projects.utils.encryption import encrypt_value
+        self.encrypted_value = encrypt_value(plaintext)
+
+    def get_value(self) -> str:
+        """Decrypt and return the value."""
+        from projects.utils.encryption import decrypt_value
+        return decrypt_value(self.encrypted_value)
+
+    def get_masked_value(self) -> str:
+        """Return masked value for display."""
+        from projects.utils.encryption import mask_value, decrypt_value
+        if self.is_secret:
+            try:
+                value = decrypt_value(self.encrypted_value)
+                return mask_value(value)
+            except Exception:
+                return '********'
+        return self.get_value()
+
+    @classmethod
+    def get_project_env_dict(cls, project) -> dict:
+        """
+        Get all environment variables for a project as a dictionary.
+
+        Args:
+            project: Project instance
+
+        Returns:
+            dict: Dictionary of {key: decrypted_value}
+        """
+        env_vars = {}
+        for env_var in cls.objects.filter(project=project):
+            try:
+                env_vars[env_var.key] = env_var.get_value()
+            except Exception:
+                # Skip variables that fail to decrypt
+                pass
+        return env_vars
+
+    @classmethod
+    def bulk_set_from_env_content(cls, project, content: str, user=None):
+        """
+        Parse .env file content and create/update environment variables.
+
+        Args:
+            project: Project instance
+            content: .env file content
+            user: User who is setting the variables
+
+        Returns:
+            tuple: (created_count, updated_count)
+        """
+        from projects.utils.encryption import parse_env_file
+
+        env_vars = parse_env_file(content)
+        created = 0
+        updated = 0
+
+        for key, value in env_vars.items():
+            env_var, was_created = cls.objects.get_or_create(
+                project=project,
+                key=key,
+                defaults={'created_by': user}
+            )
+            env_var.set_value(value)
+            env_var.save()
+
+            if was_created:
+                created += 1
+            else:
+                updated += 1
+
+        return created, updated
+

@@ -1,0 +1,1400 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="facebook-domain-verification" content="zgzf8wxei6ozhhphlm5udn6zaw1ect" />
+    <title>LFG 🚀 | The AI Software Factory</title>
+    <meta name="description" content="Software factory that ideates, plans, and builds.">
+    <link rel="icon" type="image/x-icon" href="/static/images/favicon.ico">
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+              display: ['Space Grotesk', 'sans-serif'],
+            },
+            colors: {
+              primary: {
+                50: '#eef2ff',
+                100: '#e0e7ff',
+                500: '#6366f1',
+                600: '#4f46e5',
+                700: '#4338ca',
+              },
+              secondary: {
+                500: '#ec4899',
+              }
+            },
+            animation: {
+              'fade-in': 'fadeIn 0.5s ease-out',
+              'fade-in-up': 'fadeInUp 0.5s ease-out',
+              'pulse-slow': 'pulse 3s infinite',
+              'spin-slow': 'spin 3s linear infinite',
+            },
+            keyframes: {
+              fadeIn: {
+                '0%': { opacity: '0' },
+                '100%': { opacity: '1' },
+              },
+              fadeInUp: {
+                '0%': { opacity: '0', transform: 'translateY(10px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' },
+              }
+            }
+          }
+        }
+      }
+    </script>
+
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+      body {
+        background-color: #f8fafc;
+        overflow-x: hidden;
+      }
+      /* Custom Scrollbar */
+      ::-webkit-scrollbar {
+        width: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #f1f1f1; 
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #c7c7c7; 
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #a8a8a8; 
+      }
+      .no-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.554.0"
+  }
+}
+</script>
+</head>
+<body class="text-slate-900 font-sans selection:bg-indigo-500 selection:text-white">
+
+    <!-- Navbar -->
+    <nav id="navbar" class="fixed top-0 left-0 right-0 z-50 transition-all duration-300 bg-transparent py-5">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center">
+        <!-- Logo -->
+        <a href="/" class="flex items-center gap-2 group">
+          <div class="bg-indigo-600 text-white p-1.5 rounded-lg transform group-hover:rotate-12 transition-transform">
+            <i data-lucide="rocket" class="w-5 h-5"></i>
+          </div>
+          <span class="font-display font-bold text-xl tracking-tight text-slate-900">
+            LFG
+          </span>
+        </a>
+
+        <!-- Desktop Nav -->
+        <div class="hidden md:flex items-center gap-6">
+          <a href="/#process" class="text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">How it Works</a>
+          <a href="/services/" class="text-sm font-medium bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-4 py-2 rounded-full transition-colors">Let us build for you</a>
+          
+          <div class="flex items-center gap-4 ml-2">
+            <a href="https://github.com/lfg-hq/lfg" target="_blank" rel="noopener noreferrer" class="text-slate-500 hover:text-slate-900 transition-colors">
+              <i data-lucide="github" class="w-5 h-5"></i>
+            </a>
+            <a href="/accounts/auth/" class="bg-slate-900 hover:bg-indigo-600 text-white px-5 py-2 rounded-full text-sm font-semibold transition-all shadow-lg hover:shadow-indigo-500/25 active:scale-95">
+              Launch App
+            </a>
+          </div>
+        </div>
+
+        <!-- Mobile Toggle -->
+        <div class="md:hidden">
+          <button id="mobile-menu-btn" class="text-slate-600">
+            <i data-lucide="menu" class="w-6 h-6"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Mobile Menu -->
+      <div id="mobile-menu" class="hidden md:hidden absolute top-full left-0 w-full bg-white border-b border-slate-200 p-4 flex-col gap-4 shadow-xl">
+        <a href="/#process" class="text-base font-medium text-slate-600 py-2 mobile-link">How it Works</a>
+        <a href="/services/" class="text-base font-medium text-slate-600 py-2 mobile-link">Let us build for you</a>
+        <a href="/accounts/auth/" class="bg-indigo-600 text-white w-full py-3 rounded-lg font-semibold text-center block">
+          Launch App
+        </a>
+      </div>
+    </nav>
+
+    <main>
+        <!-- Hero Section -->
+        <section class="relative pt-24 sm:pt-32 pb-16 sm:pb-20 overflow-hidden">
+            <!-- Background Elements -->
+            <div class="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full max-w-7xl pointer-events-none">
+                <div class="absolute top-[10%] left-[10%] w-96 h-96 bg-indigo-400/20 rounded-full blur-3xl mix-blend-multiply animate-pulse"></div>
+                <div class="absolute top-[20%] right-[10%] w-96 h-96 bg-pink-400/20 rounded-full blur-3xl mix-blend-multiply animate-pulse" style="animation-delay: 1s;"></div>
+            </div>
+
+            <div class="max-w-4xl mx-auto px-4 relative z-10 text-center">
+                <!-- Badge -->
+                <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white border border-indigo-100 shadow-sm mb-8 animate-fade-in-up">
+                    <span class="flex h-2 w-2 relative">
+                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+                    </span>
+                    <span class="text-sm font-semibold text-slate-600">v1.0 Beta</span>
+                </div>
+
+                <!-- Headline -->
+                <h1 class="font-display font-bold text-4xl sm:text-5xl md:text-7xl leading-[1.1] mb-6 text-slate-900 tracking-tight">
+                    Software factory that <br class="hidden sm:block" />
+                    <span class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-pink-500">
+                        ideates, plans, and builds.
+                    </span>
+                </h1>
+
+                <p class="text-base sm:text-lg md:text-xl text-slate-500 mb-8 sm:mb-10 max-w-2xl mx-auto leading-relaxed px-2 sm:px-0">
+                    Stop making MVPs and running into dead ends. With LFG, you play the orchestra while a team of agents and real-humans builds awesome products for you.
+                </p>
+
+                <!-- Input Area -->
+                <div class="max-w-2xl mx-auto relative group">
+                    <div class="absolute -inset-1 bg-gradient-to-r from-indigo-500 to-pink-500 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
+                    <form id="hero-form" class="relative bg-white rounded-xl shadow-2xl border border-slate-100 p-2">
+                        <textarea
+                            id="hero-input"
+                            placeholder="Describe your idea..."
+                            data-placeholder-mobile="Describe your idea..."
+                            data-placeholder-desktop="Describe your app idea... (e.g. 'A real-time kanban board with AI summarization')"
+                            class="w-full resize-none border-none focus:ring-0 outline-none text-base sm:text-lg text-slate-800 placeholder:text-slate-400 p-4 min-h-[70px] sm:min-h-[80px] bg-transparent font-medium"
+                            required
+                        ></textarea>
+                        <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 px-4 pb-3 pt-3 border-t border-slate-50 bg-slate-50/50 rounded-b-lg -mx-2 -mb-2">
+                            <div class="hidden sm:flex gap-2 overflow-x-auto no-scrollbar py-1">
+                                <button type="button" onclick="setInput('📸 A CRM for freelance photographers')" class="whitespace-nowrap text-xs font-medium px-3 py-1.5 bg-white border border-slate-200 rounded-md text-slate-500 hover:border-indigo-300 hover:text-indigo-600 transition-colors">
+                                    📸 A CRM for...
+                                </button>
+                                <button type="button" onclick="setInput('☕ Cafe inventory management system')" class="whitespace-nowrap text-xs font-medium px-3 py-1.5 bg-white border border-slate-200 rounded-md text-slate-500 hover:border-indigo-300 hover:text-indigo-600 transition-colors">
+                                    ☕ Cafe inventory...
+                                </button>
+                                <button type="button" onclick="setInput('🎮 Habit tracking app with gamification')" class="whitespace-nowrap text-xs font-medium px-3 py-1.5 bg-white border border-slate-200 rounded-md text-slate-500 hover:border-indigo-300 hover:text-indigo-600 transition-colors">
+                                    🎮 Habit tracking...
+                                </button>
+                            </div>
+                            <button type="submit" class="w-full sm:w-auto flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 sm:py-2.5 rounded-lg font-semibold transition-all active:scale-95">
+                                <i data-lucide="sparkles" class="w-4 h-4"></i>
+                                <span>Generate</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="mt-8 sm:mt-12 flex flex-col sm:flex-row justify-center items-center gap-4 sm:gap-8 text-slate-400 text-sm font-medium">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="zap" class="w-4 h-4 text-yellow-500 fill-yellow-500"></i>
+                        <span>Powered by Agents</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="user" class="w-4 h-4 text-indigo-500 fill-indigo-500"></i>
+                        <span>Human in the loop</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Process Steps -->
+        <section id="process" class="py-24 bg-slate-50 relative">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center max-w-3xl mx-auto mb-16">
+                    <h2 class="font-display font-bold text-3xl md:text-4xl text-slate-900 mb-4">How It Works</h2>
+                    <p className="text-lg text-slate-600">
+                        We've turned the software development lifecycle into a repeatable assembly line.
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 relative">
+                    <!-- Connecting Line (Desktop) -->
+                    <div class="hidden lg:block absolute top-12 left-0 w-full h-0.5 bg-gradient-to-r from-indigo-200 via-purple-200 to-pink-200 -z-10 transform translate-y-4"></div>
+
+                    <!-- Step 1 -->
+                    <div class="group relative bg-white p-8 rounded-2xl border border-slate-100 shadow-xl shadow-slate-200/50 hover:-translate-y-1 transition-transform duration-300">
+                        <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-indigo-50 to-white border border-indigo-100 flex items-center justify-center text-indigo-600 mb-6 shadow-sm group-hover:scale-110 transition-transform duration-300">
+                            <i data-lucide="lightbulb" class="w-6 h-6"></i>
+                        </div>
+                        <h3 class="font-display font-bold text-xl text-slate-900 mb-3">1. Describe</h3>
+                        <p class="text-slate-500 leading-relaxed text-sm">Input your idea in plain English. No technical specs required. Just tell us what you want.</p>
+                    </div>
+
+                    <!-- Step 2 -->
+                    <div class="group relative bg-white p-8 rounded-2xl border border-slate-100 shadow-xl shadow-slate-200/50 hover:-translate-y-1 transition-transform duration-300">
+                        <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-indigo-50 to-white border border-indigo-100 flex items-center justify-center text-indigo-600 mb-6 shadow-sm group-hover:scale-110 transition-transform duration-300">
+                            <i data-lucide="file-text" class="w-6 h-6"></i>
+                        </div>
+                        <h3 class="font-display font-bold text-xl text-slate-900 mb-3">2. Plan</h3>
+                        <p class="text-slate-500 leading-relaxed text-sm">AI creates a comprehensive PRD, competitor analysis, and user stories for your review.</p>
+                    </div>
+
+                    <!-- Step 3 -->
+                    <div class="group relative bg-white p-8 rounded-2xl border border-slate-100 shadow-xl shadow-slate-200/50 hover:-translate-y-1 transition-transform duration-300">
+                        <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-indigo-50 to-white border border-indigo-100 flex items-center justify-center text-indigo-600 mb-6 shadow-sm group-hover:scale-110 transition-transform duration-300">
+                            <i data-lucide="ticket" class="w-6 h-6"></i>
+                        </div>
+                        <h3 class="font-display font-bold text-xl text-slate-900 mb-3">3. Task</h3>
+                        <p class="text-slate-500 leading-relaxed text-sm">Requirements are broken down into atomic, developable tickets that you can approve or edit.</p>
+                    </div>
+
+                    <!-- Step 4 -->
+                    <div class="group relative bg-white p-8 rounded-2xl border border-slate-100 shadow-xl shadow-slate-200/50 hover:-translate-y-1 transition-transform duration-300">
+                        <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-indigo-50 to-white border border-indigo-100 flex items-center justify-center text-indigo-600 mb-6 shadow-sm group-hover:scale-110 transition-transform duration-300">
+                            <i data-lucide="hammer" class="w-6 h-6"></i>
+                        </div>
+                        <h3 class="font-display font-bold text-xl text-slate-900 mb-3">4. Build</h3>
+                        <p class="text-slate-500 leading-relaxed text-sm">Agent workers pick up tickets, write code, test, and deploy the application automatically.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Hybrid Service -->
+        <section id="hybrid" class="py-24 bg-[#111827] text-white relative overflow-hidden">
+            <!-- Background accents -->
+            <div class="absolute top-0 right-0 w-[600px] h-[600px] bg-indigo-600/10 rounded-full blur-[100px] pointer-events-none"></div>
+            <div class="absolute bottom-0 left-0 w-[500px] h-[500px] bg-pink-600/10 rounded-full blur-[100px] pointer-events-none"></div>
+
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+                <div class="text-center mb-16">
+                    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-900/50 border border-indigo-700 text-indigo-300 text-xs font-bold uppercase tracking-wider mb-6">
+                        <span class="w-2 h-2 rounded-full bg-indigo-400 animate-pulse"></span>
+                        Hybrid Delivery Model
+                    </div>
+                    <h2 class="font-display font-bold text-3xl md:text-5xl mb-6">
+                        Velocity of <span class="text-indigo-400">AI</span>.<br />
+                        Precision of <span class="text-pink-400">Experts</span>.
+                    </h2>
+                    <p class="text-slate-400 text-lg max-w-2xl mx-auto">
+                        We've decoupled the predictable from the complex. Our autonomous agents handle the heavy lifting, 
+                        while senior engineers handle the architecture, security, and final polish.
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-5xl mx-auto">
+                    <!-- Left: AI Factory -->
+                    <div class="bg-slate-800/50 border border-indigo-500/30 rounded-3xl p-8 backdrop-blur-sm relative overflow-hidden">
+                        <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 to-transparent"></div>
+                        <div class="flex items-center gap-4 mb-6">
+                            <div class="w-12 h-12 rounded-full bg-indigo-500/20 flex items-center justify-center text-indigo-400">
+                                <i data-lucide="cpu" class="w-6 h-6"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-display font-bold text-2xl">The Factory</h3>
+                                <p class="text-indigo-300 text-sm font-medium">Autopilot Production</p>
+                            </div>
+                        </div>
+                        <p class="text-slate-300 mb-8 h-20">
+                            Multi-agent PM, Dev, and QA teams handling the repetitive, predictable heavy lifting at lightning speed.
+                        </p>
+                        <ul class="space-y-4">
+                            <li class="flex items-start gap-3">
+                                <i data-lucide="check-circle-2" class="w-5 h-5 text-indigo-500 shrink-0 mt-1"></i>
+                                <div>
+                                    <strong class="block text-white">Brief → PRD</strong>
+                                    <span class="text-slate-400 text-sm">Research, specs, ticketing</span>
+                                </div>
+                            </li>
+                            <li class="flex items-start gap-3">
+                                <i data-lucide="check-circle-2" class="w-5 h-5 text-indigo-500 shrink-0 mt-1"></i>
+                                <div>
+                                    <strong class="block text-white">Code Generation</strong>
+                                    <span class="text-slate-400 text-sm">Repos, migrations, API + UI</span>
+                                </div>
+                            </li>
+                            <li class="flex items-start gap-3">
+                                <i data-lucide="check-circle-2" class="w-5 h-5 text-indigo-500 shrink-0 mt-1"></i>
+                                <div>
+                                    <strong class="block text-white">QA & Launch</strong>
+                                    <span class="text-slate-400 text-sm">Unit tests, automated release ops</span>
+                                </div>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <!-- Right: Human Team -->
+                    <div class="bg-white text-slate-900 rounded-3xl p-8 relative shadow-2xl shadow-indigo-500/10 transform lg:-translate-y-4 lg:translate-x-4 border border-slate-200">
+                        <div class="absolute -top-3 -right-3 bg-pink-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-lg transform rotate-12">
+                            PREMIUM TIER
+                        </div>
+                        <div class="flex items-center gap-4 mb-6">
+                            <div class="w-12 h-12 rounded-full bg-pink-100 flex items-center justify-center text-pink-600">
+                                <i data-lucide="user-check" class="w-6 h-6"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-display font-bold text-2xl">The Experts</h3>
+                                <p class="text-pink-600 text-sm font-medium">High-Level Intervention</p>
+                            </div>
+                        </div>
+                        <p class="text-slate-600 mb-8 h-20">
+                            Senior engineers step in precisely when it matters—focusing on high-stakes architectural decisions, security auditing, and complex system integrations.
+                        </p>
+                        <ul class="space-y-4">
+                            <li class="flex items-start gap-3">
+                                <i data-lucide="check-circle-2" class="w-5 h-5 text-pink-500 shrink-0 mt-1"></i>
+                                <div>
+                                    <strong class="block text-slate-900">Complex Architecture</strong>
+                                    <span class="text-slate-500 text-sm">Scalability, database design</span>
+                                </div>
+                            </li>
+                            <li class="flex items-start gap-3">
+                                <i data-lucide="check-circle-2" class="w-5 h-5 text-pink-500 shrink-0 mt-1"></i>
+                                <div>
+                                    <strong class="block text-slate-900">Security Audits</strong>
+                                    <span class="text-slate-500 text-sm">Privacy reviews, penetration testing</span>
+                                </div>
+                            </li>
+                            <li class="flex items-start gap-3">
+                                <i data-lucide="check-circle-2" class="w-5 h-5 text-pink-500 shrink-0 mt-1"></i>
+                                <div>
+                                    <strong class="block text-slate-900">Signature UX</strong>
+                                    <span class="text-slate-500 text-sm">Motion, polish, pixel-perfect UI</span>
+                                </div>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="mt-16 flex flex-col items-center">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 w-full max-w-4xl">
+                        <div class="bg-white/5 border border-white/10 p-4 rounded-lg text-center hover:bg-white/10 transition-colors">
+                            <h4 class="font-bold text-white mb-1">Subscription Factory</h4>
+                            <p class="text-sm text-slate-400">Predictable AI throughput sprinting nonstop.</p>
+                        </div>
+                        <div class="bg-white/5 border border-white/10 p-4 rounded-lg text-center hover:bg-white/10 transition-colors">
+                            <h4 class="font-bold text-white mb-1">On-Demand Experts</h4>
+                            <p class="text-sm text-slate-400">Scale senior engineering involvement up or down instantly.</p>
+                        </div>
+                        <div class="bg-white/5 border border-white/10 p-4 rounded-lg text-center hover:bg-white/10 transition-colors">
+                            <h4 class="font-bold text-white mb-1">Profit Share</h4>
+                            <p class="text-sm text-slate-400">We co-build flagship products for equity.</p>
+                        </div>
+                    </div>
+                    
+                    <a href="/services/" class="bg-white text-slate-900 hover:bg-indigo-50 px-8 py-4 rounded-full font-bold text-lg transition-all flex items-center gap-2 shadow-xl shadow-indigo-500/20 hover:scale-105">
+                        Start Your Project <i data-lucide="arrow-right" class="w-5 h-5"></i>
+                    </a>
+                </div>
+            </div>
+        </section>
+
+        <!-- Documentation Section -->
+        <section class="py-24 bg-white">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="grid lg:grid-cols-2 gap-12 items-center">
+                    <div class="space-y-6">
+                        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-600 text-xs font-bold uppercase tracking-wider">
+                            <span class="w-2 h-2 rounded-full bg-indigo-600 animate-pulse"></span>
+                            Live Documentation
+                        </div>
+                        <h2 class="font-display font-bold text-3xl md:text-4xl text-slate-900">
+                            Stop building from vague ideas.
+                        </h2>
+                        <p class="text-slate-600 text-lg leading-relaxed">
+                            LFG doesn't just write code. It acts as your Technical Product Manager, turning raw thoughts into engineering-ready artifacts.
+                        </p>
+                        <ul class="space-y-4 mt-4">
+                            <li class="flex items-start gap-3">
+                                <div class="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 shrink-0 mt-0.5">
+                                    <i data-lucide="file-text" class="w-3 h-3"></i>
+                                </div>
+                                <div>
+                                    <strong class="text-slate-900">Comprehensive PRDs</strong>
+                                    <p class="text-sm text-slate-500">Problem statements, success metrics, and user flows generated instantly.</p>
+                                </div>
+                            </li>
+                            <li class="flex items-start gap-3">
+                                <div class="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 shrink-0 mt-0.5">
+                                    <i data-lucide="cpu" class="w-3 h-3"></i>
+                                </div>
+                                <div>
+                                    <strong class="text-slate-900">Technical Analysis</strong>
+                                    <p class="text-sm text-slate-500">Database schema design, API contracts, and system architecture planning.</p>
+                                </div>
+                            </li>
+                            <li class="flex items-start gap-3">
+                                <div class="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 shrink-0 mt-0.5">
+                                    <i data-lucide="ticket" class="w-3 h-3"></i>
+                                </div>
+                                <div>
+                                    <strong class="text-slate-900">User Stories & Tickets</strong>
+                                    <p class="text-sm text-slate-500">Epics broken down into atomic, developer-ready tasks.</p>
+                                </div>
+                            </li>
+                        </ul>
+                        <div class="pt-4">
+                            <a href="/docs/" class="text-indigo-600 font-semibold hover:text-indigo-700 flex items-center gap-2">
+                                See more <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                            </a>
+                        </div>
+                    </div>
+                    <div class="relative">
+                        <!-- Decorative / Image placeholder -->
+                        <div class="absolute -inset-4 bg-gradient-to-r from-indigo-50 to-pink-50 rounded-full blur-3xl opacity-50"></div>
+                        <div class="relative bg-slate-50 border border-slate-200 rounded-2xl p-6 shadow-xl">
+                            <!-- Mockup of PRD -->
+                            <div class="space-y-4">
+                                <div class="flex items-center justify-between border-b border-slate-200 pb-4">
+                                    <div class="h-4 w-1/3 bg-slate-300 rounded"></div>
+                                    <div class="h-4 w-8 bg-indigo-100 rounded-full"></div>
+                                </div>
+                                <div class="space-y-2">
+                                    <div class="h-2 w-full bg-slate-200 rounded"></div>
+                                    <div class="h-2 w-5/6 bg-slate-200 rounded"></div>
+                                    <div class="h-2 w-4/6 bg-slate-200 rounded"></div>
+                                </div>
+                                <div class="p-4 bg-white rounded-xl border border-slate-200 mt-4 shadow-sm">
+                                    <div class="flex items-center gap-3 mb-2">
+                                        <div class="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-600">
+                                            <i data-lucide="check-square" class="w-4 h-4"></i>
+                                        </div>
+                                        <span class="font-mono text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded">TICKET-128</span>
+                                    </div>
+                                    <div class="h-3 w-3/4 bg-slate-800 rounded mb-2"></div>
+                                    <div class="h-2 w-full bg-slate-100 rounded"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Features -->
+        <section class="py-24 bg-slate-50">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center max-w-3xl mx-auto mb-16">
+                    <h2 class="font-display font-bold text-3xl md:text-4xl text-slate-900 mb-4">Why LFG?</h2>
+                    <p class="text-lg text-slate-600">Built for developers who want to move fast without breaking things.</p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto">
+                    <!-- Card 1: Large -->
+                    <div class="md:col-span-2 bg-white rounded-2xl p-8 border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
+                        <div class="w-12 h-12 bg-indigo-50 rounded-lg flex items-center justify-center text-indigo-600 mb-6">
+                            <i data-lucide="brain" class="w-6 h-6"></i>
+                        </div>
+                        <h3 class="font-display font-bold text-xl mb-3">Model Agnostic</h3>
+                        <p class="text-slate-600">
+                            Bring your own keys. Works with the latest models from Gemini, OpenAI and Anthropic. We don't lock you into a single provider.
+                        </p>
+                    </div>
+
+                    <!-- Card 2 -->
+                    <div class="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
+                        <div class="w-12 h-12 bg-slate-100 rounded-lg flex items-center justify-center text-slate-900 mb-6">
+                            <i data-lucide="github" class="w-6 h-6"></i>
+                        </div>
+                        <h3 class="font-display font-bold text-xl mb-3">Open Source</h3>
+                        <p class="text-slate-600">
+                            Self-host it. Fork it. Your code and your data stay on your infrastructure.
+                        </p>
+                    </div>
+
+                    <!-- Card 3 -->
+                    <div class="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
+                        <div class="w-12 h-12 bg-pink-50 rounded-lg flex items-center justify-center text-pink-600 mb-6">
+                            <i data-lucide="users" class="w-6 h-6"></i>
+                        </div>
+                        <h3 class="font-display font-bold text-xl mb-3">Multi-Agent Orchestration</h3>
+                        <p class="text-slate-600">
+                            Specialized agents (PM, QA, Dev) collaborate to solve complex problems rather than a single model trying to do everything.
+                        </p>
+                    </div>
+
+                    <!-- Card 4: Large -->
+                    <div class="md:col-span-2 bg-white rounded-2xl p-8 border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
+                        <div class="w-12 h-12 bg-green-50 rounded-lg flex items-center justify-center text-green-600 mb-6">
+                            <i data-lucide="refresh-cw" class="w-6 h-6"></i>
+                        </div>
+                        <h3 class="font-display font-bold text-xl mb-3">Self-Healing Code</h3>
+                        <p class="text-slate-600">
+                            When a build fails or a test errors, the agents read the output, analyze the stack trace, and attempt to fix the code automatically without human intervention.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Agents -->
+        <section id="agents" class="py-24 bg-white border-t border-slate-100">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center mb-16">
+                    <h2 class="font-display font-bold text-3xl md:text-4xl text-slate-900 mb-4">Meet the Workforce</h2>
+                    <p class="text-lg text-slate-600">Your new 24/7 development team.</p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    <!-- PM -->
+                    <div class="group bg-slate-50 rounded-2xl p-1 overflow-hidden hover:bg-white hover:shadow-xl transition-all duration-300 border border-slate-100">
+                        <div class="h-full p-6 flex flex-col items-center text-center">
+                            <div class="w-20 h-20 rounded-full text-blue-600 bg-blue-50 flex items-center justify-center mb-6 transition-transform group-hover:scale-110">
+                                <i data-lucide="user-square-2" class="w-8 h-8"></i>
+                            </div>
+                            <h3 class="font-display font-bold text-xl text-slate-900 mb-1">Product Manager</h3>
+                            <span class="inline-block px-3 py-1 bg-white border border-slate-200 rounded-full text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">
+                                Planning
+                            </span>
+                            <p class="text-slate-500 leading-relaxed text-sm">
+                                Responsible for breaking down high-level goals into specific, actionable requirements and user stories.
+                            </p>
+                        </div>
+                    </div>
+                    <!-- Dev -->
+                    <div class="group bg-slate-50 rounded-2xl p-1 overflow-hidden hover:bg-white hover:shadow-xl transition-all duration-300 border border-slate-100">
+                        <div class="h-full p-6 flex flex-col items-center text-center">
+                            <div class="w-20 h-20 rounded-full text-indigo-600 bg-indigo-50 flex items-center justify-center mb-6 transition-transform group-hover:scale-110">
+                                <i data-lucide="terminal" class="w-8 h-8"></i>
+                            </div>
+                            <h3 class="font-display font-bold text-xl text-slate-900 mb-1">Full Stack Dev</h3>
+                            <span class="inline-block px-3 py-1 bg-white border border-slate-200 rounded-full text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">
+                                Implementation
+                            </span>
+                            <p class="text-slate-500 leading-relaxed text-sm">
+                                Writes the actual code, creates database migrations, and implements API endpoints based on tickets.
+                            </p>
+                        </div>
+                    </div>
+                    <!-- QA -->
+                    <div class="relative group bg-slate-50/50 rounded-2xl p-1 overflow-hidden border border-slate-100 opacity-70 grayscale">
+                        <div class="absolute top-4 right-4">
+                            <span class="bg-slate-200 text-slate-600 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wide">Coming Soon</span>
+                        </div>
+                        <div class="h-full p-6 flex flex-col items-center text-center">
+                            <div class="w-20 h-20 rounded-full text-slate-400 bg-slate-100 flex items-center justify-center mb-6">
+                                <i data-lucide="bug" class="w-8 h-8"></i>
+                            </div>
+                            <h3 class="font-display font-bold text-xl text-slate-700 mb-1">QA Engineer</h3>
+                            <span class="inline-block px-3 py-1 bg-white border border-slate-200 rounded-full text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">
+                                Quality
+                            </span>
+                            <p class="text-slate-400 leading-relaxed text-sm">
+                                Writes unit tests, integration tests, and validates that the implemented code meets acceptance criteria.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Services Promo -->
+        <section class="py-24 bg-white border-t border-slate-100">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="bg-indigo-900 rounded-3xl p-8 md:p-12 shadow-2xl overflow-hidden relative">
+                    <!-- Background Accents -->
+                    <div class="absolute top-0 right-0 w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+                    <div class="absolute bottom-0 left-0 w-64 h-64 bg-pink-600/20 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2"></div>
+
+                    <div class="relative z-10 grid lg:grid-cols-2 gap-12 items-center">
+                        <div class="space-y-6">
+                            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-800/50 border border-indigo-700 text-indigo-300 text-xs font-bold uppercase tracking-wider">
+                                <span class="w-2 h-2 rounded-full bg-pink-500 animate-pulse"></span>
+                                New Service
+                            </div>
+                            <h2 class="font-display font-bold text-3xl md:text-5xl text-white">
+                                Need us to build it?
+                            </h2>
+                            <p class="text-indigo-100 text-lg leading-relaxed max-w-xl">
+                                Skip the hiring headache. Our expert team + agent swarm will ship your MVP, mobile app, or complex feature in weeks, not months.
+                            </p>
+                            <div class="flex flex-wrap items-center gap-4 pt-2">
+                                <a href="/services/" class="px-8 py-4 rounded-full bg-white text-indigo-900 font-bold hover:bg-indigo-50 transition-colors shadow-lg shadow-indigo-900/50 flex items-center gap-2">
+                                    Claim the $999 offer <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                                </a>
+                                <a href="/services/" class="text-indigo-200 font-semibold hover:text-white transition-colors">
+                                    Learn more about services
+                                </a>
+                            </div>
+                        </div>
+
+                        <div class="grid gap-4">
+                            <div class="bg-indigo-800/50 backdrop-blur-sm border border-indigo-700/50 p-5 rounded-xl flex items-start gap-4 hover:bg-indigo-800/70 transition-colors">
+                                <div class="w-10 h-10 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-300 shrink-0">
+                                    <i data-lucide="layout" class="w-5 h-5"></i>
+                                </div>
+                                <div>
+                                    <h3 class="font-bold text-white mb-1">Web Apps</h3>
+                                    <p class="text-sm text-indigo-200">Dashboards, SaaS platforms, and AI tools built with Next.js & Python.</p>
+                                </div>
+                            </div>
+                            <div class="bg-indigo-800/50 backdrop-blur-sm border border-indigo-700/50 p-5 rounded-xl flex items-start gap-4 hover:bg-indigo-800/70 transition-colors">
+                                <div class="w-10 h-10 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-300 shrink-0">
+                                    <i data-lucide="smartphone" class="w-5 h-5"></i>
+                                </div>
+                                <div>
+                                    <h3 class="font-bold text-white mb-1">Mobile Apps</h3>
+                                    <p class="text-sm text-indigo-200">Native-feel iOS and Android apps with offline sync and clean UX.</p>
+                                </div>
+                            </div>
+                            <div class="bg-indigo-800/50 backdrop-blur-sm border border-indigo-700/50 p-5 rounded-xl flex items-start gap-4 hover:bg-indigo-800/70 transition-colors">
+                                <div class="w-10 h-10 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-300 shrink-0">
+                                    <i data-lucide="cloud" class="w-5 h-5"></i>
+                                </div>
+                                <div>
+                                    <h3 class="font-bold text-white mb-1">Cloud & Delivery</h3>
+                                    <p class="text-sm text-indigo-200">We handle the unglamorous bits: CI/CD, security, and deployments.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Terminal Setup -->
+        <section id="terminal" class="py-20 bg-gradient-to-b from-slate-50 to-white">
+            <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex flex-col md:flex-row items-center justify-between mb-8 gap-6">
+                    <div>
+                        <h2 class="font-display font-bold text-3xl text-slate-900 mb-2">Get Started Locally</h2>
+                        <p class="text-slate-500">Clone and run in minutes. Open source forever.</p>
+                    </div>
+                    <button onclick="copyCommands(this)" class="flex items-center gap-2 text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-lg transition-colors">
+                        <i data-lucide="copy" class="w-4 h-4"></i>
+                        <span class="btn-text">Copy Commands</span>
+                    </button>
+                </div>
+
+                <div class="bg-[#1e1e1e] rounded-xl shadow-2xl overflow-hidden border border-slate-800 font-mono text-sm leading-relaxed">
+                    <div class="flex items-center gap-2 px-4 py-3 bg-[#252526] border-b border-[#3e3e42]">
+                        <div class="w-3 h-3 rounded-full bg-[#ff5f56]"></div>
+                        <div class="w-3 h-3 rounded-full bg-[#ffbd2e]"></div>
+                        <div class="w-3 h-3 rounded-full bg-[#27c93f]"></div>
+                        <div class="ml-2 text-xs text-slate-400">bash — lfg-setup</div>
+                    </div>
+                    <div class="p-6 text-slate-300 overflow-x-auto">
+<pre id="command-block">
+<span class="text-slate-500"># Clone the repository</span>
+<span class="text-emerald-400">git clone https://github.com/lfg-hq/lfg.git</span>
+
+<span class="text-slate-500"># Install dependencies</span>
+<span class="text-emerald-400">pip install -r requirements.txt</span>
+
+<span class="text-slate-500"># Run migrations</span>
+<span class="text-emerald-400">python manage.py migrate</span>
+
+<span class="text-slate-500"># Start server</span>
+<span class="text-emerald-400">uvicorn LFG.asgi:application --host 0.0.0.0 --port 8000</span>
+</pre>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="bg-slate-900 border-t border-slate-800 pt-16 pb-8">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
+                <div class="col-span-1 md:col-span-2">
+                    <div class="flex items-center gap-2 mb-4 text-white font-bold text-xl">
+                        <i data-lucide="rocket" class="w-6 h-6 text-indigo-500"></i>
+                        <span>LFG</span>
+                    </div>
+                    <p class="text-slate-400 max-w-sm leading-relaxed">
+                        Software factory that ideates, plans, and builds. And let humans take over as required.
+                    </p>
+                </div>
+                
+                <div>
+                    <h4 class="font-bold text-white mb-4 uppercase text-xs tracking-wider">Product</h4>
+                    <ul class="space-y-3 text-sm text-slate-400">
+                        <li><a href="/#process" class="hover:text-indigo-400 transition-colors">Features</a></li>
+                        <li><a href="/#hybrid" class="hover:text-indigo-400 transition-colors">Hybrid Model</a></li>
+                        <li><a href="/#agents" class="hover:text-indigo-400 transition-colors">Agents</a></li>
+                        <li><a href="/#terminal" class="hover:text-indigo-400 transition-colors">Download</a></li>
+                        <li><a href="/docs/" class="hover:text-indigo-400 transition-colors">Docs & PRDs</a></li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h4 class="font-bold text-white mb-4 uppercase text-xs tracking-wider">Community</h4>
+                    <ul class="space-y-3 text-sm text-slate-400">
+                        <li><a href="https://github.com/lfg-hq/lfg" target="_blank" rel="noopener noreferrer" class="hover:text-indigo-400 transition-colors flex items-center gap-2"><i data-lucide="github" class="w-4 h-4"></i> GitHub</a></li>
+                        <li><a href="#" class="hover:text-indigo-400 transition-colors flex items-center gap-2"><i data-lucide="disc" class="w-4 h-4"></i> Discord</a></li>
+                        <li><a href="#" class="hover:text-indigo-400 transition-colors flex items-center gap-2"><i data-lucide="twitter" class="w-4 h-4"></i> Twitter</a></li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="border-t border-slate-800 pt-8 text-center text-sm text-slate-500">
+                &copy; 2025 LFG Inc. Open Source Apache 2.0.
+            </div>
+        </div>
+    </footer>
+
+    <!-- Onboarding Modal -->
+    <div id="onboarding-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onclick="closeModal()"></div>
+        
+        <div class="bg-white w-full max-w-lg rounded-2xl shadow-2xl relative z-10 overflow-hidden flex flex-col max-h-[90vh]">
+            <!-- Header -->
+            <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                <div class="flex items-center gap-2 text-indigo-600 font-bold">
+                    <i data-lucide="rocket" class="w-5 h-5"></i> LFG
+                </div>
+                <button onclick="closeModal()" class="text-slate-400 hover:text-slate-600 transition-colors">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- Progress -->
+            <div class="px-8 py-4">
+                <div class="flex items-center justify-between relative">
+                    <div class="absolute left-0 top-1/2 -translate-y-1/2 w-full h-0.5 bg-slate-100 -z-10"></div>
+                    
+                    <div class="step-indicator w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors bg-indigo-600 border-indigo-600 text-white" id="indicator-1">1</div>
+                    <div class="step-indicator w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors bg-white border-slate-200 text-slate-300" id="indicator-2">2</div>
+                    <div class="step-indicator w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors bg-white border-slate-200 text-slate-300" id="indicator-3">3</div>
+                </div>
+                <div class="flex justify-between text-[10px] uppercase font-bold text-slate-400 mt-2">
+                    <span>Account</span>
+                    <span>Verify</span>
+                    <span>Project</span>
+                </div>
+            </div>
+
+            <!-- Content Body -->
+            <div class="p-8 overflow-y-auto">
+                <!-- Step 1 -->
+                <div id="step-1" class="modal-step-content animate-fade-in">
+                    <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                        <div>
+                            <h2 class="text-2xl font-bold text-slate-900">Create your account</h2>
+                            <p class="text-slate-500 text-sm">Join the factory to start building.</p>
+                        </div>
+                        <div class="flex items-center bg-slate-100 rounded-lg p-1">
+                            <button type="button" class="auth-tab register-tab px-3 py-1.5 text-xs font-semibold rounded-md bg-white shadow-sm text-slate-900" onclick="switchAuthTab('register')">
+                                Register
+                            </button>
+                            <button type="button" class="auth-tab login-tab px-3 py-1.5 text-xs font-semibold rounded-md text-slate-500 hover:text-slate-900" onclick="switchAuthTab('login')">
+                                Login
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="auth-forms space-y-6">
+                        <div class="auth-form register-form space-y-4">
+                            <a href="{% url 'accounts:google_login' %}?from_landing=true" onclick="handleGoogleLogin()" class="w-full flex items-center justify-center gap-3 bg-white border border-slate-200 p-3 rounded-lg text-slate-700 font-medium hover:bg-slate-50 transition-colors">
+                                <img src="https://www.google.com/favicon.ico" alt="Google" class="w-5 h-5" />
+                                Sign up with Google
+                            </a>
+
+                            <div class="relative">
+                                <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-slate-200"></div></div>
+                                <div class="relative flex justify-center text-xs uppercase"><span class="bg-white px-2 text-slate-400">Or continue with email</span></div>
+                            </div>
+
+                            <form id="quick-register-form" class="space-y-4">
+                                <input id="register-email" type="email" placeholder="Email address" class="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none" required />
+                                <input id="register-password1" type="password" placeholder="Create a password" class="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none" required />
+                                <input id="register-password2" type="password" placeholder="Confirm password" class="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none" required />
+                                <button type="submit" class="w-full bg-indigo-600 text-white p-3 rounded-lg font-bold hover:bg-indigo-700 transition-colors">
+                                    Create Account
+                                </button>
+                            </form>
+                        </div>
+
+                        <div class="auth-form login-form hidden space-y-4">
+                            <a href="{% url 'accounts:google_login' %}?from_landing=true" onclick="handleGoogleLogin()" class="w-full flex items-center justify-center gap-3 bg-white border border-slate-200 p-3 rounded-lg text-slate-700 font-medium hover:bg-slate-50 transition-colors">
+                                <img src="https://www.google.com/favicon.ico" alt="Google" class="w-5 h-5" />
+                                Sign in with Google
+                            </a>
+
+                            <div class="relative">
+                                <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-slate-200"></div></div>
+                                <div class="relative flex justify-center text-xs uppercase"><span class="bg-white px-2 text-slate-400">Or continue with email</span></div>
+                            </div>
+
+                            <form id="quick-login-form" class="space-y-4">
+                                <input id="login-email" type="email" placeholder="Email address" class="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none" required />
+                                <input id="login-password" type="password" placeholder="Password" class="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none" required />
+                                <div class="flex items-center justify-between text-xs text-slate-500">
+                                    <label class="flex items-center gap-2">
+                                        <input type="checkbox" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                                        <span>Remember me</span>
+                                    </label>
+                                    <a href="/accounts/password-reset/" target="_blank" class="hover:text-indigo-600 font-semibold">Forgot password?</a>
+                                </div>
+                                <button type="submit" class="w-full bg-slate-900 text-white p-3 rounded-lg font-bold hover:bg-slate-800 transition-colors">
+                                    Sign In
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <p class="text-xs text-slate-400 mt-6 text-center">
+                        By continuing, you agree to LFG's Terms of Service and Privacy Policy.
+                    </p>
+                </div>
+
+                <!-- Step 2 -->
+                <div id="step-2" class="modal-step-content hidden animate-fade-in">
+                    <div class="text-center mb-6">
+                        <div class="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <i data-lucide="mail" class="w-7 h-7"></i>
+                        </div>
+                        <h2 class="text-2xl font-bold text-slate-900 mb-1">Verify your email</h2>
+                        <p class="text-slate-500 text-sm">Enter the 6-digit code we sent to <span class="font-semibold text-slate-700" id="verification-email"></span></p>
+                    </div>
+                    <form id="verification-form" class="space-y-4">
+                        <div class="flex justify-center gap-3">
+                            <input type="text" maxlength="1" inputmode="numeric" class="code-input w-12 h-12 text-center text-xl font-bold border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none" />
+                            <input type="text" maxlength="1" inputmode="numeric" class="code-input w-12 h-12 text-center text-xl font-bold border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none" />
+                            <input type="text" maxlength="1" inputmode="numeric" class="code-input w-12 h-12 text-center text-xl font-bold border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none" />
+                            <input type="text" maxlength="1" inputmode="numeric" class="code-input w-12 h-12 text-center text-xl font-bold border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none" />
+                            <input type="text" maxlength="1" inputmode="numeric" class="code-input w-12 h-12 text-center text-xl font-bold border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none" />
+                            <input type="text" maxlength="1" inputmode="numeric" class="code-input w-12 h-12 text-center text-xl font-bold border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none" />
+                        </div>
+                        <div class="verification-error text-red-500 text-sm text-center hidden"></div>
+                        <div class="flex items-center justify-between">
+                            <button type="button" onclick="resendVerificationCode(event)" class="text-sm font-semibold text-indigo-600 hover:text-indigo-700">Resend code</button>
+                            <button type="submit" class="bg-indigo-600 text-white px-6 py-2.5 rounded-lg font-semibold hover:bg-indigo-700 transition-colors">Verify & Continue</button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Step 3 -->
+                <div id="step-3" class="modal-step-content hidden animate-fade-in">
+                    <h2 class="text-2xl font-bold text-slate-900 mb-2">Ready to Build</h2>
+                    <p class="text-slate-500 mb-6 text-sm">Confirm your project details.</p>
+                    
+                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6">
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-2">Project Requirement</label>
+                        <textarea id="project-requirement-display" class="w-full p-3 rounded-lg border border-slate-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none bg-white text-slate-900 font-medium min-h-[120px]" placeholder="Describe what you want to build..."></textarea>
+                    </div>
+
+                    <button onclick="handleLaunchProject(this)" class="w-full bg-gradient-to-r from-indigo-600 to-pink-600 text-white p-4 rounded-lg font-bold hover:opacity-90 transition-opacity shadow-lg shadow-indigo-500/30">
+                        🚀 Launch Project
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Logic -->
+    <script>
+        lucide.createIcons();
+
+        // Responsive placeholder for hero input
+        function updateHeroPlaceholder() {
+            const heroInput = document.getElementById('hero-input');
+            if (heroInput) {
+                const isMobile = window.innerWidth < 640; // sm breakpoint
+                heroInput.placeholder = isMobile
+                    ? heroInput.dataset.placeholderMobile
+                    : heroInput.dataset.placeholderDesktop;
+            }
+        }
+        updateHeroPlaceholder();
+        window.addEventListener('resize', updateHeroPlaceholder);
+
+        let userRequirements = '';
+        let isAuthenticated = false;
+        let emailVerified = false;
+        let isRegistering = false;
+        let environment = '{{ ENVIRONMENT|default:"local" }}';
+        let userProjects = [];
+
+        // Navbar Scroll Logic
+        window.addEventListener('scroll', () => {
+            const nav = document.getElementById('navbar');
+            if (window.scrollY > 20) {
+                nav.classList.add('bg-white/80', 'backdrop-blur-md', 'border-b', 'border-indigo-100', 'shadow-sm', 'py-3');
+                nav.classList.remove('bg-transparent', 'py-5');
+            } else {
+                nav.classList.remove('bg-white/80', 'backdrop-blur-md', 'border-b', 'border-indigo-100', 'shadow-sm', 'py-3');
+                nav.classList.add('bg-transparent', 'py-5');
+            }
+        });
+
+        // Mobile Menu Logic
+        const mobileBtn = document.getElementById('mobile-menu-btn');
+        const mobileMenu = document.getElementById('mobile-menu');
+        const mobileLinks = document.querySelectorAll('.mobile-link');
+
+        mobileBtn.addEventListener('click', () => {
+            mobileMenu.classList.toggle('hidden');
+            mobileMenu.classList.toggle('flex');
+        });
+
+        mobileLinks.forEach(link => {
+            link.addEventListener('click', () => {
+                mobileMenu.classList.add('hidden');
+                mobileMenu.classList.remove('flex');
+            });
+        });
+
+        // Form Logic
+        const heroForm = document.getElementById('hero-form');
+        const heroInput = document.getElementById('hero-input');
+        const modal = document.getElementById('onboarding-modal');
+        const requirementDisplay = document.getElementById('project-requirement-display');
+
+        requirementDisplay.addEventListener('input', () => {
+            const val = requirementDisplay.value.trim();
+            if (val) {
+                userRequirements = val;
+                sessionStorage.setItem('pendingRequirements', val);
+            }
+        });
+
+        window.addEventListener('load', () => {
+            const storedRequirements = sessionStorage.getItem('pendingRequirements');
+            if (storedRequirements) {
+                userRequirements = storedRequirements;
+            }
+
+            refreshAuthStatus();
+            setupVerificationInputs();
+        });
+
+        function refreshAuthStatus() {
+            fetch('/accounts/api/auth/status/', {
+                credentials: 'include',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                }
+            }).then(res => res.json())
+            .then(data => {
+                isAuthenticated = data.authenticated || false;
+                emailVerified = data.email_verified || false;
+            })
+            .catch(() => {
+                isAuthenticated = false;
+                emailVerified = false;
+            });
+        }
+
+        function setInput(text) {
+            heroInput.value = text;
+            heroInput.focus();
+        }
+
+        heroForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const val = heroInput.value.trim();
+            if (val) {
+                userRequirements = val;
+                sessionStorage.setItem('pendingRequirements', userRequirements);
+                openModal(val);
+            }
+        });
+
+        // Modal Logic
+        function openModal(prompt = '') {
+            modal.classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+            const heroVal = heroInput.value.trim();
+            if(prompt) {
+                requirementDisplay.value = prompt;
+                userRequirements = prompt;
+            } else if (heroVal) {
+                requirementDisplay.value = heroVal;
+                userRequirements = heroVal;
+            } else if (userRequirements) {
+                requirementDisplay.value = userRequirements;
+            }
+            switchAuthTab('register');
+            // If logged in but not verified, go to verification. If verified, go to project. Otherwise start at account.
+            if (isAuthenticated) {
+                setStep(emailVerified ? 3 : 2);
+            } else {
+                setStep(1);
+            }
+        }
+
+        function closeModal() {
+            modal.classList.add('hidden');
+            document.body.style.overflow = 'auto';
+        }
+
+        function setStep(step) {
+            // Hide all steps
+            document.querySelectorAll('.modal-step-content').forEach(el => el.classList.add('hidden'));
+            // Show current
+            document.getElementById(`step-${step}`).classList.remove('hidden');
+            
+            // Update Indicators
+            for (let i = 1; i <= 3; i++) {
+                const el = document.getElementById(`indicator-${i}`);
+                const isActive = i === step;
+                el.className = isActive
+                    ? 'step-indicator w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors bg-indigo-600 border-indigo-600 text-white'
+                    : 'step-indicator w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors bg-white border-slate-200 text-slate-300';
+                el.innerHTML = i;
+            }
+            lucide.createIcons();
+        }
+
+        function switchAuthTab(tab) {
+            const loginTab = document.querySelector('.login-tab');
+            const registerTab = document.querySelector('.register-tab');
+            const loginForm = document.querySelector('.login-form');
+            const registerForm = document.querySelector('.register-form');
+
+            if (tab === 'login') {
+                loginTab.classList.add('bg-white', 'text-slate-900', 'shadow-sm');
+                loginTab.classList.remove('text-slate-500');
+                registerTab.classList.add('text-slate-500');
+                registerTab.classList.remove('bg-white', 'text-slate-900', 'shadow-sm');
+                loginForm.classList.remove('hidden');
+                registerForm.classList.add('hidden');
+            } else {
+                registerTab.classList.add('bg-white', 'text-slate-900', 'shadow-sm');
+                registerTab.classList.remove('text-slate-500');
+                loginTab.classList.add('text-slate-500');
+                loginTab.classList.remove('bg-white', 'text-slate-900', 'shadow-sm');
+                registerForm.classList.remove('hidden');
+                loginForm.classList.add('hidden');
+            }
+        }
+
+        function handleGoogleLogin() {
+            if (heroInput.value.trim()) {
+                sessionStorage.setItem('pendingRequirements', heroInput.value.trim());
+            }
+        }
+
+        function handlePostAuth() {
+            setStep(3);
+        }
+
+        document.getElementById('quick-login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+
+            try {
+                const response = await fetch('/accounts/auth/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: `form_type=login&username=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`,
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    await refreshAuthStatus();
+                    isAuthenticated = true;
+                    isRegistering = false;
+                    userRequirements = heroInput.value.trim() || userRequirements;
+                    if (!emailVerified && environment !== 'local') {
+                        setStep(2);
+                    } else {
+                        handlePostAuth();
+                    }
+                } else {
+                    alert('Login failed. Please check your credentials.');
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                alert('An error occurred. Please try again.');
+            }
+        });
+
+        document.getElementById('quick-register-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('register-email').value;
+            const password1 = document.getElementById('register-password1').value;
+            const password2 = document.getElementById('register-password2').value;
+
+            if (password1 !== password2) {
+                alert('Passwords do not match.');
+                return;
+            }
+
+            try {
+                const response = await fetch('/accounts/auth/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: `form_type=register&email=${encodeURIComponent(email)}&password1=${encodeURIComponent(password1)}&password2=${encodeURIComponent(password2)}`,
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    await refreshAuthStatus();
+                    isAuthenticated = true;
+                    isRegistering = true;
+                    emailVerified = environment === 'local' ? true : false;
+                    userRequirements = heroInput.value.trim() || userRequirements;
+
+                    if (environment === 'local') {
+                        handlePostAuth();
+                    } else {
+                        document.getElementById('verification-email').textContent = email;
+                        setStep(2);
+                    }
+                } else {
+                    alert('Registration failed. The email may already be in use or password requirements not met.');
+                }
+            } catch (error) {
+                console.error('Registration error:', error);
+                alert('An error occurred. Please try again.');
+            }
+        });
+
+        document.getElementById('verification-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const inputs = document.querySelectorAll('.code-input');
+            const code = Array.from(inputs).map(input => input.value).join('');
+
+            if (code.length !== 6) {
+                showVerificationError('Please enter all 6 digits');
+                return;
+            }
+
+            try {
+                const response = await fetch('/accounts/verify-email-code/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: JSON.stringify({ code }),
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    emailVerified = true;
+                    handlePostAuth();
+                } else {
+                    showVerificationError('Invalid code. Please try again.');
+                }
+            } catch (error) {
+                console.error('Verification error:', error);
+                showVerificationError('An error occurred. Please try again.');
+            }
+        });
+
+        function showVerificationError(message) {
+            const errorDiv = document.querySelector('.verification-error');
+            if (errorDiv) {
+                errorDiv.textContent = message;
+                errorDiv.classList.remove('hidden');
+                setTimeout(() => errorDiv.classList.add('hidden'), 4000);
+            }
+        }
+
+        async function resendVerificationCode(e) {
+            const button = e.target;
+            button.disabled = true;
+            try {
+                const response = await fetch('/accounts/resend-verification-code/', {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': getCookie('csrftoken') },
+                    credentials: 'include'
+                });
+                if (response.ok) {
+                    button.textContent = 'Code Sent!';
+                    setTimeout(() => {
+                        button.textContent = 'Resend code';
+                        button.disabled = false;
+                    }, 2500);
+                } else {
+                    alert('Failed to resend code. Please try again.');
+                    button.disabled = false;
+                }
+            } catch (error) {
+                console.error('Resend error:', error);
+                alert('An error occurred. Please try again.');
+                button.disabled = false;
+            }
+        }
+
+        function setupVerificationInputs() {
+            const inputs = document.querySelectorAll('.code-input');
+            inputs.forEach((input, index) => {
+                input.addEventListener('input', (e) => {
+                    const value = e.target.value.replace(/\D/g, '');
+                    e.target.value = value.slice(0, 1);
+                    if (value && index < inputs.length - 1) {
+                        inputs[index + 1].focus();
+                    }
+                });
+
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Backspace' && !e.target.value && index > 0) {
+                        inputs[index - 1].focus();
+                    }
+                });
+
+                input.addEventListener('paste', (e) => {
+                    e.preventDefault();
+                    const pasted = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '').slice(0, 6);
+                    pasted.split('').forEach((digit, i) => {
+                        if (inputs[i]) {
+                            inputs[i].value = digit;
+                        }
+                    });
+                    if (pasted.length > 0 && inputs[Math.min(pasted.length - 1, inputs.length - 1)]) {
+                        inputs[Math.min(pasted.length - 1, inputs.length - 1)].focus();
+                    }
+                });
+            });
+        }
+
+        async function checkExistingProjects() {
+            try {
+                const response = await fetch('/projects/api/create/', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: JSON.stringify({ check_existing: true })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.projects) {
+                        userProjects = data.projects;
+                    }
+                    return Boolean(data.has_existing_projects);
+                }
+            } catch (error) {
+                console.error('Error checking existing projects:', error);
+            }
+            return false;
+        }
+
+        async function createProjectAndRedirect() {
+            const req = requirementDisplay.value.trim() || userRequirements || heroInput.value.trim() || '';
+            userRequirements = req;
+            try {
+                const response = await fetch('/projects/api/create/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: JSON.stringify({
+                        name: 'First Project',
+                        description: 'Created from landing modal',
+                        requirements: req
+                    }),
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    redirectToChat(data.project_id);
+                } else {
+                    window.location.href = '/accounts/integrations/';
+                }
+            } catch (error) {
+                console.error('Error creating project:', error);
+                window.location.href = '/accounts/integrations/';
+            }
+        }
+
+        function redirectToChat(projectId) {
+            const requirements = requirementDisplay.value.trim() || userRequirements || heroInput.value.trim() || sessionStorage.getItem('pendingRequirements') || '';
+            const encodedRequirements = encodeURIComponent(requirements);
+            sessionStorage.removeItem('pendingRequirements');
+            window.location.href = `/chat/project/${projectId}/?requirements=${encodedRequirements}`;
+        }
+
+        async function handleLaunchProject(btn) {
+            const reqVal = requirementDisplay.value.trim();
+            if (reqVal) {
+                userRequirements = reqVal;
+                sessionStorage.setItem('pendingRequirements', reqVal);
+            }
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = 'Launching...';
+            }
+            try {
+                const hasProjects = await checkExistingProjects();
+                if (hasProjects && userProjects.length) {
+                    redirectToChat(userProjects[0].id);
+                    return;
+                }
+                await createProjectAndRedirect();
+            } catch (error) {
+                console.error('Launch error:', error);
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = '🚀 Launch Project';
+                }
+                alert('Unable to launch project. Please try again.');
+            }
+        }
+
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+
+        // Clipboard Logic
+        function copyCommands(btn) {
+            const commands = `# Clone the repository
+git clone https://github.com/lfg-hq/lfg.git
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run migrations
+python manage.py migrate
+
+# Start server
+uvicorn LFG.asgi:application --host 0.0.0.0 --port 8000`;
+            
+            navigator.clipboard.writeText(commands);
+            
+            const originalHTML = btn.innerHTML;
+            const textSpan = btn.querySelector('.btn-text');
+            const icon = btn.querySelector('i'); // Not directly accessible via querySelector on btn if lucide replaced it with svg, but let's assume structure
+
+            // Simple text replace
+            if(textSpan) textSpan.textContent = "Copied!";
+            
+            setTimeout(() => {
+                if(textSpan) textSpan.textContent = "Copy Commands";
+            }, 2000);
+        }
+    </script>
+</body>
+</html>

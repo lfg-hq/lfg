@@ -125,7 +125,8 @@ h1 {
   margin: 0;
 }
 
-.connection-status {
+/* Integration connection status badge - renamed to avoid conflict with chat.css .connection-status */
+.integration-status {
   background-color: #333;
   color: #a0a0a0;
   font-size: 0.75rem;
@@ -134,7 +135,7 @@ h1 {
   white-space: nowrap;
 }
 
-.connection-status.connected {
+.integration-status.connected {
   background-color: #10b981;
   color: white;
 }

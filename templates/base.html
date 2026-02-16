@@ -3,18 +3,34 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Projects - LFG 🚀🚀{% endblock %}</title>
+    <!-- Inline theme setter - MUST be first to prevent flash -->
+    <script>
+        (function() {
+            var theme = localStorage.getItem('lfg-theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
+    <title>{% block title %}Projects - LFG{% endblock %}</title>
+    <!-- Theme Variables (must load first) -->
+    <link rel="stylesheet" href="/static/css/theme-variables.css">
+    <!-- Core Styles -->
     <link rel="stylesheet" href="/static/css/common.css">
     <link rel="stylesheet" href="/static/css/projects.css">
     <link rel="stylesheet" href="/static/css/settings.css">
     <link rel="stylesheet" href="/static/css/auth.css">
     <link rel="stylesheet" href="/static/css/integrations.css">
+    <!-- Light Mode Overrides -->
+    <link rel="stylesheet" href="/static/css/light/light-mode.css?v=5">
+    <!-- External Resources -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="icon" type="image/x-icon" href="/static/images/favicon.ico">
-    <meta name="color-scheme" content="dark">
+    <meta name="color-scheme" content="dark light">
+    <!-- Theme Switcher (load early to prevent flash) -->
+    <script src="/static/js/theme-switcher.js?v=3"></script>
+    {% block extra_css %}{% endblock %}
 </head>
 <body>
     <div class="app-container">
@@ -34,6 +50,10 @@
                         </nav>
                     </div>
                     <div class="header-right">
+                        <!-- Theme Toggle Button -->
+                        <button id="theme-toggle" class="theme-toggle-btn" title="Toggle theme" data-theme-toggle>
+                            <i class="fas fa-sun"></i>
+                        </button>
                         <div class="user-menu">
                             {% if user.is_authenticated %}
                                 <div class="dropdown">

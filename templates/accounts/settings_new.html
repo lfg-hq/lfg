@@ -7,6 +7,37 @@
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/organizations.css' %}">
 <style>
+    /* Theme-aware CSS variables for settings page */
+    :root {
+        --settings-card-bg: #1a1a1a;
+        --settings-card-border: #2a2a2a;
+        --settings-content-bg: #1a1a1a;
+        --settings-text-primary: #e5e7eb;
+        --settings-text-secondary: #6b7280;
+        --settings-text-muted: #9ca3af;
+        --settings-badge-bg: #1f2937;
+        --settings-progress-bg: #0f0f0f;
+        --settings-button-secondary-bg: #374151;
+        --settings-card-icon-bg: #4b5563;
+        --settings-modal-bg: #1a1a1a;
+        --input-bg: rgba(10, 10, 15, 0.6);
+    }
+
+    [data-theme="light"] {
+        --settings-card-bg: #ffffff;
+        --settings-card-border: #e2e8f0;
+        --settings-content-bg: #f8fafc;
+        --settings-text-primary: #1e293b;
+        --settings-text-secondary: #64748b;
+        --settings-text-muted: #94a3b8;
+        --settings-badge-bg: #e2e8f0;
+        --settings-progress-bg: #e2e8f0;
+        --settings-button-secondary-bg: #e2e8f0;
+        --settings-card-icon-bg: #94a3b8;
+        --settings-modal-bg: #ffffff;
+        --input-bg: #ffffff;
+    }
+
     /* Subtle notification styling */
     .messages {
         position: fixed;
@@ -212,18 +243,18 @@
     
     .settings-nav {
         padding: 0;
-        background: #171717;
+        background: var(--settings-card-bg);
         border-radius: 8px;
         overflow: hidden;
         padding: 1rem 0;
     }
-    
+
     .settings-nav-item {
         display: flex;
         align-items: center;
         gap: 0.75rem;
         padding: 0.75rem 1.5rem;
-        color: rgba(255, 255, 255, 0.6);
+        color: var(--settings-text-secondary);
         text-decoration: none;
         transition: all 0.15s ease;
         font-size: 0.875rem;
@@ -232,10 +263,10 @@
         margin: 0.25rem 0.5rem;
         border-radius: 6px;
     }
-    
+
     .settings-nav-item:hover {
-        background: rgba(255, 255, 255, 0.05);
-        color: rgba(255, 255, 255, 0.9);
+        background: rgba(128, 128, 128, 0.1);
+        color: var(--settings-text-primary);
     }
     
     .settings-nav-item.active {
@@ -263,7 +294,7 @@
     .settings-content {
         flex: 1;
         overflow: hidden;
-        background: #1a1a1a;
+        background: var(--settings-content-bg);
         border-radius: 8px;
         position: relative;
         height: 100%;
@@ -332,15 +363,14 @@
     }
     
     .integration-item {
-        background: rgba(30, 30, 35, 0.5);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: var(--settings-card-bg);
+        border: 1px solid var(--settings-card-border);
         border-radius: 16px;
         padding: 1.75rem;
         transition: all 0.3s ease;
-        backdrop-filter: blur(10px);
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     }
-    
+
     .integration-item:hover {
         border-color: rgba(167, 139, 250, 0.5);
         background: rgba(167, 139, 250, 0.08);
@@ -389,7 +419,7 @@
     
     .integration-description {
         font-size: 0.875rem;
-        color: rgba(255, 255, 255, 0.6);
+        color: var(--settings-text-secondary);
         margin: 0.375rem 0 0 0;
     }
     
@@ -424,8 +454,8 @@
         width: 100%;
         padding: 0.625rem 1rem;
         padding-right: 3rem;
-        background: rgba(10, 10, 15, 0.6);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: var(--input-bg, #ffffff);
+        border: 1px solid var(--settings-card-border);
         border-radius: 10px;
         color: var(--text-color);
         font-size: 0.875rem;
@@ -753,6 +783,10 @@
                 <i class="fab fa-github"></i>
                 <span>GitHub</span>
             </a>
+            <a href="#claude-code" class="settings-nav-item" data-section="claude-code">
+                <i class="fas fa-terminal"></i>
+                <span>Claude Code</span>
+            </a>
             <a href="#prompts" class="settings-nav-item disabled" data-section="prompts">
                 <i class="fas fa-comment-dots"></i>
                 <span>Prompts</span>
@@ -770,16 +804,20 @@
             <style>
                 .llm-integrations-grid {
                     display: grid;
-                    grid-template-columns: 1fr;
-                    gap: 1.5rem;
-                    max-width: 600px;
-                    margin: 0 auto;
+                    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+                    gap: 1.25rem;
                     width: 100%;
+                }
+
+                @media (max-width: 768px) {
+                    .llm-integrations-grid {
+                        grid-template-columns: 1fr;
+                    }
                 }
                 
                 .llm-integration-card {
-                    background: #1a1a1a;
-                    border: 1px solid #2a2a2a;
+                    background: var(--settings-card-bg);
+                    border: 1px solid var(--settings-card-border);
                     border-radius: 12px;
                     padding: 24px;
                     transition: all 0.3s ease;
@@ -793,6 +831,77 @@
                 .llm-integration-card.connected {
                     border-color: rgba(34, 197, 94, 0.3);
                     background: rgba(34, 197, 94, 0.05);
+                }
+
+                .llm-integration-card.locked {
+                    border-color: rgba(167, 139, 250, 0.35);
+                    background: rgba(30, 18, 64, 0.5);
+                    box-shadow: inset 0 0 0 1px rgba(167, 139, 250, 0.1);
+                }
+
+                .llm-integration-card.locked .llm-integration-status {
+                    color: #a855f7;
+                }
+
+                .llm-integration-locked {
+                    margin-top: 16px;
+                    padding: 16px;
+                    border: 1px dashed rgba(167, 139, 250, 0.35);
+                    border-radius: 10px;
+                    background: rgba(76, 29, 149, 0.15);
+                    display: flex;
+                    flex-direction: column;
+                    gap: 12px;
+                }
+
+                .llm-integration-locked-message {
+                    display: flex;
+                    gap: 10px;
+                    align-items: flex-start;
+                    color: #c4b5fd;
+                    font-size: 14px;
+                    line-height: 1.5;
+                }
+
+                .llm-integration-locked-message i {
+                    font-size: 16px;
+                    color: #a855f7;
+                    margin-top: 2px;
+                }
+
+                .llm-integration-locked-actions {
+                    display: flex;
+                    gap: 12px;
+                    flex-wrap: wrap;
+                }
+
+                .llm-availability-note {
+                    margin-bottom: 24px;
+                    padding: 16px 18px;
+                    border-radius: 10px;
+                    background: var(--settings-card-bg);
+                    border: 1px solid var(--settings-card-border);
+                    display: flex;
+                    gap: 14px;
+                    align-items: flex-start;
+                    color: var(--settings-text-secondary);
+                    font-size: 14px;
+                    line-height: 1.6;
+                }
+
+                .llm-availability-note i {
+                    color: #8b5cf6;
+                    margin-top: 2px;
+                }
+
+                .inline-upgrade-link {
+                    color: #a855f7;
+                    font-weight: 600;
+                    text-decoration: none;
+                }
+
+                .inline-upgrade-link:hover {
+                    text-decoration: underline;
                 }
                 
                 .llm-integration-header {
@@ -818,6 +927,18 @@
                     font-size: 20px;
                     flex-shrink: 0;
                 }
+
+                .llm-logo-img {
+                    width: 32px;
+                    height: 32px;
+                    display: block;
+                }
+
+                .integration-icon img {
+                    width: 28px;
+                    height: 28px;
+                    display: block;
+                }
                 
                 .llm-integration-logo {
                     background: transparent !important;
@@ -834,10 +955,6 @@
                 
                 .llm-integration-logo.gemini {
                     color: #4285f4;
-                }
-                
-                .llm-integration-logo.grok {
-                    color: #ffffff;
                 }
                 
                 .llm-integration-details h3 {
@@ -867,6 +984,10 @@
                 
                 .llm-integration-status.disconnected {
                     color: #6b7280;
+                }
+
+                .llm-integration-status.locked {
+                    color: #a855f7;
                 }
                 
                 .llm-integration-actions {
@@ -925,7 +1046,7 @@
                 .llm-api-key-input-section {
                     margin-top: 16px;
                     padding-top: 16px;
-                    border-top: 1px solid #2a2a2a;
+                    border-top: 1px solid var(--settings-card-border);
                 }
                 
                 .llm-api-key-form {
@@ -966,587 +1087,588 @@
                     transform: translateY(-1px);
                     box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);
                 }
-            </style>
-            
-            <div class="llm-integrations-grid">
-                <!-- OpenAI Integration -->
-                <div class="llm-integration-card {% if openai_connected %}connected{% endif %}">
-                    <div class="llm-integration-header">
-                        <div class="llm-integration-info">
-                            <div class="llm-integration-logo openai">
-                                <svg fill="currentColor" width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142-.0852 4.783-2.7582a.7712.7712 0 0 0 .7806 0l5.8428 3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142.0852-4.7735 2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0593a4.4708 4.4708 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997L9.4041 13.5V10.4976z"/></svg>
-                            </div>
-                            <div class="llm-integration-details">
-                                <h3>OpenAI</h3>
-                                <p>GPT-4o, GPT-4o Mini, and other OpenAI models</p>
-                            </div>
-                        </div>
-                        <div class="llm-integration-status {% if openai_connected %}connected{% else %}disconnected{% endif %}">
-                            <i class="fas fa-{% if openai_connected %}check-circle{% else %}circle{% endif %}"></i>
-                            {% if openai_connected %}Connected{% else %}Not Connected{% endif %}
-                        </div>
-                    </div>
-                    
-                    <div class="llm-integration-actions">
-                        {% if not openai_connected %}
-                            <a href="https://platform.openai.com/api-keys" target="_blank" class="llm-integration-button secondary">
-                                <i class="fas fa-external-link-alt"></i>
-                                Get API Key
-                            </a>
-                        {% else %}
-                            <a href="https://platform.openai.com" target="_blank" class="llm-integration-button secondary">
-                                <i class="fas fa-external-link-alt"></i>
-                                OpenAI Dashboard
-                            </a>
-                            <form method="post" action="{% url 'accounts:disconnect_api_key' 'openai' %}" style="display: inline;">
-                                {% csrf_token %}
-                                <button type="submit" class="llm-integration-button danger" onclick="return confirm('Disconnect OpenAI integration?');">
-                                    <i class="fas fa-unlink"></i>
-                                    Disconnect
-                                </button>
-                            </form>
-                        {% endif %}
-                    </div>
-                    
-                    {% if not openai_connected %}
-                    <div class="llm-api-key-input-section">
-                        <form method="post" action="{% url 'accounts:save_api_key' 'openai' %}" class="llm-api-key-form">
-                            {% csrf_token %}
-                            <input type="password" name="api_key" placeholder="Enter your OpenAI API key (sk-...)" required>
-                            <button type="submit">
-                                <i class="fas fa-plug"></i>
-                                Connect
-                            </button>
-                        </form>
-                    </div>
-                    {% endif %}
+
+                .llm-byok-controls {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 18px 20px;
+                    border: 1px solid var(--settings-card-border);
+                    border-radius: 10px;
+                    background: var(--settings-card-bg);
+                    margin-bottom: 20px;
+                    gap: 16px;
+                }
+
+                .llm-byok-copy {
+                    color: var(--settings-text-secondary);
+                    font-size: 14px;
+                    line-height: 1.5;
+                }
+
+                .llm-byok-title {
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: var(--settings-text-primary);
+                    margin-bottom: 6px;
+                    text-transform: uppercase;
+                    letter-spacing: 0.08em;
+                }
+
+                .llm-keys-table {
+                    width: 100%;
+                    border: 1px solid var(--settings-card-border);
+                    border-radius: 12px;
+                    overflow: hidden;
+                    background: var(--settings-card-bg);
+                }
+
+                .llm-keys-row {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 18px 22px;
+                    border-bottom: 1px solid var(--settings-card-border);
+                    gap: 32px;
+                }
+
+                .llm-keys-row:last-child {
+                    border-bottom: none;
+                }
+
+                .llm-row-label {
+                    display: flex;
+                    align-items: center;
+                    gap: 16px;
+                    flex: 1;
+                }
+
+                .llm-row-value {
+                    flex: 1;
+                    display: flex;
+                    justify-content: flex-end;
+                    align-items: center;
+                }
+
+                .llm-row-title {
+                    font-size: 15px;
+                    font-weight: 600;
+                    color: var(--settings-text-primary);
+                    margin-bottom: 2px;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                }
+
+                .llm-row-subtitle {
+                    font-size: 12px;
+                    color: var(--settings-text-muted);
+                }
+
+                .llm-row-status {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    font-size: 13px;
+                    color: var(--settings-text-muted);
+                }
+
+                .llm-row-actions {
+                    width: 100%;
+                    display: flex;
+                    justify-content: flex-end;
+                    align-items: center;
+                    gap: 12px;
+                }
+
+                .llm-row-actions form {
+                    margin: 0;
+                }
+
+                .llm-row-input {
+                    flex: 1;
+                    max-width: 440px;
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                }
+
+                .llm-row-input a.mini-link {
+                    font-size: 12px;
+                    color: #a5b4fc;
+                    text-decoration: none;
+                }
+
+                .llm-row-input input {
+                    flex: 1;
+                    padding: 10px 12px;
+                    background: var(--input-bg, #ffffff);
+                    border: 1px solid var(--settings-card-border);
+                    border-radius: 6px;
+                    color: var(--settings-text-primary);
+                    font-size: 13px;
+                    font-family: monospace;
+                }
+
+                .llm-row-input input:disabled {
+                    opacity: 0.65;
+                    cursor: default;
+                }
+
+                .integration-help {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    width: 20px;
+                    height: 20px;
+                    border-radius: 50%;
+                    border: 1px solid rgba(148, 163, 184, 0.45);
+                    color: #cbd5f5;
+                    font-size: 11px;
+                    text-decoration: none;
+                    transition: all 0.2s ease;
+                }
+
+                .integration-help:hover {
+                    border-color: rgba(167, 139, 250, 0.8);
+                    color: #f4f4ff;
+                }
+
+                .connect-arrow {
+                    width: 32px;
+                    height: 32px;
+                    padding: 0 !important;
+                    border-radius: 20%;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 0;
+                }
+
+                .connect-arrow i {
+                    margin: 0;
+                    font-size: 14px;
+                }
+
+                .llm-integration-button.compact {
+                    width: 40px;
+                    height: 40px;
+                    padding: 0;
+                    border-radius: 50%;
+                    justify-content: center;
+                    gap: 0;
+                }
+
+                .llm-integration-button.compact i {
+                    margin: 0;
+                }
+
+                .llm-keys-table.byok-disabled .llm-row-actions {
+                    opacity: 0.35;
+                    pointer-events: none;
+                }
+
+                .llm-row-disabled-note {
+                    font-size: 12px;
+                    color: #94a3b8;
+                }
+
+                .hidden {
+                    display: none !important;
+                }
+
+                .openai-mode-card {
+                    margin-top: 18px;
+                    padding: 18px 20px;
+                    border-radius: 10px;
+                    border: 1px solid rgba(255, 255, 255, 0.08);
+                    background: rgba(15, 23, 42, 0.65);
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 16px;
+                }
+
+                .openai-mode-label {
+                    display: block;
+                    text-transform: uppercase;
+                    font-size: 12px;
+                    letter-spacing: 0.08em;
+                    color: #a78bfa;
+                    margin-bottom: 6px;
+                }
+
+                .openai-mode-description {
+                    margin: 0;
+                    color: #cbd5f5;
+                    font-size: 14px;
+                    line-height: 1.5;
+                }
+
+                .openai-mode-toggle {
+                    display: flex;
+                    align-items: center;
+                    justify-content: flex-end;
+                }
+
+                .llm-platform-note {
+                    margin-top: 18px;
+                    padding: 16px;
+                    border-radius: 10px;
+                    background: rgba(15, 118, 110, 0.12);
+                    border: 1px solid rgba(45, 212, 191, 0.35);
+                    color: #99f6e4;
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    font-size: 14px;
+                }
+        </style>
+        
+        <div class="llm-availability-note">
+            <i class="fas fa-info-circle"></i>
+            <div>
+                <div style="color: var(--settings-text-primary); font-weight: 600; margin-bottom: 6px;">
+                    {% if has_paid_subscription %}Paid plan active{% else %}Upgrade for more models{% endif %}
                 </div>
-                
-                <!-- Anthropic Integration -->
-                <div class="llm-integration-card {% if anthropic_connected %}connected{% endif %}">
-                    <div class="llm-integration-header">
-                        <div class="llm-integration-info">
-                            <div class="llm-integration-logo anthropic">
-                                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L15.09 8.26L24 9L15.09 9.74L12 18L8.91 9.74L0 9L8.91 8.26L12 2Z"/></svg>
-                            </div>
-                            <div class="llm-integration-details">
-                                <h3>Anthropic</h3>
-                                <p>Claude 3.5 Sonnet, Claude 3 Haiku, and other Claude models</p>
-                            </div>
-                        </div>
-                        <div class="llm-integration-status {% if anthropic_connected %}connected{% else %}disconnected{% endif %}">
-                            <i class="fas fa-{% if anthropic_connected %}check-circle{% else %}circle{% endif %}"></i>
-                            {% if anthropic_connected %}Connected{% else %}Not Connected{% endif %}
-                        </div>
-                    </div>
-                    
-                    <div class="llm-integration-actions">
-                        {% if not anthropic_connected %}
-                            <a href="https://console.anthropic.com/settings/keys" target="_blank" class="llm-integration-button secondary">
-                                <i class="fas fa-external-link-alt"></i>
-                                Get API Key
-                            </a>
-                        {% else %}
-                            <a href="https://console.anthropic.com" target="_blank" class="llm-integration-button secondary">
-                                <i class="fas fa-external-link-alt"></i>
-                                Anthropic Console
-                            </a>
-                            <form method="post" action="{% url 'accounts:disconnect_api_key' 'anthropic' %}" style="display: inline;">
-                                {% csrf_token %}
-                                <button type="submit" class="llm-integration-button danger" onclick="return confirm('Disconnect Anthropic integration?');">
-                                    <i class="fas fa-unlink"></i>
-                                    Disconnect
-                                </button>
-                            </form>
-                        {% endif %}
-                    </div>
-                    
-                    {% if not anthropic_connected %}
-                    <div class="llm-api-key-input-section">
-                        <form method="post" action="{% url 'accounts:save_api_key' 'anthropic' %}" class="llm-api-key-form">
-                            {% csrf_token %}
-                            <input type="password" name="api_key" placeholder="Enter your Anthropic API key (sk-ant-...)" required>
-                            <button type="submit">
-                                <i class="fas fa-plug"></i>
-                                Connect
-                            </button>
-                        </form>
-                    </div>
-                    {% endif %}
-                </div>
-                
-                <!-- Gemini Integration -->
-                <div class="llm-integration-card {% if gemini_connected %}connected{% endif %}">
-                    <div class="llm-integration-header">
-                        <div class="llm-integration-info">
-                            <div class="llm-integration-logo gemini">
-                                <img src="{% static 'images/gemini-logo.png' %}" alt="Gemini" width="24" height="24" style="border-radius: 4px;">
-                            </div>
-                            <div class="llm-integration-details">
-                                <h3>Google Gemini</h3>
-                                <p>Gemini Pro, Gemini Flash, and other Google AI models</p>
-                            </div>
-                        </div>
-                        <div class="llm-integration-status {% if gemini_connected %}connected{% else %}disconnected{% endif %}">
-                            <i class="fas fa-{% if gemini_connected %}check-circle{% else %}circle{% endif %}"></i>
-                            {% if gemini_connected %}Connected{% else %}Not Connected{% endif %}
-                        </div>
-                    </div>
-                    
-                    <div class="llm-integration-actions">
-                        {% if not gemini_connected %}
-                            <a href="https://makersuite.google.com/app/apikey" target="_blank" class="llm-integration-button secondary">
-                                <i class="fas fa-external-link-alt"></i>
-                                Get API Key
-                            </a>
-                        {% else %}
-                            <a href="https://makersuite.google.com" target="_blank" class="llm-integration-button secondary">
-                                <i class="fas fa-external-link-alt"></i>
-                                Google AI Studio
-                            </a>
-                            <form method="post" action="{% url 'accounts:disconnect_api_key' 'gemini' %}" style="display: inline;">
-                                {% csrf_token %}
-                                <button type="submit" class="llm-integration-button danger" onclick="return confirm('Disconnect Gemini integration?');">
-                                    <i class="fas fa-unlink"></i>
-                                    Disconnect
-                                </button>
-                            </form>
-                        {% endif %}
-                    </div>
-                    
-                    {% if not gemini_connected %}
-                    <div class="llm-api-key-input-section">
-                        <form method="post" action="{% url 'accounts:save_api_key' 'gemini' %}" class="llm-api-key-form">
-                            {% csrf_token %}
-                            <input type="password" name="api_key" placeholder="Enter your Gemini API key" required>
-                            <button type="submit">
-                                <i class="fas fa-plug"></i>
-                                Connect
-                            </button>
-                        </form>
-                    </div>
-                    {% endif %}
-                </div>
-                
-                <!-- Grok Integration -->
-                <div class="llm-integration-card {% if grok_connected %}connected{% endif %}">
-                    <div class="llm-integration-header">
-                        <div class="llm-integration-info">
-                            <div class="llm-integration-logo grok">
-                                <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
-                            </div>
-                            <div class="llm-integration-details">
-                                <h3>Grok (xAI)</h3>
-                                <p>Grok and other xAI models for advanced reasoning</p>
-                            </div>
-                        </div>
-                        <div class="llm-integration-status {% if grok_connected %}connected{% else %}disconnected{% endif %}">
-                            <i class="fas fa-{% if grok_connected %}check-circle{% else %}circle{% endif %}"></i>
-                            {% if grok_connected %}Connected{% else %}Not Connected{% endif %}
-                        </div>
-                    </div>
-                    
-                    <div class="llm-integration-actions">
-                        {% if not grok_connected %}
-                            <a href="https://console.x.ai" target="_blank" class="llm-integration-button secondary">
-                                <i class="fas fa-external-link-alt"></i>
-                                Get API Key
-                            </a>
-                        {% else %}
-                            <a href="https://console.x.ai" target="_blank" class="llm-integration-button secondary">
-                                <i class="fas fa-external-link-alt"></i>
-                                xAI Console
-                            </a>
-                            <form method="post" action="{% url 'accounts:disconnect_api_key' 'grok' %}" style="display: inline;">
-                                {% csrf_token %}
-                                <button type="submit" class="llm-integration-button danger" onclick="return confirm('Disconnect Grok integration?');">
-                                    <i class="fas fa-unlink"></i>
-                                    Disconnect
-                                </button>
-                            </form>
-                        {% endif %}
-                    </div>
-                    
-                    {% if not grok_connected %}
-                    <div class="llm-api-key-input-section">
-                        <form method="post" action="{% url 'accounts:save_api_key' 'grok' %}" class="llm-api-key-form">
-                            {% csrf_token %}
-                            <input type="password" name="api_key" placeholder="Enter your xAI API key" required>
-                            <button type="submit">
-                                <i class="fas fa-plug"></i>
-                                Connect
-                            </button>
-                        </form>
-                    </div>
+                <div>
+                    {% if has_paid_subscription %}
+                        GPT-5 access is included with your subscription. Add your Anthropic or Google API keys below to use Claude and Gemini with your own credits.
+                    {% else %}
+                        GPT-5-mini is available with the platform key. Upgrade to <a href="#subscriptions" class="inline-upgrade-link">Pro Monthly</a> to unlock GPT-5 and bring your own Anthropic &amp; Google keys.
                     {% endif %}
                 </div>
             </div>
         </div>
-        
-        <!-- Project Management Section -->
+
+        {% if has_paid_subscription %}
+        <div class="llm-byok-controls">
+            <div>
+                <div class="llm-byok-title">Bring your own keys</div>
+                <div class="llm-byok-copy">
+                    {% if byok_enabled %}
+                        Your OpenAI, Anthropic, and Google keys will be used where available.
+                    {% else %}
+                        Using LFG platform credits only. Enable the switch to add personal keys.
+                    {% endif %}
+                </div>
+            </div>
+            <form id="byok-toggle-form" method="post" action="{% url 'accounts:toggle_llm_byok' %}">
+                {% csrf_token %}
+                <input type="hidden" name="enable" value="{{ byok_enabled|yesno:'1,0' }}">
+                <label class="toggle-switch">
+                    <input type="checkbox" id="byok-toggle" {% if byok_enabled %}checked{% endif %}>
+                    <span class="toggle-slider"></span>
+                </label>
+            </form>
+        </div>
+        {% endif %}
+
+            <div class="llm-keys-table {% if not has_paid_subscription or not byok_enabled %}byok-disabled{% endif %}" id="llm-keys-table">
+            <!-- OpenAI Row -->
+            <div class="llm-keys-row">
+                <div class="llm-row-label">
+                    <div class="llm-integration-logo openai">
+                        <svg fill="currentColor" width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142-.0852 4.783-2.7582a.7712.7712 0 0 0 .7806 0l5.8428 3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142.0852-4.7735 2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0593a4.4708 4.4708 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997L9.4041 13.5V10.4976z"/></svg>
+                    </div>
+                    <div>
+                        <div class="llm-row-title">
+                            OpenAI
+                            <a href="https://platform.openai.com/api-keys" target="_blank" class="integration-help" title="How to get an OpenAI key">?</a>
+                        </div>
+                        <div class="llm-row-subtitle">{% if has_paid_subscription %}GPT-5 access with platform credits{% else %}GPT-5-mini with platform credits{% endif %}</div>
+                    </div>
+                </div>
+                <div class="llm-row-value">
+                    <div class="llm-row-actions">
+                        {% if has_paid_subscription %}
+                            {% if openai_connected %}
+                                <form method="post" action="{% url 'accounts:disconnect_api_key' 'openai' %}" class="llm-row-input" id="openai-disconnect-form">
+                                    {% csrf_token %}
+                                    <input type="password" value="••••••••••••" disabled>
+                                    <button type="submit" class="llm-integration-button danger connect-arrow" aria-label="Disconnect OpenAI" title="Disconnect OpenAI">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </form>
+                            {% else %}
+                                <form method="post" action="{% url 'accounts:save_api_key' 'openai' %}" class="llm-row-input">
+                                    {% csrf_token %}
+                                    <input type="password" name="api_key" placeholder="Enter OpenAI key (sk-...)" required>
+                                    <button type="submit" class="llm-integration-button primary connect-arrow" aria-label="Connect OpenAI" title="Connect OpenAI">
+                                        <i class="fas fa-arrow-right"></i>
+                                    </button>
+                                </form>
+                            {% endif %}
+                        {% else %}
+                            <div class="llm-row-disabled-note">Upgrade to Pro to bring your own keys.</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Anthropic Row -->
+            <div class="llm-keys-row">
+                <div class="llm-row-label">
+                    <div class="llm-integration-logo anthropic">
+                        <img src="{% static 'images/anthropic-logo.png' %}" alt="Anthropic" class="llm-logo-img">
+                    </div>
+                    <div>
+                        <div class="llm-row-title">
+                            Anthropic
+                            <a href="https://console.anthropic.com/settings/keys" target="_blank" class="integration-help" title="How to get an Anthropic key">?</a>
+                        </div>
+                        <div class="llm-row-subtitle">Bring your Claude API key</div>
+                    </div>
+                </div>
+                <div class="llm-row-value">
+                    <div class="llm-row-actions">
+                        {% if has_paid_subscription %}
+                            {% if anthropic_connected %}
+                                <form method="post" action="{% url 'accounts:disconnect_api_key' 'anthropic' %}" class="llm-row-input">
+                                    {% csrf_token %}
+                                    <input type="password" value="••••••••••••" disabled>
+                                    <button type="submit" class="llm-integration-button danger connect-arrow" aria-label="Disconnect Anthropic" title="Disconnect Anthropic">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </form>
+                            {% else %}
+                                <form method="post" action="{% url 'accounts:save_api_key' 'anthropic' %}" class="llm-row-input">
+                                    {% csrf_token %}
+                                    <input type="password" name="api_key" placeholder="Enter Anthropic API key" required>
+                                    <button type="submit" class="llm-integration-button primary connect-arrow" aria-label="Connect Anthropic" title="Connect Anthropic">
+                                        <i class="fas fa-arrow-right"></i>
+                                    </button>
+                                </form>
+                            {% endif %}
+                        {% else %}
+                            <div class="llm-row-disabled-note">Upgrade to connect your Anthropic key.</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Google Gemini Row -->
+            <div class="llm-keys-row">
+                <div class="llm-row-label">
+                    <div class="llm-integration-logo gemini">
+                        <img src="{% static 'images/gemini-logo.png' %}" alt="Google Gemini" class="llm-logo-img">
+                    </div>
+                    <div>
+                        <div class="llm-row-title">
+                            Google Gemini
+                            <a href="https://makersuite.google.com/app/apikey" target="_blank" class="integration-help" title="How to get a Gemini key">?</a>
+                        </div>
+                        <div class="llm-row-subtitle">Bring your Gemini API key</div>
+                    </div>
+                </div>
+                <div class="llm-row-value">
+                    <div class="llm-row-actions">
+                        {% if has_paid_subscription %}
+                            {% if google_connected %}
+                                <form method="post" action="{% url 'accounts:disconnect_api_key' 'google' %}" class="llm-row-input" id="google-disconnect-form">
+                                    {% csrf_token %}
+                                    <input type="password" value="••••••••••••" disabled>
+                                    <button type="submit" class="llm-integration-button danger connect-arrow" aria-label="Disconnect Gemini" title="Disconnect Gemini">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </form>
+                            {% else %}
+                                <form method="post" action="{% url 'accounts:save_api_key' 'google' %}" class="llm-row-input">
+                                    {% csrf_token %}
+                                    <input type="password" name="api_key" placeholder="Enter Gemini API key" required>
+                                    <button type="submit" class="llm-integration-button primary connect-arrow" aria-label="Connect Gemini" title="Connect Gemini">
+                                        <i class="fas fa-arrow-right"></i>
+                                    </button>
+                                </form>
+                            {% endif %}
+                        {% else %}
+                            <div class="llm-row-disabled-note">Upgrade to connect Google Gemini.</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% if has_paid_subscription %}
+        <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                const toggle = document.getElementById('byok-toggle');
+                const form = document.getElementById('byok-toggle-form');
+                const table = document.getElementById('llm-keys-table');
+                if (!toggle || !form || !table) return;
+                const hiddenInput = form.querySelector('input[name="enable"]');
+
+                const setTableState = (enabled) => {
+                    table.classList.toggle('byok-disabled', !enabled);
+                };
+
+                setTableState(toggle.checked);
+
+                toggle.addEventListener('change', function() {
+                    const enabled = toggle.checked;
+                    if (!enabled) {
+                        const confirmed = confirm('Disabling BYOK will remove your saved OpenAI, Anthropic, and Google keys.');
+                        if (!confirmed) {
+                            toggle.checked = true;
+                            return;
+                        }
+                    }
+                    if (hiddenInput) {
+                        hiddenInput.value = enabled ? '1' : '0';
+                    }
+                    setTableState(enabled);
+                    form.submit();
+                });
+            });
+        </script>
+        {% endif %}
+        </div>
+
+<!-- Project Management Section -->
         <div id="project-management-new" class="settings-section">
             <h2 class="section-heading">Project Management Integrations</h2>
-            
+
             <style>
-                .integrations-grid {
-                    display: grid;
-                    grid-template-columns: 1fr;
-                    gap: 1.5rem;
-                    max-width: 600px;
-                    margin: 0 auto;
-                    width: 100%;
+                .project-table {
+                    margin-top: 20px;
                 }
-                
-                .integration-card {
-                    background: #1a1a1a;
-                    border: 1px solid #2a2a2a;
+
+                .project-table .llm-row-label {
+                    flex: 1.15;
+                }
+
+                .project-table .llm-row-actions {
+                    align-items: flex-start;
+                }
+
+                .project-table .integration-logo {
+                    width: 42px;
+                    height: 42px;
                     border-radius: 12px;
-                    padding: 24px;
-                    transition: all 0.3s ease;
-                }
-                
-                .integration-card:hover:not(.disabled) {
-                    border-color: rgba(167, 139, 250, 0.3);
-                    background: rgba(167, 139, 250, 0.05);
-                }
-                
-                .integration-card.disabled {
-                    opacity: 0.5;
-                    cursor: not-allowed;
-                    background: #141414;
-                }
-                
-                .integration-card.connected {
-                    border-color: rgba(34, 197, 94, 0.3);
-                    background: rgba(34, 197, 94, 0.05);
-                }
-                
-                .integration-header {
-                    display: flex;
-                    align-items: center;
-                    justify-content: space-between;
-                    margin-bottom: 16px;
-                }
-                
-                .integration-info {
-                    display: flex;
-                    align-items: center;
-                    gap: 12px;
-                }
-                
-                .integration-logo {
-                    width: 40px;
-                    height: 40px;
-                    border-radius: 8px;
                     display: flex;
                     align-items: center;
                     justify-content: center;
                     font-size: 20px;
-                    flex-shrink: 0;
-                }
-                
-                .integration-logo.linear {
-                    background: linear-gradient(135deg, #5e6ad2, #4c63d2);
-                    color: white;
-                }
-                
-                .integration-logo.notion {
-                    background: #000;
-                    color: white;
-                }
-                
-                .integration-logo.jira {
-                    background: #ffffff;
-                    color: #2684FF;
-                }
-                
-                .integration-details h3 {
-                    margin: 0 0 4px 0;
-                    font-size: 16px;
-                    font-weight: 600;
-                    color: #e5e7eb;
-                }
-                
-                .integration-details p {
-                    margin: 0;
-                    font-size: 14px;
-                    color: #9ca3af;
-                }
-                
-                .integration-status {
-                    display: flex;
-                    align-items: center;
-                    gap: 8px;
-                    font-size: 14px;
-                    font-weight: 500;
-                }
-                
-                .integration-status.connected {
-                    color: #22c55e;
-                }
-                
-                .integration-status.disconnected {
-                    color: #6b7280;
-                }
-                
-                .integration-status.disabled {
-                    color: #4b5563;
-                }
-                
-                .integration-actions {
-                    margin-top: 16px;
-                    display: flex;
-                    gap: 12px;
-                    align-items: center;
-                }
-                
-                .integration-button {
-                    padding: 8px 16px;
-                    border: none;
-                    border-radius: 8px;
-                    font-size: 14px;
-                    font-weight: 500;
-                    cursor: pointer;
-                    transition: all 0.2s ease;
-                    text-decoration: none;
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 6px;
-                }
-                
-                .integration-button.primary {
-                    background: linear-gradient(135deg, #8B5CF6, #A855F7);
-                    color: white;
-                }
-                
-                .integration-button.primary:hover {
-                    transform: translateY(-1px);
-                    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);
-                }
-                
-                .integration-button.secondary {
                     background: transparent;
-                    color: #9ca3af;
-                    border: 1px solid #374151;
                 }
                 
-                .integration-button.secondary:hover {
-                    background: rgba(255, 255, 255, 0.05);
-                    border-color: #4b5563;
+                .project-coming-soon {
+                    opacity: 0.75;
                 }
-                
-                .integration-button.danger {
-                    background: transparent;
-                    color: #ef4444;
-                    border: 1px solid rgba(239, 68, 68, 0.3);
-                }
-                
-                .integration-button.danger:hover {
-                    background: rgba(239, 68, 68, 0.1);
-                    border-color: rgba(239, 68, 68, 0.5);
-                }
-                
-                .integration-button:disabled {
-                    opacity: 0.5;
-                    cursor: not-allowed;
-                    transform: none !important;
-                }
-                
-                .api-key-input-section {
-                    margin-top: 16px;
-                    padding-top: 16px;
-                    border-top: 1px solid #2a2a2a;
-                }
-                
-                .api-key-form {
-                    display: flex;
-                    gap: 12px;
-                    margin-top: 12px;
-                }
-                
-                .api-key-form input {
-                    flex: 1;
-                    padding: 10px 14px;
-                    background: rgba(10, 10, 15, 0.6);
-                    border: 1px solid rgba(255, 255, 255, 0.1);
-                    border-radius: 8px;
-                    color: #e5e7eb;
-                    font-size: 14px;
-                    font-family: monospace;
-                }
-                
-                .api-key-form input:focus {
-                    outline: none;
-                    border-color: #8B5CF6;
-                }
-                
-                .api-key-form button {
-                    padding: 10px 16px;
-                    background: linear-gradient(135deg, #8B5CF6, #A855F7);
-                    color: white;
-                    border: none;
-                    border-radius: 8px;
-                    font-weight: 500;
-                    cursor: pointer;
-                    transition: all 0.2s ease;
-                    font-size: 14px;
-                }
-                
-                .api-key-form button:hover {
-                    transform: translateY(-1px);
-                    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);
-                }
-                
-                .coming-soon-badge {
-                    background: rgba(75, 85, 99, 0.3);
-                    color: #9ca3af;
-                    padding: 4px 8px;
-                    border-radius: 12px;
+
+                .coming-soon-chip {
+                    background: rgba(148, 163, 184, 0.2);
+                    color: #cbd5f5;
+                    padding: 4px 10px;
+                    border-radius: 999px;
                     font-size: 12px;
-                    font-weight: 500;
+                    letter-spacing: 0.08em;
                     text-transform: uppercase;
-                    letter-spacing: 0.5px;
                 }
             </style>
-            
-            <div class="integrations-grid">
-                <!-- Linear Integration -->
-                <div class="integration-card {% if linear_connected %}connected{% endif %}">
-                    <div class="integration-header">
-                        <div class="integration-info">
-                            <div class="integration-logo linear">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" width="24" height="24" viewBox="0 0 100 100"><path fill="currentColor" d="M1.22541 61.5228c-.2225-.9485.90748-1.5459 1.59638-.857L39.3342 97.1782c.6889.6889.0915 1.8189-.857 1.5964C20.0515 94.4522 5.54779 79.9485 1.22541 61.5228ZM.00189135 46.8891c-.01764375.2833.08887215.5599.28957165.7606L52.3503 99.7085c.2007.2007.4773.3075.7606.2896 2.3692-.1476 4.6938-.46 6.9624-.9259.7645-.157 1.0301-1.0963.4782-1.6481L2.57595 39.4485c-.55186-.5519-1.49117-.2863-1.648174.4782-.465915 2.2686-.77832 4.5932-.92588465 6.9624ZM4.21093 29.7054c-.16649.3738-.08169.8106.20765 1.1l64.77602 64.776c.2894.2894.7262.3742 1.1.2077 1.7861-.7956 3.5171-1.6927 5.1855-2.684.5521-.328.6373-1.0867.1832-1.5407L8.43566 24.3367c-.45409-.4541-1.21271-.3689-1.54074.1832-.99132 1.6684-1.88843 3.3994-2.68399 5.1855ZM12.6587 18.074c-.3701-.3701-.393-.9637-.0443-1.3541C21.7795 6.45931 35.1114 0 49.9519 0 77.5927 0 100 22.4073 100 50.0481c0 14.8405-6.4593 28.1724-16.7199 37.3375-.3903.3487-.984.3258-1.3542-.0443L12.6587 18.074Z"/></svg>
-                            </div>
-                            <div class="integration-details">
-                                <h3>Linear</h3>
-                                <p>Issue tracking and project management</p>
-                            </div>
-                        </div>
-                        <div class="integration-status {% if linear_connected %}connected{% else %}disconnected{% endif %}">
-                            <i class="fas fa-{% if linear_connected %}check-circle{% else %}circle{% endif %}"></i>
-                            {% if linear_connected %}Connected{% else %}Not Connected{% endif %}
-                        </div>
-                    </div>
-                    
-                    <div class="integration-actions">
-                        {% if not linear_connected %}
-                            <a href="https://linear.app/settings/api" target="_blank" class="integration-button secondary">
-                                <i class="fas fa-external-link-alt"></i>
-                                Get API Key
-                            </a>
-                        {% else %}
-                            <a href="https://linear.app" target="_blank" class="integration-button secondary">
-                                <i class="fas fa-external-link-alt"></i>
-                                Open Linear
-                            </a>
-                            <form method="post" action="{% url 'accounts:disconnect_api_key' 'linear' %}" style="display: inline;">
-                                {% csrf_token %}
-                                <button type="submit" class="integration-button danger" onclick="return confirm('Disconnect Linear integration?');">
-                                    <i class="fas fa-unlink"></i>
-                                    Disconnect
-                                </button>
-                            </form>
-                        {% endif %}
-                    </div>
-                    
-                    {% if not linear_connected %}
-                    <div class="api-key-input-section">
-                        <form method="post" action="{% url 'accounts:save_api_key' 'linear' %}" class="api-key-form">
-                            {% csrf_token %}
-                            <input type="password" name="api_key" placeholder="Enter your Linear API key" required>
-                            <button type="submit">
-                                <i class="fas fa-plug"></i>
-                                Connect
-                            </button>
-                        </form>
-                    </div>
-                    {% endif %}
-                </div>
-                
-                <!-- Notion Integration -->
-                <div class="integration-card {% if notion_connected %}connected{% endif %}">
-                    <div class="integration-header">
-                        <div class="integration-info">
-                            <div class="integration-logo notion">
-                                <svg width="24" height="24" viewBox="0 0 29 30" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1.81 1.294L18.446.068c2.043-.175 2.568-.057 3.852.875l5.311 3.733c.877.642 1.169.817 1.169 1.516v20.473c0 1.283-.468 2.042-2.102 2.158L7.357 29.99c-1.228.058-1.811-.117-2.454-.934l-3.91-5.074C.29 23.048 0 22.349 0 21.532V3.334c0-1.049.468-1.924 1.81-2.04z" fill="#fff"></path><path fill-rule="evenodd" clip-rule="evenodd" d="M18.447.068L1.808 1.294C.468 1.41 0 2.285 0 3.334v18.198c0 .817.291 1.516.992 2.45l3.911 5.074c.643.817 1.226.992 2.453.934l19.321-1.167c1.634-.116 2.102-.875 2.102-2.158V6.192c0-.663-.263-.854-1.037-1.42l-.132-.096L22.3.943c-1.285-.932-1.81-1.05-3.854-.875zM7.793 5.857c-1.577.106-1.936.13-2.831-.597L2.685 3.452c-.233-.234-.116-.526.467-.584l15.995-1.166c1.342-.117 2.043.35 2.568.758l2.744 1.983c.117.059.408.408.058.408l-16.52.992-.203.014zM5.954 26.49V9.11c0-.759.234-1.109.934-1.168l18.971-1.108c.643-.058.935.35.935 1.108v17.264c0 .759-.117 1.401-1.168 1.459l-18.154 1.05c-1.05.058-1.518-.291-1.518-1.225zm17.922-16.448c.116.525 0 1.05-.527 1.11l-.874.173v12.832c-.76.408-1.46.641-2.044.641-.934 0-1.168-.292-1.868-1.166l-5.721-8.982v8.69l1.81.409s0 1.05-1.46 1.05l-4.027.233c-.117-.234 0-.817.408-.933l1.051-.291v-11.49L9.165 12.2c-.117-.525.174-1.283.992-1.341l4.32-.292 5.954 9.1v-8.05l-1.518-.174c-.116-.643.35-1.109.934-1.167l4.029-.234z" fill="#000"></path></svg>
-                            </div>
-                            <div class="integration-details">
-                                <h3>Notion</h3>
-                                <p>Documentation and knowledge management</p>
-                            </div>
-                        </div>
-                        <div class="integration-status {% if notion_connected %}connected{% else %}disconnected{% endif %}">
-                            <i class="fas fa-{% if notion_connected %}check-circle{% else %}circle{% endif %}"></i>
-                            {% if notion_connected %}Connected{% else %}Not Connected{% endif %}
-                        </div>
-                    </div>
 
-                    <div class="integration-actions">
-                        {% if not notion_connected %}
-                            <a href="https://www.notion.so/my-integrations" target="_blank" class="integration-button secondary">
-                                <i class="fas fa-external-link-alt"></i>
-                                Create Integration
-                            </a>
-                        {% else %}
-                            <a href="https://www.notion.so" target="_blank" class="integration-button secondary">
-                                <i class="fas fa-external-link-alt"></i>
-                                Open Notion
-                            </a>
-                            <form method="post" action="{% url 'accounts:disconnect_api_key' 'notion' %}" style="display: inline;">
-                                {% csrf_token %}
-                                <button type="submit" class="integration-button danger" onclick="return confirm('Disconnect Notion integration?');">
-                                    <i class="fas fa-unlink"></i>
-                                    Disconnect
-                                </button>
-                            </form>
-                        {% endif %}
+            <div class="llm-keys-table project-table">
+                <div class="llm-keys-row">
+                    <div class="llm-row-label">
+                        <div class="integration-logo linear">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" width="24" height="24" viewBox="0 0 100 100"><path fill="currentColor" d="M1.22541 61.5228c-.2225-.9485.90748-1.5459 1.59638-.857L39.3342 97.1782c.6889.6889.0915 1.8189-.857 1.5964C20.0515 94.4522 5.54779 79.9485 1.22541 61.5228ZM.00189135 46.8891c-.01764375.2833.08887215.5599.28957165.7606L52.3503 99.7085c.2007.2007.4773.3075.7606.2896 2.3692-.1476 4.6938-.46 6.9624-.9259.7645-.157 1.0301-1.0963.4782-1.6481L2.57595 39.4485c-.55186-.5519-1.49117-.2863-1.648174.4782-.465915 2.2686-.77832 4.5932-.92588465 6.9624ZM4.21093 29.7054c-.16649.3738-.08169.8106.20765 1.1l64.77602 64.776c.2894.2894.7262.3742 1.1.2077 1.7861-.7956 3.5171-1.6927 5.1855-2.684.5521-.328.6373-1.0867.1832-1.5407L8.43566 24.3367c-.45409-.4541-1.21271-.3689-1.54074.1832-.99132 1.6684-1.88843 3.3994-2.68399 5.1855ZM12.6587 18.074c-.3701-.3701-.393-.9637-.0443-1.3541C21.7795 6.45931 35.1114 0 49.9519 0 77.5927 0 100 22.4073 100 50.0481c0 14.8405-6.4593 28.1724-16.7199 37.3375-.3903.3487-.984.3258-1.3542-.0443L12.6587 18.074Z"/></svg>
+                        </div>
+                        <div>
+                            <div class="llm-row-title">
+                                Linear
+                                <a href="https://linear.app/settings/api" target="_blank" class="integration-help" title="How to get your Linear API key">?</a>
+                            </div>
+                            <div class="llm-row-subtitle">Issue tracking and project management</div>
+                        </div>
                     </div>
-
-                    {% if not notion_connected %}
-                    <div class="api-key-input-section">
-                        <form method="post" action="{% url 'accounts:save_api_key' 'notion' %}" class="api-key-form">
-                            {% csrf_token %}
-                            <input type="password" name="api_key" placeholder="Enter your Notion integration token" required>
-                            <button type="submit">
-                                <i class="fas fa-plug"></i>
-                                Connect
-                            </button>
-                        </form>
+                    <div class="llm-row-value">
+                        <div class="llm-row-actions">
+                            {% if linear_connected %}
+                                <div class="llm-row-input">
+                                    <a href="https://linear.app" target="_blank" class="llm-integration-button secondary compact" aria-label="Open Linear" title="Open Linear">
+                                        <i class="fas fa-external-link-alt"></i>
+                                    </a>
+                                    <form method="post" action="{% url 'accounts:disconnect_api_key' 'linear' %}">
+                                        {% csrf_token %}
+                                        <button type="submit" class="llm-integration-button danger connect-arrow" aria-label="Disconnect Linear" title="Disconnect Linear" onclick="return confirm('Disconnect Linear integration?');">
+                                            <i class="fas fa-arrow-right"></i>
+                                        </button>
+                                    </form>
+                                </div>
+                            {% else %}
+                                <form method="post" action="{% url 'accounts:save_api_key' 'linear' %}" class="llm-row-input">
+                                    {% csrf_token %}
+                                    <input type="password" name="api_key" placeholder="Enter your Linear API key" required>
+                                    <button type="submit" class="llm-integration-button primary connect-arrow" aria-label="Connect Linear">
+                                        <i class="fas fa-arrow-right"></i>
+                                    </button>
+                                </form>
+                            {% endif %}
+                        </div>
                     </div>
-                    {% endif %}
                 </div>
-                
-                <!-- Jira Integration (Coming Soon) -->
-                <div class="integration-card disabled">
-                    <div class="integration-header">
-                        <div class="integration-info">
-                            <div class="integration-logo jira">
-                                <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M11.53 2c0 2.4 1.97 4.35 4.35 4.35h1.78c1.16 0 2.1.94 2.1 2.1v1.78c0 2.4 1.97 4.35 4.35 4.35V2H11.53z" fill="#2684FF"/><path d="M11.53 2H2v12.57c2.4 0 4.35 1.97 4.35 4.35v1.78c0 1.16.94 2.1 2.1 2.1h1.78c2.4 0 4.35 1.97 4.35 4.35V14.57c0-2.4-1.97-4.35-4.35-4.35H8.45c-1.16 0-2.1-.94-2.1-2.1V6.35C6.35 3.97 4.4 2 2 2h9.53z" fill="#2684FF"/></svg>
-                            </div>
-                            <div class="integration-details">
-                                <h3>Jira</h3>
-                                <p>Enterprise project management and issue tracking</p>
-                            </div>
+
+                <div class="llm-keys-row">
+                    <div class="llm-row-label">
+                        <div class="integration-logo notion">
+                            <svg width="24" height="24" viewBox="0 0 29 30" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1.81 1.294L18.446.068c2.043-.175 2.568-.057 3.852.875l5.311 3.733c.877.642 1.169.817 1.169 1.516v20.473c0 1.283-.468 2.042-2.102 2.158L7.357 29.99c-1.228.058-1.811-.117-2.454-.934l-3.91-5.074C.29 23.048 0 22.349 0 21.532V3.334c0-1.049.468-1.924 1.81-2.04z" fill="#fff"></path><path fill-rule="evenodd" clip-rule="evenodd" d="M18.447.068L1.808 1.294C.468 1.41 0 2.285 0 3.334v18.198c0 .817.291 1.516.992 2.45l3.911 5.074c.643.817 1.226.992 2.453.934l19.321-1.167c1.634-.116 2.102-.875 2.102-2.158V6.192c0-.663-.263-.854-1.037-1.42l-.132-.096L22.3.943c-1.285-.932-1.81-1.05-3.854-.875zM7.793 5.857c-1.577.106-1.936.13-2.831-.597L2.685 3.452c-.233-.234-.116-.526.467-.584l15.995-1.166c1.342-.117 2.043.35 2.568.758l2.744 1.983c.117.059.408.408.058.408l-16.52.992-.203.014zM5.954 26.49V9.11c0-.759.234-1.109.934-1.168l18.971-1.108c.643-.058.935.35.935 1.108v17.264c0 .759-.117 1.401-1.168 1.459l-18.154 1.05c-1.05.058-1.518-.291-1.518-1.225zm17.922-16.448c.116.525 0 1.05-.527 1.11l-.874.173v12.832c-.76.408-1.46.641-2.044.641-.934 0-1.168-.292-1.868-1.166l-5.721-8.982v8.69l1.81.409s0 1.05-1.46 1.05l-4.027.233c-.117-.234 0-.817.408-.933l1.051-.291v-11.49L9.165 12.2c-.117-.525.174-1.283.992-1.341l4.32-.292 5.954 9.1v-8.05l-1.518-.174c-.116-.643.35-1.109.934-1.167l4.029-.234z" fill="#000"></path></svg>
                         </div>
-                        <div class="integration-status disabled">
-                            <span class="coming-soon-badge">Coming Soon</span>
+                        <div>
+                            <div class="llm-row-title">Notion
+                                <a href="https://www.notion.so/my-integrations" target="_blank" class="integration-help" title="Steps to create a Notion integration token">?</a>
+                            </div>
+                            <div class="llm-row-subtitle">Documentation and knowledge management</div>
                         </div>
                     </div>
-                    
-                    <div class="integration-actions">
-                        <button class="integration-button primary" disabled>
-                            <i class="fas fa-clock"></i>
-                            Coming Soon
-                        </button>
+                    <div class="llm-row-value">
+                        <div class="llm-row-actions">
+                            {% if notion_connected %}
+                                <div class="llm-row-input">
+                                    <a href="https://www.notion.so" target="_blank" class="llm-integration-button secondary compact" aria-label="Open Notion" title="Open Notion workspace">
+                                        <i class="fas fa-external-link-alt"></i>
+                                    </a>
+                                    <form method="post" action="{% url 'accounts:disconnect_api_key' 'notion' %}">
+                                        {% csrf_token %}
+                                        <button type="submit" class="llm-integration-button danger connect-arrow" aria-label="Disconnect Notion" title="Disconnect Notion" onclick="return confirm('Disconnect Notion integration?');">
+                                            <i class="fas fa-arrow-right"></i>
+                                        </button>
+                                    </form>
+                                </div>
+                            {% else %}
+                                <form method="post" action="{% url 'accounts:save_api_key' 'notion' %}" class="llm-row-input">
+                                    {% csrf_token %}
+                                    <input type="password" name="api_key" placeholder="Enter your Notion integration token" required>
+                                    <button type="submit" class="llm-integration-button primary connect-arrow" aria-label="Connect Notion">
+                                        <i class="fas fa-arrow-right"></i>
+                                    </button>
+                                </form>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="llm-keys-row project-coming-soon">
+                    <div class="llm-row-label">
+                        <div class="integration-logo jira">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M19.146 2H11.18a.6.6 0 00-.424.176l-8.58 8.58a.6.6 0 000 .849l7.965 7.966a.6.6 0 00.849 0l8.58-8.58a.6.6 0 00.176-.424V2.6a.6.6 0 00-.6-.6zm-5.6 6.4h3.549L12 13.494 8.905 10.4h3.54a.6.6 0 00.6-.6V4.16l3.245 3.245h-2.744a.6.6 0 00-.6.6v2.395z"/></svg>
+                        </div>
+                        <div>
+                            <div class="llm-row-title">Jira</div>
+                            <div class="llm-row-subtitle">Enterprise issue tracking</div>
+                        </div>
+                    </div>
+                    <div class="llm-row-value">
+                        <div class="llm-row-status">
+                            <span class="coming-soon-chip">Coming Soon</span>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-        
-        <!-- Subscriptions Section -->
+<!-- Subscriptions Section -->
         <div id="subscriptions" class="settings-section">
             <h2 class="section-heading">Subscription & Billing</h2>
-            
+
             <style>
                 /* Full subscriptions dashboard styles */
                 /* Main subscription cards grid */
@@ -1558,8 +1680,8 @@
                 }
                 
                 .subscription-plan-card {
-                    background: #1a1a1a;
-                    border: 1px solid #2a2a2a;
+                    background: var(--settings-card-bg);
+                    border: 1px solid var(--settings-card-border);
                     border-radius: 12px;
                     padding: 24px;
                     display: flex;
@@ -1579,11 +1701,11 @@
                     align-items: center;
                     gap: 8px;
                     padding: 8px 16px;
-                    background: #1f2937;
+                    background: var(--settings-badge-bg);
                     border-radius: 20px;
                     font-size: 14px;
                     font-weight: 500;
-                    color: #9ca3af;
+                    color: var(--settings-text-muted);
                 }
                 
                 .subscription-plan-badge.pro {
@@ -1603,13 +1725,13 @@
                 }
                 
                 .subscription-progress-title {
-                    color: #e5e7eb;
+                    color: var(--settings-text-primary);
                     font-size: 14px;
                     font-weight: 500;
                 }
-                
+
                 .subscription-progress-bar-container {
-                    background: #0f0f0f;
+                    background: var(--settings-progress-bg);
                     height: 6px;
                     border-radius: 3px;
                     overflow: hidden;
@@ -1642,20 +1764,20 @@
                 
                 .subscription-stat-label {
                     display: block;
-                    color: #6b7280;
+                    color: var(--settings-text-secondary);
                     font-size: 11px;
                     text-transform: uppercase;
                     letter-spacing: 0.05em;
                     margin-bottom: 6px;
                 }
-                
+
                 .subscription-stat-value {
                     display: block;
                     font-size: 24px;
                     font-weight: 700;
                     line-height: 1;
                     font-variant-numeric: tabular-nums;
-                    color: #e5e7eb;
+                    color: var(--settings-text-primary);
                 }
                 
                 .subscription-stat-value.remaining {
@@ -1667,7 +1789,7 @@
                 }
                 
                 .subscription-stat-value.limit {
-                    color: #6b7280;
+                    color: var(--settings-text-secondary);
                 }
                 
                 .subscription-usage-breakdown {
@@ -1675,7 +1797,7 @@
                     grid-template-columns: repeat(2, 1fr);
                     gap: 16px;
                     padding-top: 20px;
-                    border-top: 1px solid #2a2a2a;
+                    border-top: 1px solid var(--settings-card-border);
                 }
                 
                 .subscription-breakdown-item {
@@ -1701,8 +1823,8 @@
                 }
                 
                 .subscription-payment-methods-card {
-                    background: #1a1a1a;
-                    border: 1px solid #2a2a2a;
+                    background: var(--settings-card-bg);
+                    border: 1px solid var(--settings-card-border);
                     border-radius: 12px;
                     padding: 24px;
                     margin-bottom: 24px;
@@ -1734,7 +1856,7 @@
                 .subscription-card-icon {
                     width: 32px;
                     height: 20px;
-                    background: #4b5563;
+                    background: var(--settings-card-icon-bg);
                     border-radius: 4px;
                     display: flex;
                     align-items: center;
@@ -1757,13 +1879,13 @@
                 .subscription-card-number {
                     font-size: 14px;
                     font-weight: 500;
-                    color: #e5e7eb;
+                    color: var(--settings-text-primary);
                     font-family: monospace;
                 }
-                
+
                 .subscription-card-expiry {
                     font-size: 12px;
-                    color: #9ca3af;
+                    color: var(--settings-text-muted);
                 }
                 
                 .subscription-payment-method-actions {
@@ -1926,8 +2048,8 @@
                 }
                 
                 .subscription-plan-button.secondary {
-                    background: #374151;
-                    color: #9ca3af;
+                    background: var(--settings-button-secondary-bg);
+                    color: var(--settings-text-muted);
                 }
                 
                 .subscription-plan-button:disabled {
@@ -1958,8 +2080,8 @@
                 }
                 
                 .subscription-transactions-card {
-                    background: #1a1a1a;
-                    border: 1px solid #2a2a2a;
+                    background: var(--settings-card-bg);
+                    border: 1px solid var(--settings-card-border);
                     border-radius: 12px;
                     padding: 24px;
                     margin-bottom: 24px;
@@ -1971,7 +2093,7 @@
                 }
                 
                 .subscription-transactions-table thead {
-                    border-bottom: 1px solid #2a2a2a;
+                    border-bottom: 1px solid var(--settings-card-border);
                 }
                 
                 .subscription-transactions-table th {
@@ -2058,7 +2180,7 @@
                 .card-icon {
                     width: 32px;
                     height: 20px;
-                    background: #4b5563;
+                    background: var(--settings-card-icon-bg);
                     border-radius: 4px;
                     display: flex;
                     align-items: center;
@@ -2081,13 +2203,13 @@
                 .card-number {
                     font-size: 14px;
                     font-weight: 500;
-                    color: #e5e7eb;
+                    color: var(--settings-text-primary);
                     font-family: monospace;
                 }
-                
+
                 .card-expiry {
                     font-size: 12px;
-                    color: #9ca3af;
+                    color: var(--settings-text-muted);
                 }
                 
                 .payment-method-actions {
@@ -2189,21 +2311,25 @@
                     }
                 }
             </style>
-            
+
             <div class="subscription-cards-grid">
             <!-- Current Plan Card -->
-            <div class="subscription-plan-card">
+            <div class="subscription-plan-card" style="position: relative;">
+                <span style="position: absolute; top: -10px; right: 24px; background: var(--settings-card-bg); color: #a78bfa; border: 1px solid rgba(167, 139, 250, 0.4); padding: 4px 12px; border-radius: 999px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">
+                    {% if user_credit.is_free_tier %}Free Tier{% else %}Pro Monthly{% endif %}
+                </span>
                 <div class="subscription-plan-header">
                     <div>
-                        <div class="subscription-plan-badge{% if not user_credit.is_free_tier %} pro{% endif %}">
-                            <i class="fas fa-{% if user_credit.is_free_tier %}user{% else %}crown{% endif %}"></i>
-                            {% if user_credit.is_free_tier %}Free Tier{% else %}Pro Monthly{% endif %}
-                        </div>
-                        <div style="color: #6b7280; font-size: 12px; margin-top: 8px;">
+                        {% if additional_credits_plan %}
+                        <a href="{% url 'subscriptions:checkout' additional_credits_plan.id %}" style="display: inline-flex; align-items: center; gap: 6px; padding: 10px 20px; font-size: 14px; font-weight: 500; color: white; background: linear-gradient(135deg, #8B5CF6, #A855F7); border-radius: 8px; text-decoration: none; transition: all 0.2s ease; box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);" onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 6px 16px rgba(139, 92, 246, 0.35)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 12px rgba(139, 92, 246, 0.25)';">
+                            <i class="fas fa-plus" style="font-size: 12px;"></i> Buy Credits
+                        </a>
+                        {% endif %}
+                        <div style="color: var(--settings-text-secondary); font-size: 12px; margin-top: 12px;">
                             {% if user_credit.is_free_tier %}
-                                100,000 lifetime tokens • gpt-5-mini only
+                                {{ free_tier_token_limit|intcomma }} onetime tokens • gpt-5-mini only
                             {% else %}
-                                300,000 tokens per month • All AI models
+                                {{ pro_monthly_token_limit|intcomma }} tokens per month • All AI models
                             {% endif %}
                         </div>
                     </div>
@@ -2221,7 +2347,7 @@
                 <div class="subscription-usage-progress">
                     <div class="subscription-progress-header">
                         <span class="subscription-progress-title">Lifetime Usage</span>
-                        <span style="color: #9ca3af; font-size: 12px;">{{ usage_percentage|floatformat:0 }}% used</span>
+                        <span style="color: var(--settings-text-muted); font-size: 12px;">{{ usage_percentage|floatformat:0 }}% used</span>
                     </div>
                     <div class="subscription-progress-bar-container">
                         <div class="subscription-progress-bar-fill{% if usage_percentage > 80 %} danger{% elif usage_percentage > 60 %} warning{% endif %}" style="width: {{ usage_percentage }}%"></div>
@@ -2232,7 +2358,7 @@
                 <div class="subscription-usage-progress">
                     <div class="subscription-progress-header">
                         <span class="subscription-progress-title">Monthly Usage</span>
-                        <span style="color: #9ca3af; font-size: 12px;">{{ monthly_usage_percentage|floatformat:0 }}% used</span>
+                        <span style="color: var(--settings-text-muted); font-size: 12px;">{{ monthly_usage_percentage|floatformat:0 }}% used</span>
                     </div>
                     <div class="subscription-progress-bar-container">
                         <div class="subscription-progress-bar-fill{% if monthly_usage_percentage > 80 %} danger{% elif monthly_usage_percentage > 60 %} warning{% endif %}" style="width: {{ monthly_usage_percentage }}%"></div>
@@ -2243,8 +2369,8 @@
                 {% if user_credit.credits > 0 or additional_credits_usage_percentage > 0 %}
                 <div class="subscription-usage-progress" style="margin-top: 16px;">
                     <div class="subscription-progress-header">
-                        <span class="subscription-progress-title">Additional Credits ({{ total_additional_credits_purchased|intcomma }})</span>
-                        <span style="color: #9ca3af; font-size: 12px;">{{ additional_credits_usage_percentage|floatformat:0 }}% used</span>
+                        <span class="subscription-progress-title">Additional Credits</span>
+                        <span style="color: var(--settings-text-muted); font-size: 12px;">{{ additional_credits_usage_percentage|floatformat:0 }}% used</span>
                     </div>
                     <div class="subscription-progress-bar-container">
                         <div class="subscription-progress-bar-fill{% if additional_credits_usage_percentage > 80 %} danger{% elif additional_credits_usage_percentage > 60 %} warning{% endif %}" style="width: {{ additional_credits_usage_percentage }}%; background: #10b981;"></div>
@@ -2267,12 +2393,12 @@
                 </div>
                 
                 <!-- Credit Breakdown -->
-                <div style="margin-top: 16px; text-align: center; font-size: 9px; color: #6b7280; line-height: 1.3;">
-                    Free: 100K (one-time){% if not user_credit.is_free_tier %} • Monthly: 300K{% if user_credit.credits > 0 %} • Additional: {{ user_credit.credits|intcomma }}{% endif %}{% endif %}
+                <div style="margin-top: 16px; text-align: center; font-size: 9px; color: var(--settings-text-secondary); line-height: 1.3;">
+                    Free: {{ free_tier_token_limit|intcomma }} (one-time){% if not user_credit.is_free_tier %} • Monthly: {{ pro_monthly_token_limit|intcomma }}{% if user_credit.credits > 0 %} • Additional: {{ user_credit.credits|intcomma }}{% endif %}{% endif %}
                 </div>
                 
                 {% if not user_credit.is_free_tier and user_credit.subscription_end_date %}
-                <div style="text-align: center; margin-top: 20px; padding-top: 20px; border-top: 1px solid #2a2a2a; color: #6b7280; font-size: 12px;">
+                <div style="text-align: center; margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--settings-card-border); color: var(--settings-text-secondary); font-size: 12px;">
                     <i class="fas fa-sync-alt"></i>
                     Your subscription renews on {{ user_credit.subscription_end_date|date:"F d, Y" }}
                 </div>
@@ -2281,9 +2407,9 @@
 
             <!-- Payment Methods -->
             <div class="subscription-plan-card">
-                <h3 style="color: #e5e7eb; font-size: 18px; font-weight: 600; margin-bottom: 20px;">Payment Methods</h3>
+                <h3 style="color: var(--settings-text-primary); font-size: 18px; font-weight: 600; margin-bottom: 20px;">Payment Methods</h3>
                 <div id="payment-methods-list-settings" style="flex: 1;">
-                    <div class="loading-payment-methods" style="text-align: center; padding: 32px; color: #6b7280;">
+                    <div class="loading-payment-methods" style="text-align: center; padding: 32px; color: var(--settings-text-secondary);">
                         <i class="fas fa-spinner fa-spin"></i> Loading payment methods...
                     </div>
                 </div>
@@ -2294,7 +2420,7 @@
 
             <!-- Available Plans -->
             <div class="subscription-plan-card">
-                <h3 style="color: #e5e7eb; font-size: 18px; font-weight: 600; margin-bottom: 20px;">Available Plans</h3>
+                <h3 style="color: var(--settings-text-primary); font-size: 18px; font-weight: 600; margin-bottom: 20px;">Available Plans</h3>
                 {% if not payment_plans %}
                     <div style="text-align: center; padding: 2rem; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; color: #ef4444; margin-bottom: 24px;">
                         <i class="fas fa-exclamation-triangle"></i>
@@ -2322,15 +2448,15 @@
                         
                         <ul class="subscription-plan-features">
                             {% if plan.name == 'Free Tier' %}
-                                <li><i class="fas fa-check"></i> 100,000 lifetime tokens</li>
-                                <li><i class="fas fa-check"></i> GPT-5-mini model only</li>
-                                <li><i class="fas fa-check"></i> Basic features</li>
+                                <li><i class="fas fa-check"></i> {{ free_tier_token_limit|intcomma }} one-time tokens</li>
+                                <li><i class="fas fa-check"></i> Low tier models (GPT-5-mini and Haiku)</li>
+                                <li><i class="fas fa-check"></i> Limited documents and </li>
                                 <li><i class="fas fa-check"></i> Community support</li>
                             {% elif plan.name == 'Pro Monthly' %}
-                                <li><i class="fas fa-check"></i> 300,000 tokens per month</li>
-                                <li><i class="fas fa-check"></i> All AI models (GPT-4o, Claude, Gemini)</li>
-                                <li><i class="fas fa-check"></i> Priority support</li>
-                                <li><i class="fas fa-check"></i> Advanced features</li>
+                                <li><i class="fas fa-check"></i> {{ pro_monthly_token_limit|intcomma }} tokens per month</li>
+                                <li><i class="fas fa-check"></i> GPT-5 included with platform credits</li>
+                                <li><i class="fas fa-check"></i> BYO Anthropic &amp; Google API keys</li>
+                                <li><i class="fas fa-check"></i> Priority support &amp; advanced features</li>
                             {% else %}
                                 <li><i class="fas fa-check"></i> {{ plan.credits|intcomma }} additional tokens</li>
                                 <li><i class="fas fa-check"></i> One-time purchase</li>
@@ -2340,7 +2466,7 @@
                         </ul>
                         
                         {% if plan.price > 0 %}
-                            {% if user_credit.has_active_subscription and plan.is_subscription %}
+                            {% if has_paid_subscription and plan.is_subscription %}
                                 <button class="subscription-plan-button secondary" disabled>Current Plan</button>
                             {% else %}
                                 <a href="{% url 'subscriptions:checkout' plan.id %}" class="subscription-plan-button primary">
@@ -2360,7 +2486,7 @@
             </div>
 
             <!-- Recent Transactions -->
-            <h3 style="color: #e5e7eb; font-size: 18px; font-weight: 600; margin: 32px 0 20px 0;">Recent Transactions</h3>
+            <h3 style="color: var(--settings-text-primary); font-size: 18px; font-weight: 600; margin: 32px 0 20px 0;">Recent Transactions</h3>
             <div class="subscription-plan-card">
                 {% if transactions %}
                 <table class="subscription-transactions-table">
@@ -2451,8 +2577,8 @@
                         </form>
                     {% endif %}
                     
-                    <a href="https://platform.openai.com/settings/organization/api-keys" target="_blank" class="external-link">
-                        Get API Key
+                    <a href="https://platform.openai.com/settings/organization/api-keys" target="_blank" class="external-link" title="OpenAI API key guide">
+                        <span class="integration-help">?</span>
                         <i class="fas fa-external-link-alt"></i>
                     </a>
                 </div>
@@ -2461,9 +2587,7 @@
                 <div class="integration-item">
                     <div class="integration-header">
                         <div class="integration-icon">
-                            <svg viewBox="0 0 92.2 65" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M66.5,0H52.4l25.7,65h14.1L66.5,0z M25.7,0L0,65h14.4l5.3-13.6h26.9L51.8,65h14.4L40.5,0C40.5,0,25.7,0,25.7,0z M24.3,39.3l8.8-22.8l8.8,22.8H24.3z" fill="#a78bfa"/>
-                            </svg>
+                            <img src="{% static 'images/anthropic-logo.png' %}" alt="Anthropic" class="llm-logo-img">
                         </div>
                         <div class="integration-info">
                             <h3 class="integration-name">
@@ -2503,8 +2627,8 @@
                         </form>
                     {% endif %}
                     
-                    <a href="https://console.anthropic.com/settings/keys" target="_blank" class="external-link">
-                        Get API Key
+                    <a href="https://console.anthropic.com/settings/keys" target="_blank" class="external-link" title="Anthropic API key guide">
+                        <span class="integration-help">?</span>
                         <i class="fas fa-external-link-alt"></i>
                     </a>
                 </div>
@@ -2555,8 +2679,8 @@
                         </form>
                     {% endif %}
                     
-                    <a href="https://console.x.ai/" target="_blank" class="external-link">
-                        Get API Key
+                    <a href="https://console.x.ai/" target="_blank" class="external-link" title="xAI API key guide">
+                        <span class="integration-help">?</span>
                         <i class="fas fa-external-link-alt"></i>
                     </a>
                 </div>
@@ -2565,12 +2689,7 @@
                 <div class="integration-item">
                     <div class="integration-header">
                         <div class="integration-icon">
-                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-                            </svg>
+                            <img src="{% static 'images/gemini-logo.png' %}" alt="Google Gemini" class="llm-logo-img">
                         </div>
                         <div class="integration-info">
                             <h3 class="integration-name">
@@ -2610,8 +2729,8 @@
                         </form>
                     {% endif %}
                     
-                    <a href="https://aistudio.google.com/apikey" target="_blank" class="external-link">
-                        Get API Key
+                    <a href="https://aistudio.google.com/apikey" target="_blank" class="external-link" title="Google AI Studio keys">
+                        <span class="integration-help">?</span>
                         <i class="fas fa-external-link-alt"></i>
                     </a>
                 </div>
@@ -2621,7 +2740,7 @@
             <div style="text-align: center; padding: 3rem; max-width: 800px; width: 100%;">
                 <div style="background: rgba(167, 139, 250, 0.1); border: 1px solid rgba(167, 139, 250, 0.3); border-radius: 16px; padding: 2rem;">
                     <i class="fas fa-lock" style="font-size: 2rem; color: #a78bfa; margin-bottom: 1rem;"></i>
-                    <h3 style="color: #e5e7eb; font-size: 1.25rem; font-weight: 600; margin: 0 0 1rem 0;">Pro Feature</h3>
+                    <h3 style="color: var(--settings-text-primary); font-size: 1.25rem; font-weight: 600; margin: 0 0 1rem 0;">Pro Feature</h3>
                     <p style="color: rgba(255, 255, 255, 0.7); margin: 0 0 1.5rem 0; line-height: 1.5;">
                         LLM API key management is available for Pro subscribers only. Upgrade to connect your own API keys and access advanced AI models.
                     </p>
@@ -2822,7 +2941,96 @@
                 </div>
             </div>
         </div>
-        
+
+        <!-- Claude Code Section -->
+        <div id="claude-code" class="settings-section">
+            <h2 class="section-heading">Claude Code CLI</h2>
+            <div class="integrations-list">
+                <!-- Claude Code Integration -->
+                <div class="integration-item">
+                    <div class="integration-header">
+                        <div class="integration-icon" style="background: linear-gradient(135deg, #D97706, #F59E0B);">
+                            <i class="fas fa-terminal" style="color: white;"></i>
+                        </div>
+                        <div class="integration-info">
+                            <h3 class="integration-name">
+                                Claude Code
+                                <span id="claude-code-status-check" style="display: none;">
+                                    <i class="fas fa-check"></i>
+                                </span>
+                            </h3>
+                            <p class="integration-description">Use Claude Code CLI for enhanced ticket execution</p>
+                        </div>
+                    </div>
+
+                    <div id="claude-code-auth-section">
+                        <!-- Auth status will be loaded dynamically -->
+                        <div class="api-key-section" style="align-items: center;">
+                            <button id="claude-code-connect-btn" class="save-button" style="width: auto;">
+                                <i class="fas fa-plug" style="margin-right: 0.5rem;"></i>Connect Claude Code
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- OAuth URL Display (hidden by default) -->
+                    <div id="claude-code-oauth-section" style="display: none; margin-top: 1rem;">
+                        <div style="background: var(--bg-alt); padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                            <p style="color: var(--text-light); font-size: 0.875rem; margin-bottom: 0.5rem;">
+                                <i class="fas fa-info-circle"></i> Open this URL in your browser and authenticate:
+                            </p>
+                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                <input type="text" id="claude-code-oauth-url" readonly
+                                    style="flex: 1; min-width: 0; padding: 0.5rem; background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); font-size: 0.8rem;">
+                                <button onclick="window.open(document.getElementById('claude-code-oauth-url').value, '_blank')" title="Open URL"
+                                    class="save-button" style="width: auto; padding: 0.5rem 1rem; flex-shrink: 0;">
+                                    <i class="fas fa-external-link-alt"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem; align-items: center;">
+                            <input type="text" id="claude-code-auth-code" placeholder="Paste authentication code here..."
+                                style="flex: 1; padding: 0.75rem; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary);">
+                            <button id="claude-code-submit-btn" class="save-button" style="width: auto;">
+                                Submit Code
+                            </button>
+                        </div>
+                        <p id="claude-code-error" style="color: #EF4444; font-size: 0.875rem; margin-top: 0.5rem; display: none;"></p>
+                    </div>
+
+                    <!-- Connected State (hidden by default) -->
+                    <div id="claude-code-connected-section" style="display: none; margin-top: 1rem;">
+                        <div class="connected-user" style="margin-bottom: 1rem;">
+                            <i class="fas fa-check-circle" style="color: #10B981; margin-right: 0.5rem;"></i>
+                            <span>Claude Code is <strong>connected</strong></span>
+                        </div>
+
+                        <!-- CLI Mode Toggle -->
+                        <div style="display: flex; align-items: center; gap: 1rem; padding: 1rem; background: var(--bg-alt); border-radius: 8px; margin-bottom: 1rem;">
+                            <label class="toggle-switch" style="flex-shrink: 0;">
+                                <input type="checkbox" id="claude-code-enabled-toggle">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <div>
+                                <h4 style="margin: 0; color: var(--text-primary);">Use CLI Mode for Tickets</h4>
+                                <p style="margin: 0.25rem 0 0 0; color: var(--text-light); font-size: 0.875rem;">
+                                    Execute tickets using Claude Code CLI instead of API
+                                </p>
+                            </div>
+                        </div>
+
+                        <button id="claude-code-disconnect-btn" class="disconnect-button" style="width: auto; margin-top: 0.5rem;">
+                            Disconnect
+                        </button>
+                    </div>
+
+                    <a href="https://docs.anthropic.com/en/docs/claude-code" target="_blank" class="external-link" style="margin-top: 1rem;">
+                        Learn about Claude Code
+                        <i class="fas fa-external-link-alt"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+
         <!-- Prompts Section (Disabled) -->
         <div id="prompts" class="settings-section">
             <h2 class="section-heading">Prompts</h2>
@@ -2833,6 +3041,275 @@
 </div>
 
 <script>
+    // Claude Code Integration Scripts
+    document.addEventListener('DOMContentLoaded', function() {
+        const connectBtn = document.getElementById('claude-code-connect-btn');
+        const submitBtn = document.getElementById('claude-code-submit-btn');
+        const disconnectBtn = document.getElementById('claude-code-disconnect-btn');
+        const enabledToggle = document.getElementById('claude-code-enabled-toggle');
+        const oauthSection = document.getElementById('claude-code-oauth-section');
+        const connectedSection = document.getElementById('claude-code-connected-section');
+        const authSection = document.getElementById('claude-code-auth-section');
+        const statusCheck = document.getElementById('claude-code-status-check');
+        const errorDisplay = document.getElementById('claude-code-error');
+
+        // Check initial status
+        checkClaudeCodeStatus();
+
+        async function checkClaudeCodeStatus() {
+            try {
+                const response = await fetch('/accounts/claude-code/status/');
+                const data = await response.json();
+
+                if (data.authenticated) {
+                    showConnectedState(data.enabled);
+                } else if (data.has_backup) {
+                    // Has backup but not marked authenticated - try to verify/restore
+                    console.log('Has backup, attempting to restore...');
+                    connectBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right: 0.5rem;"></i>Restoring...';
+                    connectBtn.disabled = true;
+
+                    try {
+                        const verifyResponse = await fetch('/accounts/claude-code/verify/', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': getCsrfToken()
+                            }
+                        });
+                        const verifyData = await verifyResponse.json();
+
+                        if (verifyData.authenticated) {
+                            showConnectedState(false);
+                        } else {
+                            showDisconnectedState();
+                        }
+                    } catch (e) {
+                        console.error('Restore failed:', e);
+                        showDisconnectedState();
+                    } finally {
+                        connectBtn.disabled = false;
+                        connectBtn.innerHTML = '<i class="fas fa-plug" style="margin-right: 0.5rem;"></i>Connect Claude Code';
+                    }
+                } else {
+                    showDisconnectedState();
+                }
+            } catch (error) {
+                console.error('Error checking Claude Code status:', error);
+            }
+        }
+
+        function showConnectedState(enabled) {
+            authSection.style.display = 'none';
+            oauthSection.style.display = 'none';
+            connectedSection.style.display = 'block';
+            statusCheck.style.display = 'inline';
+            enabledToggle.checked = enabled;
+        }
+
+        function showDisconnectedState() {
+            authSection.style.display = 'block';
+            oauthSection.style.display = 'none';
+            connectedSection.style.display = 'none';
+            statusCheck.style.display = 'none';
+        }
+
+        function showError(message) {
+            errorDisplay.textContent = message;
+            errorDisplay.style.display = 'block';
+        }
+
+        function hideError() {
+            errorDisplay.style.display = 'none';
+        }
+
+        // Connect button
+        connectBtn.addEventListener('click', async function() {
+            connectBtn.disabled = true;
+            connectBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right: 0.5rem;"></i>Connecting...';
+            hideError();
+
+            try {
+                const response = await fetch('/accounts/claude-code/start-auth/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken()
+                    }
+                });
+                const data = await response.json();
+
+                if (data.status === 'already_authenticated') {
+                    showConnectedState(false);
+                } else if (data.status === 'pending' && data.oauth_url) {
+                    // Show OAuth section
+                    document.getElementById('claude-code-oauth-url').value = data.oauth_url;
+                    authSection.style.display = 'none';
+                    oauthSection.style.display = 'block';
+                } else if (data.status === 'error') {
+                    showError(data.error || 'Failed to start authentication');
+                    authSection.style.display = 'block';
+                }
+            } catch (error) {
+                showError('Network error. Please try again.');
+            } finally {
+                connectBtn.disabled = false;
+                connectBtn.innerHTML = '<i class="fas fa-plug" style="margin-right: 0.5rem;"></i>Connect Claude Code';
+            }
+        });
+
+        // Submit code button
+        submitBtn.addEventListener('click', async function() {
+            const code = document.getElementById('claude-code-auth-code').value.trim();
+            if (!code) {
+                showError('Please enter the authentication code');
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right: 0.5rem;"></i>Verifying...';
+            hideError();
+
+            // Create an AbortController for timeout
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+            try {
+                const response = await fetch('/accounts/claude-code/submit-code/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken()
+                    },
+                    body: JSON.stringify({ code: code }),
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    showConnectedState(false);
+                } else {
+                    showError(data.error || 'Authentication failed');
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = 'Submit Code';
+                }
+            } catch (error) {
+                clearTimeout(timeoutId);
+
+                // On timeout or error, poll status to check if auth succeeded
+                if (error.name === 'AbortError') {
+                    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right: 0.5rem;"></i>Checking status...';
+
+                    // Poll for up to 15 seconds to check if auth completed
+                    let pollCount = 0;
+                    const maxPolls = 15;
+
+                    const pollInterval = setInterval(async () => {
+                        pollCount++;
+                        try {
+                            const statusResponse = await fetch('/accounts/claude-code/status/');
+                            const statusData = await statusResponse.json();
+
+                            if (statusData.authenticated) {
+                                clearInterval(pollInterval);
+                                showConnectedState(statusData.enabled);
+                            } else if (pollCount >= maxPolls) {
+                                clearInterval(pollInterval);
+                                // Run a direct test to verify
+                                try {
+                                    const testResponse = await fetch('/accounts/claude-code/verify/', {
+                                        method: 'POST',
+                                        headers: {
+                                            'Content-Type': 'application/json',
+                                            'X-CSRFToken': getCsrfToken()
+                                        }
+                                    });
+                                    const testData = await testResponse.json();
+                                    if (testData.authenticated) {
+                                        showConnectedState(false);
+                                    } else {
+                                        showError('Authentication is still in progress. Please wait and check status again.');
+                                        submitBtn.disabled = false;
+                                        submitBtn.innerHTML = 'Submit Code';
+                                    }
+                                } catch (e) {
+                                    showError('Authentication is still in progress. Please wait and check status again.');
+                                    submitBtn.disabled = false;
+                                    submitBtn.innerHTML = 'Submit Code';
+                                }
+                            }
+                        } catch (e) {
+                            // Continue polling
+                        }
+                    }, 1000);
+                } else {
+                    showError('Network error. Please try again.');
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = 'Submit Code';
+                }
+            }
+        });
+
+        // Toggle CLI mode
+        enabledToggle.addEventListener('change', async function() {
+            const enabled = this.checked;
+
+            try {
+                const response = await fetch('/accounts/claude-code/toggle/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken()
+                    },
+                    body: JSON.stringify({ enabled: enabled })
+                });
+                const data = await response.json();
+
+                if (data.status === 'error') {
+                    this.checked = !enabled; // Revert
+                    alert(data.error);
+                }
+            } catch (error) {
+                this.checked = !enabled; // Revert
+                alert('Failed to update setting');
+            }
+        });
+
+        // Disconnect button
+        disconnectBtn.addEventListener('click', async function() {
+            if (!confirm('Are you sure you want to disconnect Claude Code?')) return;
+
+            disconnectBtn.disabled = true;
+            disconnectBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Disconnecting...';
+
+            try {
+                const response = await fetch('/accounts/claude-code/disconnect/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken()
+                    }
+                });
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    showDisconnectedState();
+                }
+            } catch (error) {
+                alert('Failed to disconnect');
+            } finally {
+                disconnectBtn.disabled = false;
+                disconnectBtn.innerHTML = 'Disconnect';
+            }
+        });
+
+        function getCsrfToken() {
+            return document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+                document.cookie.split('; ').find(row => row.startsWith('csrftoken='))?.split('=')[1];
+        }
+    });
+
     // Settings navigation
     document.addEventListener('DOMContentLoaded', function() {
         const navItems = document.querySelectorAll('.settings-nav-item:not(.disabled)');

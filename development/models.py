@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import models
 from django.utils import timezone
 
@@ -140,6 +142,218 @@ class DockerPortMapping(models.Model):
     
     def __str__(self):
         return f"{self.host_port}:{self.container_port} for {self.sandbox.container_name}"
+
+
+class Sandbox(models.Model):
+    """Persistent Mags VM used for Turbo mode remote environments."""
+
+    STATUS_CHOICES = (
+        ('provisioning', 'Provisioning'),
+        ('ready', 'Ready'),
+        ('sleeping', 'Sleeping'),
+        ('stopped', 'Stopped'),
+        ('error', 'Error'),
+    )
+
+    WORKSPACE_TYPE_CHOICES = (
+        ('execute', 'Ticket Execution'),
+        ('claude_auth', 'Claude Code Auth'),
+        ('preview', 'Preview'),
+    )
+
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name="sandboxes",
+        blank=True,
+        null=True,
+        help_text="Project associated with this sandbox"
+    )
+    user = models.ForeignKey(
+        'auth.User',
+        on_delete=models.CASCADE,
+        related_name="sandboxes",
+        blank=True,
+        null=True,
+        help_text="User associated with this sandbox (for user-level workspaces like Claude auth)"
+    )
+    workspace_type = models.CharField(
+        max_length=20,
+        choices=WORKSPACE_TYPE_CHOICES,
+        default='execute',
+        help_text="Purpose of this workspace"
+    )
+    conversation_id = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Conversation identifier associated with this workspace"
+    )
+    job_id = models.CharField(
+        max_length=255,
+        unique=True,
+        help_text="Magpie job identifier"
+    )
+    workspace_id = models.CharField(
+        max_length=255,
+        unique=True,
+        help_text="Workspace identifier used by the AI agent"
+    )
+    # Mags API fields
+    mags_job_id = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Mags job request_id"
+    )
+    mags_workspace_id = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        db_index=True,
+        help_text="Mags workspace overlay name"
+    )
+    mags_base_workspace_id = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Mags base workspace (for forked workspaces)"
+    )
+    ssh_host = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="SSH host for Mags workspace"
+    )
+    ssh_port = models.IntegerField(
+        blank=True,
+        null=True,
+        help_text="SSH port for Mags workspace"
+    )
+    ssh_private_key = models.TextField(
+        blank=True,
+        null=True,
+        help_text="SSH private key for Mags workspace"
+    )
+    ipv6_address = models.CharField(
+        max_length=128,
+        blank=True,
+        null=True,
+        help_text="IPv6 (or IPv4) address assigned to the VM"
+    )
+    proxy_url = models.URLField(
+        max_length=512,
+        blank=True,
+        null=True,
+        help_text="Public HTTPS proxy URL for accessing the workspace"
+    )
+    project_path = models.CharField(
+        max_length=512,
+        blank=True,
+        null=True,
+        help_text="Primary project directory inside the VM"
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='provisioning',
+        help_text="Current lifecycle status of the workspace"
+    )
+    metadata = models.JSONField(
+        blank=True,
+        null=True,
+        help_text="Arbitrary metadata including project summary, last restart, etc."
+    )
+    cli_session_id = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        help_text="Claude Code CLI session ID for resuming conversations"
+    )
+    last_seen_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text="Timestamp when the workspace was last verified"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "development_sandbox"
+        indexes = [
+            models.Index(fields=['project']),
+            models.Index(fields=['conversation_id']),
+            models.Index(fields=['workspace_id']),
+            models.Index(fields=['status']),
+            models.Index(fields=['user', 'workspace_type']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['conversation_id'],
+                condition=models.Q(conversation_id__isnull=False),
+                name='unique_sandbox_conversation'
+            ),
+            models.UniqueConstraint(
+                fields=['user', 'workspace_type'],
+                condition=models.Q(user__isnull=False, workspace_type='claude_auth'),
+                name='unique_user_workspace_type'
+            ),
+            models.UniqueConstraint(
+                fields=['mags_workspace_id'],
+                condition=models.Q(mags_workspace_id__isnull=False),
+                name='unique_mags_workspace_id'
+            ),
+        ]
+        verbose_name = "Sandbox"
+        verbose_name_plural = "Sandboxes"
+
+    def __str__(self):
+        identifier = self.project.provided_name if self.project and self.project.provided_name else self.workspace_id
+        return f"Sandbox {identifier} ({self.status})"
+
+    def get_ssh_credentials(self) -> dict | None:
+        """Return SSH credentials dict if all fields are set, else None."""
+        if self.ssh_host and self.ssh_port and self.ssh_private_key:
+            return {
+                "ssh_host": self.ssh_host,
+                "ssh_port": self.ssh_port,
+                "ssh_private_key": self.ssh_private_key,
+            }
+        return None
+
+    def save_ssh_credentials(self, credentials: dict):
+        """Save SSH credentials from Mags enable_ssh_access response."""
+        self.ssh_host = credentials.get("ssh_host")
+        self.ssh_port = credentials.get("ssh_port")
+        self.ssh_private_key = credentials.get("ssh_private_key")
+        self.save(update_fields=["ssh_host", "ssh_port", "ssh_private_key", "updated_at"])
+
+    def mark_ready(self, ipv6=None, project_path=None, metadata=None, proxy_url=None):
+        """Mark the workspace as ready and update connection details."""
+        self.status = 'ready'
+        self.last_seen_at = timezone.now()
+        if ipv6:
+            self.ipv6_address = ipv6
+        if project_path:
+            self.project_path = project_path
+        if proxy_url:
+            self.proxy_url = proxy_url
+        if metadata:
+            current_metadata = self.metadata or {}
+            current_metadata.update(metadata)
+            self.metadata = current_metadata
+        self.save()
+
+    def mark_error(self, metadata=None):
+        """Mark the workspace as errored."""
+        self.status = 'error'
+        self.last_seen_at = timezone.now()
+        if metadata:
+            current_metadata = self.metadata or {}
+            current_metadata.update(metadata)
+            self.metadata = current_metadata
+        self.save()
+
 
 
 class KubernetesPod(models.Model):
@@ -304,17 +518,82 @@ class KubernetesPortMapping(models.Model):
         return f"{self.service_name}: {self.container_port} ({self.container_name}) for pod {self.pod.pod_name}"
 
 
-class CommandExecution(models.Model):
+class CommandExecutionOld(models.Model):
     """
     Model to store history of commands executed in the system.
     """
     project_id = models.CharField(max_length=255, blank=True, null=True)
+    ticket_id = models.IntegerField(blank=True, null=True, help_text="Ticket ID that initiated this command")
     command = models.TextField(help_text="The command that was executed")
+    explanation = models.TextField(blank=True, null=True, help_text="Explanation of what this command does")
     output = models.TextField(blank=True, null=True, help_text="Output from the command")
     created_at = models.DateTimeField(auto_now_add=True)
-    
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['project_id']),
+            models.Index(fields=['ticket_id']),
+        ]
+
     def __str__(self):
         return f"Command: {self.command[:50]}{'...' if len(self.command) > 50 else ''}"
+
+
+class InstantApp(models.Model):
+    """Instant Mode app — a lightweight, self-contained app with its own sandbox."""
+
+    STATUS_CHOICES = (
+        ('gathering', 'Gathering Requirements'),
+        ('building', 'Building'),
+        ('running', 'Running'),
+        ('stopped', 'Stopped'),
+        ('error', 'Error'),
+    )
+
+    app_id = models.CharField(max_length=36, unique=True, default=uuid.uuid4, db_index=True)
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True, null=True)
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name="instant_apps",
+    )
+    user = models.ForeignKey(
+        'auth.User',
+        on_delete=models.CASCADE,
+        related_name="instant_apps",
+    )
+    sandbox = models.OneToOneField(
+        Sandbox,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="instant_app",
+    )
+    conversation = models.OneToOneField(
+        'chat.Conversation',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='gathering')
+    requirements = models.TextField(blank=True, null=True)
+    env_vars = models.JSONField(default=dict, blank=True)
+    preview_url = models.URLField(max_length=512, blank=True, null=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['project']),
+            models.Index(fields=['user']),
+            models.Index(fields=['status']),
+        ]
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"InstantApp {self.name} ({self.status})"
 
 
 class ServerConfig(models.Model):

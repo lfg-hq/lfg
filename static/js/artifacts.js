@@ -46,7 +46,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const activeTab = document.querySelector('.tab-button.active');
             if (activeTab) {
                 const tabId = activeTab.getAttribute('data-tab');
-                console.log(`[ArtifactsPanel] Panel opened, loading data for active tab: ${tabId}`);
                 if (window.switchTab) {
                     window.switchTab(tabId);
                 }
@@ -411,11 +410,9 @@ document.addEventListener('DOMContentLoaded', function() {
          * If forceOpen is true, ensures the panel is opened
          */
         toggle: function(forceOpen) {
-            console.log('[ArtifactsPanel] Toggle called with forceOpen:', forceOpen);
             
             // Get current state
             const isCurrentlyExpanded = artifactsPanel.classList.contains('expanded');
-            console.log('[ArtifactsPanel] Current panel state - expanded:', isCurrentlyExpanded);
             
             // Determine if we should open, close, or toggle
             let shouldBeExpanded;
@@ -427,7 +424,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 shouldBeExpanded = !isCurrentlyExpanded; // Toggle
             }
             
-            console.log('[ArtifactsPanel] Should be expanded:', shouldBeExpanded);
             
             // Apply the state directly
             if (shouldBeExpanded) {
@@ -443,11 +439,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 const activeTab = document.querySelector('.tab-button.active');
                 if (activeTab) {
                     const tabId = activeTab.getAttribute('data-tab');
-                    console.log(`[ArtifactsPanel] Panel opened, loading data for active tab: ${tabId}`);
                     loadTabData(tabId);
                 }
                 
-                console.log('[ArtifactsPanel] Panel opened');
             } else {
                 // Close the panel
                 artifactsPanel.classList.remove('expanded');
@@ -457,7 +451,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Update chat container
                 updateChatContainerPosition(false);
                 
-                console.log('[ArtifactsPanel] Panel closed');
             }
             
             // Store state in localStorage
@@ -487,8 +480,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function switchTab(tabId) {
-        console.log(`[ArtifactsPanel] Switching to tab: ${tabId}`);
-        console.log(`[ArtifactsPanel] Tab switching called at:`, new Date().toISOString());
         
         // Remove active class from all buttons and panes
         tabButtons.forEach(button => button.classList.remove('active'));
@@ -498,15 +489,12 @@ document.addEventListener('DOMContentLoaded', function() {
         const activeButton = document.querySelector(`[data-tab="${tabId}"]`);
         const activePane = document.getElementById(tabId);
         
-        console.log(`[ArtifactsPanel] Active button found:`, !!activeButton);
-        console.log(`[ArtifactsPanel] Active pane found:`, !!activePane);
         
         if (activeButton && activePane) {
             activeButton.classList.add('active');
             activePane.classList.add('active');
             saveActiveTab(tabId);
             
-            console.log(`[ArtifactsPanel] About to call loadTabData for tab: ${tabId}`);
             // Automatically load data when switching to certain tabs
             loadTabData(tabId);
         } else {
@@ -516,11 +504,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Function to load data for specific tabs
     function loadTabData(tabId) {
-        console.log(`[ArtifactsPanel] loadTabData called for tab: ${tabId}`);
         
         // Get the current project ID from the URL or data attribute
         const projectId = getCurrentProjectId();
-        console.log(`[ArtifactsPanel] Current project ID: ${projectId}`);
         
         if (!projectId) {
             console.warn('[ArtifactsPanel] No project ID found, cannot load tab data');
@@ -565,23 +551,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 break;
             case 'codebase':
-                console.log('[ArtifactsPanel] Codebase tab selected');
-                console.log('[ArtifactsPanel] ArtifactsLoader available:', !!window.ArtifactsLoader);
                 console.log('[ArtifactsPanel] loadCodebase function available:', !!(window.ArtifactsLoader && typeof window.ArtifactsLoader.loadCodebase === 'function'));
                 
                 // Load codebase explorer in iframe
                 if (window.ArtifactsLoader && typeof window.ArtifactsLoader.loadCodebase === 'function') {
-                    console.log('[ArtifactsPanel] Calling ArtifactsLoader.loadCodebase with project ID:', projectId);
                     window.ArtifactsLoader.loadCodebase(projectId);
                 } else {
                     // Fallback to internal function if loader not available
-                    console.log('[ArtifactsPanel] ArtifactsLoader not available, using fallback function');
                     loadCodebaseExplorer(projectId);
                 }
                 break;
             case 'apps':
                 if (window.ArtifactsLoader && typeof window.ArtifactsLoader.loadAppPreview === 'function') {
-                    console.log('[ArtifactsPanel] Loading app preview from artifacts.js');
                     window.ArtifactsLoader.loadAppPreview(projectId, null);
                 } else {
                     console.warn('[ArtifactsPanel] ArtifactsLoader.loadAppPreview not found');
@@ -597,7 +578,6 @@ document.addEventListener('DOMContentLoaded', function() {
             //     break;
             case 'filebrowser':
                 if (window.ArtifactsLoader && typeof window.ArtifactsLoader.loadFileBrowser === 'function') {
-                    console.log('[ArtifactsPanel] Loading file browser from artifacts.js');
                     window.ArtifactsLoader.loadFileBrowser(projectId);
                 } else {
                     console.warn('[ArtifactsPanel] ArtifactsLoader.loadFileBrowser not found');
@@ -609,7 +589,6 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Function to load the codebase explorer in an iframe
     function loadCodebaseExplorer(projectId) {
-        console.log(`[ArtifactsPanel] Loading codebase explorer for project ID: ${projectId}`);
         
         const codebaseTab = document.getElementById('codebase');
         const codebaseLoading = document.getElementById('codebase-loading');
@@ -629,13 +608,11 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Set the iframe source to the development editor page
         const editorUrl = `/development/editor/?project_id=${projectId}`;
-        console.log(`[ArtifactsPanel] Loading codebase from URL: ${editorUrl}`);
         
         codebaseIframe.onload = function() {
             // Hide loading and show iframe when loaded
             codebaseLoading.style.display = 'none';
             codebaseFrameContainer.style.display = 'block';
-            console.log('[ArtifactsPanel] Codebase iframe loaded successfully');
         };
         
         codebaseIframe.onerror = function() {
@@ -686,7 +663,6 @@ document.addEventListener('DOMContentLoaded', function() {
         if (savedTabId) {
             const savedButton = document.querySelector(`.tab-button[data-tab="${savedTabId}"]`);
             if (savedButton) {
-                console.log(`[ArtifactsPanel] Restoring saved tab: ${savedTabId}`);
                 switchTab(savedTabId);
                 return;
             }
@@ -696,7 +672,6 @@ document.addEventListener('DOMContentLoaded', function() {
         if (activeTab) {
             const tabId = activeTab.getAttribute('data-tab');
             const projectId = getCurrentProjectId();
-            console.log(`[ArtifactsPanel] Initial load - loading data for active tab: ${tabId}, projectId: ${projectId}`);
             if (projectId) {
                 loadTabData(tabId);
             } else {

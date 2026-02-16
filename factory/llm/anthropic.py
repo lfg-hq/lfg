@@ -6,10 +6,14 @@ import anthropic
 from typing import List, Dict, Any, Optional, AsyncGenerator
 
 from .base import BaseLLMProvider
+from factory.llm_config import get_provider_model_mapping, get_default_model_key
 
 # Import functions from ai_common and streaming_handlers
 from factory.ai_common import execute_tool_call, get_notification_type_for_tool, track_token_usage
 from factory.streaming_handlers import StreamingTagHandler, format_notification
+
+# Import cancellation check function
+from tasks.dispatch import is_ticket_cancelled
 
 logger = logging.getLogger(__name__)
 
@@ -17,15 +21,17 @@ logger = logging.getLogger(__name__)
 class AnthropicProvider(BaseLLMProvider):
     """Anthropic Claude provider implementation"""
     
-    MODEL_MAPPING = {
-        "claude_4_sonnet": "claude-sonnet-4-20250514",
-    }
+    MODEL_MAPPING = get_provider_model_mapping("anthropic")
+    DEFAULT_MODEL_KEY = get_default_model_key("anthropic") or "claude_4_sonnet"
     
     def __init__(self, selected_model: str, user=None, conversation=None, project=None):
         super().__init__(selected_model, user, conversation, project)
         
         # Map model selection to actual model name
-        self.model = self.MODEL_MAPPING.get(selected_model, "claude-sonnet-4-20250514")
+        fallback_model = self.MODEL_MAPPING.get(self.DEFAULT_MODEL_KEY, "claude-sonnet-4-5-20250929")
+        self.model = self.MODEL_MAPPING.get(selected_model, fallback_model)
+        if selected_model not in self.MODEL_MAPPING:
+            logger.warning(f"Unknown Anthropic model {selected_model}, defaulting to {self.DEFAULT_MODEL_KEY}")
         logger.debug(f"Using Claude model: {self.model}")
     
     async def _ensure_client(self):
@@ -123,10 +129,11 @@ class AnthropicProvider(BaseLLMProvider):
         
         return claude_tools
     
-    async def generate_stream(self, messages: List[Dict[str, Any]], 
-                            project_id: Optional[int], 
-                            conversation_id: Optional[int], 
-                            tools: List[Dict[str, Any]]) -> AsyncGenerator[str, None]:
+    async def generate_stream(self, messages: List[Dict[str, Any]],
+                            project_id: Optional[int],
+                            conversation_id: Optional[int],
+                            tools: List[Dict[str, Any]],
+                            ticket_id: Optional[int] = None) -> AsyncGenerator[str, None]:
         """Generate streaming response from Anthropic Claude"""
         # Check token limits before proceeding
         can_proceed, error_message, remaining_tokens = await self.check_token_limits()
@@ -160,7 +167,28 @@ class AnthropicProvider(BaseLLMProvider):
         # Initialize streaming tag handler
         tag_handler = StreamingTagHandler()
 
+        # Tool round limiter to prevent infinite loops
+        max_tool_rounds = 80  # Maximum number of tool-use iterations
+        current_tool_round = 0
+
         while True: # Loop to handle potential multi-turn tool calls
+            current_tool_round += 1
+
+            # Check for ticket cancellation at start of each tool round
+            if ticket_id and is_ticket_cancelled(ticket_id):
+                logger.info(f"[ANTHROPIC] Ticket #{ticket_id} was cancelled, stopping at tool round {current_tool_round}")
+                yield "__CANCELLED__"
+                return
+
+            # Check if we've exceeded max tool rounds
+            if current_tool_round > max_tool_rounds:
+                logger.error(f"Exceeded maximum tool rounds ({max_tool_rounds}). Breaking loop.")
+                error_msg = f"⚠️ Maximum tool execution limit reached ({max_tool_rounds} rounds). Implementation may be incomplete."
+                yield error_msg
+                return
+
+            logger.info(f"[ANTHROPIC] Starting tool round {current_tool_round}/{max_tool_rounds}")
+
             try:
                 # Convert messages and tools to Claude format
                 claude_messages = self._convert_messages_to_provider_format(current_messages)
@@ -180,7 +208,7 @@ class AnthropicProvider(BaseLLMProvider):
                     logger.debug("web_search tool already present, skipping addition")
                 
                 # Log available tools
-                logger.debug(f"Available tools for Claude: {[tool['name'] for tool in claude_tools]}")
+                # logger.debug(f"Available tools for Claude: {[tool['name'] for tool in claude_tools]}")
                 
                 # Extract system message if present
                 system_message = None
@@ -204,16 +232,44 @@ class AnthropicProvider(BaseLLMProvider):
                     "tools": claude_tools,
                     "tool_choice": {"type": "auto"}
                 }
-                
+
+                # Add system message with prompt caching
+                # Use array format with cache_control to enable caching
                 if system_message:
-                    params["system"] = system_message
+                    params["system"] = [
+                        {
+                            "type": "text",
+                            "text": system_message,
+                            "cache_control": {"type": "ephemeral"}
+                        }
+                    ]
                 
                 logger.debug(f"Making Claude API call with {len(claude_messages)} messages.")
-                logger.info(f"Claude model: {self.model} - web_search is built-in for Claude Sonnet 4")
+                logger.info(f"Claude model: {self.model} - web_search is built-in")
                 
                 # Variables for this specific API call
                 tool_calls_requested = [] # Stores {id, function_name, function_args_str}
                 full_assistant_message = {"role": "assistant", "content": None, "tool_calls": []} # To store the complete assistant turn
+                agent_followup_messages: List[Dict[str, Any]] = []
+                agent_followup_counter = 0
+                continue_after_stop = False
+
+                def append_assistant_text(text: Optional[str]):
+                    if not text:
+                        return
+                    if full_assistant_message["content"] is None:
+                        full_assistant_message["content"] = ""
+                    full_assistant_message["content"] += text
+
+                def enqueue_agent_followup(message_text: Optional[str]):
+                    nonlocal agent_followup_counter
+                    if not message_text:
+                        return
+                    agent_followup_counter += 1
+                    agent_followup_messages.append({
+                        "role": "system",
+                        "content": message_text
+                    })
                 current_tool_use = None
                 current_tool_args = ""
 
@@ -232,6 +288,7 @@ class AnthropicProvider(BaseLLMProvider):
                             elif event.content_block.type == "tool_use":
                                 # Tool use block started
                                 logger.debug(f"Tool use started: {event.content_block.name}")
+
                                 current_tool_use = {
                                     "id": event.content_block.id,
                                     "type": "function",
@@ -247,21 +304,21 @@ class AnthropicProvider(BaseLLMProvider):
                                 notification_type = get_notification_type_for_tool(function_name)
                                 
                                 # Skip early notification for stream_prd_content and stream_implementation_content since we need the actual content
-                                if function_name not in ["stream_prd_content", "stream_implementation_content"]:
-                                    # Send early notification for other tool uses
-                                    logger.info(f"SENDING EARLY NOTIFICATION FOR {function_name}")
-                                    early_notification = {
-                                        "is_notification": True,
-                                        "notification_type": notification_type or "tool",
-                                        "early_notification": True,
-                                        "function_name": function_name,
-                                        "notification_marker": "__NOTIFICATION__"
-                                    }
-                                    notification_json = json.dumps(early_notification)
-                                    logger.info(f"Early notification JSON: {notification_json}")
-                                    yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
-                                else:
-                                    logger.info(f"Skipping early notification for {function_name} - will send with content later")
+                                # if function_name not in ["stream_prd_content", "stream_implementation_content"]:
+                                #     # Send early notification for other tool uses
+                                #     logger.info(f"SENDING EARLY NOTIFICATION FOR {function_name}")
+                                #     early_notification = {
+                                #         "is_notification": True,
+                                #         "notification_type": notification_type or "tool",
+                                #         "early_notification": True,
+                                #         "function_name": function_name,
+                                #         "notification_marker": "__NOTIFICATION__"
+                                #     }
+                                #     notification_json = json.dumps(early_notification)
+                                #     logger.info(f"Early notification JSON: {notification_json}")
+                                #     yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                # else:
+                                #     logger.info(f"Skipping early notification for {function_name} - will send with content later")
                         
                         elif event.type == "content_block_delta":
                             if event.delta.type == "text_delta":
@@ -277,6 +334,8 @@ class AnthropicProvider(BaseLLMProvider):
                                 
                                 # Yield notification if present
                                 if notification:
+                                    if isinstance(notification, dict):
+                                        enqueue_agent_followup(notification.get("message_to_agent"))
                                     yield format_notification(notification)
                                 
                                 # Yield output text if present
@@ -287,12 +346,12 @@ class AnthropicProvider(BaseLLMProvider):
                                 immediate_notifications = tag_handler.get_immediate_notifications()
                                 for immediate_notification in immediate_notifications:
                                     logger.info(f"[ANTHROPIC] Yielding immediate notification: {immediate_notification.get('notification_type')}")
+                                    if isinstance(immediate_notification, dict):
+                                        enqueue_agent_followup(immediate_notification.get("message_to_agent"))
                                     yield format_notification(immediate_notification)
                                 
                                 # Update the full assistant message
-                                if full_assistant_message["content"] is None:
-                                    full_assistant_message["content"] = ""
-                                full_assistant_message["content"] += text
+                                append_assistant_text(text)
                                 
                                 # Check if this might be web search results
                                 if "search result" in text.lower() or "web search" in text.lower():
@@ -318,13 +377,27 @@ class AnthropicProvider(BaseLLMProvider):
                             
                             # Track token usage if available
                             if hasattr(event.message, 'usage') and event.message.usage:
+                                usage = event.message.usage
+
+                                # Log prompt caching stats
+                                cache_creation = getattr(usage, 'cache_creation_input_tokens', 0)
+                                cache_read = getattr(usage, 'cache_read_input_tokens', 0)
+                                input_tokens = getattr(usage, 'input_tokens', 0)
+                                output_tokens = getattr(usage, 'output_tokens', 0)
+
+                                if cache_creation > 0 or cache_read > 0:
+                                    logger.info(f"[PROMPT CACHE] Cache creation: {cache_creation}, Cache read: {cache_read}, Regular input: {input_tokens}, Output: {output_tokens}")
+                                    if cache_read > 0:
+                                        savings_pct = (cache_read / (cache_read + input_tokens) * 100) if (cache_read + input_tokens) > 0 else 0
+                                        logger.info(f"[PROMPT CACHE] Cache hit! Saved ~90% cost on {cache_read} tokens ({savings_pct:.1f}% of total input)")
+
                                 if user:
-                                    logger.info(f"Tracking token usage for Anthropic: input={getattr(event.message.usage, 'input_tokens', 0)}, output={getattr(event.message.usage, 'output_tokens', 0)}")
+                                    logger.info(f"Tracking token usage for Anthropic: input={input_tokens}, output={output_tokens}, cache_creation={cache_creation}, cache_read={cache_read}")
                                     await track_token_usage(
                                         user, project, conversation, event.message.usage, 'anthropic', self.model
                                     )
                                 else:
-                                    logger.warning(f"Cannot track token usage - no user available. Usage data: input={getattr(event.message.usage, 'input_tokens', 0)}, output={getattr(event.message.usage, 'output_tokens', 0)}")
+                                    logger.warning(f"Cannot track token usage - no user available. Usage data: input={input_tokens}, output={output_tokens}")
                             else:
                                 logger.debug("No usage data available in message_stop event")
                             
@@ -373,7 +446,12 @@ class AnthropicProvider(BaseLLMProvider):
                                             
                                             # Yield any content that needs to be streamed
                                             if yielded_content:
-                                                yield yielded_content
+                                                if isinstance(yielded_content, (list, tuple)):
+                                                    for chunk in yielded_content:
+                                                        if chunk:
+                                                            yield chunk
+                                                else:
+                                                    yield yielded_content
                                         
                                         # Append tool result message
                                         tool_results_messages.append({
@@ -385,9 +463,13 @@ class AnthropicProvider(BaseLLMProvider):
                                         # If we have notification data, yield it
                                         if notification_data:
                                             logger.debug("YIELDING NOTIFICATION DATA TO CONSUMER")
-                                            notification_json = json.dumps(notification_data)
-                                            logger.debug(f"Notification JSON: {notification_json}")
-                                            yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+                                            notification_list = notification_data if isinstance(notification_data, list) else [notification_data]
+                                            for notification in notification_list:
+                                                if isinstance(notification, dict):
+                                                    enqueue_agent_followup(notification.get("message_to_agent"))
+                                                formatted = format_notification(notification)
+                                                logger.debug(f"Notification JSON: {formatted}")
+                                                yield formatted
                                 
                                 current_messages.extend(tool_results_messages)
                                 # Continue the outer while loop to make the next API call
@@ -416,6 +498,8 @@ class AnthropicProvider(BaseLLMProvider):
                                     pending_notifications.append(unclosed_save)
                                 for notification in pending_notifications:
                                     logger.info(f"[ANTHROPIC] Yielding pending notification: {notification}")
+                                    if isinstance(notification, dict):
+                                        enqueue_agent_followup(notification.get("message_to_agent"))
                                     formatted = format_notification(notification)
                                     yield formatted
                                 
@@ -437,16 +521,30 @@ class AnthropicProvider(BaseLLMProvider):
                                         logger.info(f"[ANTHROPIC] Notification type: {notification.get('notification_type')}")
                                     else:
                                         logger.warning(f"[ANTHROPIC] NO FILE_ID IN NOTIFICATION! Keys: {list(notification.keys())}")
+                                    if isinstance(notification, dict):
+                                        enqueue_agent_followup(notification.get("message_to_agent"))
                                     formatted = format_notification(notification)
                                     logger.info(f"[ANTHROPIC] Formatted notification: {formatted[:100]}...")
                                     logger.info(f"[ANTHROPIC] Full formatted notification: {formatted}")
                                     yield formatted
                                 
+                                if agent_followup_messages:
+                                    logger.info("[ANTHROPIC] Continuing conversation to process agent follow-up messages")
+                                    if full_assistant_message.get("content") or full_assistant_message.get("tool_calls"):
+                                        current_messages.append({k: v for k, v in full_assistant_message.items() if v})
+                                    current_messages.extend(agent_followup_messages)
+                                    continue_after_stop = True
+                                    break
+
                                 return
                             else:
                                 logger.warning(f"[AnthropicProvider] Unhandled stop reason: {stop_reason}")
                                 return
                 
+                # If we broke out because we need a follow-up turn, restart loop
+                if continue_after_stop:
+                    continue
+
                 # If we broke out of the inner loop due to tool_use, continue
                 if tool_calls_requested:
                     continue
@@ -455,9 +553,28 @@ class AnthropicProvider(BaseLLMProvider):
                     return
 
             except Exception as e:
-                logger.error(f"Critical Error: {str(e)}\n{traceback.format_exc()}")
-                yield f"Error with Claude stream: {str(e)}"
-                return
+                error_str = str(e)
+                logger.error(f"Critical Error: {error_str}\n{traceback.format_exc()}")
+
+                # Check if this is a 500 Internal Server Error
+                if "500" in error_str or "Internal server error" in error_str or "InternalServerError" in error_str:
+                    # For 500 errors, add retry logic with exponential backoff
+                    if current_tool_round <= 3:  # Only retry on early rounds
+                        retry_delay = 2 ** current_tool_round  # Exponential backoff: 2s, 4s, 8s
+                        logger.warning(f"Anthropic API 500 error on round {current_tool_round}. Retrying in {retry_delay}s...")
+                        yield f"⚠️ API error (500). Retrying in {retry_delay}s..."
+                        await asyncio.sleep(retry_delay)
+                        continue  # Retry the same round
+                    else:
+                        logger.error(f"Anthropic API 500 error persisted after {current_tool_round} rounds. Giving up.")
+                        yield f"❌ Persistent API error (500). Please try again later."
+                        # Signal the error to the caller
+                        yield "__ERROR_500__"
+                        return
+                else:
+                    # Non-retryable error
+                    yield f"Error with Claude stream: {error_str}"
+                    return
 
     async def _execute_tool(self, tool_call, project_id, conversation_id):
         """Execute a single tool call and return results"""

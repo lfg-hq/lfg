@@ -282,7 +282,21 @@ class StreamingTagHandler:
         elif "</lfg-plan>" in self.buffer:
             # Convert old closing implementation tag
             self.buffer = self.buffer.replace("</lfg-plan>", "</lfg-file>")
-        
+
+        # Handle lfg-info tags - status messages that should have line breaks after
+        elif "</lfg-info>" in self.buffer and self.current_mode != "file":
+            # Process complete lfg-info tags - wrap in styled indicator
+            # Add newlines after to ensure markdown parsing works for following content
+            self.buffer = re.sub(
+                r'<lfg-info>(.*?)</lfg-info>',
+                r'<div class="agent-status-indicator">\1</div>\n\n',
+                self.buffer,
+                flags=re.DOTALL
+            )
+            # Output processed content
+            output_text = self.buffer
+            self.buffer = ""
+
         # Handle content based on current mode
         elif self.current_mode == "file":
             # When in file mode, we need to handle the buffer differently
@@ -402,14 +416,23 @@ class StreamingTagHandler:
         """Clean XML fragments from text"""
         if not text:
             return text
-        
-        # Remove complete lfg tags
-        text = re.sub(r'</?lfg[^>]*>', '', text)
+
+        # Handle lfg-info tags specially - wrap in styled indicator
+        # Add newlines after to ensure markdown parsing works for following content
+        text = re.sub(
+            r'<lfg-info>(.*?)</lfg-info>',
+            r'<div class="agent-status-indicator">\1</div>\n\n',
+            text,
+            flags=re.DOTALL
+        )
+
+        # Remove complete lfg tags (but not lfg-info which we handled above)
+        text = re.sub(r'</?lfg(?!-info)[^>]*>', '', text)
         # Remove incomplete lfg tags at the end
         text = re.sub(r'</?lfg[^>]*$', '', text)
         # Remove priority tags
         text = re.sub(r'</?priority[^>]*>', '', text)
-        
+
         return text
     
     def flush_buffer(self) -> str:
@@ -423,12 +446,12 @@ class StreamingTagHandler:
     
     def get_immediate_notifications(self) -> list:
         """Get and clear any immediate notifications that need to be yielded"""
-        logger.info(f"[GET_IMMEDIATE_NOTIFICATIONS] Called, queue size: {len(self.immediate_notifications)}")
+        # logger.info(f"[GET_IMMEDIATE_NOTIFICATIONS] Called, queue size: {len(self.immediate_notifications)}")
         if self.immediate_notifications:
             logger.info(f"[GET_IMMEDIATE_NOTIFICATIONS] Queue contents: {self.immediate_notifications}")
         notifications = list(self.immediate_notifications)
         self.immediate_notifications = []
-        logger.info(f"[GET_IMMEDIATE_NOTIFICATIONS] Returning {len(notifications)} notifications")
+        # logger.info(f"[GET_IMMEDIATE_NOTIFICATIONS] Returning {len(notifications)} notifications")
         return notifications
     
     async def save_captured_data(self, project_id: str) -> list:

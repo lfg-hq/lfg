@@ -1,35 +1,15 @@
 from django.core.management.base import BaseCommand
-from subscriptions.models import PaymentPlan
 from django.db.models import Q
+
+from subscriptions.models import PaymentPlan
+from subscriptions.constants import DEFAULT_PAYMENT_PLANS
 
 class Command(BaseCommand):
     help = 'Create default payment plans for subscriptions'
     
     def handle(self, *args, **kwargs):
         # Define our default plans
-        default_plans = [
-            {
-                'name': 'Free Tier',
-                'price': 0.00,
-                'credits': 100000,  # 100K tokens total (all-time)
-                'description': 'Free tier with 100,000 tokens lifetime limit. Only supports gpt-5-mini model.',
-                'is_subscription': False
-            },
-            {
-                'name': 'Pro Monthly',
-                'price': 9.00,
-                'credits': 300000,  # 300K tokens per month
-                'description': 'Pro tier with 300,000 tokens per month. Access to all AI models.',
-                'is_subscription': True
-            },
-            {
-                'name': 'Additional Credits',
-                'price': 5.00,
-                'credits': 100000,  # 100K additional tokens
-                'description': 'Get 100,000 more tokens for $5 (one-time purchase).',
-                'is_subscription': False
-            }
-        ]
+        default_plans = DEFAULT_PAYMENT_PLANS
         
         plans_created = 0
         plans_updated = 0

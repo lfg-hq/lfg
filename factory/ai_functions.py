@@ -1,30 +1,49 @@
 import json
 import os
+import re
 import asyncio
 import subprocess
 import logging
+import textwrap
+import time
 from datetime import datetime
 from pathlib import Path
 from asgiref.sync import sync_to_async
 from projects.models import Project, ProjectFeature, ProjectPersona, \
-                            ProjectPRD, ProjectDesignSchema, ProjectChecklist, \
-                            ProjectImplementation, ProjectFile
+                            ProjectPRD, ProjectDesignSchema, ProjectTicket, \
+                            ProjectImplementation, ProjectFile, ProjectTodoList, TicketLog, \
+                            ProjectDesignFeature
+from projects.websocket_utils import async_send_ticket_log_notification
 
-from development.models import ServerConfig
+from development.models import ServerConfig, Sandbox
 
 from django.conf import settings
 from django.core.cache import cache
 from development.k8s_manager.manage_pods import execute_command_in_pod
 
 from development.models import KubernetesPod
-from development.models import CommandExecution
 from accounts.models import GitHubToken, ExternalServicesAPIKeys
 from chat.models import Conversation
 from factory.notion_connector import NotionConnector
 from projects.linear_sync import LinearSyncService
+from django.utils import timezone
+from tasks.task_manager import TaskManager
+from factory.stack_configs import get_stack_config
 
 # Configure logger
 logger = logging.getLogger(__name__)
+
+# Mags API imports
+try:
+    from factory.mags import (
+        run_command as mags_run_command, get_or_create_workspace_job,
+        workspace_name_for_preview, get_http_proxy_url,
+        MAGS_WORKING_DIR, PREVIEW_SETUP_SCRIPT, MagsAPIError,
+    )
+    _mags_available = True
+except ImportError:
+    logger.warning("Mags API not available")
+    _mags_available = False
 
 # Import codebase indexing functions
 try:
@@ -42,6 +61,133 @@ except ImportError as e:
     logger.warning(f"Codebase indexing not available: {e}")
     CODEBASE_INDEX_AVAILABLE = False
 
+
+# ============================================================================
+# WORKSPACE HELPERS
+# ============================================================================
+
+def _slugify_project_name(name: str) -> str:
+    slug = re.sub(r'[^a-z0-9]+', '-', name.lower())
+    slug = slug.strip('-')
+    return slug or "turbo-app"
+
+
+async def async_get_or_fetch_proxy_url(workspace: Sandbox, port: int = 3000, **kwargs) -> str | None:
+    """Get preview URL for a workspace via Mags HTTP access."""
+    job_id = workspace.mags_job_id or workspace.job_id
+    def _get():
+        try:
+            return get_http_proxy_url(job_id, port)
+        except Exception:
+            return None
+    return await sync_to_async(_get, thread_sensitive=True)()
+
+
+def _sanitize_string(value: str) -> str:
+    """
+    Remove NUL bytes and other problematic characters that PostgreSQL cannot store.
+    """
+    if not value:
+        return ""
+    # Remove NUL bytes (0x00) which PostgreSQL text fields cannot store
+    sanitized = value.replace('\x00', '')
+    # Optionally remove other control characters except newlines, tabs, and carriage returns
+    # sanitized = ''.join(char for char in sanitized if char >= ' ' or char in '\n\r\t')
+    return sanitized
+
+def _truncate_output(value: str, limit: int = 4000) -> str:
+    if not value:
+        return ""
+    # Sanitize NUL bytes first
+    value = _sanitize_string(value)
+    if len(value) <= limit:
+        return value
+    truncated = value[:limit]
+    omitted = len(value) - limit
+    return f"{truncated}\n... (truncated {omitted} characters)"
+
+
+def _format_command_output(stdout: str, stderr: str, limit: int = 6000) -> str:
+    stdout_trimmed = _truncate_output(stdout, limit // 2)
+    stderr_trimmed = _truncate_output(stderr, limit // 2)
+    parts = []
+    if stdout_trimmed:
+        parts.append(f"STDOUT:\n{stdout_trimmed}")
+    if stderr_trimmed:
+        parts.append(f"STDERR:\n{stderr_trimmed}")
+    return "\n\n".join(parts) if parts else "(no output)"
+
+
+def _extract_pid_from_output(output: str) -> str:
+    if not output:
+        return ""
+    match = re.search(r"PID:(\d+)", output)
+    if match:
+        return match.group(1)
+    match = re.search(r"\b(\d{3,})\b", output)
+    return match.group(1) if match else ""
+
+
+def _build_log_entries_from_steps(steps):
+    log_entries = []
+    for description, result in steps:
+        if not isinstance(result, dict):
+            continue
+        log_entries.append({
+            "title": description,
+            "command": _truncate_output(result.get("command", ""), 600),
+            "stdout": _truncate_output(result.get("stdout", ""), 800),
+            "stderr": _truncate_output(result.get("stderr", ""), 800),
+            "exit_code": result.get("exit_code")
+        })
+    return log_entries
+
+
+def _update_workspace_metadata(workspace, **metadata):
+    current_metadata = workspace.metadata or {}
+    if metadata:
+        current_metadata.update(metadata)
+    workspace.metadata = current_metadata
+    workspace.last_seen_at = timezone.now()
+    workspace.save(update_fields=['metadata', 'last_seen_at', 'updated_at'])
+
+
+async def _fetch_workspace(project=None, conversation_id=None, workspace_id=None):
+    """Fetch a Sandbox by workspace_id, project, or conversation."""
+
+    logger.info(f"[FETCH_WORKSPACE] Called with workspace_id={workspace_id}, project={project.id if project else None}, conversation_id={conversation_id}")
+
+    def _query():
+        qs = Sandbox.objects.all()
+        if workspace_id:
+            logger.info(f"[FETCH_WORKSPACE] Querying by workspace_id: {workspace_id}")
+            result = qs.filter(workspace_id=workspace_id).first()
+            if result:
+                logger.info(f"[FETCH_WORKSPACE] Found workspace by workspace_id: {result.workspace_id}, job_id: {result.job_id}, status: {result.status}")
+            else:
+                logger.warning(f"[FETCH_WORKSPACE] No workspace found for workspace_id: {workspace_id}")
+            return result
+        if project:
+            logger.info(f"[FETCH_WORKSPACE] Querying by project: {project.id}")
+            workspace = qs.filter(project=project).first()
+            if workspace:
+                logger.info(f"[FETCH_WORKSPACE] Found workspace by project: {workspace.workspace_id}, job_id: {workspace.job_id}, status: {workspace.status}")
+                return workspace
+            else:
+                logger.info(f"[FETCH_WORKSPACE] No workspace found for project: {project.id}")
+        if conversation_id:
+            logger.info(f"[FETCH_WORKSPACE] Querying by conversation_id: {conversation_id}")
+            result = qs.filter(conversation_id=str(conversation_id)).first()
+            if result:
+                logger.info(f"[FETCH_WORKSPACE] Found workspace by conversation_id: {result.workspace_id}, job_id: {result.job_id}, status: {result.status}")
+            else:
+                logger.info(f"[FETCH_WORKSPACE] No workspace found for conversation_id: {conversation_id}")
+            return result
+
+        logger.warning("[FETCH_WORKSPACE] No query parameters provided (workspace_id, project, or conversation_id)")
+        return None
+
+    return await sync_to_async(_query, thread_sensitive=True)()
 
 # ============================================================================
 # UTILITY FUNCTIONS
@@ -89,20 +235,76 @@ def validate_function_args(function_args, required_keys=None):
             }
     return None
 
-def execute_local_command(command: str, workspace_path: str) -> tuple[bool, str, str]:
+def get_project_env_exports(project_id) -> list[str]:
+    """
+    Get project environment variables formatted as shell export statements.
+
+    Args:
+        project_id: The project database ID (int) or project_id string
+
+    Returns:
+        List of export statements like ['export KEY=value', ...]
+    """
+    try:
+        from projects.models import ProjectEnvironmentVariable, Project
+
+        project = None
+
+        # Try to convert to int for database id lookup
+        try:
+            int_id = int(project_id)
+            project = Project.objects.filter(id=int_id).first()
+        except (ValueError, TypeError):
+            pass
+
+        # If not found, try by project_id string
+        if not project and project_id:
+            project = Project.objects.filter(project_id=str(project_id)).first()
+
+        if not project:
+            logger.debug(f"[ENV] No project found for project_id={project_id}")
+            return []
+
+        env_vars = ProjectEnvironmentVariable.get_project_env_dict(project)
+        if env_vars:
+            logger.info(f"[ENV] Found {len(env_vars)} env vars for project {project.project_id}")
+        exports = []
+        for key, value in env_vars.items():
+            # Escape single quotes in value for shell safety
+            escaped_value = value.replace("'", "'\\''")
+            exports.append(f"export {key}='{escaped_value}'")
+        return exports
+    except Exception as e:
+        logger.warning(f"[ENV] Failed to get project env vars: {e}", exc_info=True)
+        return []
+
+
+def execute_local_command(command: str, workspace_path: str, project_id: int = None) -> tuple[bool, str, str]:
     """
     Execute a command locally using subprocess.
-    
+
     Args:
         command: The command to execute
         workspace_path: The workspace directory path
-        
+        project_id: Optional project ID to inject environment variables
+
     Returns:
         Tuple of (success, stdout, stderr)
     """
     try:
+        # Get project environment variables if project_id provided
+        env_exports = []
+        if project_id:
+            env_exports = get_project_env_exports(project_id)
+
+        # Prepend env exports to command if any
+        if env_exports:
+            full_command = " && ".join(env_exports + [command])
+        else:
+            full_command = command
+
         result = subprocess.run(
-            command,
+            full_command,
             shell=True,
             cwd=workspace_path,
             capture_output=True,
@@ -155,15 +357,505 @@ def execute_local_server_command(command: str, workspace_path: str) -> tuple[boo
         return False, "", f"Error executing server command: {str(e)}"
 
 # ============================================================================
+# PRODUCT MANAGER ORCHESTRATION TOOLS
+# ============================================================================
+
+async def get_ticket_details_tool(function_args, project_id, conversation_id):
+    """Get full ticket state: status, notes, logs, acceptance_criteria, todos, linked docs."""
+    logger.info("get_ticket_details_tool called")
+
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+
+    ticket_id = function_args.get('ticket_id')
+    if not ticket_id:
+        return {"is_notification": False, "message_to_agent": "Error: ticket_id is required"}
+
+    project = await get_project(project_id)
+    if not project:
+        return {"is_notification": False, "message_to_agent": f"Error: Project with ID {project_id} does not exist"}
+
+    def _fetch():
+        try:
+            ticket = ProjectTicket.objects.get(id=ticket_id, project=project)
+        except ProjectTicket.DoesNotExist:
+            return None
+
+        # Linked documents
+        linked_docs = list(ticket.linked_documents.values('id', 'name', 'file_type'))
+
+        # Recent logs (last 5)
+        recent_logs = list(
+            TicketLog.objects.filter(ticket=ticket)
+            .order_by('-created_at')[:5]
+            .values('id', 'log_type', 'command', 'explanation', 'output', 'exit_code', 'created_at')
+        )
+        for log in recent_logs:
+            if log.get('output') and len(log['output']) > 2000:
+                log['output'] = log['output'][:2000] + '... (truncated)'
+            log['created_at'] = str(log['created_at'])
+
+        # Todos
+        todos = list(
+            ProjectTodoList.objects.filter(ticket=ticket)
+            .values('id', 'description', 'status', 'order')
+        )
+
+        return {
+            'id': ticket.id,
+            'name': ticket.name,
+            'status': ticket.status,
+            'priority': ticket.priority,
+            'complexity': ticket.complexity,
+            'role': ticket.role,
+            'description': ticket.description,
+            'acceptance_criteria': ticket.acceptance_criteria,
+            'details': ticket.details,
+            'notes': ticket.notes,
+            'dependencies': ticket.dependencies,
+            'queue_status': ticket.queue_status,
+            'linked_documents': linked_docs,
+            'recent_logs': recent_logs,
+            'todos': todos,
+            'created_at': str(ticket.created_at),
+            'updated_at': str(ticket.updated_at),
+        }
+
+    result = await sync_to_async(_fetch)()
+    if result is None:
+        return {"is_notification": False, "message_to_agent": f"Error: Ticket {ticket_id} not found in this project"}
+
+    return {
+        "is_notification": False,
+        "message_to_agent": json.dumps(result, indent=2)
+    }
+
+
+async def get_project_dashboard_tool(function_args, project_id, conversation_id):
+    """Get project dashboard: tickets grouped by status, completion %, documents list."""
+    logger.info("get_project_dashboard_tool called")
+
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+
+    project = await get_project(project_id)
+    if not project:
+        return {"is_notification": False, "message_to_agent": f"Error: Project with ID {project_id} does not exist"}
+
+    def _fetch():
+        tickets = ProjectTicket.objects.filter(project=project)
+        total = tickets.count()
+
+        # Group by status
+        status_groups = {}
+        for ticket in tickets.values('id', 'name', 'status', 'priority', 'role', 'complexity', 'queue_status'):
+            status = ticket['status']
+            if status not in status_groups:
+                status_groups[status] = []
+            status_groups[status].append(ticket)
+
+        # Completion %
+        done_count = len(status_groups.get('done', []))
+        completion_pct = round((done_count / total * 100), 1) if total > 0 else 0
+
+        # Documents
+        documents = list(
+            ProjectFile.objects.filter(project=project, is_active=True)
+            .values('id', 'name', 'file_type', 'created_at', 'updated_at')
+        )
+        for doc in documents:
+            doc['created_at'] = str(doc['created_at'])
+            doc['updated_at'] = str(doc['updated_at'])
+
+        return {
+            'project_name': project.name,
+            'total_tickets': total,
+            'completion_percentage': completion_pct,
+            'tickets_by_status': {
+                status: {
+                    'count': len(tix),
+                    'tickets': tix
+                } for status, tix in status_groups.items()
+            },
+            'documents': documents,
+        }
+
+    result = await sync_to_async(_fetch)()
+
+    return {
+        "is_notification": False,
+        "message_to_agent": json.dumps(result, indent=2)
+    }
+
+
+async def get_ticket_execution_log_tool(function_args, project_id, conversation_id):
+    """Read TicketLog entries for a ticket."""
+    logger.info("get_ticket_execution_log_tool called")
+
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+
+    ticket_id = function_args.get('ticket_id')
+    if not ticket_id:
+        return {"is_notification": False, "message_to_agent": "Error: ticket_id is required"}
+
+    limit = function_args.get('limit', 20)
+    log_type = function_args.get('log_type', 'all')
+
+    project = await get_project(project_id)
+    if not project:
+        return {"is_notification": False, "message_to_agent": f"Error: Project with ID {project_id} does not exist"}
+
+    def _fetch():
+        try:
+            ticket = ProjectTicket.objects.get(id=ticket_id, project=project)
+        except ProjectTicket.DoesNotExist:
+            return None
+
+        qs = TicketLog.objects.filter(ticket=ticket)
+        if log_type != 'all':
+            qs = qs.filter(log_type=log_type)
+
+        logs = list(
+            qs.order_by('-created_at')[:limit]
+            .values('id', 'log_type', 'command', 'explanation', 'output', 'exit_code', 'created_at')
+        )
+        for log in logs:
+            if log.get('output') and len(log['output']) > 2000:
+                log['output'] = log['output'][:2000] + '... (truncated)'
+            log['created_at'] = str(log['created_at'])
+
+        return {
+            'ticket_id': ticket.id,
+            'ticket_name': ticket.name,
+            'ticket_status': ticket.status,
+            'log_count': len(logs),
+            'logs': logs,
+        }
+
+    result = await sync_to_async(_fetch)()
+    if result is None:
+        return {"is_notification": False, "message_to_agent": f"Error: Ticket {ticket_id} not found in this project"}
+
+    return {
+        "is_notification": False,
+        "message_to_agent": json.dumps(result, indent=2)
+    }
+
+
+async def retry_ticket_tool(function_args, project_id, conversation_id):
+    """Reset a failed/blocked ticket, append context, and re-queue."""
+    logger.info("retry_ticket_tool called")
+
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+
+    ticket_id = function_args.get('ticket_id')
+    if not ticket_id:
+        return {"is_notification": False, "message_to_agent": "Error: ticket_id is required"}
+
+    additional_context = function_args.get('additional_context', '')
+
+    project = await get_project(project_id)
+    if not project:
+        return {"is_notification": False, "message_to_agent": f"Error: Project with ID {project_id} does not exist"}
+
+    if not conversation_id:
+        return {"is_notification": False, "message_to_agent": "Error: conversation_id is required for retry"}
+
+    def _reset_and_prepare():
+        try:
+            ticket = ProjectTicket.objects.get(id=ticket_id, project=project)
+        except ProjectTicket.DoesNotExist:
+            return None, "Ticket not found"
+
+        if ticket.status not in ('failed', 'blocked', 'open'):
+            return None, f"Cannot retry ticket with status '{ticket.status}'. Only failed, blocked, or open tickets can be retried."
+
+        timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
+
+        # Append additional context to description
+        if additional_context:
+            ticket.description += f"\n\n---\n**[Retry Context — {timestamp}]**\n{additional_context}"
+
+        # Append retry note
+        retry_note = f"[{timestamp}] Ticket retried by product manager."
+        if additional_context:
+            retry_note += f" Additional context provided."
+        if ticket.notes:
+            ticket.notes += f"\n{retry_note}"
+        else:
+            ticket.notes = retry_note
+
+        # Reset status and queue
+        ticket.status = 'open'
+        ticket.queue_status = 'none'
+        ticket.save(update_fields=['description', 'notes', 'status', 'queue_status', 'updated_at'])
+
+        return ticket.id, None
+
+    result_id, error = await sync_to_async(_reset_and_prepare)()
+    if error:
+        return {"is_notification": False, "message_to_agent": f"Error: {error}"}
+
+    # Re-queue via TaskManager (same pattern as queue_ticket_execution_tool)
+    try:
+        task_id = await sync_to_async(TaskManager.publish_task)(
+            'tasks.task_definitions.execute_ticket_implementation',
+            result_id,
+            project.id,
+            conversation_id,
+            task_name=f"Retry Ticket #{result_id} for {project.name}",
+            timeout=7200
+        )
+
+        # Update queue_status
+        def _mark_queued():
+            ProjectTicket.objects.filter(id=result_id).update(queue_status='queued')
+        await sync_to_async(_mark_queued)()
+
+        return {
+            "is_notification": True,
+            "notification_type": "checklist",
+            "status": "queued",
+            "message_to_agent": f"Ticket #{result_id} has been reset and re-queued for execution (task: {task_id}).",
+            "ticket_id": result_id,
+            "task_id": task_id,
+            "notification_marker": "__NOTIFICATION__"
+        }
+    except Exception as exc:
+        logger.exception(f"Failed to re-queue ticket {result_id}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Ticket #{result_id} was reset to 'open' but failed to queue: {str(exc)}. You can try queue_ticket_execution() manually."
+        }
+
+
+async def schedule_tickets_tool(function_args, project_id, conversation_id):
+    """Dependency-aware ticket scheduling."""
+    logger.info("schedule_tickets_tool called")
+
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+
+    ticket_ids = function_args.get('ticket_ids', [])
+    strategy = function_args.get('strategy', 'dependency_wave')
+
+    if not ticket_ids:
+        return {"is_notification": False, "message_to_agent": "Error: ticket_ids is required and must not be empty"}
+
+    project = await get_project(project_id)
+    if not project:
+        return {"is_notification": False, "message_to_agent": f"Error: Project with ID {project_id} does not exist"}
+
+    if not conversation_id:
+        return {"is_notification": False, "message_to_agent": "Error: conversation_id is required for scheduling"}
+
+    def _analyze_deps():
+        # Fetch requested tickets
+        requested = list(ProjectTicket.objects.filter(id__in=ticket_ids, project=project))
+        requested_map = {t.id: t for t in requested}
+
+        # Get all project ticket statuses for dependency checking
+        all_statuses = dict(
+            ProjectTicket.objects.filter(project=project).values_list('id', 'status')
+        )
+
+        ready = []
+        blocked = []
+        skipped = []
+
+        for tid in ticket_ids:
+            ticket = requested_map.get(tid)
+            if not ticket:
+                skipped.append({'ticket_id': tid, 'reason': 'not found'})
+                continue
+            if ticket.status in ('done', 'in_progress'):
+                skipped.append({'ticket_id': tid, 'name': ticket.name, 'reason': f'status is {ticket.status}'})
+                continue
+
+            # Check dependencies
+            deps = ticket.dependencies or []
+            unmet = []
+            for dep_id in deps:
+                try:
+                    dep_id_int = int(dep_id)
+                except (TypeError, ValueError):
+                    continue
+                dep_status = all_statuses.get(dep_id_int)
+                if dep_status != 'done':
+                    unmet.append({'id': dep_id_int, 'status': dep_status or 'not found'})
+
+            if unmet:
+                blocked.append({'ticket_id': tid, 'name': ticket.name, 'unmet_dependencies': unmet})
+            else:
+                ready.append({'ticket_id': tid, 'name': ticket.name})
+
+        return ready, blocked, skipped
+
+    ready, blocked, skipped = await sync_to_async(_analyze_deps)()
+
+    if not ready:
+        return {
+            "is_notification": False,
+            "message_to_agent": json.dumps({
+                'status': 'no_tickets_ready',
+                'blocked': blocked,
+                'skipped': skipped,
+                'message': 'No tickets are ready to execute. All have unmet dependencies or are already done/in_progress.'
+            }, indent=2)
+        }
+
+    # Determine which tickets to queue based on strategy
+    if strategy == 'sequential':
+        to_queue = [ready[0]]
+    else:  # parallel or dependency_wave
+        to_queue = ready
+
+    # Queue the tickets
+    task_ids = []
+    failed = []
+    queued_ids = []
+
+    for item in to_queue:
+        tid = item['ticket_id']
+        try:
+            task_id = await sync_to_async(TaskManager.publish_task)(
+                'tasks.task_definitions.execute_ticket_implementation',
+                tid,
+                project.id,
+                conversation_id,
+                task_name=f"Scheduled Ticket #{tid} for {project.name}",
+                timeout=7200
+            )
+            task_ids.append(task_id)
+            queued_ids.append(tid)
+        except Exception as exc:
+            logger.exception(f"Failed to queue ticket {tid}")
+            failed.append({'ticket_id': tid, 'error': str(exc)})
+
+    # Update queue_status
+    if queued_ids:
+        def _mark():
+            ProjectTicket.objects.filter(id__in=queued_ids).update(queue_status='queued')
+        await sync_to_async(_mark)()
+
+    result = {
+        'status': 'scheduled',
+        'strategy': strategy,
+        'queued': [{'ticket_id': tid} for tid in queued_ids],
+        'blocked': blocked,
+        'skipped': skipped,
+        'failed': failed,
+        'summary': f"Queued {len(queued_ids)} ticket(s), {len(blocked)} blocked, {len(skipped)} skipped."
+    }
+
+    return {
+        "is_notification": True if queued_ids else False,
+        "notification_type": "checklist",
+        "status": "queued",
+        "message_to_agent": json.dumps(result, indent=2),
+        "ticket_ids": queued_ids,
+        "task_ids": task_ids,
+        "notification_marker": "__NOTIFICATION__"
+    }
+
+
+async def update_ticket_details_tool(function_args, project_id, conversation_id):
+    """Update ticket fields: description, acceptance_criteria, priority, complexity, status, notes."""
+    logger.info("update_ticket_details_tool called")
+
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+
+    ticket_id = function_args.get('ticket_id')
+    if not ticket_id:
+        return {"is_notification": False, "message_to_agent": "Error: ticket_id is required"}
+
+    project = await get_project(project_id)
+    if not project:
+        return {"is_notification": False, "message_to_agent": f"Error: Project with ID {project_id} does not exist"}
+
+    def _update():
+        try:
+            ticket = ProjectTicket.objects.get(id=ticket_id, project=project)
+        except ProjectTicket.DoesNotExist:
+            return None, "Ticket not found"
+
+        update_fields = ['updated_at']
+        changes = []
+
+        if 'description' in function_args:
+            ticket.description = function_args['description']
+            update_fields.append('description')
+            changes.append('description')
+
+        if 'acceptance_criteria' in function_args:
+            ticket.acceptance_criteria = function_args['acceptance_criteria']
+            update_fields.append('acceptance_criteria')
+            changes.append('acceptance_criteria')
+
+        if 'priority' in function_args:
+            ticket.priority = function_args['priority']
+            update_fields.append('priority')
+            changes.append('priority')
+
+        if 'complexity' in function_args:
+            ticket.complexity = function_args['complexity']
+            update_fields.append('complexity')
+            changes.append('complexity')
+
+        if 'status' in function_args:
+            ticket.status = function_args['status']
+            update_fields.append('status')
+            changes.append('status')
+
+        if 'notes' in function_args:
+            timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
+            new_note = f"[{timestamp}] {function_args['notes']}"
+            if ticket.notes:
+                ticket.notes += f"\n{new_note}"
+            else:
+                ticket.notes = new_note
+            update_fields.append('notes')
+            changes.append('notes')
+
+        if len(update_fields) <= 1:
+            return ticket.id, "No fields to update. Provide at least one field to change."
+
+        ticket.save(update_fields=update_fields)
+        return ticket.id, f"Updated: {', '.join(changes)}"
+
+    result_id, message = await sync_to_async(_update)()
+    if result_id is None:
+        return {"is_notification": False, "message_to_agent": f"Error: {message}"}
+
+    return {
+        "is_notification": True,
+        "notification_type": "checklist",
+        "message_to_agent": f"Ticket #{result_id}: {message}",
+        "notification_marker": "__NOTIFICATION__"
+    }
+
+
+# ============================================================================
 # MAIN DISPATCHER
 # ============================================================================
 
-async def app_functions(function_name, function_args, project_id, conversation_id):
+async def app_functions(function_name, function_args, project_id, conversation_id, ticket_id=None):
     """
     Return a list of all the functions that can be called by the AI
     """
     logger.info(f"Function name: {function_name}")
     logger.debug(f"Function args: {function_args}")
+    if ticket_id:
+        logger.info(f"Executing for ticket_id: {ticket_id}")
 
     # Validate project_id for most functions
     if function_name not in ["get_github_access_token", "web_search"] and project_id:
@@ -197,23 +889,89 @@ async def app_functions(function_name, function_args, project_id, conversation_i
         case "update_implementation":
             return await update_implementation(function_args, project_id)
         case "create_tickets":
-            return await create_tickets(function_args, project_id)
+            return await create_tickets(function_args, project_id, conversation_id)
         case "update_ticket":
             return await update_individual_checklist_ticket(project_id, function_args.get('ticket_id'), function_args.get('status'))
+        case "update_all_tickets":
+            return await update_all_checklist_tickets(project_id, function_args.get('ticket_ids'), function_args.get('status'))
         case "get_pending_tickets":
             return await get_pending_tickets(project_id)
         case "get_next_ticket":
             return await get_next_ticket(project_id)
-        
+
         case "execute_command":
             command = function_args.get('commands', '')
             logger.debug(f"Running command: {command}")
             if settings.ENVIRONMENT == "local":
-                result = await run_command_locally(command, project_id=project_id, conversation_id=conversation_id)
+                result = await run_command_locally(command, project_id=project_id, conversation_id=conversation_id, ticket_id=ticket_id)
             else:
-                result = await run_command_in_k8s(command, project_id=project_id, conversation_id=conversation_id)
+                result = await run_command_in_k8s(command, project_id=project_id, conversation_id=conversation_id, ticket_id=ticket_id)
             return result
-        
+
+        case "ssh_command":
+            logger.info(f"[TOOL_HANDLER] ssh_command called with ticket_id={ticket_id}")
+            return await ssh_command_tool(function_args, project_id, conversation_id, ticket_id)
+
+        case "new_dev_sandbox":
+            return await new_dev_sandbox_tool(function_args, project_id, conversation_id)
+
+        case "queue_ticket_execution":
+            return await queue_ticket_execution_tool(function_args, project_id, conversation_id)
+
+        case "get_ticket_details":
+            return await get_ticket_details_tool(function_args, project_id, conversation_id)
+
+        case "get_project_dashboard":
+            return await get_project_dashboard_tool(function_args, project_id, conversation_id)
+
+        case "set_project_stack":
+            return await set_project_stack(function_args, project_id, conversation_id)
+
+        case "get_ticket_execution_log":
+            return await get_ticket_execution_log_tool(function_args, project_id, conversation_id)
+
+        case "retry_ticket":
+            return await retry_ticket_tool(function_args, project_id, conversation_id)
+
+        case "schedule_tickets":
+            return await schedule_tickets_tool(function_args, project_id, conversation_id)
+
+        case "update_ticket_details":
+            return await update_ticket_details_tool(function_args, project_id, conversation_id)
+
+        case "open_app_in_artifacts":
+            return await open_app_in_artifacts_tool(function_args, project_id, conversation_id)
+
+        case "manage_ticket_tasks":
+            return await manage_ticket_tasks_tool(function_args, project_id, conversation_id)
+
+        case "get_ticket_todos":
+            return await get_ticket_todos_tool(function_args, project_id, conversation_id)
+
+        case "create_ticket_todos":
+            return await create_ticket_todos_tool(function_args, project_id, conversation_id)
+
+        case "update_todo_status":
+            return await update_todo_status_tool(function_args, project_id, conversation_id)
+
+        case "record_ticket_summary":
+            return await record_ticket_summary_tool(function_args, project_id, conversation_id)
+
+        case "broadcast_to_user":
+            return await broadcast_to_user_tool(function_args, project_id, conversation_id)
+
+        case "run_code_server":
+            return await run_code_server_tool(function_args, project_id, conversation_id)
+
+        case "register_required_env_vars":
+            return await register_required_env_vars_tool(function_args, project_id, conversation_id)
+
+        case "get_project_env_vars":
+            return await get_project_env_vars_tool(function_args, project_id, conversation_id)
+
+        case "agent_create_ticket":
+            return await agent_create_ticket_tool(function_args, project_id, conversation_id)
+
         case "start_server":
             command = function_args.get('start_server_command', '')
             application_port = function_args.get('application_port', '')
@@ -253,9 +1011,9 @@ async def app_functions(function_name, function_args, project_id, conversation_i
             return await capture_name(action, project_name, project_id)
         
         case "web_search":
-            query = function_args.get('query')
-            logger.debug(f"Search Query: {query}")
-            return await web_search(query, conversation_id)
+            queries = function_args.get('queries', [])
+            logger.debug(f"Search Queries: {queries}")
+            return await web_search(queries, conversation_id)
         
         case "get_file_list":
             file_type = function_args.get('file_type', 'all')
@@ -289,6 +1047,12 @@ async def app_functions(function_name, function_args, project_id, conversation_i
         case "get_codebase_summary":
             return await get_codebase_summary(project_id)
 
+        case "ask_codebase":
+            question = function_args.get('question')
+            intent = function_args.get('intent', 'answer_question')
+            include_code_snippets = function_args.get('include_code_snippets', True)
+            return await ask_codebase(project_id, question, intent, include_code_snippets)
+
         # Notion integration functions
         case "connect_notion":
             return await connect_notion(project_id, conversation_id)
@@ -320,6 +1084,29 @@ async def app_functions(function_name, function_args, project_id, conversation_i
         case "get_linear_issue_details":
             issue_id = function_args.get('issue_id')
             return await get_linear_issue_details(project_id, conversation_id, issue_id)
+
+        # Technology lookup function
+        case "lookup_technology_specs":
+            category = function_args.get('category', 'all')
+            return await lookup_technology_specs(category)
+
+        # Design preview generation
+        case "generate_design_preview":
+            return await generate_design_preview(function_args, project_id, conversation_id)
+
+        # Instant Mode
+        case "create_instant_app":
+            # Resolve user_id from project owner
+            _project = await sync_to_async(Project.objects.get)(id=project_id)
+            _user_id = await sync_to_async(lambda: _project.owner_id)()
+            return await handle_create_instant_app(
+                app_name=function_args.get("name", "instant-app"),
+                requirements=function_args.get("requirements", ""),
+                project_id=project_id,
+                conversation_id=conversation_id,
+                user_id=_user_id,
+                env_vars=function_args.get("env_vars"),
+            )
 
         # case "implement_ticket_async":
         #     ticket_id = function_args.get('ticket_id')
@@ -440,7 +1227,7 @@ async def extract_features(function_args, project_id, conversation_id=None):
             )
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "features",
             "message_to_agent": f"Features have been saved in the database"
         }
@@ -561,7 +1348,7 @@ async def extract_personas(function_args, project_id, conversation_id=None):
             )
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "personas",
             "message_to_agent": f"Personas have been saved in the database"
         }
@@ -605,7 +1392,7 @@ async def get_features(project_id):
     
     if not features:
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "features",
             "message_to_agent": "No features found for this project"
         }
@@ -620,7 +1407,7 @@ async def get_features(project_id):
         })
 
     return {
-        "is_notification": True,
+        "is_notification": False,
         "notification_type": "features",
         "message_to_agent": f"Following features already exists in the database: {feature_list}"
     }
@@ -651,7 +1438,7 @@ async def get_personas(project_id):
     
     if not personas:
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "personas",
             "message_to_agent": "No personas found for this project"
         }
@@ -665,7 +1452,7 @@ async def get_personas(project_id):
         })
 
     return {
-        "is_notification": True,
+        "is_notification": False,
         "notification_type": "personas",
         "message_to_agent": f"Following personas already exists in the database: {persona_list}"
     }
@@ -728,7 +1515,7 @@ async def create_prd(function_args, project_id):
         await save_personas(project_id)
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "prd",
             "message_to_agent": f"PRD '{prd_name}' {action} successfully in the database",
             "prd_name": prd_name
@@ -767,7 +1554,7 @@ async def get_prd(project_id, prd_name=None):
                 lambda: ProjectPRD.objects.get(project=project, name=prd_name)
             )()
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "prd",
                 "message_to_agent": f"Here is the PRD '{prd_name}': {prd.prd}. Please proceed with users request.",
                 "prd_name": prd_name
@@ -792,7 +1579,7 @@ async def get_prd(project_id, prd_name=None):
             prd_list = "\n".join([f"- {prd['name']} (Created: {prd['created_at']}, Updated: {prd['updated_at']})" for prd in prds])
             
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "prd_list",
                 "message_to_agent": f"Found {len(prds)} PRD(s) for this project:\n{prd_list}\n\nLatest PRD '{latest_prd.name}' content: {latest_prd.prd}",
                 "prds": prds,
@@ -928,7 +1715,7 @@ async def stream_prd_content(function_args, project_id):
             except Exception as e:
                 logger.error(f"Error saving streamed PRD: {str(e)}")
                 return {
-                    "is_notification": True,
+                    "is_notification": False,
                     "notification_type": "prd_stream",
                     "content_chunk": "",
                     "is_complete": True,
@@ -937,7 +1724,7 @@ async def stream_prd_content(function_args, project_id):
     
     # Return notification to stream the chunk to frontend
     result = {
-        "is_notification": True,
+        "is_notification": False,
         "notification_type": "prd_stream",
         "content_chunk": content_chunk,
         "is_complete": is_complete,
@@ -1003,7 +1790,7 @@ async def create_implementation(function_args, project_id):
         action = "created" if created else "updated"
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "implementation",
             "message_to_agent": f"Implementation {action} successfully in the database"
         }
@@ -1038,7 +1825,7 @@ async def get_implementation(project_id):
         # Check if project has PRD and get content
         implementation_content = await sync_to_async(lambda: project.implementation.implementation)()
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "implementation",
             "message_to_agent": f"Here is the existing version of the Implementation: {implementation_content}. Proceed with user's request."
         }
@@ -1136,7 +1923,7 @@ async def update_implementation(function_args, project_id):
         )[1])()
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "implementation",
             "message_to_agent": f"Implementation {action} successfully. The update has been added to the document with timestamp {timestamp}."
         }
@@ -1257,7 +2044,7 @@ async def stream_implementation_content(function_args, project_id):
             except Exception as e:
                 logger.error(f"Error saving streamed Implementation: {str(e)}")
                 return {
-                    "is_notification": True,
+                    "is_notification": False,
                     "notification_type": "implementation_stream",
                     "content_chunk": "",
                     "is_complete": True,
@@ -1266,7 +2053,7 @@ async def stream_implementation_content(function_args, project_id):
     
     # Return notification to stream the chunk to frontend
     result = {
-        "is_notification": True,
+        "is_notification": False,
         "notification_type": "implementation_stream",
         "content_chunk": content_chunk,
         "is_complete": is_complete,
@@ -1363,30 +2150,61 @@ async def stream_document_content(function_args, project_id):
         
         if full_document_content:
             try:
+                # Map document_type to valid ProjectFile.FILE_TYPES
+                FILE_TYPE_MAP = {
+                    'prd': 'prd',
+                    'technical_spec': 'implementation',
+                    'implementation': 'implementation',
+                    'design': 'design',
+                    'design_doc': 'design',
+                    'test': 'test',
+                    'test_plan': 'test',
+                }
+                db_file_type = FILE_TYPE_MAP.get(document_type, 'other')
+
                 # Save to ProjectFile
                 file_obj, file_created = await sync_to_async(
                     lambda: ProjectFile.objects.update_or_create(
                         project=project,
                         name=document_name,
-                        file_type=document_type,
+                        file_type=db_file_type,
                         defaults={
                             'content': full_document_content,
-                            'mime_type': 'text/markdown'
                         }
                     )
                 )()
-                
+
                 file_id = file_obj.id
                 logger.info(f"Document file {'created' if file_created else 'updated'} with ID: {file_id}")
-                
+
+                # If document_type is 'prd', also save to ProjectPRD for backward compatibility
+                if document_type == 'prd':
+                    try:
+                        prd_created = await sync_to_async(lambda: (
+                            lambda: (
+                                lambda prd, created: created
+                            )(*ProjectPRD.objects.get_or_create(
+                                project=project,
+                                name=document_name,
+                                defaults={'prd': full_document_content}
+                            ))
+                        )())()
+                        if not prd_created:
+                            await sync_to_async(lambda: (
+                                ProjectPRD.objects.filter(project=project, name=document_name).update(prd=full_document_content)
+                            ))()
+                        logger.info(f"PRD '{document_name}' also saved to ProjectPRD table")
+                    except Exception as e:
+                        logger.warning(f"Could not save to ProjectPRD: {e}")
+
                 # Clear the cache
                 cache.delete(cache_key)
                 logger.info(f"Cleared cache for document stream: {cache_key}")
-                
+
             except Exception as e:
                 logger.error(f"Error saving document to database: {str(e)}", exc_info=True)
                 # Don't fail the stream, just log the error
-    
+
     # Build the result for streaming notification
     result = {
         "is_notification": True,
@@ -1394,79 +2212,151 @@ async def stream_document_content(function_args, project_id):
         "content_chunk": content_chunk,
         "is_complete": is_complete,
         "file_type": document_type,
-        "file_name": document_name
+        "file_name": document_name,
+        "message_to_agent": f"Document '{document_name}' chunk streamed" if not is_complete else f"Document '{document_name}' streaming complete and saved"
     }
-    
+
     # Add file_id to result if streaming is complete and we have a file_id
     if is_complete and file_id:
         result["file_id"] = file_id
         logger.info(f"[DOCUMENT_STREAM] Including file_id {file_id} in completion notification")
     elif is_complete:
         logger.warning(f"[DOCUMENT_STREAM] Completion notification but no file_id available")
-    
+
     logger.info(f"[DOCUMENT_STREAM] Returning stream result: is_complete={is_complete}, has_file_id={'file_id' in result}, keys={list(result.keys())}")
     return result
 
-async def create_tickets(function_args, project_id):
+async def create_tickets(function_args, project_id, conversation_id=None):
     """
     Generate checklist tickets for a project
     """
-    logger.info("Checklist tickets function called ")
-    
+    logger.info(f"Checklist tickets function called for project {project_id}, conversation {conversation_id}")
+
     error_response = validate_project_id(project_id)
     if error_response:
         return error_response
-    
+
     # Validate function arguments
     validation_error = validate_function_args(function_args, ['tickets'])
     if validation_error:
         return validation_error
-    
+
     project = await get_project(project_id)
     if not project:
         return {
             "is_notification": False,
             "message_to_agent": f"Error: Project with ID {project_id} does not exist"
         }
-    
+
     checklist_tickets = function_args.get('tickets', [])
-    
+    source_document_id = function_args.get('source_document_id')
+    source_document_ids = function_args.get('source_document_ids', [])
+    # Use passed conversation_id or fall back to function_args (for tool-based calls)
+    conversation_id = conversation_id or function_args.get('conversation_id')
+
     if not isinstance(checklist_tickets, list):
         return {
             "is_notification": False,
             "message_to_agent": "Error: tickets must be a list"
         }
-    
+
+    # Merge single and array doc IDs into one list
+    all_doc_ids = list(source_document_ids) if source_document_ids else []
+    if source_document_id and source_document_id not in all_doc_ids:
+        all_doc_ids.insert(0, source_document_id)
+
+    # Fetch all linked documents
+    linked_documents = []
+    source_document = None
+    if all_doc_ids:
+        try:
+            linked_documents = await sync_to_async(list)(
+                ProjectFile.objects.filter(id__in=all_doc_ids, project=project)
+            )
+            if linked_documents:
+                source_document = linked_documents[0]
+                logger.info(f"Linking tickets to {len(linked_documents)} document(s): {[d.name for d in linked_documents]}")
+        except Exception as e:
+            logger.warning(f"Could not fetch linked documents {all_doc_ids}: {e}")
+
+    # Get the conversation if provided
+    conversation = None
+    if conversation_id:
+        try:
+            from chat.models import Conversation
+            conversation = await sync_to_async(Conversation.objects.get)(id=conversation_id)
+            logger.info(f"Linking tickets to conversation ID: {conversation_id}")
+        except Exception as e:
+            logger.warning(f"Conversation with ID {conversation_id} not found: {e}")
+
     try:
         # Create tickets with enhanced details
+        # First pass: create all tickets and store their original dependencies
         created_tickets = []
+        original_dependencies = []  # Store original dependency indices for each ticket
+
         for ticket in checklist_tickets:
             if isinstance(ticket, dict):
                 # Extract details from the ticket
                 details = ticket.get('details', {})
-                
-                new_ticket = await sync_to_async(ProjectChecklist.objects.create)(
+
+                # Store original dependencies (these are order-based indices like "1", "3")
+                original_dependencies.append(ticket.get('dependencies', []))
+
+                new_ticket = await sync_to_async(ProjectTicket.objects.create)(
                     project=project,
                     name=ticket.get('name', ''),
                     description=ticket.get('description', ''),
                     priority=ticket.get('priority', 'Medium'),
                     status='open',
                     role=ticket.get('role', 'agent'),
+                    source_document=source_document,  # Link to PRD
+                    conversation=conversation,  # Link to conversation
                     # Enhanced fields
-                    # details=details,
+                    details=details,
                     ui_requirements=ticket.get('ui_requirements', {}),
                     component_specs=ticket.get('component_specs', {}),
                     acceptance_criteria=ticket.get('acceptance_criteria', []),
-                    dependencies=ticket.get('dependencies', []),
-                    # complexity=details.get('complexity', 'medium'),
-                    # requires_worktree=details.get('requires_worktree', True)
+                    dependencies=[],  # Will be updated in second pass
+                    complexity=ticket.get('complexity', 'medium'),
                 )
+                # Link all documents via M2M
+                if linked_documents:
+                    await sync_to_async(new_ticket.linked_documents.add)(*linked_documents)
                 created_tickets.append(new_ticket.id)
-        
+
+        # Second pass: update dependencies with actual ticket IDs
+        # The AI passes dependencies as 1-based indices (e.g., "1" means first ticket, "3" means third ticket)
+        for i, ticket_id in enumerate(created_tickets):
+            deps = original_dependencies[i]
+            if deps:
+                # Convert order-based indices to actual ticket IDs
+                resolved_deps = []
+                for dep in deps:
+                    try:
+                        # Try to parse as 1-based index
+                        dep_index = int(dep) - 1  # Convert to 0-based index
+                        if 0 <= dep_index < len(created_tickets):
+                            resolved_deps.append(str(created_tickets[dep_index]))
+                        else:
+                            # Keep original value if index out of range (might be an existing ticket ID)
+                            resolved_deps.append(str(dep))
+                    except (ValueError, TypeError):
+                        # If not a number, keep the original value (might be a ticket name or existing ID)
+                        resolved_deps.append(str(dep))
+
+                if resolved_deps:
+                    # Update the ticket with resolved dependencies
+                    await sync_to_async(
+                        ProjectTicket.objects.filter(id=ticket_id).update
+                    )(dependencies=resolved_deps)
+
+        prd_msg = f" (linked to PRD: {source_document.name})" if source_document else ""
         return {
             "is_notification": True,
             "notification_type": "create_tickets",
-            "message_to_agent": f"Successfully created {len(created_tickets)} detailed tickets with design specifications"
+            "message_to_agent": f"Successfully created {len(created_tickets)} detailed tickets{prd_msg}. Ticket IDs: {created_tickets}. Pass these IDs to queue_ticket_execution() to schedule them.",
+            "ticket_ids": created_tickets
         }
     except Exception as e:
         return {
@@ -1492,7 +2382,7 @@ async def get_next_ticket(project_id):
         }
     
     pending_ticket = await sync_to_async(
-        lambda: ProjectChecklist.objects.filter(project=project, status='open', role='agent').first()
+        lambda: ProjectTicket.objects.filter(project=project, status='open', role='agent').first()
     )()
     
     # Print ticket ID instead of the object to avoid triggering __str__ method
@@ -1508,7 +2398,7 @@ async def get_next_ticket(project_id):
     logger.debug(f"Message to agent: {message_to_agent}")
 
     return {
-        "is_notification": True,
+        "is_notification": False,
         "notification_type": "get_pending_tickets",
         "message_to_agent": message_to_agent
     }
@@ -1529,13 +2419,13 @@ async def update_individual_checklist_ticket(project_id, ticket_id, status):
     try:
         # Get and update ticket in a single async operation
         await sync_to_async(lambda: (
-            ProjectChecklist.objects.filter(id=ticket_id).update(status=status)
+            ProjectTicket.objects.filter(id=ticket_id).update(status=status)
         ))()
 
         logger.info(f"Checklist ticket {ticket_id} has been successfully updated in the database. Proceed to next checklist item, unless otherwise specified by the user")
 
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "create_tickets",
             "message_to_agent": f"Checklist ticket {ticket_id} has been successfully updated in the database. Proceed to next checklist item, unless otherwise specified by the user"
         }
@@ -1544,6 +2434,35 @@ async def update_individual_checklist_ticket(project_id, ticket_id, status):
             "is_notification": False,
             "message_to_agent": f"Error updating ticket: {str(e)}"
         }
+
+
+async def update_all_checklist_tickets(project_id, ticket_ids, status):
+    """
+    Update checklist tickets by their ticket IDs
+    """
+    logger.info(f"Update checklist tickets by IDs function called - ticket_ids: {ticket_ids}, status: {status}")
+    
+    try:
+       # Get and update tickets with the specified IDs
+        updated_count = await sync_to_async(lambda: (
+                ProjectTicket.objects.filter(
+                    id__in=ticket_ids,
+                ).update(status=status)
+            ))()
+
+        logger.info(f"{updated_count} pending checklist ticket(s) have been successfully updated in the database.")
+
+        return {
+            "is_notification": False,
+            "notification_type": "create_tickets",
+            "message_to_agent": f"{updated_count} pending checklist ticket(s) have been successfully updated to status '{status}' in the database."
+        }
+    except Exception as e:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error updating tickets: {str(e)}"
+        }
+
 
 async def get_pending_tickets(project_id):
     """
@@ -1563,7 +2482,11 @@ async def get_pending_tickets(project_id):
         }
     
     project_tickets = await sync_to_async(
-        lambda: list(ProjectChecklist.objects.filter(project=project, status='open', role='agent').values('id', 'name', 'description', 'status', 'priority'))
+        lambda: list(
+            ProjectTicket.objects.filter(project=project, role='agent')
+            .order_by('created_at', 'id')
+            .values('id', 'name', 'description', 'status', 'priority')
+        )
     )()
 
     if project_tickets:
@@ -1580,7 +2503,7 @@ async def get_pending_tickets(project_id):
         message_content = "No pending tickets found"
 
     return {
-        "is_notification": True,
+        "is_notification": False,
         "notification_type": "get_pending_tickets",
         "message_to_agent": f"Pending tickets in open state: {message_content}. Please update the status of the tickets as needed. If not, continue closing them."
     }
@@ -1593,7 +2516,7 @@ async def get_github_access_token(project_id: int | str = None, conversation_id:
         error_response = validate_project_id(project_id)
         if error_response:
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "command_error",
                 "message_to_agent": "Error: project_id is required to get GitHub access token"
             }
@@ -1602,7 +2525,7 @@ async def get_github_access_token(project_id: int | str = None, conversation_id:
         project = await get_project_with_relations(project_id, 'owner')
         if not project:
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "command_error",
                 "message_to_agent": f"Project with ID {project_id} not found"
             }
@@ -1615,13 +2538,13 @@ async def get_github_access_token(project_id: int | str = None, conversation_id:
 
         if access_token is None or access_token == "":
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "command_error",
                 "message_to_agent": f"No Github access token found. Inform user to connect their Github account."
             }
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "command_output", 
             "message_to_agent": f"Github access token {access_token} found and project name {project_name} found. Please use this to commit the code",
             "user_id": user_id
@@ -1629,27 +2552,37 @@ async def get_github_access_token(project_id: int | str = None, conversation_id:
 
     except Project.DoesNotExist:
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "command_error",
             "message_to_agent": f"Project with ID {project_id} not found"
         }
     except GitHubToken.DoesNotExist:
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "command_error",
             "message_to_agent": f"No Github access token found for this user. Inform user to connect their Github account."
         }
     except Exception as e:
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "command_error", 
             "message_to_agent": f"Error getting user_id: {str(e)}"
         }
 
-async def run_command_in_k8s(command: str, project_id: int | str = None, conversation_id: int | str = None) -> dict:
+async def run_command_in_k8s(command: str, project_id: int | str = None, conversation_id: int | str = None, ticket_id: int = None) -> dict:
     """
     Run a command in the terminal using Kubernetes pod.
     """
+
+    # Try to get ticket_id from context variable if not passed
+    if ticket_id is None:
+        try:
+            from tasks.task_definitions import current_ticket_id
+            ticket_id = current_ticket_id.get()
+            if ticket_id:
+                logger.info(f"[RUN_COMMAND_K8S] Retrieved ticket_id={ticket_id} from context variable")
+        except Exception as e:
+            logger.debug(f"[RUN_COMMAND_K8S] Could not get ticket_id from context: {e}")
 
     if project_id:
         pod = await sync_to_async(
@@ -1659,14 +2592,21 @@ async def run_command_in_k8s(command: str, project_id: int | str = None, convers
     command_to_run = f"cd /workspace && {command}"
     logger.debug(f"Command: {command_to_run}")
 
-    # Create command record in database
-    cmd_record = await sync_to_async(lambda: (
-        CommandExecution.objects.create(
-            project_id=project_id,
-            command=command,
-            output=None  # Will update after execution
-        )
-    ))()
+    # Create command record in database (only if ticket_id is provided)
+    cmd_record = None
+    if ticket_id:
+        try:
+            ticket = await sync_to_async(ProjectTicket.objects.get)(id=ticket_id)
+            cmd_record = await sync_to_async(TicketLog.objects.create)(
+                ticket=ticket,
+                command=command,
+                output=None,  # Will update after execution
+                exit_code=None
+            )
+        except ProjectTicket.DoesNotExist:
+            logger.warning(f"Ticket {ticket_id} not found, skipping log creation")
+        except Exception as e:
+            logger.error(f"Error creating TicketLog: {e}")
 
     success = False
     stdout = ""
@@ -1681,27 +2621,56 @@ async def run_command_in_k8s(command: str, project_id: int | str = None, convers
         logger.debug(f"Command output: {stdout}")
 
         # Update command record with output
-        await sync_to_async(lambda: (
-            setattr(cmd_record, 'output', stdout if success else stderr),
-            cmd_record.save()
-        )[1])()
+        if cmd_record:
+            await sync_to_async(lambda: (
+                setattr(cmd_record, 'output', stdout if success else stderr),
+                setattr(cmd_record, 'exit_code', 0 if success else 1),
+                cmd_record.save()
+            )[2])()
+
+            # Send WebSocket notification for the updated log
+            await async_send_ticket_log_notification(
+                ticket_id=ticket_id,
+                log_data={
+                    'id': cmd_record.id,
+                    'command': cmd_record.command,
+                    'explanation': cmd_record.explanation,
+                    'output': cmd_record.output,
+                    'exit_code': cmd_record.exit_code,
+                    'created_at': cmd_record.created_at.isoformat()
+                }
+            )
 
     if not success or not pod:
         # If no pod is found, update the command record
-        if not pod:
+        if not pod and cmd_record:
             await sync_to_async(lambda: (
                 setattr(cmd_record, 'output', "No Kubernetes pod found for the project"),
+                setattr(cmd_record, 'exit_code', 1),
                 cmd_record.save()
-            )[1])()
-            
+            )[2])()
+
+            # Send WebSocket notification for the error log
+            await async_send_ticket_log_notification(
+                ticket_id=ticket_id,
+                log_data={
+                    'id': cmd_record.id,
+                    'command': cmd_record.command,
+                    'explanation': cmd_record.explanation,
+                    'output': cmd_record.output,
+                    'exit_code': cmd_record.exit_code,
+                    'created_at': cmd_record.created_at.isoformat()
+                }
+            )
+
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "command_error",
             "message_to_agent": f"{stderr}The command execution failed. Stop generating further steps and inform the user that the command could not be executed.",
         }
     
     return {
-        "is_notification": True,
+        "is_notification": False,
         "notification_type": "command_output", 
         "message_to_agent": f"Command output: {stdout}Fix if there is any error, otherwise you can proceed to next step",
     }
@@ -1734,14 +2703,14 @@ async def server_command_in_k8s(command: str, project_id: int | str = None, conv
         )()
     else:
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "command_error",
             "message_to_agent": f"No project ID provided. Cannot execute the command."
         }
 
     if not pod:
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "command_error",
             "message_to_agent": f"No Kubernetes pod found for the project. Cannot execute the command."
         }
@@ -1755,13 +2724,13 @@ async def server_command_in_k8s(command: str, project_id: int | str = None, conv
             # Check if port is in valid range
             if application_port < 1 or application_port > 65535:
                 return {
-                    "is_notification": True,
+                    "is_notification": False,
                     "notification_type": "command_error",
                     "message_to_agent": f"Invalid application port: {application_port}. Port must be between 1 and 65535."
                 }
         except (ValueError, TypeError):
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "command_error",
                 "message_to_agent": f"Invalid application port: {application_port}. Must be a valid integer."
             }
@@ -1795,7 +2764,7 @@ async def server_command_in_k8s(command: str, project_id: int | str = None, conv
             )
             if not core_v1_api:
                 return {
-                    "is_notification": True,
+                    "is_notification": False,
                     "notification_type": "command_error",
                     "message_to_agent": f"Failed to connect to Kubernetes API"
                 }
@@ -1852,7 +2821,7 @@ async def server_command_in_k8s(command: str, project_id: int | str = None, conv
                             break
                     else:
                         return {
-                            "is_notification": True,
+                            "is_notification": False,
                             "notification_type": "command_error",
                             "message_to_agent": f"Failed to get nodePort for port {application_port}"
                         }
@@ -1906,13 +2875,13 @@ async def server_command_in_k8s(command: str, project_id: int | str = None, conv
                 
             except ApiException as e:
                 return {
-                    "is_notification": True,
+                    "is_notification": False,
                     "notification_type": "command_error",
                     "message_to_agent": f"Failed to update service: {e}"
                 }
             except Exception as e:
                 return {
-                    "is_notification": True,
+                    "is_notification": False,
                     "notification_type": "command_error",
                     "message_to_agent": f"Error setting up port mapping: {str(e)}"
                 }
@@ -1930,7 +2899,7 @@ async def server_command_in_k8s(command: str, project_id: int | str = None, conv
 
     if not success:
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "command_error",
             "message_to_agent": f"{stderr}The command execution failed. Stop generating further steps and inform the user that the command could not be executed.",
         }
@@ -1948,32 +2917,1639 @@ async def server_command_in_k8s(command: str, project_id: int | str = None, conv
         message += f"\nYou can access it at: [http://{node_ip}:{node_port}](http://{node_ip}:{node_port})"
     
     return {
-        "is_notification": True,
+        "is_notification": False,
         "notification_type": "command_output",
         "message_to_agent": message + "Proceed to next step",
     }
 
-async def run_command_locally(command: str, project_id: int | str = None, conversation_id: int | str = None) -> dict:
+async def ssh_command_tool(function_args, project_id, conversation_id, ticket_id=None):
+    """Execute a command inside the remote workspace via SSH."""
+
+    # Try to get ticket_id from context variable if not passed
+    if ticket_id is None:
+        try:
+            from tasks.task_definitions import current_ticket_id
+            ticket_id = current_ticket_id.get()
+            if ticket_id:
+                logger.info(f"[SSH_COMMAND_TOOL] Retrieved ticket_id={ticket_id} from context variable")
+        except Exception as e:
+            logger.debug(f"[SSH_COMMAND_TOOL] Could not get ticket_id from context: {e}")
+
+    # Try to get workspace_id from context variable first, then fallback to function_args
+    workspace_id = function_args.get('workspace_id')
+    if not workspace_id:
+        try:
+            from tasks.task_definitions import current_workspace_id
+            workspace_id = current_workspace_id.get()
+            if workspace_id:
+                logger.info(f"[SSH_COMMAND_TOOL] Retrieved workspace_id={workspace_id} from context variable")
+        except Exception as e:
+            logger.debug(f"[SSH_COMMAND_TOOL] Could not get workspace_id from context: {e}")
+
+    if not _mags_available:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Workspace command execution is not available. Check server configuration."
+        }
+
+    command = function_args.get('command')
+    original_command = command  # Save original command for logging
+    explanation = function_args.get('explanation')
+    timeout = function_args.get('timeout', 300)
+
+    # Check if user has requested to stop execution
+    if ticket_id:
+        from django.core.cache import cache
+        cache_key = f'ticket_cancel_{ticket_id}'
+        if cache.get(cache_key):
+            logger.info(f"[SSH_COMMAND_TOOL] Cancellation requested for ticket #{ticket_id}")
+            # Clear the flag so subsequent operations can proceed
+            cache.delete(cache_key)
+            return {
+                "is_notification": False,
+                "message_to_agent": "STOP REQUESTED: User has interrupted the execution. Please acknowledge the stop request and end your current task gracefully. Respond with: IMPLEMENTATION_STATUS: STOPPED - User requested interruption"
+            }
+
+    # Prepend cd to working dir to ensure all commands run in workspace directory
+    if command and not command.strip().startswith(f'cd {MAGS_WORKING_DIR}'):
+        command = f"cd {MAGS_WORKING_DIR} && {command}"
+
+    if not command:
+        return {
+            "is_notification": False,
+            "message_to_agent": "command is required to run an SSH command."
+        }
+
+    # Lazy workspace initialization: if no workspace_id but we have ticket_id, create workspace on-demand
+    if not workspace_id and ticket_id:
+        logger.info(f"[SSH_COMMAND_TOOL] No workspace_id, attempting lazy initialization for ticket #{ticket_id}")
+        try:
+            from tasks.task_definitions import ensure_workspace_available
+            ensure_result = await sync_to_async(ensure_workspace_available, thread_sensitive=True)(ticket_id)
+
+            if ensure_result['status'] == 'success':
+                workspace_id = ensure_result['workspace_id']
+                logger.info(f"[SSH_COMMAND_TOOL] Workspace {'created' if ensure_result.get('created') else 'found'}: {workspace_id}")
+            else:
+                error_msg = f"Failed to provision workspace: {ensure_result.get('error', 'Unknown error')}"
+                logger.error(f"[SSH_COMMAND_TOOL] {error_msg}")
+                return {
+                    "is_notification": False,
+                    "message_to_agent": error_msg
+                }
+        except Exception as e:
+            logger.error(f"[SSH_COMMAND_TOOL] Error during lazy workspace init: {e}", exc_info=True)
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Failed to initialize workspace: {str(e)}"
+            }
+
+    if not workspace_id:
+        return {
+            "is_notification": False,
+            "message_to_agent": "workspace_id is required. Either provide it directly or ensure ticket_id is set for automatic workspace provisioning."
+        }
+
+    workspace = await _fetch_workspace(workspace_id=workspace_id)
+    if not workspace:
+        error_msg = f"No workspace found for ID {workspace_id}. Provision one first."
+
+        # Log this failure to TicketLog if ticket_id is available
+        if ticket_id:
+            try:
+                ticket = await sync_to_async(ProjectTicket.objects.get, thread_sensitive=True)(id=ticket_id)
+                await sync_to_async(TicketLog.objects.create, thread_sensitive=True)(
+                    ticket=ticket,
+                    command=original_command,
+                    explanation=explanation or "No workspace available",
+                    output=error_msg,
+                    exit_code=-1
+                )
+                logger.info(f"[SSH_COMMAND_TOOL] TicketLog created for failed workspace lookup")
+            except Exception as e:
+                logger.error(f"[SSH_COMMAND_TOOL] Error creating TicketLog for failure: {e}")
+
+        return {
+            "is_notification": False,
+            "message_to_agent": error_msg
+        }
+
+    ws_id = workspace.mags_workspace_id or workspace.workspace_id
+
+    try:
+        result = await asyncio.to_thread(
+            mags_run_command,
+            ws_id,
+            command,
+            timeout,
+        )
+        logger.info(
+            "[SSH COMMAND] workspace=%s exit_code=%s",
+            workspace.workspace_id,
+            result.get('exit_code')
+        )
+    except Exception as exc:
+        logger.exception("SSH command failed")
+        await sync_to_async(workspace.mark_error, thread_sensitive=True)(metadata={"last_error": str(exc)})
+
+        # Provide specific guidance for different error types
+        error_msg = str(exc)
+        if "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
+            agent_message = (
+                f"Command execution timed out after {timeout}s. "
+                f"For long-running commands (npm install, build), either: "
+                f"1) Assume they succeeded if earlier output looked good, or "
+                f"2) Run a quick check command (ls, cat package.json) to verify. "
+                f"DO NOT retry the same long command."
+            )
+        elif "500" in error_msg or "failed to execute ssh command" in error_msg:
+            agent_message = (
+                f"API error (500): Command was too long or complex. "
+                f"You likely tried to create multiple files in one ssh_command. "
+                f"Create ONE file per ssh_command instead. "
+                f"DO NOT retry the exact same command."
+            )
+        else:
+            agent_message = f"SSH command failed: {exc}"
+
+        # Log this failure to TicketLog if ticket_id is available
+        if ticket_id:
+            try:
+                ticket = await sync_to_async(ProjectTicket.objects.get, thread_sensitive=True)(id=ticket_id)
+                await sync_to_async(TicketLog.objects.create, thread_sensitive=True)(
+                    ticket=ticket,
+                    command=original_command,
+                    explanation=explanation or "SSH command failed",
+                    output=agent_message,
+                    exit_code=-1
+                )
+                logger.info(f"[SSH_COMMAND_TOOL] TicketLog created for SSH command failure")
+            except Exception as e:
+                logger.error(f"[SSH_COMMAND_TOOL] Error creating TicketLog for failure: {e}")
+
+        return {
+            "is_notification": False,
+            "notification_type": "toolhistory",
+            "notification_marker": "__NOTIFICATION__",
+            "function_name": "ssh_command",
+            "status": "failed",
+            "message": "SSH command could not be executed. The remote workspace is unavailable.",
+            "error": error_msg,
+            "message_to_agent": agent_message
+        }
+
+    meta_updates = {
+        "last_command": explanation or command,
+        "last_exit_code": result.get('exit_code'),
+        "last_command_at": datetime.utcnow().isoformat() + "Z",
+    }
+    await sync_to_async(_update_workspace_metadata, thread_sensitive=True)(workspace, **meta_updates)
+
+    # Create TicketLog if ticket_id is provided
+    logger.info(f"[SSH_COMMAND_TOOL] ticket_id={ticket_id}, command={original_command[:50] if original_command else 'N/A'}")
+    if ticket_id:
+        logger.info(f"[SSH_COMMAND_TOOL] Creating TicketLog for ticket_id={ticket_id}")
+        try:
+            ticket = await sync_to_async(ProjectTicket.objects.get, thread_sensitive=True)(id=ticket_id)
+            logger.info(f"[SSH_COMMAND_TOOL] Found ticket: {ticket.name} (id={ticket.id})")
+            log_entry = await sync_to_async(TicketLog.objects.create, thread_sensitive=True)(
+                ticket=ticket,
+                command=original_command,  # Use original command without cd prefix
+                explanation=explanation,
+                output=_truncate_output(result.get('stdout') or result.get('stderr'), 4000),
+                exit_code=result.get('exit_code')
+            )
+            logger.info(f"[SSH_COMMAND_TOOL] TicketLog created successfully: id={log_entry.id}")
+
+            # Send WebSocket notification for the new log
+            await async_send_ticket_log_notification(
+                ticket_id=ticket_id,
+                log_data={
+                    'id': log_entry.id,
+                    'command': log_entry.command,
+                    'explanation': log_entry.explanation,
+                    'output': log_entry.output,
+                    'exit_code': log_entry.exit_code,
+                    'created_at': log_entry.created_at.isoformat()
+                }
+            )
+        except ProjectTicket.DoesNotExist:
+            logger.warning(f"[SSH_COMMAND_TOOL] Ticket {ticket_id} not found, skipping log creation")
+        except Exception as e:
+            logger.error(f"[SSH_COMMAND_TOOL] Error creating TicketLog: {e}", exc_info=True)
+    else:
+        logger.warning(f"[SSH_COMMAND_TOOL] No ticket_id provided, skipping log creation")
+
+    status_text = "completed successfully" if result.get('exit_code') == 0 else f"exited with code {result.get('exit_code')}"
+    status_value = "completed" if result.get('exit_code') == 0 else "failed"
+    output_block = _format_command_output(result.get('stdout', ''), result.get('stderr', ''))
+    message = textwrap.dedent(
+        f"""
+        Command {status_text}: {explanation or command}
+
+        {output_block}
+        """
+    ).strip()
+
+    log_entries = [{
+        "title": "SSH command",
+        "command": command,
+        "stdout": _truncate_output(result.get('stdout', ''), 800),
+        "stderr": _truncate_output(result.get('stderr', ''), 800),
+        "exit_code": result.get('exit_code')
+    }]
+
+    return {
+        "is_notification": False,
+        "workspace_id": workspace.workspace_id,
+        "exit_code": result.get('exit_code'),
+        "stdout": _truncate_output(result.get('stdout', ''), 4000),
+        "stderr": _truncate_output(result.get('stderr', ''), 4000),
+        "status": status_value,
+        "command": command,
+        "log_entries": log_entries,
+        "message_to_agent": message
+    }
+
+
+async def new_dev_sandbox_tool(function_args, project_id, conversation_id):
+    """Set up the dev sandbox for the workspace based on the project's stack."""
+
+    logger.info(f"[DEV_SANDBOX] Setting up dev sandbox for workspace: {function_args.get('workspace_id')}")
+
+    if not _mags_available:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Workspace tools are unavailable. Check server configuration."
+        }
+
+    workspace_id = function_args.get('workspace_id')
+    log_tail_lines = function_args.get('log_tail_lines', 60)
+    environment_label = function_args.get('environment')
+
+    if not workspace_id:
+        return {
+            "is_notification": False,
+            "message_to_agent": "workspace_id is required to create a new dev sandbox."
+        }
+
+    workspace = await _fetch_workspace(workspace_id=workspace_id)
+    if not workspace:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"No workspace found for ID {workspace_id}. Provision one first."
+        }
+
+    # Get stack configuration from project
+    stack = 'custom'  # Default
+    if workspace.project:
+        stack = getattr(workspace.project, 'stack', '') or 'custom'
+    stack_config = get_stack_config(stack)
+    project_dir = stack_config['project_dir']
+
+    logger.info(f"[DEV_SANDBOX] Stack: {stack}, Project dir: {project_dir}")
+
+    ws_id = workspace.mags_workspace_id or workspace.workspace_id
+
+    # Build stack-aware setup command
+    pre_dev_cmd = stack_config.get('pre_dev_cmd', '')
+
+    restart_cmd = textwrap.dedent(
+        f"""
+        cd {MAGS_WORKING_DIR}
+        # Kill any existing dev server
+        if [ -f {project_dir}/.devserver_pid ]; then
+          old_pid=$(cat {project_dir}/.devserver_pid)
+          if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
+            kill "$old_pid" || true
+          fi
+        fi
+        # Stack-specific setup
+        {pre_dev_cmd if pre_dev_cmd else '# No pre-dev command for this stack'}
+        # Configure npm cache if Node.js based
+        if command -v npm &> /dev/null; then
+          npm config set cache {MAGS_WORKING_DIR}/.npm-cache 2>/dev/null || true
+        fi
+        """
+    )
+
+    try:
+        result = await asyncio.to_thread(
+            mags_run_command,
+            ws_id,
+            restart_cmd,
+            240,
+        )
+        logger.info(
+            "[DEV_SANDBOX][DEV RESTART] workspace=%s exit_code=%s",
+            workspace.workspace_id,
+            result.get('exit_code')
+        )
+    except Exception as exc:
+        logger.exception("Failed to create new dev sandbox")
+        await sync_to_async(workspace.mark_error, thread_sensitive=True)(metadata={"last_error": str(exc)})
+        return {
+            "is_notification": False,
+            "notification_type": "toolhistory",
+            "notification_marker": "__NOTIFICATION__",
+            "function_name": "new_dev_sandbox",
+            "status": "failed",
+            "message": "Dev sandbox creation failed because the workspace is unavailable.",
+            "error": str(exc),
+            "message_to_agent": f"Dev sandbox creation failed: {exc}"
+        }
+
+    stdout = result.get('stdout', '')
+    stderr = result.get('stderr', '')
+    pid = _extract_pid_from_output(stdout)
+
+    log_section = stdout
+    preview_section = ""
+    if "---PREVIEW---" in stdout:
+        log_section, preview_section = stdout.split("---PREVIEW---", 1)
+    if "---LOG---" in log_section:
+        _, log_section = log_section.split("---LOG---", 1)
+
+    log_tail = _truncate_output(log_section.strip(), 2000)
+    preview_snippet = _truncate_output(preview_section.strip(), 2000)
+
+    metadata_updates = {
+        "dev_server_pid": pid,
+        "last_restart": datetime.utcnow().isoformat() + "Z",
+        "last_preview": preview_snippet,
+        "sandbox_initialized": True,  # Mark sandbox as initialized to prevent duplicate setup
+    }
+    if environment_label:
+        metadata_updates['environment_label'] = environment_label
+
+    await sync_to_async(_update_workspace_metadata, thread_sensitive=True)(workspace, **metadata_updates)
+
+    # Use proxy URL if available, otherwise fall back to IPv6
+    # Use custom_default_port from project if set, otherwise stack default
+    project = workspace.project
+    default_port = (project.custom_default_port if project else None) or stack_config.get('default_port', 3000)
+    preview_url = await async_get_or_fetch_proxy_url(workspace, port=default_port)
+    if not preview_url:
+        preview_url = f"http://[{workspace.ipv6_address}]:{default_port}" if workspace.ipv6_address else "(URL pending)"
+    status_text = "completed successfully" if result.get('exit_code') == 0 else f"exited with code {result.get('exit_code')}"
+    workspace_dir = f"{MAGS_WORKING_DIR}/{project_dir}"
+    message_lines = [
+        f"Dev sandbox setup {status_text} 🚀",
+        f"Workspace ID: {workspace.workspace_id}",
+        f"Stack: {stack_config['name']}",
+        f"PID: {pid or 'unknown'}",
+        f"Preview: {preview_url}",
+        f"Logs: {workspace_dir}/dev.log"
+    ]
+    if log_tail:
+        message_lines.append("\nLog tail:\n" + log_tail)
+    if preview_snippet:
+        message_lines.append("\nPreview snippet:\n" + preview_snippet)
+    if stderr.strip():
+        message_lines.append("\nSTDERR:\n" + _truncate_output(stderr.strip(), 2000))
+
+    log_entries = [
+        {
+            "title": f"Setup {stack_config['name']} dev sandbox",
+            "command": f"{stack_config.get('install_cmd', '')} && {stack_config.get('dev_cmd', '')}",
+            "stdout": _truncate_output(stdout, 800),
+            "stderr": _truncate_output(stderr, 800),
+            "exit_code": result.get('exit_code')
+        }
+    ]
+
+    return {
+        "is_notification": False,
+        "workspace_id": workspace.workspace_id,
+        "exit_code": result.get('exit_code'),
+        "preview_url": preview_url,
+        "log_path": f"{workspace_dir}/dev.log",
+        "preview_snippet": preview_snippet,
+        "log_tail": log_tail,
+        "dev_server_pid": pid,
+        "stderr": _truncate_output(stderr.strip(), 2000),
+        "status": "completed" if result.get('exit_code') == 0 else "failed",
+        "log_entries": log_entries,
+        "stack": stack,
+        "project_dir": project_dir,
+        "message_to_agent": "\n".join(message_lines)
+    }
+
+
+async def queue_ticket_execution_tool(function_args, project_id, conversation_id):
+    logger.info("Queue ticket execution tool called")
+    logger.debug(f"Function arguments: {function_args}")
+
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+
+    if not conversation_id:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Cannot queue ticket execution without an active conversation. Start a conversation first."
+        }
+
+    project = await get_project(project_id)
+    if not project:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Project with ID {project_id} does not exist"
+        }
+
+    requested_ids = function_args.get('ticket_ids') or []
+
+    def _get_ticket_ids(ids):
+        queryset = ProjectTicket.objects.filter(project=project, role='agent', status='open')
+        if ids:
+            queryset = queryset.filter(id__in=ids)
+        return list(queryset.order_by('created_at', 'id').values_list('id', flat=True))
+
+    # Clean up any non-integer IDs
+    cleaned_requested_ids = []
+    for raw_id in requested_ids:
+        try:
+            cleaned_requested_ids.append(int(raw_id))
+        except (TypeError, ValueError):
+            continue
+
+    # Auto-fetch open tickets if none specified, or filter by specified IDs
+    ticket_id_list = await sync_to_async(_get_ticket_ids)(cleaned_requested_ids)
+
+    if not ticket_id_list:
+        return {
+            "is_notification": False,
+            "notification_type": "toolhistory",
+            "notification_marker": "__NOTIFICATION__",
+            "message_to_agent": "No open agent tickets are available to execute. Create tickets first using create_tickets().",
+            "status": "skipped"
+        }
+
+    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
+
+
+    # Queue each ticket as a separate task for parallel execution
+    task_ids = []
+    failed_tickets = []
+    queued_ticket_ids = []
+
+    for ticket_id in ticket_id_list:
+        try:
+            task_id = await sync_to_async(TaskManager.publish_task)(
+                'tasks.task_definitions.execute_ticket_implementation',
+                ticket_id,
+                project.id,
+                conversation_id,
+                task_name=f"Ticket #{ticket_id} execution for {project.name}",
+                timeout=7200
+            )
+            task_ids.append(task_id)
+            queued_ticket_ids.append(ticket_id)
+            logger.info(f"Queued ticket {ticket_id} with task ID {task_id}")
+        except Exception as exc:
+            logger.exception(f"Failed to queue ticket {ticket_id}")
+            failed_tickets.append({'ticket_id': ticket_id, 'error': str(exc)})
+
+    # Update ticket queue_status to 'queued' for successfully queued tickets
+    if queued_ticket_ids:
+        def _update_ticket_status():
+            ProjectTicket.objects.filter(id__in=queued_ticket_ids).update(queue_status='queued')
+        await sync_to_async(_update_ticket_status)()
+        logger.info(f"Updated {len(queued_ticket_ids)} tickets to queue_status='queued'")
+
+    if failed_tickets and not task_ids:
+        # All tickets failed to queue
+        return {
+            "is_notification": False,
+            "notification_type": "toolhistory",
+            "notification_marker": "__NOTIFICATION__",
+            "status": "failed",
+            "message_to_agent": f"Failed to queue all {len(ticket_id_list)} tickets for execution.",
+            "failed_tickets": failed_tickets
+        }
+
+    if failed_tickets:
+        # Some tickets failed
+        return {
+            "is_notification": False,
+            "notification_type": "toolhistory",
+            "status": "partial",
+            "message_to_agent": f"Queued {len(task_ids)} tickets for background execution. {len(failed_tickets)} tickets failed to queue.",
+            "ticket_ids": ticket_id_list,
+            "task_ids": task_ids,
+            "failed_tickets": failed_tickets,
+            "notification_marker": "__NOTIFICATION__"
+        }
+
+    return {
+        "is_notification": True,
+        "notification_type": "checklist",
+        "status": "queued",
+        "message_to_agent": f"Queued {len(task_ids)} tickets for parallel background execution. Each ticket will run independently. Tickets updated to in_progress status.",
+        "ticket_ids": ticket_id_list,
+        "task_ids": task_ids,
+        "notification_marker": "__NOTIFICATION__"
+    }
+
+
+async def manage_ticket_tasks_tool(function_args, project_id, conversation_id):
+    """
+    Manage tasks for a specific ticket. Can add new tasks, update existing tasks, or change task status.
+    """
+    logger.info("Manage ticket tasks tool called")
+    logger.debug(f"Function arguments: {function_args}")
+
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+
+    ticket_id = function_args.get('ticket_id')
+    action = function_args.get('action')
+    tasks_data = function_args.get('tasks', [])
+
+    if not ticket_id:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: ticket_id is required"
+        }
+
+    if not action:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: action is required (add, update, or update_status)"
+        }
+
+    try:
+        # Verify ticket exists
+        ticket = await sync_to_async(ProjectTicket.objects.get)(id=ticket_id)
+
+        if action == "get":
+            # Get all existing tasks for this ticket
+            tasks_qs = ProjectTodoList.objects.filter(ticket=ticket).order_by('order')
+            tasks = await sync_to_async(list)(tasks_qs)
+
+            tasks_list = []
+            for task in tasks:
+                tasks_list.append({
+                    'task_id': task.id,
+                    'description': task.description,
+                    'status': task.status,
+                    'order': task.order
+                })
+
+            if tasks_list:
+                logger.debug(f"Task Lists: {tasks_list}")
+                return {
+                    "is_notification": False,
+                    "message_to_agent": f"Retrieved {len(tasks_list)} task(s) for ticket #{ticket_id}. Use these task_id values when updating tasks.",
+                    "tasks": tasks_list
+                }
+            else:
+                return {
+                    "is_notification": False,
+                    "message_to_agent": f"No tasks found for ticket #{ticket_id}. You can add new tasks using action='add'.",
+                    "tasks": []
+                }
+
+        elif action == "add":
+            # Add new tasks
+            created_tasks = []
+            for task_data in tasks_data:
+                task = await sync_to_async(ProjectTodoList.objects.create)(
+                    ticket=ticket,
+                    description=task_data.get('description', ''),
+                    status=task_data.get('status', 'pending'),
+                    order=task_data.get('order', 0)
+                )
+                created_tasks.append({
+                    'id': task.id,
+                    'description': task.description,
+                    'status': task.status
+                })
+
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Successfully created {len(created_tasks)} task(s) for ticket #{ticket_id}",
+                "created_tasks": created_tasks
+            }
+
+        elif action == "update":
+            # Update existing tasks
+            updated_tasks = []
+            for task_data in tasks_data:
+                task_id = task_data.get('task_id')
+                if not task_id:
+                    continue
+
+                task = await sync_to_async(ProjectTodoList.objects.get)(id=task_id, ticket=ticket)
+
+                if 'description' in task_data:
+                    task.description = task_data['description']
+                if 'status' in task_data:
+                    task.status = task_data['status']
+                if 'order' in task_data:
+                    task.order = task_data['order']
+
+                await sync_to_async(task.save)()
+                updated_tasks.append({
+                    'id': task.id,
+                    'description': task.description,
+                    'status': task.status
+                })
+
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Successfully updated {len(updated_tasks)} task(s) for ticket #{ticket_id}",
+                "updated_tasks": updated_tasks
+            }
+
+        elif action == "update_status":
+            # Update task status only
+            updated_tasks = []
+            for task_data in tasks_data:
+                task_id = task_data.get('task_id')
+                new_status = task_data.get('status')
+
+                if not task_id or not new_status:
+                    continue
+
+                task = await sync_to_async(ProjectTodoList.objects.get)(id=task_id, ticket=ticket)
+                task.status = new_status
+                await sync_to_async(task.save)()
+
+                updated_tasks.append({
+                    'id': task.id,
+                    'description': task.description,
+                    'status': task.status
+                })
+
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Successfully updated status for {len(updated_tasks)} task(s) for ticket #{ticket_id}",
+                "updated_tasks": updated_tasks
+            }
+
+        else:
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Error: Invalid action '{action}'. Use 'get', 'add', 'update', or 'update_status'"
+            }
+
+    except ProjectTicket.DoesNotExist:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Ticket with ID {ticket_id} does not exist"
+        }
+    except ProjectTodoList.DoesNotExist:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: One or more tasks not found"
+        }
+    except Exception as e:
+        logger.error(f"Error managing ticket tasks: {str(e)}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error managing tasks: {str(e)}"
+        }
+
+
+async def get_ticket_todos_tool(function_args, project_id, conversation_id):
+    """Get all todos for a ticket with their current status and IDs."""
+    logger.info("Get ticket todos tool called")
+    logger.debug(f"Function arguments: {function_args}")
+
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+
+    ticket_id = function_args.get('ticket_id')
+
+    if not ticket_id:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: ticket_id is required"
+        }
+
+    try:
+        # Verify ticket exists
+        ticket = await sync_to_async(ProjectTicket.objects.get)(id=ticket_id)
+
+        # Get all todos ordered by their order field
+        todos_qs = ProjectTodoList.objects.filter(ticket=ticket).order_by('order')
+        todos = await sync_to_async(list)(todos_qs)
+
+        todos_list = []
+        for todo in todos:
+            todos_list.append({
+                'todo_id': todo.id,  # Return the actual database ID
+                'description': todo.description,
+                'status': todo.status,
+                'order': todo.order
+            })
+
+        if todos_list:
+            logger.debug(f"Todo List: {todos_list}")
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Retrieved {len(todos_list)} todo(s) for ticket #{ticket_id}. Todo List: {todos_list} \nUse the todo_id values to update todo status.",
+                "todos": todos_list
+            }
+        else:
+            return {
+                "is_notification": False,
+                "message_to_agent": f"No todos found for ticket #{ticket_id}. Create todos using create_ticket_todos.",
+                "todos": []
+            }
+
+    except ProjectTicket.DoesNotExist:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Ticket with ID {ticket_id} does not exist"
+        }
+    except Exception as e:
+        logger.error(f"Error getting ticket todos: {str(e)}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error getting todos: {str(e)}"
+        }
+
+
+async def create_ticket_todos_tool(function_args, project_id, conversation_id):
+    """Create todos for a ticket."""
+    logger.info("Create ticket todos tool called")
+    logger.debug(f"Function arguments: {function_args}")
+
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+
+    ticket_id = function_args.get('ticket_id')
+    todos_data = function_args.get('todos', [])
+
+    if not ticket_id:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: ticket_id is required"
+        }
+
+    if not todos_data:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: todos array is required"
+        }
+
+    try:
+        # Verify ticket exists
+        ticket = await sync_to_async(ProjectTicket.objects.get)(id=ticket_id)
+
+        # Delete existing todos for this ticket (if recreating)
+        await sync_to_async(ProjectTodoList.objects.filter(ticket=ticket).delete)()
+
+        # Create new todos
+        created_todos = []
+        for idx, todo_data in enumerate(todos_data):
+            todo = await sync_to_async(ProjectTodoList.objects.create)(
+                ticket=ticket,
+                description=todo_data.get('description', ''),
+                status='pending',
+                order=idx  # Set order based on array index
+            )
+            created_todos.append({
+                'order': idx,
+                'todo_id': todo.id,
+                'description': todo.description,
+                'status': todo.status
+            })
+
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Successfully created {len(created_todos)} todo(s) for ticket #{ticket_id}. Todos are numbered 0-{len(created_todos)-1}.",
+            "todos": created_todos
+        }
+
+    except ProjectTicket.DoesNotExist:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Ticket with ID {ticket_id} does not exist"
+        }
+    except Exception as e:
+        logger.error(f"Error creating ticket todos: {str(e)}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error creating todos: {str(e)}"
+        }
+
+
+async def update_todo_status_tool(function_args, project_id, conversation_id):
+    """Update the status of a todo by its database ID."""
+    logger.info("Update todo status tool called")
+    logger.debug(f"Function arguments: {function_args}")
+
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+
+    ticket_id = function_args.get('ticket_id')
+    todo_id = function_args.get('todo_id')
+    new_status = function_args.get('status')
+
+    if not ticket_id:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: ticket_id is required"
+        }
+
+    if not todo_id:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: todo_id is required"
+        }
+
+    if not new_status:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: status is required"
+        }
+
+    try:
+        # Verify ticket exists
+        ticket = await sync_to_async(ProjectTicket.objects.get)(id=ticket_id)
+
+        # Get the specific todo by ID and verify it belongs to this ticket
+        todo = await sync_to_async(ProjectTodoList.objects.get)(id=todo_id, ticket=ticket)
+
+        # Update status
+        todo.status = new_status
+        await sync_to_async(todo.save)()
+
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Successfully updated todo '{todo.description[:50]}' (ID: {todo_id}) to status '{new_status}' for ticket #{ticket_id}",
+            "todo": {
+                'todo_id': todo.id,
+                'description': todo.description,
+                'status': todo.status
+            }
+        }
+
+    except ProjectTicket.DoesNotExist:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Ticket with ID {ticket_id} does not exist"
+        }
+    except ProjectTodoList.DoesNotExist:
+        # If todo_id not found, fetch and return all valid todos for this ticket
+        try:
+            # Get all todos for this ticket
+            todos = await sync_to_async(list)(
+                ProjectTodoList.objects.filter(ticket=ticket).order_by('order')
+            )
+
+            todos_list = []
+            for todo in todos:
+                todos_list.append({
+                    'todo_id': todo.id,
+                    'description': todo.description,
+                    'status': todo.status,
+                    'order': todo.order
+                })
+
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Error: Todo with ID {todo_id} not found for ticket #{ticket_id}. Here are the valid todos for this ticket - use one of these todo_id values:",
+                "valid_todos": todos_list
+            }
+        except Exception as e:
+            logger.error(f"Error fetching valid todos: {str(e)}")
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Error: Todo with ID {todo_id} not found for ticket #{ticket_id}. Could not fetch valid todos: {str(e)}"
+            }
+    except Exception as e:
+        logger.error(f"Error updating todo status: {str(e)}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error updating todo status: {str(e)}"
+        }
+
+
+async def record_ticket_summary_tool(function_args, project_id, conversation_id):
+    """
+    Record a summary of changes made during ticket execution.
+    Appends to the ticket's notes field with a timestamp, preserving previous entries.
+    """
+    logger.info("Record ticket summary tool called")
+    logger.debug(f"Function arguments: {function_args}")
+
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+
+    ticket_id = function_args.get('ticket_id')
+    summary = function_args.get('summary', '')
+    files_modified = function_args.get('files_modified', [])
+
+    if not ticket_id:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: ticket_id is required"
+        }
+
+    if not summary:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: summary is required"
+        }
+
+    try:
+        # Verify ticket exists and get it
+        ticket = await sync_to_async(ProjectTicket.objects.get)(id=ticket_id)
+
+        # Build the new summary entry with timestamp
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # Format the summary entry
+        summary_entry = f"\n---\n## Summary - {timestamp}\n\n{summary}\n"
+
+        # Add files modified if provided (structured format with filename, path, action)
+        if files_modified:
+            summary_entry += "\n**Files Modified:**\n"
+            for file_info in files_modified:
+                if isinstance(file_info, dict):
+                    filename = file_info.get('filename', '')
+                    path = file_info.get('path', '')
+                    action = file_info.get('action', 'modified')
+                    summary_entry += f"- [{action}] `{filename}` - `{path}`\n"
+                else:
+                    # Fallback for simple string format
+                    summary_entry += f"- {file_info}\n"
+
+        # Get existing notes and append (not replace)
+        existing_notes = ticket.notes or ""
+        new_notes = existing_notes + summary_entry
+
+        # Update the ticket's notes field
+        ticket.notes = new_notes
+        await sync_to_async(ticket.save)(update_fields=['notes', 'updated_at'])
+
+        logger.info(f"Successfully recorded summary for ticket #{ticket_id}")
+
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Successfully recorded summary for ticket #{ticket_id}. The summary has been appended to the ticket's notes.",
+            "ticket_id": ticket_id,
+            "timestamp": timestamp,
+            "files_count": len(files_modified)
+        }
+
+    except ProjectTicket.DoesNotExist:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Ticket with ID {ticket_id} does not exist"
+        }
+    except Exception as e:
+        logger.error(f"Error recording ticket summary: {str(e)}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error recording ticket summary: {str(e)}"
+        }
+
+
+async def broadcast_to_user_tool(function_args, project_id, conversation_id):
+    """
+    Broadcast a message to the user DIRECTLY via WebSocket AND save to database.
+    This sends the message immediately, not through the LLM notification harness.
+    Returns a simple confirmation to the agent.
+    """
+    from tasks.task_definitions import current_ticket_id, current_workspace_id
+    from channels.layers import get_channel_layer
+    from channels.db import database_sync_to_async
+
+    logger.info(f"[BROADCAST] Tool called - project_id={project_id}, conversation_id={conversation_id}")
+
+    # Get ticket_id and workspace_id from context
+    ticket_id = current_ticket_id.get()
+    workspace_id = current_workspace_id.get()
+    logger.info(f"[BROADCAST] Context - ticket_id={ticket_id}, workspace_id={workspace_id}")
+
+    message = function_args.get('message', '')
+    status = function_args.get('status', 'progress')
+    summary = function_args.get('summary', {})
+
+    if not message:
+        return "Error: message is required for broadcast"
+
+    if status not in ['progress', 'complete', 'blocked', 'error']:
+        status = 'progress'
+
+    logger.info(f"[BROADCAST] Sending to user: status={status}, message={message[:100]}...")
+
+    log_data = None
+
+    # Save to database for persistence (so message survives tab switch)
+    try:
+        if ticket_id:
+            from projects.models import ProjectTicket, TicketLog
+            from django.db import transaction
+
+            def _save_broadcast_log():
+                with transaction.atomic():
+                    ticket = ProjectTicket.objects.get(id=ticket_id)
+                    log = TicketLog.objects.create(
+                        ticket=ticket,
+                        log_type='ai_response',
+                        command=f'[{status.upper()}]',
+                        explanation='AI Agent Broadcast',
+                        output=message
+                    )
+                    logger.info(f"[BROADCAST] Created TicketLog {log.id} in DB")
+                    return log
+
+            ai_log = await database_sync_to_async(_save_broadcast_log)()
+            log_data = {
+                'id': ai_log.id,
+                'log_type': 'ai_response',
+                'command': f'[{status.upper()}]',
+                'output': message,
+                'exit_code': None,
+                'created_at': ai_log.created_at.isoformat()
+            }
+            logger.info(f"[BROADCAST] ✓ Saved to DB as log {ai_log.id}")
+    except Exception as e:
+        import traceback
+        logger.error(f"[BROADCAST] Error saving to DB: {e}\n{traceback.format_exc()}")
+        # Still continue to send WebSocket even if DB save fails
+        log_data = {
+            'log_type': 'ai_response',
+            'command': f'[{status.upper()}]',
+            'output': message,
+            'exit_code': None,
+        }
+
+    # Send WebSocket notification DIRECTLY to the user as an AI response (chat message style)
+    try:
+        channel_layer = get_channel_layer()
+        if channel_layer and ticket_id and log_data:
+            group_name = f'ticket_logs_{ticket_id}'
+            await channel_layer.group_send(
+                group_name,
+                {
+                    'type': 'ticket_log_created',
+                    'log_data': log_data
+                }
+            )
+            logger.info(f"[BROADCAST] ✓ Sent via WebSocket to ticket_logs_{ticket_id}")
+        else:
+            logger.warning(f"[BROADCAST] Could not send - channel_layer={bool(channel_layer)}, ticket_id={ticket_id}")
+    except Exception as e:
+        logger.error(f"[BROADCAST] Error sending WebSocket notification: {e}")
+
+    # Return simple confirmation to agent (no notification dict, no message_to_agent)
+    # return f"Message broadcast to user successfully (status: {status})"
+    return {
+        "is_notification": False,
+        "message_to_agent": "User notified. Continue with next step"
+    }
+
+
+async def get_project_env_vars_tool(function_args, project_id, conversation_id):
+    """
+    Get the list of environment variables configured for a project.
+    Returns metadata only - not actual secret values.
+    """
+    from projects.models import Project, ProjectEnvironmentVariable
+    from asgiref.sync import sync_to_async
+
+    logger.info(f"[ENV_VARS] Getting env vars for project {project_id}")
+
+    include_values = function_args.get('include_values', False)
+
+    if not project_id:
+        return {
+            "success": False,
+            "error": "Project ID is required",
+            "is_notification": False
+        }
+
+    try:
+        @sync_to_async
+        def _get_env_vars():
+            project = Project.objects.get(project_id=project_id)
+            env_vars = ProjectEnvironmentVariable.objects.filter(project=project).order_by('key')
+
+            result = []
+            for env in env_vars:
+                var_info = {
+                    "key": env.key,
+                    "has_value": env.has_value,
+                    "is_required": env.is_required,
+                    "is_secret": env.is_secret,
+                    "description": env.description or ""
+                }
+                # Only include masked value for non-secrets if requested
+                if include_values and env.has_value:
+                    if env.is_secret:
+                        var_info["value"] = "***SECRET***"
+                    else:
+                        # Show first/last few chars
+                        try:
+                            decrypted = env.get_value()
+                            if len(decrypted) > 8:
+                                var_info["value"] = f"{decrypted[:4]}...{decrypted[-4:]}"
+                            else:
+                                var_info["value"] = "****"
+                        except:
+                            var_info["value"] = "****"
+
+                result.append(var_info)
+
+            return result
+
+        env_vars = await _get_env_vars()
+
+        # Build summary
+        total = len(env_vars)
+        with_values = sum(1 for e in env_vars if e['has_value'])
+        missing = total - with_values
+        required_missing = sum(1 for e in env_vars if e['is_required'] and not e['has_value'])
+
+        summary = f"Found {total} environment variable(s)"
+        if missing > 0:
+            summary += f" ({missing} missing value(s)"
+            if required_missing > 0:
+                summary += f", {required_missing} REQUIRED"
+            summary += ")"
+
+        return {
+            "success": True,
+            "env_vars": env_vars,
+            "summary": summary,
+            "total": total,
+            "with_values": with_values,
+            "missing_values": missing,
+            "required_missing": required_missing,
+            "is_notification": False
+        }
+
+    except Project.DoesNotExist:
+        return {
+            "success": False,
+            "error": f"Project {project_id} not found",
+            "is_notification": False
+        }
+    except Exception as e:
+        logger.error(f"[ENV_VARS] Error getting env vars: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": str(e),
+            "is_notification": False
+        }
+
+
+async def agent_create_ticket_tool(function_args, project_id, conversation_id):
+    """
+    Create a single ticket for the project.
+    Used by builder/agent to create follow-up tasks, document issues, or flag items for user attention.
+    """
+    from projects.models import Project, ProjectTicket
+    from asgiref.sync import sync_to_async
+
+    logger.info(f"[CREATE_TICKET] Creating ticket for project {project_id}")
+
+    name = function_args.get('name', '')
+    description = function_args.get('description', '')
+    priority = function_args.get('priority', 'Medium')
+    status = function_args.get('status', 'open')
+
+    if not name:
+        return {
+            "success": False,
+            "error": "Ticket name is required",
+            "is_notification": False
+        }
+
+    if not project_id:
+        return {
+            "success": False,
+            "error": "Project ID is required",
+            "is_notification": False
+        }
+
+    try:
+        @sync_to_async
+        def _create_ticket():
+            project = Project.objects.get(project_id=project_id)
+
+            ticket = ProjectTicket.objects.create(
+                project=project,
+                name=name,
+                description=description,
+                priority=priority,
+                status=status
+            )
+            return ticket
+
+        ticket = await _create_ticket()
+
+        logger.info(f"[CREATE_TICKET] Created ticket '{name}' with ID {ticket.id}")
+
+        return {
+            "success": True,
+            "message": f"Created ticket: {name}",
+            "ticket": {
+                "id": ticket.id,
+                "name": ticket.name,
+                "description": ticket.description,
+                "priority": ticket.priority,
+                "status": ticket.status
+            },
+            "is_notification": True,
+            "notification_type": "create_ticket",
+            "notification_data": {
+                "ticket_id": ticket.id,
+                "ticket_name": name,
+                "priority": priority,
+                "status": status
+            }
+        }
+
+    except Project.DoesNotExist:
+        return {
+            "success": False,
+            "error": f"Project {project_id} not found",
+            "is_notification": False
+        }
+    except Exception as e:
+        logger.error(f"[CREATE_TICKET] Error creating ticket: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": str(e),
+            "is_notification": False
+        }
+
+
+async def register_required_env_vars_tool(function_args, project_id, conversation_id):
+    """
+    Register required environment variables for a project.
+    Creates empty placeholder entries marked as 'missing' and optionally creates a ticket.
+    """
+    from projects.models import Project, ProjectEnvironmentVariable, ProjectTicket
+    from asgiref.sync import sync_to_async
+
+    logger.info(f"[ENV_VARS] Registering required env vars for project {project_id}")
+
+    env_vars = function_args.get('env_vars', [])
+    reason = function_args.get('reason', 'Required by application')
+    create_ticket = function_args.get('create_ticket', True)
+
+    if not env_vars:
+        return {
+            "is_notification": False,
+            "message_to_agent": "No environment variables specified to register."
+        }
+
+    # Get the project
+    project = await get_project(project_id)
+    if not project:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Project with ID {project_id} not found."
+        }
+
+    created_vars = []
+    existing_vars = []
+
+    @sync_to_async
+    def _register_env_vars():
+        nonlocal created_vars, existing_vars
+        from projects.utils.encryption import encrypt_value
+
+        for var in env_vars:
+            key = var.get('key', '').upper().strip()
+            description = var.get('description', '')
+            example = var.get('example', '')
+            is_secret = var.get('is_secret', True)
+
+            if not key:
+                continue
+
+            # Build description with example if provided
+            full_description = description
+            if example:
+                full_description += f" (Example: {example})"
+
+            # Check if variable already exists
+            existing = ProjectEnvironmentVariable.objects.filter(
+                project=project,
+                key=key
+            ).first()
+
+            if existing:
+                # If exists and has a value, skip
+                if existing.has_value:
+                    existing_vars.append(key)
+                    continue
+                # If exists but no value, update description if provided
+                if full_description:
+                    existing.description = full_description
+                    existing.save()
+                existing_vars.append(key)
+            else:
+                # Create new empty placeholder
+                env_var = ProjectEnvironmentVariable(
+                    project=project,
+                    key=key,
+                    encrypted_value=encrypt_value(''),  # Empty value
+                    is_secret=is_secret,
+                    is_required=True,
+                    has_value=False,  # Mark as missing
+                    description=full_description
+                )
+                env_var.save()
+                created_vars.append(key)
+                logger.info(f"[ENV_VARS] Created required env var: {key}")
+
+    await _register_env_vars()
+
+    # Create a ticket if requested and we created new vars
+    ticket_id = None
+    if create_ticket and created_vars:
+        @sync_to_async
+        def _create_ticket():
+            # Build ticket description
+            var_list = "\n".join([f"- `{key}`" for key in created_vars])
+            ticket_description = f"""## Required Environment Variables
+
+The following environment variables are required for the application to run properly:
+
+{var_list}
+
+**Reason:** {reason}
+
+### Action Required
+Please go to Project Settings → Environment tab and provide values for the missing environment variables (shown in red).
+"""
+
+            # Create the ticket
+            ticket = ProjectTicket.objects.create(
+                project=project,
+                name="⚠️ Configure Required Environment Variables",
+                description=ticket_description,
+                status='open',
+                priority='High'
+            )
+            logger.info(f"[ENV_VARS] Created ticket #{ticket.id} for missing env vars")
+            return ticket.id
+
+        ticket_id = await _create_ticket()
+
+    # Build response message
+    message_parts = []
+    if created_vars:
+        message_parts.append(f"Created {len(created_vars)} required environment variable(s): {', '.join(created_vars)}")
+    if existing_vars:
+        message_parts.append(f"Skipped {len(existing_vars)} existing variable(s): {', '.join(existing_vars)}")
+    if ticket_id:
+        message_parts.append(f"Created ticket #{ticket_id} to remind user to provide values.")
+
+    return {
+        "is_notification": True,
+        "notification_type": "env_vars_registered",
+        "notification_marker": "__NOTIFICATION__",
+        "created_vars": created_vars,
+        "existing_vars": existing_vars,
+        "ticket_id": ticket_id,
+        "message_to_agent": " ".join(message_parts) if message_parts else "No changes made."
+    }
+
+
+async def run_code_server_tool(function_args, project_id, conversation_id):
+    """
+    Execute code via SSH on the workspace and open the app in the artifacts panel.
+    Uses default values if not specified: command='cd /root/project && npm run dev', port=3000
+    """
+    logger.info("Run code server tool called")
+    logger.debug(f"Function arguments: {function_args}")
+
+    if not _mags_available:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Workspace service is not available. Check server configuration."
+        }
+
+    # Get parameters with defaults
+    command = function_args.get('command', f'cd {MAGS_WORKING_DIR}/project && npm run dev')
+    port = function_args.get('port', 3000)
+    description = function_args.get('description', 'Starting development server')
+
+    project = await get_project(project_id) if project_id else None
+
+    # Fetch workspace
+    workspace = await _fetch_workspace(workspace_id=None, project=project, conversation_id=conversation_id)
+
+    if not workspace:
+        return {
+            "is_notification": False,
+            "message_to_agent": "No workspace found. Workspaces are automatically created during ticket execution."
+        }
+
+    if workspace.status != 'ready':
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Workspace is not ready yet (status: {workspace.status}). Wait for provisioning to complete."
+        }
+
+    ws_id = workspace.mags_workspace_id or workspace.workspace_id
+
+    # Execute the command via SDK exec with environment variables
+    try:
+        # Build command with project environment variables
+        env_exports = get_project_env_exports(project_id) if project_id else []
+        if env_exports:
+            env_prefix = " && ".join(env_exports)
+            full_command = f"{env_prefix} && {command}"
+            logger.info(f"[RUN_CODE_SERVER] Injecting {len(env_exports)} env vars")
+        else:
+            full_command = command
+
+        logger.info(f"Executing command on workspace: {command}")
+
+        result = await asyncio.to_thread(
+            mags_run_command,
+            ws_id,
+            full_command,
+            30,  # Short timeout as server runs in background
+        )
+
+        logger.info(f"Command execution result: exit_code={result.get('exit_code')}")
+
+    except Exception as exc:
+        logger.error(f"Error executing command: {exc}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error executing command: {str(exc)}"
+        }
+
+    # Get preview URL via Mags HTTP access
+    app_url = await _async_get_mags_preview_url(workspace, port=port)
+    if not app_url:
+        app_url = f'http://localhost:{port}'
+
+    logger.info(f"App should be available at: {app_url}")
+
+    # Send notification to open the app in artifacts panel
+    return {
+        "is_notification": True,
+        "notification_type": "open_app",
+        "message_to_agent": f"{description}. The app should be starting at {app_url}",
+        "app_url": app_url,
+        "port": port,
+        "command": command,
+        "workspace_id": workspace.workspace_id,
+        "notification_marker": "__NOTIFICATION__"
+    }
+
+
+async def open_app_in_artifacts_tool(function_args, project_id, conversation_id):
+    """
+    Open the app in the artifacts panel.
+    Fetches the workspace and constructs the app URL.
+    Can optionally start the dev server if not already running.
+    """
+    if not _mags_available:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Workspace service is not available. Check server configuration."
+        }
+
+    project = await get_project(project_id) if project_id else None
+    workspace_id = function_args.get('workspace_id')
+    port = function_args.get('port', 3000)
+    start_server = function_args.get('start_server', False)
+    server_command = function_args.get('server_command', 'npm run dev')
+
+    # Fetch workspace by workspace_id or project
+    workspace = await _fetch_workspace(workspace_id=workspace_id, project=project, conversation_id=conversation_id)
+
+    if not workspace:
+        return {
+            "is_notification": False,
+            "message_to_agent": "No workspace found. Workspaces are automatically created during ticket execution."
+        }
+
+    if workspace.status != 'ready':
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Workspace is not ready yet (status: {workspace.status}). Wait for provisioning to complete."
+        }
+
+    ws_id = workspace.mags_workspace_id or workspace.workspace_id
+
+    # Optionally start the dev server
+    if start_server:
+        # Start the server in background
+        start_cmd = textwrap.dedent(
+            f"""
+            cd {MAGS_WORKING_DIR}/project
+            if [ -f .devserver_pid ]; then
+              old_pid=$(cat .devserver_pid)
+              if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
+                echo "Server already running with PID $old_pid"
+                exit 0
+              fi
+            fi
+            : > {MAGS_WORKING_DIR}/project/dev.log
+            nohup {server_command} -- --hostname :: --port {port} > {MAGS_WORKING_DIR}/project/dev.log 2>&1 &
+            pid=$!
+            echo "$pid" > .devserver_pid
+            echo "PID:$pid"
+            sleep 2
+            """
+        )
+
+        try:
+            result = await asyncio.to_thread(
+                mags_run_command,
+                ws_id,
+                start_cmd,
+                120,
+            )
+            logger.info(
+                "[DEV_SERVER][START SERVER] workspace=%s exit_code=%s",
+                workspace.workspace_id,
+                result.get('exit_code')
+            )
+
+            # Extract PID
+            stdout = result.get('stdout', '')
+            pid = _extract_pid_from_output(stdout)
+
+            # Update workspace metadata
+            metadata_updates = {
+                "dev_server_pid": pid,
+                "last_server_start": datetime.utcnow().isoformat() + "Z",
+            }
+            await sync_to_async(_update_workspace_metadata, thread_sensitive=True)(workspace, **metadata_updates)
+
+        except Exception as exc:
+            logger.exception("Failed to start dev server")
+            # Continue anyway - maybe server is already running
+
+    # Get preview URL via Mags HTTP access
+    app_url = await _async_get_mags_preview_url(workspace, port=port)
+    if not app_url:
+        app_url = f'http://localhost:{port}'
+
+    logger.info(f"Opening app in artifacts panel: {app_url}")
+
+    return {
+        "is_notification": True,
+        "notification_type": "app_url",
+        "app_url": app_url,
+        "workspace_id": workspace.workspace_id,
+        "port": port,
+        "message_to_agent": f"App is now available at {app_url}. The app will be displayed in the artifacts panel."
+    }
+
+
+async def run_command_locally(command: str, project_id: int | str = None, conversation_id: int | str = None, ticket_id: int = None) -> dict:
     """
     Run a command in the local terminal using subprocess.
     Creates a local workspace directory if it doesn't exist.
     """
+    # Try to get ticket_id from context variable if not passed
+    if ticket_id is None:
+        try:
+            from tasks.task_definitions import current_ticket_id
+            ticket_id = current_ticket_id.get()
+            if ticket_id:
+                logger.info(f"[RUN_COMMAND_LOCALLY] Retrieved ticket_id={ticket_id} from context variable")
+        except Exception as e:
+            logger.debug(f"[RUN_COMMAND_LOCALLY] Could not get ticket_id from context: {e}")
+
     project = await get_project(project_id)
     # Create workspace directory if it doesn't exist
     workspace_path = Path.home() / "LFG" / "workspace" / project.name
     workspace_path.mkdir(parents=True, exist_ok=True)
-    
+
     command_to_run = f"cd {workspace_path} && {command}"
     logger.debug(f"Local Command: {command_to_run}")
 
-    # Create command record in database
-    cmd_record = await sync_to_async(lambda: (
-        CommandExecution.objects.create(
-            project_id=project_id,
-            command=command,
-            output=None  # Will update after execution
-        )
-    ))()
+    # Create command record in database (only if ticket_id is provided)
+    cmd_record = None
+    if ticket_id:
+        try:
+            ticket = await sync_to_async(ProjectTicket.objects.get)(id=ticket_id)
+            cmd_record = await sync_to_async(TicketLog.objects.create)(
+                ticket=ticket,
+                command=command,
+                output=None,  # Will update after execution
+                exit_code=None
+            )
+        except ProjectTicket.DoesNotExist:
+            logger.warning(f"Ticket {ticket_id} not found, skipping log creation")
+        except Exception as e:
+            logger.error(f"Error creating TicketLog: {e}")
 
     success = False
     stdout = ""
@@ -1981,8 +4557,9 @@ async def run_command_locally(command: str, project_id: int | str = None, conver
 
     try:
         # Execute the command locally using subprocess in thread pool
+        # Pass project.id to inject project environment variables
         success, stdout, stderr = await asyncio.get_event_loop().run_in_executor(
-            None, execute_local_command, command, str(workspace_path)
+            None, execute_local_command, command, str(workspace_path), project.id
         )
 
         logger.debug(f"Local Command output: {stdout}")
@@ -1990,44 +4567,52 @@ async def run_command_locally(command: str, project_id: int | str = None, conver
             logger.warning(f"Local Command stderr: {stderr}")
 
         # Update command record with output
-        await sync_to_async(lambda: (
-            setattr(cmd_record, 'output', stdout if success else stderr),
-            cmd_record.save()
-        )[1])()
+        if cmd_record:
+            await sync_to_async(lambda: (
+                setattr(cmd_record, 'output', stdout if success else stderr),
+                setattr(cmd_record, 'exit_code', 0 if success else 1),
+                cmd_record.save()
+            )[2])()
 
     except Exception as e:
         error_msg = f"Failed to execute command locally: {str(e)}"
         stderr = error_msg
-        
+
         # Update command record with error
-        await sync_to_async(lambda: (
-            setattr(cmd_record, 'output', error_msg),
-            cmd_record.save()
-        )[1])()
+        if cmd_record:
+            await sync_to_async(lambda: (
+                setattr(cmd_record, 'output', error_msg),
+                setattr(cmd_record, 'exit_code', 1),
+                cmd_record.save()
+            )[2])()
 
     if not success:
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "command_error",
             "message_to_agent": f"{stderr}The local command execution failed. Stop generating further steps and inform the user that the command could not be executed.",
         }
     
     return {
-        "is_notification": True,
+        "is_notification": False,
         "notification_type": "command_output", 
         "message_to_agent": f"Local command output: {stdout}Fix if there is any error, otherwise you can proceed to next step",
     }
 
 # Updated run_server_locally function
-async def run_server_locally(command: str, project_id: int | str = None, 
-                           conversation_id: int | str = None, 
-                           application_port: int | str = None, 
+async def run_server_locally(command: str, project_id: int | str = None,
+                           conversation_id: int | str = None,
+                           application_port: int | str = None,
                            type: str = None) -> dict:
     """
     Run a server command locally in background.
     """
     logger.debug(f"Local Application port: {application_port}")
     logger.debug(f"Local Type: {type}")
+
+    # Get project for env vars injection
+    project = await get_project(project_id) if project_id else None
+    db_project_id = project.id if project else None
 
     # Create workspace directory if it doesn't exist
     workspace_path = Path.home() / "LFG" / "workspace"
@@ -2036,7 +4621,7 @@ async def run_server_locally(command: str, project_id: int | str = None,
     # Validate port
     if not application_port:
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "command_error",
             "message_to_agent": "Port is required to run a server."
         }
@@ -2045,13 +4630,13 @@ async def run_server_locally(command: str, project_id: int | str = None,
         application_port = int(application_port)
         if application_port < 1 or application_port > 65535:
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "command_error",
                 "message_to_agent": f"Invalid application port: {application_port}. Port must be between 1 and 65535."
             }
     except (ValueError, TypeError):
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "command_error",
             "message_to_agent": f"Invalid application port: {application_port}. Must be a valid integer."
         }
@@ -2067,26 +4652,39 @@ async def run_server_locally(command: str, project_id: int | str = None,
         }
     ))()
     
-    # 2. Check if server is running on the port and kill it
-    kill_command = f"lsof -ti:{application_port} | xargs kill -9 2>/dev/null || true"
+    # 2. Check if server is running on the port and kill it (multiple methods for reliability)
+    kill_command = f"""
+lsof -ti:{application_port} | xargs kill -9 2>/dev/null || true
+fuser -k -9 {application_port}/tcp 2>/dev/null || true
+"""
     success, stdout, stderr = execute_local_command(kill_command, str(workspace_path))
     logger.info(f"Killed existing process on port {application_port}")
-    
-    # Wait a moment for port to be freed
-    await asyncio.sleep(1)
-    
+
+    # Wait for port to be fully released
+    await asyncio.sleep(2)
+
     # 3. Run the server command in background using nohup
     # Create a log file for the server
     log_file = workspace_path / f"server_{project_id}_{application_port}.log"
-    
+
+    # Build command with env vars if project has them
+    env_exports = get_project_env_exports(db_project_id) if db_project_id else []
+    if env_exports:
+        # Prepend env exports to the server command
+        env_prefix = " && ".join(env_exports)
+        full_server_command = f"{env_prefix} && {command}"
+        logger.info(f"[SERVER] Injecting {len(env_exports)} env vars for server start")
+    else:
+        full_server_command = command
+
     # Use nohup to run in background and redirect output to log file
-    background_command = f"nohup {command} > {log_file} 2>&1 &"
-    
+    background_command = f"nohup sh -c '{full_server_command}' > {log_file} 2>&1 &"
+
     success, stdout, stderr = execute_local_command(background_command, str(workspace_path))
     
     if not success:
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "command_error",
             "message_to_agent": f"Failed to start server: {stderr}"
         }
@@ -2101,7 +4699,7 @@ async def run_server_locally(command: str, project_id: int | str = None,
     if success and stdout:
         # Server is running
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "server_started",
             "message_to_agent": f"✅ Server started successfully!"
                                f"📍 Running on port {application_port}\n"
@@ -2120,7 +4718,7 @@ async def run_server_locally(command: str, project_id: int | str = None,
             last_lines = "Could not read log file"
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "server_error",
             "message_to_agent": f"⚠️ Server may not have started properly."
                                f"Recent logs:\n```\n{last_lines}\n```"
@@ -2137,7 +4735,7 @@ async def stop_server(project_id: int, port: int) -> dict:
     success, stdout, stderr = execute_local_command(kill_command, str(workspace_path))
     
     return {
-        "is_notification": True,
+        "is_notification": False,
         "notification_type": "server_stopped",
         "message_to_agent": f"Server on port {port} has been stopped."
     }
@@ -2165,7 +4763,7 @@ async def restart_server_from_config(project_id: int) -> dict:
         results.append(result['message_to_agent'])
     
     return {
-        "is_notification": True,
+        "is_notification": False,
         "notification_type": "servers_restarted",
         "message_to_agent": "\n".join(results)
     }
@@ -2212,7 +4810,7 @@ async def copy_boilerplate_code(project_id, project_name):
             subprocess.run(["git", "commit", "-m", "Initial commit: Copy boilerplate code"], cwd=dest_path, check=True)
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "boilerplate_code_copied",
             "message_to_agent": f"Boilerplate code has been successfully copied to ~/LFG/workspace/{folder_name}. The project has been initialized with git."
         }
@@ -2270,7 +4868,7 @@ async def save_project_name(project_name, project_id):
         )[1])()
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "project_name_saved",
             "message_to_agent": f"Project name '{project_name}' has been saved successfully as provided_name"
         }
@@ -2300,7 +4898,7 @@ async def get_project_name(project_id):
     try:
         if project.provided_name:
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "project_name_retrieved",
                 "message_to_agent": f"Project name is: {project.provided_name}"
             }
@@ -2310,7 +4908,7 @@ async def get_project_name(project_id):
             import re
             current_project_name = re.sub(r'[^a-z0-9-]', '', current_project_name)
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "project_name_not_confirmed",
                 "message_to_agent": f"Ask the user if they wish to use the name. You can ask user if they want to save this name: '{current_project_name}'? Do not proceed until user responds."
             }
@@ -2352,7 +4950,7 @@ async def implement_ticket(ticket_id, project_id, conversation_id, ticket_detail
     except Exception as e:
         logger.error(f"Error setting up ticket implementation {ticket_id}: {str(e)}")
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "ticket_error",
             "message_to_agent": f"Error setting up ticket implementation {ticket_id}: {str(e)}",
             "error": str(e)
@@ -2464,7 +5062,7 @@ async def save_file_from_stream(file_content, project_id, file_type, file_name):
         logger.info(f"[SAVE NOTIFICATION] Type: {file_type}, Name: {file_name}, ID: {file_obj.id}")
         
         notification = {
-            "is_notification": True,
+            "is_notification": True,  # Fixed: Must be True for notification to be sent
             "notification_type": "file_saved",  # Use a generic notification type for all saved files
             "message_to_agent": f"{file_type_display} '{file_name}' {action} successfully in the database",
             "file_name": file_name,
@@ -2618,7 +5216,7 @@ async def edit_file_content(file_id, edit_operations, project_id):
     logger.info(f"[edit_file_content] File '{file_obj.name}' edited successfully. Lines changed from {original_line_count} to {new_line_count}")
     
     result = {
-        "is_notification": True,
+        "is_notification": True,  # Fixed: Must be True for notification to be sent
         "notification_type": "file_edited",
         "message_to_agent": f"File '{file_obj.name}' edited successfully. Applied {len(edit_operations)} operations. Lines: {original_line_count} → {new_line_count}",
         "file_id": file_id,
@@ -2709,7 +5307,7 @@ async def save_implementation_from_stream(implementation_content, project_id):
         action = "created" if created else "updated"
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "implementation",
             "message_to_agent": f"Implementation {action} successfully in the database"
         }
@@ -2815,7 +5413,7 @@ async def save_prd_from_stream(prd_content, project_id, prd_name=None):
         logger.info(f"PRD '{prd_name}' {action} successfully for project {project_id}")
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "prd",
             "message_to_agent": f"PRD '{prd_name}' {action} successfully in the database",
             "prd_name": prd_name
@@ -2862,7 +5460,7 @@ async def save_ticket_from_stream(ticket_data, project_id):
     
     try:
         # Create ticket with enhanced details
-        new_ticket = await sync_to_async(ProjectChecklist.objects.create)(
+        new_ticket = await sync_to_async(ProjectTicket.objects.create)(
             project=project,
             name=ticket_data.get('name', ''),
             description=ticket_data.get('description', ''),
@@ -2878,7 +5476,7 @@ async def save_ticket_from_stream(ticket_data, project_id):
         logger.info(f"Ticket created successfully with ID {new_ticket.id}")
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "checklist",
             "message_to_agent": f"Ticket '{ticket_data.get('name', 'Unnamed')}' created successfully"
         }
@@ -2894,75 +5492,142 @@ async def save_ticket_from_stream(ticket_data, project_id):
 # Only to be used with OpenAIProvider
 # As OpenAI doesn't support web search tool yet
 # Claude does.
-async def web_search(query, conversation_id=None):
+async def web_search(queries, conversation_id=None):
     """
-    Perform a web search using OpenAI's web search capabilities.
+    Perform web searches using OpenAI's web search capabilities.
     This function is only available for OpenAI provider.
-    
+
     Args:
-        query: The search query string
+        queries: List of search query strings
         conversation_id: The conversation ID (optional)
-        
+
     Returns:
-        Dict with search results or error message
+        Dict with combined search results or error message
     """
-    logger.info(f"Web search function called with query: {query}")
-    
-    if not query:
+    logger.info(f"Web search function called with {len(queries)} queries: {queries}")
+
+    if not queries or not isinstance(queries, list):
         return {
             "is_notification": False,
-            "message_to_agent": "Error: query is required for web search"
+            "message_to_agent": "Error: queries must be a non-empty list of search queries"
         }
-    
+
     try:
         # Get user and conversation details
         model = "gpt-5-nano"  # Default model
-        
+
         # Get OpenAI API key
         openai_api_key = os.environ.get('OPENAI_API_KEY')
-        
+
         # Initialize OpenAI client
         import openai
         client = openai.OpenAI(api_key=openai_api_key)
-        
+
         logger.info(f"Using model {model} for web search")
-        
-        # Make the search request using OpenAI's responses.create API
-        response = client.responses.create(
-            model=model,
-            tools=[{"type": "web_search_preview"}],
-            input=query
-        )
-        
-        # Extract the search results from the response
-        if response:
-            # Convert response to string format
-            search_results = str(response)
-            
-            logger.info(f"Web search completed successfully for query: {query}")
-            
+
+        # Loop through each query and collect results
+        all_results = []
+        for idx, query in enumerate(queries, 1):
+            if not query or not isinstance(query, str):
+                logger.warning(f"Skipping invalid query at index {idx}: {query}")
+                continue
+
+            logger.info(f"Searching query {idx}/{len(queries)}: {query}")
+
+            try:
+                # Make the search request using OpenAI's responses.create API
+                response = client.responses.create(
+                    model=model,
+                    tools=[{"type": "web_search_preview"}],
+                    input=query
+                )
+
+                # Extract the search results from the response
+                if response:
+                    search_results = str(response)
+                    all_results.append(f"### Query {idx}: {query}\n\n{search_results}\n")
+                    logger.info(f"Web search completed successfully for query {idx}: {query}")
+                else:
+                    all_results.append(f"### Query {idx}: {query}\n\nNo results found\n")
+
+            except Exception as query_error:
+                logger.error(f"Error searching query {idx} '{query}': {str(query_error)}")
+                all_results.append(f"### Query {idx}: {query}\n\nError: {str(query_error)}\n")
+
+        # Combine all results
+        if all_results:
+            combined_results = "\n---\n\n".join(all_results)
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "toolhistory",
-                "message_to_agent": f"Web search results for '{query}':\n\n{search_results}"
+                "message_to_agent": f"Web search results for {len(queries)} queries:\n\n{combined_results}"
             }
         else:
             return {
                 "is_notification": False,
-                "message_to_agent": "No search results found"
+                "message_to_agent": "No valid queries provided or all searches failed"
             }
-            
+
     except Exception as e:
-        logger.error(f"Error performing web search: {str(e)}")
+        logger.error(f"Error performing web searches: {str(e)}")
         return {
             "is_notification": False,
-            "message_to_agent": f"Error performing web search: {str(e)}"
+            "message_to_agent": f"Error performing web searches: {str(e)}"
         }
+
+async def set_project_stack(function_args, project_id, conversation_id=None):
+    """
+    Set the technology stack for a project.
+    """
+    logger.info(f"set_project_stack called for project {project_id}")
+
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+
+    validation_error = validate_function_args(function_args, ['stack'])
+    if validation_error:
+        return validation_error
+
+    project = await get_project(project_id)
+    if not project:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Project with ID {project_id} does not exist"
+        }
+
+    stack = function_args.get('stack')
+    valid_stacks = {k: v for k, v in Project.STACK_CHOICES if k}  # Exclude empty/unset
+    if stack not in valid_stacks:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Invalid stack '{stack}'. Must be one of: {', '.join(valid_stacks.keys())}"
+        }
+
+    old_stack = project.stack
+    project.stack = stack
+    await sync_to_async(project.save)(update_fields=['stack'])
+
+    from factory.stack_configs import get_stack_config
+    config = get_stack_config(stack, project)
+
+    logger.info(f"[SET_STACK] Project {project_id}: {old_stack} -> {stack}")
+
+    return {
+        "is_notification": True,
+        "notification_type": "set_project_stack",
+        "message_to_agent": (
+            f"Project stack set to **{valid_stacks[stack]}**. "
+            f"Workspace will use: project_dir='{config['project_dir']}', "
+            f"install='{config['install_cmd']}', dev='{config['dev_cmd']}', port={config['default_port']}."
+        )
+    }
+
 
 async def get_file_list(project_id, file_type="all", limit=10):
     """
     Get the list of files in the project
-    
+
     Args:
         project_id: The project ID
         file_type: Type of files to retrieve ("prd", "implementation", "design", "all")
@@ -2997,7 +5662,7 @@ async def get_file_list(project_id, file_type="all", limit=10):
         
         if not files:
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "file_list",
                 "message_to_agent": f"No {file_type} files found for this project"
             }
@@ -3014,7 +5679,7 @@ async def get_file_list(project_id, file_type="all", limit=10):
             })
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "file_list",
             "message_to_agent": f"Found {len(file_list)} {file_type} files. Here are the file details {file_list}",
             "files": file_list
@@ -3038,7 +5703,7 @@ async def get_file_content(project_id, file_ids):
     Returns:
         Dict with file contents or error message
     """
-    logger.info(f"Get file content function called for project {project_id}, file_ids: {file_ids}")
+    print(f"Get file content function called for project {project_id}, file_ids: {file_ids}")
     
     error_response = validate_project_id(project_id)
     if error_response:
@@ -3102,7 +5767,7 @@ async def get_file_content(project_id, file_ids):
             })
         
         response = {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "file_content",
             "message_to_agent": f"Retrieved {len(files)} file(s). Here are the file contents: {file_contents}. You can proceed to the next step.",
             "files": file_contents
@@ -3184,14 +5849,15 @@ async def update_file_content(file_id, updated_content, project_id):
         logger.info(f"File '{file_obj.name}' updated successfully. Content size: {old_content_length} → {new_content_length} characters")
         
         return {
-            "is_notification": True,
+            "is_notification": True,  # Fixed: Must be True for notification to be sent
             "notification_type": "file_edited",
             "message_to_agent": f"File '{file_obj.name}' updated successfully. Content updated from {old_content_length} to {new_content_length} characters.",
             "file_id": file_id,
             "file_name": file_obj.name,
             "file_type": file_obj.file_type,
             "old_size": old_content_length,
-            "new_size": new_content_length
+            "new_size": new_content_length,
+            "notification_marker": "__NOTIFICATION__"  # Add notification marker
         }
         
     except Exception as e:
@@ -3280,7 +5946,7 @@ async def index_repository(project_id, github_url, branch='main', force_reindex=
         await sync_to_async(indexed_repo.save)()
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "repository_indexing",
             "message_to_agent": f"Repository indexing started for {repo_info['owner']}/{repo_info['repo']}. "
                                f"Task ID: {task_id}. This may take a few minutes depending on repository size."
@@ -3364,7 +6030,7 @@ async def get_codebase_context(project_id, feature_description, search_type='all
             message = context_result['context']
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "codebase_context",
             "message_to_agent": f"Codebase context for '{feature_description}':\n\n{message}"
         }
@@ -3426,7 +6092,7 @@ async def search_existing_code(project_id, functionality, chunk_types=[]):
         
         if not implementations:
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "code_search",
                 "message_to_agent": f"No existing implementations found for '{functionality}'. "
                                    "This appears to be a new feature that will need to be built from scratch."
@@ -3443,7 +6109,7 @@ async def search_existing_code(project_id, functionality, chunk_types=[]):
             )
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "code_search",
             "message_to_agent": ''.join(message_parts)
         }
@@ -3526,7 +6192,7 @@ async def get_repository_insights(project_id):
             message_parts.append(f"**Documentation Coverage**: {coverage:.1f}%\n")
         
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "repository_insights",
             "message_to_agent": ''.join(message_parts)
         }
@@ -3605,7 +6271,7 @@ async def get_codebase_summary(project_id):
 """
 
         return {
-            "is_notification": True,
+            "is_notification": False,
             "notification_type": "codebase_summary",
             "message_to_agent": final_message
         }
@@ -3617,6 +6283,205 @@ async def get_codebase_summary(project_id):
         return {
             "is_notification": False,
             "message_to_agent": f"Error retrieving codebase summary: {str(e)}"
+        }
+
+
+async def ask_codebase(project_id, question, intent='answer_question', include_code_snippets=True):
+    """
+    Ask questions about the indexed codebase or get detailed context for creating tickets.
+
+    This function provides a Q&A interface to the codebase, allowing the AI to:
+    - Answer user questions about how something works in the codebase
+    - Find where specific functionality is implemented
+    - Get detailed context to create specific and accurate tickets
+    - Understand code patterns and architecture
+
+    Args:
+        project_id: Project UUID
+        question: The question to ask about the codebase
+        intent: 'answer_question', 'ticket_context', or 'find_implementation'
+        include_code_snippets: Whether to include actual code snippets in the response
+
+    Returns:
+        dict with is_notification and message_to_agent containing the answer
+    """
+    logger.info(f"[ASK_CODEBASE] === FUNCTION CALLED ===")
+    logger.info(f"[ASK_CODEBASE] project_id: {project_id}")
+    logger.info(f"[ASK_CODEBASE] question: {question}")
+    logger.info(f"[ASK_CODEBASE] intent: {intent}")
+    logger.info(f"[ASK_CODEBASE] include_code_snippets: {include_code_snippets}")
+
+    if not CODEBASE_INDEX_AVAILABLE:
+        logger.warning(f"[ASK_CODEBASE] Codebase indexing not available")
+        return {
+            "is_notification": False,
+            "message_to_agent": "Codebase indexing is not available."
+        }
+
+    error_response = validate_project_id(project_id)
+    if error_response:
+        logger.warning(f"[ASK_CODEBASE] Invalid project_id: {project_id}")
+        return error_response
+
+    if not question:
+        logger.warning(f"[ASK_CODEBASE] No question provided")
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: question is required"
+        }
+
+    project = await get_project(project_id)
+    if not project:
+        logger.warning(f"[ASK_CODEBASE] Project not found: {project_id}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Project with ID {project_id} does not exist"
+        }
+
+    logger.info(f"[ASK_CODEBASE] Found project: {project.name}")
+
+    try:
+        # Check if repository is indexed (must use sync_to_async for ORM access)
+        def get_indexed_repo():
+            try:
+                return project.indexed_repository
+            except IndexedRepository.DoesNotExist:
+                return None
+
+        indexed_repo = await sync_to_async(get_indexed_repo)()
+
+        if not indexed_repo:
+            logger.warning(f"[ASK_CODEBASE] No indexed repository for project: {project.name}")
+            return {
+                "is_notification": False,
+                "message_to_agent": "No repository has been indexed for this project yet. Please index a repository first using the Codebase tab."
+            }
+
+        logger.info(f"[ASK_CODEBASE] Found indexed repo: {indexed_repo.github_repo_name}, status: {indexed_repo.status}")
+
+        if indexed_repo.status != 'completed':
+            logger.warning(f"[ASK_CODEBASE] Repo indexing not complete: {indexed_repo.status}")
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Repository indexing is not complete (status: {indexed_repo.status}). Please wait for indexing to finish."
+            }
+
+        # Get codebase context for the question
+        logger.info(f"[ASK_CODEBASE] Fetching codebase context...")
+        context_result = await sync_to_async(get_codebase_context_for_feature)(
+            str(project_id), question, project.owner
+        )
+        logger.info(f"[ASK_CODEBASE] Context result - error: {context_result.get('error')}, files: {len(context_result.get('relevant_files', []))}")
+
+        # Also search for specific implementations
+        logger.info(f"[ASK_CODEBASE] Searching similar implementations...")
+        implementations = await sync_to_async(search_similar_implementations)(
+            str(project_id), question, project.owner
+        )
+        logger.info(f"[ASK_CODEBASE] Found {len(implementations)} implementations")
+
+        # Build response based on intent
+        response_parts = []
+
+        if intent == 'answer_question':
+            response_parts.append(f"## Answer to: {question}\n")
+
+            if context_result.get('error'):
+                response_parts.append(f"Limited context available: {context_result.get('context', 'No context found')}\n")
+            else:
+                # Add context overview
+                response_parts.append("### Relevant Context from Codebase\n")
+                response_parts.append(context_result.get('context', 'No relevant context found.'))
+                response_parts.append("\n")
+
+                # Add suggestions if available
+                if context_result.get('suggestions'):
+                    response_parts.append("\n### Insights\n")
+                    for suggestion in context_result['suggestions'][:3]:
+                        response_parts.append(f"- **{suggestion['title']}**: {suggestion['description']}\n")
+
+        elif intent == 'ticket_context':
+            response_parts.append(f"## Ticket Context for: {question}\n")
+            response_parts.append("Use this context to create accurate, specific tickets.\n\n")
+
+            # Add relevant files that should be modified
+            if context_result.get('relevant_files'):
+                response_parts.append("### Files to Consider Modifying\n")
+                for file_info in context_result['relevant_files'][:8]:
+                    functions = ', '.join(file_info.get('functions', [])[:4])
+                    response_parts.append(f"- `{file_info['path']}` ({file_info['language']})")
+                    if functions:
+                        response_parts.append(f" - Functions: {functions}")
+                    response_parts.append("\n")
+                response_parts.append("\n")
+
+            # Add implementation suggestions
+            if context_result.get('suggestions'):
+                response_parts.append("### Implementation Guidance\n")
+                for suggestion in context_result['suggestions']:
+                    response_parts.append(f"- {suggestion['description']}\n")
+                response_parts.append("\n")
+
+            # Add similar implementations for reference
+            if implementations:
+                response_parts.append("### Existing Similar Implementations (for reference)\n")
+                for impl in implementations[:5]:
+                    response_parts.append(
+                        f"- **{impl['function_name']}** in `{impl['file_path']}` "
+                        f"(relevance: {impl['relevance_score']:.0%})\n"
+                    )
+                response_parts.append("\n")
+
+        elif intent == 'find_implementation':
+            response_parts.append(f"## Implementation Search: {question}\n")
+
+            if implementations:
+                response_parts.append(f"Found {len(implementations)} relevant implementations:\n\n")
+                for impl in implementations:
+                    response_parts.append(
+                        f"### {impl['function_name']}\n"
+                        f"- **File**: `{impl['file_path']}`\n"
+                        f"- **Type**: {impl['chunk_type']}\n"
+                        f"- **Complexity**: {impl['complexity']}\n"
+                        f"- **Relevance**: {impl['relevance_score']:.0%}\n"
+                    )
+                    if include_code_snippets and impl.get('content_preview'):
+                        response_parts.append(f"\n```\n{impl['content_preview']}\n```\n\n")
+            else:
+                response_parts.append("No existing implementations found for this functionality.\n")
+
+            # Also add relevant files from context
+            if context_result.get('relevant_files'):
+                response_parts.append("\n### Other Relevant Files\n")
+                for file_info in context_result['relevant_files'][:5]:
+                    response_parts.append(f"- `{file_info['path']}` ({file_info['language']})\n")
+
+        # Add code snippets section if requested and available
+        if include_code_snippets and intent != 'find_implementation':
+            if implementations:
+                response_parts.append("\n### Code Examples\n")
+                for impl in implementations[:3]:
+                    if impl.get('content_preview'):
+                        response_parts.append(f"**{impl['function_name']}** (`{impl['file_path']}`):\n")
+                        response_parts.append(f"```\n{impl['content_preview']}\n```\n\n")
+
+        final_response = ''.join(response_parts)
+        logger.info(f"[ASK_CODEBASE] Response built successfully, length: {len(final_response)} chars")
+        logger.info(f"[ASK_CODEBASE] === FUNCTION COMPLETE ===")
+
+        return {
+            "is_notification": False,
+            "notification_type": "codebase_qa",
+            "message_to_agent": final_response
+        }
+
+    except Exception as e:
+        logger.error(f"[ASK_CODEBASE] ERROR: {e}")
+        import traceback
+        logger.error(f"[ASK_CODEBASE] Traceback: {traceback.format_exc()}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error querying codebase: {str(e)}"
         }
 
 
@@ -3656,7 +6521,7 @@ async def connect_notion(project_id, conversation_id=None):
             user_type = result.get('type', 'user')
 
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "notion_connection",
                 "message_to_agent": f"✅ Successfully connected to Notion!\n\nUser: {user_name}\nType: {user_type}\n\nYou can now search and retrieve Notion pages and databases."
             }
@@ -3716,7 +6581,7 @@ async def search_notion(project_id, conversation_id, query="", page_size=10):
             if not results:
                 search_desc = f"query: '{query}'" if query else "your workspace"
                 return {
-                    "is_notification": True,
+                    "is_notification": False,
                     "notification_type": "notion_search",
                     "message_to_agent": f"No results found for {search_desc}. Make sure pages are shared with your integration in Notion."
                 }
@@ -3736,7 +6601,7 @@ async def search_notion(project_id, conversation_id, query="", page_size=10):
             results_text += "\n**Next Steps**: Use `get_notion_page` with a page ID to retrieve full content."
 
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "notion_search",
                 "message_to_agent": results_text
             }
@@ -3803,7 +6668,7 @@ async def get_notion_page(project_id, conversation_id, page_id):
                 content_text += page_data['content']
 
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "notion_page",
                 "message_to_agent": content_text
             }
@@ -3856,7 +6721,7 @@ async def list_notion_databases(project_id, conversation_id, page_size=10):
         if success:
             if not databases:
                 return {
-                    "is_notification": True,
+                    "is_notification": False,
                     "notification_type": "notion_databases",
                     "message_to_agent": "No databases found in your Notion workspace."
                 }
@@ -3872,7 +6737,7 @@ async def list_notion_databases(project_id, conversation_id, page_size=10):
             db_text += "\n**Next Steps**: Use `query_notion_database` with a database ID to retrieve entries."
 
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "notion_databases",
                 "message_to_agent": db_text
             }
@@ -3926,7 +6791,7 @@ async def query_notion_database(project_id, conversation_id, database_id, page_s
         if success:
             if not entries:
                 return {
-                    "is_notification": True,
+                    "is_notification": False,
                     "notification_type": "notion_database_query",
                     "message_to_agent": "No entries found in this database."
                 }
@@ -3946,7 +6811,7 @@ async def query_notion_database(project_id, conversation_id, database_id, page_s
                 entries_text += "\n"
 
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "notion_database_query",
                 "message_to_agent": entries_text
             }
@@ -4005,7 +6870,7 @@ async def get_linear_issues(project_id, conversation_id, limit=50, team_id=None)
             issues = result
             if not issues:
                 return {
-                    "is_notification": True,
+                    "is_notification": False,
                     "notification_type": "linear_issues",
                     "message_to_agent": "No Linear issues found. This could mean you have no issues or the API key doesn't have access to any teams."
                 }
@@ -4059,7 +6924,7 @@ async def get_linear_issues(project_id, conversation_id, limit=50, team_id=None)
                 issues_text += f" (limited to {limit}, use higher limit to see more)"
 
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "linear_issues",
                 "message_to_agent": issues_text
             }
@@ -4219,7 +7084,7 @@ async def get_linear_issue_details(project_id, conversation_id, issue_id):
                 details_text += f"- **Due date:** {due_date}\n"
 
             return {
-                "is_notification": True,
+                "is_notification": False,
                 "notification_type": "linear_issue_details",
                 "message_to_agent": details_text
             }
@@ -4234,4 +7099,361 @@ async def get_linear_issue_details(project_id, conversation_id, issue_id):
         return {
             "is_notification": False,
             "message_to_agent": f"Error fetching Linear issue details: {str(e)}"
+        }
+
+
+# ============================================================================
+# TECHNOLOGY SPECS LOOKUP
+# ============================================================================
+
+async def lookup_technology_specs(category: str = 'all'):
+    """
+    Look up technology specifications from the JSON configuration file.
+
+    Args:
+        category: The technology category to look up (e.g., 'payments', 'file_storage', 'database') or 'all'
+
+    Returns:
+        dict: Technology specifications with tech, provider, description, documentation, and why
+    """
+    logger.info(f"Technology specs lookup called - category: {category}")
+
+    try:
+        specs_file_path = Path(__file__).parent / 'technology_specs.json'
+
+        if not specs_file_path.exists():
+            return {
+                "is_notification": False,
+                "message_to_agent": "Error: technology_specs.json not found in factory directory."
+            }
+
+        with open(specs_file_path, 'r') as f:
+            tech_specs = json.load(f)
+
+        # Return all specs
+        if category == 'all':
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Technology specifications: {json.dumps(tech_specs, indent=2)}"
+            }
+
+        # Return specific category
+        if category in tech_specs:
+            return {
+                "is_notification": False,
+                "message_to_agent": f"Technology spec for '{category}': {json.dumps(tech_specs[category], indent=2)}. \nPlease web search and collect more information"
+            }
+
+        # Category not found
+        available = list(tech_specs.keys())
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Category '{category}' not found. Available: {', '.join(available)}"
+        }
+
+    except Exception as e:
+        logger.error(f"Error looking up technology specs: {e}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: {str(e)}"
+        }
+
+
+async def generate_design_preview(function_args, project_id, conversation_id=None):
+    """
+    Generate a design preview for a feature with multiple pages/screens.
+    Stores data in ProjectDesignFeature model with proper JSONFields.
+
+    Args:
+        function_args: Dictionary containing:
+            - feature_name: Name of the feature
+            - feature_description: Brief description of the feature
+            - explainer: Detailed explanation of the feature
+            - css_style: Complete CSS stylesheet
+            - pages: Array of page objects with connections
+            - feature_connections: Array of cross-feature navigation links
+            - entry_page_id: The entry point page for this feature
+            - canvas_position: Optional position on the design canvas
+        project_id: The project ID
+        conversation_id: Optional conversation ID
+
+    Returns:
+        Dictionary with notification data and message for the agent
+    """
+    import uuid
+
+    logger.info(f"[generate_design_preview] Called for project: {project_id}, conversation: {conversation_id}")
+    logger.info(f"[generate_design_preview] Function args keys: {list(function_args.keys())}")
+
+    # Validate project
+    error_response = validate_project_id(project_id)
+    if error_response:
+        logger.error(f"[generate_design_preview] Project validation failed: {error_response}")
+        return error_response
+
+    # Validate required arguments
+    required_fields = ['feature_name', 'feature_description', 'explainer', 'css_style', 'pages', 'entry_page_id']
+    validation_error = validate_function_args(function_args, required_fields)
+    if validation_error:
+        logger.error(f"[generate_design_preview] Argument validation failed: {validation_error}")
+        return validation_error
+
+    platform = function_args.get('platform', 'web')  # Default to 'web' for backwards compatibility
+    feature_name = function_args.get('feature_name')
+    feature_description = function_args.get('feature_description')
+    explainer = function_args.get('explainer')
+    css_style = function_args.get('css_style')
+    common_elements = function_args.get('common_elements', [])
+    pages = function_args.get('pages', [])
+    feature_connections = function_args.get('feature_connections', [])
+    entry_page_id = function_args.get('entry_page_id')
+    canvas_position = function_args.get('canvas_position', {'x': 0, 'y': 0})
+
+    logger.info(f"[generate_design_preview] feature_name={feature_name}, platform={platform}, pages_count={len(pages)}, common_elements_count={len(common_elements)}")
+
+    # Validate pages structure
+    if not isinstance(pages, list) or len(pages) == 0:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Error: pages must be a non-empty array of page objects"
+        }
+
+    # Helper to sanitize null characters that PostgreSQL cannot store
+    def sanitize_text(text):
+        if isinstance(text, str):
+            return text.replace('\x00', '').replace('\u0000', '')
+        return text
+
+    try:
+        project = await sync_to_async(Project.objects.get)(project_id=project_id)
+
+        # Get conversation if provided
+        conversation = None
+        if conversation_id:
+            try:
+                conversation = await sync_to_async(Conversation.objects.get)(id=conversation_id)
+            except Conversation.DoesNotExist:
+                logger.warning(f"Conversation {conversation_id} not found, proceeding without linking")
+
+        # Sanitize text fields
+        feature_name = sanitize_text(feature_name)
+        feature_description = sanitize_text(feature_description)
+        explainer = sanitize_text(explainer)
+        css_style = sanitize_text(css_style)
+
+        # Build pages array for JSONField with sanitized content
+        pages_data = [
+            {
+                "page_id": page.get('page_id'),
+                "page_name": sanitize_text(page.get('page_name', '')),
+                "page_type": page.get('page_type', 'screen'),
+                "html_content": sanitize_text(page.get('html_content', '')),
+                "include_common_elements": page.get('include_common_elements', True),
+                "navigates_to": page.get('navigates_to', [])
+            }
+            for page in pages
+        ]
+
+        # Build common_elements array for JSONField with sanitized content
+        common_elements_data = [
+            {
+                "element_id": elem.get('element_id'),
+                "element_type": elem.get('element_type', 'header'),
+                "element_name": sanitize_text(elem.get('element_name', '')),
+                "html_content": sanitize_text(elem.get('html_content', '')),
+                "position": elem.get('position', 'top'),
+                "applies_to": elem.get('applies_to', ['all']),
+                "exclude_from": elem.get('exclude_from', [])
+            }
+            for elem in common_elements
+        ] if common_elements else []
+
+        # Create or update the design feature (identified by project + feature_name)
+        design_feature, created = await sync_to_async(ProjectDesignFeature.objects.update_or_create)(
+            project=project,
+            feature_name=feature_name,
+            defaults={
+                'conversation': conversation,
+                'platform': platform,
+                'feature_description': feature_description,
+                'explainer': explainer,
+                'css_style': css_style,
+                'common_elements': common_elements_data,
+                'pages': pages_data,
+                'entry_page_id': entry_page_id,
+                'feature_connections': feature_connections,
+                'canvas_position': canvas_position
+            }
+        )
+        logger.info(f"Saved design feature to database: id={design_feature.id}, feature_name={feature_name}")
+
+        # Auto-add screens to the current/default canvas
+        try:
+            from projects.models import DesignCanvas
+            from factory.tool_execution import get_current_canvas_id
+
+            # Get canvas_id from context (set by consumer from user's selection)
+            canvas_id = get_current_canvas_id()
+            logger.info(f"[generate_design_preview] Canvas ID from context: {canvas_id}")
+
+            # If no canvas_id from context, try to get from conversation
+            if not canvas_id and conversation:
+                canvas_id = await sync_to_async(lambda: conversation.design_canvas_id)()
+                logger.info(f"[generate_design_preview] Canvas ID from conversation: {canvas_id}")
+
+            if canvas_id:
+                # Use the specifically selected canvas
+                canvas = await sync_to_async(
+                    lambda: DesignCanvas.objects.filter(id=canvas_id, project=project).first()
+                )()
+                logger.info(f"[generate_design_preview] Using specified canvas: {canvas.id if canvas else 'None'}")
+            else:
+                # Fallback to most recently updated canvas or default canvas
+                canvas = await sync_to_async(
+                    lambda: DesignCanvas.objects.filter(project=project).order_by('-is_default', '-updated_at').first()
+                )()
+                logger.info(f"[generate_design_preview] Using fallback canvas: {canvas.id if canvas else 'None'}")
+
+            if canvas:
+                # Add each page to the canvas positions
+                positions = canvas.feature_positions or {}
+                logger.info(f"[generate_design_preview] Existing positions count: {len(positions)}")
+                y_offset = 50
+                for idx, page in enumerate(pages_data):
+                    page_key = f"{design_feature.id}_{page['page_id']}"
+                    if page_key not in positions:
+                        # Calculate position - stack new screens vertically
+                        col = idx % 4
+                        row = idx // 4
+                        positions[page_key] = {
+                            'x': 50 + col * 320,
+                            'y': y_offset + row * 280
+                        }
+                        logger.info(f"[generate_design_preview] Added position for {page_key}")
+
+                canvas.feature_positions = positions
+                await sync_to_async(canvas.save)()
+                logger.info(f"[generate_design_preview] Saved canvas with {len(positions)} positions to canvas {canvas.id}")
+            else:
+                logger.warning(f"[generate_design_preview] No canvas found for project {project_id}")
+        except Exception as canvas_error:
+            logger.error(f"[generate_design_preview] Could not auto-add screens to canvas: {canvas_error}", exc_info=True)
+
+        # Build success message
+        pages_summary = ', '.join([p.get('page_name', p.get('page_id')) for p in pages])
+        connections_count = len(feature_connections)
+        internal_nav_count = sum(len(p.get('navigates_to', [])) for p in pages)
+        common_elements_count = len(common_elements_data)
+
+        success_message = (
+            f"Design preview generated successfully for feature '{feature_name}'!\n\n"
+            f"**Feature Details:**\n"
+            f"- Entry Point: {entry_page_id}\n"
+            f"- Pages: {pages_summary}\n"
+            f"- Common Elements: {common_elements_count} (header, footer, sidebar, etc.)\n"
+            f"- Internal navigations: {internal_nav_count}\n"
+            f"- Cross-feature connections: {connections_count}\n\n"
+            f"**Saved to Database:**\n"
+            f"- Record ID: {design_feature.id}"
+        )
+
+        return {
+            "is_notification": True,
+            "notification_type": "design_preview",
+            "message_to_agent": success_message,
+            "data": {
+                "feature_name": feature_name,
+                "record_id": design_feature.id,
+                "conversation_id": conversation_id
+            }
+        }
+
+    except Project.DoesNotExist:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error: Project with ID {project_id} not found."
+        }
+    except Exception as e:
+        logger.error(f"Error generating design preview: {e}", exc_info=True)
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error generating design preview: {str(e)}"
+        }
+
+
+# ============================================================================
+# INSTANT MODE
+# ============================================================================
+
+async def handle_create_instant_app(
+    app_name: str,
+    requirements: str,
+    project_id: int,
+    conversation_id: int,
+    user_id: int,
+    env_vars: dict | None = None,
+) -> dict:
+    """
+    Handle the create_instant_app tool call.
+
+    1. Create InstantApp record with status='building'
+    2. Fork a Mags workspace from the user's claude-auth base
+    3. Kick off execute_instant_app Celery task
+    4. Return notification payload with app_id
+    """
+    from development.models import InstantApp, Sandbox
+    from django.contrib.auth.models import User
+    import uuid
+
+    try:
+        user = await sync_to_async(User.objects.get)(id=user_id)
+        project = await sync_to_async(Project.objects.get)(id=project_id)
+        conversation = await sync_to_async(
+            lambda: Conversation.objects.filter(id=conversation_id).first()
+        )()
+
+        # Create InstantApp record
+        app = await sync_to_async(InstantApp.objects.create)(
+            name=app_name,
+            description=requirements[:500],
+            project=project,
+            user=user,
+            conversation=conversation,
+            status='building',
+            requirements=requirements,
+            env_vars=env_vars or {},
+        )
+
+        app_id = str(app.app_id)
+        logger.info(f"[INSTANT] Created InstantApp id={app.id} app_id={app_id} name={app_name}")
+
+        # Queue the background execution task
+        from tasks.task_definitions import execute_instant_app
+        task_manager = TaskManager()
+        task_manager.submit(
+            execute_instant_app,
+            app.id,
+            task_name=f"instant-app-{app_id[:8]}",
+        )
+
+        return {
+            "is_notification": True,
+            "notification_type": "instant_app_building",
+            "message_to_agent": (
+                f"Instant app **{app_name}** is now being built! "
+                f"The sandbox is being provisioned and Claude Code will scaffold and run the app. "
+                f"The user will see a live preview once the dev server is running."
+            ),
+            "data": {
+                "app_id": app_id,
+                "app_name": app_name,
+                "status": "building",
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"[INSTANT] Error creating instant app: {e}", exc_info=True)
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Error creating instant app: {str(e)}"
         }

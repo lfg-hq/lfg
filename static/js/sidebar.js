@@ -82,7 +82,39 @@ document.addEventListener('DOMContentLoaded', () => {
             e.stopPropagation();
         });
     }
-    
+
+    // Project dropdown toggle
+    const projectDropdownTrigger = document.getElementById('projectDropdownTrigger');
+    const projectDropdownContainer = document.getElementById('projectDropdownContainer');
+    const projectDropdown = document.getElementById('projectDropdown');
+
+    if (projectDropdownTrigger && projectDropdownContainer) {
+        projectDropdownTrigger.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            projectDropdownContainer.classList.toggle('open');
+            // Close user dropdown if open
+            userInfo?.classList.remove('open');
+        });
+    }
+
+    // Close project dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        if (projectDropdownContainer && !projectDropdownContainer.contains(e.target)) {
+            projectDropdownContainer.classList.remove('open');
+        }
+    });
+
+    // Prevent project dropdown from closing when clicking inside it
+    if (projectDropdown) {
+        projectDropdown.addEventListener('click', (e) => {
+            // Don't stop propagation for links - let them navigate
+            if (!e.target.closest('a')) {
+                e.stopPropagation();
+            }
+        });
+    }
+
     // Handle window resize
     let resizeTimer;
     window.addEventListener('resize', () => {

@@ -1,7 +1,7 @@
 import json
 import openai
 import os
-from django.shortcuts import render, get_object_or_404
+from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse, StreamingHttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
@@ -17,96 +17,53 @@ from datetime import datetime, time
 from django.db.models import Sum
 from accounts.models import TokenUsage, ApplicationState
 from subscriptions.models import UserCredit
+from subscriptions.constants import (
+    FREE_TIER_TOKEN_LIMIT,
+    PRO_MONTHLY_TOKEN_LIMIT,
+)
 from accounts.utils import get_daily_token_usage
+from factory.llm_config import get_llm_model_config, get_model_label
 
 
 @login_required
 def index(request):
-    """Render the main chat interface."""
-    context = {}
-    
+    """Redirect to the user's default project chat."""
     # Ensure user has a default project
     if not request.user.projects.exists():
         default_project = Project.get_or_create_default_project(request.user)
-        context['project'] = default_project
-        context['project_id'] = str(default_project.project_id)  # Use project_id instead of id
     else:
         # Get the most recent project or the default one
         default_project = request.user.projects.filter(name="Untitled Project").first()
         if not default_project:
             default_project = request.user.projects.order_by('-updated_at').first()
-        context['project'] = default_project
-        context['project_id'] = str(default_project.project_id)  # Use project_id instead of id
-    
-    # Get user's agent role for turbo mode and role
-    agent_role, created = AgentRole.objects.get_or_create(
-        user=request.user,
-        defaults={'name': 'product_analyst', 'turbo_mode': False}
-    )
-    context['turbo_mode'] = agent_role.turbo_mode
-    context['role_key'] = agent_role.name
-    
-    # Get user's model selection
-    model_selection, created = ModelSelection.objects.get_or_create(
-        user=request.user,
-        defaults={'selected_model': 'gpt-5-mini'}
-    )
-    
-    # Force free tier users to use o4-mini
-    if hasattr(request.user, 'credit'):
-        user_credit = request.user.credit
-        if user_credit.is_free_tier and model_selection.selected_model != 'gpt-5-mini':
-            model_selection.selected_model = 'gpt-5-mini'
-            model_selection.save()
-    
-    context['model_key'] = model_selection.selected_model
-    
-    # Get or create ApplicationState for sidebar and other UI state
-    app_state, created = ApplicationState.objects.get_or_create(
-        user=request.user,
-        defaults={
-            'sidebar_minimized': False,
-            'last_selected_model': model_selection.selected_model,
-            'last_selected_role': agent_role.name,
-            'turbo_mode_enabled': agent_role.turbo_mode
-        }
-    )
-    context['sidebar_minimized'] = app_state.sidebar_minimized
-    
-    # Check user's subscription status for popups
-    user_credit, created = UserCredit.objects.get_or_create(user=request.user)
-    
-    # Check if we should show upgrade popup (free tier users who haven't upgraded)
-    show_upgrade_popup = False
-    if user_credit.is_free_tier:
-        # Check if user has been shown the popup recently (stored in session)
-        last_upgrade_popup = request.session.get('last_upgrade_popup_shown')
-        if not last_upgrade_popup:
-            show_upgrade_popup = True
-            request.session['last_upgrade_popup_shown'] = timezone.now().isoformat()
-    
-    # Check if tokens are exhausted
-    show_tokens_exhausted_popup = False
-    if user_credit.get_remaining_tokens() <= 0:
-        show_tokens_exhausted_popup = True
-    
-    context['show_upgrade_popup'] = show_upgrade_popup
-    context['show_tokens_exhausted_popup'] = show_tokens_exhausted_popup
-    context['is_free_tier'] = user_credit.is_free_tier
-    context['remaining_tokens'] = user_credit.get_remaining_tokens()
-    context['total_tokens_limit'] = 100000 if user_credit.is_free_tier else 300000
-    
-    return render(request, 'chat/main.html', context)
+
+    # Redirect to the project chat URL
+    return redirect(f'/chat/project/{default_project.project_id}/')
+
 
 @login_required
 def project_chat(request, project_id):
     """Create a new conversation linked to a project and redirect to the chat interface."""
     project = get_object_or_404(Project, project_id=project_id, owner=request.user)
-    
+
+    # Get all projects for the sidebar dropdown
+    owned_projects = Project.objects.filter(owner=request.user)
+    try:
+        from projects.models import ProjectMember
+        member_projects = Project.objects.filter(
+            members__user=request.user,
+            members__status='active'
+        ).exclude(owner=request.user)
+    except Exception:
+        member_projects = Project.objects.none()
+    all_projects = list(owned_projects) + list(member_projects)
+
     # Redirect to the chat interface with this conversation open
     context = {
         'project': project,
-        'project_id': project.project_id
+        'project_id': project.project_id,
+        'current_project': project,
+        'projects': all_projects
     }
     
     # Get user's agent role for turbo mode and role
@@ -120,7 +77,7 @@ def project_chat(request, project_id):
     # Get user's model selection
     model_selection, created = ModelSelection.objects.get_or_create(
         user=request.user,
-        defaults={'selected_model': 'gpt-5-mini'}
+        defaults={'selected_model': ModelSelection.DEFAULT_MODEL_KEY}
     )
     
     # Force free tier users to use o4-mini
@@ -131,6 +88,7 @@ def project_chat(request, project_id):
             model_selection.save()
     
     context['model_key'] = model_selection.selected_model
+    context['current_model_label'] = get_model_label(model_selection.selected_model)
     
     # Get or create ApplicationState for sidebar and other UI state
     app_state, created = ApplicationState.objects.get_or_create(
@@ -148,29 +106,50 @@ def project_chat(request, project_id):
     user_credit, created = UserCredit.objects.get_or_create(user=request.user)
     context['is_free_tier'] = user_credit.is_free_tier
     context['remaining_tokens'] = user_credit.get_remaining_tokens()
-    context['total_tokens_limit'] = 100000 if user_credit.is_free_tier else 300000
-        
+    context['total_tokens_limit'] = (
+        FREE_TIER_TOKEN_LIMIT if user_credit.is_free_tier else PRO_MONTHLY_TOKEN_LIMIT
+    )
+    context['llm_model_config'] = get_llm_model_config()
+
+    # Check if user should see onboarding modal (first-time users only)
+    profile = request.user.profile
+    context['show_onboarding'] = not profile.has_seen_onboarding
+
     return render(request, 'chat/main.html', context)
 
 @login_required
 def show_conversation(request, conversation_id):
     """Show a specific conversation."""
     conversation = get_object_or_404(Conversation, id=conversation_id, user=request.user)
-    
+
     # Check if this conversation is linked to any project
     project = None
     if hasattr(conversation, 'projects'):
-        projects = conversation.projects.all()
-        if projects.exists():
-            project = projects.first()
-    
+        conv_projects = conversation.projects.all()
+        if conv_projects.exists():
+            project = conv_projects.first()
+
+    # Get all projects for the sidebar dropdown
+    owned_projects = Project.objects.filter(owner=request.user)
+    try:
+        from projects.models import ProjectMember
+        member_projects = Project.objects.filter(
+            members__user=request.user,
+            members__status='active'
+        ).exclude(owner=request.user)
+    except Exception:
+        member_projects = Project.objects.none()
+    all_projects = list(owned_projects) + list(member_projects)
+
     context = {
-        'conversation_id': conversation.id
+        'conversation_id': conversation.id,
+        'projects': all_projects
     }
-    
+
     if project:
         context['project'] = project
         context['project_id'] = str(project.project_id)
+        context['current_project'] = project
     
     # Get user's agent role for turbo mode and role
     agent_role, created = AgentRole.objects.get_or_create(
@@ -183,7 +162,7 @@ def show_conversation(request, conversation_id):
     # Get user's model selection
     model_selection, created = ModelSelection.objects.get_or_create(
         user=request.user,
-        defaults={'selected_model': 'gpt-5-mini'}
+        defaults={'selected_model': ModelSelection.DEFAULT_MODEL_KEY}
     )
     
     # Force free tier users to use o4-mini
@@ -194,6 +173,7 @@ def show_conversation(request, conversation_id):
             model_selection.save()
     
     context['model_key'] = model_selection.selected_model
+    context['current_model_label'] = get_model_label(model_selection.selected_model)
     
     # Get or create ApplicationState for sidebar and other UI state
     app_state, created = ApplicationState.objects.get_or_create(
@@ -206,13 +186,20 @@ def show_conversation(request, conversation_id):
         }
     )
     context['sidebar_minimized'] = app_state.sidebar_minimized
-    
+
     # Add subscription context for UI filtering
     user_credit, created = UserCredit.objects.get_or_create(user=request.user)
     context['is_free_tier'] = user_credit.is_free_tier
     context['remaining_tokens'] = user_credit.get_remaining_tokens()
-    context['total_tokens_limit'] = 100000 if user_credit.is_free_tier else 300000
-        
+    context['total_tokens_limit'] = (
+        FREE_TIER_TOKEN_LIMIT if user_credit.is_free_tier else PRO_MONTHLY_TOKEN_LIMIT
+    )
+    context['llm_model_config'] = get_llm_model_config()
+
+    # Check if user should see onboarding modal (first-time users only)
+    profile = request.user.profile
+    context['show_onboarding'] = not profile.has_seen_onboarding
+
     return render(request, 'chat/main.html', context)
 
 
@@ -251,20 +238,50 @@ def conversation_list(request, project_id):
     
     return JsonResponse(data, safe=False)
 
-@require_http_methods(["GET", "DELETE"])
+@require_http_methods(["GET", "DELETE", "PUT", "PATCH"])
 @login_required
 def conversation_detail(request, conversation_id):
-    """Return messages for a specific conversation or delete the conversation."""
+    """Return messages for a specific conversation, update, or delete the conversation."""
     conversation = get_object_or_404(Conversation, id=conversation_id, user=request.user)
-    
+
     # Handle DELETE request
     if request.method == "DELETE":
         conversation.delete()
         return JsonResponse({"status": "success", "message": "Conversation deleted successfully"})
-    
+
+    # Handle PUT/PATCH request for updating conversation (e.g., linking canvas)
+    if request.method in ["PUT", "PATCH"]:
+        try:
+            data = json.loads(request.body)
+
+            # Update design_canvas if provided
+            if 'design_canvas_id' in data:
+                canvas_id = data.get('design_canvas_id')
+                if canvas_id:
+                    from projects.models import DesignCanvas
+                    # Verify canvas belongs to the conversation's project
+                    canvas = DesignCanvas.objects.filter(
+                        id=canvas_id,
+                        project=conversation.project
+                    ).first()
+                    if canvas:
+                        conversation.design_canvas = canvas
+                        conversation.save()
+                else:
+                    # Unlink canvas
+                    conversation.design_canvas = None
+                    conversation.save()
+
+            return JsonResponse({
+                "status": "success",
+                "design_canvas_id": conversation.design_canvas_id
+            })
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=400)
+
     # Handle GET request
     messages = conversation.messages.all()
-    
+
     # Check if this conversation is linked to any project
     project_info = None
     if hasattr(conversation, 'projects'):
@@ -276,12 +293,13 @@ def conversation_detail(request, conversation_id):
                 'name': project.name,
                 'icon': project.icon
             }
-    
+
     data = {
         'id': conversation.id,
         'title': conversation.title,
         'created_at': conversation.created_at.isoformat(),
         'project': project_info,
+        'design_canvas_id': conversation.design_canvas_id,
         'messages': [
             {
                 'id': msg.id,
@@ -293,7 +311,7 @@ def conversation_detail(request, conversation_id):
             for msg in messages
         ]
     }
-    
+
     return JsonResponse(data)
 
 @require_http_methods(["POST"])
@@ -453,7 +471,7 @@ def user_model_selection(request):
         # Get user's model selection or create default one
         model_selection, created = ModelSelection.objects.get_or_create(
             user=request.user,
-            defaults={'selected_model': 'gpt-5-mini'}
+            defaults={'selected_model': ModelSelection.DEFAULT_MODEL_KEY}
         )
         
         return JsonResponse({
@@ -663,4 +681,38 @@ def daily_token_usage(request):
         'tokens': daily_tokens,
         'remaining_tokens': remaining_tokens,
         'date': today.isoformat()
-    }) 
+    })
+
+
+@login_required
+@require_http_methods(["POST"])
+@csrf_exempt
+def complete_onboarding(request):
+    """Mark onboarding as complete for the current user."""
+    try:
+        data = json.loads(request.body) if request.body else {}
+        project_name = data.get('project_name')
+
+        # Update project name if provided
+        if project_name:
+            project = request.user.projects.filter(name="Untitled Project").first()
+            if not project:
+                project = request.user.projects.order_by('-updated_at').first()
+            if project:
+                project.name = project_name
+                project.save()
+
+        # Mark onboarding as seen
+        profile = request.user.profile
+        profile.has_seen_onboarding = True
+        profile.save()
+
+        return JsonResponse({
+            'success': True,
+            'message': 'Onboarding completed'
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)

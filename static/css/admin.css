@@ -1,0 +1,375 @@
+/*
+ * Admin Dashboard Styles
+ * Styles for the administrator dashboard pages
+ * Note: This is a light theme admin panel (intentionally different from main dark app)
+ */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body.admin-body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background-color: #f5f5f5;
+    color: #333;
+}
+
+/* Admin Header */
+.admin-header {
+    background-color: #1a1a1a;
+    color: white;
+    padding: 1rem 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.admin-header h1 {
+    font-size: 1.5rem;
+}
+
+.admin-header .user-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+/* Admin Container */
+.admin-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+/* Stats Grid */
+.admin-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.admin-stat-card {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.admin-stat-card h3 {
+    color: #666;
+    font-size: 0.875rem;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+}
+
+.admin-stat-card .value {
+    font-size: 2rem;
+    font-weight: 600;
+    color: #1a1a1a;
+}
+
+/* Data Table */
+.admin-data-table {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    overflow: hidden;
+}
+
+.admin-data-table table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.admin-data-table th {
+    background-color: #f8f9fa;
+    padding: 1rem;
+    text-align: left;
+    font-weight: 600;
+    color: #666;
+    border-bottom: 2px solid #e9ecef;
+}
+
+.admin-data-table td {
+    padding: 1rem;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.admin-data-table tr:hover {
+    background-color: #f8f9fa;
+}
+
+/* Admin Buttons */
+.admin-btn {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    background-color: #007bff;
+    color: white;
+    text-decoration: none;
+    border-radius: 4px;
+    font-size: 0.875rem;
+    transition: background-color 0.2s;
+    border: none;
+    cursor: pointer;
+}
+
+.admin-btn:hover {
+    background-color: #0056b3;
+}
+
+.admin-btn-sm {
+    padding: 0.25rem 0.75rem;
+    font-size: 0.8rem;
+}
+
+.admin-back-link {
+    display: inline-block;
+    margin-bottom: 1rem;
+    color: #007bff;
+    text-decoration: none;
+}
+
+.admin-back-link:hover {
+    text-decoration: underline;
+}
+
+/* Sections */
+.admin-section {
+    margin-bottom: 2rem;
+}
+
+.admin-section h2 {
+    margin-bottom: 1rem;
+    color: #1a1a1a;
+}
+
+/* Badges */
+.admin-badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    border-radius: 4px;
+    background-color: #e9ecef;
+    color: #495057;
+}
+
+.admin-badge.active {
+    background-color: #28a745;
+    color: white;
+}
+
+.admin-badge.inactive {
+    background-color: #6c757d;
+    color: white;
+}
+
+/* Project List */
+.admin-project-list {
+    display: grid;
+    gap: 1rem;
+}
+
+.admin-project-card {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+    cursor: pointer;
+    transition: box-shadow 0.2s ease;
+}
+
+.admin-project-card:hover {
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.admin-project-card h3 {
+    margin-bottom: 0.5rem;
+}
+
+.admin-project-meta {
+    display: flex;
+    gap: 1rem;
+    margin-top: 0.5rem;
+    font-size: 0.875rem;
+    color: #666;
+}
+
+/* Admin Drawer */
+.admin-drawer {
+    position: fixed;
+    top: 0;
+    right: -600px;
+    width: 600px;
+    height: 100%;
+    background: white;
+    box-shadow: -2px 0 8px rgba(0,0,0,0.1);
+    transition: right 0.3s ease;
+    z-index: 1000;
+    overflow-y: auto;
+}
+
+.admin-drawer.open {
+    right: 0;
+}
+
+.admin-drawer-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease;
+    z-index: 999;
+}
+
+.admin-drawer-overlay.open {
+    opacity: 1;
+    visibility: visible;
+}
+
+.admin-drawer-header {
+    padding: 1.5rem;
+    border-bottom: 1px solid #e9ecef;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.admin-drawer-content {
+    padding: 1.5rem;
+}
+
+.admin-close-drawer {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: #666;
+}
+
+.admin-close-drawer:hover {
+    color: #333;
+}
+
+/* Document Section */
+.admin-doc-section {
+    margin-bottom: 2rem;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.admin-doc-section h4 {
+    margin-bottom: 1rem;
+    color: #333;
+}
+
+.admin-doc-content {
+    max-height: 300px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    font-family: monospace;
+    font-size: 0.875rem;
+    background: white;
+    padding: 1rem;
+    border-radius: 4px;
+    border: 1px solid #e9ecef;
+}
+
+/* Tickets List */
+.admin-tickets-list {
+    display: grid;
+    gap: 0.5rem;
+}
+
+.admin-ticket-item {
+    padding: 0.75rem;
+    background: white;
+    border-radius: 4px;
+    border: 1px solid #e9ecef;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.admin-ticket-status {
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.admin-ticket-status.open {
+    background: #ffc107;
+    color: #000;
+}
+
+.admin-ticket-status.in_progress {
+    background: #17a2b8;
+    color: white;
+}
+
+.admin-ticket-status.done {
+    background: #28a745;
+    color: white;
+}
+
+/* Loading State */
+.admin-loading {
+    text-align: center;
+    padding: 2rem;
+    color: #666;
+}
+
+/* Legacy class compatibility - keeping old names working */
+.stat-card { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+.stat-card h3 { color: #666; font-size: 0.875rem; font-weight: 500; margin-bottom: 0.5rem; }
+.stat-card .value { font-size: 2rem; font-weight: 600; color: #1a1a1a; }
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+.data-table { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); overflow: hidden; }
+.data-table table { width: 100%; border-collapse: collapse; }
+.data-table th { background-color: #f8f9fa; padding: 1rem; text-align: left; font-weight: 600; color: #666; border-bottom: 2px solid #e9ecef; }
+.data-table td { padding: 1rem; border-bottom: 1px solid #e9ecef; }
+.data-table tr:hover { background-color: #f8f9fa; }
+.btn { display: inline-block; padding: 0.5rem 1rem; background-color: #007bff; color: white; text-decoration: none; border-radius: 4px; font-size: 0.875rem; transition: background-color 0.2s; }
+.btn:hover { background-color: #0056b3; }
+.btn-sm { padding: 0.25rem 0.75rem; font-size: 0.8rem; }
+.back-link { display: inline-block; margin-bottom: 1rem; color: #007bff; text-decoration: none; }
+.back-link:hover { text-decoration: underline; }
+.section { margin-bottom: 2rem; }
+.section h2 { margin-bottom: 1rem; color: #1a1a1a; }
+.badge { display: inline-block; padding: 0.25rem 0.5rem; font-size: 0.75rem; font-weight: 500; border-radius: 4px; background-color: #e9ecef; color: #495057; }
+.badge.active { background-color: #28a745; color: white; }
+.badge.inactive { background-color: #6c757d; color: white; }
+.project-list { display: grid; gap: 1rem; }
+.project-card { background: white; padding: 1.5rem; border-radius: 8px; border: 1px solid #e9ecef; cursor: pointer; transition: box-shadow 0.2s ease; }
+.project-card:hover { box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+.project-card h3 { margin-bottom: 0.5rem; }
+.project-meta { display: flex; gap: 1rem; margin-top: 0.5rem; font-size: 0.875rem; color: #666; }
+.drawer { position: fixed; top: 0; right: -600px; width: 600px; height: 100%; background: white; box-shadow: -2px 0 8px rgba(0,0,0,0.1); transition: right 0.3s ease; z-index: 1000; overflow-y: auto; }
+.drawer.open { right: 0; }
+.drawer-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); opacity: 0; visibility: hidden; transition: opacity 0.3s ease; z-index: 999; }
+.drawer-overlay.open { opacity: 1; visibility: visible; }
+.drawer-header { padding: 1.5rem; border-bottom: 1px solid #e9ecef; display: flex; justify-content: space-between; align-items: center; }
+.drawer-content { padding: 1.5rem; }
+.close-drawer { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #666; }
+.close-drawer:hover { color: #333; }
+.doc-section { margin-bottom: 2rem; padding: 1rem; background: #f8f9fa; border-radius: 8px; }
+.doc-section h4 { margin-bottom: 1rem; color: #333; }
+.doc-content { max-height: 300px; overflow-y: auto; white-space: pre-wrap; font-family: monospace; font-size: 0.875rem; background: white; padding: 1rem; border-radius: 4px; border: 1px solid #e9ecef; }
+.tickets-list { display: grid; gap: 0.5rem; }
+.ticket-item { padding: 0.75rem; background: white; border-radius: 4px; border: 1px solid #e9ecef; display: flex; justify-content: space-between; align-items: center; }
+.ticket-status { padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 500; }
+.ticket-status.open { background: #ffc107; color: #000; }
+.ticket-status.in_progress { background: #17a2b8; color: white; }
+.ticket-status.done { background: #28a745; color: white; }
+.loading { text-align: center; padding: 2rem; color: #666; }
+.container { max-width: 1400px; margin: 0 auto; padding: 2rem; }

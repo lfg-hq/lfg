@@ -9,8 +9,8 @@
             <i class="fas fa-project-diagram"></i>
             My Projects
         </h1>
-        <button class="btn btn-primary" id="open-create-modal">
-            <i class="fas fa-plus"></i> New Project
+        <button class="btn btn-primary" id="open-create-modal" style="display: inline-flex; align-items: center; gap: 6px; padding: 10px 20px; font-size: 14px; font-weight: 500; color: white; background: linear-gradient(135deg, rgb(139, 92, 246), rgb(168, 85, 247)); border: none; border-radius: 8px; cursor: pointer; transition: 0.2s; box-shadow: rgba(139, 92, 246, 0.25) 0px 4px 12px;" onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 6px 16px rgba(139, 92, 246, 0.35)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 12px rgba(139, 92, 246, 0.25)';">
+            <i class="fas fa-plus" style="font-size: 12px;"></i> New Project
         </button>
     </div>
 
@@ -61,14 +61,22 @@
                         </div>
                     </a>
                     <div class="project-list-actions">
+                        <a href="{% url 'projects:project_detail' item.project.project_id %}?section=codebase"
+                           class="project-action-button {% if not item.codebase_info %}project-action-button-secondary{% endif %}">
+                            <i class="fas fa-code-branch"></i>
+                            {% if item.codebase_info %}
+                                Manage Codebase
+                            {% else %}
+                                Connect Codebase
+                            {% endif %}
+                        </a>
                         <div class="dropdown">
                             <button class="dropdown-button">
                                 <i class="fas fa-ellipsis-v"></i>
                             </button>
                             <div class="dropdown-menu">
-                                <a href="{% url 'projects:project_detail' item.project.project_id %}" 
-                                   class="dropdown-item" 
-                                   onclick="setTimeout(() => openCodebaseSidebar(), 100)">
+                                <a href="{% url 'projects:project_detail' item.project.project_id %}?section=codebase" 
+                                   class="dropdown-item">
                                     <i class="fas fa-code-branch"></i> 
                                     {% if item.codebase_info %}
                                         Manage Codebase
@@ -134,20 +142,119 @@
             </button>
         </div>
         <div class="modal-body">
-            <form method="post" action="{% url 'projects:create_project' %}" id="create-project-form">
-                {% csrf_token %}
-                <div class="form-group">
-                    <label for="project-name" class="form-label">Project Name*</label>
-                    <input type="text" id="project-name" name="name" class="form-control" required autofocus>
+            <!-- Step 1: Project Name -->
+            <div id="create-step-1" class="create-step">
+                <form id="create-project-form">
+                    {% csrf_token %}
+                    <div class="form-group">
+                        <label for="project-name" class="form-label">Project Name*</label>
+                        <input type="text" id="project-name" name="name" class="form-control" required autofocus>
+                    </div>
+                    <input type="hidden" name="description" value="">
+                    <input type="hidden" name="icon" value="🚀">
+
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-outline" id="cancel-modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Create Project</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Step 2: Link Codebase Option -->
+            <div id="create-step-2" class="create-step" style="display: none;">
+                <div class="success-message" style="text-align: center; margin-bottom: 24px;">
+                    <div style="width: 60px; height: 60px; background: linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(34, 197, 94, 0.1)); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px;">
+                        <i class="fas fa-check" style="font-size: 24px; color: #22c55e;"></i>
+                    </div>
+                    <h3 style="margin: 0 0 8px; color: #f1f5f9;">Project Created!</h3>
+                    <p style="margin: 0; color: #94a3b8; font-size: 14px;">Your project "<span id="created-project-name"></span>" has been created.</p>
                 </div>
-                <input type="hidden" name="description" value="">
-                <input type="hidden" name="icon" value="🚀">
-                
-                <div class="form-actions">
-                    <button type="button" class="btn btn-outline" id="cancel-modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Create Project</button>
+
+                <div class="codebase-option" style="background: rgba(139, 92, 246, 0.1); border: 1px solid rgba(139, 92, 246, 0.3); border-radius: 12px; padding: 20px; margin-bottom: 20px;">
+                    <div style="display: flex; align-items: flex-start; gap: 16px;">
+                        <div style="width: 44px; height: 44px; background: linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(139, 92, 246, 0.1)); border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                            <i class="fab fa-github" style="font-size: 20px; color: #a78bfa;"></i>
+                        </div>
+                        <div>
+                            <h4 style="margin: 0 0 8px; color: #f1f5f9; font-size: 16px;">Connect a GitHub Repository?</h4>
+                            <p style="margin: 0; color: #94a3b8; font-size: 13px; line-height: 1.5;">
+                                Link your codebase to enable AI-powered code understanding, smarter suggestions, and context-aware development.
+                            </p>
+                        </div>
+                    </div>
                 </div>
-            </form>
+
+                <div class="form-actions" style="display: flex; gap: 12px;">
+                    <button type="button" class="btn btn-outline" id="skip-codebase-btn" style="flex: 1;">
+                        Skip for Now
+                    </button>
+                    <button type="button" class="btn btn-primary" id="connect-codebase-btn" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                        <i class="fab fa-github"></i> <span>Connect Repository</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Step 3: GitHub Connection Check -->
+            <div id="create-step-3" class="create-step" style="display: none;">
+                <div class="github-connection-info">
+                    <div class="github-icon" style="text-align: center; margin-bottom: 20px;">
+                        <div style="width: 60px; height: 60px; background: rgba(255, 255, 255, 0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto;">
+                            <i class="fab fa-github" style="font-size: 28px; color: #f1f5f9;"></i>
+                        </div>
+                    </div>
+                    <h3 style="text-align: center; margin: 0 0 12px; color: #f1f5f9;">Connect to GitHub</h3>
+                    <p style="text-align: center; margin: 0 0 20px; color: #94a3b8; font-size: 14px;">To link your repository, we need to connect to your GitHub account first.</p>
+                    <div class="github-benefits" style="margin-bottom: 24px;">
+                        <div class="benefit-item" style="display: flex; align-items: center; gap: 10px; padding: 8px 0; color: #94a3b8; font-size: 14px;">
+                            <i class="fas fa-check" style="color: #22c55e;"></i>
+                            Access your repositories
+                        </div>
+                        <div class="benefit-item" style="display: flex; align-items: center; gap: 10px; padding: 8px 0; color: #94a3b8; font-size: 14px;">
+                            <i class="fas fa-check" style="color: #22c55e;"></i>
+                            Clone and analyze your code
+                        </div>
+                        <div class="benefit-item" style="display: flex; align-items: center; gap: 10px; padding: 8px 0; color: #94a3b8; font-size: 14px;">
+                            <i class="fas fa-check" style="color: #22c55e;"></i>
+                            Generate context-aware features
+                        </div>
+                    </div>
+                </div>
+                <div class="form-actions" style="display: flex; gap: 12px;">
+                    <button type="button" class="btn btn-outline" id="back-to-step2-btn" style="flex: 1;">
+                        <i class="fas fa-arrow-left"></i> Back
+                    </button>
+                    <button type="button" class="btn btn-primary" id="connect-github-create-btn" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                        <i class="fab fa-github"></i> <span>Connect GitHub</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Step 4: Repository URL Input -->
+            <div id="create-step-4" class="create-step" style="display: none;">
+                <form id="create-link-repository-form">
+                    <div class="form-group">
+                        <label for="create-github-url" class="form-label">GitHub Repository URL*</label>
+                        <input type="url" id="create-github-url" name="github_url" class="form-control" required
+                               placeholder="https://github.com/username/repository">
+                        <div class="form-text" style="color: #94a3b8; font-size: 12px; margin-top: 6px;">Make sure this repository is accessible with your connected GitHub account.</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="create-github-branch" class="form-label">Branch to Index</label>
+                        <input type="text" id="create-github-branch" name="branch" class="form-control" value="main" required>
+                        <div class="form-text" style="color: #94a3b8; font-size: 12px; margin-top: 6px;">Typically 'main' or 'master'</div>
+                    </div>
+
+                    <div class="form-actions" style="display: flex; gap: 12px;">
+                        <button type="button" class="btn btn-outline" id="back-to-step3-btn" style="flex: 1;">
+                            <i class="fas fa-arrow-left"></i> Back
+                        </button>
+                        <button type="submit" class="btn btn-primary" style="flex: 1;">
+                            <i class="fas fa-link"></i> Link & Start Chat
+                        </button>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 </div>
@@ -295,54 +402,239 @@
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Create Project Modal
+    // Create Project Modal - Multi-step flow
     const modal = document.getElementById('create-project-modal');
     const openBtn = document.getElementById('open-create-modal');
     const openBtnEmpty = document.getElementById('open-create-modal-empty');
     const closeBtn = document.getElementById('close-modal');
     const cancelBtn = document.getElementById('cancel-modal');
     const projectNameInput = document.getElementById('project-name');
-    
+    const createProjectForm = document.getElementById('create-project-form');
+
+    // Step elements
+    const createStep1 = document.getElementById('create-step-1');
+    const createStep2 = document.getElementById('create-step-2');
+    const createStep3 = document.getElementById('create-step-3');
+    const createStep4 = document.getElementById('create-step-4');
+    const createdProjectName = document.getElementById('created-project-name');
+
+    // Step 2 buttons
+    const skipCodebaseBtn = document.getElementById('skip-codebase-btn');
+    const connectCodebaseBtn = document.getElementById('connect-codebase-btn');
+
+    // Step 3 buttons
+    const backToStep2Btn = document.getElementById('back-to-step2-btn');
+    const connectGithubCreateBtn = document.getElementById('connect-github-create-btn');
+
+    // Step 4 elements
+    const backToStep3Btn = document.getElementById('back-to-step3-btn');
+    const createLinkRepoForm = document.getElementById('create-link-repository-form');
+
+    // Store created project data
+    let createdProjectData = null;
+
+    function showStep(stepNum) {
+        createStep1.style.display = stepNum === 1 ? 'block' : 'none';
+        createStep2.style.display = stepNum === 2 ? 'block' : 'none';
+        createStep3.style.display = stepNum === 3 ? 'block' : 'none';
+        createStep4.style.display = stepNum === 4 ? 'block' : 'none';
+    }
+
     function openModal() {
         modal.classList.add('active');
-        // Focus on the input field when modal opens
+        showStep(1);
+        createdProjectData = null;
+        projectNameInput.value = '';
         setTimeout(() => {
             projectNameInput.focus();
         }, 100);
     }
-    
+
     function closeModal() {
         modal.classList.remove('active');
+        showStep(1);
         projectNameInput.value = '';
+        createdProjectData = null;
     }
-    
+
+    function redirectToChat() {
+        if (createdProjectData && createdProjectData.project_id) {
+            window.location.href = `/chat/project/${createdProjectData.project_id}/`;
+        }
+    }
+
     // Open modal
     if (openBtn) {
         openBtn.addEventListener('click', openModal);
     }
-    
+
     if (openBtnEmpty) {
         openBtnEmpty.addEventListener('click', openModal);
     }
-    
+
     // Close modal
     closeBtn.addEventListener('click', closeModal);
     cancelBtn.addEventListener('click', closeModal);
-    
+
     // Close modal when clicking outside
     modal.addEventListener('click', function(e) {
         if (e.target === modal) {
             closeModal();
         }
     });
-    
+
     // Close modal on Escape key
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape' && modal.classList.contains('active')) {
             closeModal();
         }
     });
-    
+
+    // Handle project creation form submission (AJAX)
+    createProjectForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const name = projectNameInput.value.trim();
+        if (!name) {
+            alert('Please enter a project name');
+            return;
+        }
+
+        const submitBtn = createProjectForm.querySelector('button[type="submit"]');
+        const originalText = submitBtn.innerHTML;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating...';
+        submitBtn.disabled = true;
+
+        try {
+            const response = await fetch('/projects/api/create/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                },
+                body: JSON.stringify({
+                    name: name,
+                    description: ''
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                createdProjectData = data;
+                createdProjectName.textContent = name;
+                showStep(2);
+            } else {
+                alert('Error creating project: ' + (data.error || 'Unknown error'));
+            }
+        } catch (error) {
+            alert('Error creating project: ' + error.message);
+        } finally {
+            submitBtn.innerHTML = originalText;
+            submitBtn.disabled = false;
+        }
+    });
+
+    // Step 2: Skip codebase - go directly to chat
+    skipCodebaseBtn.addEventListener('click', redirectToChat);
+
+    // Step 2: Connect codebase - check GitHub connection
+    connectCodebaseBtn.addEventListener('click', async function() {
+        try {
+            const response = await fetch('/accounts/api/github-status/');
+            const data = await response.json();
+
+            if (data.connected) {
+                // Already connected, skip to step 4
+                showStep(4);
+            } else {
+                // Need to connect GitHub first
+                showStep(3);
+            }
+        } catch (error) {
+            // Assume not connected, show step 3
+            showStep(3);
+        }
+    });
+
+    // Step 3: Back to step 2
+    backToStep2Btn.addEventListener('click', function() {
+        showStep(2);
+    });
+
+    // Step 3: Connect to GitHub
+    connectGithubCreateBtn.addEventListener('click', async function() {
+        try {
+            const response = await fetch('/accounts/api/github-oauth-url/');
+            const data = await response.json();
+
+            if (data.connected) {
+                // Already connected, go to step 4
+                showStep(4);
+            } else if (data.auth_url) {
+                // Redirect to GitHub OAuth
+                window.location.href = data.auth_url;
+            } else {
+                alert('Error: GitHub OAuth is not configured');
+            }
+        } catch (error) {
+            alert('Error connecting to GitHub: ' + error.message);
+        }
+    });
+
+    // Step 4: Back to step 3
+    backToStep3Btn.addEventListener('click', function() {
+        showStep(3);
+    });
+
+    // Step 4: Link repository form submission
+    createLinkRepoForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const githubUrl = document.getElementById('create-github-url').value;
+        const githubBranch = document.getElementById('create-github-branch').value;
+
+        if (!githubUrl || !createdProjectData) {
+            alert('Please enter a GitHub repository URL');
+            return;
+        }
+
+        const submitBtn = createLinkRepoForm.querySelector('button[type="submit"]');
+        const originalText = submitBtn.innerHTML;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Linking...';
+        submitBtn.disabled = true;
+
+        try {
+            const response = await fetch('/codebase/api/repositories/add/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                },
+                body: JSON.stringify({
+                    project_id: createdProjectData.project_id,
+                    github_url: githubUrl,
+                    branch: githubBranch
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                // Successfully linked, redirect to chat
+                redirectToChat();
+            } else {
+                alert('Error linking repository: ' + (data.error || 'Unknown error'));
+                submitBtn.innerHTML = originalText;
+                submitBtn.disabled = false;
+            }
+        } catch (error) {
+            alert('Error linking repository: ' + error.message);
+            submitBtn.innerHTML = originalText;
+            submitBtn.disabled = false;
+        }
+    });
+
     // Edit Project Modal
     const editModal = document.getElementById('edit-project-modal');
     const closeEditBtn = document.getElementById('close-edit-modal');

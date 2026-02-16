@@ -1,0 +1,161 @@
+<!-- Design Canvas - Figma-like feature flow visualization -->
+<div id="design-canvas-container" class="design-canvas-container">
+    <!-- Toolbar -->
+    <div class="design-canvas-toolbar">
+        <div class="toolbar-left">
+            <button class="toolbar-back-btn" id="canvas-back" title="Back to Docs">
+                <i class="fas fa-arrow-left"></i>
+                <span>Back</span>
+            </button>
+            <button class="toolbar-btn" id="canvas-zoom-out" title="Zoom Out">
+                <i class="fas fa-search-minus"></i>
+            </button>
+            <span class="zoom-level" id="canvas-zoom-level">60%</span>
+            <button class="toolbar-btn" id="canvas-zoom-in" title="Zoom In">
+                <i class="fas fa-search-plus"></i>
+            </button>
+            <button class="toolbar-btn" id="canvas-fit" title="Fit to Screen">
+                <i class="fas fa-expand"></i>
+            </button>
+        </div>
+        <div class="toolbar-center">
+            <span class="canvas-title">Design Flow</span>
+        </div>
+        <div class="toolbar-right">
+            <button class="toolbar-btn" id="canvas-refresh" title="Refresh">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+            <button class="toolbar-btn" id="canvas-fullscreen" title="Fullscreen (F)">
+                <i class="fas fa-expand-arrows-alt"></i>
+            </button>
+            <button class="toolbar-btn" id="canvas-export" title="Export">
+                <i class="fas fa-download"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Left Tools Panel -->
+    <div class="design-tools-panel" id="design-tools-panel">
+        <div class="tools-panel-section">
+            <button class="tool-btn" id="tool-select" title="Select (V)" data-tool="select">
+                <i class="fas fa-mouse-pointer"></i>
+            </button>
+            <button class="tool-btn" id="tool-add-screen" title="Add Screen (A)">
+                <i class="fas fa-plus-square"></i>
+            </button>
+            <button class="tool-btn" id="tool-load-url" title="Load Website (W)">
+                <i class="fas fa-globe"></i>
+            </button>
+            <button class="tool-btn" id="tool-delete" title="Delete Selected (Del)" data-tool="delete">
+                <i class="fas fa-trash-alt"></i>
+            </button>
+        </div>
+        <div class="tools-panel-divider"></div>
+        <div class="tools-panel-section">
+            <button class="tool-btn" id="tool-annotate" title="Annotate (N)" data-tool="annotate">
+                <i class="fas fa-sticky-note"></i>
+            </button>
+            <button class="tool-btn" id="tool-text" title="Add Text (T)" data-tool="text">
+                <i class="fas fa-font"></i>
+            </button>
+            <button class="tool-btn" id="tool-arrow" title="Draw Arrow (R)" data-tool="arrow">
+                <i class="fas fa-long-arrow-alt-right"></i>
+            </button>
+        </div>
+        <div class="tools-panel-divider"></div>
+        <div class="tools-panel-section">
+            <button class="tool-btn" id="tool-hand" title="Pan (H)" data-tool="hand">
+                <i class="fas fa-hand-paper"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Canvas Area -->
+    <div class="design-canvas-wrapper" id="design-canvas-wrapper">
+        <div class="design-canvas" id="design-canvas">
+            <!-- SVG layer for connection arrows -->
+            <svg class="connections-layer" id="connections-layer">
+                <defs>
+                    <!-- Arrow marker for internal navigation -->
+                    <marker id="arrowhead-internal" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                        <polygon points="0 0, 10 3.5, 0 7" fill="#8b5cf6" />
+                    </marker>
+                    <!-- Arrow marker for cross-feature navigation -->
+                    <marker id="arrowhead-cross" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                        <polygon points="0 0, 10 3.5, 0 7" fill="#f59e0b" />
+                    </marker>
+                </defs>
+                <!-- Connection paths will be drawn here -->
+            </svg>
+
+            <!-- Features and pages will be rendered here -->
+            <div class="features-container" id="features-container">
+                <!-- Feature groups and page cards will be dynamically inserted -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Page Preview Modal -->
+    <div class="page-preview-modal" id="page-preview-modal">
+        <div class="preview-modal-content">
+            <div class="preview-modal-header">
+                <div class="preview-title" id="preview-title">Page Preview</div>
+                <div class="preview-header-right">
+                    <span class="preview-counter" id="preview-counter">1 / 1</span>
+                    <button class="preview-close" id="preview-close">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="preview-modal-body">
+                <!-- Left navigation button -->
+                <button class="preview-nav-btn preview-nav-prev" id="preview-prev" title="Previous (←)">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+
+                <iframe id="preview-iframe" sandbox="allow-same-origin"></iframe>
+
+                <!-- Right navigation button -->
+                <button class="preview-nav-btn preview-nav-next" id="preview-next" title="Next (→)">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Empty State -->
+    <div class="design-canvas-empty" id="design-canvas-empty">
+        <div class="empty-icon">
+            <i class="fas fa-drafting-compass"></i>
+        </div>
+        <div class="empty-text">No design features yet</div>
+        <div class="empty-subtext">Generate design previews to see them here</div>
+    </div>
+
+    <!-- Load URL Modal -->
+    <div class="load-url-modal" id="load-url-modal" style="display: none;">
+        <div class="load-url-modal-content">
+            <div class="load-url-modal-header">
+                <span>Load Website</span>
+                <button class="load-url-modal-close" id="load-url-modal-close"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="load-url-modal-body">
+                <label for="load-url-input">Enter website URL</label>
+                <input type="url" class="load-url-input" id="load-url-input" placeholder="https://example.com" />
+            </div>
+            <div class="load-url-modal-footer">
+                <button class="load-url-cancel-btn" id="load-url-cancel">Cancel</button>
+                <button class="load-url-submit-btn" id="load-url-submit">
+                    <i class="fas fa-globe"></i>
+                    <span>Load</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading State -->
+    <div class="design-canvas-loading" id="design-canvas-loading" style="display: none;">
+        <div class="spinner"></div>
+        <div class="loading-text">Loading design canvas...</div>
+    </div>
+</div>

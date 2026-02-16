@@ -3,24 +3,17 @@ document.addEventListener('DOMContentLoaded', () => {
     window.FILE_STREAM_DEBUG = true;
     window.FILE_STREAM_CHUNKS = [];
     window.FILE_STREAM_CONTENT = '';
-    console.log('🎯 FILE STREAMING DEBUG MODE ENABLED');
-    console.log('🎯 File content will be logged to console automatically');
-    console.log('🎯 Access chunks: window.FILE_STREAM_CHUNKS');
-    console.log('🎯 Access full content: window.FILE_STREAM_CONTENT');
     
     // Check if the artifacts panel is in the DOM
     const artifactsPanel = document.getElementById('artifacts-panel');
     if (artifactsPanel) {
-        console.log('✅ Artifacts panel found in DOM');
     } else {
         console.error('❌ Artifacts panel NOT found in DOM! This will cause issues with notifications.');
     }
     
     // Check if the ArtifactsPanel API is available
     if (window.ArtifactsPanel && typeof window.ArtifactsPanel.toggle === 'function') {
-        console.log('✅ ArtifactsPanel API is available');
     } else {
-        console.log('❌ ArtifactsPanel API is NOT available yet. This may be a timing issue.');
         // We'll check again after a delay to see if it's a timing issue
         setTimeout(() => {
             if (window.ArtifactsPanel && typeof window.ArtifactsPanel.toggle === 'function') {
@@ -45,8 +38,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentConversationId = null;
     let currentProvider = 'openai';
     let currentProjectId = null;
-    // Make currentProjectId globally accessible for ArtifactsLoader
+    // Make currentProjectId and currentConversationId globally accessible for ArtifactsLoader
     window.currentProjectId = null;
+    window.currentConversationId = null;
     let socket = null;
     let isSocketConnected = false;
     let messageQueue = [];
@@ -60,7 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Get or create the send button
     const sendBtn = document.getElementById('send-btn') || createSendButton();
     let stopBtn = null; // Will be created when needed
-    
+
     // Button state machine to prevent race conditions
     const ButtonState = {
         SEND: 'send',
@@ -86,14 +80,16 @@ document.addEventListener('DOMContentLoaded', () => {
     } else if (typeof initialConversationId !== 'undefined' && initialConversationId) {
         currentConversationId = initialConversationId;
     }
-    
+    // Sync to global for ArtifactsLoader
+    window.currentConversationId = currentConversationId;
+
     // Extract project ID from path
     const pathProjectId = extractProjectIdFromPath();
-    
+
     if (!pathProjectId) {
         throw new Error('No project ID found in path. Expected format: /chat/project/{id}/');
     }
-    
+
     currentProjectId = pathProjectId;
     window.currentProjectId = currentProjectId;
     console.log('Extracted project ID from path:', currentProjectId);
@@ -135,7 +131,24 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Load agent settings and initialize turbo mode
     loadAgentSettings();
-    
+
+    function isInstantModeEnabled() {
+        return document.getElementById('turbo-mode-toggle')?.checked || false;
+    }
+
+    function updateArtifactsForInstantMode(isInstantMode) {
+        const appTab = document.getElementById('apps');
+
+        if (appTab) {
+            const restartBtn = appTab.querySelector('#app-restart-server-btn');
+            const showConsoleBtn = appTab.querySelector('#show-console-btn');
+            const consolePanel = appTab.querySelector('#console-panel');
+            if (restartBtn) restartBtn.style.display = isInstantMode ? 'none' : '';
+            if (showConsoleBtn) showConsoleBtn.style.display = isInstantMode ? 'none' : '';
+            if (consolePanel && isInstantMode) consolePanel.style.display = 'none';
+        }
+    }
+
     // Test backend notification sending
     window.testBackendNotification = function() {
         if (socket && socket.readyState === WebSocket.OPEN) {
@@ -294,41 +307,50 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     // New chat button click handler
-    newChatBtn.addEventListener('click', () => {
+    newChatBtn.addEventListener('click', (e) => {
+        e.preventDefault();  // Prevent <a href="#"> from firing
+
         // Reset conversation ID but keep project ID
         currentConversationId = null;
-        
+        window.currentConversationId = null;  // Sync to global
+
         // Project ID should always be available from path
         const pathProjectId = extractProjectIdFromPath();
         if (!pathProjectId) {
             console.error('No project ID found in path during new chat creation');
         }
-        
+
         // Clear chat messages and show welcome message
         clearChatMessages();
-        
+
         // Add welcome message
         const welcomeMessage = document.createElement('div');
         welcomeMessage.className = 'welcome-message';
         welcomeMessage.innerHTML = '<h2>LFG 🚀🚀</h2><p>Start a conversation with the AI assistant below.</p>';
         messageContainer.appendChild(welcomeMessage);
-        
-        // Reset WebSocket connection to ensure clean session
+
+        // Close existing WebSocket so the server-side consumer resets self.conversation
+        if (socket) {
+            socket.close();
+            socket = null;
+        }
+
+        // Reconnect WebSocket to ensure clean session (no conversation on server)
         connectWebSocket();
-        
+
         // Update URL to remove conversation_id param
         const url = new URL(window.location);
         url.searchParams.delete('conversation_id');
         window.history.pushState({}, '', url);
-        
+
         // Remove active class from all conversations in sidebar
         document.querySelectorAll('.conversation-item').forEach(item => {
             item.classList.remove('active');
         });
-        
+
         // Focus on input for immediate typing
         chatInput.focus();
-        
+
         console.log('New chat session started with project ID:', currentProjectId);
     });
     
@@ -348,7 +370,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     });
-    
+
     // Set up provider selection
     const providerOptions = document.querySelectorAll('input[name="ai-provider"]');
     providerOptions.forEach(option => {
@@ -768,7 +790,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                         
                         if (!recordingIndicator || !mediaRecorder || mediaRecorder.state !== 'recording') {
-                            console.log('❌ Animation stopped - missing requirements');
                             animationRunning = false;
                             return;
                         }
@@ -819,7 +840,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     
                     // Start the animation loop
-                    console.log('🎯 Starting waveform animation...');
                     
                     // Add test function to window for debugging
                     window.testAudioLevel = () => {
@@ -1053,12 +1073,6 @@ document.addEventListener('DOMContentLoaded', () => {
             // AUTOMATIC LOGGING FOR ALL FILE NOTIFICATIONS AT WEBSOCKET LEVEL
             if (data.notification_type === 'file_stream' || (data.is_notification && data.notification_type === 'file_stream')) {
                 console.log('\n' + '🔴'.repeat(50));
-                console.log('🔴🔴🔴 RAW WEBSOCKET FILE MESSAGE RECEIVED! 🔴🔴🔴');
-                console.log('🔴 Type:', data.type);
-                console.log('🔴 Notification type:', data.notification_type);
-                console.log('🔴 Has content_chunk:', 'content_chunk' in data);
-                console.log('🔴 Content length:', data.content_chunk ? data.content_chunk.length : 0);
-                console.log('🔴 Is complete:', data.is_complete);
                 console.log('🔴 FULL RAW DATA:', JSON.stringify(data, null, 2));
                 console.log('🔴'.repeat(50) + '\n');
             }
@@ -1146,13 +1160,13 @@ document.addEventListener('DOMContentLoaded', () => {
                             addMessageToChat(msg.role, msg.content, null, null, msg.is_partial);
                         }
                     });
-                    scrollToBottom();
+                    scrollToBottom(true); // Force scroll when loading history
                     break;
-                    
+
                 case 'message':
                     // Handle complete message
                     addMessageToChat(data.sender, data.message);
-                    scrollToBottom();
+                    scrollToBottom(true); // Force scroll for complete messages
                     break;
                     
                 case 'ai_chunk':
@@ -1386,11 +1400,6 @@ document.addEventListener('DOMContentLoaded', () => {
         // AUTOMATIC FILE CONSOLE LOGGING
         if (data.notification_type === 'file_stream' && data.file_type === 'prd') {
             console.log('\n' + '🎯'.repeat(50));
-            console.log('🎯🎯🎯 PRD STREAM CONTENT RECEIVED IN BROWSER! 🎯🎯🎯');
-            console.log('🎯 Has content_chunk:', 'content_chunk' in data);
-            console.log('🎯 Content length:', data.content_chunk ? data.content_chunk.length : 0);
-            console.log('🎯 Is complete:', data.is_complete);
-            console.log('🎯 PRD CONTENT:');
             console.log('---START OF PRD CHUNK---');
             console.log(data.content_chunk || '[NO CONTENT]');
             console.log('---END OF PRD CHUNK---');
@@ -1412,10 +1421,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     is_complete: data.is_complete
                 });
             }
-            console.log('🎯 Total file content so far:', window.FILE_STREAM_CONTENT.length, 'chars');
-            console.log('🎯 Total chunks received:', window.FILE_STREAM_CHUNKS.length);
-            console.log('🎯 Access full content: window.FILE_STREAM_CONTENT');
-            console.log('🎯 Access all chunks: window.FILE_STREAM_CHUNKS');
         }
         
         // AUTOMATIC FILE CONSOLE LOGGING
@@ -1485,7 +1490,8 @@ document.addEventListener('DOMContentLoaded', () => {
             // Update conversation ID and other metadata if provided
             if (data.conversation_id) {
                 currentConversationId = data.conversation_id;
-                
+                window.currentConversationId = currentConversationId;  // Sync to global
+
                 // Update URL with conversation ID
                 const url = new URL(window.location);
                 url.searchParams.set('conversation_id', currentConversationId);
@@ -1585,31 +1591,84 @@ document.addEventListener('DOMContentLoaded', () => {
             // Check if this is ANY notification with file_id (for debugging)
             if (data.file_id) {
                 console.log('==================================================');
-                console.log('[Chat] NOTIFICATION WITH FILE_ID DETECTED!');
-                console.log('[Chat] Type:', data.notification_type);
-                console.log('[Chat] File ID:', data.file_id);
-                console.log('[Chat] File Name:', data.file_name);
-                console.log('[Chat] Full data:', data);
                 console.log('==================================================');
             }
             
+            // Handle open_app notification
+            if (data.notification_type === 'open_app' && data.app_url) {
+
+                // Switch to apps tab
+                if (window.loadTabData) {
+                    window.loadTabData('apps');
+                }
+
+                // Get elements
+                const appEmpty = document.getElementById('app-empty');
+                const appLoading = document.getElementById('app-loading');
+                const appFrameContainer = document.getElementById('app-frame-container');
+                const appIframe = document.getElementById('app-iframe');
+                const appUrlInput = document.getElementById('app-url-input');
+                const appUrlPanel = document.getElementById('app-url-panel');
+
+                if (appIframe && appFrameContainer) {
+                    // Show loading
+                    if (appEmpty) appEmpty.style.display = 'none';
+                    if (appLoading) appLoading.style.display = 'block';
+                    if (appFrameContainer) appFrameContainer.style.display = 'none';
+
+                    // Set URL in input field
+                    if (appUrlInput) {
+                        appUrlInput.value = data.app_url;
+                    }
+
+                    // Show URL panel
+                    if (appUrlPanel) {
+                        appUrlPanel.style.display = 'block';
+                    }
+
+                    // Load URL in iframe
+                    appIframe.onload = function() {
+                        if (appLoading) appLoading.style.display = 'none';
+                        if (appFrameContainer) appFrameContainer.style.display = 'flex';
+                    };
+
+                    appIframe.onerror = function(e) {
+                        console.error('[Chat] Error loading app iframe:', e);
+                        if (appLoading) appLoading.style.display = 'none';
+                        if (appEmpty) {
+                            appEmpty.style.display = 'block';
+                            appEmpty.innerHTML = `
+                                <div class="empty-state-icon">
+                                    <i class="fas fa-exclamation-triangle"></i>
+                                </div>
+                                <div class="empty-state-text">
+                                    Error loading app. Please check if the server is running.
+                                </div>
+                            `;
+                        }
+                    };
+
+                    appIframe.src = data.app_url;
+
+                }
+
+                return; // Don't process further
+            }
+
             // Check if this is a document save notification with file_id
             // Handle any notification with a file_id as a potential document save, except for non-document types
-            const nonDocumentTypes = ['features', 'personas', 'execute_command', 'command_output', 'start_server', 'checklist', 'file_stream'];
+            const nonDocumentTypes = ['features', 'personas', 'execute_command', 'command_output', 'start_server', 'checklist', 'file_stream', 'open_app'];
             if (data.file_id && !nonDocumentTypes.includes(data.notification_type)) {
-                console.log('[Chat] This is a document save notification');
-                
+
                 if (window.ArtifactsLoader && typeof window.ArtifactsLoader.handleDocumentSaved === 'function') {
-                    console.log('[Chat] Calling ArtifactsLoader.handleDocumentSaved');
                     window.ArtifactsLoader.handleDocumentSaved(data);
                     return; // Don't process further
                 } else {
                     console.error('[Chat] ArtifactsLoader.handleDocumentSaved not available!');
-                    console.log('[Chat] window.ArtifactsLoader exists:', !!window.ArtifactsLoader);
                     console.log('[Chat] handleDocumentSaved exists:', !!(window.ArtifactsLoader && window.ArtifactsLoader.handleDocumentSaved));
                 }
             }
-            
+
             // Show a function call indicator in the UI for the function that generated this notification
             const functionName = data.notification_type === 'features' ? 'extract_features' : 
                                data.notification_type === 'personas' ? 'extract_personas' : 
@@ -1620,9 +1679,15 @@ document.addEventListener('DOMContentLoaded', () => {
                                data.notification_type === 'prd' ? 'create_prd' :
                                data.notification_type === 'file_stream' ? 'stream_file_content' :
                                data.notification_type === 'design' ? 'design_schema' :
+                               data.notification_type === 'design_preview' ? 'generate_design_preview' :
                                data.notification_type === 'tickets' ? 'generate_tickets' :
                                data.notification_type === 'checklist' ? 'checklist_tickets' :
                                data.function_name || data.notification_type;
+
+            // Dispatch event for design preview to refresh canvas
+            if (data.notification_type === 'design_preview') {
+                document.dispatchEvent(new CustomEvent('designPreviewGenerated', { detail: data }));
+            }
             
             // Remove any previous function call indicators
             removeFunctionCallIndicator();
@@ -1793,26 +1858,35 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Switch to the appropriate tab
             if (window.switchTab && data.notification_type) {
-                console.log(`Switching to tab: ${data.notification_type}`);
-                
-                // Map non-existent tabs to existing ones
+                console.log(`Notification type: ${data.notification_type}`);
+
+                // Only switch tabs for specific notification types (docs and tickets creation)
+                const allowedTabSwitches = [
+                    'prd',
+                    'file_stream',
+                    'file_saved',
+                    'checklist',           // Mapped from create_tickets in backend
+                    'create_tickets',      // In case it's not mapped
+                    'create_checklist_tickets',
+                    'tickets'
+                ];
+
+                // Skip tab switching for notification types not in the allowed list
+                if (!allowedTabSwitches.includes(data.notification_type)) {
+                    console.log(`Skipping tab switch for notification type: ${data.notification_type}`);
+                } else {
+
+                // Map notification types to actual tab names
                 const tabMapping = {
-                    // 'features': 'checklist',
-                    // 'personas': 'checklist',
                     'prd': 'filebrowser',  // Map prd to filebrowser tab
-                    'implementation': 'filebrowser',  // Map implementation to filebrowser tab
-                    'design': 'implementation',
-                    'tickets': 'checklist',
-                    // 'execute_command': 'toolhistory',
-                    // 'command_output': 'toolhistory',
-                    'start_server': 'apps',
-                    // 'get_pending_tickets': 'checklist',
-                    'create_checklist_tickets': 'checklist',
-                    'implement_ticket': 'implementation',
                     'file_stream': 'filebrowser',  // Map file_stream to filebrowser tab
-                    'file_saved': 'filebrowser'    // Map file_saved to filebrowser tab
+                    'file_saved': 'filebrowser',   // Map file_saved to filebrowser tab
+                    'tickets': 'checklist',
+                    'checklist': 'checklist',      // Already the correct tab name
+                    'create_checklist_tickets': 'checklist',
+                    'create_tickets': 'checklist'  // Map create_tickets to checklist tab
                 };
-                
+
                 // Use mapped tab if original doesn't exist
                 const targetTab = tabMapping[data.notification_type] || data.notification_type;
                 
@@ -1857,7 +1931,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     console.log(`Already on ${targetTab} tab during streaming, skipping tab switch`);
                 }
-                
+                } // end of allowedTabSwitches else block
+
                 // Load the content for that tab if we have a project ID
                 console.log(`Current project ID for loading: ${currentProjectId}`);
                 
@@ -1906,8 +1981,6 @@ document.addEventListener('DOMContentLoaded', () => {
                                 console.log('Streaming file content with project ID:', projectIdForStreaming);
                                 // Debug log the data object
                                 if (data.is_complete) {
-                                    console.log('[DEBUG] PRD streaming complete, data object:', data);
-                                    console.log('[DEBUG] file_id in data:', data.file_id);
                                 }
                                 window.ArtifactsLoader.streamDocumentContent(
                                     data.content_chunk, 
@@ -2041,7 +2114,15 @@ document.addEventListener('DOMContentLoaded', () => {
                             // Normal loading for all notifications
                             // PRD and Implementation now use streaming and handle their own display
                             window.ArtifactsLoader[loaderMethod](currentProjectId);
-                        } else if (data.notification_type === 'command_output' || 
+                        } else if (data.notification_type === 'app_url') {
+                            // Handle app_url notification - open app in artifacts panel
+                            console.log(`Opening app in artifacts panel: ${data.app_url}`);
+                            if (window.ArtifactsLoader && typeof window.ArtifactsLoader.openAppInArtifacts === 'function') {
+                                window.ArtifactsLoader.openAppInArtifacts(data.app_url, data.workspace_id, data.port);
+                            } else {
+                                console.error('ArtifactsLoader.openAppInArtifacts not available!');
+                            }
+                        } else if (data.notification_type === 'command_output' ||
                                   data.notification_type === 'execute_command' ||
                                   data.notification_type === 'start_server' ||
                                   data.notification_type === 'implement_ticket') {
@@ -2086,100 +2167,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Store raw content and render with markdown
             existingContent.setAttribute('data-raw-content', newContent);
             existingContent.innerHTML = marked.parse(newContent);
-            
-            // // Quick trigger for common tool call indicators
-            // const quickTriggers = [
-            //     'I\'ll use', 'I will use', 'Let me use', 'I\'ll call', 'Let me call',
-            //     'I\'ll execute', 'Let me execute', 'I\'ll run', 'Let me run',
-            //     'Using the', 'Calling the', 'Executing', 'Running'
-            // ];
-            
-            // const lowerChunk = chunk.toLowerCase();
-            // const shouldQuickTrigger = quickTriggers.some(trigger => lowerChunk.includes(trigger.toLowerCase()));
-            
-            // if (shouldQuickTrigger && !document.querySelector('.tool-execution-indicator')) {
-            //     console.log('Quick trigger activated - showing tool animation');
-            //     // Show a generic tool execution indicator immediately
-            //     window.showToolExecutionIndicator('Processing...');
-            // }
-            
-            // Check if this chunk mentions any tool/function calls
-            const toolFunctions = [
-                'extract_features', 'extract_personas', 'get_features', 'get_personas',
-                'save_implementation', 'execute_command', 'start_server', 'create_implementation',
-                'update_implementation', 'get_implementation', 'save_prd', 'get_prd'
-            ];
-            
-            // More aggressive detection - check if any function name appears
-            let detectedFunction = null;
-            for (const func of toolFunctions) {
-                if (newContent.includes(func) || chunk.includes(func)) {
-                    detectedFunction = func;
-                    console.log(`Tool function "${func}" detected in chunk`);
-                    break;
-                }
-            }
-            
-            // Also check for common patterns that indicate a function is being called
-            const functionPatterns = [
-                /I'll (?:now )?(?:use|call|execute|run) (?:the )?(\w+)/i,
-                /(?:Using|Calling|Executing|Running) (?:the )?(\w+) (?:function|tool|command)?/i,
-                /Let me (?:use|call|execute|run) (?:the )?(\w+)/i,
-                /I (?:will|am going to) (?:use|call|execute|run) (?:the )?(\w+)/i,
-                /(?:extract|save|get|create|update)_(?:features|personas|implementation|prd)/i,
-                /(?:execute)_command/i,
-                /(?:start)_server/i
-            ];
-            
-            for (const pattern of functionPatterns) {
-                const match = chunk.match(pattern) || newContent.match(pattern);
-                if (match) {
-                    // Check if it's a direct function name match or if match[1] exists
-                    const funcName = match[1] || match[0];
-                    const normalizedFunc = funcName.toLowerCase().replace(/-/g, '_');
-                    
-                    // Check if this matches any known tool
-                    for (const tool of toolFunctions) {
-                        if (tool === normalizedFunc || funcName.includes(tool)) {
-                            detectedFunction = tool;
-                            console.log(`Tool function "${tool}" detected via pattern: ${pattern}`);
-                            break;
-                        }
-                    }
-                    
-                    if (detectedFunction) break;
-                }
-            }
-            
-            if (detectedFunction && !document.querySelector('.function-call-indicator') && !document.querySelector('.tool-execution-indicator')) {
-                console.log('Function call detected in text:', detectedFunction);
-                
-                // Show the prominent tool execution indicator
-                // window.showToolExecutionIndicator(detectedFunction);
-                
-                // Also show the function call indicator
-                showFunctionCallIndicator(detectedFunction);
-                
-                // For extract_features and extract_personas, also show progress
-                if (['extract_features', 'extract_personas'].includes(detectedFunction)) {
-                    setTimeout(() => {
-                        handleToolProgress({
-                            tool_name: detectedFunction,
-                            message: `Preparing to ${detectedFunction.replace('_', ' ')}...`,
-                            progress_percentage: 0
-                        });
-                    }, 500);
-                }
-                
-                // Add a visual "calling function" separator
-                const separator = document.createElement('div');
-                separator.className = 'function-call-separator';
-                separator.innerHTML = `<div class="separator-line"></div>
-                                      <div class="separator-text">Calling function: ${detectedFunction}</div>
-                                      <div class="separator-line"></div>`;
-                messageContainer.appendChild(separator);
-                scrollToBottom();
-            }
+        
         } else {
             // Remove typing indicator if present
             const typingIndicator = document.querySelector('.typing-indicator');
@@ -2561,13 +2549,13 @@ document.addEventListener('DOMContentLoaded', () => {
             messageContainer.appendChild(typingIndicator);
             console.log('sendMessageToServer: Added typing indicator');
         }
-        
-        // Scroll to bottom
-        scrollToBottom();
-        
+
+        // Force scroll to bottom when user sends a message (they expect to see response)
+        scrollToBottom(true);
+
         // Disable input while waiting for response (if not already disabled)
         chatInput.disabled = true;
-        
+
         // Show stop button since we're about to start streaming
         showStopButton();
         
@@ -2609,6 +2597,11 @@ document.addEventListener('DOMContentLoaded', () => {
             messageData.mentioned_files = window.mentionedFiles;
             // Clear mentioned files after adding to message
             window.mentionedFiles = {};
+        }
+
+        // Add current design canvas ID if available
+        if (window.currentDesignCanvasId) {
+            messageData.canvas_id = window.currentDesignCanvasId;
         }
         
         console.log('sendMessageToServer: Message data:', messageData);
@@ -3120,7 +3113,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }, 4000); // show for 4 seconds
     }
-    
+
     // Function to add a permanent mini indicator of function call success
     function addFunctionCallMiniIndicator(functionName, type) {
         // Create mini indicator
@@ -3302,9 +3295,51 @@ document.addEventListener('DOMContentLoaded', () => {
         messageContainer.innerHTML = '';
     }
     
+    // Smart scroll management - tracks user intent
+    let userScrolledUp = false;
+    let lastScrollTop = 0;
+    let scrollPending = false;
+    const SCROLL_THRESHOLD = 100;
+
+    // Detect user scroll intent
+    chatMessages.addEventListener('scroll', function() {
+        const currentScrollTop = chatMessages.scrollTop;
+        const distanceFromBottom = chatMessages.scrollHeight - currentScrollTop - chatMessages.clientHeight;
+
+        // User scrolled UP (away from bottom)
+        if (currentScrollTop < lastScrollTop && distanceFromBottom > SCROLL_THRESHOLD) {
+            userScrolledUp = true;
+        }
+        // User scrolled back to bottom
+        else if (distanceFromBottom < 50) {
+            userScrolledUp = false;
+        }
+
+        lastScrollTop = currentScrollTop;
+    });
+
     // Function to scroll to the bottom of the chat
-    function scrollToBottom() {
-        chatMessages.scrollTop = chatMessages.scrollHeight;
+    function scrollToBottom(force = false) {
+        if (force) {
+            userScrolledUp = false;
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            lastScrollTop = chatMessages.scrollTop;
+            return;
+        }
+
+        if (userScrolledUp || scrollPending) {
+            return;
+        }
+
+        // Batch scroll updates to once per frame for smoothness
+        scrollPending = true;
+        requestAnimationFrame(() => {
+            if (!userScrolledUp) {
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+                lastScrollTop = chatMessages.scrollTop;
+            }
+            scrollPending = false;
+        });
     }
     
     // Function to handle tool progress updates
@@ -3400,6 +3435,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function showConnectionStatus(status, current = 0, max = 0) {
+        return;
         let statusElement = document.querySelector('.connection-status');
         if (!statusElement) {
             statusElement = document.createElement('div');
@@ -3695,9 +3731,10 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const response = await fetch(`/api/conversations/${conversationId}/`);
             const data = await response.json();
-            
+
             // Set current conversation ID
             currentConversationId = conversationId;
+            window.currentConversationId = currentConversationId;  // Sync to global
             
             // Clear chat
             clearChatMessages();
@@ -3745,9 +3782,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 window.history.pushState({}, '', url);
             }
-            
-            // Scroll to bottom
-            scrollToBottom();
+
+            // Force scroll to bottom when loading conversation
+            scrollToBottom(true);
         } catch (error) {
             console.error('Error loading conversation:', error);
         }
@@ -4189,6 +4226,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         
                         // Update role dropdown visibility based on turbo mode
                         updateRoleDropdownVisibility(data.turbo_mode);
+                        updateArtifactsForInstantMode(data.turbo_mode);
                     }
                     
                     // Set role dropdown value if not in turbo mode
@@ -4234,8 +4272,10 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Update role dropdown visibility
             updateRoleDropdownVisibility(isEnabled);
+            updateArtifactsForInstantMode(isEnabled);
         });
     }
+    updateArtifactsForInstantMode(isInstantModeEnabled());
     
     // Helper function to create recording indicator
     function createRecordingIndicator() {

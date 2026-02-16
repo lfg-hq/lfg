@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LFG Venture Studio | Build for Rev-Share</title>
+    <meta name="description" content="For selected startups, LFG can build your product with no upfront fee in exchange for revenue share.">
+    <link rel="icon" type="image/x-icon" href="/static/images/favicon.ico">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Manrope', 'sans-serif'],
+              display: ['Sora', 'sans-serif'],
+            },
+            colors: {
+              brand: {
+                500: '#6366f1',
+                600: '#4f46e5',
+                700: '#4338ca'
+              },
+              gold: {
+                500: '#ec4899',
+                600: '#db2777'
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+      body {
+        background: radial-gradient(circle at 10% 10%, #eef2ff 0%, #f8fafc 40%, #ffffff 100%);
+      }
+      .glass {
+        background: rgba(255,255,255,0.9);
+        border: 1px solid rgba(148,163,184,0.28);
+        backdrop-filter: blur(8px);
+      }
+    </style>
+</head>
+<body class="font-sans text-slate-900">
+  <nav class="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur border-b border-slate-200 py-3">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center">
+      <a href="/" class="flex items-center gap-2 group">
+        <div class="bg-brand-600 text-white p-1.5 rounded-lg transform group-hover:rotate-12 transition-transform">
+          <i data-lucide="rocket" class="w-5 h-5"></i>
+        </div>
+        <span class="font-display font-bold text-xl text-slate-900">LFG</span>
+      </a>
+
+      <div class="hidden md:flex items-center gap-6">
+        <a href="/services/" class="text-sm font-medium text-slate-600 hover:text-brand-600">Custom Services</a>
+        <a href="/venture-studio/" class="text-sm font-semibold text-brand-700">Venture Studio</a>
+        <a href="/accounts/auth/" class="bg-slate-900 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-brand-700">Launch Platform</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="pt-28 pb-20">
+    <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="grid lg:grid-cols-2 gap-10 items-center">
+        <div class="space-y-7">
+          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full glass">
+            <span class="w-2 h-2 rounded-full bg-pink-500 animate-pulse"></span>
+            <span class="text-xs uppercase font-bold tracking-wider text-slate-600">Venture Studio Program</span>
+          </div>
+          <h1 class="font-display text-4xl sm:text-5xl font-bold leading-tight">
+            We can build your product for
+            <span class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-pink-500">zero upfront cost.</span>
+          </h1>
+          <p class="text-lg text-slate-600 leading-relaxed">
+            For selected startups, we can partner long term. We invest build capacity up front, and align with you through a revenue-share model.
+          </p>
+          <div class="grid sm:grid-cols-2 gap-4">
+            <div class="glass rounded-xl p-4">
+              <h3 class="font-display font-bold text-lg mb-1">What we bring</h3>
+              <p class="text-sm text-slate-600">Product planning, engineering execution, testing, and launch support.</p>
+            </div>
+            <div class="glass rounded-xl p-4">
+              <h3 class="font-display font-bold text-lg mb-1">What you bring</h3>
+              <p class="text-sm text-slate-600">Market access, customer understanding, and strong day-to-day ownership.</p>
+            </div>
+          </div>
+          <div class="rounded-xl bg-slate-900 text-white p-5">
+            <h3 class="font-display font-bold text-xl mb-2">Best fit profile</h3>
+            <ul class="space-y-1 text-sm text-slate-200 list-disc list-inside">
+              <li>A real customer problem with clear willingness to pay</li>
+              <li>A committed founder/operator who can drive growth</li>
+              <li>A team that needs execution help more than brainstorming</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="glass rounded-2xl p-6 shadow-xl border border-slate-200" id="apply">
+          <div class="flex items-center gap-2 text-brand-700 font-semibold mb-4">
+            <i data-lucide="file-signature" class="w-5 h-5"></i>
+            <span>Apply for Rev-Share Build</span>
+          </div>
+          <form id="venture-form" class="space-y-4">
+            <div class="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label class="text-sm font-semibold text-slate-700">Name</label>
+                <input name="name" required class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-brand-500 focus:border-transparent" placeholder="Your name" />
+              </div>
+              <div>
+                <label class="text-sm font-semibold text-slate-700">Email</label>
+                <input name="email" type="email" required class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-brand-500 focus:border-transparent" placeholder="you@company.com" />
+              </div>
+            </div>
+            <div class="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label class="text-sm font-semibold text-slate-700">Company</label>
+                <input name="company" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-brand-500 focus:border-transparent" placeholder="Company / venture name" />
+              </div>
+              <div>
+                <label class="text-sm font-semibold text-slate-700">Role</label>
+                <input name="role" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-brand-500 focus:border-transparent" placeholder="Founder, operator, PM" />
+              </div>
+            </div>
+            <div class="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label class="text-sm font-semibold text-slate-700">Timeline</label>
+                <input name="timeline" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-brand-500 focus:border-transparent" placeholder="e.g. 8-12 weeks" />
+              </div>
+              <div>
+                <label class="text-sm font-semibold text-slate-700">Current Revenue</label>
+                <input name="budget" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-brand-500 focus:border-transparent" placeholder="e.g. Pre-revenue or $20k MRR" />
+              </div>
+            </div>
+            <div>
+              <label class="text-sm font-semibold text-slate-700">Product + GTM brief</label>
+              <textarea name="requirements" required rows="5" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-brand-500 focus:border-transparent" placeholder="What are you building, who buys it, and why can your team distribute it?"></textarea>
+            </div>
+            <button type="submit" class="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-indigo-600 to-pink-500 text-white font-semibold py-3 hover:opacity-90">
+              <i data-lucide="send" class="w-4 h-4"></i>
+              <span class="btn-text">Submit Application</span>
+            </button>
+            <p class="text-xs text-slate-500">Applications are reviewed manually. If there is a fit, we schedule a partnership call.</p>
+            <div id="form-status" class="hidden text-center text-sm font-semibold"></div>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-14">
+      <div class="grid md:grid-cols-3 gap-4">
+        <article class="glass rounded-xl p-5">
+          <p class="text-xs uppercase tracking-wide font-bold text-brand-700 mb-2">Step 1</p>
+          <h3 class="font-display font-bold text-lg mb-2">Selection</h3>
+          <p class="text-sm text-slate-600">We review market potential, founder fit, and go-to-market strength.</p>
+        </article>
+        <article class="glass rounded-xl p-5">
+          <p class="text-xs uppercase tracking-wide font-bold text-brand-700 mb-2">Step 2</p>
+          <h3 class="font-display font-bold text-lg mb-2">Structure</h3>
+          <p class="text-sm text-slate-600">We align on scope, timeline, ownership, and partnership terms.</p>
+        </article>
+        <article class="glass rounded-xl p-5">
+          <p class="text-xs uppercase tracking-wide font-bold text-brand-700 mb-2">Step 3</p>
+          <h3 class="font-display font-bold text-lg mb-2">Execution</h3>
+          <p class="text-sm text-slate-600">Our team builds with you, and both sides stay aligned around growth.</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="bg-slate-900 border-t border-slate-800 pt-12 pb-8 mt-12">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-sm text-slate-400">
+      <p>Prefer fixed-cost delivery instead? <a href="/services/" class="text-brand-400 hover:text-brand-300 font-semibold">Use Custom Services</a>.</p>
+    </div>
+  </footer>
+
+  <script>
+    lucide.createIcons();
+
+    const ventureForm = document.getElementById('venture-form');
+    const statusEl = document.getElementById('form-status');
+
+    function getCookie(name) {
+      let cookieValue = null;
+      if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+          const cookie = cookies[i].trim();
+          if (cookie.substring(0, name.length + 1) === (name + '=')) {
+            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+            break;
+          }
+        }
+      }
+      return cookieValue;
+    }
+
+    ventureForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const submitBtn = ventureForm.querySelector('button[type="submit"]');
+      const btnText = submitBtn.querySelector('.btn-text');
+      submitBtn.disabled = true;
+      btnText.textContent = 'Submitting...';
+      statusEl.classList.add('hidden');
+
+      const formData = new FormData(ventureForm);
+      const payload = {
+        name: formData.get('name'),
+        email: formData.get('email'),
+        company: formData.get('company'),
+        role: `[Venture Studio] ${formData.get('role') || ''}`.trim(),
+        timeline: formData.get('timeline'),
+        budget: formData.get('budget'),
+        requirements: `[Venture Studio Application]\n\n${formData.get('requirements')}`,
+      };
+
+      try {
+        const response = await fetch('/services/inquiry/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+          },
+          credentials: 'include',
+          body: JSON.stringify(payload)
+        });
+
+        if (response.ok) {
+          ventureForm.reset();
+          statusEl.textContent = 'Application received. We will reach out if there is a fit.';
+          statusEl.className = 'text-center text-sm font-semibold text-emerald-600';
+        } else {
+          const data = await response.json().catch(() => ({}));
+          statusEl.textContent = data.error || 'Could not submit application. Please try again.';
+          statusEl.className = 'text-center text-sm font-semibold text-red-600';
+        }
+      } catch (error) {
+        statusEl.textContent = 'Network error. Please try again.';
+        statusEl.className = 'text-center text-sm font-semibold text-red-600';
+      } finally {
+        statusEl.classList.remove('hidden');
+        submitBtn.disabled = false;
+        btnText.textContent = 'Submit Application';
+      }
+    });
+  </script>
+</body>
+</html>

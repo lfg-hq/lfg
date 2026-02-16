@@ -21,19 +21,21 @@ class TaskManager:
         task_name: Optional[str] = None,
         hook: Optional[str] = None,
         timeout: Optional[int] = None,
+        group: Optional[str] = None,
         **kwargs
     ) -> str:
         """
         Publish a task to the queue for immediate execution.
-        
+
         Args:
             task_function: Function path (e.g., 'tasks.task_definitions.your_task')
             *args: Positional arguments for the task function
             task_name: Optional name for the task
             hook: Optional hook function to call when task completes
             timeout: Optional timeout in seconds
+            group: Optional group name - tasks in the same group execute sequentially
             **kwargs: Keyword arguments for the task function
-            
+
         Returns:
             Task ID string
         """
@@ -44,12 +46,13 @@ class TaskManager:
                 task_name=task_name,
                 hook=hook,
                 timeout=timeout,
+                group=group,
                 **kwargs
             )
-            
-            logger.info(f"Published task '{task_name or task_function}' with ID: {task_id}")
+
+            logger.info(f"Published task '{task_name or task_function}' to group '{group or 'default'}' with ID: {task_id}")
             return task_id
-            
+
         except Exception as e:
             logger.error(f"Failed to publish task '{task_function}': {str(e)}")
             raise

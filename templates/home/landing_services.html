@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LFG Services | Build and Launch With a Team That Ships</title>
+    <meta name="description" content="Work with LFG to plan, build, test, and launch your product with clear weekly progress.">
+    <link rel="icon" type="image/x-icon" href="/static/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="16x16" href="/static/images/favicon.ico">
+    <link rel="shortcut icon" href="/static/images/favicon.ico">
+    <link rel="apple-touch-icon" href="/static/images/favicon.ico">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Manrope', 'sans-serif'],
+              display: ['Sora', 'sans-serif'],
+            },
+            colors: {
+              primary: {
+                500: '#6366f1',
+                600: '#4f46e5',
+                700: '#4338ca',
+              },
+              accent: '#ec4899'
+            },
+            boxShadow: {
+              glow: '0 15px 40px rgba(99, 102, 241, 0.18)',
+            }
+          }
+        }
+      }
+    </script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+      body { background: #f8fafc; }
+      .glass {
+        background: rgba(255,255,255,0.9);
+        border: 1px solid rgba(99,102,241,0.12);
+        backdrop-filter: blur(8px);
+      }
+    </style>
+</head>
+<body class="font-sans text-slate-900">
+    <!-- Navbar -->
+    <nav id="navbar" class="fixed top-0 left-0 right-0 z-50 transition-all duration-300 bg-white/95 backdrop-blur-md border-b border-indigo-100 shadow-sm py-3">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center">
+        <a href="/" class="flex items-center gap-2 group">
+          <div class="bg-indigo-600 text-white p-1.5 rounded-lg transform group-hover:rotate-12 transition-transform">
+            <i data-lucide="rocket" class="w-5 h-5"></i>
+          </div>
+          <span class="font-display font-bold text-xl tracking-tight text-slate-900">LFG</span>
+        </a>
+
+        <div class="hidden md:flex items-center gap-6">
+          <a href="/" class="text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">Home</a>
+          <a href="/agent/" class="text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">Agent</a>
+          <a href="/services/" class="text-sm font-medium text-indigo-600 font-semibold">Services</a>
+          <a href="/blog/" class="text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">Blog</a>
+          <a href="/#portfolio" class="text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">Portfolio</a>
+          <div class="flex items-center gap-4 ml-2">
+            <a href="https://github.com/lfg-hq/lfg" target="_blank" rel="noopener noreferrer" class="text-slate-500 hover:text-slate-900 transition-colors">
+              <i data-lucide="github" class="w-5 h-5"></i>
+            </a>
+            <a href="/#hero-form" class="bg-slate-900 hover:bg-indigo-600 text-white px-5 py-2 rounded-full text-sm font-semibold transition-all shadow-lg hover:shadow-indigo-500/25 active:scale-95">
+              Submit Your Idea
+            </a>
+          </div>
+        </div>
+
+        <div class="md:hidden">
+          <button id="mobile-menu-btn" class="text-slate-600">
+            <i data-lucide="menu" class="w-6 h-6"></i>
+          </button>
+        </div>
+      </div>
+
+      <div id="mobile-menu" class="hidden md:hidden absolute top-full left-0 w-full bg-white border-b border-slate-200 p-4 flex-col gap-4 shadow-xl">
+        <a href="/" class="text-base font-medium text-slate-600 py-2 mobile-link">Home</a>
+        <a href="/agent/" class="text-base font-medium text-slate-600 py-2 mobile-link">Agent</a>
+        <a href="/services/" class="text-base font-medium text-slate-600 py-2 mobile-link">Services</a>
+        <a href="/blog/" class="text-base font-medium text-slate-600 py-2 mobile-link">Blog</a>
+        <a href="/#portfolio" class="text-base font-medium text-slate-600 py-2 mobile-link">Portfolio</a>
+        <a href="/#hero-form" class="bg-indigo-600 text-white w-full py-3 rounded-lg font-semibold text-center block mobile-link">
+          Submit Your Idea
+        </a>
+      </div>
+    </nav>
+
+  <main class="pt-32 pb-20">
+    <section class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="grid lg:grid-cols-2 gap-14 items-center">
+        <div class="space-y-8">
+          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-indigo-100 shadow-sm">
+            <span class="flex h-2 w-2 rounded-full bg-indigo-500 animate-ping"></span>
+            <span class="text-xs font-semibold text-indigo-700">Services launch offer</span>
+          </div>
+          <div class="space-y-3">
+            <h1 class="font-display text-4xl sm:text-5xl font-bold leading-tight">
+              Need software built? <span class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-pink-500">We ship it with you.</span>
+            </h1>
+            <p class="text-lg text-slate-600 leading-relaxed">
+              We take you from idea to launch with clear planning, fast build cycles, testing, and deployment. You see progress in working product increments, not vague status updates.
+            </p>
+          </div>
+          <div class="flex flex-wrap gap-3 text-sm font-semibold text-indigo-700">
+            <span class="px-3 py-2 rounded-full bg-indigo-50 text-indigo-700">Web apps</span>
+            <span class="px-3 py-2 rounded-full bg-indigo-50 text-indigo-700">Mobile apps</span>
+            <span class="px-3 py-2 rounded-full bg-indigo-50 text-indigo-700">Cloud + infra</span>
+            <span class="px-3 py-2 rounded-full bg-indigo-50 text-indigo-700">Deployments & docs</span>
+            <span class="px-3 py-2 rounded-full bg-indigo-50 text-indigo-700">CI/CD setup</span>
+          </div>
+
+          <div class="grid lg:grid-cols-3 gap-4">
+            <div class="glass p-4 rounded-xl shadow-glow">
+              <div class="flex items-center gap-2 mb-2 text-indigo-600 font-semibold">
+                <i data-lucide="lightbulb" class="w-5 h-5"></i>
+                <span>Shape</span>
+              </div>
+              <p class="text-sm text-slate-600">We align on goals, scope, and success criteria before code starts.</p>
+            </div>
+            <div class="glass p-4 rounded-xl shadow-glow">
+              <div class="flex items-center gap-2 mb-2 text-indigo-600 font-semibold">
+                <i data-lucide="bot" class="w-5 h-5"></i>
+                <span>Build</span>
+              </div>
+              <p class="text-sm text-slate-600">Your idea becomes a PRD or technical plan, then work is tracked through tickets.</p>
+            </div>
+            <div class="glass p-4 rounded-xl shadow-glow">
+              <div class="flex items-center gap-2 mb-2 text-indigo-600 font-semibold">
+                <i data-lucide="rocket" class="w-5 h-5"></i>
+                <span>Ship</span>
+              </div>
+              <p class="text-sm text-slate-600">Each ticket runs in a sandbox, code is checked, and approved changes ship as working updates.</p>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-4">
+            <a href="#services-form" class="px-6 py-3 rounded-full bg-indigo-600 text-white font-semibold shadow-glow hover:bg-indigo-700">Start your build</a>
+            <div class="text-sm text-slate-500">Limited seats. We reply within 24 hours.</div>
+          </div>
+        </div>
+        <div class="glass rounded-2xl shadow-2xl p-6 border border-indigo-50">
+          <div class="flex items-center gap-2 text-indigo-600 font-semibold mb-4">
+            <i data-lucide="clipboard-list" class="w-5 h-5"></i>
+            <span>Tell us about your project requirements</span>
+          </div>
+          <form id="services-form" class="space-y-4">
+            <div class="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label class="text-sm font-semibold text-slate-700">Name</label>
+                <input name="name" required class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="Your name" />
+              </div>
+              <div>
+                <label class="text-sm font-semibold text-slate-700">Email</label>
+                <input name="email" type="email" required class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="you@company.com" />
+              </div>
+            </div>
+            <div class="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label class="text-sm font-semibold text-slate-700">Company</label>
+                <input name="company" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="Acme Corp" />
+              </div>
+              <div>
+                <label class="text-sm font-semibold text-slate-700">Role</label>
+                <input name="role" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="Founder, PM, CTO..." />
+              </div>
+            </div>
+            <div class="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label class="text-sm font-semibold text-slate-700">Timeline</label>
+                <input name="timeline" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="e.g. 2-4 weeks" />
+              </div>
+              <div>
+                <label class="text-sm font-semibold text-slate-700">Budget</label>
+                <input name="budget" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="e.g. $999 intro or custom" />
+              </div>
+            </div>
+            <div>
+              <label class="text-sm font-semibold text-slate-700">Requirements</label>
+              <textarea name="requirements" required rows="4" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="What are the 5 features or the outcome you want?"></textarea>
+            </div>
+            <button type="submit" class="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-indigo-600 to-pink-500 text-white font-semibold py-3 shadow-glow hover:opacity-90">
+              <i data-lucide="send" class="w-4 h-4"></i>
+              <span class="btn-text">Submit request</span>
+            </button>
+            <p class="text-xs text-slate-500 text-center">We’ll reply within 24 hours with next steps and a clear delivery plan.</p>
+            <div id="form-status" class="hidden text-center text-sm font-semibold"></div>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <section class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-14">
+      <div class="rounded-2xl bg-slate-900 p-8 md:p-12 shadow-2xl relative overflow-hidden">
+        <!-- Background decorative blobs -->
+        <div class="absolute top-0 right-0 w-64 h-64 bg-indigo-600/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+        <div class="absolute bottom-0 left-0 w-64 h-64 bg-pink-600/20 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2"></div>
+        
+        <div class="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8 text-center md:text-left">
+          <div class="space-y-4 max-w-2xl">
+            <h2 class="font-display text-3xl font-bold text-white">Attempting to assemble a dev team?</h2>
+            <p class="text-indigo-100 text-lg">
+              Contact us and we’ll help you run the whole build process with your team.
+            </p>
+          </div>
+          <a href="#services-form" class="inline-flex items-center gap-2 px-8 py-4 rounded-full bg-white text-indigo-900 font-bold hover:bg-indigo-50 transition-colors shadow-lg shadow-indigo-900/25 whitespace-nowrap">
+            Contact Us <i data-lucide="arrow-right" class="w-5 h-5"></i>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <section class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-14">
+      <div class="bg-white rounded-2xl shadow-glow p-8 border border-indigo-50 space-y-6">
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <p class="text-indigo-600 font-semibold uppercase tracking-wide text-xs">What we build</p>
+            <h2 class="font-display text-3xl font-bold">Web, mobile, and cloud that ships cleanly</h2>
+            <p class="text-slate-600 text-sm mt-2">Product builds plus the unglamorous bits—cloud deployments, CI/CD, and handover docs.</p>
+          </div>
+          <a href="#services-form" class="inline-flex items-center gap-2 px-5 py-3 rounded-full bg-slate-900 text-white font-semibold hover:bg-slate-800">Start in 24h</a>
+        </div>
+        <div class="grid md:grid-cols-3 gap-4">
+          <div class="p-5 rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50">
+            <div class="flex items-center gap-2 text-indigo-600 font-semibold mb-2">
+              <i data-lucide="layout" class="w-5 h-5"></i>
+              <span>Web apps</span>
+            </div>
+            <p class="text-sm text-slate-600">Customer dashboards, admin tools, marketing sites, and AI features that are production-ready.</p>
+          </div>
+          <div class="p-5 rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50">
+            <div class="flex items-center gap-2 text-indigo-600 font-semibold mb-2">
+              <i data-lucide="smartphone" class="w-5 h-5"></i>
+              <span>Mobile apps</span>
+            </div>
+            <p class="text-sm text-slate-600">iOS/Android builds with clean UX, offline-friendly flows, and analytics wired in.</p>
+          </div>
+          <div class="p-5 rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50">
+            <div class="flex items-center gap-2 text-indigo-600 font-semibold mb-2">
+              <i data-lucide="cloud" class="w-5 h-5"></i>
+              <span>Cloud & delivery</span>
+            </div>
+            <p class="text-sm text-slate-600">Infra setup, deployments, CI/CD pipelines, monitoring, and documentation included.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-14">
+      <div class="glass rounded-2xl p-8 border border-indigo-50 shadow-glow space-y-6">
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div class="space-y-2">
+            <p class="text-indigo-600 font-semibold uppercase tracking-wide text-xs">Web builds</p>
+            <h2 class="font-display text-3xl font-bold">Production web apps without the drag</h2>
+            <p class="text-slate-600 text-sm">We pair fast delivery with battle-tested stack choices and clean handover.</p>
+          </div>
+          <a href="#services-form" class="inline-flex items-center gap-2 px-5 py-3 rounded-full bg-indigo-600 text-white font-semibold shadow-glow hover:bg-indigo-700">Plan my web app</a>
+        </div>
+        <div class="grid md:grid-cols-2 gap-6">
+          <div class="space-y-3">
+            <h3 class="font-semibold text-slate-900">How we build</h3>
+            <ul class="space-y-2 text-sm text-slate-600 list-disc list-inside">
+              <li>Discovery + scope lock in 24h, with a delivery map you can see.</li>
+              <li>Short cycles: design, build, demo, adjust—no long black boxes.</li>
+              <li>Accessibility, performance budgets, and analytics wired from day one.</li>
+              <li>Docs + runbooks so your team can extend without asking us.</li>
+            </ul>
+          </div>
+          <div class="grid sm:grid-cols-2 gap-4">
+            <div class="p-4 rounded-xl bg-white border border-slate-200">
+              <p class="text-xs font-semibold text-indigo-700 uppercase tracking-wide">Frontend</p>
+              <p class="text-sm text-slate-700 mt-2">React/Next.js, TypeScript, Tailwind, shadcn/Radix UI; SSR/ISR where it helps SEO and speed.</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white border border-slate-200">
+              <p class="text-xs font-semibold text-indigo-700 uppercase tracking-wide">Backend</p>
+              <p class="text-sm text-slate-700 mt-2">FastAPI or Django for Python, Node/Express for JS; REST/GraphQL; background jobs and webhooks wired cleanly.</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white border border-slate-200">
+              <p class="text-xs font-semibold text-indigo-700 uppercase tracking-wide">Data layer</p>
+              <p class="text-sm text-slate-700 mt-2">Postgres with pgvector, Redis for queues/cache, S3-compatible storage, analytics events with Segment/GA4.</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white border border-slate-200">
+              <p class="text-xs font-semibold text-indigo-700 uppercase tracking-wide">Cloud & CI/CD</p>
+              <p class="text-sm text-slate-700 mt-2">AWS/GCP/Azure or Fly.io; IaC with Terraform; GitHub Actions pipelines; observability via OpenTelemetry + your APM.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="apply" class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-16">
+      <div class="glass rounded-2xl p-8 border border-indigo-50 shadow-glow">
+        <div class="flex flex-col lg:flex-row gap-8">
+          <div class="lg:w-1/3 space-y-3">
+            <p class="text-indigo-600 font-semibold uppercase tracking-wide text-xs">Play-by-play</p>
+            <h2 class="font-display text-3xl font-bold">How the build runs</h2>
+            <p class="text-slate-600 text-sm">A simple workflow with clear progress at every step.</p>
+          </div>
+          <div class="lg:w-2/3 grid md:grid-cols-4 gap-4">
+            <div class="p-4 rounded-xl bg-white border border-slate-200">
+              <div class="flex items-center gap-2 text-indigo-600 font-semibold mb-2"><span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full">Step 1</span> Scope</div>
+              <p class="text-sm text-slate-600">You share goals and constraints. We lock the plan and timeline.</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white border border-slate-200">
+              <div class="flex items-center gap-2 text-indigo-600 font-semibold mb-2"><span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full">Step 2</span> Build</div>
+              <p class="text-sm text-slate-600">Work is tracked by tickets. Each ticket is built in a sandbox and committed.</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white border border-slate-200">
+              <div class="flex items-center gap-2 text-indigo-600 font-semibold mb-2"><span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full">Step 3</span> Review</div>
+              <p class="text-sm text-slate-600">Tight demos. You approve or request tweaks. We iterate fast.</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white border border-slate-200">
+              <div class="flex items-center gap-2 text-indigo-600 font-semibold mb-2"><span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full">Step 4</span> Ship</div>
+              <p class="text-sm text-slate-600">The system checks and approves changes, then returns working product updates.</p>
+            </div>
+          </div>
+        </div>
+        <div class="mt-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div class="space-y-1">
+            <p class="text-indigo-600 font-semibold uppercase tracking-wide text-xs">Introductory offer</p>
+            <h3 class="font-display text-2xl font-bold">$999 to ship your production app in less than a week</h3>
+            <p class="text-slate-600 text-sm">*Limited features. Includes deployment, documentation, and source code handover.</p>
+          </div>
+          <a href="#services-form" class="px-6 py-3 rounded-full bg-slate-900 text-white font-semibold hover:bg-slate-800">Start my build</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-16">
+      <div class="rounded-3xl bg-slate-900 text-white p-10 shadow-2xl">
+        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6 mb-8">
+          <div class="space-y-2">
+            <p class="text-indigo-300 font-semibold uppercase tracking-wide text-xs">How we work</p>
+            <h2 class="font-display text-3xl font-bold">From idea to ship with proof every day</h2>
+            <p class="text-slate-200 text-sm">Tight feedback, visible work, and owners who ship.</p>
+          </div>
+          <a href="#services-form" class="inline-flex items-center gap-2 px-5 py-3 rounded-full bg-white text-slate-900 font-semibold hover:bg-slate-100">Book a slot</a>
+        </div>
+        <div class="grid lg:grid-cols-5 gap-4">
+          <div class="p-5 rounded-xl bg-slate-800/70 border border-slate-700">
+            <div class="flex items-center gap-2 font-semibold mb-2"><i data-lucide="sparkles" class="w-5 h-5 text-indigo-300"></i>Frame</div>
+            <p class="text-sm text-slate-300">Lock the outcome, constraints, and what “good” looks like.</p>
+          </div>
+          <div class="p-5 rounded-xl bg-slate-800/70 border border-slate-700">
+            <div class="flex items-center gap-2 font-semibold mb-2"><i data-lucide="lightbulb" class="w-5 h-5 text-indigo-300"></i>Plan</div>
+            <p class="text-sm text-slate-300">Draft flows, sequence features, and agree on timelines.</p>
+          </div>
+          <div class="p-5 rounded-xl bg-slate-800/70 border border-slate-700">
+            <div class="flex items-center gap-2 font-semibold mb-2"><i data-lucide="hammer" class="w-5 h-5 text-indigo-300"></i>Build</div>
+            <p class="text-sm text-slate-300">Engineers ship with daily proofs, diffs, and checkpoints.</p>
+          </div>
+          <div class="p-5 rounded-xl bg-slate-800/70 border border-slate-700">
+            <div class="flex items-center gap-2 font-semibold mb-2"><i data-lucide="check-circle-2" class="w-5 h-5 text-indigo-300"></i>Validate</div>
+            <p class="text-sm text-slate-300">Short demos for approval; we adjust live with your notes.</p>
+          </div>
+          <div class="p-5 rounded-xl bg-slate-800/70 border border-slate-700">
+            <div class="flex items-center gap-2 font-semibold mb-2"><i data-lucide="rocket" class="w-5 h-5 text-indigo-300"></i>Launch</div>
+            <p class="text-sm text-slate-300">Deploy, document, hand over source, and keep CI/CD ready.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="bg-slate-900 border-t border-slate-800 pt-16 pb-8">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
+            <div class="col-span-1 md:col-span-2">
+                <div class="flex items-center gap-2 mb-4 text-white font-bold text-xl">
+                    <i data-lucide="rocket" class="w-6 h-6 text-indigo-500"></i>
+                    <span>LFG</span>
+                </div>
+                <p class="text-slate-400 max-w-sm leading-relaxed">
+                    Custom software factory powered by senior engineers and AI support.
+                </p>
+            </div>
+            
+            <div>
+                <h4 class="font-bold text-white mb-4 uppercase text-xs tracking-wider">Company</h4>
+                <ul class="space-y-3 text-sm text-slate-400">
+                    <li><a href="/agent/" class="hover:text-indigo-400 transition-colors">Agent</a></li>
+                    <li><a href="/services/" class="hover:text-indigo-400 transition-colors">Services</a></li>
+                    <li><a href="/blog/" class="hover:text-indigo-400 transition-colors">Blog</a></li>
+                    <li><a href="/#portfolio" class="hover:text-indigo-400 transition-colors">Portfolio</a></li>
+                    <li><a href="/#book-demo" class="hover:text-indigo-400 transition-colors">Book demo</a></li>
+                    <li><a href="/venture-studio/" class="hover:text-indigo-400 transition-colors">Venture studio</a></li>
+                </ul>
+            </div>
+
+            <div>
+                <h4 class="font-bold text-white mb-4 uppercase text-xs tracking-wider">Community</h4>
+                <ul class="space-y-3 text-sm text-slate-400">
+                    <li><a href="https://github.com/lfg-hq/lfg" target="_blank" rel="noopener noreferrer" class="hover:text-indigo-400 transition-colors flex items-center gap-2"><i data-lucide="github" class="w-4 h-4"></i> GitHub</a></li>
+                    <li><a href="/accounts/auth/" class="hover:text-indigo-400 transition-colors flex items-center gap-2"><i data-lucide="rocket" class="w-4 h-4"></i> Platform</a></li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="border-t border-slate-800 pt-8 text-center text-sm text-slate-500">
+            &copy; 2026 LFG Inc. Open Source Apache 2.0.
+        </div>
+    </div>
+  </footer>
+
+  <script>
+    lucide.createIcons();
+
+    const form = document.getElementById('services-form');
+    const statusEl = document.getElementById('form-status');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = form.querySelector('button');
+      const btnText = form.querySelector('.btn-text');
+      statusEl.classList.add('hidden');
+      statusEl.textContent = '';
+
+      const formData = Object.fromEntries(new FormData(form).entries());
+      if (!formData.name || !formData.email || !formData.requirements) {
+        statusEl.textContent = 'Name, email, and requirements are required.';
+        statusEl.className = 'mt-2 text-center text-sm font-semibold text-red-500';
+        statusEl.classList.remove('hidden');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.classList.add('opacity-70');
+      btnText.textContent = 'Submitting...';
+
+      try {
+        const response = await fetch('/services/inquiry/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+          },
+          body: JSON.stringify(formData)
+        });
+
+        if (response.ok) {
+          form.reset();
+          statusEl.textContent = 'Thanks! We received your request and sent you an acknowledgement.';
+          statusEl.className = 'mt-2 text-center text-sm font-semibold text-green-600';
+          statusEl.classList.remove('hidden');
+        } else {
+          const data = await response.json();
+          throw new Error(data.error || 'Failed to submit. Please try again.');
+        }
+      } catch (error) {
+        console.error(error);
+        statusEl.textContent = error.message;
+        statusEl.className = 'mt-2 text-center text-sm font-semibold text-red-500';
+        statusEl.classList.remove('hidden');
+      } finally {
+        btn.disabled = false;
+        btn.classList.remove('opacity-70');
+        btnText.textContent = 'Submit request';
+      }
+    });
+
+    function getCookie(name) {
+      let cookieValue = null;
+      if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+          const cookie = cookies[i].trim();
+          if (cookie.substring(0, name.length + 1) === (name + '=')) {
+            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+            break;
+          }
+        }
+      }
+      return cookieValue;
+    }
+  </script>
+</body>
+</html>

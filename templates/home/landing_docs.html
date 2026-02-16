@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LFG Docs | Turn Ideas Into Clear Product Plans</title>
+    <meta name="description" content="Turn rough ideas into clear product documents your team can build from with confidence.">
+    <link rel="icon" type="image/x-icon" href="/static/images/favicon.ico">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Manrope', 'sans-serif'],
+              display: ['Sora', 'sans-serif'],
+            },
+            colors: {
+              primary: { 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca' },
+              accent: '#ec4899'
+            },
+            boxShadow: {
+              glow: '0 15px 40px rgba(99, 102, 241, 0.18)',
+            }
+          }
+        }
+      }
+    </script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+      body { background: #f8fafc; }
+      .glass { background: rgba(255,255,255,0.9); border: 1px solid rgba(99,102,241,0.12); backdrop-filter: blur(8px); }
+    </style>
+</head>
+<body class="font-sans text-slate-900">
+    <!-- Navbar -->
+    <nav id="navbar" class="fixed top-0 left-0 right-0 z-50 transition-all duration-300 bg-white/95 backdrop-blur-md border-b border-indigo-100 shadow-sm py-3">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center">
+        <!-- Logo -->
+        <a href="/" class="flex items-center gap-2 group">
+          <div class="bg-indigo-600 text-white p-1.5 rounded-lg transform group-hover:rotate-12 transition-transform">
+            <i data-lucide="rocket" class="w-5 h-5"></i>
+          </div>
+          <span class="font-display font-bold text-xl tracking-tight text-slate-900">
+            LFG
+          </span>
+        </a>
+
+        <!-- Desktop Nav -->
+        <div class="hidden md:flex items-center gap-6">
+          <a href="/#factory" class="text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">Factory Model</a>
+          <a href="/services/" class="text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">Custom Services</a>
+          <a href="/venture-studio/" class="text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">Rev-Share Studio</a>
+          
+          <div class="flex items-center gap-4 ml-2">
+            <a href="https://github.com/lfg-hq/lfg" target="_blank" rel="noopener noreferrer" class="text-slate-500 hover:text-slate-900 transition-colors">
+              <i data-lucide="github" class="w-5 h-5"></i>
+            </a>
+            <a href="/accounts/auth/" class="bg-slate-900 hover:bg-indigo-600 text-white px-5 py-2 rounded-full text-sm font-semibold transition-all shadow-lg hover:shadow-indigo-500/25 active:scale-95">
+              Launch Agent Platform
+            </a>
+          </div>
+        </div>
+
+        <!-- Mobile Toggle -->
+        <div class="md:hidden">
+          <button id="mobile-menu-btn" class="text-slate-600">
+            <i data-lucide="menu" class="w-6 h-6"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Mobile Menu -->
+      <div id="mobile-menu" class="hidden md:hidden absolute top-full left-0 w-full bg-white border-b border-slate-200 p-4 flex-col gap-4 shadow-xl">
+        <a href="/#factory" class="text-base font-medium text-slate-600 py-2 mobile-link">Factory Model</a>
+        <a href="/services/" class="text-base font-medium text-slate-600 py-2 mobile-link">Custom Services</a>
+        <a href="/venture-studio/" class="text-base font-medium text-slate-600 py-2 mobile-link">Rev-Share Studio</a>
+        <a href="/accounts/auth/" class="bg-indigo-600 text-white w-full py-3 rounded-lg font-semibold text-center block">
+          Launch Agent Platform
+        </a>
+      </div>
+    </nav>
+
+  <main class="pt-32 pb-16">
+    <section class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="grid lg:grid-cols-2 gap-10 items-center">
+        <div class="space-y-6">
+          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-indigo-100 shadow-sm">
+            <span class="flex h-2 w-2 rounded-full bg-indigo-500 animate-ping"></span>
+            <span class="text-xs font-semibold text-indigo-700">Docs & PRDs</span>
+          </div>
+          <div class="space-y-3">
+            <h1 class="font-display text-4xl sm:text-5xl font-bold leading-tight">
+              Turn rough ideas into clear plans your team can build from.
+            </h1>
+            <p class="text-lg text-slate-600">
+              We help you define what to build, how to build it, and what success looks like, before execution starts.
+            </p>
+          </div>
+
+          <div class="grid sm:grid-cols-2 gap-4">
+            <div class="glass p-4 rounded-xl shadow-glow">
+              <div class="flex items-center gap-2 mb-2 text-indigo-600 font-semibold">
+                <i data-lucide="notebook-pen" class="w-5 h-5"></i>
+                <span>PRDs & specs</span>
+              </div>
+              <p class="text-sm text-slate-600">Clear product requirements, user stories, and acceptance criteria your team can trust.</p>
+            </div>
+            <div class="glass p-4 rounded-xl shadow-glow">
+              <div class="flex items-center gap-2 mb-2 text-indigo-600 font-semibold">
+                <i data-lucide="cpu" class="w-5 h-5"></i>
+                <span>Technical analysis</span>
+              </div>
+              <p class="text-sm text-slate-600">Practical technical plans, trade-offs, and sequencing before development begins.</p>
+            </div>
+            <div class="glass p-4 rounded-xl shadow-glow">
+              <div class="flex items-center gap-2 mb-2 text-indigo-600 font-semibold">
+                <i data-lucide="line-chart" class="w-5 h-5"></i>
+                <span>Competitor briefs</span>
+              </div>
+              <p class="text-sm text-slate-600">Simple competitor snapshots to help you position and prioritize correctly.</p>
+            </div>
+            <div class="glass p-4 rounded-xl shadow-glow">
+              <div class="flex items-center gap-2 mb-2 text-indigo-600 font-semibold">
+                <i data-lucide="library" class="w-5 h-5"></i>
+                <span>Project docs</span>
+              </div>
+              <p class="text-sm text-slate-600">Runbooks, checklists, and onboarding docs that stay useful after launch.</p>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-4">
+            <a href="/accounts/auth/" class="px-6 py-3 rounded-full bg-indigo-600 text-white font-semibold shadow-glow hover:bg-indigo-700">Start a doc</a>
+            <a href="/services/" class="text-sm font-semibold text-indigo-600 hover:text-indigo-700">Need it built? View services →</a>
+          </div>
+        </div>
+        <div class="glass rounded-2xl shadow-2xl p-6 border border-indigo-50 space-y-4">
+          <div class="flex items-center gap-2 text-indigo-600 font-semibold mb-2">
+            <i data-lucide="sparkles" class="w-5 h-5"></i>
+            <span>Live doc workspace</span>
+          </div>
+          <p class="text-sm text-slate-600">Start with a rough brief, then turn it into structured product and technical docs in one place.</p>
+          <div class="space-y-3">
+            <img src="/static/images/docs-prd.png" alt="LFG PRD view" class="rounded-xl border border-slate-200 shadow" />
+            <img src="/static/images/docs-list.png" alt="LFG documents list" class="rounded-xl border border-slate-200 shadow" />
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-16">
+      <div class="glass rounded-2xl p-8 border border-indigo-50 shadow-glow">
+        <div class="grid md:grid-cols-4 gap-6">
+          <div class="p-4 rounded-xl bg-white border border-slate-200 hover:shadow-md transition-shadow">
+            <div class="flex items-center gap-2 text-indigo-600 font-semibold mb-2">
+              <span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full">1</span> Brain dump
+            </div>
+            <p class="text-sm text-slate-600">Drop goals, constraints, and references. LFG Agent extracts signals.</p>
+          </div>
+          <div class="p-4 rounded-xl bg-white border border-slate-200 hover:shadow-md transition-shadow">
+            <div class="flex items-center gap-2 text-indigo-600 font-semibold mb-2">
+              <span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full">2</span> Draft
+            </div>
+            <p class="text-sm text-slate-600">Agent assembles sections, tables, and bullets. You edit inline.</p>
+          </div>
+          <div class="p-4 rounded-xl bg-white border border-slate-200 hover:shadow-md transition-shadow">
+            <div class="flex items-center gap-2 text-indigo-600 font-semibold mb-2">
+              <span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full">3</span> Review
+            </div>
+            <p class="text-sm text-slate-600">Human reviewer polishes tone, correctness, and edges.</p>
+          </div>
+          <div class="p-4 rounded-xl bg-white border border-slate-200 hover:shadow-md transition-shadow">
+            <div class="flex items-center gap-2 text-indigo-600 font-semibold mb-2">
+              <span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full">4</span> Ship
+            </div>
+            <p class="text-sm text-slate-600">Export, share links, or hand to the build crew—instantly actionable.</p>
+          </div>
+        </div>
+        <div class="mt-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-t border-slate-100 pt-8">
+          <div class="space-y-1">
+            <h3 class="font-display text-xl font-bold text-slate-900">From napkin idea to board-ready doc in minutes.</h3>
+          </div>
+          <a href="/accounts/auth/" class="px-6 py-3 rounded-full bg-slate-900 text-white font-semibold hover:bg-slate-800 transition-colors">Open the doc workspace</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-14">
+      <div class="rounded-3xl bg-slate-900 text-white p-12 text-center shadow-2xl">
+        <h2 class="font-display text-3xl font-bold mb-4">Speed is a function of certainty</h2>
+        <p class="text-indigo-100 text-lg max-w-2xl mx-auto">
+          Ambiguity is the silent killer of shipping velocity. When engineers have to guess, they hesitate. When they hesitate, momentum dies. LFG ensures your team has the clarity to stay in flow state—knowing exactly what to build, why, and how, without the constant "quick questions" that break focus.
+        </p>
+      </div>
+    </section>
+
+    <section class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-10">
+      <div class="rounded-3xl bg-white border border-indigo-100 shadow-glow p-8 space-y-6">
+        <div class="grid md:grid-cols-5 gap-6 md:items-center">
+          <div class="md:col-span-3 space-y-2">
+            <p class="text-indigo-600 font-semibold uppercase tracking-wide text-xs">Measure twice, cut once</p>
+            <h2 class="font-display text-3xl font-bold">Build with precision, not assumptions</h2>
+            <p class="text-slate-600 text-sm">Building is expensive. Clear thinking is cheaper. Good docs prevent rework later.</p>
+          </div>
+          <div class="md:col-span-2">
+            <div class="p-4 rounded-2xl bg-indigo-50 border border-indigo-100">
+              <p class="text-sm font-semibold text-indigo-800">The LFG Blueprint</p>
+              <ul class="mt-2 space-y-1 text-sm text-indigo-900/80 list-disc list-inside">
+                <li>Problem definition & success signals</li>
+                <li>User stories & acceptance criteria</li>
+                <li>Edge cases & non-functional requirements</li>
+                <li>Sequencing, risks, & dependencies</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="grid md:grid-cols-3 gap-4">
+          <div class="p-4 rounded-xl bg-slate-50 border border-slate-200">
+            <h3 class="font-semibold text-slate-900 mb-2">Stop Building the Wrong Thing</h3>
+            <p class="text-sm text-slate-600">Scope maps to outcomes, not opinions. Get stakeholders aligned before a single line of code is written.</p>
+          </div>
+          <div class="p-4 rounded-xl bg-slate-50 border border-slate-200">
+            <h3 class="font-semibold text-slate-900 mb-2">Engineering-Ready Specs</h3>
+            <p class="text-sm text-slate-600">Clear acceptance criteria mean developers know exactly when "Done" is actually done.</p>
+          </div>
+          <div class="p-4 rounded-xl bg-slate-50 border border-slate-200">
+            <h3 class="font-semibold text-slate-900 mb-2">Eliminate Surprise Blockers</h3>
+            <p class="text-sm text-slate-600">Identify risks and dependencies early, so your launch date isn't a fairy tale.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-10">
+      <div class="rounded-3xl bg-slate-900 text-white p-8 shadow-2xl space-y-6">
+        <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
+          <div class="space-y-2">
+            <p class="text-indigo-300 font-semibold uppercase tracking-wide text-xs">Living Documentation</p>
+            <h2 class="font-display text-3xl font-bold">Documentation that doesn't rot</h2>
+            <p class="text-sm text-slate-200">Static docs die in folders. LFG docs are living artifacts that evolve with your codebase.</p>
+          </div>
+          <a href="/accounts/auth/" class="inline-flex items-center gap-2 px-5 py-3 rounded-full bg-white text-slate-900 font-semibold hover:bg-slate-100">Keep my docs current</a>
+        </div>
+        <div class="grid md:grid-cols-4 gap-4">
+          <div class="p-4 rounded-xl bg-slate-800/80 border border-slate-700">
+            <p class="text-sm font-semibold text-white">Single Source of Truth</p>
+            <p class="text-sm text-slate-200 mt-1">Capture every change request and its impact in real-time.</p>
+          </div>
+          <div class="p-4 rounded-xl bg-slate-800/80 border border-slate-700">
+            <p class="text-sm font-semibold text-white">Zero-Friction Handoffs</p>
+            <p class="text-sm text-slate-200 mt-1">Docs match the code, so new teams can extend safely.</p>
+          </div>
+          <div class="p-4 rounded-xl bg-slate-800/80 border border-slate-700">
+            <p class="text-sm font-semibold text-white">Incident-Ready Runbooks</p>
+            <p class="text-sm text-slate-200 mt-1">Reduce on-call thrash with checklists that actually work.</p>
+          </div>
+          <div class="p-4 rounded-xl bg-slate-800/80 border border-slate-700">
+            <p class="text-sm font-semibold text-white">Audit-Ready History</p>
+            <p class="text-sm text-slate-200 mt-1">A complete paper trail of decisions and approvals.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="bg-slate-900 border-t border-slate-800 pt-16 pb-8">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
+            <div class="col-span-1 md:col-span-2">
+                <div class="flex items-center gap-2 mb-4 text-white font-bold text-xl">
+                    <i data-lucide="rocket" class="w-6 h-6 text-indigo-500"></i>
+                    <span>LFG</span>
+                </div>
+                <p class="text-slate-400 max-w-sm leading-relaxed">
+                    Custom software factory powered by senior engineers and AI support.
+                </p>
+            </div>
+            
+            <div>
+                <h4 class="font-bold text-white mb-4 uppercase text-xs tracking-wider">Company</h4>
+                <ul class="space-y-3 text-sm text-slate-400">
+                    <li><a href="/#factory" class="hover:text-indigo-400 transition-colors">Factory model</a></li>
+                    <li><a href="/services/" class="hover:text-indigo-400 transition-colors">Custom services</a></li>
+                    <li><a href="/venture-studio/" class="hover:text-indigo-400 transition-colors">Rev-share studio</a></li>
+                    <li><a href="/docs/" class="hover:text-indigo-400 transition-colors">Docs & PRDs</a></li>
+                </ul>
+            </div>
+
+            <div>
+                <h4 class="font-bold text-white mb-4 uppercase text-xs tracking-wider">Community</h4>
+                <ul class="space-y-3 text-sm text-slate-400">
+                    <li><a href="https://github.com/lfg-hq/lfg" target="_blank" rel="noopener noreferrer" class="hover:text-indigo-400 transition-colors flex items-center gap-2"><i data-lucide="github" class="w-4 h-4"></i> GitHub</a></li>
+                    <li><a href="/accounts/auth/" class="hover:text-indigo-400 transition-colors flex items-center gap-2"><i data-lucide="rocket" class="w-4 h-4"></i> Platform</a></li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="border-t border-slate-800 pt-8 text-center text-sm text-slate-500">
+            &copy; 2026 LFG Inc. Open Source Apache 2.0.
+        </div>
+    </div>
+  </footer>
+
+  <script>
+    lucide.createIcons();
+  </script>
+</body>
+</html>

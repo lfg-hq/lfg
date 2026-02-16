@@ -78,7 +78,47 @@ class GitHubRepositoryManager:
         except Exception as e:
             logger.error(f"Error validating repository access: {e}")
             return False, f"Error validating repository: {str(e)}", {}
-    
+
+    def list_branches(self, owner: str, repo: str, per_page: int = 100) -> Tuple[bool, str, List[Dict[str, Any]]]:
+        """List all branches for a repository via GitHub API"""
+        if not self.github_token:
+            return False, "No GitHub token configured", []
+
+        try:
+            api_url = f"https://api.github.com/repos/{owner}/{repo}/branches"
+            headers = {
+                'Authorization': f'token {self.github_token.access_token}',
+                'Accept': 'application/vnd.github.v3+json'
+            }
+            params = {'per_page': per_page}
+
+            response = requests.get(api_url, headers=headers, params=params, timeout=10)
+
+            if response.status_code == 200:
+                branches_data = response.json()
+                branches = [
+                    {
+                        'name': branch['name'],
+                        'sha': branch['commit']['sha'],
+                        'protected': branch.get('protected', False)
+                    }
+                    for branch in branches_data
+                ]
+                return True, f"Found {len(branches)} branches", branches
+            elif response.status_code == 404:
+                return False, "Repository not found or no access", []
+            elif response.status_code == 403:
+                rate_limit_remaining = response.headers.get('X-RateLimit-Remaining', 'unknown')
+                if rate_limit_remaining == '0':
+                    return False, "GitHub API rate limit exceeded", []
+                return False, "Access forbidden", []
+            else:
+                return False, f"GitHub API error: {response.status_code}", []
+
+        except Exception as e:
+            logger.error(f"Error listing branches: {e}")
+            return False, f"Error listing branches: {str(e)}", []
+
     def clone_repository(self, github_url: str, branch: str = None) -> Tuple[bool, str, Optional[str]]:
         """Clone repository to temporary directory"""
         if not self.github_token:
@@ -290,11 +330,47 @@ class RepositoryIndexer:
                 self.indexed_repository.file_extensions,
                 self.indexed_repository.exclude_patterns
             )
-            
+
             if not files_to_index:
                 self.github_manager.cleanup_temp_directory(temp_dir)
                 return False, "No files found to index"
-            
+
+            # Auto-detect stack from repository files
+            # NOTE: Use ALL files for detection, not just filtered files (go.mod, package.json etc. may be filtered out)
+            try:
+                from factory.stack_configs import detect_stack_from_files
+                from pathlib import Path
+
+                # Get ALL file names in repo for stack detection (ignore extension filter)
+                repo_root = Path(temp_dir)
+                all_files = []
+                for file_path in repo_root.rglob('*'):
+                    if file_path.is_file() and not any(excl in str(file_path) for excl in ['.git/', 'node_modules/', '__pycache__/']):
+                        all_files.append(str(file_path.relative_to(repo_root)))
+
+                logger.info(f"[STACK] Starting stack detection for {len(all_files)} total files (indexed: {len(files_to_index)}), force_full_reindex={force_full_reindex}")
+                logger.info(f"[STACK] Sample file paths: {all_files[:30]}")
+
+                detected_stack = detect_stack_from_files(all_files)
+                logger.info(f"[STACK] Detection result: {detected_stack}")
+
+                if detected_stack and self.indexed_repository.project:
+                    project = self.indexed_repository.project
+                    logger.info(f"[STACK] Current project stack: {project.stack}, force_reindex: {force_full_reindex}")
+
+                    # Update stack if: re-indexing OR stack is still default/custom
+                    if force_full_reindex or project.stack in ('nextjs', 'custom'):
+                        old_stack = project.stack
+                        project.stack = detected_stack
+                        project.save(update_fields=['stack'])
+                        logger.info(f"[STACK] Updated stack from '{old_stack}' to '{detected_stack}' for project {project.name}")
+                    else:
+                        logger.info(f"[STACK] Skipping update - stack already set to '{project.stack}' and not re-indexing")
+                else:
+                    logger.warning(f"[STACK] No stack detected or no project linked")
+            except Exception as e:
+                logger.error(f"[STACK] Failed to auto-detect stack: {e}", exc_info=True)
+
             # Update repository status and statistics
             self.indexed_repository.status = 'indexing'
             self.indexed_repository.total_files = len(files_to_index)
@@ -597,3 +673,74 @@ def validate_github_access(user, github_url: str) -> Tuple[bool, str, Dict[str, 
     """Validate GitHub access (convenience function)"""
     manager = GitHubRepositoryManager(user)
     return manager.validate_repository_access(github_url)
+
+
+def get_repo_file_list_via_api(user, github_url: str, branch: str = 'main') -> List[str]:
+    """
+    Get file list from a GitHub repository using the API (no clone needed).
+
+    Uses the Git Trees API to fetch the file list, which is much faster than cloning.
+
+    Args:
+        user: Django user with GitHub token
+        github_url: GitHub repository URL
+        branch: Branch to get files from (default: 'main')
+
+    Returns:
+        List of file paths in the repository
+    """
+    try:
+        # Get GitHub token
+        github_token = GitHubToken.objects.get(user=user)
+    except GitHubToken.DoesNotExist:
+        logger.warning(f"No GitHub token found for user {user.username}")
+        return []
+
+    # Parse GitHub URL
+    patterns = [
+        r'github\.com[:/]([^/]+)/([^/\.]+)(?:\.git)?',
+        r'github\.com/([^/]+)/([^/]+)',
+    ]
+
+    owner = None
+    repo = None
+    for pattern in patterns:
+        match = re.search(pattern, github_url)
+        if match:
+            owner = match.group(1)
+            repo = match.group(2)
+            break
+
+    if not owner or not repo:
+        logger.error(f"Could not parse GitHub URL: {github_url}")
+        return []
+
+    # Fetch file tree via GitHub API
+    api_url = f"https://api.github.com/repos/{owner}/{repo}/git/trees/{branch}?recursive=1"
+    headers = {
+        'Authorization': f'token {github_token.access_token}',
+        'Accept': 'application/vnd.github.v3+json'
+    }
+
+    try:
+        response = requests.get(api_url, headers=headers, timeout=30)
+
+        if response.status_code == 200:
+            data = response.json()
+            # Filter for files only (not directories)
+            files = [
+                item['path'] for item in data.get('tree', [])
+                if item['type'] == 'blob'
+            ]
+            logger.info(f"Found {len(files)} files in {owner}/{repo} via API")
+            return files
+        elif response.status_code == 404:
+            logger.error(f"Repository or branch not found: {owner}/{repo}:{branch}")
+            return []
+        else:
+            logger.error(f"GitHub API error: {response.status_code} - {response.text}")
+            return []
+
+    except requests.RequestException as e:
+        logger.error(f"Error fetching file list from GitHub API: {e}")
+        return []

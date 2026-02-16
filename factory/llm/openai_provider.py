@@ -3,11 +3,13 @@ import logging
 import asyncio
 import traceback
 import openai
+from openai import AsyncOpenAI
 import tiktoken
 import os
 from typing import List, Dict, Any, Optional, AsyncGenerator
 
 from .base import BaseLLMProvider
+from factory.llm_config import get_provider_model_mapping, get_default_model_key
 from channels.db import database_sync_to_async
 
 # Import functions from ai_common and streaming_handlers
@@ -24,10 +26,8 @@ DEBUG_TOKEN_TRACKING = logger.isEnabledFor(logging.DEBUG)
 class OpenAIProvider(BaseLLMProvider):
     """OpenAI provider implementation"""
     
-    MODEL_MAPPING = {
-        "gpt-5": "gpt-5",
-        "gpt-5-mini": "gpt-5-mini",
-    }
+    MODEL_MAPPING = get_provider_model_mapping("openai")
+    DEFAULT_MODEL_KEY = get_default_model_key("openai") or "gpt-5-mini"
     
     # Class-level metrics for tracking token usage success rates
     _usage_tracking_stats = {
@@ -41,9 +41,10 @@ class OpenAIProvider(BaseLLMProvider):
         super().__init__(selected_model, user, conversation, project)
         
         # Map model selection to actual model name
-        self.model = self.MODEL_MAPPING.get(selected_model, "gpt-5-mini")
+        fallback_model = self.MODEL_MAPPING.get(self.DEFAULT_MODEL_KEY, "gpt-5-mini")
+        self.model = self.MODEL_MAPPING.get(selected_model, fallback_model)
         if selected_model not in self.MODEL_MAPPING:
-            logger.warning(f"Unknown model {selected_model}, defaulting to gpt-5-mini")
+            logger.warning(f"Unknown OpenAI model {selected_model}, defaulting to {self.DEFAULT_MODEL_KEY}")
             
         logger.info(f"OpenAI Provider initialized with model: {self.model}")
     
@@ -74,7 +75,7 @@ class OpenAIProvider(BaseLLMProvider):
             except Exception as e:
                 logger.warning(f"Could not fetch OpenAI API key: {e}")
         
-        # Fallback to platform API key if no user key found
+        # Fallback to platform API key if no user key found or preference disabled
         if not self.api_key:
             platform_openai_key = os.getenv('OPENAI_API_KEY')
             if platform_openai_key:
@@ -87,9 +88,10 @@ class OpenAIProvider(BaseLLMProvider):
             else:
                 logger.warning("No platform OpenAI API key found in environment")
         
-        # Initialize client
+        # Initialize both sync and async clients
         if self.api_key:
             self.client = openai.OpenAI(api_key=self.api_key)
+            self.async_client = AsyncOpenAI(api_key=self.api_key)
         else:
             logger.warning("No OpenAI API key available (neither user nor platform)")
     
@@ -98,8 +100,30 @@ class OpenAIProvider(BaseLLMProvider):
         return messages
     
     def _convert_tools_to_provider_format(self, tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """OpenAI uses the standard format, so just return as-is"""
-        return tools
+        """Convert tools to OpenAI Responses API format.
+
+        The Responses API expects tools with name, description, and parameters
+        at the top level, not nested inside a 'function' object.
+        """
+        converted_tools = []
+        for tool in tools:
+            if tool.get("type") == "function" and "function" in tool:
+                # Convert from old Chat Completions format to new Responses API format
+                func_def = tool["function"]
+                converted_tool = {
+                    "type": "function",
+                    "name": func_def.get("name"),
+                    "description": func_def.get("description", ""),
+                    "parameters": func_def.get("parameters", {"type": "object", "properties": {}})
+                }
+                converted_tools.append(converted_tool)
+            elif tool.get("type") == "function" and "name" in tool:
+                # Already in the correct Responses API format
+                converted_tools.append(tool)
+            else:
+                # Pass through other tool types as-is
+                converted_tools.append(tool)
+        return converted_tools
     
     def estimate_tokens(self, messages, model=None, output_text=None):
         """Estimate token count for messages and output using tiktoken"""
@@ -226,34 +250,57 @@ class OpenAIProvider(BaseLLMProvider):
             return None
     
     def _validate_usage_data(self, usage_data) -> bool:
-        """Validate that usage data has the expected attributes"""
+        """Validate that usage data has the expected attributes.
+
+        Supports both Chat Completions format (prompt_tokens/completion_tokens)
+        and Responses API format (input_tokens/output_tokens).
+        """
         try:
             if not usage_data:
                 return False
-            
-            required_attrs = ['prompt_tokens', 'completion_tokens']
-            for attr in required_attrs:
-                if not hasattr(usage_data, attr):
-                    logger.debug(f"Usage data missing attribute: {attr}")
-                    return False
-                if getattr(usage_data, attr) is None:
-                    logger.debug(f"Usage data attribute {attr} is None")
-                    return False
-            
-            return True
+
+            # Check for Chat Completions format
+            has_chat_format = (
+                hasattr(usage_data, 'prompt_tokens') and
+                hasattr(usage_data, 'completion_tokens') and
+                getattr(usage_data, 'prompt_tokens') is not None and
+                getattr(usage_data, 'completion_tokens') is not None
+            )
+
+            # Check for Responses API format
+            has_responses_format = (
+                hasattr(usage_data, 'input_tokens') and
+                hasattr(usage_data, 'output_tokens') and
+                getattr(usage_data, 'input_tokens') is not None and
+                getattr(usage_data, 'output_tokens') is not None
+            )
+
+            if has_chat_format or has_responses_format:
+                return True
+
+            logger.debug(f"Usage data missing required attributes. Has: {[a for a in dir(usage_data) if not a.startswith('_')]}")
+            return False
         except Exception as e:
             logger.debug(f"Error validating usage data: {e}")
             return False
     
-    async def _get_or_estimate_usage(self, messages: List[Dict[str, Any]], total_assistant_output: str, 
+    async def _get_or_estimate_usage(self, messages: List[Dict[str, Any]], total_assistant_output: str,
                                    usage_data: Optional[Any] = None) -> Optional[UsageData]:
         """Get usage data from API or estimate tokens as fallback"""
         try:
             # Try to use API-provided usage data first
             if usage_data and self._validate_usage_data(usage_data):
-                logger.info(f"Using API-provided token usage: input={usage_data.prompt_tokens}, output={usage_data.completion_tokens}")
+                # Handle both Chat Completions and Responses API formats
+                input_tokens = getattr(usage_data, 'input_tokens', None) or getattr(usage_data, 'prompt_tokens', 0)
+                output_tokens = getattr(usage_data, 'output_tokens', None) or getattr(usage_data, 'completion_tokens', 0)
+                logger.info(f"Using API-provided token usage: input={input_tokens}, output={output_tokens}")
                 self._usage_tracking_stats['api_success'] += 1
-                return UsageData.from_openai(usage_data)
+                # Create UsageData with normalized values
+                return UsageData(
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    total_tokens=input_tokens + output_tokens
+                )
             elif usage_data:
                 # Usage data exists but failed validation
                 self._usage_tracking_stats['validation_failure'] += 1
@@ -334,10 +381,11 @@ class OpenAIProvider(BaseLLMProvider):
                        f"Validation failures: {stats['validation_failure']}, "
                        f"API failures: {stats['api_failure']}")
     
-    async def generate_stream(self, messages: List[Dict[str, Any]], 
-                            project_id: Optional[int], 
-                            conversation_id: Optional[int], 
-                            tools: List[Dict[str, Any]]) -> AsyncGenerator[str, None]:
+    async def generate_stream(self, messages: List[Dict[str, Any]],
+                            project_id: Optional[int],
+                            conversation_id: Optional[int],
+                            tools: List[Dict[str, Any]],
+                            ticket_id: Optional[int] = None) -> AsyncGenerator[str, None]:
         """Generate streaming response from OpenAI"""
         logger.info(f"OpenAI generate_stream called - Model: {self.model}, Messages: {len(messages)}, Tools: {len(tools) if tools else 0}")
         
@@ -351,15 +399,54 @@ class OpenAIProvider(BaseLLMProvider):
         await self._ensure_client()
         
         # Check if client is initialized
-        if not self.client:
+        if not self.async_client:
             if self.model == 'gpt-5-mini':
                 yield "Error: Platform OpenAI API key not available. Please contact support."
             else:
                 yield f"Error: {self.model} requires your own OpenAI API key. Please add API key [here](/settings/) to use advanced models."
             return
             
-        current_messages = list(messages) # Work on a copy
-        
+        # Sanitize messages for Responses API format
+        # Remove any fields that aren't supported (like tool_calls from Chat Completions format)
+        # Also convert content type names: "text" -> "input_text", "image_url" -> "input_image"
+        current_messages = []
+        for msg in messages:
+            if msg.get("type") == "function_call_output":
+                # Keep function_call_output messages as-is
+                current_messages.append(msg)
+            elif msg.get("role") in ("user", "assistant", "system"):
+                # For regular messages, only keep role and content
+                content = msg.get("content", "")
+
+                # Convert content types if content is a list (multimodal content)
+                if isinstance(content, list):
+                    converted_content = []
+                    for item in content:
+                        if isinstance(item, dict):
+                            item_type = item.get("type")
+                            if item_type == "text":
+                                # Convert "text" to "input_text" for Responses API
+                                converted_item = {"type": "input_text", "text": item.get("text", "")}
+                                converted_content.append(converted_item)
+                            elif item_type == "image_url":
+                                # Convert "image_url" to "input_image" for Responses API
+                                image_url = item.get("image_url", {})
+                                url = image_url.get("url", "") if isinstance(image_url, dict) else image_url
+                                converted_item = {"type": "input_image", "image_url": url}
+                                converted_content.append(converted_item)
+                            else:
+                                # Pass through other types as-is
+                                converted_content.append(item)
+                        else:
+                            converted_content.append(item)
+                    content = converted_content
+
+                sanitized = {"role": msg["role"], "content": content}
+                current_messages.append(sanitized)
+            else:
+                # Pass through other message types
+                current_messages.append(msg)
+
         # Use the user, project, and conversation from the instance
         # These are already set in the __init__ method of the base class
         user = self.user
@@ -381,147 +468,136 @@ class OpenAIProvider(BaseLLMProvider):
 
         logger.debug(f"Starting OpenAI stream generation loop")
 
-        # Add web search tool
-        search_tool = {
-            "type": "function",
-            "function": {
-                "name": "web_search",
-                "description": "Search the web",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "query": {"type": "string"}
-                    },
-                    "required": ["query"]
-                }
-            }
-        }
-        tools.append(search_tool)
+        # Convert tools to Responses API format
+        converted_tools = self._convert_tools_to_provider_format(tools)
+
+        # Add OpenAI's built-in web search tool (Responses API native)
+        # This provides real-time web search capabilities without custom implementation
+        converted_tools.append({"type": "web_search_preview"})
+
+        # Track response ID for multi-turn tool calls
+        previous_response_id = None
 
         while True: # Loop to handle potential multi-turn tool calls
             try:
                 params = {
                     "model": self.model,
-                    "messages": current_messages,
                     "stream": True,
-                    "tool_choice": "auto", 
-                    "tools": tools,
-                    "stream_options": {"include_usage": True}  # Request usage info in stream
+                    "reasoning": {"effort": "medium"},
+                    "tool_choice": "auto",
+                    "tools": converted_tools,
                 }
-                
-                logger.debug(f"Making API call with {len(current_messages)} messages.")
-                
-                # Run the blocking API call in a thread
-                response_stream = await asyncio.to_thread(
-                    self.client.chat.completions.create, **params
-                )
+
+                # If we have a previous response (from tool calls), use previous_response_id
+                # Otherwise, send the full message history as input
+                if previous_response_id:
+                    params["previous_response_id"] = previous_response_id
+                    params["input"] = current_messages  # This will contain function_call_output items
+                else:
+                    params["input"] = current_messages
+
+                logger.debug(f"Making API call with {len(current_messages)} messages, previous_response_id={previous_response_id}")
+
+                # Use native async streaming with AsyncOpenAI client
+                response_stream = await self.async_client.responses.create(**params)
                 
                 # Variables for this specific API call
                 tool_calls_requested = [] # Stores {id, function_name, function_args_str}
-                full_assistant_message = {"role": "assistant", "content": None, "tool_calls": []} # To store the complete assistant turn
+                full_assistant_message = {"role": "assistant", "content": None} # To store the complete assistant turn
+                agent_followup_messages = []  # Messages we need to feed back to the model
+                agent_followup_counter = 0
+
+                def append_assistant_text(text: Optional[str]):
+                    nonlocal total_assistant_output
+                    if not text:
+                        return
+                    total_assistant_output += text
+                    if full_assistant_message["content"] is None:
+                        full_assistant_message["content"] = ""
+                    full_assistant_message["content"] += text
+
+                def enqueue_agent_followup(message_text: Optional[str]):
+                    nonlocal agent_followup_counter
+                    if not message_text:
+                        return
+                    agent_followup_counter += 1
+                    agent_followup_messages.append({
+                        "role": "system",
+                        "content": message_text
+                    })
 
                 logger.debug("New Loop!!")
                 
                 # Variables for token tracking
                 usage_data = None
-                
-                # --- Process the stream from the API --- 
-                chunk_count = 0
-                last_chunk = None
-                async for chunk in self._process_stream_async(response_stream):
-                    chunk_count += 1
-                    last_chunk = chunk  # Keep track of last chunk
-                    
-                    # OpenAI sometimes sends empty choices array with usage data
-                    delta = chunk.choices[0].delta if chunk.choices and len(chunk.choices) > 0 else None
-                    finish_reason = chunk.choices[0].finish_reason if chunk.choices and len(chunk.choices) > 0 else None
-                    
-                    # Debug log every chunk to understand the structure
-                    if chunk_count <= 3 or finish_reason:  # Log first 3 chunks and final chunk
-                        logger.debug(f"Chunk {chunk_count}: choices={bool(chunk.choices)}, delta={bool(delta)}, finish_reason={finish_reason}, has_usage={hasattr(chunk, 'usage')}")
-                    
-                    # Check for usage information in the chunk using helper method
-                    chunk_usage = self._extract_usage_from_chunk(chunk)
-                    if chunk_usage:
-                        usage_data = chunk_usage
-                        logger.info(f"Token usage received from OpenAI API in chunk {chunk_count}: input={getattr(usage_data, 'prompt_tokens', 'N/A')}, output={getattr(usage_data, 'completion_tokens', 'N/A')}, total={getattr(usage_data, 'total_tokens', 'N/A')}")
-                        if chunk_count <= 3 or finish_reason:  # Detailed logging for debugging
-                            logger.debug(f"Usage data object: {usage_data}")
-                            logger.debug(f"Usage data dir: {[attr for attr in dir(usage_data) if not attr.startswith('_')]}")
-                    
-                    # Debug logging for first few chunks and final chunk
-                    if chunk_count <= 3 or finish_reason:
-                        logger.debug(f"Chunk attributes: {[attr for attr in dir(chunk) if not attr.startswith('_')]}")
+                finish_reason = None
 
-                    # Don't skip chunks that might contain only usage data
-                    if not delta and not finish_reason and not chunk_usage: 
-                        logger.debug(f"Skipping empty chunk {chunk_count}")
-                        continue # Skip empty chunks
+                # Track current function call being built (Responses API sends one at a time)
+                current_function_call = {"id": None, "name": None, "arguments": ""}
 
-                    # --- Accumulate Text Content --- 
-                    if delta.content:
-                        text = delta.content
-                        
-                        # Capture ALL assistant output for token counting
-                        total_assistant_output += text
-                        logger.debug(f"Captured {len(text)} chars of assistant output, total: {len(total_assistant_output)}")
-                        
-                        # Process text through tag handler
-                        logger.debug(f"[OPENAI] Calling process_text_chunk with project_id: {project_id}")
-                        output_text, notification, mode_message = await tag_handler.process_text_chunk(text, project_id)
-                        
-                        # Yield mode message if entering a special mode
-                        if mode_message:
-                            yield mode_message
-                        
-                        
-                        # Yield notification if present
-                        if notification:
-                            yield format_notification(notification)
-                        
-                        # Yield output text if present
-                        if output_text:
-                            yield output_text
-                        
-                        # Check for immediate notifications to yield
-                        immediate_notifications = tag_handler.get_immediate_notifications()
-                        if immediate_notifications:
-                            logger.info(f"[OPENAI] Found {len(immediate_notifications)} immediate notifications")
-                        for immediate_notification in immediate_notifications:
-                            logger.info(f"[OPENAI] Yielding immediate notification: {immediate_notification.get('notification_type')}")
-                            logger.info(f"[OPENAI] Full notification data: {immediate_notification}")
-                            formatted = format_notification(immediate_notification)
-                            logger.info(f"[OPENAI] Formatted notification: {formatted[:200]}...")
-                            yield formatted
-                        
-                        # Update the full assistant message
-                        if full_assistant_message["content"] is None:
-                            full_assistant_message["content"] = ""
-                        full_assistant_message["content"] += text
+                # --- Process the stream from the API (Responses API event-based) ---
+                # Native async iteration - no wrapper needed with AsyncOpenAI
+                event_count = 0
+                async for event in response_stream:
+                    event_count += 1
+                    event_type = getattr(event, 'type', None)
 
-                    # --- Accumulate Tool Call Details --- 
-                    if delta.tool_calls:
-                        for tool_call_chunk in delta.tool_calls:
-                            # Find or create the tool call entry
-                            tc_index = tool_call_chunk.index
-                            while len(tool_calls_requested) <= tc_index:
-                                tool_calls_requested.append({"id": None, "type": "function", "function": {"name": None, "arguments": ""}})
-                            
-                            current_tc = tool_calls_requested[tc_index]
-                            
-                            if tool_call_chunk.id:
-                                current_tc["id"] = tool_call_chunk.id
-                            if tool_call_chunk.function:
-                                if tool_call_chunk.function.name:
-                                    # Send early notification as soon as we know the function name
-                                    function_name = tool_call_chunk.function.name
-                                    current_tc["function"]["name"] = function_name
-                                    
-                                    
-                                    # Determine notification type based on function name
+                    # Debug log events periodically to reduce logging overhead
+                    if event_count <= 3 or event_count % 100 == 0:
+                        logger.debug(f"Event {event_count}: type={event_type}")
+
+                    # Handle different Responses API event types
+                    if event_type == 'response.output_text.delta':
+                        # Text content delta
+                        text = getattr(event, 'delta', '')
+                        if text:
+                            append_assistant_text(text)
+
+                            # Process text through tag handler
+                            output_text, notification, mode_message = await tag_handler.process_text_chunk(text, project_id)
+
+                            # Yield mode message if entering a special mode
+                            if mode_message:
+                                yield mode_message
+
+                            # Yield notification if present
+                            if notification:
+                                if isinstance(notification, dict):
+                                    message_to_agent = notification.get("message_to_agent")
+                                    if message_to_agent:
+                                        enqueue_agent_followup(message_to_agent)
+                                yield format_notification(notification)
+
+                            # Yield output text if present
+                            if output_text:
+                                yield output_text
+
+                            # Check for immediate notifications to yield
+                            immediate_notifications = tag_handler.get_immediate_notifications()
+                            for immediate_notification in immediate_notifications:
+                                if isinstance(immediate_notification, dict):
+                                    message_to_agent = immediate_notification.get("message_to_agent")
+                                    if message_to_agent:
+                                        enqueue_agent_followup(message_to_agent)
+                                formatted = format_notification(immediate_notification)
+                                yield formatted
+
+                    elif event_type == 'response.output_item.added':
+                        # New output item added - could be text or function_call
+                        item = getattr(event, 'item', None)
+                        if item:
+                            item_type = getattr(item, 'type', None)
+                            if item_type == 'function_call':
+                                # Start of a new function call
+                                current_function_call = {
+                                    "id": getattr(item, 'call_id', None) or getattr(item, 'id', None),
+                                    "name": getattr(item, 'name', None),
+                                    "arguments": ""
+                                }
+                                if current_function_call["name"]:
+                                    function_name = current_function_call["name"]
+                                    # Send early notification
                                     notification_type = get_notification_type_for_tool(function_name)
-                                    
-                                    # Skip early notification for stream_prd_content and stream_implementation_content
                                     if function_name not in ["stream_prd_content", "stream_implementation_content"]:
                                         logger.debug(f"SENDING EARLY NOTIFICATION FOR {function_name}")
                                         early_notification = {
@@ -533,85 +609,154 @@ class OpenAIProvider(BaseLLMProvider):
                                         }
                                         notification_json = json.dumps(early_notification)
                                         yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
-                                
-                                if tool_call_chunk.function.arguments:
-                                    current_tc["function"]["arguments"] += tool_call_chunk.function.arguments
 
-                    # --- Check Finish Reason --- 
-                    if finish_reason:
-                        logger.debug(f"Finish Reason Detected: {finish_reason}")
-                        
+                    elif event_type == 'response.function_call_arguments.delta':
+                        # Function call arguments delta
+                        delta = getattr(event, 'delta', '')
+                        if delta:
+                            current_function_call["arguments"] += delta
+
+                    elif event_type == 'response.function_call_arguments.done':
+                        # Function call arguments complete - add to tool_calls_requested
+                        if current_function_call["name"]:
+                            tool_calls_requested.append({
+                                "id": current_function_call["id"],
+                                "type": "function",
+                                "function": {
+                                    "name": current_function_call["name"],
+                                    "arguments": current_function_call["arguments"] or "{}"
+                                }
+                            })
+                            logger.debug(f"Function call complete: {current_function_call['name']}")
+
+                    elif event_type == 'response.completed':
+                        # Response completed - extract usage and determine finish reason
+                        response_obj = getattr(event, 'response', None)
+                        if response_obj:
+                            # Extract response ID for multi-turn tool calls
+                            response_id = getattr(response_obj, 'id', None)
+                            if response_id:
+                                previous_response_id = response_id
+                                logger.info(f"Extracted response_id for multi-turn: {response_id}")
+
+                            # Extract usage data
+                            usage_obj = getattr(response_obj, 'usage', None)
+                            if usage_obj:
+                                usage_data = usage_obj
+                                logger.info(f"Token usage from response.completed: input={getattr(usage_data, 'input_tokens', 'N/A')}, output={getattr(usage_data, 'output_tokens', 'N/A')}")
+
+                            # Determine finish reason from output
+                            output = getattr(response_obj, 'output', [])
+                            if output:
+                                for item in output:
+                                    if getattr(item, 'type', None) == 'function_call':
+                                        finish_reason = "tool_calls"
+                                        break
+                            if not finish_reason:
+                                finish_reason = "stop"
+                        else:
+                            finish_reason = "stop"
+
+                        logger.debug(f"Response completed, finish_reason={finish_reason}, previous_response_id={previous_response_id}")
+
                         # Flush any remaining buffer content
                         flushed_output = tag_handler.flush_buffer()
                         if flushed_output:
                             yield flushed_output
-                        
-                        if finish_reason == "tool_calls":
-                            # Process tool calls...
-                            for tc in tool_calls_requested:
-                                if not tc["function"]["arguments"].strip():
-                                    tc["function"]["arguments"] = "{}"
 
-                            full_assistant_message["tool_calls"] = tool_calls_requested
+                        break  # Exit the event loop
 
-                            if full_assistant_message["content"] is None:
-                                full_assistant_message.pop("content")
+                    elif event_type in ('response.created', 'response.in_progress', 'response.output_item.done',
+                                       'response.content_part.added', 'response.content_part.done',
+                                       'response.output_text.done'):
+                        # Informational events - just log them
+                        logger.debug(f"Received event: {event_type}")
+                        continue
 
-                            current_messages.append(full_assistant_message)
-                            
-                            # Execute tools
-                            tool_results_messages = []
-                            for tool_call_to_execute in tool_calls_requested:
-                                tool_call_id = tool_call_to_execute["id"]
-                                tool_call_name = tool_call_to_execute["function"]["name"]
-                                tool_call_args_str = tool_call_to_execute["function"]["arguments"]
-                                
-                                logger.debug(f"OpenAI Provider - Tool Call ID: {tool_call_id}")
-                                
-                                
-                                # Use the shared execute_tool_call function
-                                result_content, notification_data, yielded_content = await execute_tool_call(
-                                    tool_call_name, tool_call_args_str, project_id, conversation_id
-                                )
-                                
-                                if yielded_content:
-                                    yield yielded_content
-                                
-                                tool_results_messages.append({
-                                    "role": "tool",
-                                    "tool_call_id": tool_call_id,
-                                    "content": f"Tool call {tool_call_name}() completed. {result_content}."
-                                })
-                                
-                                if notification_data:
-                                    logger.debug("YIELDING NOTIFICATION DATA TO CONSUMER")
-                                    notification_json = json.dumps(notification_data)
-                                    yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
-                                
-                            current_messages.extend(tool_results_messages)
-                            
-                            # Track token usage for tool calls using consolidated helper
-                            await self._track_usage_if_available(
-                                user, project, conversation, current_messages, total_assistant_output, usage_data
-                            )
-                            
-                            break # Break inner chunk loop
-                        
-                        elif finish_reason == "stop":
-                            # Don't return immediately - we need to check for usage data after loop
-                            logger.debug("Finish reason is 'stop', will check for usage data after loop")
-                            break  # Break inner loop to check for usage data
+                    elif event_type and event_type.startswith('response.web_search_call'):
+                        # Web search events from built-in web_search_preview tool
+                        # These are handled automatically by OpenAI - just send notification to UI
+                        if event_type == 'response.web_search_call.in_progress':
+                            logger.info("[OPENAI] Web search in progress")
+                            # Send notification that web search is happening
+                            search_notification = {
+                                "is_notification": True,
+                                "notification_type": "web_search",
+                                "early_notification": True,
+                                "function_name": "web_search",
+                                "notification_marker": "__NOTIFICATION__"
+                            }
+                            yield f"__NOTIFICATION__{json.dumps(search_notification)}__NOTIFICATION__"
+                        elif event_type == 'response.web_search_call.completed':
+                            logger.info("[OPENAI] Web search completed")
+                            # Send completion notification to remove spinner
+                            complete_notification = {
+                                "is_notification": True,
+                                "notification_type": "web_search",
+                                "early_notification": False,
+                                "function_name": "web_search",
+                                "notification_marker": "__NOTIFICATION__"
+                            }
+                            yield f"__NOTIFICATION__{json.dumps(complete_notification)}__NOTIFICATION__"
                         else:
-                            # Handle other finish reasons
-                            logger.warning(f"Unhandled finish reason: {finish_reason}")
-                            return
-                
-                # After streaming completes, check last chunk for usage data
-                if not usage_data and last_chunk:
-                    last_chunk_usage = self._extract_usage_from_chunk(last_chunk)
-                    if last_chunk_usage:
-                        usage_data = last_chunk_usage
-                        logger.info(f"Token usage found in last chunk: input={getattr(usage_data, 'prompt_tokens', 'N/A')}, output={getattr(usage_data, 'completion_tokens', 'N/A')}, total={getattr(usage_data, 'total_tokens', 'N/A')}")
+                            logger.debug(f"Web search event: {event_type}")
+                        continue
+
+                # --- Handle finish reason after event loop ---
+                if finish_reason == "tool_calls" and tool_calls_requested:
+                    # Execute tools and collect results
+                    # Note: In Responses API, we don't append assistant's tool_calls message back
+                    # We only provide function_call_output items
+                    tool_results_messages = []
+                    for tool_call_to_execute in tool_calls_requested:
+                        tool_call_id = tool_call_to_execute["id"]
+                        tool_call_name = tool_call_to_execute["function"]["name"]
+                        tool_call_args_str = tool_call_to_execute["function"]["arguments"]
+
+                        logger.debug(f"OpenAI Provider - Tool Call ID: {tool_call_id}")
+
+                        # Use the shared execute_tool_call function
+                        result_content, notification_data, yielded_content = await execute_tool_call(
+                            tool_call_name, tool_call_args_str, project_id, conversation_id
+                        )
+
+                        if yielded_content:
+                            if isinstance(yielded_content, (list, tuple)):
+                                for chunk in yielded_content:
+                                    if chunk:
+                                        yield chunk
+                            else:
+                                yield yielded_content
+
+                        # Responses API uses function_call_output format
+                        tool_results_messages.append({
+                            "type": "function_call_output",
+                            "call_id": tool_call_id,
+                            "output": f"Tool call {tool_call_name}() completed. {result_content}."
+                        })
+
+                        if notification_data:
+                            logger.debug("YIELDING NOTIFICATION DATA TO CONSUMER")
+                            notification_list = notification_data if isinstance(notification_data, list) else [notification_data]
+                            for notification in notification_list:
+                                notification_json = json.dumps(notification)
+                                yield f"__NOTIFICATION__{notification_json}__NOTIFICATION__"
+
+                    # In Responses API with previous_response_id, we only send tool outputs as input
+                    # The API already has the context from the previous response
+                    current_messages = tool_results_messages
+                    logger.info(f"Set current_messages to {len(tool_results_messages)} function_call_output items for next turn")
+
+                    # Track token usage for tool calls
+                    await self._track_usage_if_available(
+                        user, project, conversation, messages, total_assistant_output, usage_data
+                    )
+
+                    # Reset tool calls for next iteration
+                    tool_calls_requested = []
+
+                    # Continue the loop to process tool results
+                    continue
                 
                 # If the inner loop finished because of tool_calls, continue
                 if finish_reason == "tool_calls":
@@ -630,6 +775,8 @@ class OpenAIProvider(BaseLLMProvider):
                         pending_notifications.append(unclosed_save)
                     for notification in pending_notifications:
                         logger.info(f"[OPENAI] Yielding pending notification: {notification}")
+                        if isinstance(notification, dict):
+                            enqueue_agent_followup(notification.get("message_to_agent"))
                         formatted = format_notification(notification)
                         yield formatted
                     
@@ -645,9 +792,18 @@ class OpenAIProvider(BaseLLMProvider):
                         save_notifications.append(unclosed_save2)
                     for notification in save_notifications:
                         logger.info(f"[OPENAI] Yielding save notification: {notification}")
+                        if isinstance(notification, dict):
+                            enqueue_agent_followup(notification.get("message_to_agent"))
                         formatted = format_notification(notification)
                         yield formatted
                     
+                    if agent_followup_messages:
+                        logger.info("[OPENAI] Agent follow-up messages detected; continuing conversation for handoff")
+                        if full_assistant_message.get("content"):
+                            current_messages.append({"role": "assistant", "content": full_assistant_message["content"]})
+                        current_messages.extend(agent_followup_messages)
+                        continue
+
                     # Track token usage using consolidated helper
                     await self._track_usage_if_available(
                         user, project, conversation, current_messages, total_assistant_output, usage_data

@@ -1,0 +1,523 @@
+"""
+Async Ticket Executor with per-project semaphores.
+
+Guarantees:
+- Sequential execution within each project (via Semaphore(1) per project)
+- Parallel execution across different projects (via asyncio)
+- Efficient I/O-bound handling (async/await for API calls, SSH, etc.)
+
+Usage:
+    from tasks.async_executor import get_executor
+
+    executor = get_executor()
+    result = await executor.execute_ticket(ticket_id, project_id, conversation_id)
+"""
+import asyncio
+import logging
+from typing import Dict, List, Any, Optional
+from concurrent.futures import ThreadPoolExecutor
+
+logger = logging.getLogger(__name__)
+
+
+class AsyncTicketExecutor:
+    """
+    Manages concurrent ticket execution with per-project serialization.
+
+    Architecture:
+    - Global semaphore limits total concurrent executions (prevents overload)
+    - Per-project semaphore (limit=1) ensures sequential execution within project
+    - ThreadPoolExecutor runs sync code in background threads
+    """
+
+    def __init__(self, max_concurrent_projects: int = 200):
+        """
+        Initialize the executor.
+
+        Args:
+            max_concurrent_projects: Maximum projects executing simultaneously
+        """
+        self.max_concurrent = max_concurrent_projects
+        self.project_semaphores: Dict[int, asyncio.Semaphore] = {}
+        self.global_semaphore = asyncio.Semaphore(max_concurrent_projects)
+        self._lock = asyncio.Lock()
+        self._thread_pool = ThreadPoolExecutor(max_workers=max_concurrent_projects)
+
+        logger.info(f"[EXECUTOR] Initialized with max_concurrent={max_concurrent_projects}")
+
+    async def get_project_semaphore(self, project_id: int) -> asyncio.Semaphore:
+        """
+        Get or create a semaphore for a project.
+
+        Each project gets a Semaphore(1), meaning only ONE ticket
+        can execute at a time for that project.
+        """
+        async with self._lock:
+            if project_id not in self.project_semaphores:
+                self.project_semaphores[project_id] = asyncio.Semaphore(1)
+                logger.debug(f"[EXECUTOR] Created semaphore for project {project_id}")
+            return self.project_semaphores[project_id]
+
+    async def execute_ticket(
+        self,
+        ticket_id: int,
+        project_id: int,
+        conversation_id: int
+    ) -> Dict[str, Any]:
+        """
+        Execute a single ticket with project-level serialization.
+
+        This method:
+        1. Acquires global semaphore (limits total concurrent)
+        2. Acquires project semaphore (ensures only 1 per project)
+        3. Checks for cancellation before executing
+        4. Runs the sync execute_ticket_implementation in thread pool
+        5. Returns result
+
+        Args:
+            ticket_id: The ticket to execute
+            project_id: The project database ID
+            conversation_id: The conversation ID for notifications
+
+        Returns:
+            Dict with execution result
+        """
+        from tasks.dispatch import update_ticket_queue_status_async, is_ticket_cancelled
+
+        project_sem = await self.get_project_semaphore(project_id)
+
+        async with self.global_semaphore:  # Limit total concurrent
+            async with project_sem:  # Only 1 per project at a time
+                # Check for cancellation BEFORE starting execution
+                # This handles the case where ticket was cancelled while waiting for semaphore
+                if await self._check_cancellation_async(ticket_id):
+                    logger.info(
+                        f"[EXECUTOR] Ticket #{ticket_id} was cancelled before execution, skipping"
+                    )
+                    return {
+                        'status': 'cancelled',
+                        'ticket_id': ticket_id,
+                        'message': 'Ticket was cancelled before execution started'
+                    }
+
+                logger.info(
+                    f"[EXECUTOR] Starting ticket #{ticket_id} "
+                    f"(project={project_id}, conv={conversation_id})"
+                )
+
+                # Update status to executing
+                try:
+                    await update_ticket_queue_status_async(ticket_id, 'executing')
+                except Exception as e:
+                    logger.warning(f"[EXECUTOR] Failed to update queue status: {e}")
+
+                try:
+                    # Import here to avoid circular imports
+                    from tasks.task_definitions import execute_ticket_implementation, execute_ticket_with_claude_cli
+                    from asgiref.sync import sync_to_async
+
+                    # Check if user prefers CLI mode
+                    use_cli_mode = await self._should_use_cli_mode(project_id)
+
+                    # Run sync function in thread pool (doesn't block event loop)
+                    loop = asyncio.get_event_loop()
+
+                    if use_cli_mode:
+                        logger.info(
+                            f"[EXECUTOR] Using Claude Code CLI mode for ticket #{ticket_id}"
+                        )
+                        result = await loop.run_in_executor(
+                            self._thread_pool,
+                            execute_ticket_with_claude_cli,
+                            ticket_id,
+                            project_id,
+                            conversation_id
+                        )
+                        # CLI mode is strict - no fallback to API mode
+                        # If CLI fails, the ticket will be marked as blocked/failed
+                    else:
+                        result = await loop.run_in_executor(
+                            self._thread_pool,
+                            execute_ticket_implementation,
+                            ticket_id,
+                            project_id,
+                            conversation_id
+                        )
+
+                    logger.info(
+                        f"[EXECUTOR] Completed ticket #{ticket_id}: "
+                        f"status={result.get('status')}"
+                    )
+                    return result
+
+                except Exception as e:
+                    logger.error(
+                        f"[EXECUTOR] Error executing ticket #{ticket_id}: {e}",
+                        exc_info=True
+                    )
+                    return {
+                        'status': 'error',
+                        'ticket_id': ticket_id,
+                        'error': str(e)
+                    }
+                finally:
+                    # Update status to not queued
+                    try:
+                        await update_ticket_queue_status_async(ticket_id, 'none')
+                    except Exception as e:
+                        logger.warning(f"[EXECUTOR] Failed to clear queue status: {e}")
+
+    async def _check_cancellation_async(self, ticket_id: int) -> bool:
+        """Check if a ticket has been cancelled (async wrapper)."""
+        from asgiref.sync import sync_to_async
+        from tasks.dispatch import is_ticket_cancelled
+
+        return await sync_to_async(is_ticket_cancelled)(ticket_id)
+
+    async def _should_use_cli_mode(self, project_id: int) -> bool:
+        """
+        Check if the user prefers Claude Code CLI mode for execution.
+
+        Returns True if user has enabled claude_code_enabled in ApplicationState.
+        Authentication readiness is validated inside the CLI execution flow itself.
+
+        Args:
+            project_id: The project database ID
+
+        Returns:
+            True if CLI mode should be used, False otherwise
+        """
+        from asgiref.sync import sync_to_async
+        from projects.models import Project
+        from accounts.models import ApplicationState
+
+        try:
+            # Get project owner
+            project = await sync_to_async(Project.objects.select_related('owner').get)(id=project_id)
+            user = project.owner
+
+            # Check ApplicationState for cli mode preference
+            app_state = await sync_to_async(
+                lambda: ApplicationState.objects.filter(user=user).first()
+            )()
+            if not app_state or not app_state.claude_code_enabled:
+                return False
+
+            logger.info(f"[EXECUTOR] CLI mode enabled for user {user.id}")
+            return True
+
+        except Exception as e:
+            logger.warning(f"[EXECUTOR] Error checking CLI mode preference: {e}")
+            return False
+
+    async def _broadcast_fallback_prompt(
+        self,
+        ticket_id: int,
+        conversation_id: int,
+        error: str
+    ) -> None:
+        """
+        Broadcast a fallback prompt when CLI mode fails.
+
+        This notifies the frontend to show a modal asking if the user
+        wants to retry with API mode.
+
+        Args:
+            ticket_id: The ticket ID
+            conversation_id: The conversation ID
+            error: The error message from CLI execution
+        """
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+
+        try:
+            channel_layer = get_channel_layer()
+            if not channel_layer:
+                return
+
+            await channel_layer.group_send(
+                f"conversation_{conversation_id}",
+                {
+                    'type': 'ai_response_chunk',
+                    'chunk': '',
+                    'is_final': False,
+                    'conversation_id': conversation_id,
+                    'is_notification': True,
+                    'notification_type': 'fallback_prompt',
+                    'notification_marker': '__NOTIFICATION__',
+                    'ticket_id': ticket_id,
+                    'error': error[:500],
+                    'message': f"Claude Code CLI failed: {error[:200]}. Would you like to retry with API mode?",
+                    'actions': [
+                        {'label': 'Retry with API', 'action': 'retry_api'},
+                        {'label': 'Cancel', 'action': 'cancel'}
+                    ]
+                }
+            )
+            logger.info(f"[EXECUTOR] Sent fallback prompt for ticket #{ticket_id}")
+
+        except Exception as e:
+            logger.warning(f"[EXECUTOR] Failed to send fallback prompt: {e}")
+
+    async def execute_project_batch(
+        self,
+        project_id: int,
+        ticket_ids: List[int],
+        conversation_id: int
+    ) -> Dict[str, Any]:
+        """
+        Execute all tickets for a project sequentially.
+
+        Tickets are processed one-by-one in order. Before each ticket:
+        - Check if ticket was cancelled (queue_status changed to 'none')
+        - Check if ticket is blocked or depends on blocked tickets
+
+        If a ticket fails with 'error' status, execution stops.
+
+        Args:
+            project_id: The project database ID
+            ticket_ids: List of ticket IDs to execute in order
+            conversation_id: The conversation ID for notifications
+
+        Returns:
+            Dict with batch results
+        """
+        logger.info(
+            f"[EXECUTOR] Starting batch for project {project_id}: "
+            f"{len(ticket_ids)} tickets"
+        )
+
+        results = []
+        completed = 0
+        cancelled = 0
+        blocked = 0
+
+        for i, ticket_id in enumerate(ticket_ids):
+            # Check if ticket should still be executed
+            should_execute, skip_reason = await self._should_execute_ticket(ticket_id)
+
+            if not should_execute:
+                logger.info(
+                    f"[EXECUTOR] Project {project_id}: skipping ticket #{ticket_id} - {skip_reason}"
+                )
+                results.append({
+                    'ticket_id': ticket_id,
+                    'status': 'skipped',
+                    'reason': skip_reason
+                })
+                if skip_reason == 'cancelled':
+                    cancelled += 1
+                elif skip_reason == 'blocked':
+                    blocked += 1
+                continue
+
+            logger.info(
+                f"[EXECUTOR] Project {project_id}: "
+                f"ticket {i+1}/{len(ticket_ids)} (#{ticket_id})"
+            )
+
+            result = await self.execute_ticket(ticket_id, project_id, conversation_id)
+            results.append(result)
+
+            if result.get('status') == 'success':
+                completed += 1
+            elif result.get('status') == 'error':
+                # Stop on error - remaining tickets are skipped
+                logger.warning(
+                    f"[EXECUTOR] Project {project_id}: stopping batch due to error "
+                    f"on ticket #{ticket_id}"
+                )
+                break
+
+        batch_result = {
+            'project_id': project_id,
+            'total': len(ticket_ids),
+            'completed': completed,
+            'failed': len([r for r in results if r.get('status') == 'error']),
+            'cancelled': cancelled,
+            'blocked': blocked,
+            'skipped': len(ticket_ids) - len(results),
+            'results': results
+        }
+
+        logger.info(
+            f"[EXECUTOR] Batch complete for project {project_id}: "
+            f"{completed}/{len(ticket_ids)} succeeded, {cancelled} cancelled, {blocked} blocked"
+        )
+
+        return batch_result
+
+    async def _should_execute_ticket(self, ticket_id: int) -> tuple:
+        """
+        Check if a ticket should be executed.
+
+        Returns:
+            (should_execute: bool, reason: str or None)
+        """
+        from asgiref.sync import sync_to_async
+
+        @sync_to_async
+        def _check():
+            from projects.models import ProjectTicket
+
+            try:
+                ticket = ProjectTicket.objects.get(id=ticket_id)
+
+                # Check if cancelled (queue_status was reset to 'none')
+                if ticket.queue_status == 'none':
+                    return (False, 'cancelled')
+
+                # Check if ticket is blocked
+                if ticket.status == 'blocked':
+                    return (False, 'blocked')
+
+                # Check if any dependencies are blocked or failed
+                dependency_ids = ticket.dependencies or []
+                dependencies = ProjectTicket.objects.filter(id__in=dependency_ids)
+                for dep in dependencies:
+                    if dep.status in ['blocked', 'failed']:
+                        # Mark this ticket as blocked too
+                        ticket.status = 'blocked'
+                        ticket.queue_status = 'none'
+                        ticket.save(update_fields=['status', 'queue_status'])
+                        return (False, 'blocked')
+                    # Also skip if dependency isn't done yet
+                    if dep.status not in ['done', 'review']:
+                        return (False, 'dependency_pending')
+
+                return (True, None)
+
+            except ProjectTicket.DoesNotExist:
+                return (False, 'not_found')
+
+        return await _check()
+
+    async def execute_multi_project(
+        self,
+        project_batches: Dict[int, Dict]
+    ) -> Dict[int, Any]:
+        """
+        Execute tickets for multiple projects in parallel.
+
+        Each project's tickets run sequentially (due to per-project semaphore),
+        but different projects run in parallel.
+
+        Args:
+            project_batches: Dict mapping project_id to batch config:
+                {
+                    project_id: {
+                        'ticket_ids': [1, 2, 3],
+                        'conversation_id': 100
+                    },
+                    ...
+                }
+
+        Returns:
+            Dict mapping project_id to batch result
+        """
+        logger.info(
+            f"[EXECUTOR] Starting multi-project execution: "
+            f"{len(project_batches)} projects"
+        )
+
+        # Create tasks for all projects
+        tasks = []
+        for project_id, batch in project_batches.items():
+            task = asyncio.create_task(
+                self.execute_project_batch(
+                    project_id,
+                    batch['ticket_ids'],
+                    batch['conversation_id']
+                ),
+                name=f"project_{project_id}"
+            )
+            tasks.append((project_id, task))
+
+        # Wait for all projects to complete
+        results = {}
+        for project_id, task in tasks:
+            try:
+                results[project_id] = await task
+            except Exception as e:
+                logger.error(
+                    f"[EXECUTOR] Project {project_id} failed: {e}",
+                    exc_info=True
+                )
+                results[project_id] = {
+                    'status': 'error',
+                    'project_id': project_id,
+                    'error': str(e)
+                }
+
+        # Summary
+        total_completed = sum(r.get('completed', 0) for r in results.values())
+        total_tickets = sum(r.get('total', 0) for r in results.values())
+
+        logger.info(
+            f"[EXECUTOR] Multi-project complete: "
+            f"{len(results)} projects, {total_completed}/{total_tickets} tickets"
+        )
+
+        return results
+
+    def cleanup_project(self, project_id: int):
+        """
+        Remove semaphore for a completed project.
+
+        Call this after a project batch completes to free memory.
+        """
+        removed = self.project_semaphores.pop(project_id, None)
+        if removed:
+            logger.debug(f"[EXECUTOR] Cleaned up semaphore for project {project_id}")
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get executor statistics."""
+        return {
+            'max_concurrent': self.max_concurrent,
+            'active_projects': len(self.project_semaphores),
+            'project_ids': list(self.project_semaphores.keys())
+        }
+
+    async def shutdown(self):
+        """Graceful shutdown - wait for running tasks and cleanup."""
+        logger.info("[EXECUTOR] Shutting down...")
+        self._thread_pool.shutdown(wait=True)
+        self.project_semaphores.clear()
+        logger.info("[EXECUTOR] Shutdown complete")
+
+
+# Global executor instance (singleton)
+_executor: Optional[AsyncTicketExecutor] = None
+
+
+def get_executor(max_concurrent: int = 200) -> AsyncTicketExecutor:
+    """
+    Get the global executor instance.
+
+    Creates the executor on first call with specified max_concurrent.
+    Subsequent calls return the same instance.
+
+    Args:
+        max_concurrent: Max concurrent projects (only used on first call)
+
+    Returns:
+        AsyncTicketExecutor instance
+    """
+    global _executor
+    if _executor is None:
+        from django.conf import settings
+
+        # Try to get from settings, fall back to parameter
+        executor_config = getattr(settings, 'ASYNC_EXECUTOR', {})
+        max_projects = executor_config.get('max_concurrent_projects', max_concurrent)
+
+        _executor = AsyncTicketExecutor(max_concurrent_projects=max_projects)
+    return _executor
+
+
+def reset_executor():
+    """Reset the global executor (mainly for testing)."""
+    global _executor
+    if _executor:
+        asyncio.run(_executor.shutdown())
+    _executor = None

@@ -248,6 +248,17 @@
     transition: color 0.2s ease;
 }
 
+.project-list-actions .dropdown-button {
+    padding: 0.3rem;
+    border-radius: 0.45rem;
+    background: rgba(148, 163, 184, 0.12);
+    border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.project-list-actions .dropdown-button:hover {
+    background: rgba(148, 163, 184, 0.2);
+}
+
 .dropdown-button:hover {
     color: var(--text-color);
 }
@@ -669,8 +680,7 @@
     border: 1px solid var(--border-color);
     border-radius: 0.5rem;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    position: relative;
     padding: 0;
     transition: all 0.3s ease;
 }
@@ -684,6 +694,7 @@
     flex: 1;
     display: flex;
     padding: 1rem 1.25rem;
+    padding-right: 4.75rem;
     text-decoration: none;
     color: inherit;
 }
@@ -741,7 +752,50 @@
 }
 
 .project-list-actions {
-    padding: 0 1rem;
+    position: absolute;
+    top: 0.9rem;
+    right: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.project-action-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.35rem 0.65rem;
+    border-radius: 0.55rem;
+    background: rgba(129, 140, 248, 0.18);
+    border: 1px solid rgba(129, 140, 248, 0.35);
+    color: #e0e7ff;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.project-action-button i {
+    font-size: 0.78rem;
+}
+
+.project-action-button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 14px rgba(129, 140, 248, 0.25);
+    background: rgba(129, 140, 248, 0.25);
+    color: #f5f3ff;
+}
+
+.project-action-button-secondary {
+    background: rgba(148, 163, 184, 0.12);
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    color: #d1d5db;
+    box-shadow: none;
+}
+
+.project-action-button-secondary:hover {
+    background: rgba(148, 163, 184, 0.18);
+    color: #f3f4f6;
 }
 
 /* Modal Styles */

@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Instant Mode - {{ project.name }} - LFG</title>
+    <!-- Theme Variables (must load first) -->
+    <link rel="stylesheet" href="/static/css/theme-variables.css">
+    <!-- Core Styles -->
+    <link rel="stylesheet" href="/static/css/common.css">
+    <link rel="stylesheet" href="/static/css/sidebar.css">
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="stylesheet" href="/static/css/chat.css">
+    <link rel="stylesheet" href="/static/css/instant.css">
+    <!-- Light Mode Overrides -->
+    <link rel="stylesheet" href="/static/css/light/light-mode.css?v=5">
+    <!-- External Resources -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="icon" type="image/x-icon" href="/static/images/favicon.ico">
+    <meta name="color-scheme" content="dark light">
+    <script src="/static/js/theme-switcher.js?v=3"></script>
+</head>
+<body data-theme="dark">
+    <div class="app-container{% if user.app_state.sidebar_minimized %} sidebar-minimized{% endif %}">
+        {% include 'includes/sidebar.html' with show_conversations=False sidebar_minimized=user.app_state.sidebar_minimized %}
+
+        <main class="instant-main">
+            <!-- Chat Panel -->
+            <div class="instant-chat-panel">
+                <div class="chat-messages" id="chat-messages">
+                    <!-- Messages will appear here -->
+                    <div class="message-container" id="message-container">
+                        {% if current_app and current_app.status != 'gathering' %}
+                        {% else %}
+                        <div class="welcome-message">
+                            <h2>Instant Mode <i class="fas fa-bolt" style="color: #f59e0b;"></i></h2>
+                            <p>Describe your app and I'll build it for you.</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="chat-input-container">
+                    <form id="chat-form">
+                        <div class="input-wrapper">
+                            <div class="left-actions">
+                                {% if instant_apps %}
+                                <div class="instant-app-selector">
+                                    <select id="app-selector" onchange="window.instantMode.switchApp(this.value)">
+                                        <option value="">New App</option>
+                                        {% for app in instant_apps %}
+                                        <option value="{{ app.app_id }}" {% if current_app and current_app.app_id == app.app_id %}selected{% endif %}>
+                                            {{ app.name }} ({{ app.status }})
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                {% endif %}
+                                <span class="status-indicators">
+                                    <span class="status-item" style="cursor: default;">
+                                        <span style="color: #f59e0b;"><i class="fas fa-bolt"></i> Instant</span>
+                                    </span>
+                                </span>
+                            </div>
+                            <div id="chat-input-box">
+                                <textarea
+                                    id="chat-input"
+                                    placeholder="Describe your app..."
+                                    rows="2"
+                                    autofocus
+                                ></textarea>
+                            </div>
+                            <div class="input-actions">
+                                <button type="submit" id="send-btn" class="action-btn" title="Send message">
+                                    <i class="fas fa-paper-plane"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Draggable Divider -->
+            <div class="instant-divider" id="instant-divider"></div>
+
+            <!-- Preview Panel -->
+            <div class="instant-preview-panel">
+                <div class="instant-preview-header">
+                    <div class="instant-preview-controls">
+                        <div class="viewport-toggle">
+                            <button class="viewport-btn active" data-viewport="desktop" title="Desktop">
+                                <i class="fas fa-desktop"></i>
+                            </button>
+                            <button class="viewport-btn" data-viewport="tablet" title="Tablet">
+                                <i class="fas fa-tablet-alt"></i>
+                            </button>
+                            <button class="viewport-btn" data-viewport="mobile" title="Mobile">
+                                <i class="fas fa-mobile-alt"></i>
+                            </button>
+                        </div>
+                        <div class="preview-url-bar" id="preview-url-bar" style="display: none;">
+                            <i class="fas fa-globe"></i>
+                            <span id="preview-url-text"></span>
+                            <a href="#" id="preview-open-btn" target="_blank" title="Open in new tab">
+                                <i class="fas fa-external-link-alt"></i>
+                            </a>
+                        </div>
+                    </div>
+                    <div class="preview-status" id="preview-status">
+                        <span class="status-dot" id="status-dot"></span>
+                        <span class="status-text" id="status-text">Waiting</span>
+                    </div>
+                </div>
+
+                <div class="instant-preview-content" id="preview-content">
+                    <div class="instant-preview-placeholder" id="preview-placeholder">
+                        <div class="placeholder-icon"><i class="fas fa-rocket"></i></div>
+                        <h3>Your app will appear here</h3>
+                        <p>Describe what you want to build in the chat, and a live preview will load once it's ready.</p>
+                    </div>
+
+                    <div class="instant-preview-building" id="preview-building" style="display: none;">
+                        <div class="building-spinner"></div>
+                        <h3>Building your app...</h3>
+                        <p id="building-message">Provisioning sandbox...</p>
+                    </div>
+
+                    <iframe
+                        id="preview-iframe"
+                        class="instant-preview-iframe"
+                        style="display: none;"
+                        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+                    ></iframe>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // Pass data from Django to JS
+        window.INSTANT_CONFIG = {
+            projectId: "{{ project.project_id }}",
+            projectDbId: {{ project.id }},
+            currentAppId: "{{ current_app.app_id|default:'' }}",
+            currentAppStatus: "{{ current_app.status|default:'gathering' }}",
+            previewUrl: "{{ current_app.preview_url|default:'' }}",
+            conversationId: {% if current_app and current_app.conversation %}{{ current_app.conversation.id }}{% else %}null{% endif %},
+            wsUrl: "{{ ws_url|default:'' }}",
+        };
+    </script>
+    <script src="/static/js/sidebar.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="/static/js/markdown-config.js"></script>
+    <script src="/static/js/instant.js"></script>
+</body>
+</html>

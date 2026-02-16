@@ -25,22 +25,19 @@
             </div>
         </div>
         <div class="project-header-actions">
-            <a href="{% url 'create_conversation' project.project_id %}" class="btn btn-primary">
-                <i class="fas fa-plus"></i> New Chat
+            <a href="{% url 'create_conversation' project.project_id %}" class="btn btn-primary" style="display: inline-flex; align-items: center; gap: 8px;">
+                <i class="fas fa-arrow-left"></i> <span>Back to Workspace</span>
             </a>
-            <a href="{% url 'projects:project_terminal' project.project_id %}" class="btn btn-outline">
-                <i class="fas fa-terminal"></i> Terminal
-            </a>
-            <button type="button" class="btn btn-outline" onclick="openCodebaseSidebar()">
-                <i class="fas fa-code-branch"></i> Codebase
-            </button>
         </div>
     </div>
 
     <div class="project-tabs">
-        <a href="#overview" class="tab-item active" data-section="overview">
-            <i class="fas fa-home"></i>
-            Overview
+        <a href="#codebase" class="tab-item active" data-section="codebase">
+            <i class="fas fa-code-branch"></i>
+            Codebase
+            {% if project.indexed_repository %}
+                <span class="tab-status tab-status-{{ project.indexed_repository.status }}"></span>
+            {% endif %}
         </a>
         <a href="#conversations" class="tab-item" data-section="conversations">
             <i class="fas fa-comments"></i>
@@ -49,11 +46,11 @@
                 <span class="tab-count">{{ project.direct_conversations.all.count }}</span>
             {% endif %}
         </a>
-        <a href="#codebase" class="tab-item" data-section="codebase">
-            <i class="fas fa-code-branch"></i>
-            Codebase
-            {% if project.indexed_repository %}
-                <span class="tab-status tab-status-{{ project.indexed_repository.status }}"></span>
+        <a href="#tickets" class="tab-item" data-section="tickets">
+            <i class="fas fa-tasks"></i>
+            Tickets
+            {% if project.tickets.all.count %}
+                <span class="tab-count">{{ project.tickets.all.count }}</span>
             {% endif %}
         </a>
         <a href="#integrations" class="tab-item" data-section="integrations">
@@ -63,118 +60,42 @@
                 <span class="tab-status tab-status-active"></span>
             {% endif %}
         </a>
+        <a href="#instant-apps" class="tab-item" data-section="instant-apps">
+            <i class="fas fa-bolt"></i>
+            Instant Apps
+            {% if instant_apps_count %}
+                <span class="tab-count">{{ instant_apps_count }}</span>
+            {% endif %}
+        </a>
+        <a href="#environment" class="tab-item" data-section="environment">
+            <i class="fas fa-key"></i>
+            Environment
+        </a>
         <a href="#settings" class="tab-item" data-section="settings">
             <i class="fas fa-cog"></i>
             Settings
         </a>
     </div>
 
-    <!-- Overview Section -->
-    <div class="project-section active" id="overview-section">
-        <div class="section-grid">
-            <div class="section-card about-card">
-                <div class="card-header">
-                    <h3 class="card-title">About this project</h3>
-                    <button type="button" class="btn btn-sm btn-outline" onclick="openAboutModal()">
-                        <i class="fas fa-pen"></i> Edit
-                    </button>
-                </div>
-                <div class="card-content">
-                    <p id="project-description-text" data-empty="{% if project.description %}false{% else %}true{% endif %}">
-                        {% if project.description %}
-                            {{ project.description }}
-                        {% else %}
-                            <span class="text-muted">No description provided</span>
-                        {% endif %}
-                    </p>
-                </div>
-            </div>
-            
-            <div class="section-card project-stats-card">
-                <h3 class="card-title">Project Stats</h3>
-                <div class="card-content">
-                    <div class="stats-list">
-                        <div class="stat-row">
-                            <span class="stat-label">Conversations</span>
-                            <span class="stat-value">{{ project.direct_conversations.all.count }}</span>
-                        </div>
-                        <div class="stat-row">
-                            <span class="stat-label">Age</span>
-                            <span class="stat-value">{{ project.created_at|timesince }}</span>
-                        </div>
-                        {% if project.indexed_repository %}
-                        <div class="stat-row">
-                            <span class="stat-label">Files Indexed</span>
-                            <span class="stat-value">{{ project.indexed_repository.indexed_files_count }}</span>
-                        </div>
-                        <div class="stat-row">
-                            <span class="stat-label">Entities Mapped</span>
-                            <span class="stat-value">{{ project.indexed_repository.total_entities }}</span>
-                        </div>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div id="about-project-overlay" class="about-modal-overlay">
-            <div class="about-modal" id="about-project-modal">
-                <div class="modal-header">
-                    <div>
-                        <span class="modal-context">Update Project Overview</span>
-                        <h3 class="modal-title">Edit project description</h3>
-                        <p class="modal-subtitle">Keep teammates aligned with a clear summary.</p>
-                    </div>
-                    <button type="button" class="modal-close" onclick="closeAboutModal()" aria-label="Close">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                <form method="post" action="{% url 'projects:update_project_description' project.project_id %}" class="modal-form">
-                    {% csrf_token %}
-                    <div class="form-group">
-                        <label for="about-project-input">Project description</label>
-                        <textarea id="about-project-input" name="description" rows="6" placeholder="Describe the project goals, scope, and milestones">{{ project.description|default_if_none:''|escape }}</textarea>
-                    </div>
-                    <div class="modal-actions">
-                        <button type="button" class="btn btn-outline" onclick="closeAboutModal()">Cancel</button>
-                        <button type="submit" class="btn btn-primary">Save</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-    
     <!-- Conversations Section -->
     <div class="project-section" id="conversations-section">
         <div class="section-header">
             <h2 class="section-title">Conversations</h2>
-            <a href="{% url 'create_conversation' project.project_id %}" class="btn btn-primary btn-sm">
-                <i class="fas fa-plus"></i> New Conversation
+            <a href="{% url 'create_conversation' project.project_id %}" class="btn btn-primary btn-sm" style="display: inline-flex; align-items: center; gap: 6px;">
+                <i class="fas fa-plus"></i> <span>New Conversation</span>
             </a>
         </div>
-        
+
         {% if project.direct_conversations.all %}
-            <div class="conversation-list">
+            <div class="conversation-list-compact">
                 {% for conversation in project.direct_conversations.all|dictsortreversed:"updated_at" %}
-                    <div class="conversation-list-item">
-                        <div class="conversation-list-main">
-                            <div class="conversation-icon">
-                                <i class="fas fa-comments"></i>
-                            </div>
-                            <div class="conversation-content">
-                                <h4 class="conversation-title">{{ conversation.title }}</h4>
-                                <div class="conversation-meta">
-                                    <span><i class="fas fa-calendar"></i> {{ conversation.created_at|date:"M d, Y" }}</span>
-                                    <span><i class="fas fa-message"></i> {{ conversation.messages.count }} messages</span>
-                                </div>
-                            </div>
+                    <a href="{% url 'create_conversation' project.project_id %}" class="conversation-row">
+                        <div class="conversation-row-main">
+                            <span class="conversation-row-title">{{ conversation.title|truncatechars:60 }}</span>
+                            <span class="conversation-row-meta">{{ conversation.created_at|date:"M d" }} · {{ conversation.messages.count }} msgs</span>
                         </div>
-                        <div class="conversation-actions">
-                            <a href="{% url 'conversation_detail' conversation.id %}" class="btn btn-sm btn-outline">
-                                <i class="fas fa-external-link-alt"></i> Open
-                            </a>
-                        </div>
-                    </div>
+                        <i class="fas fa-chevron-right conversation-row-arrow"></i>
+                    </a>
                 {% endfor %}
             </div>
         {% else %}
@@ -186,20 +107,110 @@
                 <div class="empty-state-text">
                     Start a conversation to interact with AI about this project.
                 </div>
-                <a href="{% url 'create_conversation' project.project_id %}" class="btn btn-primary">
-                    <i class="fas fa-comment"></i> Start First Conversation
+                <a href="{% url 'create_conversation' project.project_id %}" class="btn btn-primary" style="display: inline-flex; align-items: center; gap: 6px;">
+                    <i class="fas fa-comment"></i> <span>Start First Conversation</span>
                 </a>
             </div>
         {% endif %}
     </div>
-    
+
+    <!-- Tickets Section -->
+    <div class="project-section" id="tickets-section">
+        <div class="section-header">
+            <h2 class="section-title">Tickets</h2>
+            <div class="section-header-actions">
+                {% if project.linear_sync_enabled %}
+                    <button class="btn btn-outline btn-sm" onclick="syncTicketsWithLinear()">
+                        <i class="fas fa-sync"></i> Sync with Linear
+                    </button>
+                {% endif %}
+                <button class="btn btn-primary btn-sm" onclick="showCreateTicketModal()" style="display: inline-flex; align-items: center; gap: 6px;">
+                    <i class="fas fa-plus"></i> <span>New Ticket</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="tickets-container">
+            <!-- Filters and Search -->
+            <div class="tickets-filters">
+                <div class="filter-group">
+                    <input type="text" class="filter-search" id="ticketSearch" placeholder="Search tickets..." onkeyup="filterTickets()">
+                </div>
+                <div class="filter-group">
+                    <select class="filter-select" id="statusFilter" onchange="filterTickets()">
+                        <option value="">All Statuses</option>
+                        <option value="open">Open</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="done">Done</option>
+                        <option value="blocked">Blocked</option>
+                    </select>
+                    <select class="filter-select" id="priorityFilter" onchange="filterTickets()">
+                        <option value="">All Priorities</option>
+                        <option value="High">High</option>
+                        <option value="Medium">Medium</option>
+                        <option value="Low">Low</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Tickets Table -->
+            <div class="tickets-table-wrapper">
+                <table class="tickets-table" id="ticketsTable">
+                    <thead>
+                        <tr>
+                            <th>Ticket</th>
+                            <th>Status</th>
+                            <th>Priority</th>
+                            <th>Assignee</th>
+                            <th>Due</th>
+                            <th>Tags</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ticketsTableBody">
+                        <!-- Tickets will be loaded here -->
+                    </tbody>
+                </table>
+
+                <!-- Empty State -->
+                <div class="empty-state" id="ticketsEmptyState" style="display: none;">
+                    <div class="empty-state-icon">
+                        <i class="fas fa-tasks"></i>
+                    </div>
+                    <h3 class="empty-state-title">No tickets yet</h3>
+                    <div class="empty-state-text">
+                        Create tickets to track work items for this project.
+                    </div>
+                    <button class="btn btn-primary" onclick="showCreateTicketModal()">
+                        <i class="fas fa-plus"></i> Create First Ticket
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ticket Details Drawer -->
+        <div class="ticket-drawer" id="ticketDrawer">
+            <div class="drawer-header">
+                <h3 class="drawer-title" id="drawerTicketTitle"></h3>
+                <button class="drawer-close" onclick="closeTicketDrawer()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="drawer-content" id="drawerContent">
+                <!-- Ticket details will be loaded here -->
+            </div>
+        </div>
+
+        <!-- Overlay for drawer -->
+        <div class="drawer-overlay" id="drawerOverlay" onclick="closeTicketDrawer()"></div>
+    </div>
+
     <!-- Codebase Section -->
-    <div class="project-section" id="codebase-section">
+    <div class="project-section active" id="codebase-section">
         <div class="section-header">
             <h2 class="section-title">Codebase Management</h2>
             {% if project.indexed_repository %}
-            <button class="btn btn-outline btn-sm" onclick="reindexRepository({{ project.indexed_repository.id }})">
-                <i class="fas fa-sync"></i> Re-index
+            <button class="btn btn-outline btn-sm" onclick="reindexRepository({{ project.indexed_repository.id }})" style="display: inline-flex; align-items: center; gap: 6px;">
+                <i class="fas fa-sync"></i> <span>Re-index</span>
             </button>
             {% endif %}
         </div>
@@ -213,7 +224,19 @@
                         </div>
                         <div class="codebase-info">
                             <h3>{{ project.indexed_repository.github_owner }}/{{ project.indexed_repository.github_repo_name }}</h3>
-                            <p>Branch: {{ project.indexed_repository.branch }}</p>
+                            <div class="branch-selector-row" style="display: flex; align-items: center; gap: 0.5rem; margin: 0.25rem 0;">
+                                <span style="color: #94a3b8; font-size: 13px;">Branch:</span>
+                                <select id="branchSelector"
+                                        class="branch-dropdown"
+                                        data-repository-id="{{ project.indexed_repository.id }}"
+                                        onchange="updateBranch(this.value)"
+                                        style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 4px 8px; color: #f1f5f9; font-size: 13px; cursor: pointer; min-width: 120px;">
+                                    <option value="{{ project.indexed_repository.github_branch }}">{{ project.indexed_repository.github_branch }}</option>
+                                </select>
+                                <button onclick="loadBranches()" class="btn-icon" style="background: none; border: none; color: #94a3b8; cursor: pointer; padding: 4px;" title="Refresh branches">
+                                    <i class="fas fa-sync-alt" style="font-size: 12px;"></i>
+                                </button>
+                            </div>
                             <span class="status-badge status-{{ project.indexed_repository.status }}" 
                                   {% if project.indexed_repository.error_message %}title="{{ project.indexed_repository.error_message }}"{% endif %}>
                                 {{ project.indexed_repository.get_status_display }}
@@ -244,26 +267,99 @@
                             <span class="stat-label">Entities Mapped</span>
                         </div>
                     </div>
-                    
-                    <div class="codebase-actions">
-                        <a href="{% url 'codebase_index:repository_detail' project.indexed_repository.id %}" class="btn btn-outline">
-                            <i class="fas fa-chart-bar"></i> View Analytics
+
+                    <!-- Tech Stack Info -->
+                    {% if stack_config %}
+                    <div class="tech-stack-info" style="margin-top: 1.5rem; padding: 1rem; background: rgba(187, 134, 252, 0.1); border: 1px solid rgba(187, 134, 252, 0.3); border-radius: 0.5rem;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <i class="fas fa-layer-group" style="color: #bb86fc;"></i>
+                                <h4 style="margin: 0; color: #f1f5f9; font-size: 14px; font-weight: 600;">Tech Stack: {{ stack_config.name }}</h4>
+                                <button onclick="openStackEditModal()" class="btn-icon" style="background: none; border: none; color: #94a3b8; cursor: pointer; padding: 4px; margin-left: 4px;" title="Edit Stack">
+                                    <i class="fas fa-pencil-alt" style="font-size: 12px;"></i>
+                                </button>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                {% with workspace=project.sandboxes.first %}
+                                {% if workspace and workspace.proxy_url %}
+                                <a href="{{ workspace.proxy_url }}" target="_blank" class="btn btn-sm btn-primary" style="display: inline-flex; align-items: center; gap: 6px;">
+                                    <i class="fas fa-external-link-alt"></i> Preview App
+                                </a>
+                                {% endif %}
+                                {% endwith %}
+                            </div>
+                        </div>
+                        <div style="display: grid; gap: 0.5rem; font-size: 13px;">
+                            <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+                                <span style="color: #94a3b8; min-width: 100px;">Project Dir:</span>
+                                <code style="background: rgba(0,0,0,0.3); padding: 2px 8px; border-radius: 4px; color: #e0e0e0;">/workspace/{{ stack_config.project_dir }}</code>
+                            </div>
+                            {% if stack_config.install_cmd %}
+                            <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+                                <span style="color: #94a3b8; min-width: 100px;">Install:</span>
+                                <code style="background: rgba(0,0,0,0.3); padding: 2px 8px; border-radius: 4px; color: #e0e0e0;">{{ stack_config.install_cmd }}</code>
+                            </div>
+                            {% endif %}
+                            {% if stack_config.dev_cmd %}
+                            <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+                                <span style="color: #94a3b8; min-width: 100px;">Dev Server:</span>
+                                <code style="background: rgba(0,0,0,0.3); padding: 2px 8px; border-radius: 4px; color: #e0e0e0;">{{ stack_config.dev_cmd }}</code>
+                            </div>
+                            {% endif %}
+                            <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+                                <span style="color: #94a3b8; min-width: 100px;">Default Port:</span>
+                                <code style="background: rgba(0,0,0,0.3); padding: 2px 8px; border-radius: 4px; color: #e0e0e0;">{{ stack_config.default_port }}</code>
+                            </div>
+                            {% with workspace=project.sandboxes.first %}
+                            {% if workspace and workspace.proxy_url %}
+                            <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+                                <span style="color: #94a3b8; min-width: 100px;">Preview URL:</span>
+                                <a href="{{ workspace.proxy_url }}" target="_blank" style="color: #bb86fc; text-decoration: none;">{{ workspace.proxy_url }}</a>
+                            </div>
+                            {% endif %}
+                            {% endwith %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <div class="codebase-actions" style="display: flex; gap: 12px; margin-top: 1rem;">
+                        <a href="{% url 'codebase_index:repository_detail' project.indexed_repository.id %}" class="btn btn-outline" style="display: inline-flex; align-items: center; gap: 6px;">
+                            <i class="fas fa-chart-bar"></i> <span>View Analytics</span>
                         </a>
-                        <button class="btn btn-outline-danger" onclick="disconnectRepository()">
-                            <i class="fas fa-unlink"></i> Disconnect
+                        <button class="btn btn-outline-danger" onclick="disconnectRepository()" style="display: inline-flex; align-items: center; gap: 6px;">
+                            <i class="fas fa-unlink"></i> <span>Disconnect</span>
                         </button>
                     </div>
                 </div>
 
                 <!-- Codebase Summary Section -->
-                <div class="codebase-summary-container" style="margin-top: 2rem;" data-repository-id="{{ project.indexed_repository.id }}">
-                    <div class="codebase-summary-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
-                        <h3 style="margin: 0;"><i class="fas fa-book-open"></i> AI-Generated Codebase Summary</h3>
-                        <button class="btn btn-sm btn-outline" id="refreshSummaryBtn" onclick="loadCodebaseSummary()">
-                            <i class="fas fa-sync"></i> Refresh
+                <style>
+                    .codebase-summary-content h1, .codebase-summary-content h2, .codebase-summary-content h3 {
+                        margin-top: 1rem;
+                        margin-bottom: 0.5rem;
+                    }
+                    .codebase-summary-content h1:first-child, .codebase-summary-content h2:first-child, .codebase-summary-content h3:first-child {
+                        margin-top: 0;
+                    }
+                    .codebase-summary-content p {
+                        margin: 0.5rem 0;
+                    }
+                    .codebase-summary-content ul, .codebase-summary-content ol {
+                        margin: 0.5rem 0;
+                        padding-left: 1.5rem;
+                    }
+                    .codebase-summary-content li {
+                        margin: 0.25rem 0;
+                    }
+                </style>
+                <div class="codebase-summary-container" style="margin-top: 1.5rem;" data-repository-id="{{ project.indexed_repository.id }}">
+                    <div class="codebase-summary-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; padding-bottom: 0.75rem; border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
+                        <h3 style="margin: 0; font-size: 16px;"><i class="fas fa-book-open"></i> AI-Generated Codebase Summary</h3>
+                        <button class="btn btn-sm btn-outline" id="refreshSummaryBtn" onclick="loadCodebaseSummary()" style="display: inline-flex; align-items: center; gap: 6px;">
+                            <i class="fas fa-sync"></i> <span>Refresh</span>
                         </button>
                     </div>
-                    <div id="codebaseSummaryContent" class="codebase-summary-content" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 0.5rem; padding: 1.5rem; min-height: 200px;">
+                    <div id="codebaseSummaryContent" class="codebase-summary-content" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 0.5rem; padding: 1rem; min-height: 150px; font-size: 14px; line-height: 1.5;">
                         <p style="color: rgba(255, 255, 255, 0.5); text-align: center;"><i class="fas fa-spinner fa-spin"></i> Loading summary...</p>
                     </div>
                 </div>
@@ -348,14 +444,41 @@
                         </div>
                     </div>
                     
-                    <button class="btn btn-primary" onclick="showCodebaseModal()">
-                        <i class="fas fa-plus" style="margin-right: 10px;"></i>Connect Repository
+                    <button class="btn btn-primary" onclick="showCodebaseModal()" style="display: inline-flex; align-items: center; gap: 8px;">
+                        <i class="fas fa-plus"></i> <span>Connect Repository</span>
                     </button>
                 </div>
             </div>
         {% endif %}
     </div>
     
+    <!-- Instant Apps Section -->
+    <div class="project-section" id="instant-apps-section">
+        <div class="section-header">
+            <h2 class="section-title">Instant Apps</h2>
+            <a href="{% url 'instant_mode' project_id=project.project_id %}" class="btn btn-primary btn-sm" style="display: inline-flex; align-items: center; gap: 6px;">
+                <i class="fas fa-bolt"></i> <span>New Instant App</span>
+            </a>
+        </div>
+
+        <div id="instant-apps-list">
+            <!-- Loaded dynamically via JS -->
+        </div>
+
+        <div class="empty-state" id="instant-apps-empty" style="display: none;">
+            <div class="empty-state-icon">
+                <i class="fas fa-bolt"></i>
+            </div>
+            <h3 class="empty-state-title">No instant apps yet</h3>
+            <div class="empty-state-text">
+                Use Instant Mode to quickly build full-stack apps through a conversational interface.
+            </div>
+            <a href="{% url 'instant_mode' project_id=project.project_id %}" class="btn btn-primary" style="display: inline-flex; align-items: center; gap: 6px;">
+                <i class="fas fa-bolt"></i> <span>Launch Instant Mode</span>
+            </a>
+        </div>
+    </div>
+
     <!-- Integrations Section -->
     <div class="project-section" id="integrations-section">
         <div class="section-header">
@@ -393,13 +516,92 @@
             </div>
         </div>
     </div>
-    
+
+    <!-- Environment Variables Section -->
+    <div class="project-section" id="environment-section">
+        <div class="section-header">
+            <h2 class="section-title">Environment Variables</h2>
+        </div>
+
+        <p class="section-description" style="color: var(--text-secondary); margin-bottom: 1.5rem;">
+            Configure environment variables that will be injected into your workspace when running commands or starting servers.
+            Values are encrypted and stored securely.
+        </p>
+
+        <!-- Existing Variables List -->
+        <div class="settings-group">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 style="margin: 0;">Current Variables</h3>
+                <button type="button" class="btn btn-secondary btn-sm" id="download-env-btn" onclick="downloadEnvVars()" title="Download as .env file" style="padding: 0.4rem 0.75rem; font-size: 0.8rem;">
+                    <i class="fas fa-download"></i> Download .env
+                </button>
+            </div>
+            <div id="env-vars-list" class="env-vars-list">
+                <div class="env-vars-loading">Loading environment variables...</div>
+            </div>
+        </div>
+
+        <!-- Import Section -->
+        <div class="settings-group" style="margin-top: 1.5rem;">
+            <h3><i class="fas fa-file-import"></i> Import from .env file</h3>
+            <textarea id="env-content-input" class="form-control" rows="6"
+                      placeholder="Paste your .env file content here&#10;&#10;Example:&#10;DATABASE_URL=postgres://user:pass@host/db&#10;SECRET_KEY=your-secret-key&#10;API_KEY=abc123"
+                      style="font-family: monospace; margin-bottom: 0.5rem;"></textarea>
+            <small style="color: var(--text-secondary); display: block; margin-bottom: 0.5rem;">
+                Supports KEY=value format. Comments (#) and export statements are handled.
+            </small>
+            <button type="button" class="btn btn-secondary" id="import-env-btn">
+                <i class="fas fa-upload"></i> Import Variables
+            </button>
+        </div>
+
+        <!-- Add Single Variable -->
+        <div class="settings-group" style="margin-top: 1.5rem;">
+            <h3><i class="fas fa-plus"></i> Add Single Variable</h3>
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: flex-end;">
+                <div style="flex: 1; min-width: 150px;">
+                    <label style="display: block; font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Key</label>
+                    <input type="text" id="new-env-key" class="form-control" placeholder="KEY_NAME"
+                           style="text-transform: uppercase; font-family: monospace;">
+                </div>
+                <div style="flex: 2; min-width: 200px;">
+                    <label style="display: block; font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Value</label>
+                    <input type="password" id="new-env-value" class="form-control" placeholder="value"
+                           style="font-family: monospace;">
+                </div>
+                <div style="padding-bottom: 0.5rem;">
+                    <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.85rem; cursor: pointer; color: var(--text-secondary);">
+                        <input type="checkbox" id="new-env-secret" checked>
+                        Secret
+                    </label>
+                </div>
+                <button type="button" class="btn btn-secondary" id="add-env-btn">
+                    <i class="fas fa-plus"></i> Add
+                </button>
+            </div>
+        </div>
+
+        <!-- Clear All -->
+        <div class="settings-group danger-zone" style="margin-top: 1.5rem;">
+            <h3>Danger Zone</h3>
+            <div class="settings-item">
+                <div class="setting-info">
+                    <label>Clear All Variables</label>
+                    <span>Permanently delete all environment variables for this project.</span>
+                </div>
+                <button type="button" class="btn btn-danger btn-sm" id="clear-all-env-btn">
+                    <i class="fas fa-trash"></i> Clear All
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Settings Section -->
     <div class="project-section" id="settings-section">
         <div class="section-header">
             <h2 class="section-title">Project Settings</h2>
         </div>
-        
+
         <div class="settings-list">
             <div class="settings-group">
                 <h3>General Settings</h3>
@@ -434,8 +636,8 @@
                     </div>
                     <form action="{% url 'projects:delete_project' project.project_id %}" method="post" class="d-inline">
                         {% csrf_token %}
-                        <button type="submit" class="btn btn-danger btn-sm delete-project-btn" data-project-name="{{ project.name }}">
-                            <i class="fas fa-trash-alt"></i> Delete Project
+                        <button type="submit" class="btn btn-danger btn-sm delete-project-btn" data-project-name="{{ project.name }}" style="display: inline-flex; align-items: center; gap: 6px;">
+                            <i class="fas fa-trash-alt"></i> <span>Delete Project</span>
                         </button>
                     </form>
                 </div>
@@ -486,12 +688,165 @@
         </div>
         <div class="modal-footer">
             <button type="button" class="btn btn-outline" onclick="closeCodebaseModal()">Cancel</button>
-            <button type="button" class="btn btn-primary" onclick="linkRepository()">
-                <i class="fas fa-link"></i> Link Repository
+            <button type="button" class="btn btn-primary" onclick="linkRepository()" style="display: inline-flex; align-items: center; gap: 6px;">
+                <i class="fas fa-link"></i> <span>Link Repository</span>
             </button>
         </div>
     </div>
 </div>
+
+<!-- Stack Edit Modal -->
+<div class="modal-overlay" id="stackEditModal">
+    <div class="modal" style="max-width: 500px;">
+        <div class="modal-header">
+            <h3 class="modal-title">
+                <i class="fas fa-layer-group"></i> Edit Tech Stack
+            </h3>
+            <button type="button" class="modal-close" onclick="closeStackEditModal()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <form id="stackEditForm">
+                <div class="form-group">
+                    <label for="stackSelect" class="form-label">Technology Stack</label>
+                    <select class="form-control" id="stackSelect" onchange="updateStackDefaults()">
+                        <option value="">Not set</option>
+                        <option value="nextjs">Next.js</option>
+                        <option value="astro">Astro</option>
+                        <option value="python-django">Python (Django)</option>
+                        <option value="python-fastapi">Python (FastAPI)</option>
+                        <option value="go">Go</option>
+                        <option value="rust">Rust</option>
+                        <option value="ruby-rails">Ruby on Rails</option>
+                        <option value="custom">Custom/Existing Repo</option>
+                    </select>
+                </div>
+
+                <div style="border-top: 1px solid rgba(255,255,255,0.1); margin: 1rem 0; padding-top: 1rem;">
+                    <p style="color: #94a3b8; font-size: 12px; margin-bottom: 1rem;">Leave blank to use defaults for the selected stack:</p>
+
+                    <div class="form-group">
+                        <label for="customProjectDir" class="form-label">Project Directory</label>
+                        <input type="text" class="form-control" id="customProjectDir" placeholder="{{ stack_config.project_dir }}">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="customInstallCmd" class="form-label">Install Command</label>
+                        <input type="text" class="form-control" id="customInstallCmd" placeholder="{{ stack_config.install_cmd }}">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="customDevCmd" class="form-label">Dev Server Command</label>
+                        <input type="text" class="form-control" id="customDevCmd" placeholder="{{ stack_config.dev_cmd }}">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="customDefaultPort" class="form-label">Default Port</label>
+                        <input type="number" class="form-control" id="customDefaultPort" placeholder="{{ stack_config.default_port }}">
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-outline" onclick="closeStackEditModal()">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="saveStack()" style="display: inline-flex; align-items: center; gap: 6px;">
+                <i class="fas fa-save"></i> <span>Save</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+function openStackEditModal() {
+    document.getElementById('stackSelect').value = '{{ project.stack }}';
+    document.getElementById('customProjectDir').value = '{{ project.custom_project_dir|default:"" }}';
+    document.getElementById('customInstallCmd').value = '{{ project.custom_install_cmd|default:"" }}';
+    document.getElementById('customDevCmd').value = '{{ project.custom_dev_cmd|default:"" }}';
+    document.getElementById('customDefaultPort').value = '{{ project.custom_default_port|default:"" }}';
+    document.getElementById('stackEditModal').classList.add('active');
+}
+
+function closeStackEditModal() {
+    document.getElementById('stackEditModal').classList.remove('active');
+}
+
+// Stack defaults for placeholder updates
+const stackDefaults = {
+    '': { dir: 'project', install: '', dev: '', port: 3000 },
+    'nextjs': { dir: 'project', install: 'npm install', dev: 'npm run dev', port: 3000 },
+    'astro': { dir: 'project', install: 'npm install', dev: 'npx astro dev --host 0.0.0.0', port: 4321 },
+    'python-django': { dir: 'django-app', install: 'pip install -r requirements.txt', dev: 'python manage.py runserver 0.0.0.0:8000', port: 8000 },
+    'python-fastapi': { dir: 'fastapi-app', install: 'pip install -r requirements.txt', dev: 'uvicorn main:app --host 0.0.0.0 --port 8000 --reload', port: 8000 },
+    'go': { dir: 'go-app', install: 'go mod download', dev: 'go run .', port: 8080 },
+    'rust': { dir: 'rust-app', install: 'cargo build', dev: 'cargo run', port: 8080 },
+    'ruby-rails': { dir: 'rails-app', install: 'bundle install', dev: 'rails server -b 0.0.0.0 -p 3000', port: 3000 },
+    'custom': { dir: 'app', install: '', dev: '', port: 3000 }
+};
+
+function updateStackDefaults() {
+    const stack = document.getElementById('stackSelect').value;
+    const defaults = stackDefaults[stack] || stackDefaults['custom'];
+    document.getElementById('customProjectDir').placeholder = defaults.dir;
+    document.getElementById('customInstallCmd').placeholder = defaults.install || '(none)';
+    document.getElementById('customDevCmd').placeholder = defaults.dev || '(none)';
+    document.getElementById('customDefaultPort').placeholder = defaults.port;
+}
+
+async function saveStack() {
+    const stack = document.getElementById('stackSelect').value;
+    const customProjectDir = document.getElementById('customProjectDir').value.trim();
+    const customInstallCmd = document.getElementById('customInstallCmd').value.trim();
+    const customDevCmd = document.getElementById('customDevCmd').value.trim();
+    const customDefaultPort = document.getElementById('customDefaultPort').value.trim();
+
+    const saveBtn = document.querySelector('#stackEditModal .btn-primary');
+    const originalText = saveBtn.innerHTML;
+    saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+    saveBtn.disabled = true;
+
+    try {
+        const response = await fetch('/projects/api/{{ project.project_id }}/stack/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({
+                stack: stack,
+                custom_project_dir: customProjectDir,
+                custom_install_cmd: customInstallCmd,
+                custom_dev_cmd: customDevCmd,
+                custom_default_port: customDefaultPort
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            closeStackEditModal();
+            window.location.reload();
+        } else {
+            alert('Error saving stack: ' + (data.error || 'Unknown error'));
+            saveBtn.innerHTML = originalText;
+            saveBtn.disabled = false;
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+        saveBtn.innerHTML = originalText;
+        saveBtn.disabled = false;
+    }
+}
+
+// Close stack modal when clicking outside
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('stackEditModal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            closeStackEditModal();
+        }
+    });
+});
+</script>
 
 <script>
 function showCodebaseModal() {
@@ -621,6 +976,21 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
     }
+
+    const params = new URLSearchParams(window.location.search);
+    let targetSection = params.get('section');
+    if (!targetSection && window.location.hash) {
+        targetSection = window.location.hash.replace('#', '');
+    }
+    if (targetSection && document.getElementById(`${targetSection}-section`)) {
+        showSection(targetSection);
+        // Load data for the section if needed
+        if (targetSection === 'tickets') {
+            loadTickets();
+        } else if (targetSection === 'environment') {
+            loadEnvVars();
+        }
+    }
 });
 
 async function reindexRepository(repositoryId) {
@@ -648,6 +1018,103 @@ async function reindexRepository(repositoryId) {
         alert('Error starting re-index: ' + error.message);
     }
 }
+
+// Branch management functions
+async function loadBranches() {
+    const selector = document.getElementById('branchSelector');
+    const repositoryId = selector?.getAttribute('data-repository-id');
+
+    if (!repositoryId) {
+        console.error('Repository ID not found');
+        return;
+    }
+
+    // Show loading state
+    const refreshBtn = selector.nextElementSibling;
+    const originalIcon = refreshBtn.innerHTML;
+    refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="font-size: 12px;"></i>';
+
+    try {
+        const response = await fetch(`/codebase/api/repositories/${repositoryId}/branches/`);
+        const data = await response.json();
+
+        if (data.success) {
+            const currentBranch = data.current_branch;
+            selector.innerHTML = '';
+
+            // Sort branches to put current branch first, then main/master, then others
+            const sortedBranches = data.branches.sort((a, b) => {
+                if (a.name === currentBranch) return -1;
+                if (b.name === currentBranch) return 1;
+                if (a.name === 'main' || a.name === 'master') return -1;
+                if (b.name === 'main' || b.name === 'master') return 1;
+                return a.name.localeCompare(b.name);
+            });
+
+            sortedBranches.forEach(branch => {
+                const option = document.createElement('option');
+                option.value = branch.name;
+                option.textContent = branch.name;
+                if (branch.name === currentBranch) {
+                    option.selected = true;
+                }
+                selector.appendChild(option);
+            });
+        } else {
+            console.error('Error loading branches:', data.error);
+            alert('Error loading branches: ' + data.error);
+        }
+    } catch (error) {
+        console.error('Error loading branches:', error);
+        alert('Error loading branches: ' + error.message);
+    } finally {
+        refreshBtn.innerHTML = originalIcon;
+    }
+}
+
+async function updateBranch(newBranch) {
+    const selector = document.getElementById('branchSelector');
+    const repositoryId = selector?.getAttribute('data-repository-id');
+
+    if (!repositoryId) {
+        console.error('Repository ID not found');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/codebase/api/repositories/${repositoryId}/update-branch/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify({ branch: newBranch })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            // Show brief success indication
+            selector.style.borderColor = '#22c55e';
+            setTimeout(() => {
+                selector.style.borderColor = 'rgba(255,255,255,0.1)';
+            }, 1000);
+        } else {
+            alert('Error updating branch: ' + data.error);
+        }
+    } catch (error) {
+        console.error('Error updating branch:', error);
+        alert('Error updating branch: ' + error.message);
+    }
+}
+
+// Load branches when page loads (if repository is connected)
+document.addEventListener('DOMContentLoaded', function() {
+    const branchSelector = document.getElementById('branchSelector');
+    if (branchSelector) {
+        loadBranches();
+    }
+});
 
 async function disconnectRepository() {
     const repositoryId = document.querySelector('[data-repository-id]')?.getAttribute('data-repository-id');
@@ -788,9 +1255,973 @@ document.addEventListener('DOMContentLoaded', function() {
     if (document.querySelector('.codebase-summary-container')) {
         loadCodebaseSummary();
     }
+    // Load tickets if on tickets tab
+    if (window.location.hash === '#tickets' || document.querySelector('[data-section="tickets"].active')) {
+        loadTickets();
+    }
+});
+
+// Ticket Management Functions
+let allTickets = [];
+
+async function loadTickets() {
+    try {
+        const response = await fetch(`/projects/{{ project.project_id }}/api/checklist/`);
+        const data = await response.json();
+
+        // API returns {tickets: [...]}
+        if (data.tickets) {
+            allTickets = data.tickets || [];
+            renderTickets(allTickets);
+        } else if (data.error) {
+            console.error('Error loading tickets:', data.error);
+        }
+    } catch (error) {
+        console.error('Error loading tickets:', error);
+    }
+}
+
+function renderTickets(tickets) {
+    const tbody = document.getElementById('ticketsTableBody');
+    const emptyState = document.getElementById('ticketsEmptyState');
+    const table = document.getElementById('ticketsTable');
+
+    if (!tickets || tickets.length === 0) {
+        table.style.display = 'none';
+        emptyState.style.display = 'block';
+        return;
+    }
+
+    table.style.display = 'table';
+    emptyState.style.display = 'none';
+
+    tbody.innerHTML = tickets.map(ticket => {
+        const statusClass = getStatusClass(ticket.status);
+        const priorityClass = getPriorityClass(ticket.priority);
+        const tags = extractTags(ticket);
+
+        return `
+            <tr onclick="showTicketDetails(${ticket.id})" class="ticket-row">
+                <td>
+                    <div class="ticket-info">
+                        <span class="ticket-id">TKT-${ticket.id}</span>
+                        <div class="ticket-name">${escapeHtml(ticket.name)}</div>
+                        <div class="ticket-description">${escapeHtml(truncate(ticket.description, 100))}</div>
+                    </div>
+                </td>
+                <td>
+                    <span class="status-badge ${statusClass}">${formatStatus(ticket.status)}</span>
+                </td>
+                <td>
+                    <span class="priority-badge ${priorityClass}">${ticket.priority}</span>
+                </td>
+                <td>
+                    <div class="assignee">
+                        ${ticket.linear_assignee_id ?
+                            `<span class="assignee-avatar">${getInitials(ticket.linear_assignee_id)}</span>
+                             <span>${ticket.linear_assignee_id}</span>` :
+                            '<span class="text-muted">Unassigned</span>'
+                        }
+                    </div>
+                </td>
+                <td>
+                    ${ticket.due_date ? formatDate(ticket.due_date) : '—'}
+                </td>
+                <td>
+                    <div class="ticket-tags">
+                        ${tags.map(tag => `<span class="tag-badge">#${tag}</span>`).join('')}
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function filterTickets() {
+    const searchTerm = document.getElementById('ticketSearch').value.toLowerCase();
+    const statusFilter = document.getElementById('statusFilter').value;
+    const priorityFilter = document.getElementById('priorityFilter').value;
+
+    const filtered = allTickets.filter(ticket => {
+        const matchesSearch = !searchTerm ||
+            ticket.name.toLowerCase().includes(searchTerm) ||
+            ticket.description.toLowerCase().includes(searchTerm);
+        const matchesStatus = !statusFilter || ticket.status === statusFilter;
+        const matchesPriority = !priorityFilter || ticket.priority === priorityFilter;
+
+        return matchesSearch && matchesStatus && matchesPriority;
+    });
+
+    renderTickets(filtered);
+}
+
+function showTicketDetails(ticketId) {
+    const ticket = allTickets.find(t => t.id === ticketId);
+    if (!ticket) return;
+
+    const drawer = document.getElementById('ticketDrawer');
+    const overlay = document.getElementById('drawerOverlay');
+    const title = document.getElementById('drawerTicketTitle');
+    const content = document.getElementById('drawerContent');
+
+    title.textContent = `TKT-${ticket.id}: ${ticket.name}`;
+
+    content.innerHTML = `
+        <div class="ticket-detail">
+            <div class="detail-section">
+                <h4>Description</h4>
+                <p>${escapeHtml(ticket.description) || 'No description provided'}</p>
+            </div>
+
+            <div class="detail-grid">
+                <div class="detail-item">
+                    <label>Status</label>
+                    <select class="detail-select" onchange="updateTicketStatus(${ticket.id}, this.value)">
+                        <option value="open" ${ticket.status === 'open' ? 'selected' : ''}>Open</option>
+                        <option value="in_progress" ${ticket.status === 'in_progress' ? 'selected' : ''}>In Progress</option>
+                        <option value="done" ${ticket.status === 'done' ? 'selected' : ''}>Done</option>
+                        <option value="blocked" ${ticket.status === 'blocked' ? 'selected' : ''}>Blocked</option>
+                    </select>
+                </div>
+
+                <div class="detail-item">
+                    <label>Priority</label>
+                    <select class="detail-select" onchange="updateTicketPriority(${ticket.id}, this.value)">
+                        <option value="High" ${ticket.priority === 'High' ? 'selected' : ''}>High</option>
+                        <option value="Medium" ${ticket.priority === 'Medium' ? 'selected' : ''}>Medium</option>
+                        <option value="Low" ${ticket.priority === 'Low' ? 'selected' : ''}>Low</option>
+                    </select>
+                </div>
+
+                <div class="detail-item">
+                    <label>Complexity</label>
+                    <span>${ticket.complexity || 'medium'}</span>
+                </div>
+
+                <div class="detail-item">
+                    <label>Created</label>
+                    <span>${formatDate(ticket.created_at)}</span>
+                </div>
+            </div>
+
+            ${ticket.acceptance_criteria && ticket.acceptance_criteria.length > 0 ? `
+                <div class="detail-section">
+                    <h4>Acceptance Criteria</h4>
+                    <ul class="criteria-list">
+                        ${ticket.acceptance_criteria.map(criteria =>
+                            `<li>${escapeHtml(criteria)}</li>`
+                        ).join('')}
+                    </ul>
+                </div>
+            ` : ''}
+
+            ${ticket.notes ? `
+                <div class="detail-section">
+                    <h4>Notes</h4>
+                    <p>${escapeHtml(ticket.notes)}</p>
+                </div>
+            ` : ''}
+
+            ${ticket.linear_issue_url ? `
+                <div class="detail-section">
+                    <h4>Linear Integration</h4>
+                    <a href="${ticket.linear_issue_url}" target="_blank" class="btn btn-outline btn-sm">
+                        <i class="fas fa-external-link-alt"></i> View in Linear
+                    </a>
+                </div>
+            ` : ''}
+
+            <div class="detail-actions">
+                <button class="btn btn-danger btn-sm" onclick="deleteTicket(${ticket.id})">
+                    <i class="fas fa-trash"></i> Delete Ticket
+                </button>
+            </div>
+        </div>
+    `;
+
+    drawer.classList.add('open');
+    overlay.classList.add('open');
+}
+
+function closeTicketDrawer() {
+    const drawer = document.getElementById('ticketDrawer');
+    const overlay = document.getElementById('drawerOverlay');
+    drawer.classList.remove('open');
+    overlay.classList.remove('open');
+}
+
+async function updateTicketStatus(ticketId, status) {
+    try {
+        const response = await fetch(`/projects/{{ project.project_id }}/api/checklist/update/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify({
+                item_id: ticketId,
+                status: status
+            })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            const ticket = allTickets.find(t => t.id === ticketId);
+            if (ticket) ticket.status = status;
+            renderTickets(allTickets);
+        }
+    } catch (error) {
+        console.error('Error updating ticket status:', error);
+    }
+}
+
+async function updateTicketPriority(ticketId, priority) {
+    try {
+        const response = await fetch(`/projects/{{ project.project_id }}/api/checklist/update/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify({
+                item_id: ticketId,
+                priority: priority
+            })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            const ticket = allTickets.find(t => t.id === ticketId);
+            if (ticket) ticket.priority = priority;
+            renderTickets(allTickets);
+        }
+    } catch (error) {
+        console.error('Error updating ticket priority:', error);
+    }
+}
+
+async function deleteTicket(ticketId) {
+    if (!confirm('Are you sure you want to delete this ticket?')) return;
+
+    try {
+        const response = await fetch(`/projects/{{ project.project_id }}/api/checklist/${ticketId}/delete/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            }
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            allTickets = allTickets.filter(t => t.id !== ticketId);
+            renderTickets(allTickets);
+            closeTicketDrawer();
+        }
+    } catch (error) {
+        console.error('Error deleting ticket:', error);
+    }
+}
+
+async function syncTicketsWithLinear() {
+    try {
+        const response = await fetch(`/projects/{{ project.project_id }}/api/linear/sync/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            }
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            alert('Tickets synced successfully with Linear');
+            loadTickets();
+        } else {
+            alert('Error syncing tickets: ' + data.error);
+        }
+    } catch (error) {
+        console.error('Error syncing tickets:', error);
+        alert('Error syncing tickets with Linear');
+    }
+}
+
+function showCreateTicketModal() {
+    // This would open a modal to create a new ticket
+    alert('Create ticket modal would open here');
+    // TODO: Implement create ticket modal
+}
+
+// Helper functions
+function getStatusClass(status) {
+    const statusClasses = {
+        'open': 'status-open',
+        'in_progress': 'status-in-progress',
+        'done': 'status-done',
+        'blocked': 'status-blocked',
+        'failed': 'status-failed'
+    };
+    return statusClasses[status] || 'status-default';
+}
+
+function getPriorityClass(priority) {
+    const priorityClasses = {
+        'High': 'priority-high',
+        'Medium': 'priority-medium',
+        'Low': 'priority-low'
+    };
+    return priorityClasses[priority] || 'priority-default';
+}
+
+function formatStatus(status) {
+    return status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+}
+
+function formatDate(dateString) {
+    if (!dateString) return '—';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function truncate(text, maxLength) {
+    if (!text) return '';
+    return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function getInitials(name) {
+    if (!name) return '';
+    const parts = name.split(' ');
+    return parts.map(p => p[0]).join('').toUpperCase().substring(0, 2);
+}
+
+function extractTags(ticket) {
+    const tags = [];
+    if (ticket.complexity) tags.push(ticket.complexity);
+    if (ticket.role) tags.push(ticket.role);
+    if (ticket.requires_worktree) tags.push('Worktree');
+    return tags;
+}
+
+// Update tab click handler to load tickets
+document.addEventListener('DOMContentLoaded', function() {
+    const originalTabHandler = document.querySelectorAll('.tab-item');
+    originalTabHandler.forEach(item => {
+        item.addEventListener('click', function(e) {
+            const section = this.getAttribute('data-section');
+            if (section === 'tickets' && allTickets.length === 0) {
+                loadTickets();
+            }
+            // Load env vars when Environment tab is clicked
+            if (section === 'environment') {
+                loadEnvVars();
+            }
+        });
+    });
+});
+
+// ============================================
+// Environment Variables Management
+// ============================================
+
+async function downloadEnvVars() {
+    const projectId = '{{ project.project_id }}';
+    const btn = document.getElementById('download-env-btn');
+    const originalText = btn.innerHTML;
+
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Downloading...';
+    btn.disabled = true;
+
+    try {
+        // Fetch env vars with full values for download
+        const response = await fetch(`/projects/${projectId}/api/env-vars/download/`);
+        const data = await response.json();
+
+        if (data.success && data.env_vars) {
+            // Create .env file content
+            let content = `# Environment variables for {{ project.name }}\n`;
+            content += `# Downloaded on ${new Date().toISOString()}\n\n`;
+
+            data.env_vars.forEach(env => {
+                if (env.value !== null && env.value !== undefined) {
+                    // Escape double quotes and handle multiline values
+                    let value = env.value;
+                    if (value.includes('\n') || value.includes('"') || value.includes(' ')) {
+                        value = `"${value.replace(/"/g, '\\"')}"`;
+                    }
+                    content += `${env.key}=${value}\n`;
+                }
+            });
+
+            // Create and trigger download
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${projectId.substring(0, 8)}-env.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            showNotification('Environment variables downloaded', 'success');
+        } else {
+            showNotification(data.error || 'No environment variables to download', 'error');
+        }
+    } catch (error) {
+        console.error('Error downloading env vars:', error);
+        showNotification('Error downloading environment variables', 'error');
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+}
+
+async function loadEnvVars() {
+    const listEl = document.getElementById('env-vars-list');
+    if (!listEl) return;
+
+    const projectId = '{{ project.project_id }}';
+
+    try {
+        const response = await fetch(`/projects/${projectId}/api/env-vars/`);
+        const data = await response.json();
+
+        if (data.success && data.env_vars.length > 0) {
+            listEl.innerHTML = data.env_vars.map(env => `
+                <div class="env-var-item ${!env.has_value ? 'env-var-missing' : ''}" data-key="${env.key}">
+                    <div class="env-var-info">
+                        <div class="env-var-header">
+                            <span class="env-var-key">${env.key}</span>
+                            ${env.is_secret ? '<span class="env-var-secret-badge">secret</span>' : ''}
+                            ${!env.has_value ? '<span class="env-var-missing-badge">missing value</span>' : ''}
+                            ${env.is_required && !env.has_value ? '<span class="env-var-required-badge">REQUIRED</span>' : ''}
+                            <span class="env-var-value">${env.has_value ? env.masked_value : '(no value set)'}</span>
+                        </div>
+                        ${env.description ? `<div class="env-var-description">${env.description}${env.example ? ` (Example: ${env.example})` : ''}</div>` : ''}
+                        <div class="env-var-edit-row" id="edit-row-${env.key}">
+                            ${!env.has_value ? `<button type="button" class="env-var-add-btn" onclick="showEnvVarInput('${env.key}', ${env.is_secret})"><i class="fas fa-plus"></i> Add Value</button>` : `<button type="button" class="env-var-edit-btn-small" onclick="showEnvVarInput('${env.key}', ${env.is_secret})"><i class="fas fa-pen"></i> Edit</button>`}
+                        </div>
+                        <div class="env-var-input-row" id="input-row-${env.key}" style="display: none;">
+                            <input type="${env.is_secret ? 'password' : 'text'}" class="env-var-input" id="input-${env.key}" placeholder="Enter value for ${env.key}">
+                            <button type="button" class="env-var-save-btn" onclick="saveEnvVarValue('${env.key}', ${env.is_secret})"><i class="fas fa-check"></i> Save</button>
+                            <button type="button" class="env-var-cancel-btn" onclick="hideEnvVarInput('${env.key}')"><i class="fas fa-times"></i></button>
+                        </div>
+                    </div>
+                    <div class="env-var-actions">
+                        <button type="button" class="env-var-delete-btn" onclick="deleteEnvVar('${env.key}')" title="Delete">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            listEl.innerHTML = '<div class="env-vars-empty">No environment variables configured</div>';
+        }
+    } catch (error) {
+        console.error('Error loading env vars:', error);
+        listEl.innerHTML = '<div class="env-vars-empty">Error loading variables</div>';
+    }
+}
+
+// Show input field for env var
+function showEnvVarInput(key, isSecret) {
+    const editRow = document.getElementById(`edit-row-${key}`);
+    const inputRow = document.getElementById(`input-row-${key}`);
+    if (editRow) editRow.style.display = 'none';
+    if (inputRow) {
+        inputRow.style.display = 'flex';
+        const input = document.getElementById(`input-${key}`);
+        if (input) input.focus();
+    }
+}
+
+// Hide input field for env var
+function hideEnvVarInput(key) {
+    const editRow = document.getElementById(`edit-row-${key}`);
+    const inputRow = document.getElementById(`input-row-${key}`);
+    if (editRow) editRow.style.display = 'block';
+    if (inputRow) inputRow.style.display = 'none';
+}
+
+// Save value for env var
+async function saveEnvVarValue(key, isSecret) {
+    const input = document.getElementById(`input-${key}`);
+    const value = input.value.trim();
+    const projectId = '{{ project.project_id }}';
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+    if (!value) {
+        alert('Please enter a value');
+        input.focus();
+        return;
+    }
+
+    const btn = input.nextElementSibling;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    btn.disabled = true;
+
+    try {
+        const response = await fetch(`/projects/${projectId}/api/env-vars/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
+            body: JSON.stringify({
+                single_var: true,
+                key: key,
+                value: value,
+                is_secret: isSecret
+            })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            loadEnvVars();
+        } else {
+            alert('Error: ' + (data.error || 'Failed to save'));
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+    } catch (error) {
+        console.error('Error saving env var:', error);
+        alert('Error saving environment variable');
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+}
+
+async function deleteEnvVar(key) {
+    if (!confirm(`Delete environment variable "${key}"?`)) {
+        return;
+    }
+
+    const projectId = '{{ project.project_id }}';
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+    try {
+        const response = await fetch(`/projects/${projectId}/api/env-vars/`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
+            body: JSON.stringify({ key })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            loadEnvVars();
+        } else {
+            alert('Error: ' + (data.error || 'Failed to delete'));
+        }
+    } catch (error) {
+        console.error('Error deleting env var:', error);
+        alert('Error deleting environment variable');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const projectId = '{{ project.project_id }}';
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+
+    // Import bulk env vars
+    const importBtn = document.getElementById('import-env-btn');
+    if (importBtn) {
+        importBtn.addEventListener('click', async function() {
+            const content = document.getElementById('env-content-input').value.trim();
+            if (!content) {
+                alert('Please paste your .env file content');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/projects/${projectId}/api/env-vars/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({ env_content: content })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    alert(data.message);
+                    document.getElementById('env-content-input').value = '';
+                    loadEnvVars();
+                } else {
+                    alert('Error: ' + (data.error || 'Failed to import'));
+                }
+            } catch (error) {
+                console.error('Error importing env vars:', error);
+                alert('Error importing environment variables');
+            }
+        });
+    }
+
+    // Add single env var
+    const addBtn = document.getElementById('add-env-btn');
+    if (addBtn) {
+        addBtn.addEventListener('click', async function() {
+            const key = document.getElementById('new-env-key').value.trim().toUpperCase();
+            const value = document.getElementById('new-env-value').value;
+            const isSecret = document.getElementById('new-env-secret').checked;
+
+            if (!key) {
+                alert('Please enter a key name');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/projects/${projectId}/api/env-vars/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({ key, value, is_secret: isSecret })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    document.getElementById('new-env-key').value = '';
+                    document.getElementById('new-env-value').value = '';
+                    loadEnvVars();
+                } else {
+                    alert('Error: ' + (data.error || 'Failed to add'));
+                }
+            } catch (error) {
+                console.error('Error adding env var:', error);
+                alert('Error adding environment variable');
+            }
+        });
+    }
+
+    // Clear all env vars
+    const clearBtn = document.getElementById('clear-all-env-btn');
+    if (clearBtn) {
+        clearBtn.addEventListener('click', async function() {
+            if (!confirm('Are you sure you want to delete ALL environment variables? This cannot be undone.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/projects/${projectId}/api/env-vars/bulk-delete/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    }
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    alert(data.message);
+                    loadEnvVars();
+                } else {
+                    alert('Error: ' + (data.error || 'Failed to clear'));
+                }
+            } catch (error) {
+                console.error('Error clearing env vars:', error);
+                alert('Error clearing environment variables');
+            }
+        });
+    }
 });
 </script>
 
+<style>
+/* Environment Variables Styles */
+.env-vars-list {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--card-bg);
+    min-height: 60px;
+}
+.env-vars-loading, .env-vars-empty {
+    padding: 1rem;
+    text-align: center;
+    color: var(--text-secondary);
+}
+.env-var-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border-color);
+}
+.env-var-item:last-child {
+    border-bottom: none;
+}
+.env-var-key {
+    font-family: monospace;
+    font-weight: 600;
+    color: var(--primary-color);
+}
+.env-var-value {
+    font-family: monospace;
+    font-size: 0.9em;
+    color: var(--text-secondary);
+    margin-left: 1rem;
+}
+.env-var-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+.env-var-delete-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    transition: all 0.15s;
+}
+.env-var-delete-btn:hover {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+}
+.env-var-secret-badge {
+    font-size: 0.7em;
+    background: rgba(251, 191, 36, 0.15);
+    color: #fbbf24;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    margin-left: 0.5rem;
+}
+/* Missing env var styles */
+.env-var-missing {
+    background: rgba(239, 68, 68, 0.08);
+    border-left: 3px solid #ef4444;
+}
+.env-var-missing .env-var-key {
+    color: #ef4444;
+}
+.env-var-missing .env-var-value {
+    color: #ef4444;
+    font-style: italic;
+}
+.env-var-missing-badge {
+    font-size: 0.7em;
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    margin-left: 0.5rem;
+    font-weight: 600;
+}
+.env-var-required-badge {
+    font-size: 0.7em;
+    background: rgba(239, 68, 68, 0.25);
+    color: #dc2626;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    margin-left: 0.5rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+.env-var-description {
+    font-size: 0.85em;
+    color: var(--text-secondary);
+    margin-top: 0.25rem;
+    font-style: italic;
+}
+.env-var-info {
+    flex: 1;
+}
+.env-var-header {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+.env-var-edit-row {
+    margin-top: 0.5rem;
+}
+.env-var-add-btn {
+    padding: 0.4rem 0.75rem;
+    background: #ef4444;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+.env-var-add-btn:hover {
+    background: #dc2626;
+}
+.env-var-edit-btn-small {
+    padding: 0.3rem 0.5rem;
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-secondary);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    font-size: 0.7rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+.env-var-edit-btn-small:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: var(--text-color);
+}
+.env-var-input-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    align-items: center;
+}
+.env-var-input {
+    flex: 1;
+    max-width: 300px;
+    padding: 0.5rem 0.75rem;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
+    color: var(--text-color);
+    font-size: 0.875rem;
+    font-family: 'Monaco', 'Menlo', monospace;
+}
+.env-var-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    background: rgba(255, 255, 255, 0.1);
+}
+.env-var-save-btn {
+    padding: 0.5rem 0.75rem;
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+.env-var-save-btn:hover {
+    background: var(--primary-hover);
+}
+.env-var-cancel-btn {
+    padding: 0.5rem;
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-secondary);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
+    cursor: pointer;
+}
+.env-var-cancel-btn:hover {
+    background: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+}
+
+/* Compact Conversation List */
+.conversation-list-compact {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+}
+.conversation-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.875rem 1rem;
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-color);
+    text-decoration: none;
+    transition: background 0.15s ease;
+}
+.conversation-row:last-child {
+    border-bottom: none;
+}
+.conversation-row:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+.conversation-row-main {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    flex: 1;
+    min-width: 0;
+}
+.conversation-row-title {
+    font-weight: 500;
+    color: var(--text-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.conversation-row-meta {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+.conversation-row-arrow {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    margin-left: 1rem;
+    flex-shrink: 0;
+}
+</style>
+
 <!-- Include CSRF Token -->
-{% csrf_token %} 
+{% csrf_token %}
+
+<script>
+// Load instant apps when the tab is shown
+document.addEventListener('DOMContentLoaded', function() {
+    const instantTab = document.querySelector('[data-section="instant-apps"]');
+    if (instantTab) {
+        instantTab.addEventListener('click', loadInstantApps);
+    }
+});
+
+async function loadInstantApps() {
+    const listEl = document.getElementById('instant-apps-list');
+    const emptyEl = document.getElementById('instant-apps-empty');
+    if (!listEl) return;
+
+    try {
+        const resp = await fetch('/api/instant/{{ project.project_id }}/apps/');
+        const data = await resp.json();
+        const apps = data.apps || [];
+
+        if (apps.length === 0) {
+            listEl.innerHTML = '';
+            emptyEl.style.display = '';
+            return;
+        }
+
+        emptyEl.style.display = 'none';
+        listEl.innerHTML = apps.map(app => `
+            <a href="/instant/project/{{ project.project_id }}/app/${app.app_id}/" class="conversation-row" style="display:flex;align-items:center;padding:0.75rem 1rem;border-bottom:1px solid var(--border-color,#333);text-decoration:none;gap:0.75rem;">
+                <div style="flex:1;min-width:0;">
+                    <div style="display:flex;align-items:center;gap:0.5rem;">
+                        <span class="conversation-row-title">${app.name}</span>
+                        <span class="project-status project-status-${app.status}" style="font-size:0.7rem;padding:2px 6px;">${app.status}</span>
+                    </div>
+                    <span class="conversation-row-meta">${app.description ? app.description.substring(0, 80) : 'No description'}</span>
+                </div>
+                <i class="fas fa-chevron-right conversation-row-arrow"></i>
+            </a>
+        `).join('');
+    } catch (e) {
+        console.error('Error loading instant apps:', e);
+    }
+}
+</script>
 {% endblock %}

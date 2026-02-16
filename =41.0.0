@@ -1,0 +1,6 @@
+Requirement already satisfied: cryptography in ./venv/lib/python3.11/site-packages (44.0.2)
+Requirement already satisfied: cffi>=1.12 in ./venv/lib/python3.11/site-packages (from cryptography) (1.17.1)
+Requirement already satisfied: pycparser in ./venv/lib/python3.11/site-packages (from cffi>=1.12->cryptography) (2.22)
+
+[notice] A new release of pip is available: 25.1.1 -> 25.3
+[notice] To update, run: pip install --upgrade pip

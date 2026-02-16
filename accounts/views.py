@@ -8,10 +8,12 @@ from .forms import UserRegisterForm, UserUpdateForm, ProfileUpdateForm, EmailAut
 from django.contrib.auth.models import User
 from .models import GitHubToken, EmailVerificationToken, LLMApiKeys, ExternalServicesAPIKeys, Organization, OrganizationMembership, OrganizationInvitation
 from subscriptions.models import UserCredit, OrganizationCredit
+from subscriptions.constants import FREE_TIER_TOKEN_LIMIT, PRO_MONTHLY_TOKEN_LIMIT
 from chat.models import AgentRole
 import requests
 import uuid
 import json
+import time
 from urllib.parse import urlencode
 from django.http import JsonResponse
 from django.core.mail import send_mail
@@ -58,8 +60,8 @@ def register(request):
             # Auto-login the user
             login(request, user)
             
-            # Redirect to email verification page
-            return redirect('accounts:email_verification_required')
+            # Redirect new users to Projects landing
+            return redirect('projects:project_list')
     else:
         form = UserRegisterForm()
     return render(request, 'accounts/auth.html', {'form': form, 'active_tab': 'register'})
@@ -91,21 +93,7 @@ def auth(request):
                     return redirect('accounts:email_verification_required')
                 
                 login(request, user)
-                
-                # Check if user has required API keys set up
-                try:
-                    llm_keys = LLMApiKeys.objects.get(user=user)
-                    openai_key_missing = not bool(llm_keys.openai_api_key)
-                    anthropic_key_missing = not bool(llm_keys.anthropic_api_key)
-                except LLMApiKeys.DoesNotExist:
-                    openai_key_missing = True
-                    anthropic_key_missing = True
-                
-                # If both OpenAI and Anthropic keys are missing, redirect to integrations
-                if openai_key_missing and anthropic_key_missing:
-                    messages.success(request, 'Please set up OpenAI or Anthropic API keys to get started.')
-                    return redirect('accounts:integrations')
-                
+
                 # Redirect to the chat page or next parameter if provided
                 next_url = request.GET.get('next')
                 if next_url:
@@ -124,8 +112,8 @@ def auth(request):
                 # Auto-login the user
                 login(request, user)
                 
-                # Redirect to email verification page
-                return redirect('accounts:email_verification_required')
+                # Redirect new users to Projects landing
+                return redirect('projects:project_list')
     
     # Render the template with both forms
     context = {
@@ -156,84 +144,6 @@ def profile(request):
     }
     return render(request, 'accounts/profile.html', context)
 
-# @login_required
-# def settings_page(request, show_github=False):
-#     # Get GitHub connection status
-#     github_connected = False
-#     github_username = None
-#     github_avatar = None
-#     github_missing_config = not hasattr(settings, 'GITHUB_CLIENT_ID') or not settings.GITHUB_CLIENT_ID
-    
-#     try:
-#         github_social = request.user.social_auth.get(provider='github')
-#         github_connected = True
-#         extra_data = github_social.extra_data
-#         github_username = extra_data.get('login')
-#         github_avatar = extra_data.get('avatar_url')
-#     except:
-#         pass
-    
-#     # Create GitHub redirect URI if not connected
-#     github_auth_url = None
-#     if (not github_connected and not github_missing_config) or show_github:
-#         GITHUB_CLIENT_ID = settings.GITHUB_CLIENT_ID
-#         GITHUB_REDIRECT_URI = build_secure_absolute_uri(request, reverse('accounts:github_callback'))
-#         state = str(uuid.uuid4())
-#         request.session['github_oauth_state'] = state
-#         params = {
-#             'client_id': GITHUB_CLIENT_ID,
-#             'redirect_uri': GITHUB_REDIRECT_URI,
-#             'scope': 'repo user',
-#             'state': state,
-#         }
-#         github_auth_url = f"https://github.com/login/oauth/authorize?{urlencode(params)}"
-        
-#         # If show_github is True, redirect directly to GitHub OAuth
-#         if show_github:
-#             return redirect(github_auth_url)
-    
-#     # Handle GitHub disconnect
-#     if request.method == 'POST' and request.POST.get('action') == 'github_disconnect':
-#         if github_connected:
-#             try:
-#                 github_social.delete()
-#                 messages.success(request, 'GitHub connection removed successfully.')
-#                 return redirect('settings_page')
-#             except Exception as e:
-#                 messages.error(request, f'Error disconnecting GitHub: {str(e)}')
-    
-#     # Get API keys status
-#     try:
-#         llm_keys = LLMApiKeys.objects.get(user=request.user)
-#         openai_connected = bool(llm_keys.openai_api_key)
-#         anthropic_connected = bool(llm_keys.anthropic_api_key)
-#         xai_connected = bool(llm_keys.xai_api_key)
-#     except LLMApiKeys.DoesNotExist:
-#         openai_connected = False
-#         anthropic_connected = False
-#         xai_connected = False
-    
-#     # Check for URL parameters that might indicate which form to show
-#     openai_api_form_visible = request.GET.get('show') == 'openai'
-#     anthropic_api_form_visible = request.GET.get('show') == 'anthropic'
-#     xai_api_form_visible = request.GET.get('show') == 'xai'
-    
-#     context = {
-#         'github_connected': github_connected,
-#         'github_username': github_username,
-#         'github_avatar': github_avatar,
-#         'github_auth_url': github_auth_url,
-#         'github_missing_config': github_missing_config,
-#         'openai_connected': openai_connected,
-#         'anthropic_connected': anthropic_connected,
-#         'xai_connected': xai_connected,
-#         'openai_api_form_visible': openai_api_form_visible,
-#         'anthropic_api_form_visible': anthropic_api_form_visible,
-#         'xai_api_form_visible': xai_api_form_visible,
-#     }
-    
-#     return render(request, 'accounts/settings.html', context)
-
 @login_required
 def save_api_key(request, provider):
     """Handle saving API keys for various providers"""
@@ -245,6 +155,27 @@ def save_api_key(request, provider):
     if not api_key:
         messages.error(request, 'API key cannot be empty')
         return redirect('accounts:integrations')
+
+    if provider == 'openai':
+        user_credit, _ = UserCredit.objects.get_or_create(user=request.user)
+        has_paid_subscription = (
+            user_credit.subscription_tier == 'pro'
+            and (user_credit.is_subscribed or user_credit.has_active_subscription)
+        )
+        if not has_paid_subscription:
+            messages.error(request, 'Upgrade to Pro to use your own OpenAI API key.')
+            return redirect('accounts:integrations')
+    
+    # Enforce subscription requirements for OpenAI self-hosted keys
+    if provider == 'openai':
+        user_credit, _ = UserCredit.objects.get_or_create(user=request.user)
+        has_paid_subscription = (
+            user_credit.subscription_tier == 'pro'
+            and (user_credit.is_subscribed or user_credit.has_active_subscription)
+        )
+        if not has_paid_subscription:
+            messages.error(request, 'Upgrade to Pro to use your own OpenAI API key.')
+            return redirect('accounts:integrations')
     
     # Handle external services (Linear, Notion, etc.) separately as they're in ExternalServicesAPIKeys
     if provider in ['linear', 'notion', 'jira']:
@@ -327,56 +258,43 @@ def disconnect_api_key(request, provider):
     messages.success(request, f'{provider.capitalize()} connection removed successfully.')
     return redirect('accounts:integrations')
 
-# @login_required
-# def user_settings(request):
-#     """
-#     User settings page with integrations like GitHub
-#     """
-#     # Check if the user already has a GitHub token
-#     try:
-#         github_token = GitHubToken.objects.get(user=request.user)
-#         has_github_token = True
-#         github_user = github_token.github_username if github_token.github_username else "GitHub User"
-#         github_avatar = github_token.github_avatar_url
-#     except GitHubToken.DoesNotExist:
-#         github_token = None
-#         has_github_token = False
-#         github_user = None
-#         github_avatar = None
-    
-#     # Create GitHub redirect URI
-#     global GITHUB_REDIRECT_URI
-#     GITHUB_REDIRECT_URI = build_secure_absolute_uri(request, reverse('accounts:github_callback'))
-    
-#     # GitHub OAuth setup
-#     github_auth_url = None
-#     if GITHUB_CLIENT_ID:
-#         state = str(uuid.uuid4())
-#         request.session['github_oauth_state'] = state
-#         params = {
-#             'client_id': GITHUB_CLIENT_ID,
-#             'redirect_uri': GITHUB_REDIRECT_URI,
-#             'scope': 'repo user',
-#             'state': state,
-#         }
-#         github_auth_url = f"https://github.com/login/oauth/authorize?{urlencode(params)}"
-    
-#     # Handle GitHub disconnect
-#     if request.method == 'POST' and request.POST.get('action') == 'github_disconnect':
-#         if has_github_token:
-#             github_token.delete()
-#             messages.success(request, 'GitHub connection removed successfully.')
-#             return redirect('accounts:integrations')
-    
-#     context = {
-#         'has_github_token': has_github_token,
-#         'github_auth_url': github_auth_url,
-#         'github_user': github_user,
-#         'github_avatar': github_avatar,
-#         'github_missing_config': not GITHUB_CLIENT_ID,
-#     }
-    
-#     return render(request, 'accounts/settings.html', context)
+
+@login_required
+def toggle_llm_byok(request):
+    """Enable or disable BYOK usage by keeping or clearing saved keys."""
+    if request.method != 'POST':
+        messages.error(request, 'Invalid request')
+        return redirect('accounts:integrations')
+
+    enable = request.POST.get('enable', '1') == '1'
+
+    user_credit, _ = UserCredit.objects.get_or_create(user=request.user)
+    has_paid_subscription = (
+        user_credit.subscription_tier == 'pro'
+        and (user_credit.is_subscribed or user_credit.has_active_subscription)
+    )
+
+    if not has_paid_subscription:
+        messages.error(request, 'Bring-your-own keys are available on the Pro plan. Please upgrade to enable this feature.')
+        return redirect('accounts:integrations')
+
+    llm_keys, _ = LLMApiKeys.objects.get_or_create(user=request.user)
+
+    if enable:
+        llm_keys.use_personal_llm_keys = True
+        llm_keys.save(update_fields=['use_personal_llm_keys'])
+        messages.success(request, 'Bring-your-own-keys enabled. Add your provider keys below.')
+    else:
+        llm_keys.openai_api_key = ''
+        llm_keys.anthropic_api_key = ''
+        llm_keys.google_api_key = ''
+        llm_keys.xai_api_key = ''
+        llm_keys.use_personal_llm_keys = False
+        llm_keys.save()
+        messages.success(request, 'Your provider keys were removed. LFG platform credits will be used instead.')
+
+    return redirect('accounts:integrations')
+
 
 @login_required
 def github_callback(request):
@@ -516,18 +434,13 @@ def integrations(request):
             except Exception as e:
                 messages.error(request, f'Error disconnecting GitHub: {str(e)}')
     
-    # Get API keys status
-    try:
-        llm_keys = LLMApiKeys.objects.get(user=request.user)
-        openai_connected = bool(llm_keys.openai_api_key)
-        anthropic_connected = bool(llm_keys.anthropic_api_key)
-        xai_connected = bool(llm_keys.xai_api_key)
-        google_connected = bool(llm_keys.google_api_key)
-    except LLMApiKeys.DoesNotExist:
-        openai_connected = False
-        anthropic_connected = False
-        xai_connected = False
-        google_connected = False
+    # Get or create API keys record for LLM providers
+    llm_keys, _ = LLMApiKeys.objects.get_or_create(user=request.user)
+    openai_connected = bool(llm_keys.openai_api_key)
+    anthropic_connected = bool(llm_keys.anthropic_api_key)
+    xai_connected = bool(llm_keys.xai_api_key)
+    google_connected = bool(llm_keys.google_api_key)
+    personal_llm_keys_enabled = llm_keys.use_personal_llm_keys
     
     # Check external service API keys (Linear, Notion, etc.)
     try:
@@ -546,49 +459,55 @@ def integrations(request):
     # Get user's credit and token usage information
     user_credit, created = UserCredit.objects.get_or_create(user=request.user)
     
+    # Determine subscription access flags
+    has_paid_subscription = (
+        user_credit.subscription_tier == 'pro'
+        and (user_credit.is_subscribed or user_credit.has_active_subscription)
+    )
+
     # Calculate usage percentages and display tokens
     if user_credit.is_free_tier:
-        total_limit = 100000  # 100K for free tier
+        total_limit = FREE_TIER_TOKEN_LIMIT
         tokens_used = user_credit.total_tokens_used
         usage_percentage = min((tokens_used / total_limit * 100), 100) if total_limit > 0 else 0
         monthly_usage_percentage = 0
+        additional_credits_usage_percentage = 0
+        total_additional_credits_purchased = 0
+        additional_credits_consumed = 0
     else:
         # Pro tier calculations
-        monthly_limit = 300000
-        additional_credits = max(0, user_credit.credits)
-        total_limit = monthly_limit + additional_credits
-        
+        monthly_limit = PRO_MONTHLY_TOKEN_LIMIT
+        additional_credits_remaining = max(0, user_credit.credits)
+        total_limit = monthly_limit + additional_credits_remaining
+
         # For "Used" display: Show actual tokens consumed (from paid_tokens_used)
         tokens_used = user_credit.paid_tokens_used
-        
-        # Calculate monthly usage percentage for progress bar
-        monthly_usage_percentage = min((user_credit.monthly_tokens_used / monthly_limit * 100), 100) if monthly_limit > 0 else 0
+
+        # Calculate monthly usage based on paid tokens (fallback when monthly_tokens_used isn't tracked)
+        monthly_tokens_consumed = min(tokens_used, monthly_limit)
+        monthly_usage_percentage = min((monthly_tokens_consumed / monthly_limit * 100), 100) if monthly_limit > 0 else 0
+
         usage_percentage = monthly_usage_percentage
-        
+
         # Calculate additional credits usage percentage
-        # Additional credits start being consumed after monthly 300K limit is reached
-        if user_credit.monthly_tokens_used > monthly_limit:
-            # User has exceeded monthly limit, so additional credits are being consumed
-            additional_credits_consumed = user_credit.monthly_tokens_used - monthly_limit
-            # Get original additional credits purchased (what they had before consumption)
-            original_additional_credits = user_credit.credits + additional_credits_consumed
-            additional_credits_usage_percentage = (additional_credits_consumed / original_additional_credits * 100) if original_additional_credits > 0 else 0
-            total_additional_credits_purchased = original_additional_credits
+        # Additional credits start being consumed after the monthly limit is reached
+        additional_credits_consumed = max(0, tokens_used - monthly_limit)
+        total_additional_credits_purchased = additional_credits_consumed + additional_credits_remaining
+        if total_additional_credits_purchased > 0:
+            additional_credits_usage_percentage = (additional_credits_consumed / total_additional_credits_purchased * 100)
         else:
-            # Monthly limit not yet exceeded, no additional credits consumed
             additional_credits_usage_percentage = 0
-            total_additional_credits_purchased = user_credit.credits if user_credit.credits > 0 else 0
-    
+
     # Calculate free tokens remaining for Pro tier display
     free_tokens_remaining = 0
     if not user_credit.is_free_tier:
-        free_limit = 100000
-        free_tokens_remaining = max(0, free_limit - user_credit.free_tokens_used)
+        free_tokens_remaining = max(0, FREE_TIER_TOKEN_LIMIT - user_credit.free_tokens_used)
     
     # Get subscription data for subscriptions section
     from subscriptions.models import PaymentPlan, Transaction
     import os
     payment_plans = PaymentPlan.objects.filter(is_active=True)
+    additional_credits_plan = PaymentPlan.objects.filter(name='Additional Credits', is_active=True).first()
     transactions = Transaction.objects.filter(user=request.user).order_by('-created_at')[:5]
     stripe_public_key = os.environ.get('STRIPE_PUBLIC_KEY', '')
     
@@ -602,6 +521,7 @@ def integrations(request):
         'anthropic_connected': anthropic_connected,
         'xai_connected': xai_connected,
         'google_connected': google_connected,
+        'byok_enabled': personal_llm_keys_enabled,
         'linear_connected': linear_connected,
         'notion_connected': notion_connected,
         'current_org_role': current_org_role,
@@ -615,16 +535,21 @@ def integrations(request):
         'usage_percentage': round(usage_percentage, 1),
         'is_free_tier': user_credit.is_free_tier,
         'subscription_tier': user_credit.subscription_tier,
+        'has_paid_subscription': has_paid_subscription,
         'free_tokens_used': user_credit.free_tokens_used,
         'paid_tokens_used': user_credit.paid_tokens_used,
         'free_tokens_remaining': free_tokens_remaining,
         # Subscription data
         'payment_plans': payment_plans,
+        'additional_credits_plan': additional_credits_plan,
         'transactions': transactions,
         'STRIPE_PUBLIC_KEY': stripe_public_key,
         'monthly_usage_percentage': round(monthly_usage_percentage, 1),
         'additional_credits_usage_percentage': round(additional_credits_usage_percentage, 1) if not user_credit.is_free_tier else 0,
         'total_additional_credits_purchased': total_additional_credits_purchased if not user_credit.is_free_tier else 0,
+        'additional_credits_consumed': additional_credits_consumed,
+        'free_tier_token_limit': FREE_TIER_TOKEN_LIMIT,
+        'pro_monthly_token_limit': PRO_MONTHLY_TOKEN_LIMIT,
     }
     
     return render(request, 'accounts/settings_new.html', context)
@@ -684,25 +609,11 @@ def email_verification_required(request):
     """Show email verification required page"""
     user = request.user
     profile = user.profile
-    
-    # Check if already verified
+
+    # Check if already verified - redirect to chat page
     if profile.email_verified:
-        # Check if user has required API keys set up
-        try:
-            llm_keys = LLMApiKeys.objects.get(user=request.user)
-            openai_key_missing = not bool(llm_keys.openai_api_key)
-            anthropic_key_missing = not bool(llm_keys.anthropic_api_key)
-        except LLMApiKeys.DoesNotExist:
-            openai_key_missing = True
-            anthropic_key_missing = True
-        
-        # If both OpenAI and Anthropic keys are missing, redirect to integrations
-        if openai_key_missing and anthropic_key_missing:
-            messages.success(request, 'Please set up OpenAI or Anthropic API keys to get started.')
-            return redirect('accounts:integrations')
-        
-        return redirect('projects:project_list')
-    
+        return redirect('index')
+
     context = {
         'email': user.email,
     }
@@ -736,44 +647,30 @@ def verify_email(request, token):
     try:
         # Find the token
         verification_token = EmailVerificationToken.objects.get(token=token)
-        
+
         # Check if token is valid
         if not verification_token.is_valid():
             messages.error(request, 'This verification link has expired or been used already.')
             return redirect('login')
-        
+
         # Mark email as verified
         user = verification_token.user
         profile = user.profile
         profile.email_verified = True
         profile.save()
-        
+
         # Mark token as used
         verification_token.used = True
         verification_token.save()
-        
+
         messages.success(request, 'Your email has been verified successfully!')
-        
-        # If user is logged in, redirect to appropriate page
+
+        # If user is logged in, redirect to chat page
         if request.user.is_authenticated:
-            # Check if user has required API keys set up
-            try:
-                llm_keys = LLMApiKeys.objects.get(user=request.user)
-                openai_key_missing = not bool(llm_keys.openai_api_key)
-                anthropic_key_missing = not bool(llm_keys.anthropic_api_key)
-            except LLMApiKeys.DoesNotExist:
-                openai_key_missing = True
-                anthropic_key_missing = True
-            
-            # If both keys are missing, redirect to integrations
-            if openai_key_missing and anthropic_key_missing:
-                messages.success(request, 'Please set up OpenAI or Anthropic API keys to get started.')
-                return redirect('accounts:integrations')
-            
-            return redirect('projects:project_list')
+            return redirect('index')
         else:
             return redirect('login')
-            
+
     except EmailVerificationToken.DoesNotExist:
         messages.error(request, 'Invalid verification link.')
         return redirect('login')
@@ -966,27 +863,13 @@ def google_callback(request):
         
         # Check if this was from the landing page onboarding flow
         from_landing_onboarding = request.session.pop('from_landing_onboarding', False)
-        
+
         if from_landing_onboarding:
             # Redirect back to landing page with a flag to continue onboarding at step 3
             return redirect('/?onboarding=true&step=3')
-        
-        # Check if user has required API keys set up
-        try:
-            llm_keys = LLMApiKeys.objects.get(user=user)
-            openai_key_missing = not bool(llm_keys.openai_api_key)
-            anthropic_key_missing = not bool(llm_keys.anthropic_api_key)
-        except LLMApiKeys.DoesNotExist:
-            openai_key_missing = True
-            anthropic_key_missing = True
-        
-        # If both keys are missing, redirect to integrations (for both new and existing users)
-        if openai_key_missing and anthropic_key_missing:
-            messages.info(request, 'Please set up OpenAI or Anthropic API keys to get started.')
-            return redirect('accounts:integrations')
-        
-        # Otherwise redirect to projects page (matching the regular registration flow)
-        return redirect('projects:project_list')
+
+        # Redirect to chat page
+        return redirect('index')
         
     except requests.exceptions.RequestException as e:
         messages.error(request, f'Error communicating with Google: {str(e)}')
@@ -1001,7 +884,8 @@ def auth_status(request):
     """Check if user is authenticated"""
     return JsonResponse({
         'authenticated': request.user.is_authenticated,
-        'username': request.user.username if request.user.is_authenticated else None
+        'username': request.user.username if request.user.is_authenticated else None,
+        'email_verified': request.user.profile.email_verified if request.user.is_authenticated else False
     })
 
 
@@ -1234,11 +1118,11 @@ def organization_dashboard(request, slug):
     
     # Calculate usage statistics
     if org_credit.is_free_tier:
-        total_limit = 100000
+        total_limit = FREE_TIER_TOKEN_LIMIT
         tokens_used = org_credit.total_tokens_used
         usage_percentage = min((tokens_used / total_limit * 100), 100) if total_limit > 0 else 0
     else:
-        total_limit = 300000 * org_credit.seat_count
+        total_limit = PRO_MONTHLY_TOKEN_LIMIT * org_credit.seat_count
         tokens_used = org_credit.monthly_tokens_used
         usage_percentage = min((tokens_used / total_limit * 100), 100) if total_limit > 0 else 0
     
@@ -1710,3 +1594,532 @@ def update_project_collaboration_setting(request):
             }
         })
         return JsonResponse({'error': 'Failed to update setting'}, status=500)
+
+
+# ============================================================================
+# Claude Code CLI Integration Views
+# ============================================================================
+
+@login_required
+def claude_code_start_auth(request):
+    """
+    Start Claude Code authentication process.
+
+    This creates a temporary workspace if needed and initiates the OAuth flow.
+    Returns the OAuth URL for the user to authenticate.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    try:
+        from development.models import Sandbox
+        from factory.claude_code_utils import start_claude_auth, check_claude_auth_status
+        from factory.mags import (
+            get_or_create_workspace_job, run_command, workspace_name_for_claude_auth,
+            generate_unique_claude_auth_workspace_name,
+            CLAUDE_AUTH_SETUP_SCRIPT, MagsAPIError, force_sync_workspace,
+        )
+
+        # Check if we have an existing Claude auth workspace for this user
+        workspace = Sandbox.objects.filter(
+            user=request.user,
+            workspace_type='claude_auth',
+        ).order_by('-updated_at').first()
+
+        job_id = None
+        use_existing = False
+
+        if workspace and workspace.mags_job_id:
+            job_id = workspace.mags_job_id
+            ws_name = workspace.mags_workspace_id or workspace_name_for_claude_auth(request.user.id)
+            logger.info(f"[CLAUDE_CODE] Checking existing Mags workspace {ws_name}, job={job_id}")
+
+            # Verify workspace is accessible via SDK exec (short timeout for health check)
+            try:
+                test_result = run_command(
+                    ws_name, "echo 'WORKSPACE_OK'",
+                    timeout=20, with_node_env=False,
+                    max_retries=1,
+                )
+                if test_result.get('exit_code') == 0 and 'WORKSPACE_OK' in test_result.get('stdout', ''):
+                    use_existing = True
+                    logger.info(f"[CLAUDE_CODE] Existing workspace is accessible")
+                    workspace.status = 'ready'
+                    workspace.mags_workspace_id = ws_name
+                    workspace.mags_job_id = job_id
+                    workspace.save(update_fields=['status', 'mags_workspace_id', 'mags_job_id'])
+                else:
+                    logger.warning(f"[CLAUDE_CODE] Existing workspace not responding (exit_code={test_result.get('exit_code')}), marking as error")
+                    workspace.status = 'error'
+                    workspace.save(update_fields=['status'])
+            except Exception as e:
+                logger.warning(f"[CLAUDE_CODE] Existing workspace not accessible: {e}")
+                workspace.status = 'error'
+                workspace.save(update_fields=['status'])
+
+        if not use_existing:
+            # Create a new Mags workspace for Claude Code authentication
+            ws_name = generate_unique_claude_auth_workspace_name()
+            logger.info(f"[CLAUDE_CODE] Creating Claude auth workspace for user {request.user.id}")
+
+            try:
+                job = get_or_create_workspace_job(
+                    workspace_id=ws_name,
+                    script=CLAUDE_AUTH_SETUP_SCRIPT,
+                    persistent=True,
+                )
+                job_id = job.get("request_id") or job.get("id")
+
+                if not job_id:
+                    return JsonResponse({
+                        'status': 'error',
+                        'error': 'Failed to create workspace - no job ID received'
+                    }, status=500)
+
+                # Persist row first so we never end up with remote VM but no DB row.
+                workspace, _ = Sandbox.objects.update_or_create(
+                    user=request.user,
+                    workspace_type='claude_auth',
+                    defaults={
+                        'job_id': job_id,
+                        'workspace_id': ws_name,
+                        'mags_job_id': job_id,
+                        'mags_workspace_id': ws_name,
+                        'status': 'ready',
+                    }
+                )
+                logger.info(f"[CLAUDE_CODE] Created and saved workspace, job_id={job_id}")
+
+            except Exception as e:
+                logger.error(f"[CLAUDE_CODE] Failed during auth workspace provisioning: {e}", exc_info=True)
+                try:
+                    Sandbox.objects.filter(
+                        user=request.user,
+                        workspace_type='claude_auth',
+                    ).update(status='error')
+                except Exception:
+                    pass
+                return JsonResponse({
+                    'status': 'error',
+                    'error': f'Failed to create workspace: {str(e)}'
+                }, status=500)
+
+        # Kill any existing claude processes first
+        logger.info(f"[CLAUDE_CODE] Killing any existing claude processes...")
+        run_command(
+            ws_name,
+            "pkill -9 claude 2>/dev/null; pkill -9 expect 2>/dev/null; rm -f /tmp/claude_*.txt /tmp/claude_*.log 2>/dev/null; echo 'CLEANUP_DONE'",
+            timeout=15, with_node_env=False,
+        )
+
+        # Check if already authenticated (overlay persists .claude/ credentials)
+        profile = request.user.profile
+        logger.info(f"[CLAUDE_CODE] Checking if already authenticated (overlay persistence)...")
+        check_result = check_claude_auth_status(ws_name)
+
+        if check_result.get('authenticated'):
+            try:
+                force_sync_workspace(ws_name or job_id)
+            except Exception as sync_err:
+                logger.warning(f"[CLAUDE_CODE] Force sync failed after auth check: {sync_err}")
+            profile.claude_code_authenticated = True
+            profile.save(update_fields=['claude_code_authenticated'])
+            return JsonResponse({
+                'status': 'already_authenticated',
+                'message': 'Claude Code is already authenticated'
+            })
+
+        # Auth check failed — destroy the stale workspace and create a fresh one
+        if use_existing:
+            logger.warning(f"[CLAUDE_CODE] Auth failed on existing workspace {ws_name}, destroying and recreating...")
+            try:
+                from factory.mags import _stop_workspace_job
+                from mags import Mags
+                client = Mags()
+                _stop_workspace_job(client, ws_name)
+            except Exception as stop_err:
+                logger.warning(f"[CLAUDE_CODE] Failed to stop old workspace: {stop_err}")
+
+            # Delete old DB record
+            if workspace:
+                workspace.delete()
+
+            # Create a fresh workspace
+            ws_name = generate_unique_claude_auth_workspace_name()
+            logger.info(f"[CLAUDE_CODE] Creating fresh auth workspace {ws_name}")
+            job = get_or_create_workspace_job(
+                workspace_id=ws_name,
+                script=CLAUDE_AUTH_SETUP_SCRIPT,
+                persistent=True,
+            )
+            job_id = job.get("request_id") or job.get("id")
+            workspace, _ = Sandbox.objects.update_or_create(
+                user=request.user,
+                workspace_type='claude_auth',
+                defaults={
+                    'job_id': job_id,
+                    'workspace_id': ws_name,
+                    'mags_job_id': job_id,
+                    'mags_workspace_id': ws_name,
+                    'status': 'ready',
+                }
+            )
+            logger.info(f"[CLAUDE_CODE] Fresh workspace ready: {ws_name}, job_id={job_id}")
+
+        # Start the authentication flow (OAuth)
+        logger.info(f"[CLAUDE_CODE] Starting OAuth flow...")
+        auth_result = start_claude_auth(ws_name)
+
+        if auth_result.get('status') == 'already_authenticated':
+            try:
+                force_sync_workspace(ws_name or job_id)
+            except Exception as sync_err:
+                logger.warning(f"[CLAUDE_CODE] Force sync failed after already-auth response: {sync_err}")
+            profile.claude_code_authenticated = True
+            profile.save(update_fields=['claude_code_authenticated'])
+
+        return JsonResponse(auth_result)
+
+    except Exception as e:
+        logger.error(f"[CLAUDE_CODE] Start auth error: {e}", exc_info=True)
+        return JsonResponse({
+            'status': 'error',
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+def claude_code_submit_code(request):
+    """
+    Submit the OAuth code to complete Claude Code authentication.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    from development.models import Sandbox
+    from factory.claude_code_utils import submit_claude_auth_code, check_claude_auth_status
+    from factory.mags import force_sync_workspace
+
+    try:
+        data = json.loads(request.body)
+        auth_code = data.get('code', '').strip()
+
+        if not auth_code:
+            return JsonResponse({
+                'status': 'error',
+                'error': 'Authentication code is required'
+            }, status=400)
+
+        # Get workspace from database
+        workspace = Sandbox.objects.filter(
+            user=request.user,
+            workspace_type='claude_auth',
+            status__in=['ready', 'sleeping'],
+        ).first()
+
+        if not workspace:
+            return JsonResponse({
+                'status': 'error',
+                'error': 'No active authentication workspace. Please start again.'
+            }, status=400)
+
+        ws_name = workspace.mags_workspace_id or workspace.workspace_id
+
+        # Submit the auth code
+        logger.info(f"[CLAUDE_CODE] Submitting auth code for user {request.user.id}, workspace={ws_name}")
+        result = submit_claude_auth_code(ws_name, auth_code)
+        logger.info(f"[CLAUDE_CODE] Submit result: {result.get('status')}")
+
+        if result.get('status') == 'success':
+            # Verify authentication worked
+            check_result = check_claude_auth_status(ws_name)
+            logger.info(f"[CLAUDE_CODE] Auth check result: authenticated={check_result.get('authenticated')}")
+
+            if check_result.get('authenticated'):
+                try:
+                    force_sync_workspace(workspace.mags_workspace_id or job_id)
+                except Exception as sync_err:
+                    logger.warning(f"[CLAUDE_CODE] Force sync failed after submit-code auth: {sync_err}")
+                # No S3 backup needed — Mags workspace overlay auto-persists .claude/
+
+                # Update user profile
+                profile = request.user.profile
+                logger.info(f"[CLAUDE_CODE] Setting profile.claude_code_authenticated=True for user {request.user.id}")
+                profile.claude_code_authenticated = True
+                profile.save(update_fields=['claude_code_authenticated'])
+                logger.info(f"[CLAUDE_CODE] Profile saved - claude_code_authenticated=True for user {request.user.id}")
+
+                # Clear CLI session IDs for all user's sandboxes to prevent stale session auth
+                from development.models import Sandbox
+                cleared_count = Sandbox.objects.filter(
+                    project__owner=request.user,
+                    cli_session_id__isnull=False
+                ).update(cli_session_id=None)
+                if cleared_count > 0:
+                    logger.info(f"[CLAUDE_CODE] Cleared {cleared_count} CLI session IDs after auth refresh for user {request.user.id}")
+
+                return JsonResponse({
+                    'status': 'success',
+                    'message': 'Claude Code authenticated successfully',
+                })
+            else:
+                return JsonResponse({
+                    'status': 'error',
+                    'error': 'Authentication verification failed. Please try again.'
+                })
+
+        return JsonResponse(result)
+
+    except Exception as e:
+        logger.error(f"[CLAUDE_CODE] Submit code error: {e}", exc_info=True)
+        return JsonResponse({
+            'status': 'error',
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+def claude_code_check_status(request):
+    """
+    Check Claude Code authentication status.
+    """
+    if request.method != 'GET':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    try:
+        profile = request.user.profile
+
+        # Get ApplicationState
+        from .models import ApplicationState
+        app_state, _ = ApplicationState.objects.get_or_create(user=request.user)
+
+        return JsonResponse({
+            'status': 'success',
+            'authenticated': profile.claude_code_authenticated,
+            'enabled': app_state.claude_code_enabled,
+            'has_backup': bool(profile.claude_code_s3_key)
+        })
+
+    except Exception as e:
+        logger.error(f"[CLAUDE_CODE] Check status error: {e}", exc_info=True)
+        return JsonResponse({
+            'status': 'error',
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+def claude_code_toggle(request):
+    """
+    Toggle Claude Code CLI mode on/off.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    try:
+        data = json.loads(request.body)
+        enabled = data.get('enabled', False)
+
+        # Get or create ApplicationState
+        from .models import ApplicationState
+        app_state, _ = ApplicationState.objects.get_or_create(user=request.user)
+
+        # Only allow enabling if authenticated
+        profile = request.user.profile
+        if enabled and not profile.claude_code_authenticated:
+            return JsonResponse({
+                'status': 'error',
+                'error': 'Please authenticate Claude Code first before enabling CLI mode'
+            }, status=400)
+
+        app_state.claude_code_enabled = enabled
+        app_state.save(update_fields=['claude_code_enabled'])
+
+        logger.info(f"[CLAUDE_CODE] User {request.user.id} {'enabled' if enabled else 'disabled'} CLI mode")
+
+        return JsonResponse({
+            'status': 'success',
+            'enabled': app_state.claude_code_enabled,
+            'message': f"Claude Code CLI mode {'enabled' if enabled else 'disabled'}"
+        })
+
+    except Exception as e:
+        logger.error(f"[CLAUDE_CODE] Toggle error: {e}", exc_info=True)
+        return JsonResponse({
+            'status': 'error',
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+def claude_code_disconnect(request):
+    """
+    Disconnect Claude Code authentication.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    try:
+        # Update profile
+        profile = request.user.profile
+        profile.claude_code_authenticated = False
+        profile.claude_code_s3_key = None
+        profile.save(update_fields=['claude_code_authenticated', 'claude_code_s3_key'])
+
+        # Disable CLI mode
+        from .models import ApplicationState
+        app_state, _ = ApplicationState.objects.get_or_create(user=request.user)
+        app_state.claude_code_enabled = False
+        app_state.save(update_fields=['claude_code_enabled'])
+
+        logger.info(f"[CLAUDE_CODE] User {request.user.id} disconnected Claude Code")
+
+        return JsonResponse({
+            'status': 'success',
+            'message': 'Claude Code disconnected successfully'
+        })
+
+    except Exception as e:
+        logger.error(f"[CLAUDE_CODE] Disconnect error: {e}", exc_info=True)
+        return JsonResponse({
+            'status': 'error',
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+def claude_code_verify(request):
+    """
+    Verify Claude Code authentication by running a test command.
+    With Mags, the workspace overlay persists .claude/ credentials automatically —
+    no S3 backup/restore needed. If no workspace exists, spin one up via Mags.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    from development.models import Sandbox
+    from factory.claude_code_utils import check_claude_auth_status
+    from factory.mags import (
+        get_or_create_workspace_job, run_command, workspace_name_for_claude_auth,
+        generate_unique_claude_auth_workspace_name,
+        CLAUDE_AUTH_SETUP_SCRIPT, MagsAPIError, force_sync_workspace,
+    )
+
+    try:
+        profile = request.user.profile
+
+        # Get existing workspace
+        workspace = Sandbox.objects.filter(
+            user=request.user,
+            workspace_type='claude_auth',
+        ).order_by('-updated_at').first()
+
+        if not workspace:
+            # No workspace record — create one via Mags (overlay may already have auth)
+            ws_name = generate_unique_claude_auth_workspace_name()
+            logger.info(f"[CLAUDE_CODE] No workspace found, creating via Mags for user {request.user.id}")
+            try:
+                job = get_or_create_workspace_job(
+                    workspace_id=ws_name,
+                    script=CLAUDE_AUTH_SETUP_SCRIPT,
+                    persistent=True,
+                )
+                job_id = job["request_id"]
+                workspace, _ = Sandbox.objects.update_or_create(
+                    user=request.user,
+                    workspace_type='claude_auth',
+                    defaults={
+                        'job_id': job_id,
+                        'workspace_id': ws_name,
+                        'mags_job_id': job_id,
+                        'mags_workspace_id': ws_name,
+                        'status': 'ready',
+                    }
+                )
+                logger.info(f"[CLAUDE_CODE] Created Mags workspace {ws_name} (job {job_id})")
+            except MagsAPIError as e:
+                logger.error(f"[CLAUDE_CODE] Failed to create workspace: {e}")
+                return JsonResponse({
+                    'status': 'error',
+                    'authenticated': False,
+                    'error': f'Failed to create workspace: {e}',
+                })
+        else:
+            # Ensure workspace job is running (may have been sleeping)
+            ws_name = workspace.mags_workspace_id or workspace_name_for_claude_auth(request.user.id)
+            try:
+                job = get_or_create_workspace_job(
+                    workspace_id=ws_name,
+                    script=CLAUDE_AUTH_SETUP_SCRIPT,
+                    persistent=True,
+                )
+                job_id = job["request_id"]
+
+                # Update workspace record
+                workspace.mags_job_id = job_id
+                workspace.mags_workspace_id = ws_name
+                workspace.status = 'ready'
+                workspace.save(update_fields=['mags_job_id', 'mags_workspace_id', 'status'])
+            except MagsAPIError as e:
+                logger.error(f"[CLAUDE_CODE] Failed to ensure workspace running: {e}")
+                return JsonResponse({
+                    'status': 'error',
+                    'authenticated': False,
+                    'error': f'Workspace not accessible: {e}',
+                })
+
+        ws_name = workspace.mags_workspace_id or workspace.workspace_id
+
+        # Clean up existing processes
+        logger.info(f"[CLAUDE_CODE] Cleaning up existing processes...")
+        try:
+            run_command(
+                ws_name,
+                "pkill -9 claude 2>/dev/null; pkill -9 expect 2>/dev/null; rm -f /tmp/claude_*.txt /tmp/claude_*.log 2>/dev/null; echo 'CLEANUP_DONE'",
+                timeout=15, with_node_env=False,
+            )
+        except Exception:
+            pass  # Cleanup is best-effort
+
+        # Check authentication status
+        logger.info(f"[CLAUDE_CODE] Verifying auth for user {request.user.id}")
+        check_result = check_claude_auth_status(ws_name)
+
+        if check_result.get('authenticated'):
+            try:
+                force_sync_workspace(workspace.mags_workspace_id or job_id)
+            except Exception as sync_err:
+                logger.warning(f"[CLAUDE_CODE] Force sync failed during verify: {sync_err}")
+            # Update profile — no S3 backup needed, overlay auto-persists
+            profile.claude_code_authenticated = True
+            profile.save(update_fields=['claude_code_authenticated'])
+
+            # Clear CLI session IDs for all user's sandboxes to prevent stale session auth
+            from development.models import Sandbox
+            cleared_count = Sandbox.objects.filter(
+                project__owner=request.user,
+                cli_session_id__isnull=False
+            ).update(cli_session_id=None)
+            if cleared_count > 0:
+                logger.info(f"[CLAUDE_CODE] Cleared {cleared_count} CLI session IDs after verify for user {request.user.id}")
+
+            logger.info(f"[CLAUDE_CODE] User {request.user.id} verified successfully")
+
+            return JsonResponse({
+                'status': 'success',
+                'authenticated': True,
+            })
+        else:
+            return JsonResponse({
+                'status': 'not_authenticated',
+                'authenticated': False,
+                'message': 'Claude Code is not authenticated. Please reconnect.'
+            })
+
+    except Exception as e:
+        logger.error(f"[CLAUDE_CODE] Verify error: {e}", exc_info=True)
+        return JsonResponse({
+            'status': 'error',
+            'authenticated': False,
+            'error': str(e)
+        }, status=500)

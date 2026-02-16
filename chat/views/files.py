@@ -3,10 +3,11 @@ import os
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
-from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404
 from django.conf import settings
-from rest_framework.decorators import api_view, parser_classes
+from rest_framework.decorators import api_view, parser_classes, authentication_classes, permission_classes
+from rest_framework.authentication import SessionAuthentication
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 from rest_framework import status
@@ -17,8 +18,9 @@ from asgiref.sync import sync_to_async
 
 
 @api_view(['POST'])
+@authentication_classes([SessionAuthentication])
+@permission_classes([IsAuthenticated])
 @parser_classes([MultiPartParser, FormParser])
-@login_required
 def upload_file(request):
     """
     API endpoint to upload a file and attach it to a conversation.
@@ -76,7 +78,8 @@ def upload_file(request):
 
 
 @api_view(['GET'])
-@login_required
+@authentication_classes([SessionAuthentication])
+@permission_classes([IsAuthenticated])
 def conversation_files(request, conversation_id):
     """
     API endpoint to retrieve all files associated with a conversation.
@@ -109,9 +112,6 @@ def conversation_files(request, conversation_id):
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-from rest_framework.decorators import authentication_classes, permission_classes
-from rest_framework.authentication import SessionAuthentication
-from rest_framework.permissions import IsAuthenticated
 from django.views.decorators.csrf import ensure_csrf_cookie
 from asgiref.sync import async_to_sync
 import tempfile

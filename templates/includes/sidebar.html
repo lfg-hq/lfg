@@ -10,22 +10,64 @@
                 <i class="fas fa-chevron-left"></i>
             </button>
         </div>
+        <div class="project-selector-section">
+            {% if current_project %}
+            <div class="nav-dropdown-container" id="projectDropdownContainer">
+                <button class="project-dropdown-trigger" id="projectDropdownTrigger" title="{% if current_project %}Project Options{% else %}All Projects{% endif %}">
+                    <i class="fas fa-folder{% if current_project %}-open{% endif %}"></i>
+                    <span class="project-name-text">{% if current_project %}{{ current_project.name|truncatechars:18 }}{% else %}All Projects{% endif %}</span>
+                    <i class="fas fa-chevron-down dropdown-arrow"></i>
+                </button>
+                <div class="nav-dropdown" id="projectDropdown">
+                    <a href="{% url 'projects:project_list' %}" class="nav-dropdown-item{% if not current_project %} active{% endif %}">
+                        <i class="fas fa-th-large"></i>
+                        <span>All Projects</span>
+                    </a>
+                    {% if current_project %}
+                    <a href="{% url 'projects:project_detail' project_id=current_project.project_id %}" class="nav-dropdown-item">
+                        <i class="fas fa-tachometer-alt"></i>
+                        <span>Project Dashboard</span>
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+            {% else %}
+            <a href="{% url 'projects:project_list' %}" class="project-dropdown-trigger" title="All Projects">
+                <i class="fas fa-folder"></i>
+                <span class="project-name-text">All Projects</span>
+            </a>
+            {% endif %}
+        </div>
+        {% if current_project %}
         <div class="new-chat-section">
             <a href="{% if show_conversations %}#{% else %}{% url 'index' %}{% endif %}" id="new-chat-btn" class="new-chat-link{% if not show_conversations %} disabled{% endif %}" title="New Chat">
-                <i class="fas fa-plus"></i>
+                <i class="fas fa-pen-to-square"></i>
                 <span class="button-text">New chat</span>
             </a>
         </div>
         <div class="sidebar-nav">
-            <a href="{% url 'projects:project_list' %}" class="nav-link{% if request.resolver_match.url_name == 'project_list' %} active{% endif %}" title="Projects">
-                <i class="fas fa-folder"></i>
-                <span class="nav-text">Projects</span>
+            <a href="{% url 'instant_mode' project_id=current_project.project_id %}" class="nav-link{% if request.resolver_match.url_name == 'instant_mode' or request.resolver_match.url_name == 'instant_app_detail' %} active{% endif %}" title="Instant">
+                <i class="fas fa-bolt"></i>
+                <span class="nav-text">Instant</span>
             </a>
             <a href="#" class="nav-link chat-link{% if request.resolver_match.url_name == 'index' or request.resolver_match.url_name == 'conversation_detail' or request.resolver_match.url_name == 'create_conversation' %} active{% endif %}" title="Chat">
                 <i class="fas fa-comments"></i>
                 <span class="nav-text">Chat</span>
             </a>
+            <a href="{% url 'projects:project_detail' project_id=current_project.project_id %}" class="nav-link{% if request.resolver_match.url_name == 'project_detail' %} active{% endif %}" title="Project Dashboard">
+                <i class="fas fa-tachometer-alt"></i>
+                <span class="nav-text">Project Dashboard</span>
+            </a>
+            <a href="{% url 'projects:project_tickets_list' project_id=current_project.project_id %}" class="nav-link{% if request.resolver_match.url_name == 'project_tickets_list' %} active{% endif %}" title="Tickets">
+                <i class="fas fa-tasks"></i>
+                <span class="nav-text">Tickets</span>
+            </a>
+            <a href="{% url 'projects:app_preview' project_id=current_project.project_id %}" class="nav-link{% if request.resolver_match.url_name == 'app_preview' %} active{% endif %}" title="Preview">
+                <i class="fas fa-eye"></i>
+                <span class="nav-text">Preview</span>
+            </a>
         </div>
+        {% endif %}
         {% if show_conversations %}
         <div class="conversations-section">
             <h3 class="sidebar-section-title">Recents</h3>
@@ -37,6 +79,12 @@
     </div>
     <div class="sidebar-bottom-content">
         <div class="sidebar-nav bottom-nav">
+            <!-- Theme Toggle -->
+            <button class="nav-link theme-toggle-sidebar" id="sidebar-theme-toggle" title="Toggle light/dark mode" data-theme-toggle>
+                <i class="fas fa-sun theme-icon-light"></i>
+                <i class="fas fa-moon theme-icon-dark"></i>
+                <span class="nav-text theme-text">Light Mode</span>
+            </button>
             <div class="nav-link token-display" data-tooltip="Total tokens used today across all conversations">
                 <i class="fas fa-chart-line"></i>
                 <span class="nav-text">

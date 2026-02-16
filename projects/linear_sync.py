@@ -1,7 +1,7 @@
 import requests
 from datetime import datetime
 from django.utils import timezone
-from .models import ProjectChecklist
+from .models import ProjectTicket
 
 
 class LinearSyncService:
@@ -591,7 +591,7 @@ class LinearSyncService:
         }
         
         # Get all checklist items to sync
-        checklist_items = project.checklist.exclude(status='done')
+        checklist_items = project.tickets.exclude(status='done')
         
         for item in checklist_items:
             # Skip if already synced and sync is disabled for this item

@@ -5,15 +5,143 @@ Extracted from ai_providers.py to separate concerns.
 import json
 import logging
 import asyncio
-from typing import Tuple, Optional, Dict, Any
+import uuid
+from contextvars import ContextVar
+from datetime import datetime
+from typing import Tuple, Optional, Dict, Any, List
 
 from projects.models import Project, ToolCallHistory
-from chat.models import Conversation
+from chat.models import Conversation, ModelSelection
 
 logger = logging.getLogger(__name__)
 
+# Context variable to store canvas_id across async calls
+current_canvas_id: ContextVar[Optional[int]] = ContextVar('current_canvas_id', default=None)
+
+
+def set_current_canvas_id(canvas_id: Optional[int]):
+    """Set the current canvas ID for tool execution context."""
+    current_canvas_id.set(canvas_id)
+
+
+def get_current_canvas_id() -> Optional[int]:
+    """Get the current canvas ID from tool execution context."""
+    return current_canvas_id.get()
+
 # Maximum tool output size (50KB)
 MAX_TOOL_OUTPUT_SIZE = 50 * 1024
+
+
+def sanitize_for_postgres(obj):
+    """Recursively sanitize data to remove null characters that PostgreSQL cannot store."""
+    if isinstance(obj, str):
+        return obj.replace('\x00', '').replace('\u0000', '')
+    elif isinstance(obj, dict):
+        return {k: sanitize_for_postgres(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_for_postgres(item) for item in obj]
+    return obj
+
+
+async def _get_selected_model_for_user(user) -> str:
+    """Return the selected model for a user, falling back to default."""
+    default_model = ModelSelection.DEFAULT_MODEL_KEY
+    if not user:
+        return default_model
+    try:
+        model_selection = await asyncio.to_thread(ModelSelection.objects.get, user=user)
+        return model_selection.selected_model
+    except ModelSelection.DoesNotExist:
+        try:
+            model_selection = await asyncio.to_thread(
+                ModelSelection.objects.create,
+                user=user,
+                selected_model=default_model
+            )
+            return model_selection.selected_model
+        except Exception as create_error:
+            logger.warning(f"Could not create default model selection for user {user.id}: {create_error}")
+    except Exception as selection_error:
+        logger.warning(f"Could not load model selection for user {user.id}: {selection_error}")
+    return default_model
+
+
+def truncate_text(text: str, limit: int = 600) -> str:
+    if not text:
+        return ""
+    if len(text) <= limit:
+        return text
+    overflow = len(text) - limit
+    return f"{text[:limit]}... (+{overflow} chars)"
+
+
+def _truncate_value(value, limit: int = 300):
+    if isinstance(value, str):
+        return truncate_text(value, limit)
+    if isinstance(value, (int, float, bool)) or value is None:
+        return value
+    if isinstance(value, list):
+        preview = [_truncate_value(item, limit) for item in value[:5]]
+        if len(value) > 5:
+            preview.append(f"... (+{len(value) - 5} more items)")
+        return preview
+    if isinstance(value, dict):
+        preview = {}
+        for idx, (key, val) in enumerate(value.items()):
+            if idx >= 10:
+                preview["__truncated__"] = f"+{len(value) - idx} keys"
+                break
+            preview[str(key)] = _truncate_value(val, limit)
+        return preview
+    return str(value)
+
+
+def sanitize_tool_input(args: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(args, dict):
+        return {}
+    preview = {}
+    for key, value in list(args.items())[:25]:
+        if key in {"explanation", "explaination"}:
+            continue
+        preview[str(key)] = _truncate_value(value)
+    return preview
+
+
+def extract_ticket_context(args: Dict[str, Any]) -> Dict[str, Any]:
+    context: Dict[str, Any] = {}
+    if not isinstance(args, dict):
+        return context
+
+    ticket_id = args.get("ticket_id") or args.get("ticketID")
+    if isinstance(ticket_id, (str, int)):
+        context["id"] = str(ticket_id)
+
+    ticket_details = args.get("ticket_details") or args.get("ticket")
+    if isinstance(ticket_details, dict):
+        ticket_name = ticket_details.get("name") or ticket_details.get("title")
+        if ticket_name:
+            context["name"] = str(ticket_name)
+        if ticket_details.get("description"):
+            context["description"] = truncate_text(str(ticket_details["description"]), 200)
+
+    return context
+
+
+def sanitize_log_entries(entries) -> List[Dict[str, Any]]:
+    sanitized = []
+    if not isinstance(entries, list):
+        return sanitized
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        sanitized.append({
+            "title": truncate_text(str(entry.get("title", "")), 120),
+            "command": truncate_text(str(entry.get("command", "")), 400),
+            "stdout": truncate_text(str(entry.get("stdout", "")), 600),
+            "stderr": truncate_text(str(entry.get("stderr", "")), 600),
+            "exit_code": entry.get("exit_code")
+        })
+    return sanitized
 
 
 def get_notification_type_for_tool(tool_name: str) -> Optional[str]:
@@ -51,6 +179,7 @@ def get_notification_type_for_tool(tool_name: str) -> Optional[str]:
         "create_prd": "prd",
         "stream_implementation_content": "implementation_stream",  # Stream implementation content to implementation tab
         "stream_prd_content": "prd_stream",  # Stream PRD content to PRD tab
+        "stream_document_content": "file_stream",  # Stream generic document content
         "start_server": "apps",  # Server starts should show in apps/preview tab
         # "execute_command": "toolhistory",  # Show command execution in tool history
         "save_implementation": "implementation",
@@ -62,6 +191,7 @@ def get_notification_type_for_tool(tool_name: str) -> Optional[str]:
         "create_tickets": "checklist",  # Add this mapping
         "update_ticket": "checklist",
         "implement_ticket": "implementation",  # Implementation tasks go to implementation tab
+        "generate_design_preview": "design_preview",  # Design preview goes to design tab
         # "save_project_name": "toolhistory",  # Project name saving goes to tool history
     }
     
@@ -94,6 +224,8 @@ def map_notification_type_to_tab(notification_type: str) -> str:
         # "project_name_saved": "toolhistory",
         "prd_stream": "prd_stream",  # Map prd_stream to prd tab
         "implementation_stream": "implementation_stream",  # Map implementation_stream to implementation tab
+        "file_stream": "file_stream",  # Map file_stream for generic document streaming
+        "design_preview": "design_preview",  # Map design_preview for design previews
         # Add more custom mappings as needed
     }
     
@@ -111,11 +243,11 @@ def map_notification_type_to_tab(notification_type: str) -> str:
 
 
 async def execute_tool_call(
-    tool_call_name: str, 
-    tool_call_args_str: str, 
-    project_id: Optional[int], 
+    tool_call_name: str,
+    tool_call_args_str: str,
+    project_id: Optional[int],
     conversation_id: Optional[int]
-) -> Tuple[str, Optional[Dict[str, Any]], str]:
+) -> Tuple[str, Optional[List[Dict[str, Any]]], List[str]]:
     """
     Execute a tool call and return the results.
     
@@ -126,10 +258,10 @@ async def execute_tool_call(
         conversation_id: The conversation ID
         
     Returns:
-        tuple: (result_content, notification_data, yielded_content)
+        tuple: (result_content, notification_data, yielded_chunks)
             - result_content: The string result to return to the model
-            - notification_data: Dict with notification data or None
-            - yielded_content: Content to yield immediately (e.g., "*" for explanations)
+            - notification_data: List of notification dicts or None
+            - yielded_chunks: List of strings to yield immediately (explanations, early notifications)
     """
     from factory.ai_functions import app_functions
     import traceback
@@ -141,9 +273,19 @@ async def execute_tool_call(
     # and results are included in Claude's response content automatically
     
     result_content = ""
-    notification_data = None
-    yielded_content = ""
-    
+    notifications: List[Dict[str, Any]] = []
+    yield_chunks: List[str] = []
+    parsed_args: Dict[str, Any] = {}
+    explanation = ""
+    tool_input_preview: Dict[str, Any] = {}
+    ticket_context: Dict[str, Any] = {}
+    tool_failed = False
+    extra_fields: Dict[str, Any] = {}
+    explanation_chunk = ""
+
+    tool_execution_id = str(uuid.uuid4())
+    start_time = datetime.utcnow()
+
     try:
         # Handle empty arguments string by defaulting to an empty object
         if not tool_call_args_str.strip():
@@ -153,25 +295,47 @@ async def execute_tool_call(
             parsed_args = json.loads(tool_call_args_str)
             # Check for both possible spellings of "explanation"
             explanation = parsed_args.get("explanation", parsed_args.get("explaination", ""))
-            
-            if explanation:
-                logger.debug(f"Found explanation: {explanation}")
-                # Return the actual explanation to be yielded with formatting
-                # Add a newline before and after for better readability
-                yielded_content = f"\n*{explanation}*\n"
-                
-                # Limit the size of yielded content
-                if len(yielded_content) > MAX_TOOL_OUTPUT_SIZE:
-                    truncated_size = len(yielded_content) - MAX_TOOL_OUTPUT_SIZE
-                    yielded_content = yielded_content[:MAX_TOOL_OUTPUT_SIZE] + f"\n\n... [Explanation truncated - {truncated_size} characters removed]*\n"
-        
+
+        if explanation:
+            logger.debug(f"Found explanation: {explanation}")
+            explanation_chunk = f"\n*{explanation}*\n"
+            if len(explanation_chunk) > MAX_TOOL_OUTPUT_SIZE:
+                truncated_size = len(explanation_chunk) - MAX_TOOL_OUTPUT_SIZE
+                explanation_chunk = (
+                    explanation_chunk[:MAX_TOOL_OUTPUT_SIZE]
+                    + f"\n\n... [Explanation truncated - {truncated_size} characters removed]*\n"
+                )
+            yield_chunks.append(explanation_chunk)
+
+        tool_input_preview = sanitize_tool_input(parsed_args)
+        ticket_context = extract_ticket_context(parsed_args)
+
+        pending_notification = {
+            "is_notification": True,
+            "notification_marker": "__NOTIFICATION__",
+            "early_notification": True,
+            "status": "pending",
+            "function_name": tool_call_name,
+            "tool_execution_id": tool_execution_id,
+            "tool_input": tool_input_preview,
+            "ticket": ticket_context,
+            "explanation": explanation,
+            "started_at": start_time.isoformat() + "Z"
+        }
+
+        pending_json = json.dumps(pending_notification)
+        yield_chunks.append(f"__NOTIFICATION__{pending_json}__NOTIFICATION__")
+
+        # Extract ticket_id from ticket_context for command logging
+        ticket_id = int(ticket_context.get("id")) if ticket_context.get("id") else None
+
         # Log the function call with clean arguments
-        logger.debug(f"Calling app_functions with {tool_call_name}, {parsed_args}, {project_id}, {conversation_id}")
-        
+        logger.debug(f"Calling app_functions with {tool_call_name}, {parsed_args}, {project_id}, {conversation_id}, ticket_id={ticket_id}")
+
         # Execute the function
         try:
             tool_result = await app_functions(
-                tool_call_name, parsed_args, project_id, conversation_id
+                tool_call_name, parsed_args, project_id, conversation_id, ticket_id
             )
             logger.debug(f"app_functions call successful for {tool_call_name}")
         except Exception as func_error:
@@ -200,15 +364,16 @@ async def execute_tool_call(
             logger.debug(f"FORCING NOTIFICATION FOR {tool_call_name}")
             # Ensure notification type is mapped to a valid tab
             mapped_notification_type = map_notification_type_to_tab(notification_type)
-            notification_data = {
+            forced_notification = {
                 "is_notification": True,
                 "notification_type": mapped_notification_type,
                 "function_name": tool_call_name,
-                "notification_marker": "__NOTIFICATION__"
+                "notification_marker": "__NOTIFICATION__",
+                "tool_execution_id": tool_execution_id
             }
-            
-            logger.debug(f"Forced notification: {notification_data}")
-        
+            notifications.append(forced_notification)
+            logger.debug(f"Forced notification: {forced_notification}")
+
         # Handle the tool result
         if tool_result is None:
             result_content = "The function returned no result."
@@ -221,32 +386,60 @@ async def execute_tool_call(
             raw_notification_type = tool_result.get("notification_type", "toolhistory")
             mapped_notification_type = map_notification_type_to_tab(raw_notification_type)
             
-            notification_data = {
+            notification_payload = {
                 "is_notification": True,
                 "notification_type": mapped_notification_type,
-                "notification_marker": "__NOTIFICATION__"
+                "notification_marker": "__NOTIFICATION__",
+                "tool_execution_id": tool_execution_id,
+                "function_name": tool_call_name
             }
             
             # Special handling for PRD and Implementation streaming
             if raw_notification_type == "prd_stream":
-                notification_data["content_chunk"] = tool_result.get("content_chunk", "")
-                notification_data["is_complete"] = tool_result.get("is_complete", False)
+                notification_payload["content_chunk"] = tool_result.get("content_chunk", "")
+                notification_payload["is_complete"] = tool_result.get("is_complete", False)
                 if "prd_name" in tool_result:
-                    notification_data["prd_name"] = tool_result.get("prd_name")
+                    notification_payload["prd_name"] = tool_result.get("prd_name")
                 if "file_id" in tool_result:
-                    notification_data["file_id"] = tool_result.get("file_id")
+                    notification_payload["file_id"] = tool_result.get("file_id")
                     logger.info(f"PRD_STREAM: Including file_id {tool_result.get('file_id')} in notification")
-                logger.info(f"PRD_STREAM in notification handler: chunk_length={len(notification_data['content_chunk'])}, is_complete={notification_data['is_complete']}, prd_name={notification_data.get('prd_name', 'Not specified')}, file_id={notification_data.get('file_id', 'None')}")
+                logger.info(
+                    "PRD_STREAM in notification handler: chunk_length=%s, is_complete=%s, prd_name=%s, file_id=%s",
+                    len(notification_payload['content_chunk']),
+                    notification_payload['is_complete'],
+                    notification_payload.get('prd_name', 'Not specified'),
+                    notification_payload.get('file_id', 'None')
+                )
             elif raw_notification_type == "implementation_stream":
-                notification_data["content_chunk"] = tool_result.get("content_chunk", "")
-                notification_data["is_complete"] = tool_result.get("is_complete", False)
+                notification_payload["content_chunk"] = tool_result.get("content_chunk", "")
+                notification_payload["is_complete"] = tool_result.get("is_complete", False)
                 if "file_id" in tool_result:
-                    notification_data["file_id"] = tool_result.get("file_id")
+                    notification_payload["file_id"] = tool_result.get("file_id")
                     logger.info(f"IMPLEMENTATION_STREAM: Including file_id {tool_result.get('file_id')} in notification")
-                logger.info(f"IMPLEMENTATION_STREAM in notification handler: chunk_length={len(notification_data['content_chunk'])}, is_complete={notification_data['is_complete']}, file_id={notification_data.get('file_id', 'None')}")
+                logger.info(
+                    "IMPLEMENTATION_STREAM in notification handler: chunk_length=%s, is_complete=%s, file_id=%s",
+                    len(notification_payload['content_chunk']),
+                    notification_payload['is_complete'],
+                    notification_payload.get('file_id', 'None')
+                )
+            elif raw_notification_type == "file_stream":
+                notification_payload["content_chunk"] = tool_result.get("content_chunk", "")
+                notification_payload["is_complete"] = tool_result.get("is_complete", False)
+                notification_payload["file_type"] = tool_result.get("file_type", "other")
+                notification_payload["file_name"] = tool_result.get("file_name", "Document")
+                if "file_id" in tool_result:
+                    notification_payload["file_id"] = tool_result.get("file_id")
+                    logger.info(f"FILE_STREAM: Including file_id {tool_result.get('file_id')} in notification")
+                logger.info(
+                    "FILE_STREAM in notification handler: chunk_length=%s, is_complete=%s, file_name=%s, file_id=%s",
+                    len(notification_payload['content_chunk']),
+                    notification_payload['is_complete'],
+                    notification_payload.get('file_name', 'Not specified'),
+                    notification_payload.get('file_id', 'None')
+                )
             
-            logger.debug(f"Notification data to be yielded: {notification_data}")
-            
+            logger.debug(f"Notification data to be yielded: {notification_payload}")
+            notifications.append(notification_payload)
             # Use the message_to_agent as the result content
             result_content = str(tool_result.get("message_to_agent", ""))
         else:
@@ -258,7 +451,33 @@ async def execute_tool_call(
             else:
                 # If tool_result is neither a string nor a dict
                 result_content = str(tool_result) if tool_result is not None else ""
-        
+
+        if isinstance(locals().get("tool_result"), dict):
+            tracked_keys = [
+                "stdout",
+                "stderr",
+                "workspace_id",
+                "job_id",
+                "ipv6_address",
+                "project_path",
+                "exit_code",
+                "dev_server_pid",
+                "preview",
+                "preview_url",
+                "log_path",
+                "log_tail",
+                "command",
+                "status",
+                "log_entries"
+            ]
+            for key in tracked_keys:
+                value = tool_result.get(key)
+                if value not in (None, ""):
+                    if key == "log_entries":
+                        extra_fields[key] = sanitize_log_entries(value)
+                    else:
+                        extra_fields[key] = value
+
         # Limit the size of the result content
         if len(result_content) > MAX_TOOL_OUTPUT_SIZE:
             truncated_size = len(result_content) - MAX_TOOL_OUTPUT_SIZE
@@ -271,18 +490,80 @@ async def execute_tool_call(
         error_message = f"Failed to parse JSON arguments: {e}. Args: {tool_call_args_str}"
         logger.error(error_message)
         result_content = f"Error: {error_message}"
-        notification_data = None
+        tool_failed = True
+        if not yield_chunks:
+            pending_notification = {
+                "is_notification": True,
+                "notification_marker": "__NOTIFICATION__",
+                "early_notification": True,
+                "status": "pending",
+                "function_name": tool_call_name,
+                "tool_execution_id": tool_execution_id,
+                "tool_input": {},
+                "started_at": start_time.isoformat() + "Z"
+            }
+            pending_json = json.dumps(pending_notification)
+            yield_chunks.append(f"__NOTIFICATION__{pending_json}__NOTIFICATION__")
     except Exception as e:
         error_message = f"Error executing tool {tool_call_name}: {e}"
         logger.error(f"{error_message}\n{traceback.format_exc()}")
         result_content = f"Error: {error_message}"
-        notification_data = None
-    
+        tool_failed = True
+
+    completed_at = datetime.utcnow()
+
+    status = "failed" if tool_failed or result_content.strip().lower().startswith("error") else "completed"
+    completion_notification = {
+        "is_notification": True,
+        "notification_marker": "__NOTIFICATION__",
+        "tool_execution_id": tool_execution_id,
+        "function_name": tool_call_name,
+        "status": status,
+        "message": result_content,
+        "result_excerpt": truncate_text(result_content, 800),
+        "tool_input": tool_input_preview,
+        "ticket": ticket_context,
+        "explanation": explanation,
+        "started_at": start_time.isoformat() + "Z",
+        "completed_at": completed_at.isoformat() + "Z"
+    }
+
+    if extra_fields:
+        completion_notification.update({k: v for k, v in extra_fields.items() if v not in (None, "")})
+
+    existing_toolhistory = next((n for n in notifications if n.get("notification_type") == "toolhistory"), None)
+    if existing_toolhistory:
+        existing_toolhistory.update({k: v for k, v in completion_notification.items() if v not in (None, "")})
+    else:
+        notifications.append(completion_notification)
+
+    notification_data = notifications if notifications else None
+
     # Save the tool call history to database
     try:
         # Get the project and conversation objects
-        project = await asyncio.to_thread(Project.objects.get, project_id=project_id) if project_id else None
-        conversation = await asyncio.to_thread(Conversation.objects.get, id=conversation_id) if conversation_id else None
+        # project_id can be either the UUID field or database ID - try both
+        project = None
+        if project_id:
+            try:
+                # First try as database ID (integer)
+                if isinstance(project_id, int) or (isinstance(project_id, str) and project_id.isdigit()):
+                    project = await asyncio.to_thread(Project.objects.get, id=int(project_id))
+                else:
+                    # Try as UUID field
+                    project = await asyncio.to_thread(Project.objects.get, project_id=project_id)
+            except Project.DoesNotExist:
+                logger.warning(f"Project not found for ID: {project_id}")
+                project = None
+
+        # Get conversation if provided
+        conversation = None
+        if conversation_id:
+            try:
+                conversation = await asyncio.to_thread(Conversation.objects.get, id=conversation_id)
+            except Conversation.DoesNotExist:
+                logger.warning(f"Conversation not found for ID: {conversation_id}")
+                conversation = None
         
         if project:
             # Get the latest message from the conversation if available
@@ -295,20 +576,29 @@ async def execute_tool_call(
                 except:
                     pass
             
-            # Create the tool call history record
+            # Create the tool call history record (sanitize to remove null chars)
+            sanitized_tool_input = sanitize_for_postgres(parsed_args if 'parsed_args' in locals() else {})
+            sanitized_result = sanitize_for_postgres(result_content) if isinstance(result_content, str) else result_content
+
             tool_history = await asyncio.to_thread(
                 ToolCallHistory.objects.create,
                 project=project,
                 conversation=conversation,
                 message=message,
                 tool_name=tool_call_name,
-                tool_input=parsed_args if 'parsed_args' in locals() else {},
-                generated_content=result_content,
+                tool_input=sanitized_tool_input,
+                generated_content=sanitized_result,
                 content_type='text',
                 metadata={
-                    'notification_data': notification_data,
-                    'yielded_content': yielded_content,
-                    'has_error': 'Error:' in result_content
+                    'notification_data': sanitize_for_postgres(notification_data),
+                    'yielded_content': sanitize_for_postgres(yield_chunks),
+                    'has_error': status == 'failed',
+                    'tool_execution_id': tool_execution_id,
+                    'started_at': start_time.isoformat() + "Z",
+                    'completed_at': completed_at.isoformat() + "Z",
+                    'tool_input_preview': sanitize_for_postgres(tool_input_preview) if tool_input_preview else None,
+                    'ticket_context': ticket_context,
+                    'status': status
                 }
             )
             logger.debug(f"Tool call history saved: {tool_history.id}")
@@ -316,7 +606,7 @@ async def execute_tool_call(
         logger.error(f"Failed to save tool call history: {save_error}")
         # Don't fail the tool execution if saving history fails
     
-    return result_content, notification_data, yielded_content
+    return result_content, notification_data, yield_chunks
 
 
 async def get_ai_response(
@@ -377,8 +667,9 @@ async def get_ai_response(
     except Exception as e:
         logger.warning(f"Could not get user/conversation/project: {e}")
     
-    # Get the default provider (can be enhanced later to support provider selection)
-    provider = ai_providers.AIProvider.get_provider("anthropic", "claude_4_sonnet", user, conversation, project)
+    # Determine selected model for user
+    selected_model = await _get_selected_model_for_user(user)
+    provider = ai_providers.AIProvider.get_provider(None, selected_model, user, conversation, project)
     
     # Collect the streaming response
     full_content = ""

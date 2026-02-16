@@ -33,41 +33,41 @@
     gap: 10px !important;
 }
 
-/* Card header styles */
-.card-header {
+/* Ticket card header styles - namespaced to avoid conflicts with common.css */
+.ticket-card .ticket-card-header {
     padding: 12px 15px !important;
     background-color: rgba(30, 30, 30, 0.6) !important;
     border-bottom: 1px solid #333 !important;
 }
 
 /* Remove colored top borders from status cards */
-.card-header.open,
-.card-header.in_progress,
-.card-header.agent,
-.card-header.closed {
+.ticket-card .ticket-card-header.open,
+.ticket-card .ticket-card-header.in_progress,
+.ticket-card .ticket-card-header.agent,
+.ticket-card .ticket-card-header.closed {
     border-top: none !important;
     border-left: 4px solid #444 !important;
 }
 
 /* Use subtle left border instead for status indicators */
-.card-header.open {
+.ticket-card .ticket-card-header.open {
     border-left-color: #3498db !important;
 }
 
-.card-header.in_progress {
+.ticket-card .ticket-card-header.in_progress {
     border-left-color: #f39c12 !important;
 }
 
-.card-header.agent {
+.ticket-card .ticket-card-header.agent {
     border-left-color: #9b59b6 !important;
 }
 
-.card-header.closed {
+.ticket-card .ticket-card-header.closed {
     border-left-color: #2ecc71 !important;
 }
 
-/* Card title styling */
-.card-title {
+/* Ticket card title styling */
+.ticket-card .ticket-card-title {
     font-size: 15px !important;
     font-weight: 500 !important;
     margin: 0 !important;
@@ -75,8 +75,8 @@
     line-height: 1.4 !important;
 }
 
-/* Card body */
-.card-body {
+/* Ticket card body */
+.ticket-card .ticket-card-body {
     padding: 15px;
     flex: 1;
     color: #bbb;
@@ -86,7 +86,7 @@
     flex-direction: column;
 }
 
-.card-description {
+.ticket-card .ticket-card-description {
     flex: 1;
     margin-bottom: 15px;
     overflow-wrap: break-word;
@@ -99,21 +99,21 @@
     scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 
-.card-description::-webkit-scrollbar {
+.ticket-card .ticket-card-description::-webkit-scrollbar {
     width: 4px;
 }
 
-.card-description::-webkit-scrollbar-track {
+.ticket-card .ticket-card-description::-webkit-scrollbar-track {
     background: transparent;
 }
 
-.card-description::-webkit-scrollbar-thumb {
+.ticket-card .ticket-card-description::-webkit-scrollbar-thumb {
     background-color: rgba(255, 255, 255, 0.2);
     border-radius: 10px;
 }
 
-/* Card Meta Section (integrated into body) */
-.card-meta {
+/* Ticket card Meta Section (integrated into body) */
+.ticket-card .ticket-card-meta {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -122,8 +122,8 @@
     border-top: 1px dashed rgba(255, 255, 255, 0.05);
 }
 
-/* Card tags container */
-.card-tags {
+/* Ticket card tags container */
+.ticket-card .ticket-card-tags {
     display: flex !important;
     flex-wrap: wrap !important;
     gap: 5px !important;

@@ -10,6 +10,10 @@ from django.utils import timezone
 from datetime import timedelta
 
 from .models import PaymentPlan, Transaction, UserCredit
+from .constants import (
+    FREE_TIER_TOKEN_LIMIT,
+    PRO_MONTHLY_TOKEN_LIMIT,
+)
 import stripe
 import json
 import os
@@ -52,9 +56,17 @@ def dashboard(request):
     
     # Calculate usage percentage
     if user_credit.is_free_tier:
-        usage_percentage = (user_credit.total_tokens_used / 100000) * 100 if user_credit.total_tokens_used else 0
+        usage_percentage = (
+            (user_credit.total_tokens_used / FREE_TIER_TOKEN_LIMIT) * 100
+            if user_credit.total_tokens_used
+            else 0
+        )
     else:
-        usage_percentage = (user_credit.monthly_tokens_used / 300000) * 100 if user_credit.monthly_tokens_used else 0
+        usage_percentage = (
+            (user_credit.monthly_tokens_used / PRO_MONTHLY_TOKEN_LIMIT) * 100
+            if user_credit.monthly_tokens_used
+            else 0
+        )
     
     context = {
         'user_credit': user_credit,
@@ -62,6 +74,8 @@ def dashboard(request):
         'transactions': transactions,
         'usage_percentage': min(usage_percentage, 100),  # Cap at 100%
         'STRIPE_PUBLIC_KEY': stripe_public_key,
+        'free_tier_token_limit': FREE_TIER_TOKEN_LIMIT,
+        'pro_monthly_token_limit': PRO_MONTHLY_TOKEN_LIMIT,
     }
     
     return render(request, 'subscriptions/dashboard.html', context)
@@ -358,7 +372,11 @@ def payment_success(request):
                 
                 # Add success message
                 if session.mode == 'subscription':
-                    messages.success(request, "Subscription started successfully! You now have access to 300,000 tokens per month and all AI models.")
+                    messages.success(
+                        request,
+                        "Subscription started successfully! You now have access to "
+                        f"{PRO_MONTHLY_TOKEN_LIMIT:,} tokens per month and all AI models.",
+                    )
                 else:
                     messages.success(request, "Payment successful! Additional tokens have been added to your account.")
                     
@@ -380,7 +398,14 @@ def payment_cancel(request):
             status=Transaction.PENDING
         ).update(status=Transaction.FAILED)
     
-    return render(request, 'subscriptions/payment_cancel.html')
+    return render(
+        request,
+        'subscriptions/payment_cancel.html',
+        {
+            'free_tier_token_limit': FREE_TIER_TOKEN_LIMIT,
+            'pro_monthly_token_limit': PRO_MONTHLY_TOKEN_LIMIT,
+        },
+    )
 
 @login_required
 def cancel_subscription(request):
@@ -845,7 +870,11 @@ def handle_subscription_payment(invoice):
         
         # Add monthly credits and reset monthly usage
         from .utils import add_credits
-        add_credits(user_credit.user, 300000, "Pro Monthly subscription credits")  # 300K for pro tier
+        add_credits(
+            user_credit.user,
+            PRO_MONTHLY_TOKEN_LIMIT,
+            "Pro Monthly subscription credits",
+        )
         
         # Reset monthly token usage
         user_credit.monthly_tokens_used = 0
@@ -857,7 +886,7 @@ def handle_subscription_payment(invoice):
             user=user_credit.user,
             payment_plan=PaymentPlan.objects.get(id=1),  # Monthly Subscription plan
             amount=invoice.amount_paid / 100,  # Convert from cents
-            credits_added=1000000,
+            credits_added=PRO_MONTHLY_TOKEN_LIMIT,
             status=Transaction.COMPLETED,
             payment_intent_id=invoice.payment_intent
         )
@@ -1040,5 +1069,3 @@ def fix_pro_subscription(request):
             
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
-
-

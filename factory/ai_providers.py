@@ -12,8 +12,9 @@ import logging
 import asyncio
 from typing import Optional, Dict, Any, List
 from django.contrib.auth.models import User
+from django.core.files.storage import default_storage
 
-from chat.models import Conversation
+from chat.models import Conversation, ModelSelection
 from projects.models import Project
 
 # Import shared functions from ai_common to avoid circular imports
@@ -37,15 +38,69 @@ from factory.utils import FileHandler
 
 # Set up logger
 logger = logging.getLogger(__name__)
+PROVIDER_NAME_MAP = {
+    'AnthropicProvider': 'anthropic',
+    'OpenAIProvider': 'openai',
+    'XAIProvider': 'xai',
+    'GoogleGeminiProvider': 'google',
+}
 
 
-async def get_ai_response(user_message: str, system_prompt: str, project_id: Optional[int], 
-                          conversation_id: Optional[int], stream: bool = False, 
-                          tools: Optional[List[Dict]] = None) -> Dict[str, Any]:
+async def _prepare_attachment_messages(attachments: List[Any], provider_name: str, user: Optional[User]):
+    """Convert attachments into provider-specific message parts."""
+    if not attachments:
+        return []
+
+    prepared_messages = []
+    file_handler = FileHandler(provider_name, user)
+
+    for attachment in attachments:
+        storage = getattr(getattr(attachment, 'file', None), 'storage', default_storage)
+        if not storage:
+            storage = default_storage
+        try:
+            prepared = await file_handler.prepare_file_for_provider(attachment, storage)
+            if prepared:
+                prepared_messages.append(prepared)
+        except ValueError as unsupported_error:
+            logger.warning(f"Attachment {getattr(attachment, 'original_filename', 'unknown')} "
+                           f"skipped: {unsupported_error}")
+        except Exception as attachment_error:
+            logger.error(f"Failed to prepare attachment: {attachment_error}", exc_info=True)
+    return prepared_messages
+
+
+async def _get_selected_model_for_user(user: Optional[User]) -> str:
+    """Return the user's selected model or default."""
+    default_model = ModelSelection.DEFAULT_MODEL_KEY
+    if not user:
+        return default_model
+    try:
+        model_selection = await asyncio.to_thread(ModelSelection.objects.get, user=user)
+        return model_selection.selected_model
+    except ModelSelection.DoesNotExist:
+        try:
+            model_selection = await asyncio.to_thread(
+                ModelSelection.objects.create,
+                user=user,
+                selected_model=default_model
+            )
+            return model_selection.selected_model
+        except Exception as create_error:
+            logger.warning(f"Could not create default model selection for user {user.id}: {create_error}")
+    except Exception as selection_error:
+        logger.warning(f"Could not load model selection for user {user.id}: {selection_error}")
+    return default_model
+
+async def get_ai_response(user_message: str, system_prompt: str, project_id: Optional[int],
+                          conversation_id: Optional[int], stream: bool = False,
+                          tools: Optional[List[Dict]] = None,
+                          attachments: Optional[List[Any]] = None,
+                          ticket_id: Optional[int] = None) -> Dict[str, Any]:
     """
     Non-streaming wrapper for AI providers to be used in task implementations.
     Collects the full response from streaming providers and returns it as a complete response.
-    
+
     Args:
         user_message: The user's message content
         system_prompt: The system prompt for the AI
@@ -53,7 +108,9 @@ async def get_ai_response(user_message: str, system_prompt: str, project_id: Opt
         conversation_id: The conversation ID
         stream: Whether to return streaming (not used, kept for compatibility)
         tools: List of tools available to the AI
-        
+        attachments: Optional iterable of file objects to include in the request
+        ticket_id: Optional ticket ID for cancellation checking during execution
+
     Returns:
         Dict containing the AI response with content and tool_calls
     """
@@ -62,16 +119,17 @@ async def get_ai_response(user_message: str, system_prompt: str, project_id: Opt
         tools = tools_code
     
     # Create messages list
+    user_content: Any = user_message
     messages = [
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_message}
+        {"role": "user", "content": user_content}
     ]
     
     # Get the conversation or project to extract the user
     conversation = None
     project = None
     user = None
-    
+
     try:
         if conversation_id:
             conversation = await asyncio.to_thread(
@@ -80,43 +138,86 @@ async def get_ai_response(user_message: str, system_prompt: str, project_id: Opt
             )
             user = conversation.user
             project = conversation.project
-        elif project_id:
-            project = await asyncio.to_thread(
-                Project.objects.select_related('owner').get,
-                id=project_id
-            )
-            user = project.owner
     except Exception as e:
-        logger.warning(f"Could not get user/conversation/project: {e}")
+        logger.warning(f"Could not get user/conversation from conversation_id {conversation_id}: {e}")
+
+    # If we couldn't get user from conversation, try project
+    if not user and project_id:
+        try:
+            # Try to get project by UUID (project_id field) or database ID
+            if isinstance(project_id, str) and len(project_id) > 10:
+                # Looks like a UUID
+                project = await asyncio.to_thread(
+                    Project.objects.select_related('owner').get,
+                    project_id=project_id
+                )
+            else:
+                # Looks like a database ID
+                project = await asyncio.to_thread(
+                    Project.objects.select_related('owner').get,
+                    id=project_id
+                )
+            user = project.owner
+            logger.info(f"Retrieved user {user.id} from project {project_id}")
+        except Exception as e:
+            logger.warning(f"Could not get user/project from project_id {project_id}: {e}")
     
-    # Get the default provider (can be enhanced later to support provider selection)
-    provider = AIProvider.get_provider("anthropic", "claude_4_sonnet", user, conversation, project)
+    # Determine which model/provider to use for this user
+    selected_model = await _get_selected_model_for_user(user)
+    provider = AIProvider.get_provider(None, selected_model, user, conversation, project)
+    provider_name = PROVIDER_NAME_MAP.get(provider.__class__.__name__, 'openai')
+
+    if attachments:
+        attachment_messages = await _prepare_attachment_messages(attachments, provider_name, user)
+        if attachment_messages:
+            user_content = [{"type": "text", "text": user_message}]
+            user_content.extend(attachment_messages)
+            messages[1]["content"] = user_content
     
     # Collect the streaming response
     full_content = ""
     tool_calls = []
-    
+    has_500_error = False
+
     try:
-        async for chunk in provider.generate_stream(messages, project_id, conversation_id, tools):
+        async for chunk in provider.generate_stream(messages, project_id, conversation_id, tools, ticket_id=ticket_id):
+            # Check for cancellation signal
+            if isinstance(chunk, str) and "__CANCELLED__" in chunk:
+                logger.info(f"[AI_PROVIDERS] Ticket #{ticket_id} was cancelled during AI execution")
+                return {
+                    "content": full_content,
+                    "tool_calls": [],
+                    "error": False,
+                    "cancelled": True,
+                    "error_message": "Ticket execution was cancelled"
+                }
+            # Check for error markers
+            if isinstance(chunk, str) and "__ERROR_500__" in chunk:
+                has_500_error = True
+                continue
             # Skip notification chunks
             if isinstance(chunk, str) and ("__NOTIFICATION__" in chunk):
                 continue
             full_content += chunk
-        
+
         # Note: The provider.generate_stream already handles tool calls internally
         # and executes them. The tool calls are not returned in the stream,
         # they are executed automatically within the stream processing.
-        
+
         return {
             "content": full_content,
-            "tool_calls": tool_calls  # Will be empty since tools are auto-executed
+            "tool_calls": tool_calls,  # Will be empty since tools are auto-executed
+            "error": has_500_error,
+            "error_message": "Anthropic API returned 500 Internal Server Error" if has_500_error else None
         }
         
     except Exception as e:
         logger.error(f"Error in get_ai_response: {str(e)}")
         return {
             "content": f"Error generating AI response: {str(e)}",
-            "tool_calls": []
+            "tool_calls": [],
+            "error": True,
+            "error_message": str(e)
         }
 
 

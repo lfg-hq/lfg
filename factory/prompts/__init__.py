@@ -2,3 +2,4 @@ from .product_prompt import get_system_prompt_product
 from .turbo_prompt import get_system_turbo_mode
 from .designer_prompt import get_system_prompt_design
 from .developer_prompt import get_system_prompt_developer
+from .instant_prompt import get_system_instant_mode
