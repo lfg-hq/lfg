@@ -1,5 +1,5 @@
 <div class="sidebar-overlay" id="sidebar-overlay"></div>
-<div class="sidebar{% if sidebar_minimized %} minimized{% endif %}" id="sidebar">
+<div class="sidebar{% if sidebar_minimized %} minimized{% endif %}" id="sidebar"{% if current_project %} data-current-project-id="{{ current_project.project_id }}"{% endif %}>
     <div class="sidebar-top-content">
         <div class="sidebar-header">
             <div class="logo-section">

@@ -587,6 +587,7 @@ def run_claude_cli(
     project_id: str = None,
     poll_callback: Callable = None,
     lfg_env: Dict[str, str] = None,
+    project_dir: str = None,
 ) -> Dict[str, Any]:
     """
     Run Claude Code CLI with a prompt using Mags SDK native execution.
@@ -604,6 +605,8 @@ def run_claude_cli(
         project_id: Optional project ID for environment variables
         poll_callback: Optional callback for progress updates (receives output lines)
         lfg_env: Dict of LFG environment variables
+        project_dir: Project subdirectory name (e.g. "project", "django-app").
+                     Used to set ownership for claudeuser.
 
     Returns:
         Dict with status, output, session_id, and parsed messages
@@ -705,8 +708,9 @@ chown -R $CLAUDE_USER:$CLAUDE_USER $CLAUDE_HOME/.claude
 # Set permissions — MUST NOT add group/other write to /root (breaks SSH StrictModes)
 chmod o+rx /root 2>/dev/null || true
 # Pre-create and own the project dir so claudeuser can write to it from the start
-mkdir -p {working_dir}/project
-chown -R $CLAUDE_USER:$CLAUDE_USER {working_dir}/project 2>/dev/null || chmod -R o+rwx {working_dir}/project 2>/dev/null || true
+PROJ_DIR="{working_dir}/{project_dir or 'project'}"
+mkdir -p "$PROJ_DIR"
+chown -R $CLAUDE_USER:$CLAUDE_USER "$PROJ_DIR" 2>/dev/null || chmod -R o+rwx "$PROJ_DIR" 2>/dev/null || true
 mkdir -p $CLAUDE_HOME/.npm
 chown -R $CLAUDE_USER:$CLAUDE_USER $CLAUDE_HOME/.npm
 chmod 666 {prompt_file} 2>/dev/null || true

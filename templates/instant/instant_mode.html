@@ -20,9 +20,11 @@
     <meta name="color-scheme" content="dark light">
     <script src="/static/js/theme-switcher.js?v=3"></script>
 </head>
-<body data-theme="dark">
-    <div class="app-container{% if user.app_state.sidebar_minimized %} sidebar-minimized{% endif %}">
-        {% include 'includes/sidebar.html' with show_conversations=False sidebar_minimized=user.app_state.sidebar_minimized %}
+<body data-theme="dark"
+      data-model-key="{{ model_key|default:'gpt-5-mini' }}"
+      data-role-key="{{ role_key|default:'product_analyst' }}">
+    <div class="app-container{% if sidebar_minimized %} sidebar-minimized{% endif %}">
+        {% include 'includes/sidebar.html' with show_conversations=False sidebar_minimized=sidebar_minimized %}
 
         <main class="instant-main">
             <!-- Chat Panel -->
@@ -56,11 +58,59 @@
                                     </select>
                                 </div>
                                 {% endif %}
+                                <button type="button" id="settings-btn" class="action-btn settings-btn-styled" title="Settings">
+                                    <i class="fas fa-sliders-h"></i>
+                                </button>
                                 <span class="status-indicators">
-                                    <span class="status-item" style="cursor: default;">
-                                        <span style="color: #f59e0b;"><i class="fas fa-bolt"></i> Instant</span>
+                                    <span class="status-item role-status" id="role-status-btn">
+                                        <span id="current-role-left">Analyst</span>
+                                    </span>
+                                    <span class="status-divider">·</span>
+                                    <span class="status-item model-status" id="model-status-btn">
+                                        <span id="current-model-left">{{ current_model_label|default:"GPT-5 mini" }}</span>
                                     </span>
                                 </span>
+                                <div class="settings-dropdown" id="settings-dropdown">
+                                    <div class="settings-menu">
+                                        <div class="menu-item" data-submenu="role">
+                                            <i class="fas fa-user-tie"></i>
+                                            <span>Role</span>
+                                            <i class="fas fa-chevron-right submenu-arrow"></i>
+                                            <div class="submenu" id="role-submenu">
+                                                <button type="button" class="submenu-option selected" data-value="product_analyst">
+                                                    <span>Analyst</span>
+                                                    <i class="fas fa-check"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div class="menu-item" data-submenu="model">
+                                            <i class="fas fa-robot"></i>
+                                            <span>Model</span>
+                                            <i class="fas fa-chevron-right submenu-arrow"></i>
+                                            <div class="submenu" id="model-submenu">
+                                                {% for provider_key, provider in llm_model_config.providers.items %}
+                                                    <div class="submenu-group">{{ provider.label }}</div>
+                                                    {% for model in provider.models %}
+                                                        {% with requires_pro=model.requires_pro %}
+                                                        <button type="button"
+                                                                class="submenu-option{% if is_free_tier and requires_pro %} disabled{% endif %}{% if model_key == model.key %} selected{% endif %}"
+                                                                data-value="{{ model.key }}"
+                                                                {% if is_free_tier and requires_pro %}disabled title="Upgrade to Pro to access {{ model.label }}"{% endif %}>
+                                                            <span>
+                                                                {{ model.label }}
+                                                                {% if is_free_tier and requires_pro %}
+                                                                    <i class="fas fa-lock" style="color: #6b7280; font-size: 0.8em;"></i>
+                                                                {% endif %}
+                                                            </span>
+                                                            <i class="fas fa-check"></i>
+                                                        </button>
+                                                        {% endwith %}
+                                                    {% endfor %}
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                             <div id="chat-input-box">
                                 <textarea
@@ -145,12 +195,12 @@
             currentAppStatus: "{{ current_app.status|default:'gathering' }}",
             previewUrl: "{{ current_app.preview_url|default:'' }}",
             conversationId: {% if current_app and current_app.conversation %}{{ current_app.conversation.id }}{% else %}null{% endif %},
-            wsUrl: "{{ ws_url|default:'' }}",
         };
     </script>
     <script src="/static/js/sidebar.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="/static/js/markdown-config.js"></script>
+    <script src="/static/js/custom-dropdown.js"></script>
     <script src="/static/js/instant.js"></script>
 </body>
 </html>

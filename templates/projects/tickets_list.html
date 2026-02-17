@@ -5735,7 +5735,7 @@
 
                 if (data.auto_fix) {
                     // Claude is automatically fixing the error — switch to Actions tab
-                    showToast('Dev server failed — Claude is fixing it. Check the Actions tab.', 'warning');
+                    showNotification('Dev server error — fix request sent to LFG agent. Check the Actions tab.', 'warning');
                     switchTab('logs');
                     return;
                 }

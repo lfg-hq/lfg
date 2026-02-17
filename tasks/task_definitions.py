@@ -52,6 +52,7 @@ def your_task_function(param1: str, param2: int) -> dict:
 import asyncio
 import json
 import logging
+import re
 import time
 import uuid
 from datetime import datetime
@@ -1512,7 +1513,8 @@ def commit_and_push_changes(job_id: str, branch_name: str, commit_message: str, 
         )
     commands.append(init_script)
 
-    commands.extend([
+    # Pre-commit commands: fetch, checkout, check status
+    pre_commit_commands = [
         # Fetch latest from remote to ensure we have remote branch refs
         f"cd {MAGS_WORKING_DIR}/{project_dir} && git fetch origin 2>/dev/null || true",
         # Checkout feature branch with proper fallback order:
@@ -1520,131 +1522,174 @@ def commit_and_push_changes(job_id: str, branch_name: str, commit_message: str, 
         # 2. Try creating from remote tracking branch (origin/feature-branch)
         # 3. Create new branch from current position (only if remote doesn't exist)
         f"cd {MAGS_WORKING_DIR}/{project_dir} && (git checkout {escaped_branch} 2>/dev/null || git checkout -b {escaped_branch} origin/{escaped_branch} 2>/dev/null || git checkout -b {escaped_branch}) && echo 'On branch:' && git branch --show-current",
-        # Check git status
+        # Check git status (used to decide whether to commit)
         f"cd {MAGS_WORKING_DIR}/{project_dir} && git status --short",
+    ]
+
+    # Commit commands: add + commit (only run if changes detected)
+    commit_commands = [
         # Add all changes
         f"cd {MAGS_WORKING_DIR}/{project_dir} && git add -A",
         # Commit local changes FIRST (before pulling - git pull fails with uncommitted changes)
         f'cd {MAGS_WORKING_DIR}/{project_dir} && git commit -m "{escaped_message}" || echo "No changes to commit"',
-    ])
+    ]
+
+    commands.extend(pre_commit_commands)
+
+    # Push commands (run after commit, or standalone for unpushed commits)
+    push_commands = []
 
     # If we have GitHub token, ensure remote URL includes auth before pulling/pushing
     if github_token and github_owner and github_repo:
         auth_url = f"https://{github_token}@github.com/{github_owner}/{github_repo}.git"
-        commands.append(
+        push_commands.append(
             f"cd {MAGS_WORKING_DIR}/{project_dir} && (git remote set-url origin {auth_url} 2>/dev/null || git remote add origin {auth_url})"
         )
 
     # Pull with rebase to integrate remote changes (now safe since local changes are committed)
-    # This rebases our commit on top of any remote commits
-    commands.append(f"cd {MAGS_WORKING_DIR}/{project_dir} && git pull --rebase origin {escaped_branch} 2>/dev/null || true")
+    push_commands.append(f"cd {MAGS_WORKING_DIR}/{project_dir} && git pull --rebase origin {escaped_branch} 2>/dev/null || true")
 
     # Push feature branch to remote
-    commands.append(f"cd {MAGS_WORKING_DIR}/{project_dir} && git push -u origin {escaped_branch}")
+    push_commands.append(f"cd {MAGS_WORKING_DIR}/{project_dir} && git push -u origin {escaped_branch}")
+
+    def _run_and_log(cmd, step_label):
+        """Run a single git command and log the result."""
+        result = run_command(job_id, cmd, timeout=120)
+        logger.info(f"[Git {step_label}] {cmd}")
+        stdout = result.get('stdout', '').strip()
+        stderr = result.get('stderr', '').strip()
+        exit_code = result.get('exit_code', 0)
+        if stdout:
+            logger.info(f"  stdout: {stdout}")
+        if stderr and exit_code != 0:
+            logger.warning(f"  stderr: {stderr}")
+        return stdout, stderr, exit_code
 
     try:
         commit_sha = None
         current_branch = None
         changes_detected = False
 
+        # Phase 1: Setup — config, init, fetch, checkout, status check
         for i, cmd in enumerate(commands):
-            result = run_command(job_id, cmd, timeout=120)
-            logger.info(f"[Git Commit {i+1}/{len(commands)}] {cmd}")
-
-            stdout = result.get('stdout', '').strip()
-            stderr = result.get('stderr', '').strip()
-            exit_code = result.get('exit_code', 0)
-
-            # Log output
-            if stdout:
-                logger.info(f"  stdout: {stdout}")
-            if stderr and exit_code != 0:
-                logger.warning(f"  stderr: {stderr}")
+            stdout, stderr, exit_code = _run_and_log(cmd, f"Setup {i+1}/{len(commands)}")
 
             # Capture current branch (from checkout command output)
             if 'git branch --show-current' in cmd and stdout:
-                # Output format: "On branch:\n<branch-name>" or just "<branch-name>"
                 lines = stdout.strip().split('\n')
-                current_branch = lines[-1].strip()  # Last line is the branch name
+                current_branch = lines[-1].strip()
                 logger.info(f"  Current branch: {current_branch}")
 
             # Check if there are changes
-            if 'git status --short' in cmd and stdout:
+            if 'git status --short' in cmd:
                 changes_detected = bool(stdout)
                 logger.info(f"  Changes detected: {changes_detected}")
                 if changes_detected:
                     logger.info(f"  Modified files:\n{stdout}")
 
-            # Extract commit SHA
-            # Git commit output format: "[branch_name SHA] message"
-            # Example: "[feature/google-login b6bd18a] chore: User requested changes"
-            if 'git commit' in cmd and exit_code == 0:
-                # Try to extract commit SHA from output
-                if '[' in stdout and ']' in stdout:
-                    try:
-                        # Extract content between [ and ]
-                        bracket_content = stdout.split('[')[1].split(']')[0]
-                        parts = bracket_content.split()
-                        # SHA is the LAST part (after branch name which may contain slashes)
-                        # Format is: "branch/name SHA" so SHA is always last
-                        if len(parts) >= 2:
-                            commit_sha = parts[-1]  # Last element is the SHA
-                        else:
-                            commit_sha = parts[0] if parts else None
-                        logger.info(f"  Commit SHA: {commit_sha}")
-                    except Exception as e:
-                        logger.warning(f"  Could not parse commit SHA: {e}")
-
-            # Check for errors
             if exit_code != 0:
-                # Allow "nothing to commit" and git pull failures
-                if 'nothing to commit' in stderr or 'nothing to commit' in stdout:
-                    logger.info(f"  No changes to commit")
-                    continue
-                elif 'No changes to commit' in stdout:
-                    logger.info(f"  No changes to commit")
-                    continue
-                elif 'git push' in cmd and ('Repository not found' in stderr or 'not found' in stderr):
-                    # GitHub repo was deleted — recreate it and retry push
-                    logger.warning(f"  Repository not found on push, attempting to recreate...")
-                    recreated = _recreate_github_repo_for_push(
-                        job_id, github_owner, github_repo, github_token, stack,
-                    )
-                    if recreated:
-                        new_url = f"https://{github_token}@github.com/{github_owner}/{github_repo}.git"
-                        run_command(job_id, f"cd {MAGS_WORKING_DIR}/{project_dir} && git remote set-url origin {new_url}", timeout=30)
-                        retry = run_command(job_id, cmd, timeout=120)
-                        if retry.get('exit_code', 0) == 0:
-                            logger.info(f"  ✓ Push succeeded after repo recreation")
-                            # Also create main and lfg-agent branches from this push
-                            branch_setup = (
-                                f"cd {MAGS_WORKING_DIR}/{project_dir} && "
-                                f"git push origin {shlex.quote(branch_name)}:main 2>/dev/null; "
-                                f"git push origin {shlex.quote(branch_name)}:lfg-agent 2>/dev/null; "
-                                f"echo 'BRANCHES_CREATED'"
-                            )
-                            br_result = run_command(job_id, branch_setup, timeout=60)
-                            logger.info(f"  Branch setup after repo recreation: {br_result.get('stdout', '').strip()}")
-                            continue
-                        else:
-                            logger.error(f"  ✗ Push still failed after repo recreation: {retry.get('stderr', '')}")
-                            return {'status': 'error', 'message': retry.get('stderr', '') or 'Push failed after repo recreation'}
-                    else:
-                        logger.error(f"  ✗ Could not recreate GitHub repo")
-                        return {'status': 'error', 'message': 'Repository not found and could not recreate it'}
-                else:
-                    logger.error(f"  ✗ Git command failed: {stderr or stdout}")
-                    return {'status': 'error', 'message': stderr or stdout or 'Git command failed'}
+                logger.error(f"  ✗ Git setup command failed: {stderr or stdout}")
+                return {'status': 'error', 'message': stderr or stdout or 'Git setup command failed'}
 
         if current_branch != branch_name:
             logger.warning(f"Branch mismatch during commit: expected {branch_name}, on {current_branch}")
 
-        return {
-            'status': 'success',
-            'message': f'Changes committed and pushed to {branch_name}',
-            'commit_sha': commit_sha,
-            'changes_detected': changes_detected
-        }
+        # Phase 2: Commit — only if git status shows actual changes (git diff)
+        if changes_detected:
+            logger.info(f"[Git] Changes detected, committing...")
+            for i, cmd in enumerate(commit_commands):
+                stdout, stderr, exit_code = _run_and_log(cmd, f"Commit {i+1}/{len(commit_commands)}")
+
+                # Extract commit SHA from git commit output
+                # Format: "[branch_name SHA] message"
+                if 'git commit' in cmd and exit_code == 0:
+                    if '[' in stdout and ']' in stdout:
+                        try:
+                            bracket_content = stdout.split('[')[1].split(']')[0]
+                            parts = bracket_content.split()
+                            commit_sha = parts[-1] if len(parts) >= 2 else (parts[0] if parts else None)
+                            logger.info(f"  Commit SHA: {commit_sha}")
+                        except Exception as e:
+                            logger.warning(f"  Could not parse commit SHA: {e}")
+
+                if exit_code != 0:
+                    if 'nothing to commit' in stderr or 'nothing to commit' in stdout or 'No changes to commit' in stdout:
+                        logger.info(f"  No changes to commit")
+                        changes_detected = False
+                        break
+                    else:
+                        logger.error(f"  ✗ Git commit failed: {stderr or stdout}")
+                        return {'status': 'error', 'message': stderr or stdout or 'Git commit failed'}
+        else:
+            logger.info(f"[Git] No changes detected (git status clean), skipping commit")
+
+        # Phase 3: Push — only if we committed new changes or there are unpushed commits
+        should_push = commit_sha is not None  # We made a new commit
+
+        if not should_push:
+            # Check for unpushed commits (e.g. Claude CLI may have committed but not pushed)
+            unpushed_check = run_command(
+                job_id,
+                f"cd {MAGS_WORKING_DIR}/{project_dir} && git log origin/{escaped_branch}..HEAD --oneline 2>/dev/null | head -5",
+                timeout=30,
+            )
+            unpushed_stdout = unpushed_check.get('stdout', '').strip()
+            if unpushed_stdout:
+                should_push = True
+                logger.info(f"[Git] Unpushed commits found, will push: {unpushed_stdout[:200]}")
+
+        if should_push:
+            for i, cmd in enumerate(push_commands):
+                stdout, stderr, exit_code = _run_and_log(cmd, f"Push {i+1}/{len(push_commands)}")
+
+                if exit_code != 0 and 'git push' in cmd:
+                    if 'Repository not found' in stderr or 'not found' in stderr:
+                        # GitHub repo was deleted — recreate it and retry push
+                        logger.warning(f"  Repository not found on push, attempting to recreate...")
+                        recreated = _recreate_github_repo_for_push(
+                            job_id, github_owner, github_repo, github_token, stack,
+                        )
+                        if recreated:
+                            new_url = f"https://{github_token}@github.com/{github_owner}/{github_repo}.git"
+                            run_command(job_id, f"cd {MAGS_WORKING_DIR}/{project_dir} && git remote set-url origin {new_url}", timeout=30)
+                            retry = run_command(job_id, cmd, timeout=120)
+                            if retry.get('exit_code', 0) == 0:
+                                logger.info(f"  ✓ Push succeeded after repo recreation")
+                                branch_setup = (
+                                    f"cd {MAGS_WORKING_DIR}/{project_dir} && "
+                                    f"git push origin {shlex.quote(branch_name)}:main 2>/dev/null; "
+                                    f"git push origin {shlex.quote(branch_name)}:lfg-agent 2>/dev/null; "
+                                    f"echo 'BRANCHES_CREATED'"
+                                )
+                                br_result = run_command(job_id, branch_setup, timeout=60)
+                                logger.info(f"  Branch setup after repo recreation: {br_result.get('stdout', '').strip()}")
+                            else:
+                                logger.error(f"  ✗ Push still failed after repo recreation: {retry.get('stderr', '')}")
+                                return {'status': 'error', 'message': retry.get('stderr', '') or 'Push failed after repo recreation'}
+                        else:
+                            logger.error(f"  ✗ Could not recreate GitHub repo")
+                            return {'status': 'error', 'message': 'Repository not found and could not recreate it'}
+                    else:
+                        logger.error(f"  ✗ Git push failed: {stderr or stdout}")
+                        return {'status': 'error', 'message': stderr or stdout or 'Git push failed'}
+        else:
+            logger.info(f"[Git] No changes to commit and no unpushed commits, skipping push")
+
+        # Return appropriate status
+        if commit_sha:
+            return {
+                'status': 'success',
+                'message': f'Changes committed and pushed to {branch_name}',
+                'commit_sha': commit_sha,
+                'changes_detected': True,
+            }
+        else:
+            return {
+                'status': 'no_changes',
+                'message': 'No changes to commit',
+                'commit_sha': None,
+                'changes_detected': False,
+            }
     except Exception as e:
         logger.error(f"Failed to commit and push changes: {str(e)}", exc_info=True)
         return {'status': 'error', 'message': str(e)}
@@ -1812,7 +1857,7 @@ def setup_ticket_workspace(
 
         # Create feature branch name from ticket
         if create_branch:
-            sanitized_name = ticket.name.lower().replace(' ', '-').replace('_', '-')[:30]
+            sanitized_name = re.sub(r'[^a-z0-9]+', '-', ticket.name.lower()).strip('-')[:30]
             result['feature_branch'] = f"feature/{sanitized_name}"
 
             # Save branch name to ticket
@@ -1901,8 +1946,8 @@ def setup_ticket_workspace(
     result['job_id'] = job_id
     logger.info(f"[WORKSPACE SETUP] ✓ Workspace ready: {ticket_ws} (job {job_id})")
 
-    # Set workspace_id in context
-    current_workspace_id.set(job_id)
+    # Set workspace_id in context — use overlay name (ticket_ws), not Mags job UUID
+    current_workspace_id.set(ticket_ws)
 
     # 3. GIT CONFIGURATION IN WORKSPACE
     logger.info(f"[WORKSPACE SETUP] Step 3: Setting up Git in workspace...")
@@ -2405,6 +2450,9 @@ Action required: Check workspace configuration and GitHub access
             commit_prefix = "feat" if completed and not failed else "wip"
             commit_message = f"{commit_prefix}: {ticket.name}\n\nTicket #{ticket_id}\n\n{ticket.description[:200]}"
             commit_result = commit_and_push_changes(workspace_id, feature_branch_name, commit_message, ticket_id, stack=stack, github_token=github_token, github_owner=github_owner, github_repo=github_repo)
+
+            if commit_result['status'] == 'no_changes':
+                logger.info(f"[COMMIT] No changes to commit (git diff clean)")
 
             if commit_result['status'] == 'success':
                 commit_sha = commit_result.get('commit_sha')
@@ -2948,13 +2996,10 @@ Mode: Claude Code CLI
                 cd {project_dir}
             fi
 
-            # Ensure lfg-agent branch exists and is up to date
-            # lfg-agent is the base branch for all feature branches
-            git checkout lfg-agent 2>/dev/null || git checkout -b lfg-agent origin/lfg-agent 2>/dev/null || (git checkout main && git checkout -b lfg-agent)
-            git pull origin lfg-agent 2>/dev/null || echo "PULL_SKIPPED"
-
-            # Create or checkout feature branch from lfg-agent
-            git checkout -b {feature_branch_name} 2>/dev/null || git checkout {feature_branch_name} 2>/dev/null || echo "BRANCH_ERROR"
+            # Checkout the ticket's feature branch (should already exist from setup)
+            # Do NOT switch through lfg-agent — stay on the feature branch
+            git checkout {feature_branch_name} 2>/dev/null || git checkout -b {feature_branch_name} 2>/dev/null || echo "BRANCH_ERROR"
+            git pull origin {feature_branch_name} 2>/dev/null || echo "PULL_SKIPPED"
 
             # Configure git
             git config user.email "ai@lfg.dev"
@@ -3616,7 +3661,8 @@ You can also output (for logging purposes):
                 'LFG_API_KEY': cli_api_key,
                 'LFG_TICKET_ID': str(ticket.id),
                 'LFG_PROJECT_ID': str(project.project_id)
-            }
+            },
+            project_dir=project_dir,
         )
 
         cli_duration = time.time() - cli_start
@@ -3708,7 +3754,8 @@ ATTACHMENTS:
                     'LFG_API_KEY': cli_api_key,
                     'LFG_TICKET_ID': str(ticket.id),
                     'LFG_PROJECT_ID': str(project.project_id)
-                }
+                },
+                project_dir=project_dir,
             )
 
         # Save session_id on sandbox for potential resume (allows chat replies to continue conversation)
@@ -3787,6 +3834,9 @@ ATTACHMENTS:
                 stack=stack, github_token=github_token,
                 github_owner=github_owner, github_repo=github_repo,
             )
+
+            if commit_result['status'] == 'no_changes':
+                logger.info(f"[CLI COMMIT] No changes to commit (git diff clean)")
 
             if commit_result['status'] == 'success':
                 commit_sha = commit_result.get('commit_sha')
@@ -4236,34 +4286,82 @@ def execute_ticket_chat_cli(
                     ticket_workspace.cli_session_id = None
                     ticket_workspace.save(update_fields=['cli_session_id'])
             else:
-                # Directory has files — just ensure correct branch if git is set up
-                logger.info(f"[CLI_CHAT] Project directory exists with files, skipping clone")
-                branch_name = ticket.github_branch
-                if branch_name:
-                    # Only try branch switch if .git exists
-                    git_check = run_command(
-                        workspace_id=workspace_id,
-                        command=f"test -d {MAGS_WORKING_DIR}/{project_dir}/.git && echo GIT_YES || echo GIT_NO",
-                        timeout=10, with_node_env=False,
-                    )
-                    if 'GIT_YES' in git_check.get('stdout', ''):
-                        import shlex
-                        escaped_branch = shlex.quote(branch_name)
-                        branch_check = run_command(
-                            workspace_id=workspace_id,
-                            command=f"cd {MAGS_WORKING_DIR}/{project_dir} && git rev-parse --abbrev-ref HEAD",
-                            timeout=10, with_node_env=False,
-                        )
-                        current_branch = branch_check.get('stdout', '').strip()
-                        if current_branch and current_branch != branch_name:
-                            logger.info(f"[CLI_CHAT] Switching branch from {current_branch} to {branch_name}")
-                            run_command(
-                                workspace_id=workspace_id,
-                                command=f"cd {MAGS_WORKING_DIR}/{project_dir} && git fetch origin && git checkout {escaped_branch} 2>/dev/null || git checkout -b {escaped_branch} origin/{escaped_branch}",
-                                timeout=30, with_node_env=False,
-                            )
+                # Directory has files — sandbox should already be on the correct branch
+                logger.info(f"[CLI_CHAT] Project directory exists with files, working on current branch")
         except Exception as e:
             logger.warning(f"[CLI_CHAT] Project directory check failed: {e}")
+
+        # Verify Claude auth and copy credentials from central workspace if needed
+        from factory.claude_code_utils import check_claude_auth_status
+
+        logger.info(f"[CLI_CHAT] Verifying Claude auth in workspace {workspace_id}...")
+        auth_check = check_claude_auth_status(workspace_id)
+
+        if not auth_check.get('authenticated'):
+            logger.warning(f"[CLI_CHAT] Auth failed in ticket workspace, attempting credential copy from {base_ws}...")
+            auth_recovered = False
+            try:
+                base_auth_check = check_claude_auth_status(base_ws)
+                if base_auth_check.get('authenticated'):
+                    logger.info(f"[CLI_CHAT] Central workspace {base_ws} auth OK, copying credentials to {workspace_id}")
+                    creds_result = run_command(base_ws, "cat ~/.claude/.credentials.json", timeout=15, with_node_env=False)
+                    creds_content = creds_result.get('stdout', '').strip()
+                    if creds_content and creds_result.get('exit_code') == 0:
+                        import json as _json
+                        _json.loads(creds_content)  # validate JSON
+                        import base64
+                        creds_b64 = base64.b64encode(creds_content.encode()).decode()
+                        write_cmd = f'mkdir -p ~/.claude && echo "{creds_b64}" | base64 -d > ~/.claude/.credentials.json'
+                        write_result = run_command(workspace_id, write_cmd, timeout=15, with_node_env=False)
+                        if write_result.get('exit_code') == 0:
+                            recheck = check_claude_auth_status(workspace_id)
+                            if recheck.get('authenticated'):
+                                logger.info(f"[CLI_CHAT] Auth recovered after copying credentials from {base_ws}")
+                                auth_recovered = True
+                            else:
+                                logger.warning(f"[CLI_CHAT] Auth still failing after credential copy: {recheck}")
+                else:
+                    logger.warning(f"[CLI_CHAT] Central workspace {base_ws} auth also failed")
+            except Exception as e:
+                logger.warning(f"[CLI_CHAT] Error during auth recovery: {e}")
+
+            if not auth_recovered:
+                error_msg = "Claude Code is not authenticated. Please reconnect in Settings."
+                logger.error(f"[CLI_CHAT] {error_msg}")
+                profile.claude_code_authenticated = False
+                profile.save(update_fields=['claude_code_authenticated'])
+
+                auth_error_log = TicketLog.objects.create(
+                    ticket_id=ticket_id,
+                    log_type='error',
+                    command='Claude Authentication',
+                    explanation='Authentication expired — please reconnect',
+                    output=(
+                        "Claude Code OAuth token has expired.\n\n"
+                        "To fix this:\n"
+                        "1. Go to Settings > Claude Code\n"
+                        "2. Click 'Connect Claude Code'\n"
+                        "3. Complete the authentication flow\n"
+                        "4. Re-run the ticket"
+                    ),
+                )
+                async_to_sync(async_send_ticket_log_notification)(ticket_id, {
+                    'id': auth_error_log.id,
+                    'log_type': auth_error_log.log_type,
+                    'command': auth_error_log.command,
+                    'explanation': auth_error_log.explanation or '',
+                    'output': auth_error_log.output or '',
+                    'created_at': auth_error_log.created_at.isoformat()
+                })
+
+                return {
+                    "status": "error",
+                    "ticket_id": ticket_id,
+                    "error": error_msg,
+                    "auth_required": True,
+                }
+        else:
+            logger.info(f"[CLI_CHAT] Claude auth verified OK")
 
         # Streaming callback for real-time logs
         last_stream_heartbeat = [0.0]
@@ -4539,6 +4637,15 @@ Please respond to the user's message in the context of this ticket."""
             # For resume sessions, just send the user message
             prompt_with_context = message
 
+        # Resolve project_dir from stack config so claudeuser gets ownership
+        chat_project_dir = 'project'
+        if project.stack:
+            try:
+                from factory.stack_configs import get_stack_config as _get_sc
+                chat_project_dir = _get_sc(project.stack, project).get('project_dir', 'project')
+            except Exception:
+                pass
+
         # Run Claude CLI (session_id=None starts new session, otherwise resumes)
         cli_result = run_claude_cli(
             workspace_id=workspace_id,
@@ -4547,6 +4654,7 @@ Please respond to the user's message in the context of this ticket."""
             timeout=600,  # 10 minute timeout for chat
             working_dir=MAGS_WORKING_DIR,
             poll_callback=stream_callback,
+            project_dir=chat_project_dir,
         )
 
         # Check for auth errors and update profile if token expired
@@ -4690,6 +4798,7 @@ Note: The previous conversation session was lost. The conversation history above
                 timeout=600,
                 working_dir=MAGS_WORKING_DIR,
                 poll_callback=stream_callback,
+                project_dir=chat_project_dir,
             )
             # Fall through to save new session_id below
 
@@ -4700,6 +4809,23 @@ Note: The previous conversation session was lost. The conversation history above
                 ticket_workspace.cli_session_id = new_session_id
                 ticket_workspace.save(update_fields=['cli_session_id'])
                 logger.info(f"[CLI_CHAT] Saved session_id: {new_session_id[:20]}... for workspace {ticket_ws}")
+
+        # Check for auth errors after retry (retry may also fail with expired token)
+        retry_error = cli_result.get('error') or ''
+        retry_stdout = cli_result.get('stdout') or ''
+        retry_err_lower = retry_error.lower()
+        retry_stdout_start = retry_stdout[:500].lower()
+        if (any(ind in retry_err_lower for ind in ['oauth token has expired', 'authentication_error', 'please run /login']) or
+            ('api error: 401' in retry_stdout_start and ('authentication_error' in retry_stdout_start or 'oauth token has expired' in retry_stdout_start))):
+            logger.warning(f"[CLI_CHAT] Auth error detected after retry, skipping commit")
+            profile.claude_code_authenticated = False
+            profile.save(update_fields=['claude_code_authenticated'])
+            return {
+                "status": "auth_error",
+                "ticket_id": ticket_id,
+                "error": "Claude Code token expired. Please reconnect in Settings.",
+                "auth_expired": True
+            }
 
         # Check for uncommitted changes and auto-commit if there are any
         commit_sha = None
@@ -4822,6 +4948,9 @@ fi""",
                         github_owner=github_owner,
                         github_repo=github_repo,
                     )
+
+                    if commit_result.get('status') == 'no_changes':
+                        logger.info(f"[CLI_CHAT] No changes to commit (git diff clean)")
 
                     # Log the commit
                     if commit_result.get('status') == 'success':
@@ -5157,35 +5286,21 @@ def parallel_ticket_executor(project_id: int, conversation_id: int, max_workers:
                 low_priority.append(ticket.id)
         
         queued_tasks = []
-        
-        # Queue high priority tickets first (in parallel)
-        for ticket_id in high_priority[:max_workers]:
-            task_id = task_manager.publish_task(
-                'tasks.task_definitions.execute_ticket_implementation',
-                ticket_id, project_id, conversation_id,  # Pass args directly
-                task_name=f'Ticket_{ticket_id}_High_Priority',
-                group=f'project_{project_id}_high'
-            )
-            queued_tasks.append({
-                'ticket_id': ticket_id,
-                'task_id': task_id,
-                'priority': 'High'
-            })
-        
-        # Queue medium priority tickets (after high priority completes)
-        for ticket_id in medium_priority[:max_workers]:
-            if check_ticket_dependencies(ticket_id):
-                task_id = task_manager.publish_task(
-                    'tasks.task_definitions.execute_ticket_implementation',
-                    ticket_id, project_id, conversation_id,  # Pass args directly
-                    task_name=f'Ticket_{ticket_id}_Medium_Priority',
-                    group=f'project_{project_id}_medium'
-                )
-                queued_tasks.append({
-                    'ticket_id': ticket_id,
-                    'task_id': task_id,
-                    'priority': 'Medium'
-                })
+        from tasks.dispatch import dispatch_tickets
+
+        # Queue high priority tickets first
+        high_to_queue = high_priority[:max_workers]
+        if high_to_queue:
+            dispatch_tickets(project_id=project_id, ticket_ids=high_to_queue, conversation_id=conversation_id)
+            for ticket_id in high_to_queue:
+                queued_tasks.append({'ticket_id': ticket_id, 'priority': 'High'})
+
+        # Queue medium priority tickets
+        medium_to_queue = [tid for tid in medium_priority[:max_workers] if check_ticket_dependencies(tid)]
+        if medium_to_queue:
+            dispatch_tickets(project_id=project_id, ticket_ids=medium_to_queue, conversation_id=conversation_id)
+            for ticket_id in medium_to_queue:
+                queued_tasks.append({'ticket_id': ticket_id, 'priority': 'Medium'})
         
         return {
             "status": "success",
@@ -5600,6 +5715,9 @@ def continue_ticket_with_message(ticket_id: int, project_id: int, user_message: 
                 if github_token and feature_branch:
                     commit_message = f"chore: User requested changes for ticket #{ticket_id}\n\n{user_message[:200]}"
                     commit_result = commit_and_push_changes(workspace_id, feature_branch, commit_message, ticket_id, stack=stack, github_token=github_token, github_owner=github_owner, github_repo=github_repo)
+
+                    if commit_result['status'] == 'no_changes':
+                        logger.info(f"[TICKET CHAT] No changes to commit (git diff clean)")
 
                     if commit_result['status'] == 'success':
                         commit_sha = commit_result.get('commit_sha')

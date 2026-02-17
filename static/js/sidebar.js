@@ -5,6 +5,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const userInfo = document.getElementById('user-info');
     const userInfoButton = document.getElementById('user-info-button');
     const userDropdown = document.getElementById('user-dropdown');
+
+    // Persist current project ID to localStorage so it survives navigation
+    const currentProjectId = sidebar?.dataset.currentProjectId;
+    if (currentProjectId) {
+        localStorage.setItem('currentProjectId', currentProjectId);
+    }
     
     // The sidebar state is already set by the server, just sync localStorage
     const isMinimized = sidebar && sidebar.classList.contains('minimized');
@@ -143,12 +149,18 @@ document.addEventListener('DOMContentLoaded', () => {
     if (chatLink) {
         chatLink.addEventListener('click', async (e) => {
             e.preventDefault();
-            
+
+            // Use the current project from the sidebar data attribute or localStorage
+            const projectId = sidebar?.dataset.currentProjectId || localStorage.getItem('currentProjectId');
+
             try {
-                // Fetch the latest conversation info
-                const response = await fetch('/api/latest-conversation/');
+                // Fetch the latest conversation scoped to the current project
+                const apiUrl = projectId
+                    ? `/api/latest-conversation/?project_id=${projectId}`
+                    : '/api/latest-conversation/';
+                const response = await fetch(apiUrl);
                 const data = await response.json();
-                
+
                 if (data.success) {
                     // Construct the URL
                     let url = `/chat/project/${data.project_id}/`;
@@ -160,8 +172,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } catch (error) {
                 console.error('Error fetching latest conversation:', error);
-                // Fallback to chat index
-                window.location.href = '/chat/';
+                // Fallback: use stored project ID or chat index
+                if (projectId) {
+                    window.location.href = `/chat/project/${projectId}/`;
+                } else {
+                    window.location.href = '/chat/';
+                }
             }
         });
     }

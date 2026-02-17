@@ -122,12 +122,8 @@ def show_conversation(request, conversation_id):
     """Show a specific conversation."""
     conversation = get_object_or_404(Conversation, id=conversation_id, user=request.user)
 
-    # Check if this conversation is linked to any project
-    project = None
-    if hasattr(conversation, 'projects'):
-        conv_projects = conversation.projects.all()
-        if conv_projects.exists():
-            project = conv_projects.first()
+    # Check if this conversation is linked to a project
+    project = conversation.project
 
     # Get all projects for the sidebar dropdown
     owned_projects = Project.objects.filter(owner=request.user)
@@ -625,11 +621,16 @@ def user_turbo_mode(request):
 @login_required
 def latest_conversation(request):
     """Get the latest conversation info as JSON."""
-    # Get the user's latest conversation
-    latest_conv = Conversation.objects.filter(
-        user=request.user
-    ).order_by('-updated_at').first()
-    
+    # If a project_id is specified, scope to that project
+    project_id = request.GET.get('project_id')
+
+    conv_qs = Conversation.objects.filter(user=request.user)
+
+    if project_id:
+        conv_qs = conv_qs.filter(project__project_id=project_id)
+
+    latest_conv = conv_qs.order_by('-updated_at').first()
+
     if latest_conv and latest_conv.project:
         return JsonResponse({
             'success': True,
@@ -637,12 +638,17 @@ def latest_conversation(request):
             'conversation_id': latest_conv.id
         })
     else:
-        # No conversations exist, return info to create one
-        # Get the user's latest project or default
-        project = request.user.projects.order_by('-updated_at').first()
+        # No conversations exist for this project, return info to create one
+        if project_id:
+            project = Project.objects.filter(project_id=project_id, owner=request.user).first()
+        else:
+            project = None
+
+        if not project:
+            project = request.user.projects.order_by('-updated_at').first()
         if not project:
             project = Project.get_or_create_default_project(request.user)
-        
+
         return JsonResponse({
             'success': True,
             'project_id': str(project.project_id),

@@ -203,6 +203,7 @@ document.addEventListener('DOMContentLoaded', () => {
         isStreaming = true;
         currentRawContent = '';
         clearWelcome();
+        removeTypingIndicator();
 
         // Create the same message structure as addMessageToChat
         currentAssistantEl = document.createElement('div');
@@ -246,6 +247,7 @@ document.addEventListener('DOMContentLoaded', () => {
             currentAssistantEl.appendChild(messageActions);
         }
 
+        removeTypingIndicator();
         isStreaming = false;
         currentAssistantEl = null;
         currentRawContent = '';
@@ -257,12 +259,30 @@ document.addEventListener('DOMContentLoaded', () => {
         chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 
+    // ---- Typing Indicator ----
+
+    function showTypingIndicator() {
+        removeTypingIndicator();
+        const indicator = document.createElement('div');
+        indicator.className = 'typing-indicator';
+        indicator.id = 'typing-indicator';
+        indicator.innerHTML = '<span></span><span></span><span></span>';
+        messageContainer.appendChild(indicator);
+        scrollToBottom();
+    }
+
+    function removeTypingIndicator() {
+        const indicator = document.getElementById('typing-indicator');
+        if (indicator) indicator.remove();
+    }
+
     // ---- Send message ----
 
     function sendMessage(text) {
         if (!text.trim() || !socket || socket.readyState !== WebSocket.OPEN) return;
 
         addMessageToChat('user', text);
+        showTypingIndicator();
 
         socket.send(JSON.stringify({
             type: 'message',

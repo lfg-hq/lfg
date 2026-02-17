@@ -162,8 +162,13 @@ async def _fetch_workspace(project=None, conversation_id=None, workspace_id=None
         if workspace_id:
             logger.info(f"[FETCH_WORKSPACE] Querying by workspace_id: {workspace_id}")
             result = qs.filter(workspace_id=workspace_id).first()
+            if not result:
+                # Fallback: try mags_workspace_id and job_id fields
+                result = qs.filter(mags_workspace_id=workspace_id).first()
+            if not result:
+                result = qs.filter(job_id=workspace_id).first()
             if result:
-                logger.info(f"[FETCH_WORKSPACE] Found workspace by workspace_id: {result.workspace_id}, job_id: {result.job_id}, status: {result.status}")
+                logger.info(f"[FETCH_WORKSPACE] Found workspace: {result.workspace_id}, job_id: {result.job_id}, mags_ws={result.mags_workspace_id}, status: {result.status}")
             else:
                 logger.warning(f"[FETCH_WORKSPACE] No workspace found for workspace_id: {workspace_id}")
             return result
@@ -602,21 +607,15 @@ async def retry_ticket_tool(function_args, project_id, conversation_id):
     if error:
         return {"is_notification": False, "message_to_agent": f"Error: {error}"}
 
-    # Re-queue via TaskManager (same pattern as queue_ticket_execution_tool)
+    # Re-queue via dispatch_tickets — routes through async executor which checks
+    # claude_code_enabled to pick the right executor (CLI vs API).
+    from tasks.dispatch import dispatch_tickets
     try:
-        task_id = await sync_to_async(TaskManager.publish_task)(
-            'tasks.task_definitions.execute_ticket_implementation',
-            result_id,
-            project.id,
-            conversation_id,
-            task_name=f"Retry Ticket #{result_id} for {project.name}",
-            timeout=7200
+        dispatch_ok = await sync_to_async(dispatch_tickets)(
+            project_id=project.id,
+            ticket_ids=[result_id],
+            conversation_id=conversation_id,
         )
-
-        # Update queue_status
-        def _mark_queued():
-            ProjectTicket.objects.filter(id=result_id).update(queue_status='queued')
-        await sync_to_async(_mark_queued)()
 
         return {
             "is_notification": True,
@@ -717,33 +716,33 @@ async def schedule_tickets_tool(function_args, project_id, conversation_id):
     else:  # parallel or dependency_wave
         to_queue = ready
 
-    # Queue the tickets
+    # Queue tickets via dispatch_tickets — routes through async executor which checks
+    # claude_code_enabled to pick the right executor (CLI vs API).
+    from tasks.dispatch import dispatch_tickets
+
     task_ids = []
     failed = []
     queued_ids = []
 
-    for item in to_queue:
-        tid = item['ticket_id']
+    ticket_ids_to_queue = [item['ticket_id'] for item in to_queue]
+    if ticket_ids_to_queue:
         try:
-            task_id = await sync_to_async(TaskManager.publish_task)(
-                'tasks.task_definitions.execute_ticket_implementation',
-                tid,
-                project.id,
-                conversation_id,
-                task_name=f"Scheduled Ticket #{tid} for {project.name}",
-                timeout=7200
+            dispatch_ok = await sync_to_async(dispatch_tickets)(
+                project_id=project.id,
+                ticket_ids=ticket_ids_to_queue,
+                conversation_id=conversation_id,
             )
-            task_ids.append(task_id)
-            queued_ids.append(tid)
+            if dispatch_ok:
+                queued_ids = ticket_ids_to_queue
+                task_ids = ticket_ids_to_queue
+                logger.info(f"Dispatched {len(queued_ids)} tickets via async executor")
+            else:
+                for tid in ticket_ids_to_queue:
+                    failed.append({'ticket_id': tid, 'error': 'dispatch_tickets returned False'})
         except Exception as exc:
-            logger.exception(f"Failed to queue ticket {tid}")
-            failed.append({'ticket_id': tid, 'error': str(exc)})
-
-    # Update queue_status
-    if queued_ids:
-        def _mark():
-            ProjectTicket.objects.filter(id__in=queued_ids).update(queue_status='queued')
-        await sync_to_async(_mark)()
+            logger.exception(f"Failed to dispatch tickets")
+            for tid in ticket_ids_to_queue:
+                failed.append({'ticket_id': tid, 'error': str(exc)})
 
     result = {
         'status': 'scheduled',
@@ -3388,34 +3387,31 @@ async def queue_ticket_execution_tool(function_args, project_id, conversation_id
     timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
 
 
-    # Queue each ticket as a separate task for parallel execution
-    task_ids = []
+    # Queue tickets via dispatch_tickets — this routes through the async executor
+    # which checks claude_code_enabled to pick the right executor (CLI vs API).
+    from tasks.dispatch import dispatch_tickets
+
     failed_tickets = []
     queued_ticket_ids = []
 
-    for ticket_id in ticket_id_list:
-        try:
-            task_id = await sync_to_async(TaskManager.publish_task)(
-                'tasks.task_definitions.execute_ticket_implementation',
-                ticket_id,
-                project.id,
-                conversation_id,
-                task_name=f"Ticket #{ticket_id} execution for {project.name}",
-                timeout=7200
-            )
-            task_ids.append(task_id)
-            queued_ticket_ids.append(ticket_id)
-            logger.info(f"Queued ticket {ticket_id} with task ID {task_id}")
-        except Exception as exc:
-            logger.exception(f"Failed to queue ticket {ticket_id}")
-            failed_tickets.append({'ticket_id': ticket_id, 'error': str(exc)})
+    try:
+        dispatch_ok = await sync_to_async(dispatch_tickets)(
+            project_id=project.id,
+            ticket_ids=ticket_id_list,
+            conversation_id=conversation_id,
+        )
+        if dispatch_ok:
+            queued_ticket_ids = ticket_id_list
+            logger.info(f"Dispatched {len(queued_ticket_ids)} tickets via async executor")
+        else:
+            for tid in ticket_id_list:
+                failed_tickets.append({'ticket_id': tid, 'error': 'dispatch_tickets returned False'})
+    except Exception as exc:
+        logger.exception(f"Failed to dispatch tickets")
+        for tid in ticket_id_list:
+            failed_tickets.append({'ticket_id': tid, 'error': str(exc)})
 
-    # Update ticket queue_status to 'queued' for successfully queued tickets
-    if queued_ticket_ids:
-        def _update_ticket_status():
-            ProjectTicket.objects.filter(id__in=queued_ticket_ids).update(queue_status='queued')
-        await sync_to_async(_update_ticket_status)()
-        logger.info(f"Updated {len(queued_ticket_ids)} tickets to queue_status='queued'")
+    task_ids = queued_ticket_ids  # For backward compat with response below
 
     if failed_tickets and not task_ids:
         # All tickets failed to queue

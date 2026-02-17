@@ -2243,7 +2243,7 @@
             } else if (data.auto_fix) {
                 // Claude is automatically fixing the error
                 closeProgressOverlay();
-                showNotification('Dev server failed — Claude is fixing it. Check the Actions tab.', 'warning');
+                showNotification('Dev server error — fix request sent to LFG agent. Check the Actions tab.', 'warning');
             } else {
                 showProgressError(data.error || 'Failed to start server');
             }
@@ -2547,7 +2547,7 @@
                 updateServerUI(true);
                 showNotification('Server restarted', 'success');
             } else if (data.auto_fix) {
-                showNotification('Dev server failed — Claude is fixing it. Check the Actions tab.', 'warning');
+                showNotification('Dev server error — fix request sent to LFG agent. Check the Actions tab.', 'warning');
             } else {
                 showNotification(data.error || 'Failed to restart server', 'error');
             }
