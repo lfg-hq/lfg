@@ -141,3 +141,41 @@ def instant_app_env_vars_api(request, project_id, app_id):
             return JsonResponse({'error': str(e)}, status=400)
 
     return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+
+@login_required
+def instant_app_logs_api(request, project_id, app_id):
+    """Fetch dev server logs from the instant app's sandbox."""
+    project = get_object_or_404(Project, project_id=project_id)
+    if not project.can_user_access(request.user):
+        return JsonResponse({'error': 'Permission denied'}, status=403)
+
+    app = get_object_or_404(InstantApp, app_id=app_id, project=project, user=request.user)
+    sandbox = app.sandbox
+
+    if not sandbox or not sandbox.mags_workspace_id:
+        return JsonResponse({'logs': '', 'error': 'No sandbox available'})
+
+    # How many bytes the client already has (for incremental fetching)
+    offset = int(request.GET.get('offset', 0))
+
+    try:
+        from factory.mags import run_command
+        # Read the dev server log, skipping bytes the client already has
+        if offset > 0:
+            cmd = f"tail -c +{offset + 1} /tmp/dev-server.log 2>/dev/null || echo ''"
+        else:
+            # First fetch: last 200 lines
+            cmd = "tail -n 200 /tmp/dev-server.log 2>/dev/null || echo ''"
+
+        result = run_command(sandbox.mags_workspace_id, cmd, timeout=10, with_node_env=False)
+        log_text = result.get('stdout', '')
+        new_offset = offset + len(log_text.encode('utf-8'))
+
+        return JsonResponse({
+            'logs': log_text,
+            'offset': new_offset,
+        })
+    except Exception as e:
+        logger.warning(f"[INSTANT LOGS] Error fetching logs for app {app_id}: {e}")
+        return JsonResponse({'logs': '', 'error': str(e)})

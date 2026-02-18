@@ -1096,7 +1096,7 @@ async def app_functions(function_name, function_args, project_id, conversation_i
         # Instant Mode
         case "create_instant_app":
             # Resolve user_id from project owner
-            _project = await sync_to_async(Project.objects.get)(id=project_id)
+            _project = await sync_to_async(Project.objects.get)(project_id=project_id)
             _user_id = await sync_to_async(lambda: _project.owner_id)()
             return await handle_create_instant_app(
                 app_name=function_args.get("name", "instant-app"),
@@ -1105,6 +1105,12 @@ async def app_functions(function_name, function_args, project_id, conversation_i
                 conversation_id=conversation_id,
                 user_id=_user_id,
                 env_vars=function_args.get("env_vars"),
+            )
+
+        case "get_instant_app_status":
+            return await handle_get_instant_app_status(
+                conversation_id=conversation_id,
+                restart_server=function_args.get("restart_server", False),
             )
 
         # case "implement_ticket_async":
@@ -7392,42 +7398,96 @@ async def handle_create_instant_app(
     """
     Handle the create_instant_app tool call.
 
-    1. Create InstantApp record with status='building'
-    2. Fork a Mags workspace from the user's claude-auth base
-    3. Kick off execute_instant_app Celery task
-    4. Return notification payload with app_id
+    If an InstantApp already exists for this conversation (with a ready sandbox),
+    continue the existing CLI session with the new requirements as feedback.
+    Otherwise, create a new InstantApp and queue execution.
     """
     from development.models import InstantApp, Sandbox
     from django.contrib.auth.models import User
-    import uuid
 
     try:
         user = await sync_to_async(User.objects.get)(id=user_id)
-        project = await sync_to_async(Project.objects.get)(id=project_id)
+        project = await sync_to_async(Project.objects.get)(project_id=project_id)
         conversation = await sync_to_async(
             lambda: Conversation.objects.filter(id=conversation_id).first()
         )()
 
-        # Create InstantApp record
-        app = await sync_to_async(InstantApp.objects.create)(
-            name=app_name,
-            description=requirements[:500],
-            project=project,
-            user=user,
-            conversation=conversation,
-            status='building',
-            requirements=requirements,
-            env_vars=env_vars or {},
-        )
+        # Check if an InstantApp already exists for this conversation
+        existing_app = None
+        if conversation:
+            existing_app = await sync_to_async(
+                lambda: InstantApp.objects.filter(conversation=conversation)
+                        .select_related('sandbox').first()
+            )()
 
+        if existing_app and existing_app.sandbox:
+            sandbox = existing_app.sandbox
+            has_session = bool(sandbox.cli_session_id)
+            is_ready = sandbox.status in ('ready', 'provisioning')
+
+            if has_session and is_ready:
+                # Continue the existing CLI session with new feedback
+                logger.info(
+                    f"[INSTANT] Continuing app {existing_app.app_id} "
+                    f"session={sandbox.cli_session_id[:20]}..."
+                )
+                existing_app.requirements = requirements
+                await sync_to_async(existing_app.save)(
+                    update_fields=['requirements', 'updated_at']
+                )
+
+                TaskManager.publish_task(
+                    'tasks.task_definitions.continue_instant_app',
+                    existing_app.id,
+                    requirements,
+                    task_name=f"instant-continue-{str(existing_app.app_id)[:8]}",
+                )
+
+                return {
+                    "is_notification": True,
+                    "notification_type": "instant_app_building",
+                    "message_to_agent": (
+                        f"Sending your changes to the running app **{existing_app.name}**. "
+                        f"The preview will update once the changes are applied."
+                    ),
+                    "data": {
+                        "app_id": str(existing_app.app_id),
+                        "app_name": existing_app.name,
+                        "status": "building",
+                    }
+                }
+
+        # No existing app (or no usable sandbox) — create fresh
+        def _create_app():
+            if existing_app:
+                # Reuse the record (new sandbox will be created by execute task)
+                existing_app.name = app_name
+                existing_app.description = requirements[:500]
+                existing_app.status = 'building'
+                existing_app.requirements = requirements
+                existing_app.env_vars = env_vars or {}
+                existing_app.save(update_fields=[
+                    'name', 'description', 'status', 'requirements',
+                    'env_vars', 'updated_at',
+                ])
+                return existing_app
+            return InstantApp.objects.create(
+                name=app_name,
+                description=requirements[:500],
+                project=project,
+                user=user,
+                conversation=conversation,
+                status='building',
+                requirements=requirements,
+                env_vars=env_vars or {},
+            )
+
+        app = await sync_to_async(_create_app)()
         app_id = str(app.app_id)
         logger.info(f"[INSTANT] Created InstantApp id={app.id} app_id={app_id} name={app_name}")
 
-        # Queue the background execution task
-        from tasks.task_definitions import execute_instant_app
-        task_manager = TaskManager()
-        task_manager.submit(
-            execute_instant_app,
+        TaskManager.publish_task(
+            'tasks.task_definitions.execute_instant_app',
             app.id,
             task_name=f"instant-app-{app_id[:8]}",
         )
@@ -7436,9 +7496,9 @@ async def handle_create_instant_app(
             "is_notification": True,
             "notification_type": "instant_app_building",
             "message_to_agent": (
-                f"Instant app **{app_name}** is now being built! "
-                f"The sandbox is being provisioned and Claude Code will scaffold and run the app. "
-                f"The user will see a live preview once the dev server is running."
+                f"The sandbox for **{app_name}** is now being provisioned. "
+                f"Claude Code will build and run the app once the sandbox is ready. "
+                f"Status updates will appear in the chat. Do NOT say the app is created or ready — it is still building."
             ),
             "data": {
                 "app_id": app_id,
@@ -7453,3 +7513,134 @@ async def handle_create_instant_app(
             "is_notification": False,
             "message_to_agent": f"Error creating instant app: {str(e)}"
         }
+
+
+async def handle_get_instant_app_status(
+    conversation_id: int,
+    restart_server: bool = False,
+) -> dict:
+    """
+    Look up the instant app for this conversation, return its status and
+    preview URL.  If the URL is missing, attempt to obtain one.  If
+    restart_server is True, restart the dev server first.
+    """
+    from development.models import InstantApp
+    import logging as _logging
+
+    _logger = _logging.getLogger(__name__)
+
+    try:
+        # Find the instant app for this conversation
+        app = await sync_to_async(
+            lambda: InstantApp.objects.filter(conversation_id=conversation_id)
+                    .select_related('sandbox').first()
+        )()
+
+        if not app:
+            return {"message_to_agent": "No instant app exists for this conversation yet. Ask the user what they want to build and call create_instant_app."}
+
+        sandbox = app.sandbox
+        status = app.status
+        preview_url = app.preview_url or ""
+
+        # If the sandbox is missing or not ready, just return status info
+        if not sandbox or not sandbox.mags_workspace_id:
+            return {
+                "message_to_agent": (
+                    f"App **{app.name}** exists (status: {status}) but has no sandbox assigned. "
+                    f"It may still be provisioning. Wait a moment and try again."
+                ),
+                "data": {"app_name": app.name, "status": status, "preview_url": ""},
+            }
+
+        workspace_id = sandbox.mags_workspace_id
+
+        # Optional: restart the dev server
+        if restart_server:
+            _logger.info(f"[INSTANT STATUS] Restarting dev server in workspace {workspace_id}")
+            try:
+                from factory.mags import run_command, MAGS_WORKING_DIR
+                project_dir = 'project'
+                restart_cmd = (
+                    f"cd {MAGS_WORKING_DIR}/{project_dir} && "
+                    f"(pkill -f 'next dev' 2>/dev/null || true) && "
+                    f"nohup npm run dev -- -p 8080 -H 0.0.0.0 > /tmp/dev-server.log 2>&1 &"
+                )
+                run_command(workspace_id, restart_cmd, timeout=30)
+                # Give the server a moment to start
+                import time
+                time.sleep(3)
+                _logger.info(f"[INSTANT STATUS] Dev server restart command sent")
+            except Exception as restart_err:
+                _logger.warning(f"[INSTANT STATUS] Failed to restart dev server: {restart_err}")
+
+        # Try to obtain/refresh the preview URL
+        if not preview_url or restart_server:
+            try:
+                from factory.mags import (
+                    get_http_proxy_url, create_instant_app_url_alias,
+                    _get_mags_client,
+                )
+                client = _get_mags_client()
+                job_id = sandbox.mags_job_id
+
+                # If we don't have a job_id, try to find it
+                if not job_id:
+                    job = client.find_job(workspace_id)
+                    if job:
+                        job_id = job.get("request_id") or job.get("id", "")
+                        if job_id:
+                            sandbox.mags_job_id = job_id
+                            await sync_to_async(sandbox.save)(update_fields=['mags_job_id'])
+
+                if job_id:
+                    # Enable HTTP access on port 8080
+                    raw_url = get_http_proxy_url(job_id, 8080)
+
+                    # Create/refresh the LFG alias
+                    alias_url = create_instant_app_url_alias(workspace_id, str(app.app_id))
+                    preview_url = alias_url or raw_url
+
+                    if preview_url:
+                        # Save it back
+                        app.preview_url = preview_url
+                        await sync_to_async(app.save)(update_fields=['preview_url', 'updated_at'])
+                        sandbox.proxy_url = preview_url
+                        await sync_to_async(sandbox.save)(update_fields=['proxy_url', 'updated_at'])
+                        _logger.info(f"[INSTANT STATUS] URL obtained: {preview_url}")
+
+                        # Broadcast so the frontend loads the preview
+                        from tasks.task_definitions import broadcast_instant_status
+                        broadcast_instant_status(
+                            conversation_id, str(app.app_id), 'running',
+                            f"{app.name} is live!",
+                            extra={'preview_url': preview_url, 'app_name': app.name},
+                        )
+            except Exception as url_err:
+                _logger.warning(f"[INSTANT STATUS] Could not obtain URL: {url_err}")
+
+        return {
+            "is_notification": True,
+            "notification_type": "instant_app_ready" if preview_url else "instant_app_status",
+            "preview_url": preview_url,
+            "app_name": app.name,
+            "instant_app_status": status,
+            "message": f"{app.name} is live!" if preview_url else f"{app.name} status: {status}",
+            "message_to_agent": (
+                f"App **{app.name}** — status: **{status}**\n"
+                f"Preview URL: {preview_url or '(not available yet)'}\n"
+                + (f"The preview URL has been sent to the user's browser and should load in the preview panel."
+                   if preview_url else
+                   "Could not obtain a preview URL. The sandbox may still be booting or the dev server may not be running. "
+                   "Try again with restart_server=true.")
+            ),
+            "data": {
+                "app_name": app.name,
+                "status": status,
+                "preview_url": preview_url,
+            },
+        }
+
+    except Exception as e:
+        _logger.error(f"[INSTANT STATUS] Error: {e}", exc_info=True)
+        return {"message_to_agent": f"Error checking instant app status: {str(e)}"}

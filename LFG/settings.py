@@ -25,14 +25,15 @@ CSRF_TRUSTED_ORIGINS = [
     'http://localhost:3001',
     'http://localhost:5173',
     'http://localhost:5174',
-    'https://dev-rocks.lfg.run'
+    'https://dev-rocks.lfg.run',
+    'https://18b0-2607-fea8-55dc-c800-45f7-6cf0-b9bf-2863.ngrok-free.app'
 ]
 ALLOWED_HOSTS = [
     'lfg.run',
     'www.lfg.run',
     'localhost',
     'dev-rocks.lfg.run',
-    'cdc2-2607-fea8-55dc-c800-748d-75fe-d23c-713a.ngrok-free.app'
+    '18b0-2607-fea8-55dc-c800-45f7-6cf0-b9bf-2863.ngrok-free.app'
 ]
 
 # LFG API Base URL for CLI callbacks from VMs
@@ -77,6 +78,8 @@ INSTALLED_APPS = [
     'tasks',
     'administrator',
     'codebase_index',
+    'orchestrator',
+    'integrations',
 ]
 
 MIDDLEWARE = [
@@ -117,6 +120,7 @@ ASGI_APPLICATION = 'LFG.asgi.application'
 # Channel layers configuration
 # Set USE_REDIS_CHANNELS=True in environment to use Redis, otherwise uses InMemory
 USE_REDIS_CHANNELS = os.environ.get('USE_REDIS_CHANNELS', 'False').lower() == 'true'
+print(f"[SETTINGS] USE_REDIS_CHANNELS={USE_REDIS_CHANNELS} (env={os.environ.get('USE_REDIS_CHANNELS', 'NOT SET')})")
 
 if USE_REDIS_CHANNELS:
     # Redis Channel Layer - Recommended for production

@@ -203,13 +203,15 @@ def show_conversation(request, conversation_id):
 @login_required
 def conversation_list(request, project_id):
     """Return a list of all conversations for the current user."""
-    # Get base queryset for user's conversations
-    conversations = Conversation.objects.filter(user=request.user)
-    
+    # Get base queryset for user's conversations, excluding instant app conversations
+    conversations = Conversation.objects.filter(user=request.user).exclude(
+        instantapp__isnull=False
+    )
+
     # Filter by project using the correct field name
     if project_id:
         conversations = conversations.filter(project__project_id=project_id)
-    
+
     # Order by most recent first
     conversations = conversations.order_by('-updated_at')
     

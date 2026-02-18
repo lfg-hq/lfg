@@ -7,9 +7,11 @@ from django.conf import settings
 from .forms import UserRegisterForm, UserUpdateForm, ProfileUpdateForm, EmailAuthenticationForm, PasswordResetForm, OrganizationCreationForm, OrganizationUpdateForm, OrganizationInvitationForm, MembershipUpdateForm, OrganizationSwitchForm
 from django.contrib.auth.models import User
 from .models import GitHubToken, EmailVerificationToken, LLMApiKeys, ExternalServicesAPIKeys, Organization, OrganizationMembership, OrganizationInvitation
+from projects.models import Project
 from subscriptions.models import UserCredit, OrganizationCredit
 from subscriptions.constants import FREE_TIER_TOKEN_LIMIT, PRO_MONTHLY_TOKEN_LIMIT
 from chat.models import AgentRole
+import os
 import requests
 import uuid
 import json
@@ -511,6 +513,29 @@ def integrations(request):
     transactions = Transaction.objects.filter(user=request.user).order_by('-created_at')[:5]
     stripe_public_key = os.environ.get('STRIPE_PUBLIC_KEY', '')
     
+    # --- Channels (Slack / Telegram) ---
+    from integrations.models import SlackIntegration, TelegramIntegration, ChannelProjectLink
+    slack_connected = False
+    slack_team_name = ''
+    try:
+        slack_int = SlackIntegration.objects.get(user=request.user, is_active=True)
+        slack_connected = True
+        slack_team_name = slack_int.team_name
+    except SlackIntegration.DoesNotExist:
+        pass
+
+    telegram_connected = False
+    telegram_bot_username = ''
+    try:
+        tg_int = TelegramIntegration.objects.get(user=request.user, is_active=True)
+        telegram_connected = True
+        telegram_bot_username = tg_int.bot_username
+    except TelegramIntegration.DoesNotExist:
+        pass
+
+    channel_links = ChannelProjectLink.objects.filter(user=request.user, is_active=True).select_related('project')
+    user_projects = Project.objects.filter(owner=request.user).order_by('-created_at')
+
     context = {
         'github_connected': github_connected,
         'github_username': github_username,
@@ -524,6 +549,14 @@ def integrations(request):
         'byok_enabled': personal_llm_keys_enabled,
         'linear_connected': linear_connected,
         'notion_connected': notion_connected,
+        # Channels (Slack / Telegram)
+        'slack_connected': slack_connected,
+        'slack_team_name': slack_team_name,
+        'telegram_connected': telegram_connected,
+        'telegram_bot_username': telegram_bot_username,
+        'channel_links': channel_links,
+        'user_projects': user_projects,
+        'slack_client_id_configured': bool(os.environ.get('SLACK_CLIENT_ID', '')),
         'current_org_role': current_org_role,
         # Project collaboration setting
         'allow_project_invitations': request.user.profile.allow_project_invitations,

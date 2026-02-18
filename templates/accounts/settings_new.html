@@ -787,6 +787,10 @@
                 <i class="fas fa-terminal"></i>
                 <span>Claude Code</span>
             </a>
+            <a href="#channels" class="settings-nav-item" data-section="channels">
+                <i class="fas fa-hashtag"></i>
+                <span>Channels</span>
+            </a>
             <a href="#prompts" class="settings-nav-item disabled" data-section="prompts">
                 <i class="fas fa-comment-dots"></i>
                 <span>Prompts</span>
@@ -3032,6 +3036,203 @@
         </div>
 
         <!-- Prompts Section (Disabled) -->
+        <!-- Channels Section (Slack & Telegram) -->
+        <div id="channels" class="settings-section">
+            <h2 class="section-heading">Channels</h2>
+            <p style="color: var(--settings-text-secondary); font-size: 0.875rem; margin-bottom: 1.5rem;">
+                Connect Slack or Telegram to interact with your projects through external messaging platforms.
+            </p>
+
+            <div class="integrations-list">
+                <!-- Slack Integration -->
+                <div class="integration-item">
+                    <div class="integration-header">
+                        <div class="integration-icon" style="background: linear-gradient(135deg, #611f69, #4A154B);">
+                            <i class="fab fa-slack" style="color: white;"></i>
+                        </div>
+                        <div class="integration-info">
+                            <h3 class="integration-name">
+                                Slack
+                                {% if slack_connected %}
+                                    <span class="connected-check"><i class="fas fa-check"></i></span>
+                                {% endif %}
+                            </h3>
+                            <p class="integration-description">Send and receive messages through Slack channels</p>
+                        </div>
+                    </div>
+
+                    {% if slack_connected %}
+                        <div class="github-connection-info">
+                            <div class="connected-user">
+                                <i class="fab fa-slack" style="font-size: 1.25rem; color: #a78bfa;"></i>
+                                <span>Connected to <strong>{{ slack_team_name }}</strong></span>
+                            </div>
+                            <form method="post" action="{% url 'integrations:slack_disconnect' %}" style="margin: 0;">
+                                {% csrf_token %}
+                                <button type="submit" class="disconnect-button" style="margin-top: 0.75rem;">Disconnect</button>
+                            </form>
+                        </div>
+                    {% else %}
+                        <div class="api-key-section" style="align-items: center;">
+                            {% if slack_client_id_configured %}
+                                <form method="post" action="{% url 'integrations:slack_connect' %}" style="margin: 0;">
+                                    {% csrf_token %}
+                                    <button type="submit" class="save-button" style="width: auto;">Connect Slack</button>
+                                </form>
+                            {% else %}
+                                <button class="save-button" disabled style="width: auto;">Slack Not Configured</button>
+                            {% endif %}
+                        </div>
+                    {% endif %}
+                </div>
+
+                <!-- Telegram Integration -->
+                <div class="integration-item">
+                    <div class="integration-header">
+                        <div class="integration-icon" style="background: linear-gradient(135deg, #0088cc, #229ED9);">
+                            <i class="fab fa-telegram-plane" style="color: white;"></i>
+                        </div>
+                        <div class="integration-info">
+                            <h3 class="integration-name">
+                                Telegram
+                                {% if telegram_connected %}
+                                    <span class="connected-check"><i class="fas fa-check"></i></span>
+                                {% endif %}
+                            </h3>
+                            <p class="integration-description">Send and receive messages through Telegram bots</p>
+                        </div>
+                    </div>
+
+                    {% if telegram_connected %}
+                        <div class="github-connection-info">
+                            <div class="connected-user">
+                                <i class="fab fa-telegram-plane" style="font-size: 1.25rem; color: #0088cc;"></i>
+                                <span>Connected as <strong>@{{ telegram_bot_username }}</strong></span>
+                            </div>
+                            <form method="post" action="{% url 'integrations:telegram_disconnect' %}" style="margin: 0;">
+                                {% csrf_token %}
+                                <button type="submit" class="disconnect-button" style="margin-top: 0.75rem;">Disconnect</button>
+                            </form>
+                        </div>
+                    {% else %}
+                        <form method="post" action="{% url 'integrations:telegram_connect' %}" class="api-key-section" style="flex-direction: column; gap: 0.75rem;">
+                            {% csrf_token %}
+                            <div style="display: flex; gap: 0.75rem; width: 100%; align-items: center;">
+                                <input type="text" name="bot_token" placeholder="Paste your Telegram Bot token"
+                                       class="api-key-input" style="flex: 1; background: var(--input-bg); border: 1px solid var(--settings-card-border); color: var(--settings-text-primary); padding: 0.5rem 0.75rem; border-radius: 6px;">
+                                <button type="submit" class="save-button" style="width: auto;">Connect</button>
+                            </div>
+                            <p style="color: var(--settings-text-muted); font-size: 0.75rem; margin: 0;">
+                                Get a token from <a href="https://t.me/BotFather" target="_blank" style="color: #a78bfa;">@BotFather</a>
+                            </p>
+                        </form>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Channel-Project Links -->
+            <h3 style="color: var(--settings-text-primary); margin-top: 2rem; margin-bottom: 1rem; font-size: 1rem;">Linked Channels</h3>
+
+            {% if channel_links %}
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.875rem;">
+                        <thead>
+                            <tr style="border-bottom: 1px solid var(--settings-card-border);">
+                                <th style="text-align: left; padding: 0.5rem; color: var(--settings-text-muted); font-weight: 500;">Platform</th>
+                                <th style="text-align: left; padding: 0.5rem; color: var(--settings-text-muted); font-weight: 500;">Channel</th>
+                                <th style="text-align: left; padding: 0.5rem; color: var(--settings-text-muted); font-weight: 500;">Project</th>
+                                <th style="text-align: right; padding: 0.5rem;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for link in channel_links %}
+                            <tr style="border-bottom: 1px solid var(--settings-card-border);">
+                                <td style="padding: 0.5rem; color: var(--settings-text-primary);">
+                                    {% if link.platform == 'slack' %}
+                                        <i class="fab fa-slack" style="color: #611f69;"></i>
+                                    {% else %}
+                                        <i class="fab fa-telegram-plane" style="color: #0088cc;"></i>
+                                    {% endif %}
+                                    {{ link.get_platform_display }}
+                                </td>
+                                <td style="padding: 0.5rem; color: var(--settings-text-primary);">{{ link.channel_name }}</td>
+                                <td style="padding: 0.5rem; color: var(--settings-text-primary);">{{ link.project.name }}</td>
+                                <td style="padding: 0.5rem; text-align: right;">
+                                    <form method="post" action="{% url 'integrations:channel_unlink' link.id %}" style="display: inline; margin: 0;">
+                                        {% csrf_token %}
+                                        <button type="submit" class="disconnect-button" style="font-size: 0.75rem; padding: 0.25rem 0.75rem;">Unlink</button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <p style="color: var(--settings-text-muted); font-size: 0.875rem;">No channels linked yet.</p>
+            {% endif %}
+
+            <!-- Link Channel -->
+            {% if telegram_connected %}
+            <div style="margin-top: 1.5rem; padding: 1rem; background: var(--settings-card-bg); border: 1px solid var(--settings-card-border); border-radius: 8px;">
+                <h4 style="color: var(--settings-text-primary); margin-bottom: 0.75rem; font-size: 0.875rem;">Link Telegram to a Project</h4>
+                <p style="color: var(--settings-text-muted); font-size: 0.75rem; margin-bottom: 0.75rem;">
+                    Select a project, click "Generate Link", then open the link in Telegram. The bot will auto-connect.
+                </p>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-end;">
+                    <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                        <label style="font-size: 0.75rem; color: var(--settings-text-muted);">Project</label>
+                        <select id="tg-link-project" style="background: var(--input-bg); border: 1px solid var(--settings-card-border); color: var(--settings-text-primary); padding: 0.5rem; border-radius: 6px; min-width: 200px;">
+                            {% for proj in user_projects %}
+                                <option value="{{ proj.project_id }}">{{ proj.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button id="tg-generate-link-btn" class="save-button" style="width: auto; height: fit-content;">Generate Link</button>
+                </div>
+                <div id="tg-deep-link-result" style="display: none; margin-top: 0.75rem; padding: 0.75rem; background: var(--settings-progress-bg); border-radius: 6px;">
+                    <p style="color: var(--settings-text-primary); font-size: 0.875rem; margin: 0 0 0.5rem 0;">
+                        Open this link in Telegram to connect:
+                    </p>
+                    <a id="tg-deep-link-url" href="#" target="_blank"
+                       style="color: #a78bfa; word-break: break-all; font-size: 0.875rem;"></a>
+                    <p style="color: var(--settings-text-muted); font-size: 0.7rem; margin: 0.5rem 0 0 0;">
+                        Link expires in 10 minutes.
+                    </p>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if slack_connected %}
+            <div style="margin-top: 1rem; padding: 1rem; background: var(--settings-card-bg); border: 1px solid var(--settings-card-border); border-radius: 8px;">
+                <h4 style="color: var(--settings-text-primary); margin-bottom: 0.75rem; font-size: 0.875rem;">Link Slack Channel to a Project</h4>
+                <form method="post" action="{% url 'integrations:channel_link' %}" style="display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-end;">
+                    {% csrf_token %}
+                    <input type="hidden" name="platform" value="slack">
+                    <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                        <label style="font-size: 0.75rem; color: var(--settings-text-muted);">Project</label>
+                        <select name="project_id" style="background: var(--input-bg); border: 1px solid var(--settings-card-border); color: var(--settings-text-primary); padding: 0.5rem; border-radius: 6px; min-width: 180px;">
+                            {% for proj in user_projects %}
+                                <option value="{{ proj.project_id }}">{{ proj.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                        <label style="font-size: 0.75rem; color: var(--settings-text-muted);">Channel ID</label>
+                        <input type="text" name="channel_id" placeholder="e.g. C0123456789"
+                               style="background: var(--input-bg); border: 1px solid var(--settings-card-border); color: var(--settings-text-primary); padding: 0.5rem; border-radius: 6px; min-width: 180px;" required>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                        <label style="font-size: 0.75rem; color: var(--settings-text-muted);">Channel Name</label>
+                        <input type="text" name="channel_name" placeholder="Optional display name"
+                               style="background: var(--input-bg); border: 1px solid var(--settings-card-border); color: var(--settings-text-primary); padding: 0.5rem; border-radius: 6px; min-width: 140px;">
+                    </div>
+                    <button type="submit" class="save-button" style="width: auto; height: fit-content;">Link Channel</button>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+
         <div id="prompts" class="settings-section">
             <h2 class="section-heading">Prompts</h2>
             <p style="color: var(--text-light); font-size: 0.875rem;">Coming soon...</p>
@@ -3768,6 +3969,46 @@
         
         setTimeout(() => notification.remove(), 3000);
     }
+
+    // Telegram deep-link generation
+    (function() {
+        const btn = document.getElementById('tg-generate-link-btn');
+        if (!btn) return;
+        btn.addEventListener('click', async function() {
+            const projectSelect = document.getElementById('tg-link-project');
+            const projectId = projectSelect.value;
+            if (!projectId) return;
+
+            btn.disabled = true;
+            btn.textContent = 'Generating...';
+
+            try {
+                const resp = await fetch('{% url "integrations:telegram_generate_link" %}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': getCsrfToken(),
+                    },
+                    body: 'project_id=' + encodeURIComponent(projectId),
+                });
+                const data = await resp.json();
+                if (data.deep_link) {
+                    const resultDiv = document.getElementById('tg-deep-link-result');
+                    const linkEl = document.getElementById('tg-deep-link-url');
+                    linkEl.href = data.deep_link;
+                    linkEl.textContent = data.deep_link;
+                    resultDiv.style.display = 'block';
+                } else {
+                    alert(data.error || 'Failed to generate link');
+                }
+            } catch (e) {
+                alert('Error generating link');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Generate Link';
+            }
+        });
+    })();
 </script>
 {% endblock %}
 

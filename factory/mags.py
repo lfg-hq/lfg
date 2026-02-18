@@ -1439,3 +1439,42 @@ def create_preview_url_alias(workspace_id: str, project_id: str) -> str:
     except Exception as e:
         logger.warning("[MAGS] Failed to create URL alias %s for workspace %s: %s", subdomain, workspace_id, e)
         return ""
+
+
+def create_instant_app_url_alias(workspace_id: str, app_id: str) -> str:
+    """
+    Create a stable URL alias for an instant app on app.lfg.run.
+
+    Uses a deterministic subdomain based on the instant app UUID so the URL
+    stays the same even if the underlying workspace changes.  If the alias
+    already exists it is deleted and recreated to point to the current workspace.
+
+    Args:
+        workspace_id: The Mags workspace overlay name
+        app_id: The InstantApp UUID string
+
+    Returns:
+        The stable alias URL, or empty string on failure.
+    """
+    client = _get_mags_client()
+    # Use first 12 chars of app UUID for a short, unique subdomain
+    subdomain = f"lfg-instant-{str(app_id).replace('-', '')[:12]}"
+
+    def _create():
+        result = client.url_alias_create(subdomain, workspace_id, domain="app.lfg.run")
+        url = result.get("url", "")
+        logger.info("[MAGS] Instant app URL alias created: %s -> workspace %s (url=%s)", subdomain, workspace_id, url)
+        return url
+
+    try:
+        # Always remove existing alias first so it points to the current workspace
+        try:
+            client.url_alias_delete(subdomain)
+            logger.info("[MAGS] Deleted existing instant alias %s before recreating", subdomain)
+        except Exception:
+            pass  # Alias didn't exist — that's fine
+
+        return _create()
+    except Exception as e:
+        logger.warning("[MAGS] Failed to create instant app URL alias %s for workspace %s: %s", subdomain, workspace_id, e)
+        return ""

@@ -1888,7 +1888,30 @@ create_instant_app = {
     }
 }
 
-tools_instant = [create_instant_app]
+get_instant_app_status = {
+    "type": "function",
+    "function": {
+        "name": "get_instant_app_status",
+        "description": (
+            "Get the current status and preview URL of the instant app for this conversation. "
+            "Use this when the user asks for the URL, wants to see their app, or reports the preview isn't loading. "
+            "If the app is running but has no URL, this will attempt to obtain one. "
+            "If the dev server appears down, set restart_server=true to restart it and get a fresh URL."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "restart_server": {
+                    "type": "boolean",
+                    "description": "If true, restart the dev server (npm run dev) before fetching the URL. Use when the preview is broken or the server crashed."
+                }
+            },
+            "required": []
+        }
+    }
+}
+
+tools_instant = [create_instant_app, get_instant_app_status]
 
 tools_generate_single_screen = [
     generate_single_screen_anthropic

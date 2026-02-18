@@ -108,6 +108,41 @@ def broadcast_ticket_notification(conversation_id: Optional[int], payload: Dict[
         logger.error(f"Failed to broadcast ticket notification: {exc}")
 
 
+def broadcast_instant_status(conversation_id: Optional[int], app_id_str: str, status: str, message: str, extra: Optional[Dict[str, Any]] = None) -> None:
+    """Broadcast an instant app status notification AND persist it as a system message."""
+    payload = {
+        'notification_type': 'instant_app_status' if status != 'running' else 'instant_app_ready',
+        'instant_app_id': app_id_str,
+        'instant_app_status': status,
+        'message': message,
+    }
+    if extra:
+        payload.update(extra)
+    broadcast_ticket_notification(conversation_id, payload)
+
+    # Persist as a system message so it survives page refresh
+    if conversation_id:
+        try:
+            from chat.models import Message
+            msg_content = json.dumps({
+                'type': 'instant_build_notice',
+                'instant_app_id': app_id_str,
+                'status': status,
+                'message': message,
+                **(extra or {}),
+            })
+            msg = Message.objects.create(
+                conversation_id=conversation_id,
+                role='system',
+                content=msg_content,
+            )
+            logger.info(f"[INSTANT] Persisted build notice id={msg.id} conv={conversation_id} status={status}")
+        except Exception as exc:
+            logger.warning(f"[INSTANT] Failed to persist build notice for conv={conversation_id}: {exc}", exc_info=True)
+    else:
+        logger.warning(f"[INSTANT] Cannot persist build notice — conversation_id is None (app={app_id_str}, status={status})")
+
+
 def broadcast_ticket_status_change(ticket_id: int, status: str, queue_status: str = 'none', error_reason: str = None) -> None:
     """
     Broadcast a status change to the ticket logs WebSocket group.
@@ -5812,6 +5847,7 @@ Status: ✓ Complete
                     'ticket_name': ticket.name,
                     'refresh_checklist': True
                 })
+
             else:
                 logger.info(f"[TICKET CHAT] {pending_todos} todos still pending - ticket remains in progress")
 
@@ -5849,25 +5885,24 @@ Status: ✓ Complete
 def execute_instant_app(instant_app_id: int) -> Dict[str, Any]:
     """
     Execute an Instant Mode app build.
-
-    1. Look up InstantApp + user's claude-auth base workspace
-    2. Create a Mags workspace (fork from auth base)
-    3. Run Claude CLI with the app requirements as prompt
-    4. Poll for dev server, get preview URL
-    5. Update InstantApp record with preview_url and status='running'
-    6. Broadcast preview URL to the conversation WebSocket
+    Follows the same pattern as execute_ticket_with_claude_cli:
+    1. Get claude-auth base workspace
+    2. Create workspace via run_command() (handles retries + VM boot)
+    3. Run Claude CLI with requirements prompt
+    4. Get preview URL, update status, broadcast
     """
     from development.models import InstantApp, Sandbox
     from factory.claude_code_utils import run_claude_cli
     from factory.mags import (
-        get_or_create_workspace_job, get_http_proxy_url,
-        workspace_name_for_ticket, get_latest_claude_auth_workspace_id,
-        MAGS_WORKING_DIR,
+        run_command, get_http_proxy_url,
+        get_latest_claude_auth_workspace_id, workspace_name_for_claude_auth,
+        MAGS_WORKING_DIR, MagsAPIError,
     )
     from accounts.models import Profile
 
     start_time = time.time()
     workspace_id = None
+    project_dir = 'project'
 
     try:
         app = InstantApp.objects.get(id=instant_app_id)
@@ -5877,96 +5912,200 @@ def execute_instant_app(instant_app_id: int) -> Dict[str, Any]:
 
         logger.info(
             f"\n{'='*80}\n[INSTANT START] App #{app.id} '{app.name}' | "
-            f"Project #{project.id} | User {user.username}\n{'='*80}"
+            f"Project #{project.id} | User {user.username} | "
+            f"conversation_id={conversation_id}\n{'='*80}"
         )
 
-        # Broadcast building status
-        if conversation_id:
-            broadcast_ticket_notification(conversation_id, {
-                'notification_type': 'instant_app_status',
-                'instant_app_id': str(app.app_id),
-                'instant_app_status': 'building',
-                'message': f"Provisioning sandbox for {app.name}...",
-            })
+        app_id_str = str(app.app_id)
+        broadcast_instant_status(conversation_id, app_id_str, 'building', f"Provisioning sandbox for {app.name}...")
 
-        # 1. Get claude-auth base workspace
+        # 1. Get claude-auth base workspace (same as ticket flow)
         profile = Profile.objects.get(user=user)
         if not profile.cli_api_key:
             profile.generate_cli_api_key()
 
-        claude_auth_sandbox = Sandbox.objects.filter(
-            user=user,
-            workspace_type='claude_auth',
-        ).first()
-
-        if not claude_auth_sandbox or not claude_auth_sandbox.mags_workspace_id:
+        base_ws = get_latest_claude_auth_workspace_id(user.id) or workspace_name_for_claude_auth(user.id)
+        if not base_ws:
             raise RuntimeError(
                 "No claude-auth workspace found. Please run a ticket first "
                 "to set up your Claude Code authentication."
             )
 
-        base_workspace_id = claude_auth_sandbox.mags_workspace_id
-
-        # 2. Create workspace
+        # 2. Create workspace via run_command (same as ticket flow)
+        #    run_command handles: workspace creation, VM boot retries, exec retries
         ws_suffix = uuid.uuid4().hex[:8]
         workspace_id = f"instant-{ws_suffix}"
 
-        logger.info(f"[INSTANT] Creating workspace {workspace_id} from base {base_workspace_id}")
+        logger.info(f"[INSTANT] Creating workspace {workspace_id} from base {base_ws}")
 
-        job_info = get_or_create_workspace_job(
+        probe_result = run_command(
             workspace_id=workspace_id,
-            base_workspace_id=base_workspace_id,
-            persistent=True,
+            command='echo "WORKSPACE_READY"',
+            timeout=180,
+            with_node_env=False,
+            base_workspace_id=base_ws,
         )
-        job_id = job_info.get("request_id") or job_info.get("id", "")
+        if 'WORKSPACE_READY' not in probe_result.get('stdout', ''):
+            raise MagsAPIError(
+                f"Workspace probe failed: exit={probe_result.get('exit_code')}, "
+                f"stderr={probe_result.get('stderr', '')[:200]}"
+            )
 
-        # Create Sandbox record
-        sandbox = Sandbox.objects.create(
-            project=project,
-            user=user,
-            workspace_type='execute',
-            job_id=workspace_id,
-            workspace_id=workspace_id,
+        # Create Sandbox record (same pattern as ticket flow)
+        sandbox, _ = Sandbox.objects.update_or_create(
             mags_workspace_id=workspace_id,
-            mags_job_id=job_id,
-            mags_base_workspace_id=base_workspace_id,
-            status='provisioning',
+            defaults={
+                'project': project,
+                'user': user,
+                'job_id': workspace_id,
+                'workspace_id': workspace_id,
+                'mags_workspace_id': workspace_id,
+                'mags_base_workspace_id': base_ws,
+                'workspace_type': 'instant',
+                'status': 'ready',
+            }
         )
         app.sandbox = sandbox
         app.save(update_fields=['sandbox'])
 
-        # Wait for VM to boot
-        logger.info(f"[INSTANT] Waiting for VM to boot...")
-        time.sleep(8)
+        logger.info(f"[INSTANT] Workspace ready: {workspace_id}")
 
-        # 3. Run Claude CLI with requirements prompt
-        prompt = f"""You are building a full-stack Next.js application with SQLite.
+        # 2b. Verify Claude auth (same as ticket flow)
+        broadcast_instant_status(conversation_id, app_id_str, 'building', "Verifying Claude authentication...")
+
+        from factory.claude_code_utils import check_claude_auth_status
+
+        auth_check = check_claude_auth_status(workspace_id)
+        if not auth_check.get('authenticated'):
+            logger.warning(f"[INSTANT] Sandbox auth failed, checking central claude-auth workspace {base_ws}...")
+            auth_recovered = False
+            try:
+                base_auth_check = check_claude_auth_status(base_ws)
+                if base_auth_check.get('authenticated'):
+                    logger.info(f"[INSTANT] Central workspace {base_ws} auth OK, copying credentials to {workspace_id}")
+                    creds_result = run_command(base_ws, "cat ~/.claude/.credentials.json", timeout=15, with_node_env=False)
+                    creds_content = creds_result.get('stdout', '').strip()
+                    if creds_content and creds_result.get('exit_code') == 0:
+                        import json as _json
+                        _json.loads(creds_content)  # validate JSON
+                        import base64 as _b64
+                        creds_b64 = _b64.b64encode(creds_content.encode()).decode()
+                        write_cmd = f'mkdir -p ~/.claude && echo "{creds_b64}" | base64 -d > ~/.claude/.credentials.json'
+                        write_result = run_command(workspace_id, write_cmd, timeout=15, with_node_env=False)
+                        if write_result.get('exit_code') == 0:
+                            recheck = check_claude_auth_status(workspace_id)
+                            if recheck.get('authenticated'):
+                                logger.info(f"[INSTANT] Auth recovered after copying credentials from {base_ws}")
+                                auth_recovered = True
+                            else:
+                                logger.warning(f"[INSTANT] Auth still failing after credential copy: {recheck}")
+                else:
+                    logger.warning(f"[INSTANT] Central workspace {base_ws} auth also failed")
+            except Exception as auth_err:
+                logger.warning(f"[INSTANT] Error during auth recovery attempt: {auth_err}")
+
+            if not auth_recovered:
+                error_msg = "Claude Code authentication expired. Please reconnect in Settings > Claude Code."
+                profile.claude_code_authenticated = False
+                profile.save(update_fields=['claude_code_authenticated'])
+
+                broadcast_instant_status(conversation_id, app_id_str, 'error', error_msg)
+                raise RuntimeError(error_msg)
+
+        logger.info(f"[INSTANT] Claude auth verified")
+
+        broadcast_instant_status(conversation_id, app_id_str, 'building', "Authentication verified. Starting Claude Code...")
+
+        # 3. Run Claude CLI (same as ticket flow)
+        prompt = f"""You are building a full-stack web application.
 
 ## App: {app.name}
 
 ## Requirements
 {app.requirements}
 
+## ENVIRONMENT
+- You are running inside a cloud sandbox (Mags VM). The preview proxy routes external traffic to **port 8080**.
+- ALWAYS configure the dev server to listen on **port 8080** and bind to **0.0.0.0**.
+
 ## Instructions
-1. Create a new Next.js project at /root/project using: npx create-next-app@latest project --typescript --tailwind --eslint --app --src-dir --import-alias "@/*" --use-npm --yes
-2. cd /root/project
+1. Create a new Next.js project at {MAGS_WORKING_DIR}/{project_dir} using: npx create-next-app@latest {project_dir} --typescript --tailwind --eslint --app --src-dir --import-alias "@/*" --use-npm --yes
+2. cd {MAGS_WORKING_DIR}/{project_dir}
 3. Install better-sqlite3: npm install better-sqlite3
 4. Implement ALL the requirements above — create all pages, API routes, database schema, and UI components
 5. Use Tailwind CSS for styling
-6. After implementing everything, start the dev server: cd /root/project && npm run dev -- -p 3000
+6. After implementing everything, start the dev server and redirect output to a log file: cd {MAGS_WORKING_DIR}/{project_dir} && npm run dev -- -p 8080 -H 0.0.0.0 > /tmp/dev-server.log 2>&1 &
 
-IMPORTANT: You MUST start the dev server as the final step. The app must be accessible on port 3000.
+IMPORTANT: You MUST start the dev server as the final step. The app must be accessible on port 8080. Always redirect server output to /tmp/dev-server.log so logs are accessible.
 """
+        logger.info(f"[INSTANT] Prompt being sent to Claude CLI:\n{prompt}")
 
-        if conversation_id:
-            broadcast_ticket_notification(conversation_id, {
-                'notification_type': 'instant_app_status',
-                'instant_app_id': str(app.app_id),
-                'instant_app_status': 'building',
-                'message': f"Running Claude Code to build {app.name}...",
-            })
+        broadcast_instant_status(conversation_id, app_id_str, 'building', f"Claude Code is building {app.name}...")
 
-        # Build LFG env vars for Claude CLI
+        # Stream CLI progress to the conversation in real-time
+        last_progress_time = [0.0]
+
+        def instant_poll_callback(new_output: str):
+            """Parse Claude CLI JSONL output and broadcast progress to the conversation."""
+            import json as _json
+            now = time.time()
+            # Throttle updates to every 5 seconds to avoid flooding
+            if now - last_progress_time[0] < 5:
+                return
+            for line in new_output.split('\n'):
+                line = line.strip()
+                if not line or not line.startswith('{'):
+                    continue
+                try:
+                    msg = _json.loads(line)
+                except (ValueError, _json.JSONDecodeError):
+                    continue
+                msg_type = msg.get('type', '')
+                # assistant text messages
+                if msg_type == 'assistant':
+                    content_blocks = msg.get('message', {}).get('content', [])
+                    if not isinstance(content_blocks, list):
+                        continue
+                    for block in content_blocks:
+                        if isinstance(block, dict) and block.get('type') == 'text':
+                            text = block.get('text', '')
+                            if text and conversation_id:
+                                snippet = text[:150].replace('\n', ' ')
+                                broadcast_ticket_notification(conversation_id, {
+                                    'notification_type': 'instant_app_status',
+                                    'instant_app_id': app_id_str,
+                                    'instant_app_status': 'building',
+                                    'message': f"Agent: {snippet}...",
+                                })
+                                last_progress_time[0] = now
+                                return
+                        # tool_use blocks — show what tool the agent is calling
+                        if isinstance(block, dict) and block.get('type') == 'tool_use':
+                            tool_name = block.get('name', 'unknown')
+                            tool_input = block.get('input', {})
+                            detail = ''
+                            if tool_name == 'Write' and isinstance(tool_input, dict):
+                                detail = tool_input.get('file_path', '')
+                            elif tool_name == 'Bash' and isinstance(tool_input, dict):
+                                cmd = tool_input.get('command', '')
+                                detail = cmd[:80]
+                            if detail:
+                                broadcast_ticket_notification(conversation_id, {
+                                    'notification_type': 'instant_app_status',
+                                    'instant_app_id': app_id_str,
+                                    'instant_app_status': 'building',
+                                    'message': f"{tool_name}: {detail}",
+                                })
+                            else:
+                                broadcast_ticket_notification(conversation_id, {
+                                    'notification_type': 'instant_app_status',
+                                    'instant_app_id': app_id_str,
+                                    'instant_app_status': 'building',
+                                    'message': f"Running: {tool_name}",
+                                })
+                            last_progress_time[0] = now
+                            return
+
         lfg_env = {
             'LFG_API_KEY': profile.cli_api_key,
             'LFG_API_URL': os.getenv('LFG_API_URL', 'https://app.lfg.run'),
@@ -5978,8 +6117,10 @@ IMPORTANT: You MUST start the dev server as the final step. The app must be acce
             prompt=prompt,
             timeout=1200,
             working_dir=MAGS_WORKING_DIR,
-            project_id=str(project.id),
+            project_id=str(project.project_id),
+            poll_callback=instant_poll_callback,
             lfg_env=lfg_env,
+            project_dir=project_dir,
         )
 
         session_id = cli_result.get("session_id")
@@ -5987,14 +6128,50 @@ IMPORTANT: You MUST start the dev server as the final step. The app must be acce
             sandbox.cli_session_id = session_id
             sandbox.save(update_fields=['cli_session_id'])
 
-        # 4. Get preview URL
+        # Check CLI result
+        cli_exit = cli_result.get("exit_code", -1)
+        cli_stdout = cli_result.get("stdout", "")
+        cli_error = cli_result.get("error", "")
+
+        # Always log the full output for debugging
+        logger.info(f"[INSTANT] CLI exit_code={cli_exit}, output_len={len(cli_stdout)}")
+        if cli_stdout:
+            logger.info(f"[INSTANT] CLI output:\n{cli_stdout[-1000:]}")
+
+        if cli_exit != 0:
+            # Extract a readable error from the output
+            error_snippet = cli_error or cli_stdout[-500:] or f"Claude CLI exited with code {cli_exit}"
+            logger.error(f"[INSTANT] Claude CLI failed: {error_snippet[:300]}")
+
+            # Send error to the conversation so user can see it
+            broadcast_instant_status(conversation_id, app_id_str, 'error', f"Claude CLI error (exit {cli_exit}): {error_snippet[:200]}")
+            raise RuntimeError(f"Claude CLI failed (exit {cli_exit}): {error_snippet[:200]}")
+
+        # 4. Get preview URL via job_id, then create a stable LFG alias
         preview_url = ""
-        if job_id:
-            try:
-                preview_url = get_http_proxy_url(job_id, 3000)
-                logger.info(f"[INSTANT] Preview URL: {preview_url}")
-            except Exception as e:
-                logger.warning(f"[INSTANT] Could not get preview URL: {e}")
+        try:
+            from factory.mags import _get_mags_client, create_instant_app_url_alias
+            client = _get_mags_client()
+            job = client.find_job(workspace_id)
+            if job:
+                job_id = job.get("request_id") or job.get("id", "")
+                sandbox.mags_job_id = job_id
+                sandbox.save(update_fields=['mags_job_id'])
+                if job_id:
+                    # First enable HTTP access on the raw port
+                    raw_url = get_http_proxy_url(job_id, 8080)
+                    logger.info(f"[INSTANT] Raw proxy URL: {raw_url}")
+
+                    # Create a stable LFG alias (e.g. lfg-instant-xxxx.app.lfg.run)
+                    alias_url = create_instant_app_url_alias(workspace_id, str(app.app_id))
+                    if alias_url:
+                        preview_url = alias_url
+                        logger.info(f"[INSTANT] LFG alias URL: {alias_url}")
+                    else:
+                        preview_url = raw_url
+                        logger.info(f"[INSTANT] Alias failed, using raw URL: {raw_url}")
+        except Exception as e:
+            logger.warning(f"[INSTANT] Could not get preview URL: {e}")
 
         # 5. Update app status
         app.status = 'running'
@@ -6003,19 +6180,12 @@ IMPORTANT: You MUST start the dev server as the final step. The app must be acce
 
         sandbox.status = 'ready'
         sandbox.proxy_url = preview_url
-        sandbox.project_path = '/root/project'
+        sandbox.project_path = f'{MAGS_WORKING_DIR}/{project_dir}'
         sandbox.save(update_fields=['status', 'proxy_url', 'project_path', 'updated_at'])
 
         # 6. Broadcast preview URL
-        if conversation_id:
-            broadcast_ticket_notification(conversation_id, {
-                'notification_type': 'instant_app_ready',
-                'instant_app_id': str(app.app_id),
-                'instant_app_status': 'running',
-                'preview_url': preview_url,
-                'app_name': app.name,
-                'message': f"{app.name} is now running!",
-            })
+        broadcast_instant_status(conversation_id, app_id_str, 'running', f"{app.name} is now running!",
+            extra={'preview_url': preview_url, 'app_name': app.name})
 
         execution_time = time.time() - start_time
         logger.info(f"[INSTANT] Completed in {execution_time:.1f}s — preview: {preview_url}")
@@ -6032,20 +6202,240 @@ IMPORTANT: You MUST start the dev server as the final step. The app must be acce
         error_msg = str(e)
         logger.error(f"[INSTANT] Error: {error_msg}", exc_info=True)
 
-        # Update app status to error
         try:
             app = InstantApp.objects.get(id=instant_app_id)
             app.status = 'error'
             app.metadata = {**(app.metadata or {}), 'error': error_msg}
             app.save(update_fields=['status', 'metadata', 'updated_at'])
 
-            if app.conversation_id:
-                broadcast_ticket_notification(app.conversation_id, {
-                    'notification_type': 'instant_app_status',
-                    'instant_app_id': str(app.app_id),
-                    'instant_app_status': 'error',
-                    'message': f"Error building {app.name}: {error_msg}",
-                })
+            broadcast_instant_status(app.conversation_id, str(app.app_id), 'error', f"Error building {app.name}: {error_msg}")
+        except Exception:
+            pass
+
+        return {
+            "status": "error",
+            "error": error_msg,
+            "execution_time": f"{execution_time:.1f}s",
+        }
+
+
+def continue_instant_app(instant_app_id: int, feedback: str) -> Dict[str, Any]:
+    """
+    Continue an existing Instant Mode app by resuming the Claude CLI session
+    with new feedback/requirements.
+    """
+    from development.models import InstantApp, Sandbox
+    from factory.claude_code_utils import run_claude_cli
+    from factory.mags import get_http_proxy_url, MAGS_WORKING_DIR
+    from accounts.models import Profile
+
+    start_time = time.time()
+
+    try:
+        app = InstantApp.objects.select_related('sandbox', 'project', 'user').get(id=instant_app_id)
+        sandbox = app.sandbox
+        project = app.project
+        user = app.user
+        conversation_id = app.conversation_id
+
+        if not sandbox or not sandbox.cli_session_id:
+            raise RuntimeError("No active CLI session to continue")
+
+        logger.info(
+            f"\n{'='*80}\n[INSTANT CONTINUE] App #{app.id} '{app.name}' | "
+            f"session={sandbox.cli_session_id[:20]}...\n{'='*80}"
+        )
+
+        app_id_str = str(app.app_id)
+        broadcast_instant_status(conversation_id, app_id_str, 'building', f"Applying changes to {app.name}...")
+
+        profile = Profile.objects.get(user=user)
+        workspace_id = sandbox.mags_workspace_id
+
+        # Verify Claude auth before running CLI
+        from factory.claude_code_utils import check_claude_auth_status
+        from factory.mags import run_command, get_latest_claude_auth_workspace_id, workspace_name_for_claude_auth
+
+        auth_check = check_claude_auth_status(workspace_id)
+        if not auth_check.get('authenticated'):
+            logger.warning(f"[INSTANT CONTINUE] Auth failed in {workspace_id}, attempting recovery...")
+            base_ws = get_latest_claude_auth_workspace_id(user.id) or workspace_name_for_claude_auth(user.id)
+            auth_recovered = False
+            try:
+                base_auth_check = check_claude_auth_status(base_ws)
+                if base_auth_check.get('authenticated'):
+                    creds_result = run_command(base_ws, "cat ~/.claude/.credentials.json", timeout=15, with_node_env=False)
+                    creds_content = creds_result.get('stdout', '').strip()
+                    if creds_content and creds_result.get('exit_code') == 0:
+                        import json as _json
+                        _json.loads(creds_content)
+                        import base64 as _b64
+                        creds_b64 = _b64.b64encode(creds_content.encode()).decode()
+                        write_cmd = f'mkdir -p ~/.claude && echo "{creds_b64}" | base64 -d > ~/.claude/.credentials.json'
+                        write_result = run_command(workspace_id, write_cmd, timeout=15, with_node_env=False)
+                        if write_result.get('exit_code') == 0:
+                            recheck = check_claude_auth_status(workspace_id)
+                            if recheck.get('authenticated'):
+                                logger.info(f"[INSTANT CONTINUE] Auth recovered from {base_ws}")
+                                auth_recovered = True
+            except Exception as auth_err:
+                logger.warning(f"[INSTANT CONTINUE] Auth recovery error: {auth_err}")
+
+            if not auth_recovered:
+                error_msg = "Claude Code authentication expired. Please reconnect in Settings > Claude Code."
+                profile.claude_code_authenticated = False
+                profile.save(update_fields=['claude_code_authenticated'])
+                broadcast_instant_status(conversation_id, app_id_str, 'error', error_msg)
+                raise RuntimeError(error_msg)
+
+        lfg_env = {
+            'LFG_API_KEY': profile.cli_api_key,
+            'LFG_API_URL': os.getenv('LFG_API_URL', 'https://app.lfg.run'),
+            'LFG_PROJECT_ID': str(project.project_id),
+        }
+
+        project_dir = 'project'
+        prompt = f"""The user wants changes to the running app.
+
+## Feedback / New Requirements
+{feedback}
+
+## Instructions
+1. Apply the requested changes to the existing project at {MAGS_WORKING_DIR}/{project_dir}
+2. Make sure the dev server is still running on port 8080 after changes
+3. If the dev server stopped, restart it: cd {MAGS_WORKING_DIR}/{project_dir} && npm run dev -- -p 8080 -H 0.0.0.0 > /tmp/dev-server.log 2>&1 &
+"""
+        logger.info(f"[INSTANT CONTINUE] Prompt being sent to Claude CLI:\n{prompt}")
+
+        # Stream CLI progress to the conversation
+        app_id_str = str(app.app_id)
+        last_progress_time = [0.0]
+
+        def continue_poll_callback(new_output: str):
+            """Parse Claude CLI JSONL output and broadcast progress to the conversation."""
+            import json as _json
+            now = time.time()
+            if now - last_progress_time[0] < 5:
+                return
+            for line in new_output.split('\n'):
+                line = line.strip()
+                if not line or not line.startswith('{'):
+                    continue
+                try:
+                    msg = _json.loads(line)
+                except (ValueError, _json.JSONDecodeError):
+                    continue
+                msg_type = msg.get('type', '')
+                if msg_type == 'assistant':
+                    content_blocks = msg.get('message', {}).get('content', [])
+                    if not isinstance(content_blocks, list):
+                        continue
+                    for block in content_blocks:
+                        if isinstance(block, dict) and block.get('type') == 'tool_use':
+                            tool_name = block.get('name', 'unknown')
+                            tool_input = block.get('input', {})
+                            detail = ''
+                            if tool_name == 'Write' and isinstance(tool_input, dict):
+                                detail = tool_input.get('file_path', '')
+                            elif tool_name == 'Bash' and isinstance(tool_input, dict):
+                                detail = tool_input.get('command', '')[:80]
+                            msg_text = f"{tool_name}: {detail}" if detail else f"Running: {tool_name}"
+                            broadcast_ticket_notification(conversation_id, {
+                                'notification_type': 'instant_app_status',
+                                'instant_app_id': app_id_str,
+                                'instant_app_status': 'building',
+                                'message': msg_text,
+                            })
+                            last_progress_time[0] = now
+                            return
+                        if isinstance(block, dict) and block.get('type') == 'text':
+                            text = block.get('text', '')
+                            if text and conversation_id:
+                                snippet = text[:150].replace('\n', ' ')
+                                broadcast_ticket_notification(conversation_id, {
+                                    'notification_type': 'instant_app_status',
+                                    'instant_app_id': app_id_str,
+                                    'instant_app_status': 'building',
+                                    'message': f"Agent: {snippet}...",
+                                })
+                                last_progress_time[0] = now
+                                return
+
+        cli_result = run_claude_cli(
+            workspace_id=workspace_id,
+            prompt=prompt,
+            session_id=sandbox.cli_session_id,
+            timeout=600,
+            working_dir=MAGS_WORKING_DIR,
+            project_id=str(project.project_id),
+            poll_callback=continue_poll_callback,
+            lfg_env=lfg_env,
+            project_dir=project_dir,
+        )
+
+        # Update session ID if it changed
+        new_session_id = cli_result.get("session_id")
+        if new_session_id:
+            sandbox.cli_session_id = new_session_id
+            sandbox.save(update_fields=['cli_session_id', 'updated_at'])
+
+        # Check CLI result and log output
+        cli_exit = cli_result.get("exit_code", -1)
+        cli_stdout = cli_result.get("stdout", "")
+        cli_error = cli_result.get("error", "")
+
+        logger.info(f"[INSTANT CONTINUE] CLI exit_code={cli_exit}, output_len={len(cli_stdout)}")
+        if cli_stdout:
+            logger.info(f"[INSTANT CONTINUE] CLI output:\n{cli_stdout[-1000:]}")
+
+        if cli_exit != 0:
+            error_snippet = cli_error or cli_stdout[-500:] or f"CLI exited with code {cli_exit}"
+            logger.error(f"[INSTANT CONTINUE] Claude CLI failed: {error_snippet[:300]}")
+
+            broadcast_instant_status(conversation_id, app_id_str, 'error', f"Claude CLI error (exit {cli_exit}): {error_snippet[:200]}")
+            raise RuntimeError(f"Claude CLI failed (exit {cli_exit}): {error_snippet[:200]}")
+
+        # Re-fetch preview URL with LFG alias
+        preview_url = app.preview_url or ""
+        if sandbox.mags_job_id:
+            try:
+                from factory.mags import create_instant_app_url_alias
+                # Re-enable HTTP access on the port
+                raw_url = get_http_proxy_url(sandbox.mags_job_id, 8080)
+                # Re-create alias (points to current workspace)
+                alias_url = create_instant_app_url_alias(workspace_id, str(app.app_id))
+                preview_url = alias_url or raw_url or preview_url
+            except Exception:
+                pass
+
+        app.status = 'running'
+        app.preview_url = preview_url
+        app.save(update_fields=['status', 'preview_url', 'updated_at'])
+
+        sandbox.status = 'ready'
+        sandbox.save(update_fields=['status', 'updated_at'])
+
+        broadcast_instant_status(conversation_id, app_id_str, 'running', f"Changes applied to {app.name}!",
+            extra={'preview_url': preview_url, 'app_name': app.name})
+
+        execution_time = time.time() - start_time
+        logger.info(f"[INSTANT CONTINUE] Completed in {execution_time:.1f}s")
+
+        return {
+            "status": "success",
+            "app_id": str(app.app_id),
+            "preview_url": preview_url,
+            "execution_time": f"{execution_time:.1f}s",
+        }
+
+    except Exception as e:
+        execution_time = time.time() - start_time
+        error_msg = str(e)
+        logger.error(f"[INSTANT CONTINUE] Error: {error_msg}", exc_info=True)
+
+        try:
+            app = InstantApp.objects.get(id=instant_app_id)
+            broadcast_instant_status(app.conversation_id, str(app.app_id), 'error', f"Error updating {app.name}: {error_msg}")
         except Exception:
             pass
 

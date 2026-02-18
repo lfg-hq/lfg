@@ -167,6 +167,21 @@ class AsyncTicketExecutor:
                     except Exception as e:
                         logger.warning(f"[EXECUTOR] Failed to clear queue status: {e}")
 
+                    # Notify orchestrator of ticket completion/failure
+                    try:
+                        from orchestrator.bridge import notify_orchestrator_ticket_status
+                        from asgiref.sync import sync_to_async
+                        from projects.models import ProjectTicket
+                        ticket_obj = await sync_to_async(
+                            ProjectTicket.objects.get
+                        )(id=ticket_id)
+                        await sync_to_async(notify_orchestrator_ticket_status)(
+                            ticket_id, ticket_obj.status,
+                            summary=f"Ticket #{ticket_id} execution finished with status: {ticket_obj.status}"
+                        )
+                    except Exception as e:
+                        logger.debug(f"[EXECUTOR] Orchestrator bridge notification skipped: {e}")
+
     async def _check_cancellation_async(self, ticket_id: int) -> bool:
         """Check if a ticket has been cancelled (async wrapper)."""
         from asgiref.sync import sync_to_async

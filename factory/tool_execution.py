@@ -226,7 +226,9 @@ def map_notification_type_to_tab(notification_type: str) -> str:
         "implementation_stream": "implementation_stream",  # Map implementation_stream to implementation tab
         "file_stream": "file_stream",  # Map file_stream for generic document streaming
         "design_preview": "design_preview",  # Map design_preview for design previews
-        # Add more custom mappings as needed
+        "instant_app_ready": "instant_app_ready",  # Instant mode — app is live with preview URL
+        "instant_app_status": "instant_app_status",  # Instant mode — building/status update
+        "instant_app_building": "instant_app_building",  # Instant mode — building notification
     }
     
     # If it's already a valid tab, return it
@@ -394,6 +396,11 @@ async def execute_tool_call(
                 "function_name": tool_call_name
             }
             
+            # Pass through instant app fields if present
+            for _ifield in ('instant_app_id', 'instant_app_status', 'preview_url', 'app_name', 'message'):
+                if _ifield in tool_result:
+                    notification_payload[_ifield] = tool_result[_ifield]
+
             # Special handling for PRD and Implementation streaming
             if raw_notification_type == "prd_stream":
                 notification_payload["content_chunk"] = tool_result.get("content_chunk", "")

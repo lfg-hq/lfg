@@ -1087,15 +1087,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             
-            // Enhanced logging for debugging purposes
-            console.log('=== WebSocket message received ===');
-            console.log('Full data:', JSON.stringify(data, null, 2));
-            console.log('data.type:', data.type);
-            console.log('data.is_notification:', data.is_notification);
-            console.log('Type of is_notification:', typeof data.is_notification);
-            console.log('data.notification_type:', data.notification_type);
-            console.log('data.early_notification:', data.early_notification);
-            console.log('data.function_name:', data.function_name);
+            // Reduced logging — only log non-chunk message types
+            if (data.type !== 'ai_chunk' && data.type !== 'heartbeat') {
+                console.log('WS message:', data.type, data.notification_type || '');
+            }
             
             // Special handling for notifications - Use the same improved detection logic
             const isNotification = data.is_notification === true || 
@@ -1106,19 +1101,9 @@ document.addEventListener('DOMContentLoaded', () => {
                                        (data.early_notification === true || 
                                         data.early_notification === "true");
             
-            console.log('Computed isNotification:', isNotification);
-            console.log('Computed isEarlyNotification:', isEarlyNotification);
-            console.log('=================================');
-            
-            if (data.type === 'ai_chunk' && isNotification) {
-                console.log('%c NOTIFICATION DATA RECEIVED IN WEBSOCKET! ', 'background: #ffa500; color: #000; font-weight: bold; padding: 2px 5px;');
-                console.log('Notification data:', data);
-                console.log('Is early notification:', isEarlyNotification);
-                
-                if (isEarlyNotification) {
-                    console.log('%c EARLY NOTIFICATION RECEIVED! ', 'background: #ff0000; color: #fff; font-weight: bold; padding: 2px 5px;');
-                    console.log('Function name:', data.function_name);
-                }
+            // Log only actual notifications, not every chunk
+            if (isNotification) {
+                console.log('Notification:', data.notification_type, isEarlyNotification ? '(early)' : '', data.function_name || '');
             }
             
             // Log message content for troubleshooting empty messages
@@ -1189,7 +1174,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 case 'stop_confirmed':
                     // Handle confirmation that generation was stopped
                     console.log('Generation stopped by server');
-                    
+
+                    // Clean up orchestrator streaming marker
+                    const stoppedBubble = document.querySelector('.orchestrator-streaming');
+                    if (stoppedBubble) stoppedBubble.classList.remove('orchestrator-streaming');
+
+                    // Remove tool activity indicator
+                    const stoppedToolInd = document.querySelector('.tool-activity-indicator');
+                    if (stoppedToolInd) stoppedToolInd.remove();
+
                     // If the user has already processed the stop locally, don't do anything
                     if (!stopRequested) {
                         // Remove typing indicator if it exists
@@ -1197,19 +1190,19 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (typingIndicator) {
                             typingIndicator.remove();
                         }
-                        
+
                         // Check if there's an assistant message, if not add one
                         const assistantMessage = document.querySelector('.message.assistant:last-child');
                         if (!assistantMessage) {
                             // No message was created yet, so create one with the stopped message
                             addMessageToChat('system', '*Generation stopped by server*');
                         }
-                        
+
                         // Re-enable input and restore send button
                         chatInput.disabled = false;
                         hideStopButton();
                     }
-                    
+
                     // Reset the flag
                     stopRequested = false;
                     break;
@@ -1386,16 +1379,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const chunk = data.chunk;
         const isFinal = data.is_final;
         
-        // Add explicit debug for notification property
-        console.log('\n=== handleAIChunk Debug ===');
-        console.log('Full data object:', JSON.stringify(data, null, 2));
-        console.log('chunk:', chunk);
-        console.log('is_final:', isFinal);
-        console.log('is_notification:', data.is_notification);
-        console.log('notification_type:', data.notification_type);
-        console.log('early_notification:', data.early_notification);
-        console.log('function_name:', data.function_name);
-        console.log('===========================\n');
+        // Debug logging only for notifications (skip for regular text chunks to reduce noise)
+        if (data.is_notification || data.notification_type) {
+            console.log('handleAIChunk notification:', data.notification_type, data.function_name);
+        }
         
         // AUTOMATIC FILE CONSOLE LOGGING
         if (data.notification_type === 'file_stream' && data.file_type === 'prd') {
@@ -1469,13 +1456,9 @@ document.addEventListener('DOMContentLoaded', () => {
                                    (data.early_notification === true || 
                                     data.early_notification === "true");
         
-        // Skip debug logging for non-notification messages to reduce noise
-        if (isNotification || data.is_notification !== undefined || data.notification_type !== undefined) {
-            // Add additional debugging to see the entire data structure
-            console.log("Received AI chunk data:", data);
-            console.log("Is Notification (after fix):", isNotification);
-            console.log("Is Early Notification:", isEarlyNotification);
-            console.log("Function name (if early):", data.function_name || "none");
+        // Reduced debug logging — only log notifications
+        if (isNotification) {
+            console.log("Notification:", data.notification_type, isEarlyNotification ? "(early)" : "", data.function_name || "");
         }
         
         if (isFinal) {
@@ -1509,16 +1492,44 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Check if this is the final chunk
             if (data.is_final) {
-                // Streaming is complete
+                // Streaming is complete — do a final markdown render to
+                // ensure any pending debounced content is fully parsed.
+                const finalMsg = document.querySelector('.message.assistant:last-child');
+                if (finalMsg) {
+                    const contentEl = finalMsg.querySelector('.message-content');
+                    if (contentEl) {
+                        // Clear any pending debounce timer
+                        if (contentEl._markdownTimer) {
+                            clearTimeout(contentEl._markdownTimer);
+                            contentEl._markdownTimer = null;
+                        }
+                        const raw = contentEl.getAttribute('data-raw-content') || '';
+                        if (raw) {
+                            contentEl.innerHTML = marked.parse(raw);
+                            contentEl._plainTail = null;
+                        }
+                    }
+                }
+
                 isStreaming = false;
-                
+
+                // Clean up orchestrator streaming marker
+                const streamingBubble = document.querySelector('.orchestrator-streaming');
+                if (streamingBubble) streamingBubble.classList.remove('orchestrator-streaming');
+
+                // Remove typing indicator if still present
+                const typingIndicator = document.querySelector('.typing-indicator');
+                if (typingIndicator) {
+                    typingIndicator.remove();
+                }
+
                 // Re-enable the input
                 chatInput.disabled = false;
                 chatInput.focus();
-                
+
                 // Restore send button
                 hideStopButton();
-                
+
                 // Reset the stop requested flag
                 stopRequested = false;
             }
@@ -1579,14 +1590,15 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         
+        // Handle orchestrator notifications
+        if (data.notification_type && data.notification_type.startsWith('orchestrator_')) {
+            handleOrchestratorNotification(data);
+            return;
+        }
+
         // Handle regular (completion) notifications
         if (isNotification && !isEarlyNotification) {
-            console.log('\n\n==========================================');
-            console.log('COMPLETION NOTIFICATION RECEIVED - DETAILED DEBUG INFO:');
-            console.log('Full data object:', data);
-            console.log('Notification type:', data.notification_type);
-            console.log('Current project ID:', currentProjectId);
-            console.log('==========================================\n\n');
+            console.log('Completion notification:', data.notification_type);
             
             // Check if this is ANY notification with file_id (for debugging)
             if (data.file_id) {
@@ -2159,29 +2171,236 @@ document.addEventListener('DOMContentLoaded', () => {
         // Get or create the assistant message
         const assistantMessage = document.querySelector('.message.assistant:last-child');
         if (assistantMessage) {
-            // Add to existing message
+            // Add to existing message — append raw text immediately,
+            // but debounce the expensive marked.parse() call.
             const existingContent = assistantMessage.querySelector('.message-content');
             const currentContent = existingContent.getAttribute('data-raw-content') || '';
             const newContent = currentContent + chunk;
-            
-            // Store raw content and render with markdown
             existingContent.setAttribute('data-raw-content', newContent);
-            existingContent.innerHTML = marked.parse(newContent);
-        
+
+            // Append chunk as plain text node for instant visual feedback
+            // (will be replaced by full markdown render on next parse cycle)
+            if (!existingContent._plainTail) {
+                existingContent._plainTail = document.createTextNode('');
+                existingContent.appendChild(existingContent._plainTail);
+            }
+            existingContent._plainTail.textContent += chunk;
+
+            // Debounced markdown render — parse at most every 120ms
+            if (!existingContent._markdownTimer) {
+                existingContent._markdownTimer = setTimeout(() => {
+                    existingContent._markdownTimer = null;
+                    const raw = existingContent.getAttribute('data-raw-content') || '';
+                    existingContent.innerHTML = marked.parse(raw);
+                    // Reset plain tail since innerHTML replaced everything
+                    existingContent._plainTail = null;
+                    scrollToBottom();
+                }, 120);
+            }
         } else {
             // Remove typing indicator if present
             const typingIndicator = document.querySelector('.typing-indicator');
             if (typingIndicator) {
                 typingIndicator.remove();
             }
-            
+
             // Create new message
             addMessageToChat('assistant', chunk);
         }
-        
+
         scrollToBottom();
     }
     
+    // ------------------------------------------------------------------
+    // Orchestrator UI
+    // ------------------------------------------------------------------
+
+    function handleOrchestratorNotification(data) {
+        const subType = data.notification_type.replace('orchestrator_', '');
+
+        // Always remove typing indicator when orchestrator content arrives
+        const typingIndicator = document.querySelector('.typing-indicator');
+        if (typingIndicator) {
+            typingIndicator.remove();
+        }
+
+        switch (subType) {
+            case 'text':
+                // Normal text from orchestrator — render as assistant message
+                // Remove tool activity indicator when text starts arriving
+                const toolIndicator = document.querySelector('.tool-activity-indicator');
+                if (toolIndicator) toolIndicator.remove();
+                if (data.chunk) {
+                    // Use a dedicated class to track the active streaming bubble
+                    // so tool indicators or other elements don't break appending
+                    let existing = document.querySelector('.orchestrator-streaming');
+                    if (existing) {
+                        const el = existing.querySelector('.message-content');
+                        const raw = (el.getAttribute('data-raw-content') || '') + data.chunk;
+                        el.setAttribute('data-raw-content', raw);
+                        el.innerHTML = marked.parse(raw);
+                        el._plainTail = null;
+                    } else {
+                        addMessageToChat('assistant', data.chunk);
+                        // Mark the newly created bubble as the active streaming target
+                        // Messages live inside .message-container, not #messages
+                        const allAssistant = document.querySelectorAll('.message.assistant');
+                        const last = allAssistant[allAssistant.length - 1];
+                        if (last) last.classList.add('orchestrator-streaming');
+                    }
+                    scrollToBottom();
+                }
+                break;
+
+            case 'question':
+                // Agent asking user a question — render a question card
+                renderQuestionCard({
+                    question: data.chunk || data.content || '',
+                    options: data.options || [],
+                    context: data.context || '',
+                    ticketExecutionId: data.ticket_execution_id || null,
+                });
+                break;
+
+            case 'status_update':
+                // Pipeline status update
+                renderPipelineStatus(data.payload || data.content || {});
+                break;
+
+            case 'tool_activity':
+                // Show tool activity indicator (e.g., "Searching knowledge base...")
+                showToolActivity(data.tool_label || data.tool_name || 'Working');
+                break;
+
+
+            default:
+                // Fallback — treat as plain text
+                if (data.chunk) {
+                    addMessageToChat('assistant', data.chunk);
+                    scrollToBottom();
+                }
+        }
+    }
+
+    /**
+     * Show a tool activity indicator below the chat (replaces typing indicator).
+     */
+    function showToolActivity(label) {
+        // Remove any existing tool activity or typing indicator
+        const existing = document.querySelector('.tool-activity-indicator');
+        if (existing) existing.remove();
+        const typing = document.querySelector('.typing-indicator');
+        if (typing) typing.remove();
+
+        const indicator = document.createElement('div');
+        indicator.className = 'tool-activity-indicator';
+        indicator.innerHTML = `
+            <div style="display:flex;align-items:center;gap:8px;padding:8px 16px;color:#a0a0b0;font-size:13px;">
+                <span class="tool-spinner" style="display:inline-block;width:14px;height:14px;border:2px solid #a0a0b0;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;"></span>
+                <span>${label}...</span>
+            </div>
+        `;
+        const messagesContainer = document.getElementById('messages');
+        if (messagesContainer) {
+            messagesContainer.appendChild(indicator);
+            scrollToBottom();
+        }
+    }
+
+    /**
+     * Render a question card inline in the chat.
+     * The user can click an option or type a free-form answer.
+     */
+    function renderQuestionCard({ question, options, context, ticketExecutionId }) {
+        const card = document.createElement('div');
+        card.className = 'orchestrator-question-card';
+
+        let html = '';
+        if (context) {
+            html += `<div class="oq-context">${context}</div>`;
+        }
+        html += `<div class="oq-question">${marked.parse(question)}</div>`;
+
+        if (options && options.length > 0) {
+            html += '<div class="oq-options">';
+            options.forEach(opt => {
+                html += `<button class="oq-option-btn" data-option="${opt.replace(/"/g, '&quot;')}">${opt}</button>`;
+            });
+            html += '</div>';
+        }
+
+        card.innerHTML = html;
+
+        // Wire option buttons to send the answer
+        card.querySelectorAll('.oq-option-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const answer = btn.getAttribute('data-option');
+                // Put the answer in the chat input and send
+                chatInput.value = answer;
+                chatForm.dispatchEvent(new Event('submit'));
+                // Disable the card after selection
+                card.classList.add('oq-answered');
+                card.querySelectorAll('.oq-option-btn').forEach(b => b.disabled = true);
+                btn.classList.add('oq-selected');
+            });
+        });
+
+        // Insert into chat
+        const wrapper = document.createElement('div');
+        wrapper.className = 'message assistant orchestrator-msg';
+        wrapper.appendChild(card);
+        messageContainer.appendChild(wrapper);
+        scrollToBottom(true);
+    }
+
+    /**
+     * Render or update the pipeline status card in the chat.
+     */
+    function renderPipelineStatus(status) {
+        // Remove any existing pipeline card to update it
+        const existing = document.querySelector('.orchestrator-pipeline-card');
+        if (existing) existing.remove();
+
+        const tickets = status.tickets || [];
+        if (tickets.length === 0) return;
+
+        const card = document.createElement('div');
+        card.className = 'orchestrator-pipeline-card';
+
+        const statusIcons = {
+            queued: '<span class="op-icon op-queued"><i class="fas fa-clock"></i></span>',
+            ready: '<span class="op-icon op-ready"><i class="fas fa-circle"></i></span>',
+            running: '<span class="op-icon op-running"><i class="fas fa-spinner fa-spin"></i></span>',
+            blocked: '<span class="op-icon op-blocked"><i class="fas fa-exclamation-triangle"></i></span>',
+            completed: '<span class="op-icon op-completed"><i class="fas fa-check-circle"></i></span>',
+            failed: '<span class="op-icon op-failed"><i class="fas fa-times-circle"></i></span>',
+            cancelled: '<span class="op-icon op-cancelled"><i class="fas fa-ban"></i></span>',
+            skipped: '<span class="op-icon op-skipped"><i class="fas fa-forward"></i></span>',
+        };
+
+        let html = '<div class="op-header">Pipeline Status</div>';
+        html += `<div class="op-summary">${status.completed || 0}/${status.total_tickets || tickets.length} completed</div>`;
+        html += '<div class="op-tickets">';
+        tickets.forEach(t => {
+            const icon = statusIcons[t.status] || statusIcons.queued;
+            const blockedInfo = t.blocked_reason ? ` <span class="op-blocked-reason">${t.blocked_reason}</span>` : '';
+            html += `<div class="op-ticket op-ticket-${t.status}">
+                ${icon}
+                <span class="op-title">${t.title}</span>
+                ${blockedInfo}
+            </div>`;
+        });
+        html += '</div>';
+
+        card.innerHTML = html;
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'message assistant orchestrator-msg';
+        wrapper.appendChild(card);
+        messageContainer.appendChild(wrapper);
+        scrollToBottom(true);
+    }
+
     // Function to create message container if it doesn't exist
     function createMessageContainer() {
         const container = document.createElement('div');

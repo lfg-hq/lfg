@@ -384,6 +384,16 @@ def cli_update_status(request):
     except Exception as e:
         logger.warning(f"[CLI API] Failed to broadcast status change: {e}")
 
+    # Notify orchestrator (if an active run exists for this project)
+    try:
+        from orchestrator.bridge import notify_orchestrator_ticket_status
+        notify_orchestrator_ticket_status(
+            ticket_id, ticket.status,
+            summary=summary or f"Ticket #{ticket_id} marked as {status} via CLI"
+        )
+    except Exception as e:
+        logger.warning(f"[CLI API] Orchestrator bridge notification failed: {e}")
+
     logger.info(f"[CLI API] Ticket {ticket_id} status changed: {old_status} -> {ticket.status}")
 
     return JsonResponse({

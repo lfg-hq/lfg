@@ -472,8 +472,12 @@ class OpenAIProvider(BaseLLMProvider):
         converted_tools = self._convert_tools_to_provider_format(tools)
 
         # Add OpenAI's built-in web search tool (Responses API native)
-        # This provides real-time web search capabilities without custom implementation
-        converted_tools.append({"type": "web_search_preview"})
+        # "web_search" is the GA tool type (replaces legacy "web_search_preview")
+        # search_context_size: "medium" balances detail vs speed (options: low/medium/high)
+        converted_tools.append({
+            "type": "web_search",
+            "search_context_size": "medium",
+        })
 
         # Track response ID for multi-turn tool calls
         previous_response_id = None
@@ -673,12 +677,11 @@ class OpenAIProvider(BaseLLMProvider):
                         logger.debug(f"Received event: {event_type}")
                         continue
 
-                    elif event_type and event_type.startswith('response.web_search_call'):
-                        # Web search events from built-in web_search_preview tool
-                        # These are handled automatically by OpenAI - just send notification to UI
-                        if event_type == 'response.web_search_call.in_progress':
-                            logger.info("[OPENAI] Web search in progress")
-                            # Send notification that web search is happening
+                    elif event_type and ('web_search' in event_type):
+                        # Web search events from built-in web_search tool
+                        # Match both "response.web_search_call.*" and any future naming
+                        if 'in_progress' in event_type or 'searching' in event_type:
+                            logger.info(f"[OPENAI] Web search in progress (event: {event_type})")
                             search_notification = {
                                 "is_notification": True,
                                 "notification_type": "web_search",
@@ -687,9 +690,8 @@ class OpenAIProvider(BaseLLMProvider):
                                 "notification_marker": "__NOTIFICATION__"
                             }
                             yield f"__NOTIFICATION__{json.dumps(search_notification)}__NOTIFICATION__"
-                        elif event_type == 'response.web_search_call.completed':
-                            logger.info("[OPENAI] Web search completed")
-                            # Send completion notification to remove spinner
+                        elif 'completed' in event_type or 'done' in event_type:
+                            logger.info(f"[OPENAI] Web search completed (event: {event_type})")
                             complete_notification = {
                                 "is_notification": True,
                                 "notification_type": "web_search",
@@ -700,6 +702,12 @@ class OpenAIProvider(BaseLLMProvider):
                             yield f"__NOTIFICATION__{json.dumps(complete_notification)}__NOTIFICATION__"
                         else:
                             logger.debug(f"Web search event: {event_type}")
+                        continue
+
+                    else:
+                        # Unknown event type — log and skip to avoid stalling
+                        if event_type:
+                            logger.debug(f"Unhandled Responses API event: {event_type}")
                         continue
 
                 # --- Handle finish reason after event loop ---

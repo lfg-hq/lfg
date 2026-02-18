@@ -378,13 +378,31 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 
                 # Reset stop flag
                 self.should_stop_generation = False
-                
+
                 provider_name = settings.AI_PROVIDER_DEFAULT
-                # Generate AI response in background task
-                # Store the task so we can cancel it if needed
-                self.active_generation_task = asyncio.create_task(
-                    self.generate_ai_response(user_message, provider_name, project_id, user_role, turbo_mode, mentioned_files, canvas_id, instant_mode)
-                )
+
+                # --- Orchestrator routing ---
+                # Check if there's an active orchestrator run waiting for user input,
+                # or if the user has orchestrator mode enabled.
+                orchestrator_handled = False
+                if project_id and not turbo_mode and not instant_mode and not canvas_id:
+                    # Resolve user's selected model for the orchestrator
+                    try:
+                        _model_sel = await database_sync_to_async(ModelSelection.objects.get)(user=self.user)
+                        _selected_model = _model_sel.selected_model
+                    except ModelSelection.DoesNotExist:
+                        _selected_model = ModelSelection.DEFAULT_MODEL_KEY
+                    _provider_name = MODEL_TO_PROVIDER.get(_selected_model, 'openai')
+
+                    orchestrator_handled = await self._try_orchestrator_route(
+                        user_message, project_id, _provider_name, _selected_model
+                    )
+
+                if not orchestrator_handled:
+                    # Fallback: direct AI response (original flow)
+                    self.active_generation_task = asyncio.create_task(
+                        self.generate_ai_response(user_message, provider_name, project_id, user_role, turbo_mode, mentioned_files, canvas_id, instant_mode)
+                    )
             
             elif message_type == 'stop_generation':
                 # Handle stop generation request
@@ -396,8 +414,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 # Cancel the active task if it exists
                 if self.active_generation_task and not self.active_generation_task.done():
                     logger.debug(f"Canceling active generation task for conversation {conversation_id}")
-                    # We don't actually cancel the task as it may be in the middle of stream processing
-                    # Instead, we set a flag that will be checked during stream processing
+                    self.active_generation_task.cancel()
                 
                 # Save an indicator that generation was stopped
                 if self.conversation:
@@ -467,7 +484,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         }
         
         # Check all possible notification fields
-        notification_fields = ['is_notification', 'notification_type', 'early_notification', 'function_name', 'content_chunk', 'is_complete', 'file_id', 'file_name', 'file_type', 'prd_name', 'project_id', 'app_url', 'workspace_id', 'port']
+        notification_fields = ['is_notification', 'notification_type', 'early_notification', 'function_name', 'content_chunk', 'is_complete', 'file_id', 'file_name', 'file_type', 'prd_name', 'project_id', 'app_url', 'workspace_id', 'port', 'instant_app_id', 'instant_app_status', 'preview_url', 'app_name', 'message']
         for field in notification_fields:
             if field in event:
                 response_data[field] = event[field]
@@ -715,11 +732,39 @@ class ChatConsumer(AsyncWebsocketConsumer):
             # Generate streaming response
             full_response = ""
 
-            # Process the stream in an async context - yield instantly for smoothest streaming
+            # Process the stream with buffered output for smooth rendering
+            # Buffer text chunks and flush every ~80 chars or 80ms to reduce
+            # WebSocket message frequency and frontend DOM thrashing.
+            import time as _time
+            _chunk_buffer = []
+            _buffer_len = 0
+            _last_flush_time = _time.monotonic()
+            _FLUSH_CHAR_THRESHOLD = 80
+            _FLUSH_TIME_THRESHOLD = 0.08  # 80ms
+
+            async def _flush_buffer():
+                nonlocal _chunk_buffer, _buffer_len, _last_flush_time
+                if not _chunk_buffer:
+                    return
+                combined = ''.join(_chunk_buffer)
+                _chunk_buffer.clear()
+                _buffer_len = 0
+                _last_flush_time = _time.monotonic()
+                try:
+                    await self.send(text_data=json.dumps({
+                        'type': 'ai_chunk',
+                        'chunk': combined,
+                        'is_final': False
+                    }))
+                except Exception as e:
+                    logger.error(f"Error sending AI chunk: {str(e)}")
+
             async for content in self.process_ai_stream(provider, messages, project_id, tools, mentioned_files):
-                
+
                 # Check if generation should stop
                 if self.should_stop_generation:
+                    # Flush any remaining buffer before stopping
+                    await _flush_buffer()
                     # Send stop message immediately
                     try:
                         await self.send(text_data=json.dumps({
@@ -729,20 +774,22 @@ class ChatConsumer(AsyncWebsocketConsumer):
                         }))
                     except Exception as e:
                         logger.error(f"Error sending stop message: {str(e)}")
-                    
+
                     # Add the stop message to the full response
                     full_response += "\n\n*Generation stopped by user*"
-                    
+
                     # Break out of the loop
                     break
-                
+
                 # Check if this is a notification
                 if isinstance(content, str) and content.startswith("__NOTIFICATION__") and content.endswith("__NOTIFICATION__"):
+                    # Flush text buffer before sending notification (preserve ordering)
+                    await _flush_buffer()
                     # Parse and send notification
                     try:
                         notification_json = content[len("__NOTIFICATION__"):-len("__NOTIFICATION__")]
                         notification_data = json.loads(notification_json)
-                        
+
                         # Send notification to client
                         notification_message = {
                             'chunk': '',
@@ -752,7 +799,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             'early_notification': notification_data.get('early_notification', False),
                             'function_name': notification_data.get('function_name', '')
                         }
-                        
+
                         # Pass through file_id and related fields if present (for all notification types)
                         if notification_data.get('file_id'):
                             notification_message['file_id'] = notification_data.get('file_id')
@@ -762,7 +809,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
                         # Pass through project_id if present
                         if notification_data.get('project_id'):
                             notification_message['project_id'] = notification_data.get('project_id')
-                        
+
+                        # Pass through instant app fields if present
+                        for _ifield in ('instant_app_id', 'instant_app_status', 'preview_url', 'app_name', 'message'):
+                            if notification_data.get(_ifield):
+                                notification_message[_ifield] = notification_data[_ifield]
+
                         # Add additional fields for file_stream notifications
                         if notification_data.get('notification_type') == 'file_stream':
                             notification_message['content_chunk'] = notification_data.get('content_chunk', '')
@@ -771,20 +823,20 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             notification_message['file_name'] = notification_data.get('file_name', '')
                             if notification_data.get('file_id'):
                                 notification_message['file_id'] = notification_data.get('file_id')
-                        
+
                         # Send notification directly via WebSocket (lower latency)
                         ws_message = {
                             'type': 'ai_chunk',
                             **notification_message
                         }
                         await self.send(text_data=json.dumps(ws_message))
-                        
+
                         # Continue without adding to full_response
                         continue
                     except Exception as e:
                         logger.error(f"Error processing notification in generate_ai_response: {e}")
                         # Fall through to normal processing if error
-                
+
                 # Skip other notification formats from being added to the full response
                 if isinstance(content, str) and content.startswith("{") and content.endswith("}"):
                     try:
@@ -794,18 +846,19 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             continue
                     except:
                         pass  # Not JSON, treat as normal content
-                
+
                 full_response += content
 
-                # Send chunk instantly - no batching for smoothest streaming
-                try:
-                    await self.send(text_data=json.dumps({
-                        'type': 'ai_chunk',
-                        'chunk': content,
-                        'is_final': False
-                    }))
-                except Exception as e:
-                    logger.error(f"Error sending AI chunk: {str(e)}")
+                # Buffer text chunks for smoother frontend rendering
+                _chunk_buffer.append(content)
+                _buffer_len += len(content)
+                _elapsed = _time.monotonic() - _last_flush_time
+
+                if _buffer_len >= _FLUSH_CHAR_THRESHOLD or _elapsed >= _FLUSH_TIME_THRESHOLD:
+                    await _flush_buffer()
+
+            # Flush any remaining buffered text after stream ends
+            await _flush_buffer()
 
             # Finalize any partial message or save the complete message
             if full_response:
@@ -1367,23 +1420,34 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """
         if not self.conversation:
             return []
-            
+
         messages = Message.objects.filter(conversation=self.conversation).prefetch_related('files').order_by('-created_at')[:20]
         messages = reversed(list(messages))  # Convert to list and reverse
-        
+
         formatted_messages = []
+        prev_role = None
         for msg in messages:
+            content = (msg.content or "").strip()
+            # Skip messages with no content (e.g. tool-call-only assistant turns)
+            if not content:
+                continue
+            # Anthropic/OpenAI require alternating roles — skip consecutive same-role
+            if msg.role == prev_role:
+                # Merge into previous message
+                if formatted_messages:
+                    formatted_messages[-1]["content"] += "\n\n" + content
+                    continue
+            prev_role = msg.role
+
             # Start with basic message structure
             message_data = {
                 "role": msg.role,
-                "content": msg.content if msg.content else ""
+                "content": content,
             }
-            
+
             # Check if message has files attached
             files = list(msg.files.all())
             if files:
-                # For user messages with files, we'll need to format content based on provider
-                # This will be handled later when we actually send to the provider
                 message_data["files"] = [
                     {
                         "id": file.id,
@@ -1393,9 +1457,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     }
                     for file in files
                 ]
-            
+
             formatted_messages.append(message_data)
-        
+
         return formatted_messages
 
     @database_sync_to_async
@@ -1791,4 +1855,156 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 self.pending_message = None
             except Exception as e:
                 logger.error(f"Error saving streaming message: {e}")
-                self.pending_message = None 
+                self.pending_message = None
+
+    # ------------------------------------------------------------------
+    # Orchestrator integration
+    # ------------------------------------------------------------------
+
+    async def _try_orchestrator_route(self, user_message, project_id, provider_name, selected_model) -> bool:
+        """
+        Try to route the message through the orchestrator.
+
+        Runs the orchestrator as an async task in the SAME process so it
+        can stream tokens directly to the WebSocket via self.send().
+        (Django-Q runs in a separate process where channel_layer messages
+        can't reach the ASGI consumer reliably.)
+
+        Returns True if the orchestrator handled the message, False to
+        fall back to the direct AI flow.
+        """
+        try:
+            # Check for an active orchestrator run for this conversation
+            active_run = await self._get_active_orchestrator_run()
+
+            payload = {
+                "message": user_message,
+                "user_id": self.user.id,
+                "provider_name": provider_name,
+                "selected_model": selected_model,
+            }
+
+            if active_run:
+                event_type = "user_response" if active_run.status == "waiting_on_user" else "new_user_message"
+                # Run orchestrator in-process as an async task
+                self.active_generation_task = asyncio.create_task(
+                    self._run_orchestrator(str(active_run.id), event_type, payload)
+                )
+                return True
+
+            # No active run — create a new one
+            from orchestrator.models import AgentRun
+            from projects.models import Project
+
+            project = await database_sync_to_async(
+                lambda: Project.objects.get(project_id=project_id)
+            )()
+
+            agent_run = await database_sync_to_async(AgentRun.objects.create)(
+                conversation=self.conversation,
+                project=project,
+                user=self.user,
+                trigger_message=user_message,
+                status='planning',
+            )
+
+            self.active_generation_task = asyncio.create_task(
+                self._run_orchestrator(str(agent_run.id), "new_user_message", payload)
+            )
+            return True
+
+        except Exception as e:
+            logger.error(f"Orchestrator routing failed, falling back to direct: {e}", exc_info=True)
+            return False
+
+    async def _run_orchestrator(self, agent_run_id: str, event_type: str, payload: dict):
+        """
+        Run the orchestrator agent in-process and stream results directly
+        to the WebSocket via self.send().
+        """
+        from orchestrator.models import AgentRun
+        from orchestrator.agent import OrchestratorAgent
+
+        try:
+            agent_run = await database_sync_to_async(
+                lambda: AgentRun.objects.select_related(
+                    "project", "user", "conversation"
+                ).get(id=agent_run_id)
+            )()
+
+            orchestrator = OrchestratorAgent(agent_run)
+            user_messages = await orchestrator.handle_event(event_type, payload)
+            logger.info(f"[consumer] Orchestrator returned {len(user_messages)} user_messages")
+
+        except asyncio.CancelledError:
+            logger.info("[consumer] Orchestrator task cancelled by user (stop generation)")
+            user_messages = []
+
+        except Exception as e:
+            logger.error(f"[consumer] Orchestrator error: {e}", exc_info=True)
+            user_messages = [{"type": "error", "content": f"Sorry, I encountered an error: {e}"}]
+            if self.conversation:
+                from chat.models import Message
+                await database_sync_to_async(Message.objects.create)(
+                    conversation=self.conversation,
+                    role="assistant",
+                    content=f"Sorry, I encountered an error: {e}",
+                )
+
+        # Send non-text user messages (questions, status updates)
+        for msg in user_messages:
+            msg_type = msg.get("type", "text")
+            content = msg.get("content", "")
+            if msg_type == "text":
+                continue  # Already streamed by agent via channel layer
+            await self.send(text_data=json.dumps({
+                'type': 'ai_chunk',
+                'chunk': content,
+                'is_final': False,
+                'is_notification': True,
+                'notification_type': f'orchestrator_{msg_type}',
+            }))
+
+        # Final signal
+        await self.send(text_data=json.dumps({
+            'type': 'ai_chunk',
+            'chunk': '',
+            'is_final': True,
+            'conversation_id': self.conversation.id if self.conversation else None,
+        }))
+
+    @database_sync_to_async
+    def _get_active_orchestrator_run(self):
+        """Get the active orchestrator run for this conversation, if any."""
+        from orchestrator.models import AgentRun
+        if not self.conversation:
+            return None
+        return AgentRun.objects.filter(
+            conversation=self.conversation,
+            status__in=['executing', 'waiting_on_user', 'planning'],
+        ).order_by('-created_at').first()
+
+    async def agent_orchestrator_event(self, event):
+        """Handle events from the orchestrator sent via the channel layer."""
+        logger.info(
+            f"[consumer] agent_orchestrator_event: "
+            f"notification_type={event.get('notification_type')}, "
+            f"chunk_len={len(event.get('chunk', ''))}, "
+            f"is_final={event.get('is_final')}"
+        )
+        response_data = {
+            'type': 'ai_chunk',
+            'chunk': event.get('chunk', ''),
+            'is_final': event.get('is_final', False),
+        }
+        if event.get('is_notification'):
+            response_data['is_notification'] = True
+            response_data['notification_type'] = event.get('notification_type', '')
+            # Forward extra fields for tool activity notifications
+            for key in ('tool_name', 'tool_label'):
+                if key in event:
+                    response_data[key] = event[key]
+        if event.get('is_final') and self.conversation:
+            response_data['conversation_id'] = self.conversation.id
+        logger.info(f"[consumer] Sending to WebSocket: {json.dumps(response_data)[:200]}")
+        await self.send(text_data=json.dumps(response_data))

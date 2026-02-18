@@ -1664,3 +1664,140 @@ input:checked + .turbo-slider + .turbo-label,
     border: 1px solid #3a3a3a;
 }
 
+/* ------------------------------------------------------------------
+   Orchestrator UI — Pipeline Status & Question Cards
+   ------------------------------------------------------------------ */
+
+.orchestrator-msg {
+    margin: 8px 0;
+}
+
+/* Question card */
+.orchestrator-question-card {
+    background: #1e1e2e;
+    border: 1px solid #3a3a5a;
+    border-radius: 10px;
+    padding: 16px;
+    max-width: 560px;
+}
+
+.oq-context {
+    font-size: 12px;
+    color: #8888aa;
+    margin-bottom: 8px;
+    line-height: 1.4;
+}
+
+.oq-question {
+    margin-bottom: 12px;
+    line-height: 1.5;
+}
+
+.oq-question p {
+    margin: 0;
+}
+
+.oq-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.oq-option-btn {
+    background: #2a2a3e;
+    border: 1px solid #4a4a6a;
+    border-radius: 6px;
+    color: #e0e0f0;
+    padding: 8px 16px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.oq-option-btn:hover {
+    background: #3a3a5e;
+    border-color: #6a6aaa;
+}
+
+.oq-option-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.oq-option-btn.oq-selected {
+    background: #4a5aaa;
+    border-color: #6a7acc;
+    opacity: 1;
+}
+
+.orchestrator-question-card.oq-answered {
+    opacity: 0.7;
+}
+
+/* Pipeline status card */
+.orchestrator-pipeline-card {
+    background: #1e1e2e;
+    border: 1px solid #3a3a5a;
+    border-radius: 10px;
+    padding: 16px;
+    max-width: 560px;
+}
+
+.op-header {
+    font-weight: 600;
+    font-size: 14px;
+    margin-bottom: 4px;
+    color: #c0c0e0;
+}
+
+.op-summary {
+    font-size: 12px;
+    color: #8888aa;
+    margin-bottom: 12px;
+}
+
+.op-tickets {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.op-ticket {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: #24243a;
+}
+
+.op-icon {
+    width: 18px;
+    text-align: center;
+    flex-shrink: 0;
+    font-size: 12px;
+}
+
+.op-queued   { color: #666; }
+.op-ready    { color: #5588cc; }
+.op-running  { color: #ccaa44; }
+.op-blocked  { color: #cc8844; }
+.op-completed { color: #44aa66; }
+.op-failed   { color: #cc4444; }
+.op-cancelled { color: #888; }
+.op-skipped  { color: #888; }
+
+.op-title {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.op-blocked-reason {
+    font-size: 11px;
+    color: #cc8844;
+    font-style: italic;
+}
+

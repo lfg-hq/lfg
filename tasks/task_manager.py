@@ -40,13 +40,22 @@ class TaskManager:
             Task ID string
         """
         try:
+            # Only pass optional kwargs that are set, so Django-Q falls back
+            # to Q_CLUSTER defaults (e.g. timeout) when not explicitly provided.
+            optional_kwargs = {}
+            if task_name is not None:
+                optional_kwargs['task_name'] = task_name
+            if hook is not None:
+                optional_kwargs['hook'] = hook
+            if timeout is not None:
+                optional_kwargs['timeout'] = timeout
+            if group is not None:
+                optional_kwargs['group'] = group
+
             task_id = async_task(
                 task_function,
                 *args,
-                task_name=task_name,
-                hook=hook,
-                timeout=timeout,
-                group=group,
+                **optional_kwargs,
                 **kwargs
             )
 

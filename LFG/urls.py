@@ -23,6 +23,7 @@ urlpatterns = [
     path('api/tasks/', include('tasks.urls')),  # Task management APIs
     path('codebase/', include('codebase_index.urls')),  # Codebase indexing URLs
     path('administrator-rocks/', include('administrator.urls')),  # Administrator URLs
+    path('integrations/', include('integrations.urls')),  # Slack/Telegram integrations
 ]
 
 # Serve media files in development

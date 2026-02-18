@@ -157,6 +157,8 @@ class Sandbox(models.Model):
 
     WORKSPACE_TYPE_CHOICES = (
         ('execute', 'Ticket Execution'),
+        ('ticket', 'Ticket'),
+        ('instant', 'Instant App'),
         ('claude_auth', 'Claude Code Auth'),
         ('preview', 'Preview'),
     )

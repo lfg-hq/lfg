@@ -69,9 +69,32 @@ document.addEventListener('DOMContentLoaded', () => {
         // Chat history load
         if (type === 'chat_history') {
             clearWelcome();
+            let lastPreviewUrl = null;
+            let lastAppName = null;
             (data.messages || []).forEach(msg => {
+                // System messages that are build notices
+                if (msg.role === 'system' && msg.content) {
+                    try {
+                        const parsed = JSON.parse(msg.content);
+                        if (parsed.type === 'instant_build_notice') {
+                            // From history: show past statuses as completed, not spinning
+                            const historyStatus = (parsed.status === 'building') ? 'done' : parsed.status;
+                            appendBuildNotice(parsed.message, historyStatus);
+                            if (parsed.status === 'running' && parsed.preview_url) {
+                                lastPreviewUrl = parsed.preview_url;
+                                lastAppName = parsed.app_name;
+                            }
+                            return;
+                        }
+                    } catch (_) { /* not JSON — render as normal */ }
+                }
                 addMessageToChat(msg.role, msg.content);
             });
+            // Load the last known preview URL from history
+            if (lastPreviewUrl) {
+                loadPreview(lastPreviewUrl);
+                setStatus('running', (lastAppName || 'App') + ' is live');
+            }
             scrollToBottom();
             return;
         }
@@ -108,9 +131,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (ntype === 'instant_app_building' || ntype === 'instant_app_status') {
             const status = data.instant_app_status || 'building';
             const message = data.message || 'Building...';
-            setPreviewState('building', message);
-            setStatus(status, message);
-            appendBuildNotice(message);
+
+            if (status === 'error') {
+                setPreviewState('building', message);
+                setStatus('error', message);
+                if (buildingMessage) buildingMessage.style.color = 'var(--danger, #e74c3c)';
+            } else {
+                if (buildingMessage) buildingMessage.style.color = '';
+                setPreviewState('building', message);
+                setStatus(status, message);
+            }
+            appendBuildNotice(message, status);
         }
 
         if (ntype === 'instant_app_ready') {
@@ -119,7 +150,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 loadPreview(url);
                 setStatus('running', data.app_name + ' is live');
             }
-            appendBuildNotice(data.message || 'App is ready!');
+            appendBuildNotice(data.message || 'App is ready!', 'running');
         }
     }
 
@@ -191,10 +222,17 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function appendBuildNotice(message) {
+    function appendBuildNotice(message, status) {
         const el = document.createElement('div');
         el.className = 'instant-build-notice';
-        el.innerHTML = `<div class="spinner-small"></div><span>${escapeHtml(message)}</span>`;
+        if (status === 'error') el.classList.add('notice-error');
+        else if (status === 'running') el.classList.add('notice-done');
+        else if (status === 'done') el.classList.add('notice-past');
+        const icon = status === 'error' ? '<i class="fas fa-times-circle" style="font-size:10px"></i>'
+                   : status === 'running' ? '<i class="fas fa-check-circle" style="font-size:10px"></i>'
+                   : status === 'done' ? '<i class="fas fa-circle" style="font-size:5px;opacity:0.5;margin:0 2px"></i>'
+                   : '<div class="spinner-small"></div>';
+        el.innerHTML = `${icon}<span>${escapeHtml(message)}</span>`;
         messageContainer.appendChild(el);
         scrollToBottom();
     }
@@ -410,6 +448,112 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     connectWebSocket();
+
+    // ---- Preview / Logs Tab Toggle ----
+
+    const previewContent = document.getElementById('preview-content');
+    const logsContent = document.getElementById('logs-content');
+    const logsOutput = document.getElementById('logs-output');
+    const logsRefreshBtn = document.getElementById('logs-refresh-btn');
+    const logsClearBtn = document.getElementById('logs-clear-btn');
+    const logsAutoscroll = document.getElementById('logs-autoscroll');
+    const viewportToggle = document.getElementById('viewport-toggle');
+    let activeTab = 'preview';
+    let logsPollingInterval = null;
+    let logsOffset = 0;
+
+    document.querySelectorAll('.preview-tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.preview-tab-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            activeTab = btn.dataset.tab;
+
+            if (activeTab === 'logs') {
+                previewContent.style.display = 'none';
+                logsContent.style.display = 'flex';
+                if (viewportToggle) viewportToggle.style.display = 'none';
+                startLogsPolling();
+            } else {
+                previewContent.style.display = '';
+                logsContent.style.display = 'none';
+                if (viewportToggle) viewportToggle.style.display = '';
+                stopLogsPolling();
+            }
+        });
+    });
+
+    function fetchLogs(reset) {
+        const appId = config.currentAppId;
+        if (!appId || !projectId) return;
+
+        if (reset) logsOffset = 0;
+        const url = `/api/instant/${projectId}/apps/${appId}/logs/?offset=${logsOffset}`;
+
+        fetch(url, { credentials: 'same-origin' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.error && !data.logs) {
+                    if (logsOutput.querySelector('.logs-placeholder')) {
+                        logsOutput.innerHTML = `<span class="log-warn">${escapeHtml(data.error)}</span>\n`;
+                    }
+                    return;
+                }
+                if (data.logs) {
+                    // Remove placeholder on first real content
+                    const placeholder = logsOutput.querySelector('.logs-placeholder');
+                    if (placeholder) placeholder.remove();
+
+                    // Colorize and append
+                    const colored = colorizeLogs(data.logs);
+                    logsOutput.insertAdjacentHTML('beforeend', colored);
+
+                    if (data.offset) logsOffset = data.offset;
+
+                    // Auto-scroll
+                    if (logsAutoscroll && logsAutoscroll.checked) {
+                        logsOutput.scrollTop = logsOutput.scrollHeight;
+                    }
+                }
+            })
+            .catch(err => {
+                console.warn('[Instant] Logs fetch error:', err);
+            });
+    }
+
+    function colorizeLogs(text) {
+        return escapeHtml(text)
+            .split('\n')
+            .map(line => {
+                if (/error|ERR!|Error/i.test(line)) return `<span class="log-error">${line}</span>`;
+                if (/warn|WARN/i.test(line)) return `<span class="log-warn">${line}</span>`;
+                if (/ready|compiled|listening|started/i.test(line)) return `<span class="log-info">${line}</span>`;
+                return line;
+            })
+            .join('\n');
+    }
+
+    function startLogsPolling() {
+        stopLogsPolling();
+        fetchLogs(false);
+        logsPollingInterval = setInterval(() => fetchLogs(false), 3000);
+    }
+
+    function stopLogsPolling() {
+        if (logsPollingInterval) {
+            clearInterval(logsPollingInterval);
+            logsPollingInterval = null;
+        }
+    }
+
+    if (logsRefreshBtn) {
+        logsRefreshBtn.addEventListener('click', () => fetchLogs(true));
+    }
+    if (logsClearBtn) {
+        logsClearBtn.addEventListener('click', () => {
+            logsOutput.innerHTML = '<span class="logs-placeholder">Logs cleared.</span>';
+            logsOffset = 0;
+        });
+    }
 
     // ---- App switcher ----
     window.instantMode = {
