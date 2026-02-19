@@ -3084,37 +3084,36 @@ Mode: Claude Code CLI
         auth_check = check_claude_auth_status(workspace_id)
 
         if not auth_check.get('authenticated'):
-                # Ticket sandbox auth failed — check if the central claude-auth workspace works
-                logger.warning(f"[CLI STEP 4/7] Ticket sandbox auth failed, checking central claude-auth workspace...")
+                # Ticket sandbox auth failed — try to copy credentials from central workspace
+                logger.warning(f"[CLI STEP 4/7] Ticket sandbox auth failed, attempting credential copy from {base_ws}...")
                 _emit_cli_status("Refreshing Claude credentials from central workspace...")
 
                 auth_recovered = False
                 try:
-                    base_auth_check = check_claude_auth_status(base_ws)
-                    if base_auth_check.get('authenticated'):
-                        # Central auth works — copy credentials to ticket sandbox
-                        logger.info(f"[CLI STEP 4/7] Central workspace {base_ws} auth OK, copying credentials to {workspace_id}")
-                        creds_result = run_command(base_ws, "cat ~/.claude/.credentials.json", timeout=15, with_node_env=False)
-                        creds_content = creds_result.get('stdout', '').strip()
-                        if creds_content and creds_result.get('exit_code') == 0:
-                            import json as _json
-                            # Validate it's actual JSON before copying
-                            _json.loads(creds_content)
-                            # Write credentials to ticket workspace (base64 to avoid shell escaping issues)
-                            import base64
-                            creds_b64 = base64.b64encode(creds_content.encode()).decode()
-                            write_cmd = f'mkdir -p ~/.claude && echo "{creds_b64}" | base64 -d > ~/.claude/.credentials.json'
-                            write_result = run_command(workspace_id, write_cmd, timeout=15, with_node_env=False)
-                            if write_result.get('exit_code') == 0:
-                                # Re-verify auth after copying credentials
-                                recheck = check_claude_auth_status(workspace_id)
-                                if recheck.get('authenticated'):
-                                    logger.info(f"[CLI STEP 4/7] ✓ Auth recovered after copying credentials from {base_ws}")
-                                    auth_recovered = True
-                                else:
-                                    logger.warning(f"[CLI STEP 4/7] Auth still failing after credential copy: {recheck}")
+                    # Don't use check_claude_auth_status on base_ws — it deletes creds if expired.
+                    # Instead, just read the credentials file directly and copy it.
+                    creds_result = run_command(base_ws, "cat ~/.claude/.credentials.json 2>/dev/null", timeout=15, with_node_env=False)
+                    creds_content = creds_result.get('stdout', '').strip()
+                    if creds_content and creds_result.get('exit_code') == 0:
+                        import json as _json
+                        # Validate it's actual JSON before copying
+                        _json.loads(creds_content)
+                        logger.info(f"[CLI STEP 4/7] Found credentials on {base_ws}, copying to {workspace_id}")
+                        # Write credentials to ticket workspace (base64 to avoid shell escaping issues)
+                        import base64
+                        creds_b64 = base64.b64encode(creds_content.encode()).decode()
+                        write_cmd = f'mkdir -p ~/.claude && echo "{creds_b64}" | base64 -d > ~/.claude/.credentials.json'
+                        write_result = run_command(workspace_id, write_cmd, timeout=15, with_node_env=False)
+                        if write_result.get('exit_code') == 0:
+                            # Re-verify auth after copying credentials
+                            recheck = check_claude_auth_status(workspace_id)
+                            if recheck.get('authenticated'):
+                                logger.info(f"[CLI STEP 4/7] Auth recovered after copying credentials from {base_ws}")
+                                auth_recovered = True
+                            else:
+                                logger.warning(f"[CLI STEP 4/7] Auth still failing after credential copy: {recheck}")
                     else:
-                        logger.warning(f"[CLI STEP 4/7] Central workspace {base_ws} auth also failed")
+                        logger.warning(f"[CLI STEP 4/7] No credentials file on central workspace {base_ws}")
                 except Exception as e:
                     logger.warning(f"[CLI STEP 4/7] Error during auth recovery attempt: {e}")
 
@@ -4336,27 +4335,27 @@ def execute_ticket_chat_cli(
             logger.warning(f"[CLI_CHAT] Auth failed in ticket workspace, attempting credential copy from {base_ws}...")
             auth_recovered = False
             try:
-                base_auth_check = check_claude_auth_status(base_ws)
-                if base_auth_check.get('authenticated'):
-                    logger.info(f"[CLI_CHAT] Central workspace {base_ws} auth OK, copying credentials to {workspace_id}")
-                    creds_result = run_command(base_ws, "cat ~/.claude/.credentials.json", timeout=15, with_node_env=False)
-                    creds_content = creds_result.get('stdout', '').strip()
-                    if creds_content and creds_result.get('exit_code') == 0:
-                        import json as _json
-                        _json.loads(creds_content)  # validate JSON
-                        import base64
-                        creds_b64 = base64.b64encode(creds_content.encode()).decode()
-                        write_cmd = f'mkdir -p ~/.claude && echo "{creds_b64}" | base64 -d > ~/.claude/.credentials.json'
-                        write_result = run_command(workspace_id, write_cmd, timeout=15, with_node_env=False)
-                        if write_result.get('exit_code') == 0:
-                            recheck = check_claude_auth_status(workspace_id)
-                            if recheck.get('authenticated'):
-                                logger.info(f"[CLI_CHAT] Auth recovered after copying credentials from {base_ws}")
-                                auth_recovered = True
-                            else:
-                                logger.warning(f"[CLI_CHAT] Auth still failing after credential copy: {recheck}")
+                # Don't use check_claude_auth_status on base_ws — it deletes creds if expired.
+                # Instead, just read the credentials file directly and copy it.
+                creds_result = run_command(base_ws, "cat ~/.claude/.credentials.json 2>/dev/null", timeout=15, with_node_env=False)
+                creds_content = creds_result.get('stdout', '').strip()
+                if creds_content and creds_result.get('exit_code') == 0:
+                    import json as _json
+                    _json.loads(creds_content)  # validate JSON
+                    logger.info(f"[CLI_CHAT] Found credentials on {base_ws}, copying to {workspace_id}")
+                    import base64
+                    creds_b64 = base64.b64encode(creds_content.encode()).decode()
+                    write_cmd = f'mkdir -p ~/.claude && echo "{creds_b64}" | base64 -d > ~/.claude/.credentials.json'
+                    write_result = run_command(workspace_id, write_cmd, timeout=15, with_node_env=False)
+                    if write_result.get('exit_code') == 0:
+                        recheck = check_claude_auth_status(workspace_id)
+                        if recheck.get('authenticated'):
+                            logger.info(f"[CLI_CHAT] Auth recovered after copying credentials from {base_ws}")
+                            auth_recovered = True
+                        else:
+                            logger.warning(f"[CLI_CHAT] Auth still failing after credential copy: {recheck}")
                 else:
-                    logger.warning(f"[CLI_CHAT] Central workspace {base_ws} auth also failed")
+                    logger.warning(f"[CLI_CHAT] No credentials file on central workspace {base_ws}")
             except Exception as e:
                 logger.warning(f"[CLI_CHAT] Error during auth recovery: {e}")
 
@@ -5912,7 +5911,7 @@ def execute_instant_app(instant_app_id: int) -> Dict[str, Any]:
 
         logger.info(
             f"\n{'='*80}\n[INSTANT START] App #{app.id} '{app.name}' | "
-            f"Project #{project.id} | User {user.username} | "
+            f"Project #{project.id if project else 'standalone'} | User {user.username} | "
             f"conversation_id={conversation_id}\n{'='*80}"
         )
 
@@ -5977,30 +5976,30 @@ def execute_instant_app(instant_app_id: int) -> Dict[str, Any]:
 
         auth_check = check_claude_auth_status(workspace_id)
         if not auth_check.get('authenticated'):
-            logger.warning(f"[INSTANT] Sandbox auth failed, checking central claude-auth workspace {base_ws}...")
+            logger.warning(f"[INSTANT] Sandbox auth failed, attempting credential copy from {base_ws}...")
             auth_recovered = False
             try:
-                base_auth_check = check_claude_auth_status(base_ws)
-                if base_auth_check.get('authenticated'):
-                    logger.info(f"[INSTANT] Central workspace {base_ws} auth OK, copying credentials to {workspace_id}")
-                    creds_result = run_command(base_ws, "cat ~/.claude/.credentials.json", timeout=15, with_node_env=False)
-                    creds_content = creds_result.get('stdout', '').strip()
-                    if creds_content and creds_result.get('exit_code') == 0:
-                        import json as _json
-                        _json.loads(creds_content)  # validate JSON
-                        import base64 as _b64
-                        creds_b64 = _b64.b64encode(creds_content.encode()).decode()
-                        write_cmd = f'mkdir -p ~/.claude && echo "{creds_b64}" | base64 -d > ~/.claude/.credentials.json'
-                        write_result = run_command(workspace_id, write_cmd, timeout=15, with_node_env=False)
-                        if write_result.get('exit_code') == 0:
-                            recheck = check_claude_auth_status(workspace_id)
-                            if recheck.get('authenticated'):
-                                logger.info(f"[INSTANT] Auth recovered after copying credentials from {base_ws}")
-                                auth_recovered = True
-                            else:
-                                logger.warning(f"[INSTANT] Auth still failing after credential copy: {recheck}")
+                # Don't use check_claude_auth_status on base_ws — it deletes creds if expired.
+                # Instead, just try to read the credentials file directly and copy it over.
+                creds_result = run_command(base_ws, "cat ~/.claude/.credentials.json 2>/dev/null", timeout=15, with_node_env=False)
+                creds_content = creds_result.get('stdout', '').strip()
+                if creds_content and creds_result.get('exit_code') == 0:
+                    import json as _json
+                    _json.loads(creds_content)  # validate JSON
+                    logger.info(f"[INSTANT] Found credentials on {base_ws}, copying to {workspace_id}")
+                    import base64 as _b64
+                    creds_b64 = _b64.b64encode(creds_content.encode()).decode()
+                    write_cmd = f'mkdir -p ~/.claude && echo "{creds_b64}" | base64 -d > ~/.claude/.credentials.json'
+                    write_result = run_command(workspace_id, write_cmd, timeout=15, with_node_env=False)
+                    if write_result.get('exit_code') == 0:
+                        recheck = check_claude_auth_status(workspace_id)
+                        if recheck.get('authenticated'):
+                            logger.info(f"[INSTANT] Auth recovered after copying credentials from {base_ws}")
+                            auth_recovered = True
+                        else:
+                            logger.warning(f"[INSTANT] Auth still failing after credential copy: {recheck}")
                 else:
-                    logger.warning(f"[INSTANT] Central workspace {base_ws} auth also failed")
+                    logger.warning(f"[INSTANT] No credentials file on central workspace {base_ws}")
             except Exception as auth_err:
                 logger.warning(f"[INSTANT] Error during auth recovery attempt: {auth_err}")
 
@@ -6029,14 +6028,14 @@ def execute_instant_app(instant_app_id: int) -> Dict[str, Any]:
 - ALWAYS configure the dev server to listen on **port 8080** and bind to **0.0.0.0**.
 
 ## Instructions
-1. Create a new Next.js project at {MAGS_WORKING_DIR}/{project_dir} using: npx create-next-app@latest {project_dir} --typescript --tailwind --eslint --app --src-dir --import-alias "@/*" --use-npm --yes
+1. Create a new Next.js project: npx create-next-app@latest {project_dir} --typescript --tailwind --eslint --app --src-dir --import-alias "@/*" --use-npm --yes
 2. cd {MAGS_WORKING_DIR}/{project_dir}
-3. Install better-sqlite3: npm install better-sqlite3
-4. Implement ALL the requirements above — create all pages, API routes, database schema, and UI components
-5. Use Tailwind CSS for styling
-6. After implementing everything, start the dev server and redirect output to a log file: cd {MAGS_WORKING_DIR}/{project_dir} && npm run dev -- -p 8080 -H 0.0.0.0 > /tmp/dev-server.log 2>&1 &
+3. Install Drizzle ORM + SQLite: npm install drizzle-orm better-sqlite3 && npm install -D drizzle-kit @types/better-sqlite3
+4. Init shadcn/ui: npx shadcn@latest init -y -d
+5. Implement ALL the requirements above — create all pages, API routes, database schema (using Drizzle ORM), and UI components (using shadcn/ui + Tailwind CSS)
+6. Build and start the production server: cd {MAGS_WORKING_DIR}/{project_dir} && npm run build && npm start -p 8080 -H 0.0.0.0 > dev.log 2>&1 &
 
-IMPORTANT: You MUST start the dev server as the final step. The app must be accessible on port 8080. Always redirect server output to /tmp/dev-server.log so logs are accessible.
+IMPORTANT: You MUST build and start the production server as the final step. The app must be accessible on port 8080. Always redirect server output to dev.log so logs are accessible.
 """
         logger.info(f"[INSTANT] Prompt being sent to Claude CLI:\n{prompt}")
 
@@ -6109,43 +6108,52 @@ IMPORTANT: You MUST start the dev server as the final step. The app must be acce
         lfg_env = {
             'LFG_API_KEY': profile.cli_api_key,
             'LFG_API_URL': os.getenv('LFG_API_URL', 'https://app.lfg.run'),
-            'LFG_PROJECT_ID': str(project.project_id),
+            'LFG_PROJECT_ID': str(project.project_id) if project else '',
+            **(app.env_vars or {}),
         }
 
-        cli_result = run_claude_cli(
-            workspace_id=workspace_id,
-            prompt=prompt,
-            timeout=1200,
-            working_dir=MAGS_WORKING_DIR,
-            project_id=str(project.project_id),
-            poll_callback=instant_poll_callback,
-            lfg_env=lfg_env,
-            project_dir=project_dir,
-        )
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            cli_result = run_claude_cli(
+                workspace_id=workspace_id,
+                prompt=prompt,
+                timeout=1200,
+                working_dir=MAGS_WORKING_DIR,
+                project_id=str(project.project_id) if project else '',
+                poll_callback=instant_poll_callback,
+                lfg_env=lfg_env,
+                project_dir=project_dir,
+            )
 
-        session_id = cli_result.get("session_id")
-        if session_id:
-            sandbox.cli_session_id = session_id
-            sandbox.save(update_fields=['cli_session_id'])
+            session_id = cli_result.get("session_id")
+            if session_id:
+                sandbox.cli_session_id = session_id
+                sandbox.save(update_fields=['cli_session_id'])
 
-        # Check CLI result
-        cli_exit = cli_result.get("exit_code", -1)
-        cli_stdout = cli_result.get("stdout", "")
-        cli_error = cli_result.get("error", "")
+            # Check CLI result
+            cli_exit = cli_result.get("exit_code", -1)
+            cli_stdout = cli_result.get("stdout", "")
+            cli_error = cli_result.get("error", "")
 
-        # Always log the full output for debugging
-        logger.info(f"[INSTANT] CLI exit_code={cli_exit}, output_len={len(cli_stdout)}")
-        if cli_stdout:
-            logger.info(f"[INSTANT] CLI output:\n{cli_stdout[-1000:]}")
+            # Always log the full output for debugging
+            logger.info(f"[INSTANT] CLI exit_code={cli_exit}, output_len={len(cli_stdout)} (attempt {attempt}/{max_attempts})")
+            if cli_stdout:
+                logger.info(f"[INSTANT] CLI output:\n{cli_stdout[-1000:]}")
 
-        if cli_exit != 0:
-            # Extract a readable error from the output
+            if cli_exit == 0:
+                break  # Success
+
             error_snippet = cli_error or cli_stdout[-500:] or f"Claude CLI exited with code {cli_exit}"
-            logger.error(f"[INSTANT] Claude CLI failed: {error_snippet[:300]}")
+            logger.error(f"[INSTANT] Claude CLI failed (attempt {attempt}/{max_attempts}): {error_snippet[:300]}")
 
-            # Send error to the conversation so user can see it
-            broadcast_instant_status(conversation_id, app_id_str, 'error', f"Claude CLI error (exit {cli_exit}): {error_snippet[:200]}")
-            raise RuntimeError(f"Claude CLI failed (exit {cli_exit}): {error_snippet[:200]}")
+            if attempt < max_attempts:
+                broadcast_instant_status(conversation_id, app_id_str, 'building',
+                    f"Claude CLI error (attempt {attempt}/{max_attempts}), retrying...")
+                time.sleep(5)
+            else:
+                broadcast_instant_status(conversation_id, app_id_str, 'error',
+                    f"Claude CLI error (exit {cli_exit}): {error_snippet[:200]}")
+                raise RuntimeError(f"Claude CLI failed after {max_attempts} attempts (exit {cli_exit}): {error_snippet[:200]}")
 
         # 4. Get preview URL via job_id, then create a stable LFG alias
         preview_url = ""
@@ -6258,26 +6266,31 @@ def continue_instant_app(instant_app_id: int, feedback: str) -> Dict[str, Any]:
 
         auth_check = check_claude_auth_status(workspace_id)
         if not auth_check.get('authenticated'):
-            logger.warning(f"[INSTANT CONTINUE] Auth failed in {workspace_id}, attempting recovery...")
+            logger.warning(f"[INSTANT CONTINUE] Auth failed in {workspace_id}, attempting credential copy...")
             base_ws = get_latest_claude_auth_workspace_id(user.id) or workspace_name_for_claude_auth(user.id)
             auth_recovered = False
             try:
-                base_auth_check = check_claude_auth_status(base_ws)
-                if base_auth_check.get('authenticated'):
-                    creds_result = run_command(base_ws, "cat ~/.claude/.credentials.json", timeout=15, with_node_env=False)
-                    creds_content = creds_result.get('stdout', '').strip()
-                    if creds_content and creds_result.get('exit_code') == 0:
-                        import json as _json
-                        _json.loads(creds_content)
-                        import base64 as _b64
-                        creds_b64 = _b64.b64encode(creds_content.encode()).decode()
-                        write_cmd = f'mkdir -p ~/.claude && echo "{creds_b64}" | base64 -d > ~/.claude/.credentials.json'
-                        write_result = run_command(workspace_id, write_cmd, timeout=15, with_node_env=False)
-                        if write_result.get('exit_code') == 0:
-                            recheck = check_claude_auth_status(workspace_id)
-                            if recheck.get('authenticated'):
-                                logger.info(f"[INSTANT CONTINUE] Auth recovered from {base_ws}")
-                                auth_recovered = True
+                # Don't use check_claude_auth_status on base_ws — it deletes creds if expired.
+                # Instead, just read the credentials file directly and copy it.
+                creds_result = run_command(base_ws, "cat ~/.claude/.credentials.json 2>/dev/null", timeout=15, with_node_env=False)
+                creds_content = creds_result.get('stdout', '').strip()
+                if creds_content and creds_result.get('exit_code') == 0:
+                    import json as _json
+                    _json.loads(creds_content)
+                    logger.info(f"[INSTANT CONTINUE] Found credentials on {base_ws}, copying to {workspace_id}")
+                    import base64 as _b64
+                    creds_b64 = _b64.b64encode(creds_content.encode()).decode()
+                    write_cmd = f'mkdir -p ~/.claude && echo "{creds_b64}" | base64 -d > ~/.claude/.credentials.json'
+                    write_result = run_command(workspace_id, write_cmd, timeout=15, with_node_env=False)
+                    if write_result.get('exit_code') == 0:
+                        recheck = check_claude_auth_status(workspace_id)
+                        if recheck.get('authenticated'):
+                            logger.info(f"[INSTANT CONTINUE] Auth recovered from {base_ws}")
+                            auth_recovered = True
+                        else:
+                            logger.warning(f"[INSTANT CONTINUE] Auth still failing after credential copy: {recheck}")
+                else:
+                    logger.warning(f"[INSTANT CONTINUE] No credentials file on central workspace {base_ws}")
             except Exception as auth_err:
                 logger.warning(f"[INSTANT CONTINUE] Auth recovery error: {auth_err}")
 
@@ -6291,7 +6304,8 @@ def continue_instant_app(instant_app_id: int, feedback: str) -> Dict[str, Any]:
         lfg_env = {
             'LFG_API_KEY': profile.cli_api_key,
             'LFG_API_URL': os.getenv('LFG_API_URL', 'https://app.lfg.run'),
-            'LFG_PROJECT_ID': str(project.project_id),
+            'LFG_PROJECT_ID': str(project.project_id) if project else '',
+            **(app.env_vars or {}),
         }
 
         project_dir = 'project'
@@ -6303,7 +6317,7 @@ def continue_instant_app(instant_app_id: int, feedback: str) -> Dict[str, Any]:
 ## Instructions
 1. Apply the requested changes to the existing project at {MAGS_WORKING_DIR}/{project_dir}
 2. Make sure the dev server is still running on port 8080 after changes
-3. If the dev server stopped, restart it: cd {MAGS_WORKING_DIR}/{project_dir} && npm run dev -- -p 8080 -H 0.0.0.0 > /tmp/dev-server.log 2>&1 &
+3. If the server stopped, rebuild and restart it: cd {MAGS_WORKING_DIR}/{project_dir} && npm run build && npm start -p 8080 -H 0.0.0.0 > dev.log 2>&1 &
 """
         logger.info(f"[INSTANT CONTINUE] Prompt being sent to Claude CLI:\n{prompt}")
 
@@ -6367,7 +6381,7 @@ def continue_instant_app(instant_app_id: int, feedback: str) -> Dict[str, Any]:
             session_id=sandbox.cli_session_id,
             timeout=600,
             working_dir=MAGS_WORKING_DIR,
-            project_id=str(project.project_id),
+            project_id=str(project.project_id) if project else '',
             poll_callback=continue_poll_callback,
             lfg_env=lfg_env,
             project_dir=project_dir,

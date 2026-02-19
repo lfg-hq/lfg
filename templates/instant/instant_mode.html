@@ -3,15 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Instant Mode - {{ project.name }} - LFG</title>
+    <title>Instant Mode{% if project %} - {{ project.name }}{% endif %} - LFG</title>
     <!-- Theme Variables (must load first) -->
     <link rel="stylesheet" href="/static/css/theme-variables.css">
     <!-- Core Styles -->
     <link rel="stylesheet" href="/static/css/common.css">
     <link rel="stylesheet" href="/static/css/sidebar.css">
     <link rel="stylesheet" href="/static/css/styles.css">
-    <link rel="stylesheet" href="/static/css/chat.css">
-    <link rel="stylesheet" href="/static/css/instant.css">
+    <link rel="stylesheet" href="/static/css/chat.css?v=2">
+    <link rel="stylesheet" href="/static/css/instant.css?v=2">
     <!-- Light Mode Overrides -->
     <link rel="stylesheet" href="/static/css/light/light-mode.css?v=5">
     <!-- External Resources -->
@@ -29,6 +29,39 @@
         <main class="instant-main">
             <!-- Chat Panel -->
             <div class="instant-chat-panel">
+                <!-- Chat Header: App name + switcher -->
+                <div class="instant-chat-header">
+                    <div class="instant-chat-header-left">
+                        {% if current_app %}
+                        <span class="instant-app-name" title="{{ current_app.name }}">{{ current_app.name }}</span>
+                        <span class="instant-app-status-badge {{ current_app.status }}">{{ current_app.status }}</span>
+                        {% else %}
+                        <span class="instant-app-name">New App</span>
+                        {% endif %}
+                    </div>
+                    {% if instant_apps %}
+                    <div class="instant-chat-header-right">
+                        <div class="instant-app-switcher-dropdown">
+                            <button class="instant-switcher-btn" id="app-switcher-btn" title="Switch app">
+                                <i class="fas fa-exchange-alt"></i>
+                            </button>
+                            <div class="instant-switcher-menu" id="app-switcher-menu">
+                                <a href="{% if standalone_mode %}/instant/{% else %}/instant/project/{{ project.project_id }}/{% endif %}" class="instant-switcher-item{% if not current_app %} active{% endif %}">
+                                    <i class="fas fa-plus" style="font-size: 0.7rem; opacity: 0.5;"></i>
+                                    <span>New App</span>
+                                </a>
+                                {% for app in instant_apps %}
+                                <a href="{% if standalone_mode %}/instant/app/{{ app.app_id }}/{% else %}/instant/project/{{ project.project_id }}/app/{{ app.app_id }}/{% endif %}" class="instant-switcher-item{% if current_app and current_app.app_id == app.app_id %} active{% endif %}">
+                                    <span class="switcher-item-name">{{ app.name }}</span>
+                                    <span class="switcher-item-status {{ app.status }}">{{ app.status }}</span>
+                                </a>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+
                 <div class="chat-messages" id="chat-messages">
                     <!-- Messages will appear here -->
                     <div class="message-container" id="message-container">
@@ -46,18 +79,6 @@
                     <form id="chat-form">
                         <div class="input-wrapper">
                             <div class="left-actions">
-                                {% if instant_apps %}
-                                <div class="instant-app-selector">
-                                    <select id="app-selector" onchange="window.instantMode.switchApp(this.value)">
-                                        <option value="">New App</option>
-                                        {% for app in instant_apps %}
-                                        <option value="{{ app.app_id }}" {% if current_app and current_app.app_id == app.app_id %}selected{% endif %}>
-                                            {{ app.name }} ({{ app.status }})
-                                        </option>
-                                        {% endfor %}
-                                    </select>
-                                </div>
-                                {% endif %}
                                 <button type="button" id="settings-btn" class="action-btn settings-btn-styled" title="Settings">
                                     <i class="fas fa-sliders-h"></i>
                                 </button>
@@ -121,6 +142,10 @@
                                 ></textarea>
                             </div>
                             <div class="input-actions">
+                                <button type="button" id="file-upload-btn" class="action-btn" title="Upload file">
+                                    <i class="fas fa-paperclip"></i>
+                                </button>
+                                <input type="file" id="file-upload-input" style="display: none" multiple accept="image/*,.pdf,.csv,.txt,.md,.docx,.xlsx,.json,.js,.ts,.py,.html,.css">
                                 <button type="submit" id="send-btn" class="action-btn" title="Send message">
                                     <i class="fas fa-paper-plane"></i>
                                 </button>
@@ -145,6 +170,9 @@
                             <button class="preview-tab-btn" data-tab="logs" title="Logs">
                                 <i class="fas fa-terminal"></i> Logs
                             </button>
+                            <button class="preview-tab-btn" data-tab="env" title="Environment Variables">
+                                <i class="fas fa-key"></i> Env
+                            </button>
                         </div>
                         <div class="viewport-toggle" id="viewport-toggle">
                             <button class="viewport-btn active" data-viewport="desktop" title="Desktop">
@@ -164,6 +192,9 @@
                                 <i class="fas fa-external-link-alt"></i>
                             </a>
                         </div>
+                        <button id="preview-refresh-btn" class="preview-action-btn" title="Rebuild & Refresh" style="display:none">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
                     </div>
                     <div class="preview-status" id="preview-status">
                         <span class="status-dot" id="status-dot"></span>
@@ -179,9 +210,8 @@
                     </div>
 
                     <div class="instant-preview-building" id="preview-building" style="display: none;">
-                        <div class="building-spinner"></div>
-                        <h3>Building your app...</h3>
-                        <p id="building-message">Provisioning sandbox...</p>
+                        <canvas id="snake-game" width="320" height="320"></canvas>
+                        <p id="building-message" class="building-command-text">Provisioning sandbox...</p>
                     </div>
 
                     <iframe
@@ -207,6 +237,25 @@
                     </div>
                     <pre class="logs-output" id="logs-output"><span class="logs-placeholder">Logs will appear here once the app is running...</span></pre>
                 </div>
+
+                <!-- Env Vars Panel (hidden by default) -->
+                <div class="instant-env-content" id="env-content" style="display: none;">
+                    <div class="env-toolbar">
+                        <button class="env-add-btn" id="env-add-btn" title="Add variable">
+                            <i class="fas fa-plus"></i> Add Variable
+                        </button>
+                        <button class="env-save-btn" id="env-save-btn" title="Save changes">
+                            <i class="fas fa-save"></i> Save
+                        </button>
+                    </div>
+                    <div class="env-table" id="env-table">
+                        <div class="env-empty-state" id="env-empty-state">
+                            <i class="fas fa-key" style="font-size: 1.5rem; opacity: 0.3; margin-bottom: 0.5rem;"></i>
+                            <p>No environment variables set.</p>
+                            <p style="font-size: 0.75rem; opacity: 0.5;">Click "Add Variable" to add one.</p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </main>
     </div>
@@ -214,8 +263,9 @@
     <script>
         // Pass data from Django to JS
         window.INSTANT_CONFIG = {
-            projectId: "{{ project.project_id }}",
-            projectDbId: {{ project.id }},
+            projectId: "{{ project.project_id|default:'' }}",
+            projectDbId: {% if project %}{{ project.id }}{% else %}null{% endif %},
+            standaloneMode: {% if standalone_mode %}true{% else %}false{% endif %},
             currentAppId: "{{ current_app.app_id|default:'' }}",
             currentAppStatus: "{{ current_app.status|default:'gathering' }}",
             previewUrl: "{{ current_app.preview_url|default:'' }}",
@@ -226,6 +276,6 @@
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="/static/js/markdown-config.js"></script>
     <script src="/static/js/custom-dropdown.js"></script>
-    <script src="/static/js/instant.js"></script>
+    <script src="/static/js/instant.js?v=3"></script>
 </body>
 </html>

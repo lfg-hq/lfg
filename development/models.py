@@ -559,6 +559,8 @@ class InstantApp(models.Model):
         Project,
         on_delete=models.CASCADE,
         related_name="instant_apps",
+        null=True,
+        blank=True,
     )
     user = models.ForeignKey(
         'auth.User',

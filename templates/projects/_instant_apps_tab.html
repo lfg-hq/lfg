@@ -1,0 +1,48 @@
+{% if instant_apps %}
+    <div class="project-list">
+        {% for app in instant_apps %}
+            <div class="project-list-item">
+                <a href="{% if app.project %}/instant/project/{{ app.project.project_id }}/app/{{ app.app_id }}/{% else %}/instant/app/{{ app.app_id }}/{% endif %}" class="project-list-link">
+                    <div class="project-list-main">
+                        <div class="project-list-header">
+                            <span class="project-icon"><i class="fas fa-bolt" style="color: #f59e0b;"></i></span>
+                            <h3 class="project-name">{{ app.name }}</h3>
+                            <span class="instant-status-badge status-{{ app.status }}">{{ app.get_status_display }}</span>
+                        </div>
+                        <div class="project-stats">
+                            <div class="stat-item">
+                                <i class="fas fa-folder"></i>
+                                <span class="stat-label">{% if app.project %}{{ app.project.name }}{% else %}Standalone{% endif %}</span>
+                            </div>
+                            <div class="stat-item">
+                                <i class="fas fa-calendar"></i>
+                                <span class="stat-label">{{ app.created_at|date:"M d, Y" }}</span>
+                            </div>
+                            {% if app.preview_url %}
+                            <div class="stat-item">
+                                <span class="live-indicator"></span>
+                                <span class="stat-label">Live</span>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </a>
+            </div>
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="empty-state">
+        <div class="empty-state-illustration">
+            <div class="illustration-rocket">
+                <i class="fas fa-bolt" style="font-size: 5rem; color: #f59e0b;"></i>
+            </div>
+        </div>
+        <h2 class="empty-state-title">No Instant Apps Yet</h2>
+        <div class="empty-state-text">
+            Create your first instant app — describe what you want and it'll be built in seconds.
+        </div>
+        <a href="/instant/" class="btn btn-primary btn-large" style="text-decoration: none; background: linear-gradient(135deg, #f59e0b, #fbbf24);">
+            <i class="fas fa-bolt"></i> Create Instant App
+        </a>
+    </div>
+{% endif %}

@@ -397,7 +397,7 @@ async def execute_tool_call(
             }
             
             # Pass through instant app fields if present
-            for _ifield in ('instant_app_id', 'instant_app_status', 'preview_url', 'app_name', 'message'):
+            for _ifield in ('instant_app_id', 'instant_app_status', 'preview_url', 'app_name', 'message', 'data'):
                 if _ifield in tool_result:
                     notification_payload[_ifield] = tool_result[_ifield]
 

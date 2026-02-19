@@ -302,8 +302,10 @@ def conversation_detail(request, conversation_id):
             {
                 'id': msg.id,
                 'role': msg.role,
-                'content': msg.content if msg.content is not None and msg.content != "" else \
-                                            f"{msg.content_if_file[0].get('text')} (file upload)",
+                'content': msg.content if msg.content else (
+                    f"{msg.content_if_file[0].get('text', '')} (file upload)"
+                    if msg.content_if_file else ''
+                ),
                 'created_at': msg.created_at.isoformat(),
             }
             for msg in messages

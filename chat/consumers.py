@@ -169,8 +169,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
                         'type': 'chat_history',
                         'messages': messages
                     }))
-                    await self.join_conversation_group(self.conversation.id)
-            
+                    try:
+                        await self.join_conversation_group(self.conversation.id)
+                    except Exception as conv_group_error:
+                        logger.warning(f"Could not join conversation group (Redis may be down): {conv_group_error}")
+
         except Exception as e:
             logger.error(f"Error in WebSocket connect: {str(e)}")
             # Only try to accept and send error if we haven't already accepted
@@ -341,8 +344,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     self.conversation = None
 
                 if not self.conversation:
-                    # Require a project_id to create a conversation
-                    if not project_id:
+                    # Require a project_id to create a conversation (unless instant mode)
+                    if not project_id and not instant_mode:
                         await self.send_error("A project ID is required to create a conversation")
                         return
                     
@@ -484,7 +487,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         }
         
         # Check all possible notification fields
-        notification_fields = ['is_notification', 'notification_type', 'early_notification', 'function_name', 'content_chunk', 'is_complete', 'file_id', 'file_name', 'file_type', 'prd_name', 'project_id', 'app_url', 'workspace_id', 'port', 'instant_app_id', 'instant_app_status', 'preview_url', 'app_name', 'message']
+        notification_fields = ['is_notification', 'notification_type', 'early_notification', 'function_name', 'content_chunk', 'is_complete', 'file_id', 'file_name', 'file_type', 'prd_name', 'project_id', 'app_url', 'workspace_id', 'port', 'instant_app_id', 'instant_app_status', 'preview_url', 'app_name', 'message', 'data']
         for field in notification_fields:
             if field in event:
                 response_data[field] = event[field]
@@ -811,7 +814,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             notification_message['project_id'] = notification_data.get('project_id')
 
                         # Pass through instant app fields if present
-                        for _ifield in ('instant_app_id', 'instant_app_status', 'preview_url', 'app_name', 'message'):
+                        for _ifield in ('instant_app_id', 'instant_app_status', 'preview_url', 'app_name', 'message', 'data'):
                             if notification_data.get(_ifield):
                                 notification_message[_ifield] = notification_data[_ifield]
 
@@ -1146,25 +1149,23 @@ class ChatConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def create_conversation(self, title, project_id=None):
         """
-        Create a new conversation
+        Create a new conversation. project_id is optional for standalone instant mode.
         """
-        # Only create conversation if project_id is provided
-        if not project_id:
-            logger.warning("Cannot create conversation without project_id")
-            return None
-            
         try:
             from projects.models import Project
-            project = Project.objects.select_related('owner').get(project_id=project_id)
+            project = None
 
-            # Check access
-            if not project.can_user_access(self.user):
-                logger.warning(
-                    "User %s attempted to access project %s without permission",
-                    getattr(self.user, 'email', self.user),
-                    project_id
-                )
-                return None
+            if project_id:
+                project = Project.objects.select_related('owner').get(project_id=project_id)
+
+                # Check access
+                if not project.can_user_access(self.user):
+                    logger.warning(
+                        "User %s attempted to access project %s without permission",
+                        getattr(self.user, 'email', self.user),
+                        project_id
+                    )
+                    return None
 
             conversation = Conversation.objects.create(
                 user=self.user,

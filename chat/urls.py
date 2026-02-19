@@ -3,7 +3,13 @@ from . import views
 from .views.main import user_agent_role, user_model_selection, available_models, latest_conversation, daily_token_usage, user_turbo_mode, complete_onboarding
 from .views.files_extra import get_file_url
 from .views.transcribe_fixed import transcribe_file
-from .views.instant import instant_mode, instant_app_detail, instant_apps_list_api, instant_app_env_vars_api, instant_app_logs_api
+from .views.instant import (
+    instant_mode, instant_app_detail, instant_apps_list_api,
+    instant_app_env_vars_api, instant_app_logs_api, instant_app_rebuild_api,
+    standalone_instant_mode, standalone_instant_app_detail,
+    standalone_instant_app_env_vars_api, standalone_instant_app_logs_api,
+    standalone_instant_app_rebuild_api,
+)
 
 
 urlpatterns = [
@@ -40,10 +46,18 @@ urlpatterns = [
     # Onboarding API
     path('api/complete-onboarding/', complete_onboarding, name='complete_onboarding'),
 
-    # Instant Mode
+    # Instant Mode (standalone — no project) — must come before project-scoped to avoid 'apps' matching as project_id
+    path('instant/', standalone_instant_mode, name='standalone_instant_mode'),
+    path('instant/app/<str:app_id>/', standalone_instant_app_detail, name='standalone_instant_app_detail'),
+    path('api/instant/apps/<str:app_id>/env/', standalone_instant_app_env_vars_api, name='standalone_instant_app_env_vars'),
+    path('api/instant/apps/<str:app_id>/logs/', standalone_instant_app_logs_api, name='standalone_instant_app_logs'),
+    path('api/instant/apps/<str:app_id>/rebuild/', standalone_instant_app_rebuild_api, name='standalone_instant_app_rebuild'),
+
+    # Instant Mode (project-scoped)
     path('instant/project/<str:project_id>/', instant_mode, name='instant_mode'),
     path('instant/project/<str:project_id>/app/<str:app_id>/', instant_app_detail, name='instant_app_detail'),
     path('api/instant/<str:project_id>/apps/', instant_apps_list_api, name='instant_apps_list'),
     path('api/instant/<str:project_id>/apps/<str:app_id>/env/', instant_app_env_vars_api, name='instant_app_env_vars'),
     path('api/instant/<str:project_id>/apps/<str:app_id>/logs/', instant_app_logs_api, name='instant_app_logs'),
+    path('api/instant/<str:project_id>/apps/<str:app_id>/rebuild/', instant_app_rebuild_api, name='instant_app_rebuild'),
 ]

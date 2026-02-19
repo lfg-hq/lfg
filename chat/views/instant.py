@@ -17,8 +17,12 @@ from subscriptions.constants import FREE_TIER_TOKEN_LIMIT, PRO_MONTHLY_TOKEN_LIM
 logger = logging.getLogger(__name__)
 
 
+
 def _build_instant_context(request, project, instant_apps, current_app):
-    """Build the shared context dict for instant mode views."""
+    """Build the shared context dict for instant mode views.
+
+    ``project`` may be ``None`` for standalone instant apps.
+    """
     # Application state (turbo mode + role)
     app_state, _ = ApplicationState.objects.get_or_create(
         user=request.user,
@@ -46,11 +50,14 @@ def _build_instant_context(request, project, instant_apps, current_app):
     # Subscription info
     user_credit, _ = UserCredit.objects.get_or_create(user=request.user)
 
+    standalone_mode = project is None
+
     return {
         'project': project,
         'current_project': project,
         'instant_apps': instant_apps,
         'current_app': current_app,
+        'standalone_mode': standalone_mode,
         # Sidebar
         'sidebar_minimized': app_state.sidebar_minimized,
         # Model / role
@@ -151,22 +158,71 @@ def instant_app_logs_api(request, project_id, app_id):
         return JsonResponse({'error': 'Permission denied'}, status=403)
 
     app = get_object_or_404(InstantApp, app_id=app_id, project=project, user=request.user)
+    return _fetch_app_logs(request, app, app_id)
+
+
+# ---- Standalone instant mode views ----
+
+
+@login_required
+def standalone_instant_mode(request):
+    """Main standalone instant mode page — no project context."""
+    instant_apps = InstantApp.objects.filter(user=request.user, project__isnull=True)
+    context = _build_instant_context(request, None, instant_apps, None)
+    return render(request, 'instant/instant_mode.html', context)
+
+
+@login_required
+def standalone_instant_app_detail(request, app_id):
+    """View a specific standalone instant app."""
+    app = get_object_or_404(InstantApp, app_id=app_id, project__isnull=True, user=request.user)
+    instant_apps = InstantApp.objects.filter(user=request.user, project__isnull=True)
+    context = _build_instant_context(request, None, instant_apps, app)
+    return render(request, 'instant/instant_mode.html', context)
+
+
+@login_required
+def standalone_instant_app_env_vars_api(request, app_id):
+    """CRUD for env vars on a standalone instant app (no project)."""
+    app = get_object_or_404(InstantApp, app_id=app_id, project__isnull=True, user=request.user)
+
+    if request.method == 'GET':
+        return JsonResponse({'env_vars': app.env_vars})
+
+    if request.method in ('POST', 'PUT'):
+        try:
+            body = json.loads(request.body)
+            app.env_vars = body.get('env_vars', {})
+            app.save(update_fields=['env_vars', 'updated_at'])
+            return JsonResponse({'env_vars': app.env_vars})
+        except (json.JSONDecodeError, Exception) as e:
+            return JsonResponse({'error': str(e)}, status=400)
+
+    return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+
+@login_required
+def standalone_instant_app_logs_api(request, app_id):
+    """Logs endpoint for standalone instant apps (no project_id)."""
+    app = get_object_or_404(InstantApp, app_id=app_id, project__isnull=True, user=request.user)
+    return _fetch_app_logs(request, app, app_id)
+
+
+def _fetch_app_logs(request, app, app_id):
+    """Shared helper to fetch logs from an instant app's sandbox."""
     sandbox = app.sandbox
 
     if not sandbox or not sandbox.mags_workspace_id:
         return JsonResponse({'logs': '', 'error': 'No sandbox available'})
 
-    # How many bytes the client already has (for incremental fetching)
     offset = int(request.GET.get('offset', 0))
 
     try:
         from factory.mags import run_command
-        # Read the dev server log, skipping bytes the client already has
         if offset > 0:
-            cmd = f"tail -c +{offset + 1} /tmp/dev-server.log 2>/dev/null || echo ''"
+            cmd = f"tail -c +{offset + 1} /root/project/dev.log 2>/dev/null || echo ''"
         else:
-            # First fetch: last 200 lines
-            cmd = "tail -n 200 /tmp/dev-server.log 2>/dev/null || echo ''"
+            cmd = "tail -n 200 /root/project/dev.log 2>/dev/null || echo ''"
 
         result = run_command(sandbox.mags_workspace_id, cmd, timeout=10, with_node_env=False)
         log_text = result.get('stdout', '')
@@ -179,3 +235,48 @@ def instant_app_logs_api(request, project_id, app_id):
     except Exception as e:
         logger.warning(f"[INSTANT LOGS] Error fetching logs for app {app_id}: {e}")
         return JsonResponse({'logs': '', 'error': str(e)})
+
+
+# ---- Rebuild views ----
+
+
+def _rebuild_app(request, app, app_id):
+    """Shared helper to rebuild and restart the production server in the sandbox."""
+    sandbox = app.sandbox
+
+    if not sandbox or not sandbox.mags_workspace_id:
+        return JsonResponse({'error': 'No sandbox available'}, status=400)
+
+    try:
+        from factory.mags import run_command, MAGS_WORKING_DIR
+        project_dir = 'project'
+        rebuild_cmd = (
+            f"cd {MAGS_WORKING_DIR}/{project_dir} && "
+            f"(pkill -f 'next start' 2>/dev/null || true) && "
+            f"npm run build && nohup npm start -p 8080 -H 0.0.0.0 > dev.log 2>&1 &"
+        )
+        run_command(sandbox.mags_workspace_id, rebuild_cmd, timeout=120)
+        return JsonResponse({'status': 'ok', 'message': 'Rebuild started'})
+    except Exception as e:
+        logger.warning(f"[INSTANT REBUILD] Error rebuilding app {app_id}: {e}")
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
+def instant_app_rebuild_api(request, project_id, app_id):
+    """Rebuild endpoint for project-scoped instant apps."""
+    project = get_object_or_404(Project, project_id=project_id)
+    if not project.can_user_access(request.user):
+        return JsonResponse({'error': 'Permission denied'}, status=403)
+
+    app = get_object_or_404(InstantApp, app_id=app_id, project=project, user=request.user)
+    return _rebuild_app(request, app, app_id)
+
+
+@login_required
+@require_POST
+def standalone_instant_app_rebuild_api(request, app_id):
+    """Rebuild endpoint for standalone instant apps (no project_id)."""
+    app = get_object_or_404(InstantApp, app_id=app_id, project__isnull=True, user=request.user)
+    return _rebuild_app(request, app, app_id)

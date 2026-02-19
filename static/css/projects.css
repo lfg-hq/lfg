@@ -130,6 +130,85 @@
     font-weight: 600;
 }
 
+/* Tab Bar */
+.tab-bar {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 1.5rem;
+}
+
+.tab-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.25rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-light);
+    text-decoration: none;
+    border-bottom: 2px solid transparent;
+    transition: color 0.2s, border-color 0.2s;
+    margin-bottom: -1px;
+}
+
+.tab-item:hover {
+    color: var(--text-color);
+}
+
+.tab-item.active {
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
+    font-weight: 600;
+}
+
+.tab-item i {
+    font-size: 0.85rem;
+}
+
+/* Instant App Status Badges */
+.instant-status-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.15rem 0.55rem;
+    border-radius: 9999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: capitalize;
+    margin-left: 0.5rem;
+}
+
+.instant-status-badge.status-running {
+    background: rgba(34, 197, 94, 0.15);
+    color: #22c55e;
+}
+
+.instant-status-badge.status-building,
+.instant-status-badge.status-gathering {
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+}
+
+.instant-status-badge.status-error {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+}
+
+.instant-status-badge.status-stopped {
+    background: rgba(148, 163, 184, 0.15);
+    color: #94a3b8;
+}
+
+/* Live Indicator */
+.live-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #22c55e;
+    display: inline-block;
+    animation: pulse 2s infinite;
+}
+
 .projects-container {
     padding: 2rem 0;
     min-height: calc(100vh - 150px);

@@ -861,8 +861,22 @@ printf '\\n__MAGS_POLL_BOUNDARY__\\nSIZE=%s ALIVE=%s\\n' "$CURSIZE" "$ALIVE"
                     break
 
                 if not process_alive:
-                    # Process finished — wait for final writes then exit
-                    time.sleep(2)
+                    # Process finished — wait for final writes then do one more read
+                    time.sleep(3)
+                    # One more read to catch the exit code marker
+                    try:
+                        tail_cmd = f"tail -c +{offset + 1} {output_file} 2>/dev/null"
+                        tail_result = run_command(workspace_id, tail_cmd, timeout=30, with_node_env=False)
+                        tail_content = tail_result.get('stdout', '').rstrip('\n')
+                        if tail_content:
+                            all_output += tail_content + '\n'
+                            if poll_callback:
+                                try:
+                                    poll_callback(tail_content + '\n')
+                                except Exception:
+                                    pass
+                    except Exception:
+                        pass
                     break
 
             except Exception as poll_err:
@@ -898,9 +912,9 @@ fi
                     pass
                 break
 
-        # If we never got the exit code marker (SSH died mid-execution) but
-        # collected substantial output, check if Claude produced a final result.
-        # A {"type":"result"} JSON line indicates Claude completed normally.
+        # If we never got the exit code marker (process finished before we could
+        # read it, or SSH died mid-execution) but collected substantial output,
+        # check if Claude produced a final result or completed its work.
         if exit_code == -1 and len(all_output) > 1000:
             import json as _json
             for line in reversed(all_output.split('\n')):
@@ -909,10 +923,19 @@ fi
                     continue
                 try:
                     obj = _json.loads(line_s)
-                    if obj.get('type') == 'result':
+                    obj_type = obj.get('type', '')
+                    # "result" = Claude completed normally
+                    # "assistant" with stop_reason = Claude finished a turn
+                    if obj_type == 'result':
                         logger.info("[CLAUDE_CLI] Found result object in output — treating as success despite missing exit code")
                         exit_code = 0
                         break
+                    if obj_type == 'assistant':
+                        stop = obj.get('message', {}).get('stop_reason', '')
+                        if stop in ('end_turn', 'stop_sequence'):
+                            logger.info(f"[CLAUDE_CLI] Found assistant end_turn in output — treating as success despite missing exit code")
+                            exit_code = 0
+                            break
                 except (ValueError, _json.JSONDecodeError):
                     continue
 

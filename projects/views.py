@@ -137,8 +137,19 @@ def project_list(request):
             'codebase_info': codebase_info
         })
     
+    # Tab handling
+    active_tab = request.GET.get('tab', 'projects')
+    if active_tab not in ('projects', 'instant_apps'):
+        active_tab = 'projects'
+
+    # Fetch all instant apps for the user (across projects + standalone)
+    from development.models import InstantApp
+    instant_apps = InstantApp.objects.filter(user=request.user).select_related('project').order_by('-created_at')
+
     return render(request, 'projects/project_list.html', {
-        'projects': projects_with_stats
+        'projects': projects_with_stats,
+        'instant_apps': instant_apps,
+        'active_tab': active_tab,
     })
 
 @login_required

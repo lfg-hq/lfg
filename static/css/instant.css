@@ -24,6 +24,164 @@
     flex-shrink: 0;
 }
 
+/* ---- Chat Header: App name + switcher ---- */
+.instant-chat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 1rem;
+    border-bottom: 1px solid var(--border-color, #333);
+    background: var(--card-bg, #1e1e1e);
+    flex-shrink: 0;
+    min-height: 40px;
+    position: relative;
+    z-index: 20;
+}
+
+.instant-chat-header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.instant-app-name {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-color, #fff);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.instant-app-status-badge {
+    font-size: 0.65rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.instant-app-status-badge.gathering {
+    background: rgba(139, 92, 246, 0.15);
+    color: #a78bfa;
+}
+
+.instant-app-status-badge.building {
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+}
+
+.instant-app-status-badge.running {
+    background: rgba(34, 197, 94, 0.15);
+    color: #22c55e;
+}
+
+.instant-app-status-badge.error {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+}
+
+.instant-chat-header-right {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.instant-switcher-btn {
+    background: transparent;
+    border: 1px solid var(--border-color, #333);
+    color: var(--text-secondary, #888);
+    padding: 0.3rem 0.5rem;
+    border-radius: 4px;
+    cursor: pointer;
+    position: relative;
+    z-index: 25;
+    cursor: pointer;
+    font-size: 0.78rem;
+    transition: all 0.2s;
+}
+
+.instant-switcher-btn:hover {
+    color: var(--text-color, #fff);
+    border-color: var(--text-secondary, #888);
+}
+
+.instant-switcher-menu {
+    display: none;
+    position: fixed;
+    background: var(--card-bg, #1e1e1e);
+    border: 1px solid var(--border-color, #333);
+    border-radius: 8px;
+    min-width: 220px;
+    max-height: 320px;
+    overflow-y: auto;
+    z-index: 1000;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    padding: 0.3rem;
+}
+
+.instant-switcher-menu.open {
+    display: block;
+}
+
+.instant-switcher-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.65rem;
+    border-radius: 5px;
+    color: var(--text-color, #e0e0e0);
+    text-decoration: none;
+    font-size: 0.8rem;
+    transition: background 0.15s;
+    cursor: pointer;
+}
+
+.instant-switcher-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.instant-switcher-item.active {
+    background: rgba(187, 134, 252, 0.1);
+    color: var(--primary-color, #bb86fc);
+}
+
+.switcher-item-name {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.switcher-item-status {
+    font-size: 0.6rem;
+    padding: 0.05rem 0.3rem;
+    border-radius: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    flex-shrink: 0;
+    opacity: 0.7;
+}
+
+.switcher-item-status.running {
+    color: #22c55e;
+}
+
+.switcher-item-status.building {
+    color: #f59e0b;
+}
+
+.switcher-item-status.error {
+    color: #ef4444;
+}
+
+.switcher-item-status.gathering {
+    color: #a78bfa;
+}
+
 /* Override chat.css centering for the constrained panel */
 .instant-chat-panel .chat-messages {
     align-items: center;
@@ -84,6 +242,51 @@
     bottom: 3px;
 }
 
+/* File attachment indicator */
+.instant-file-attachment {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.3rem 0.6rem;
+    font-size: 0.75rem;
+    color: var(--text-secondary, #888);
+    background: rgba(187, 134, 252, 0.08);
+    border: 1px solid rgba(187, 134, 252, 0.2);
+    border-radius: 6px;
+    margin: 0 0.5rem 0.3rem 0.5rem;
+}
+
+.instant-file-attachment.uploading {
+    color: #f59e0b;
+    border-color: rgba(245, 158, 11, 0.2);
+    background: rgba(245, 158, 11, 0.06);
+}
+
+.instant-file-attachment.uploaded i.fa-paperclip {
+    color: var(--primary-color, #bb86fc);
+}
+
+.instant-file-attachment span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 200px;
+}
+
+.instant-file-remove {
+    background: none;
+    border: none;
+    color: var(--text-secondary, #888);
+    cursor: pointer;
+    padding: 0 2px;
+    font-size: 0.7rem;
+    margin-left: auto;
+}
+
+.instant-file-remove:hover {
+    color: #ef4444;
+}
+
 /* App selector in left-actions */
 .instant-app-selector select {
     background: var(--card-bg, #1e1e1e);
@@ -102,7 +305,7 @@
     border: none;
     border-left: 2px solid rgba(245, 158, 11, 0.3);
     border-radius: 0;
-    padding: 0.2rem 0 0.2rem 0.75rem;
+    padding: 0.3rem 0 0.3rem 0.75rem;
     margin: 0;
     display: flex;
     align-items: flex-start;
@@ -115,20 +318,22 @@
 }
 
 .instant-build-notice + .instant-build-notice {
-    /* no extra gap between consecutive notices */
-    margin-top: 0;
+    margin-top: 0.15rem;
 }
 
 /* Small gap before the first notice in a run */
 .message + .instant-build-notice,
 .message-bubble + .instant-build-notice {
-    margin-top: 0.5rem;
+    margin-top: 0.75rem;
 }
 
 /* Small gap after the last notice before next chat bubble */
-.instant-build-notice:last-child,
+.instant-build-notice:last-child {
+    margin-bottom: 0.75rem;
+}
+
 .instant-build-notice + .message {
-    margin-bottom: 0.5rem;
+    margin-top: 0.75rem;
 }
 
 .instant-build-notice .spinner-small {
@@ -254,8 +459,21 @@
     padding: 0.35rem 0.75rem;
     font-size: 0.8rem;
     color: var(--text-secondary, #888);
-    max-width: 400px;
+    max-width: 300px;
     overflow: hidden;
+    flex-shrink: 1;
+    min-width: 0;
+}
+
+.preview-url-bar span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.preview-url-bar span:hover {
+    color: var(--text-color, #fff);
 }
 
 .preview-url-bar a {
@@ -265,6 +483,31 @@
 
 .preview-url-bar a:hover {
     color: var(--text-color, #fff);
+}
+
+.preview-action-btn {
+    background: var(--bg-color, #121212);
+    border: 1px solid var(--border-color, #333);
+    border-radius: 6px;
+    color: var(--text-secondary, #888);
+    padding: 0.35rem 0.6rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: color 0.2s, border-color 0.2s;
+}
+
+.preview-action-btn:hover {
+    color: var(--text-color, #fff);
+    border-color: var(--text-secondary, #888);
+}
+
+.preview-action-btn.refreshing i {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
 }
 
 .preview-status {
@@ -320,8 +563,11 @@
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
     text-align: center;
-    padding: 2rem;
+    padding: 1rem;
+    width: 100%;
+    height: 100%;
 }
 
 .placeholder-icon {
@@ -344,11 +590,34 @@
     margin-bottom: 0.5rem;
 }
 
-.instant-preview-placeholder p,
-.instant-preview-building p {
+.instant-preview-placeholder p {
     color: var(--text-secondary, #888);
     font-size: 0.9rem;
     max-width: 360px;
+}
+
+/* Snake game canvas */
+#snake-game {
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    max-width: 100%;
+}
+
+/* Command text below the game */
+.building-command-text {
+    color: var(--text-secondary, #888);
+    font-size: 0.75rem;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    max-width: 400px;
+    margin-top: 0.75rem;
+    opacity: 0.6;
+    word-break: break-all;
+    line-height: 1.4;
+}
+
+.building-command-text[style*="color: var(--danger"] {
+    opacity: 1;
 }
 
 .building-spinner {
@@ -507,6 +776,224 @@
 
 .logs-output .log-info {
     color: #60a5fa;
+}
+
+/* ---- Env Vars Panel ---- */
+.instant-env-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.env-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.75rem;
+    border-bottom: 1px solid var(--border-color, #333);
+    background: var(--card-bg, #1e1e1e);
+    flex-shrink: 0;
+}
+
+.env-add-btn,
+.env-save-btn {
+    background: transparent;
+    border: 1px solid var(--border-color, #333);
+    color: var(--text-secondary, #888);
+    padding: 0.3rem 0.6rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.env-add-btn:hover {
+    color: var(--text-color, #fff);
+    border-color: var(--text-secondary, #888);
+}
+
+.env-save-btn {
+    margin-left: auto;
+    background: rgba(34, 197, 94, 0.1);
+    border-color: rgba(34, 197, 94, 0.3);
+    color: #22c55e;
+}
+
+.env-save-btn:hover {
+    background: rgba(34, 197, 94, 0.2);
+    border-color: rgba(34, 197, 94, 0.5);
+}
+
+.env-table {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.75rem;
+}
+
+.env-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem 1rem;
+    color: var(--text-secondary, #888);
+    font-size: 0.85rem;
+}
+
+.env-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.env-key-input,
+.env-value-input {
+    background: var(--bg-color, #121212);
+    border: 1px solid var(--border-color, #333);
+    color: var(--text-color, #fff);
+    padding: 0.4rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+}
+
+.env-key-input {
+    width: 180px;
+    flex-shrink: 0;
+}
+
+.env-key-input.readonly {
+    opacity: 0.7;
+    cursor: default;
+}
+
+.env-value-input {
+    flex: 1;
+    min-width: 0;
+}
+
+.env-value-toggle {
+    background: transparent;
+    border: 1px solid var(--border-color, #333);
+    color: var(--text-secondary, #888);
+    padding: 0.35rem 0.5rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    flex-shrink: 0;
+}
+
+.env-value-toggle:hover {
+    color: var(--text-color, #fff);
+}
+
+.env-delete-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-secondary, #888);
+    padding: 0.35rem 0.5rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    flex-shrink: 0;
+    transition: all 0.2s;
+}
+
+.env-delete-btn:hover {
+    color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.3);
+}
+
+/* ---- Env Var Request Notification (in chat) ---- */
+.notice-env-request {
+    align-self: flex-start;
+    background: rgba(239, 68, 68, 0.06);
+    border: none;
+    border-left: 3px solid rgba(239, 68, 68, 0.6);
+    border-radius: 0 6px 6px 0;
+    padding: 0.6rem 0.85rem;
+    margin: 0.4rem 0;
+    max-width: 90%;
+    font-size: 0.82rem;
+    color: var(--text-color, #e0e0e0);
+}
+
+.notice-env-request .env-request-header {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: #ef4444;
+    font-weight: 600;
+    font-size: 0.8rem;
+    margin-bottom: 0.3rem;
+}
+
+.notice-env-request .env-request-desc {
+    color: var(--text-secondary, #888);
+    font-size: 0.78rem;
+    margin-bottom: 0.5rem;
+}
+
+.notice-env-request .env-request-form {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.notice-env-request .env-request-input {
+    background: var(--bg-color, #121212);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: var(--text-color, #fff);
+    padding: 0.35rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    flex: 1;
+    min-width: 120px;
+}
+
+.notice-env-request .env-request-set-btn {
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    color: #ef4444;
+    padding: 0.35rem 0.75rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.78rem;
+    font-weight: 600;
+    transition: all 0.2s;
+    flex-shrink: 0;
+}
+
+.notice-env-request .env-request-set-btn:hover {
+    background: rgba(239, 68, 68, 0.25);
+    border-color: rgba(239, 68, 68, 0.6);
+}
+
+.notice-env-request.notice-done {
+    background: rgba(34, 197, 94, 0.06);
+    border-left-color: rgba(34, 197, 94, 0.6);
+}
+
+.notice-env-request.notice-done .env-request-header {
+    color: #22c55e;
+}
+
+.notice-env-request.notice-done .env-request-set-btn {
+    background: rgba(34, 197, 94, 0.15);
+    border-color: rgba(34, 197, 94, 0.4);
+    color: #22c55e;
+    cursor: default;
+}
+
+.notice-env-request.notice-done .env-request-input {
+    border-color: rgba(34, 197, 94, 0.3);
+    opacity: 0.7;
 }
 
 /* Sidebar preload states — prevent transition flash */

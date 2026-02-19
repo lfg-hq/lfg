@@ -1095,9 +1095,20 @@ async def app_functions(function_name, function_args, project_id, conversation_i
 
         # Instant Mode
         case "create_instant_app":
-            # Resolve user_id from project owner
-            _project = await sync_to_async(Project.objects.get)(project_id=project_id)
-            _user_id = await sync_to_async(lambda: _project.owner_id)()
+            # Resolve user_id — from project owner or consumer user
+            _user_id = None
+            if project_id:
+                _project = await sync_to_async(Project.objects.get)(project_id=project_id)
+                _user_id = await sync_to_async(lambda: _project.owner_id)()
+            else:
+                # Standalone mode: resolve from conversation
+                _conv = await sync_to_async(
+                    lambda: Conversation.objects.filter(id=conversation_id).first()
+                )()
+                if _conv:
+                    _user_id = await sync_to_async(lambda: _conv.user_id)()
+            if not _user_id:
+                return {"error": "Could not resolve user for instant app creation."}
             return await handle_create_instant_app(
                 app_name=function_args.get("name", "instant-app"),
                 requirements=function_args.get("requirements", ""),
@@ -1113,6 +1124,42 @@ async def app_functions(function_name, function_args, project_id, conversation_i
                 restart_server=function_args.get("restart_server", False),
             )
 
+        case "request_env_variable":
+            env_key = function_args.get("key", "")
+            env_desc = function_args.get("description", "")
+            env_required = function_args.get("required", True)
+            # Resolve app_id from conversation
+            _app_id = None
+            try:
+                from development.models import InstantApp
+                _ia = await sync_to_async(
+                    lambda: InstantApp.objects.filter(conversation_id=conversation_id).order_by('-created_at').first()
+                )()
+                if _ia:
+                    _app_id = str(_ia.app_id)
+            except Exception:
+                pass
+            return {
+                "is_notification": True,
+                "notification_type": "env_var_request",
+                "message": f"Requesting env variable: {env_key}",
+                "message_to_agent": (
+                    f"A prompt has been sent to the user asking them to provide the environment variable '{env_key}'. "
+                    "Wait for the user to supply the value before continuing. "
+                    "Once they set it, the variable will be available in the sandbox environment."
+                ),
+                "data": {
+                    "key": env_key,
+                    "description": env_desc,
+                    "required": env_required,
+                    "app_id": _app_id,
+                },
+            }
+
+        case "ask_sandbox":
+            question = function_args.get("question", "")
+            return await handle_ask_sandbox(conversation_id, question)
+
         # case "implement_ticket_async":
         #     ticket_id = function_args.get('ticket_id')
         #     return await implement_ticket_async(ticket_id, project_id, conversation_id)
@@ -1126,6 +1173,34 @@ async def app_functions(function_name, function_args, project_id, conversation_i
         #     return await get_ticket_execution_status(project_id, task_id)
 
     return None
+
+
+async def handle_ask_sandbox(conversation_id, question):
+    """Run a question against the sandbox using claude -p inside the workspace."""
+    from development.models import InstantApp
+    from factory.mags import run_command, MAGS_WORKING_DIR
+
+    app = await sync_to_async(
+        lambda: InstantApp.objects.filter(conversation_id=conversation_id).order_by('-created_at').first()
+    )()
+    if not app or not app.sandbox or not app.sandbox.mags_workspace_id:
+        return {"message_to_agent": "No sandbox is available for this conversation yet."}
+
+    workspace_id = app.sandbox.mags_workspace_id
+
+    # Escape single quotes in question for shell safety
+    escaped = question.replace("'", "'\\''")
+    cmd = f"cd {MAGS_WORKING_DIR}/project && claude -p '{escaped}'"
+
+    try:
+        result = await sync_to_async(run_command)(workspace_id, cmd, timeout=120)
+        stdout = result.get('stdout', '').strip()
+        stderr = result.get('stderr', '').strip()
+        answer = stdout or stderr or '(no output)'
+        return {"message_to_agent": answer}
+    except Exception as e:
+        logger.warning(f"[ASK_SANDBOX] Error: {e}")
+        return {"message_to_agent": f"Error querying sandbox: {e}"}
 
 
 async def extract_features(function_args, project_id, conversation_id=None):
@@ -7407,7 +7482,9 @@ async def handle_create_instant_app(
 
     try:
         user = await sync_to_async(User.objects.get)(id=user_id)
-        project = await sync_to_async(Project.objects.get)(project_id=project_id)
+        project = None
+        if project_id:
+            project = await sync_to_async(Project.objects.get)(project_id=project_id)
         conversation = await sync_to_async(
             lambda: Conversation.objects.filter(id=conversation_id).first()
         )()
@@ -7466,9 +7543,11 @@ async def handle_create_instant_app(
                 existing_app.status = 'building'
                 existing_app.requirements = requirements
                 existing_app.env_vars = env_vars or {}
+                if conversation and not existing_app.conversation_id:
+                    existing_app.conversation = conversation
                 existing_app.save(update_fields=[
                     'name', 'description', 'status', 'requirements',
-                    'env_vars', 'updated_at',
+                    'env_vars', 'conversation', 'updated_at',
                 ])
                 return existing_app
             return InstantApp.objects.create(
@@ -7557,14 +7636,14 @@ async def handle_get_instant_app_status(
 
         # Optional: restart the dev server
         if restart_server:
-            _logger.info(f"[INSTANT STATUS] Restarting dev server in workspace {workspace_id}")
+            _logger.info(f"[INSTANT STATUS] Rebuilding and restarting server in workspace {workspace_id}")
             try:
                 from factory.mags import run_command, MAGS_WORKING_DIR
                 project_dir = 'project'
                 restart_cmd = (
                     f"cd {MAGS_WORKING_DIR}/{project_dir} && "
-                    f"(pkill -f 'next dev' 2>/dev/null || true) && "
-                    f"nohup npm run dev -- -p 8080 -H 0.0.0.0 > /tmp/dev-server.log 2>&1 &"
+                    f"(pkill -f 'next start' 2>/dev/null || true) && "
+                    f"npm run build && nohup npm start -p 8080 -H 0.0.0.0 > dev.log 2>&1 &"
                 )
                 run_command(workspace_id, restart_cmd, timeout=30)
                 # Give the server a moment to start
@@ -7602,42 +7681,67 @@ async def handle_get_instant_app_status(
                     preview_url = alias_url or raw_url
 
                     if preview_url:
-                        # Save it back
-                        app.preview_url = preview_url
-                        await sync_to_async(app.save)(update_fields=['preview_url', 'updated_at'])
-                        sandbox.proxy_url = preview_url
-                        await sync_to_async(sandbox.save)(update_fields=['proxy_url', 'updated_at'])
-                        _logger.info(f"[INSTANT STATUS] URL obtained: {preview_url}")
+                        # Verify the dev server is actually responding before declaring "live"
+                        server_alive = False
+                        try:
+                            from factory.mags import run_command as _run_cmd
+                            check = _run_cmd(workspace_id, "curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/ 2>/dev/null || echo 000", timeout=10, with_node_env=False)
+                            http_code = (check.get('stdout') or '').strip()
+                            server_alive = http_code not in ('', '000')
+                            _logger.info(f"[INSTANT STATUS] Dev server health check: http_code={http_code}, alive={server_alive}")
+                        except Exception as hc_err:
+                            _logger.warning(f"[INSTANT STATUS] Health check failed: {hc_err}")
 
-                        # Broadcast so the frontend loads the preview
-                        from tasks.task_definitions import broadcast_instant_status
-                        broadcast_instant_status(
-                            conversation_id, str(app.app_id), 'running',
-                            f"{app.name} is live!",
-                            extra={'preview_url': preview_url, 'app_name': app.name},
-                        )
+                        if server_alive:
+                            # Save it back
+                            app.preview_url = preview_url
+                            app.status = 'running'
+                            await sync_to_async(app.save)(update_fields=['preview_url', 'status', 'updated_at'])
+                            sandbox.proxy_url = preview_url
+                            await sync_to_async(sandbox.save)(update_fields=['proxy_url', 'updated_at'])
+                            _logger.info(f"[INSTANT STATUS] URL obtained: {preview_url}")
+
+                            # Broadcast so the frontend loads the preview
+                            from tasks.task_definitions import broadcast_instant_status
+                            broadcast_instant_status(
+                                conversation_id, str(app.app_id), 'running',
+                                f"{app.name} is live!",
+                                extra={'preview_url': preview_url, 'app_name': app.name},
+                            )
+                            status = 'running'
+                        else:
+                            _logger.warning(f"[INSTANT STATUS] Proxy URL exists but dev server not responding — not marking as live")
+                            preview_url = ""  # Don't report a URL that doesn't work
             except Exception as url_err:
                 _logger.warning(f"[INSTANT STATUS] Could not obtain URL: {url_err}")
 
+        # Re-read status in case it was updated
+        if not preview_url and status == 'running':
+            # App claims running but no working URL — likely stale
+            status = app.status
+
+        is_live = bool(preview_url) and status == 'running'
+
         return {
             "is_notification": True,
-            "notification_type": "instant_app_ready" if preview_url else "instant_app_status",
-            "preview_url": preview_url,
+            "notification_type": "instant_app_ready" if is_live else "instant_app_status",
+            "preview_url": preview_url if is_live else "",
             "app_name": app.name,
             "instant_app_status": status,
-            "message": f"{app.name} is live!" if preview_url else f"{app.name} status: {status}",
+            "message": f"{app.name} is live!" if is_live else f"{app.name} status: {status}",
             "message_to_agent": (
                 f"App **{app.name}** — status: **{status}**\n"
                 f"Preview URL: {preview_url or '(not available yet)'}\n"
                 + (f"The preview URL has been sent to the user's browser and should load in the preview panel."
-                   if preview_url else
-                   "Could not obtain a preview URL. The sandbox may still be booting or the dev server may not be running. "
-                   "Try again with restart_server=true.")
+                   if is_live else
+                   "The dev server is not responding on port 8080. The app may have failed to build or the server crashed. "
+                   "Check the app status — if it's 'error', the build failed. "
+                   "Try again with restart_server=true, or ask the user to check Settings > Claude Code.")
             ),
             "data": {
                 "app_name": app.name,
                 "status": status,
-                "preview_url": preview_url,
+                "preview_url": preview_url if is_live else "",
             },
         }
 

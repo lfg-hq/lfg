@@ -1866,7 +1866,7 @@ create_instant_app = {
     "type": "function",
     "function": {
         "name": "create_instant_app",
-        "description": "Create a new instant app once you have gathered enough requirements. This will provision a sandbox, scaffold a Next.js + SQLite project, and start the dev server.",
+        "description": "Create a new instant app once you have gathered enough requirements. This will provision a sandbox, scaffold a Next.js + Drizzle + shadcn/ui project, and start the production server.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -1903,7 +1903,7 @@ get_instant_app_status = {
             "properties": {
                 "restart_server": {
                     "type": "boolean",
-                    "description": "If true, restart the dev server (npm run dev) before fetching the URL. Use when the preview is broken or the server crashed."
+                    "description": "If true, rebuild and restart the production server (npm run build && npm start) before fetching the URL. Use when the preview is broken or the server crashed."
                 }
             },
             "required": []
@@ -1911,7 +1911,59 @@ get_instant_app_status = {
     }
 }
 
-tools_instant = [create_instant_app, get_instant_app_status]
+request_env_variable = {
+    "type": "function",
+    "function": {
+        "name": "request_env_variable",
+        "description": (
+            "Request the user to provide an environment variable needed by the app. "
+            "A prompt will appear in the chat for the user to fill in the value. "
+            "Use this when the app requires an API key or secret that the user must supply."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string",
+                    "description": "The environment variable name (e.g. OPENAI_API_KEY)"
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Why this variable is needed — shown to the user"
+                },
+                "required": {
+                    "type": "boolean",
+                    "description": "Whether this variable is required for the app to function (default true)"
+                }
+            },
+            "required": ["key", "description"]
+        }
+    }
+}
+
+ask_sandbox = {
+    "type": "function",
+    "function": {
+        "name": "ask_sandbox",
+        "description": (
+            "Ask a question about the running sandbox environment. "
+            "This runs a query inside the sandbox using Claude and returns the answer. "
+            "Use this to inspect files, check server status, debug errors, or understand the current state of the project."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string",
+                    "description": "The question to ask about the sandbox (e.g. 'what errors are in the build log?', 'list the API routes', 'what does the schema look like?')"
+                }
+            },
+            "required": ["question"]
+        }
+    }
+}
+
+tools_instant = [create_instant_app, get_instant_app_status, request_env_variable, ask_sandbox]
 
 tools_generate_single_screen = [
     generate_single_screen_anthropic

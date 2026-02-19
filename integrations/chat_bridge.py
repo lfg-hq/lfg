@@ -139,13 +139,18 @@ def _generate_ai_response(user: User, project: Project, conversation: Conversati
         )
 
         conversation_id = conversation.id if conversation else None
-        project_id = project.id if project else None
+        # Tools expect the UUID project_id, not the integer PK
+        proj_id = project.project_id if project else None
 
         # Collect all chunks from the async generator
         full_response = ''
-        async for chunk in provider.generate_stream(history, project_id, conversation_id, tools_product):
+        async for chunk in provider.generate_stream(history, proj_id, conversation_id, tools_product):
             if isinstance(chunk, str) and not chunk.startswith('__NOTIFICATION__'):
                 full_response += chunk
+
+        # Strip HTML tags — the AI pipeline emits HTML meant for the WebSocket UI
+        import re
+        full_response = re.sub(r'<[^>]+>', '', full_response).strip()
 
         return full_response or "I'm sorry, I couldn't generate a response. Please try again."
 
