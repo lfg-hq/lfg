@@ -1,0 +1,189 @@
+/*
+ * Theme Variables
+ * Central location for all theme-related CSS custom properties
+ * This file defines both dark (default) and light mode variables
+ */
+
+/* =================================================================
+   Dark Theme (Default)
+   ================================================================= */
+:root,
+[data-theme="dark"] {
+    /* Primary Colors */
+    --primary-color: #bb86fc;
+    --primary-light: #a78bfa;
+    --primary-dark: #7c3aed;
+    --primary-gradient: linear-gradient(135deg, #bb86fc, #9d65e5);
+
+    /* Secondary Colors */
+    --secondary-color: #10b981;
+    --secondary-light: #34d399;
+    --secondary-dark: #059669;
+
+    /* Accent Colors */
+    --accent-color: #f97316;
+    --accent-light: #fb923c;
+    --accent-dark: #ea580c;
+
+    /* Background Colors */
+    --background-color: #121212;
+    --background-alt: #0d0d0d;
+    --background-elevated: #1a1a1a;
+    --background-surface: #1e1e1e;
+    --background-overlay: rgba(0, 0, 0, 0.5);
+
+    /* Card & Panel Backgrounds */
+    --card-bg: #1a1a1a;
+    --card-bg-hover: #2a2a2a;
+    --card-bg-alt: rgba(30, 30, 30, 0.8);
+    --panel-bg: rgba(30, 30, 30, 0.8);
+
+    /* Text Colors */
+    --text-primary: #e2e8f0;
+    --text-secondary: #94a3b8;
+    --text-muted: #6b7280;
+    --text-inverse: #1a1a1a;
+    --text-link: #bb86fc;
+    --text-link-hover: #a78bfa;
+
+    /* Border Colors */
+    --border-color: #333333;
+    --border-light: #444;
+    --border-focus: #bb86fc;
+
+    /* Status Colors */
+    --success-color: #10b981;
+    --success-bg: rgba(16, 185, 129, 0.1);
+    --error-color: #ef4444;
+    --error-bg: rgba(239, 68, 68, 0.1);
+    --warning-color: #f59e0b;
+    --warning-bg: rgba(245, 158, 11, 0.1);
+    --info-color: #3b82f6;
+    --info-bg: rgba(59, 130, 246, 0.1);
+
+    /* Input & Form Colors */
+    --input-bg: #1e1e1e;
+    --input-bg-focus: #2a2a2a;
+    --input-border: #333;
+    --input-border-focus: #bb86fc;
+    --input-placeholder: #6b7280;
+
+    /* Button Colors */
+    --btn-primary-bg: #bb86fc;
+    --btn-primary-text: #1a1a1a;
+    --btn-primary-hover: #a78bfa;
+    --btn-secondary-bg: transparent;
+    --btn-secondary-border: #bb86fc;
+    --btn-secondary-text: #bb86fc;
+    --btn-secondary-hover-bg: rgba(187, 134, 252, 0.1);
+
+    /* Shadow Colors */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.3);
+    --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.4);
+
+    /* Scrollbar Colors */
+    --scrollbar-track: #1a1a1a;
+    --scrollbar-thumb: #333;
+    --scrollbar-thumb-hover: #444;
+
+    /* Code & Syntax Colors */
+    --code-bg: #2a2a2a;
+    --code-text: #e2e8f0;
+    --code-border: #333;
+
+    /* Transition */
+    --transition-fast: 0.15s ease;
+    --transition-normal: 0.3s ease;
+    --transition-slow: 0.5s ease;
+}
+
+/* =================================================================
+   Light Theme
+   ================================================================= */
+[data-theme="light"] {
+    /* Primary Colors - same hues, adjusted for light bg */
+    --primary-color: #7c3aed;
+    --primary-light: #8b5cf6;
+    --primary-dark: #6d28d9;
+    --primary-gradient: linear-gradient(135deg, #7c3aed, #8b5cf6);
+
+    /* Secondary Colors */
+    --secondary-color: #059669;
+    --secondary-light: #10b981;
+    --secondary-dark: #047857;
+
+    /* Accent Colors */
+    --accent-color: #ea580c;
+    --accent-light: #f97316;
+    --accent-dark: #c2410c;
+
+    /* Background Colors */
+    --background-color: #f8fafc;
+    --background-alt: #ffffff;
+    --background-elevated: #ffffff;
+    --background-surface: #f1f5f9;
+    --background-overlay: rgba(0, 0, 0, 0.3);
+
+    /* Card & Panel Backgrounds */
+    --card-bg: #ffffff;
+    --card-bg-hover: #f8fafc;
+    --card-bg-alt: rgba(255, 255, 255, 0.9);
+    --panel-bg: rgba(255, 255, 255, 0.95);
+
+    /* Text Colors */
+    --text-primary: #1e293b;
+    --text-secondary: #475569;
+    --text-muted: #94a3b8;
+    --text-inverse: #ffffff;
+    --text-link: #7c3aed;
+    --text-link-hover: #6d28d9;
+
+    /* Border Colors */
+    --border-color: #e2e8f0;
+    --border-light: #f1f5f9;
+    --border-focus: #7c3aed;
+
+    /* Status Colors */
+    --success-color: #059669;
+    --success-bg: rgba(5, 150, 105, 0.1);
+    --error-color: #dc2626;
+    --error-bg: rgba(220, 38, 38, 0.1);
+    --warning-color: #d97706;
+    --warning-bg: rgba(217, 119, 6, 0.1);
+    --info-color: #2563eb;
+    --info-bg: rgba(37, 99, 235, 0.1);
+
+    /* Input & Form Colors */
+    --input-bg: #ffffff;
+    --input-bg-focus: #ffffff;
+    --input-border: #e2e8f0;
+    --input-border-focus: #7c3aed;
+    --input-placeholder: #94a3b8;
+
+    /* Button Colors */
+    --btn-primary-bg: #7c3aed;
+    --btn-primary-text: #ffffff;
+    --btn-primary-hover: #6d28d9;
+    --btn-secondary-bg: transparent;
+    --btn-secondary-border: #7c3aed;
+    --btn-secondary-text: #7c3aed;
+    --btn-secondary-hover-bg: rgba(124, 58, 237, 0.1);
+
+    /* Shadow Colors */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
+    --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+    --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.15);
+
+    /* Scrollbar Colors */
+    --scrollbar-track: #f1f5f9;
+    --scrollbar-thumb: #cbd5e1;
+    --scrollbar-thumb-hover: #94a3b8;
+
+    /* Code & Syntax Colors */
+    --code-bg: #f1f5f9;
+    --code-text: #1e293b;
+    --code-border: #e2e8f0;
+}

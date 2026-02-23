@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 # Redis queue and lock keys
 QUEUE_KEY = "lfg:ticket_execution_queue"
+CHAT_QUEUE_KEY = "lfg:ticket_chat_queue"
 LOCK_PREFIX = "lfg:project_executing:"
 LOCK_TTL = 7200  # 2 hours
 
@@ -160,12 +161,22 @@ class ExecutorService:
 
         # Acquire distributed lock
         if not await self.acquire_project_lock(project_id):
-            # Project is being executed elsewhere - requeue
+            # Project is being executed elsewhere - requeue with retry limit
+            retry_count = task_data.get('_retry_count', 0) + 1
+            max_retries = 30  # ~2.5 minutes with 5s sleep
+            if retry_count > max_retries:
+                logger.error(
+                    f"[SERVICE] Project {project_id} still locked after {max_retries} retries, "
+                    f"dropping task for tickets {ticket_ids}"
+                )
+                return
+            task_data['_retry_count'] = retry_count
             logger.warning(
-                f"[SERVICE] Project {project_id} locked, requeueing task"
+                f"[SERVICE] Project {project_id} locked, requeueing task "
+                f"(retry {retry_count}/{max_retries})"
             )
+            await asyncio.sleep(5)  # Wait BEFORE requeue to avoid tight loop
             await self.redis.rpush(QUEUE_KEY, json.dumps(task_data))
-            await asyncio.sleep(5)  # Wait before retry
             return
 
         try:
@@ -195,6 +206,47 @@ class ExecutorService:
             # Cleanup executor resources for this project
             self.executor.cleanup_project(project_id)
 
+    async def process_chat_task(self, task_data: dict):
+        """
+        Process a chat message task — no project lock needed.
+
+        Chat tasks run on an existing ticket workspace and don't conflict
+        with batch execution.
+        """
+        ticket_id = task_data['ticket_id']
+        project_id = task_data['project_id']
+        conversation_id = task_data.get('conversation_id')
+        message = task_data.get('message', '')
+        session_id = task_data.get('session_id') or None  # empty string → None
+        task_type = task_data.get('type', 'ticket_chat_cli')
+
+        logger.info(
+            f"[SERVICE] Processing chat task: ticket={ticket_id}, "
+            f"project={project_id}, type={task_type}"
+        )
+
+        try:
+            loop = asyncio.get_event_loop()
+
+            if task_type == 'ticket_chat':
+                logger.warning(f"[SERVICE] Non-CLI chat not implemented, skipping ticket={ticket_id}")
+                return
+
+            from tasks.task_definitions import execute_ticket_chat_cli
+            await loop.run_in_executor(
+                None,  # default thread pool
+                execute_ticket_chat_cli,
+                ticket_id, project_id, conversation_id, message, session_id
+            )
+
+            logger.info(f"[SERVICE] Chat task completed: ticket={ticket_id}")
+
+        except Exception as e:
+            logger.error(
+                f"[SERVICE] Error processing chat task for ticket {ticket_id}: {e}",
+                exc_info=True
+            )
+
     async def _task_wrapper(self, task_data: dict):
         """Wrapper to handle task completion and semaphore release."""
         try:
@@ -202,6 +254,13 @@ class ExecutorService:
                 await self.process_task(task_data)
         except Exception as e:
             logger.error(f"[SERVICE] Task wrapper error: {e}", exc_info=True)
+
+    async def _chat_task_wrapper(self, task_data: dict):
+        """Wrapper for chat tasks — no semaphore needed."""
+        try:
+            await self.process_chat_task(task_data)
+        except Exception as e:
+            logger.error(f"[SERVICE] Chat task wrapper error: {e}", exc_info=True)
 
     async def run(self):
         """
@@ -211,38 +270,62 @@ class ExecutorService:
         """
         await self.connect()
 
+        # Clear any stale project locks left by previous crashed/killed executor
+        stale_locks = []
+        async for key in self.redis.scan_iter(match=f"{LOCK_PREFIX}*"):
+            stale_locks.append(key)
+        if stale_locks:
+            for key in stale_locks:
+                await self.redis.delete(key)
+            logger.info(f"[SERVICE] Cleared {len(stale_locks)} stale project lock(s) from previous run")
+
         logger.info("[SERVICE] Executor service started, waiting for tasks...")
-        logger.info(f"[SERVICE] Queue key: {QUEUE_KEY}")
+        logger.info(f"[SERVICE] Build queue: {QUEUE_KEY}")
+        logger.info(f"[SERVICE] Chat queue: {CHAT_QUEUE_KEY}")
 
         consecutive_errors = 0
         max_consecutive_errors = 10
 
         while self.running:
             try:
-                # Blocking pop with timeout (allows checking self.running)
-                result = await self.redis.blpop(QUEUE_KEY, timeout=5)
+                # Blocking pop from BOTH queues (build + chat) with timeout
+                result = await self.redis.blpop([QUEUE_KEY, CHAT_QUEUE_KEY], timeout=5)
 
                 if result:
-                    _, task_json = result
+                    queue_key, task_json = result
+                    queue_key = queue_key.decode() if isinstance(queue_key, bytes) else queue_key
                     consecutive_errors = 0  # Reset error count
 
                     try:
                         task_data = json.loads(task_json)
 
-                        # Validate task data
-                        if not task_data.get('project_id') or not task_data.get('ticket_ids'):
-                            logger.warning(
-                                f"[SERVICE] Invalid task data: {task_data}"
-                            )
-                            continue
+                        if queue_key == CHAT_QUEUE_KEY:
+                            # Chat task — validate and dispatch
+                            if not task_data.get('ticket_id') or not task_data.get('project_id'):
+                                logger.warning(f"[SERVICE] Invalid chat task data: {task_data}")
+                                continue
 
-                        # Process in background (with semaphore for back-pressure)
-                        task = asyncio.create_task(
-                            self._task_wrapper(task_data),
-                            name=f"project_{task_data['project_id']}"
-                        )
-                        self._active_tasks.add(task)
-                        task.add_done_callback(self._active_tasks.discard)
+                            task = asyncio.create_task(
+                                self._chat_task_wrapper(task_data),
+                                name=f"chat_ticket_{task_data['ticket_id']}"
+                            )
+                            self._active_tasks.add(task)
+                            task.add_done_callback(self._active_tasks.discard)
+                        else:
+                            # Build task — validate and dispatch
+                            if not task_data.get('project_id') or not task_data.get('ticket_ids'):
+                                logger.warning(
+                                    f"[SERVICE] Invalid task data: {task_data}"
+                                )
+                                continue
+
+                            # Process in background (with semaphore for back-pressure)
+                            task = asyncio.create_task(
+                                self._task_wrapper(task_data),
+                                name=f"project_{task_data['project_id']}"
+                            )
+                            self._active_tasks.add(task)
+                            task.add_done_callback(self._active_tasks.discard)
 
                     except json.JSONDecodeError as e:
                         logger.error(f"[SERVICE] Invalid JSON in queue: {e}")

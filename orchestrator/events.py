@@ -15,6 +15,66 @@ from orchestrator.models import AgentEvent
 logger = logging.getLogger(__name__)
 
 
+def publish_ticket_event_sync(ticket_id: int, event_type: str, payload: dict):
+    """
+    Synchronous bridge: publish a ticket event from the old pipeline.
+
+    Finds the active AgentRun for the ticket's project/conversation,
+    creates an AgentEvent, and notifies the orchestrator to react.
+
+    Called from tasks/task_definitions.py when tickets complete/fail.
+    """
+    try:
+        from orchestrator.models import AgentRun
+        from projects.models import ProjectTicket
+
+        ticket = ProjectTicket.objects.get(id=ticket_id)
+        project = ticket.project
+
+        # Find the most recent active orchestrator run for this project
+        active_run = AgentRun.objects.filter(
+            project=project,
+            status__in=['executing', 'waiting_on_user', 'planning'],
+        ).order_by('-created_at').first()
+
+        if not active_run:
+            logger.debug(
+                f"[events] No active orchestrator run for project {project.id}, "
+                f"skipping event {event_type} for ticket {ticket_id}"
+            )
+            return None
+
+        # Persist the event
+        event = AgentEvent.objects.create(
+            agent_run=active_run,
+            event_type=event_type,
+            payload=payload,
+        )
+        logger.info(
+            f"[events] Published {event_type} for ticket {ticket_id} "
+            f"(agent_run={active_run.id})"
+        )
+
+        # Wake the orchestrator to handle this event
+        from django_q.tasks import async_task
+        async_task(
+            "orchestrator.tasks.handle_orchestrator_event",
+            str(active_run.id),
+            event_type,
+            payload,
+            task_name=f"orch-{event_type}-ticket-{ticket_id}",
+        )
+
+        return event
+
+    except Exception as e:
+        logger.error(
+            f"[events] Failed to publish ticket event {event_type} "
+            f"for ticket {ticket_id}: {e}",
+            exc_info=True,
+        )
+
+
 async def publish_event(
     agent_run,
     event_type: str,

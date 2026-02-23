@@ -220,7 +220,16 @@ async def handle_create_plan(args, agent_run, project, user):
 
 async def handle_dispatch_ticket(args, agent_run, project, user):
     ticket_id = args["ticket_execution_id"]
-    ticket = await sync_to_async(TicketExecution.objects.get)(id=ticket_id)
+    # LLM may pass a TicketExecution UUID or a ProjectTicket integer ID — handle both
+    try:
+        ticket = await sync_to_async(TicketExecution.objects.get)(id=ticket_id)
+    except (TicketExecution.DoesNotExist, Exception):
+        # Fall back: look up by ProjectTicket FK
+        ticket = await sync_to_async(
+            TicketExecution.objects.filter(ticket_id=ticket_id).first
+        )()
+        if not ticket:
+            return {"error": f"No TicketExecution found for ID '{ticket_id}'"}, []
 
     if ticket.status != "ready":
         return {"error": f"Ticket is not ready (status: {ticket.status})"}, []

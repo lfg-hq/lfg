@@ -386,6 +386,18 @@ def project_detail(request, project_id):
     except Exception:
         pass
 
+    # Get agent events count (exclude direct chat responses)
+    events_count = 0
+    try:
+        from orchestrator.models import AgentEvent
+        events_count = AgentEvent.objects.filter(
+            agent_run__project=project
+        ).exclude(
+            agent_run__run_type='direct_response'
+        ).count()
+    except Exception:
+        pass
+
     return render(request, 'projects/project_detail.html', {
         'project': project,
         'current_project': project,
@@ -396,6 +408,7 @@ def project_detail(request, project_id):
         'codebase_map': codebase_map,
         'stack_config': stack_config,
         'instant_apps_count': instant_apps_count,
+        'events_count': events_count,
     })
 
 @login_required
@@ -3494,9 +3507,7 @@ def ticket_chat_api(request, project_id, ticket_id):
             }, status=401)
 
         if cli_mode_enabled:
-            # Run CLI chat in background thread
-            import threading
-            from tasks.task_definitions import execute_ticket_chat_cli
+            # Run CLI chat via executor service (Redis queue)
             from projects.models import TicketLog
             from projects.websocket_utils import send_ticket_log_notification
 
@@ -3522,23 +3533,17 @@ def ticket_chat_api(request, project_id, ticket_id):
             _ticket_sandbox = Sandbox.objects.filter(
                 mags_workspace_id__startswith=f'{ticket.id}-',
                 workspace_type='ticket',
-            ).order_by('-updated_at').first()
+            ).exclude(status__in=['stopped', 'error']).order_by('-updated_at').first()
             session_id = _ticket_sandbox.cli_session_id if _ticket_sandbox else None
 
-            def run_cli_chat():
-                try:
-                    execute_ticket_chat_cli(
-                        ticket_id=ticket_id,
-                        project_id=project.id,
-                        conversation_id=conversation_id,
-                        message=message,
-                        session_id=session_id  # None = new session, otherwise resume
-                    )
-                except Exception as e:
-                    logger.error(f"CLI chat error: {e}", exc_info=True)
-
-            thread = threading.Thread(target=run_cli_chat, daemon=True)
-            thread.start()
+            from tasks.dispatch import dispatch_ticket_chat_cli
+            dispatch_ticket_chat_cli(
+                ticket_id=ticket_id,
+                project_id=project.id,
+                conversation_id=conversation_id,
+                message=message,
+                session_id=session_id or ''
+            )
 
             return JsonResponse({
                 'success': True,
@@ -3853,6 +3858,144 @@ def restart_ticket_queue_api(request, project_id, ticket_id):
             'success': False,
             'error': str(e)
         }, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def discard_ticket_changes_api(request, project_id, ticket_id):
+    """
+    Discard all changes for a ticket: stop & delete sandbox, archive GitHub branch,
+    delete logs, and reset ticket state so it can be re-executed from scratch.
+    """
+    import requests as http_requests
+    from development.models import Sandbox
+    from projects.models import TicketLog
+    from accounts.models import GitHubToken
+    from codebase_index.models import IndexedRepository
+
+    project = get_object_or_404(Project, project_id=project_id)
+    ticket = get_object_or_404(ProjectTicket, id=ticket_id, project=project)
+
+    if not project.can_user_manage_tickets(request.user):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    # Block if currently executing — must cancel or stop first
+    if ticket.queue_status == 'executing':
+        return JsonResponse({
+            'success': False,
+            'error': 'Ticket is currently executing. Cancel or stop it first.'
+        }, status=400)
+
+    errors = []
+
+    # 1. Stop & delete sandboxes
+    try:
+        sandboxes = Sandbox.objects.filter(
+            mags_workspace_id__startswith=f'{ticket_id}-',
+            workspace_type='ticket',
+        )
+        for sandbox in sandboxes:
+            if sandbox.mags_workspace_id:
+                try:
+                    from factory.mags import _stop_workspace_job
+                    from mags import Mags
+                    client = Mags()
+                    _stop_workspace_job(client, sandbox.mags_workspace_id)
+                except Exception as e:
+                    logger.warning(f"[discard] Failed to stop workspace {sandbox.mags_workspace_id}: {e}")
+        deleted_count = sandboxes.delete()[0]
+        logger.info(f"[discard] Deleted {deleted_count} sandbox records for ticket {ticket_id}")
+    except Exception as e:
+        logger.error(f"[discard] Error cleaning up sandboxes for ticket {ticket_id}: {e}", exc_info=True)
+        errors.append(f"Sandbox cleanup error: {str(e)[:100]}")
+
+    # 2. Archive GitHub branch (best-effort)
+    if ticket.github_branch:
+        try:
+            github_token_obj = GitHubToken.objects.filter(user=request.user).first()
+            indexed_repo = IndexedRepository.objects.filter(project=project).first()
+
+            if github_token_obj and indexed_repo:
+                token = github_token_obj.access_token
+                owner = indexed_repo.github_owner
+                repo_name = indexed_repo.github_repo_name
+                branch = ticket.github_branch
+                headers = {
+                    'Authorization': f'token {token}',
+                    'Accept': 'application/vnd.github.v3+json',
+                }
+
+                # Get branch SHA
+                ref_resp = http_requests.get(
+                    f'https://api.github.com/repos/{owner}/{repo_name}/git/refs/heads/{branch}',
+                    headers=headers,
+                    timeout=10,
+                )
+
+                if ref_resp.status_code == 200:
+                    sha = ref_resp.json()['object']['sha']
+
+                    # Create archive ref
+                    archive_branch = f'__archive/{branch}'
+                    http_requests.post(
+                        f'https://api.github.com/repos/{owner}/{repo_name}/git/refs',
+                        headers=headers,
+                        json={'ref': f'refs/heads/{archive_branch}', 'sha': sha},
+                        timeout=10,
+                    )
+                    logger.info(f"[discard] Archived branch {branch} -> {archive_branch}")
+
+                    # Delete original branch
+                    http_requests.delete(
+                        f'https://api.github.com/repos/{owner}/{repo_name}/git/refs/heads/{branch}',
+                        headers=headers,
+                        timeout=10,
+                    )
+                    logger.info(f"[discard] Deleted original branch {branch}")
+                else:
+                    logger.info(f"[discard] Branch {branch} not found on remote (status={ref_resp.status_code}), skipping archive")
+            else:
+                logger.info(f"[discard] No GitHub token or repo configured, skipping branch archive")
+        except Exception as e:
+            logger.warning(f"[discard] Error archiving branch for ticket {ticket_id}: {e}", exc_info=True)
+            errors.append(f"Branch archive error: {str(e)[:100]}")
+
+    # 3. Delete ticket logs
+    try:
+        log_count = TicketLog.objects.filter(ticket=ticket).delete()[0]
+        logger.info(f"[discard] Deleted {log_count} log records for ticket {ticket_id}")
+    except Exception as e:
+        logger.error(f"[discard] Error deleting logs for ticket {ticket_id}: {e}", exc_info=True)
+        errors.append(f"Log cleanup error: {str(e)[:100]}")
+
+    # 4. Reset ticket state
+    try:
+        ticket.status = 'open'
+        ticket.github_branch = ''
+        ticket.github_commit_sha = ''
+        ticket.github_merge_status = ''
+        ticket.queue_status = 'none'
+        ticket.queued_at = None
+        ticket.queue_task_id = None
+        ticket.save()
+        logger.info(f"[discard] Reset ticket {ticket_id} to open state")
+    except Exception as e:
+        logger.error(f"[discard] Error resetting ticket {ticket_id}: {e}", exc_info=True)
+        errors.append(f"Ticket reset error: {str(e)[:100]}")
+
+    if errors:
+        return JsonResponse({
+            'success': True,
+            'message': 'Ticket changes discarded with some warnings',
+            'warnings': errors,
+            'ticket_id': ticket_id,
+        })
+
+    return JsonResponse({
+        'success': True,
+        'message': 'Ticket changes discarded successfully',
+        'ticket_id': ticket_id,
+    })
 
 
 @login_required
@@ -5908,3 +6051,66 @@ fi
             'success': False,
             'error': f'Failed to provision workspace: {str(e)}'
         }, status=500)
+
+
+@login_required
+def project_agent_events_api(request, project_id):
+    """API endpoint to fetch agent events for a project."""
+    project = get_object_or_404(Project, project_id=project_id)
+    if not project.can_user_access(request.user):
+        return JsonResponse({'error': 'Permission denied'}, status=403)
+
+    from orchestrator.models import AgentEvent
+
+    events_qs = AgentEvent.objects.filter(
+        agent_run__project=project
+    ).exclude(
+        agent_run__run_type='direct_response'
+    ).select_related('agent_run', 'ticket_execution').order_by('-created_at')
+
+    # Filter by category
+    event_filter = request.GET.get('filter', 'all')
+    if event_filter == 'tickets':
+        events_qs = events_qs.filter(event_type__in=[
+            'ticket_dispatched', 'ticket_started', 'ticket_progress',
+            'ticket_completed', 'ticket_failed', 'ticket_blocked',
+            'project_ticket_completed', 'project_ticket_failed', 'project_ticket_blocked',
+        ])
+    elif event_filter == 'interactions':
+        events_qs = events_qs.filter(event_type__in=[
+            'user_question', 'user_response', 'env_var_needed', 'env_var_created',
+        ])
+    elif event_filter == 'errors':
+        events_qs = events_qs.filter(event_type__in=[
+            'ticket_failed', 'run_failed', 'project_ticket_failed',
+            'ticket_blocked', 'project_ticket_blocked', 'bug_reported',
+        ])
+
+    events_qs = events_qs[:100]
+
+    events_data = []
+    for ev in events_qs:
+        event_dict = {
+            'id': str(ev.id),
+            'event_type': ev.event_type,
+            'payload': ev.payload,
+            'requires_user_action': ev.requires_user_action,
+            'created_at': ev.created_at.isoformat(),
+            'ticket_execution_id': str(ev.ticket_execution_id) if ev.ticket_execution_id else None,
+        }
+        if ev.agent_run:
+            event_dict['agent_run'] = {
+                'id': str(ev.agent_run.id),
+                'run_type': ev.agent_run.run_type,
+                'status': ev.agent_run.status,
+                'trigger_message': ev.agent_run.trigger_message[:200] if ev.agent_run.trigger_message else '',
+            }
+        if ev.ticket_execution:
+            event_dict['ticket_execution'] = {
+                'id': str(ev.ticket_execution.id),
+                'title': ev.ticket_execution.title,
+                'status': ev.ticket_execution.status,
+            }
+        events_data.append(event_dict)
+
+    return JsonResponse({'events': events_data})

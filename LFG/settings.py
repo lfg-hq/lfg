@@ -26,14 +26,14 @@ CSRF_TRUSTED_ORIGINS = [
     'http://localhost:5173',
     'http://localhost:5174',
     'https://dev-rocks.lfg.run',
-    'https://18b0-2607-fea8-55dc-c800-45f7-6cf0-b9bf-2863.ngrok-free.app'
+    'https://b862-2607-fea8-55dc-c800-e4f5-6fb4-a521-52c7.ngrok-free.app'
 ]
 ALLOWED_HOSTS = [
     'lfg.run',
     'www.lfg.run',
     'localhost',
     'dev-rocks.lfg.run',
-    '18b0-2607-fea8-55dc-c800-45f7-6cf0-b9bf-2863.ngrok-free.app'
+    'b862-2607-fea8-55dc-c800-e4f5-6fb4-a521-52c7.ngrok-free.app'
 ]
 
 # LFG API Base URL for CLI callbacks from VMs
@@ -527,6 +527,12 @@ LOGGING = {
         },
     },
 }
+
+# PostgreSQL Provisioning (shared dev server for project databases)
+POSTGRES_PROVISIONING_HOST = os.getenv('POSTGRES_PROVISIONING_HOST', '135.181.37.208')
+POSTGRES_PROVISIONING_PORT = int(os.getenv('POSTGRES_PROVISIONING_PORT', '5433'))
+POSTGRES_PROVISIONING_USER = os.getenv('POSTGRES_PROVISIONING_USER', 'lfg_admin')
+POSTGRES_PROVISIONING_PASSWORD = os.getenv('POSTGRES_PROVISIONING_PASSWORD', 'LFG_t3st_2026!')
 
 # ChromaDB Configuration
 CHROMA_HOST = os.environ.get('CHROMA_HOST', 'localhost')

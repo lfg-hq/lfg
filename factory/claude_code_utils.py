@@ -482,7 +482,21 @@ def check_claude_auth_status(workspace_id: str) -> Dict[str, Any]:
         """
         quick_result = _exec(quick_check_cmd, timeout=15)
         quick_stdout = quick_result.get('stdout', '').strip()
-        logger.info(f"[CLAUDE_AUTH] Quick check result: {quick_stdout}")
+        quick_exit = quick_result.get('exit_code', -1)
+        logger.info(f"[CLAUDE_AUTH] Quick check result: exit_code={quick_exit} stdout={quick_stdout}")
+
+        # If even the quick check timed out, the sandbox is unresponsive.
+        # Return authenticated=False so the caller copies credentials from base
+        # as a precaution (we can't know if creds exist since the check timed out).
+        # But DON'T set token_expired — this isn't an auth issue, it's a sandbox issue.
+        if quick_exit == -1 and not quick_stdout:
+            logger.warning(f"[CLAUDE_AUTH] Quick check timed out — sandbox unresponsive, forcing credential copy")
+            return {
+                'status': 'success',
+                'authenticated': False,
+                'message': 'Sandbox unresponsive (timeout) — credential copy recommended',
+                'sandbox_timeout': True,
+            }
 
         if 'NO_CREDS' in quick_stdout:
             return {
@@ -516,14 +530,21 @@ def check_claude_auth_status(workspace_id: str) -> Dict[str, Any]:
                     'message': 'Claude Code is authenticated',
                 }
 
-            if 'killed' in stdout_lower or exit_code == 137 or exit_code == 124:
-                logger.warning(f"[CLAUDE_AUTH] Claude process was killed, but credentials exist - assuming authenticated")
+            # Timeout or killed — sandbox is slow/overloaded, NOT an auth issue.
+            # Credentials exist and have a token, so assume authenticated.
+            if ('killed' in stdout_lower or exit_code in (137, 124, -1)
+                    or 'timed out' in stdout_lower):
+                logger.warning(
+                    f"[CLAUDE_AUTH] Claude verification timed out or was killed (exit_code={exit_code}), "
+                    f"but credentials exist — assuming authenticated"
+                )
                 return {
                     'status': 'success',
                     'authenticated': True,
-                    'message': 'Claude Code credentials found (verification skipped due to resource limits)',
+                    'message': 'Claude Code credentials found (verification skipped due to timeout/resource limits)',
                 }
 
+            # Explicit auth error keywords — token is truly expired/invalid
             if ('not logged in' in stdout_lower or
                 'authenticate' in stdout_lower or
                 'oauth' in stdout_lower or
@@ -541,15 +562,17 @@ def check_claude_auth_status(workspace_id: str) -> Dict[str, Any]:
                     'token_expired': True,
                 }
 
-            # If exit_code != 0 and we didn't get "hello", credentials are likely invalid
+            # Non-zero exit without explicit auth error — don't delete credentials.
+            # Could be a transient sandbox issue, network blip, etc.
             if exit_code != 0:
-                logger.warning(f"[CLAUDE_AUTH] Verification failed (exit_code={exit_code}), removing stale credentials")
-                _exec("rm -f ~/.claude/.credentials.json", timeout=10)
+                logger.warning(
+                    f"[CLAUDE_AUTH] Verification returned exit_code={exit_code} with no auth error keywords. "
+                    f"Credentials exist — assuming authenticated. stdout: {stdout[:200]}"
+                )
                 return {
                     'status': 'success',
-                    'authenticated': False,
-                    'message': 'Claude Code verification failed. Please reconnect.',
-                    'token_expired': True,
+                    'authenticated': True,
+                    'message': 'Claude Code credentials found (verification inconclusive)',
                 }
 
             logger.warning(f"[CLAUDE_AUTH] Couldn't verify but credentials exist - assuming authenticated")
@@ -574,6 +597,198 @@ def check_claude_auth_status(workspace_id: str) -> Dict[str, Any]:
         }
 
 
+def save_credentials_to_db(workspace_id: str, user_id: int) -> bool:
+    """
+    Read credentials from a workspace and save them to the user's Profile in the DB.
+
+    Args:
+        workspace_id: Mags workspace to read credentials from
+        user_id: Django user ID
+
+    Returns:
+        True if saved successfully, False otherwise
+    """
+    import json as _json
+    from django.utils import timezone
+
+    try:
+        result = run_command(
+            workspace_id=workspace_id,
+            command="cat ~/.claude/.credentials.json 2>/dev/null",
+            timeout=15,
+            with_node_env=False,
+        )
+        creds_content = result.get('stdout', '').strip()
+
+        if not creds_content or result.get('exit_code') != 0:
+            logger.warning(f"[CRED_DB] No credentials file on workspace {workspace_id}")
+            return False
+
+        # Validate JSON
+        _json.loads(creds_content)
+
+        from accounts.models import Profile
+        updated = Profile.objects.filter(user_id=user_id).update(
+            claude_code_credentials=creds_content,
+            claude_code_credentials_updated_at=timezone.now(),
+        )
+        if updated:
+            logger.info(f"[CRED_DB] Saved credentials to DB for user {user_id}")
+            return True
+        else:
+            logger.warning(f"[CRED_DB] No profile found for user {user_id}")
+            return False
+
+    except Exception as e:
+        logger.warning(f"[CRED_DB] Failed to save credentials for user {user_id}: {e}", exc_info=True)
+        return False
+
+
+def load_credentials_from_db(user_id: int, target_ws: str) -> bool:
+    """
+    Load credentials from the user's Profile in the DB and write them to a workspace.
+
+    Args:
+        user_id: Django user ID
+        target_ws: Mags workspace to write credentials to
+
+    Returns:
+        True if loaded and written successfully, False otherwise
+    """
+    import base64
+
+    try:
+        from accounts.models import Profile
+        profile = Profile.objects.filter(user_id=user_id).values_list(
+            'claude_code_credentials', flat=True
+        ).first()
+
+        if not profile:
+            logger.info(f"[CRED_DB] No DB credentials for user {user_id}")
+            return False
+
+        creds_b64 = base64.b64encode(profile.encode()).decode()
+        write_cmd = f'mkdir -p ~/.claude && echo "{creds_b64}" | base64 -d > ~/.claude/.credentials.json'
+        write_result = run_command(
+            workspace_id=target_ws,
+            command=write_cmd,
+            timeout=15,
+            with_node_env=False,
+        )
+
+        if write_result.get('exit_code') != 0:
+            logger.warning(f"[CRED_DB] Failed to write DB credentials to {target_ws}")
+            return False
+
+        logger.info(f"[CRED_DB] Loaded DB credentials onto workspace {target_ws} for user {user_id}")
+        return True
+
+    except Exception as e:
+        logger.warning(f"[CRED_DB] Failed to load credentials for user {user_id}: {e}", exc_info=True)
+        return False
+
+
+def refresh_and_copy_credentials(base_ws: str, target_ws: str, user_id: int = None) -> Dict[str, Any]:
+    """
+    Refresh OAuth credentials on the base workspace, then copy to the target.
+
+    When OAuth tokens expire, they expire on both the base and forked workspaces.
+    Simply copying stale creds from the base doesn't help. This function first runs
+    `claude -p "hello"` on the base workspace to trigger automatic token refresh,
+    then copies the now-valid credentials to the target workspace.
+
+    Args:
+        base_ws: Base workspace overlay name (e.g. "claude-auth-d5f56ff0")
+        target_ws: Target workspace to copy credentials to
+
+    Returns:
+        Dict with 'recovered' (bool) and 'message' (str)
+    """
+    import json as _json
+    import base64
+
+    # DB-first fast path: try loading credentials from DB before hitting the base workspace
+    if user_id:
+        try:
+            if load_credentials_from_db(user_id, target_ws):
+                db_check = check_claude_auth_status(target_ws)
+                if db_check.get('authenticated'):
+                    logger.info(f"[CRED_REFRESH] Auth recovered on {target_ws} using DB credentials")
+                    return {'recovered': True, 'message': 'Recovered using DB credentials'}
+                else:
+                    logger.info(f"[CRED_REFRESH] DB credentials didn't work, falling back to base workspace refresh")
+        except Exception as db_err:
+            logger.warning(f"[CRED_REFRESH] DB credential load failed, continuing with base refresh: {db_err}")
+
+    def _exec(ws, cmd, timeout=15):
+        return run_command(workspace_id=ws, command=cmd, timeout=timeout, with_node_env=False)
+
+    try:
+        # Step 1: Trigger token auto-refresh on the base workspace by running Claude.
+        # This is safe — if the token is already valid it just returns "Hello",
+        # if expired Claude CLI will use the refresh token to get a new access token.
+        logger.info(f"[CRED_REFRESH] Triggering token refresh on base workspace {base_ws}...")
+        refresh_result = _exec(base_ws, """
+            [ -f /etc/profile ] && . /etc/profile
+            [ -f ~/.profile ] && . ~/.profile
+            [ -f ~/.bashrc ] && . ~/.bashrc
+            cd ~
+            timeout 20 claude -p "reply just the word Hello" 2>&1 | head -5
+        """, timeout=30)
+
+        refresh_stdout = refresh_result.get('stdout', '').strip().lower()
+        refresh_exit = refresh_result.get('exit_code', -1)
+        logger.info(f"[CRED_REFRESH] Base refresh result: exit={refresh_exit}, stdout={refresh_stdout[:100]}")
+
+        # If the base refresh itself failed, credentials are truly expired — no point copying
+        if refresh_exit != 0 and 'hello' not in refresh_stdout:
+            # Check for killed/timeout — in that case creds may still be fine
+            if not ('killed' in refresh_stdout or refresh_exit in (137, 124)):
+                logger.warning(f"[CRED_REFRESH] Base workspace token refresh failed — credentials are truly expired")
+                return {
+                    'recovered': False,
+                    'message': 'Base workspace credentials are also expired. Please reconnect.',
+                    'base_expired': True,
+                }
+
+        # Step 2: Read the (now-refreshed) credentials from the base workspace
+        creds_result = _exec(base_ws, "cat ~/.claude/.credentials.json 2>/dev/null", timeout=15)
+        creds_content = creds_result.get('stdout', '').strip()
+
+        if not creds_content or creds_result.get('exit_code') != 0:
+            logger.warning(f"[CRED_REFRESH] No credentials file on base workspace {base_ws}")
+            return {'recovered': False, 'message': 'No credentials file on base workspace'}
+
+        # Validate JSON
+        _json.loads(creds_content)
+
+        # Step 3: Write refreshed credentials to the target workspace
+        logger.info(f"[CRED_REFRESH] Copying refreshed credentials from {base_ws} to {target_ws}")
+        creds_b64 = base64.b64encode(creds_content.encode()).decode()
+        write_cmd = f'mkdir -p ~/.claude && echo "{creds_b64}" | base64 -d > ~/.claude/.credentials.json'
+        write_result = _exec(target_ws, write_cmd, timeout=15)
+
+        if write_result.get('exit_code') != 0:
+            logger.warning(f"[CRED_REFRESH] Failed to write credentials to {target_ws}")
+            return {'recovered': False, 'message': 'Failed to write credentials to target workspace'}
+
+        # Step 4: Verify auth on the target workspace
+        recheck = check_claude_auth_status(target_ws)
+        if recheck.get('authenticated'):
+            logger.info(f"[CRED_REFRESH] Auth recovered on {target_ws} after credential refresh+copy")
+            # Persist refreshed credentials to DB for future use
+            if user_id:
+                save_credentials_to_db(base_ws, user_id)
+            return {'recovered': True, 'message': 'Credentials refreshed and copied successfully'}
+        else:
+            logger.warning(f"[CRED_REFRESH] Auth still failing on {target_ws} after refresh+copy: {recheck}")
+            return {'recovered': False, 'message': 'Auth verification failed after credential copy'}
+
+    except Exception as e:
+        logger.error(f"[CRED_REFRESH] Error during credential refresh: {e}", exc_info=True)
+        return {'recovered': False, 'message': f'Error during credential refresh: {e}'}
+
+
 # ============================================================================
 # Claude Code CLI Execution
 # ============================================================================
@@ -588,6 +803,7 @@ def run_claude_cli(
     poll_callback: Callable = None,
     lfg_env: Dict[str, str] = None,
     project_dir: str = None,
+    user_id: int = None,
 ) -> Dict[str, Any]:
     """
     Run Claude Code CLI with a prompt using Mags SDK native execution.
@@ -607,6 +823,8 @@ def run_claude_cli(
         lfg_env: Dict of LFG environment variables
         project_dir: Project subdirectory name (e.g. "project", "django-app").
                      Used to set ownership for claudeuser.
+        user_id: Optional Django user ID — if provided, loads credentials from DB
+                 into the workspace as part of the startup script (avoids overlay reset issues).
 
     Returns:
         Dict with status, output, session_id, and parsed messages
@@ -659,11 +877,13 @@ def run_claude_cli(
         runner_content = f"""#!/bin/bash
 export HOME=/home/claudeuser
 export PATH=/root/node/current/bin:/root/.npm-global/bin:$PATH
+export npm_config_prefix=/root/.npm-global
+export NPM_CONFIG_PREFIX=/root/.npm-global
 export NPM_CONFIG_CACHE=/home/claudeuser/.npm
 export npm_config_cache=/home/claudeuser/.npm
 umask 000
 source {env_file}
-cd {working_dir}
+cd /home/claudeuser
 {claude_bin_path} -p "$(cat {prompt_file})" {claude_args_str} > {output_file} 2>&1
 CLAUDE_EXIT=$?
 echo "" >> {output_file}
@@ -673,6 +893,26 @@ echo "___CLAUDE_EXIT_CODE=$CLAUDE_EXIT" >> {output_file}
         prompt_b64 = base64.b64encode(prompt.encode('utf-8')).decode('ascii')
         env_b64 = base64.b64encode(lfg_env_exports.encode('utf-8')).decode('ascii') if lfg_env_exports else ""
 
+        # Load DB credentials if user_id provided — embed in startup script
+        # so they're written in the same exec() that checks for them
+        db_creds_inject = ""
+        if user_id:
+            try:
+                from accounts.models import Profile
+                db_creds = Profile.objects.filter(user_id=user_id).values_list(
+                    'claude_code_credentials', flat=True
+                ).first()
+                if db_creds:
+                    creds_b64 = base64.b64encode(db_creds.encode()).decode()
+                    db_creds_inject = f"""
+# Inject credentials from DB (avoids overlay reset losing them)
+mkdir -p /root/.claude
+echo "{creds_b64}" | base64 -d > /root/.claude/.credentials.json
+"""
+                    logger.info(f"[CLAUDE_CLI] Embedded DB credentials in startup script for user {user_id}")
+            except Exception as e:
+                logger.warning(f"[CLAUDE_CLI] Failed to load DB credentials for user {user_id}: {e}")
+
         # Single combined command: write all files + setup user + launch Claude
         # This replaces 3 separate exec() calls with 1.
         start_cmd = f"""export HOME=/root
@@ -680,7 +920,7 @@ echo "___CLAUDE_EXIT_CODE=$CLAUDE_EXIT" >> {output_file}
 # Write prompt and env files via base64 (avoids shell escaping issues)
 echo '{prompt_b64}' | base64 -d > {prompt_file}
 echo '{env_b64}' | base64 -d > {env_file}
-
+{db_creds_inject}
 # Verify credentials exist
 if [ ! -f /root/.claude/.credentials.json ]; then
     echo "ERROR: No credentials found at /root/.claude"
@@ -707,10 +947,23 @@ chown -R $CLAUDE_USER:$CLAUDE_USER $CLAUDE_HOME/.claude
 
 # Set permissions — MUST NOT add group/other write to /root (breaks SSH StrictModes)
 chmod o+rx /root 2>/dev/null || true
-# Pre-create and own the project dir so claudeuser can write to it from the start
+# Create project dir under claudeuser's HOME and symlink from /root so both users see it
 PROJ_DIR="{working_dir}/{project_dir or 'project'}"
-mkdir -p "$PROJ_DIR"
-chown -R $CLAUDE_USER:$CLAUDE_USER "$PROJ_DIR" 2>/dev/null || chmod -R o+rwx "$PROJ_DIR" 2>/dev/null || true
+CLAUDE_PROJ="$CLAUDE_HOME/{project_dir or 'project'}"
+mkdir -p "$CLAUDE_PROJ"
+# If /root/project is a real directory (not a symlink), move its contents first
+if [ -d "$PROJ_DIR" ] && [ ! -L "$PROJ_DIR" ]; then
+    cp -a "$PROJ_DIR/." "$CLAUDE_PROJ/" 2>/dev/null || true
+fi
+chown -R $CLAUDE_USER:$CLAUDE_USER "$CLAUDE_PROJ"
+# Symlink /root/project -> /home/claudeuser/project so root-level git commands still work
+rm -rf "$PROJ_DIR" 2>/dev/null || true
+ln -sf "$CLAUDE_PROJ" "$PROJ_DIR"
+# Mark both paths as safe for git (avoids "dubious ownership" errors)
+git config --global --add safe.directory "$CLAUDE_PROJ" 2>/dev/null || true
+git config --global --add safe.directory "$PROJ_DIR" 2>/dev/null || true
+su -s /bin/sh $CLAUDE_USER -c "git config --global --add safe.directory $CLAUDE_PROJ" 2>/dev/null || true
+su -s /bin/sh $CLAUDE_USER -c "git config --global --add safe.directory $PROJ_DIR" 2>/dev/null || true
 mkdir -p $CLAUDE_HOME/.npm
 chown -R $CLAUDE_USER:$CLAUDE_USER $CLAUDE_HOME/.npm
 chmod 666 {prompt_file} 2>/dev/null || true
@@ -718,8 +971,9 @@ chmod 644 {env_file} 2>/dev/null || true
 chmod o+rx /root/node /root/node/current /root/node/current/bin /root/node/current/lib 2>/dev/null || true
 chmod o+rx /root/node/current/bin/* 2>/dev/null || true
 chmod o+rx $(dirname {claude_bin_path}) {claude_bin_path} 2>/dev/null || true
-chmod o+rx /root/.npm-global /root/.npm-global/bin /root/.npm-global/lib 2>/dev/null || true
-chmod o+rx /root/.npm-global/bin/* 2>/dev/null || true
+# Give claudeuser full access to npm-global so it can install global packages (e.g. yarn)
+chown -R $CLAUDE_USER:$CLAUDE_USER /root/.npm-global 2>/dev/null || chmod -R o+rwx /root/.npm-global 2>/dev/null || true
+chmod -R o+rwx /root/.npm-cache 2>/dev/null || true
 
 # Create output file + write runner script
 touch {output_file}

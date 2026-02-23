@@ -1,0 +1,1147 @@
+/* Styles specific to the Projects module */
+
+/* Main content area offset for sidebar */
+.main-content-with-sidebar {
+    margin-left: 260px;
+    min-height: 100vh;
+    background: var(--body-bg);
+    transition: margin-left 0.2s ease;
+}
+
+.app-container.sidebar-minimized .main-content-with-sidebar {
+    margin-left: 60px;
+}
+
+/* Subtle notification styling - matching settings page */
+.messages {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 1000;
+    max-width: 400px;
+}
+
+.alert {
+    background: rgba(167, 139, 250, 0.1);
+    border: 1px solid rgba(167, 139, 250, 0.3);
+    color: #a78bfa;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    animation: slideIn 0.3s ease-out;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    cursor: pointer;
+}
+
+.alert::before {
+    content: '\f05a';
+    font-family: 'Font Awesome 6 Free';
+    font-weight: 900;
+    font-size: 1rem;
+}
+
+.alert-success {
+    background: rgba(34, 197, 94, 0.1);
+    border-color: rgba(34, 197, 94, 0.3);
+    color: #22c55e;
+}
+
+.alert-success::before {
+    content: '\f058';
+}
+
+.alert-danger,
+.alert-error {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.3);
+    color: #ef4444;
+}
+
+.alert-danger::before,
+.alert-error::before {
+    content: '\f06a';
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* Auto-hide after 5 seconds */
+.alert {
+    animation: slideIn 0.3s ease-out, fadeOut 0.5s ease-out 5s forwards;
+}
+
+@keyframes fadeOut {
+    to {
+        opacity: 0;
+        transform: translateX(100%);
+    }
+}
+
+/* Linear Integration Settings */
+.form-section {
+    margin-top: 2rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.form-section-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    color: var(--text-dark);
+}
+
+.linear-settings {
+    margin-top: 1rem;
+    padding-left: 1.5rem;
+    transition: opacity 0.3s ease, max-height 0.3s ease;
+}
+
+.linear-settings.hidden {
+    display: none;
+}
+
+.form-group label[for="linear-sync-enabled"] {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    font-weight: normal;
+}
+
+.form-group label[for="linear-sync-enabled"] input[type="checkbox"] {
+    margin-right: 0.5rem;
+}
+
+.alert-warning {
+    background-color: #fff3cd;
+    border: 1px solid #ffeaa7;
+    color: #856404;
+    padding: 0.75rem 1rem;
+    border-radius: 0.375rem;
+    margin-top: 1rem;
+}
+
+.alert-warning i {
+    margin-right: 0.5rem;
+}
+
+.alert-warning a {
+    color: #533f03;
+    font-weight: 600;
+}
+
+/* Tab Bar */
+.tab-bar {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 1.5rem;
+}
+
+.tab-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.25rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-light);
+    text-decoration: none;
+    border-bottom: 2px solid transparent;
+    transition: color 0.2s, border-color 0.2s;
+    margin-bottom: -1px;
+}
+
+.tab-item:hover {
+    color: var(--text-color);
+}
+
+.tab-item.active {
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
+    font-weight: 600;
+}
+
+.tab-item i {
+    font-size: 0.85rem;
+}
+
+/* Instant App Status Badges */
+.instant-status-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.15rem 0.55rem;
+    border-radius: 9999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: capitalize;
+    margin-left: 0.5rem;
+}
+
+.instant-status-badge.status-running {
+    background: rgba(34, 197, 94, 0.15);
+    color: #22c55e;
+}
+
+.instant-status-badge.status-building,
+.instant-status-badge.status-gathering {
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+}
+
+.instant-status-badge.status-error {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+}
+
+.instant-status-badge.status-stopped {
+    background: rgba(148, 163, 184, 0.15);
+    color: #94a3b8;
+}
+
+/* Live Indicator */
+.live-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #22c55e;
+    display: inline-block;
+    animation: pulse 2s infinite;
+}
+
+.projects-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 1rem;
+    align-items: start;
+    padding: 2rem 0;
+}
+
+.project-card {
+    position: relative;
+    height: auto;
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+}
+
+.project-card-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.project-icon {
+    font-size: 2rem;
+    margin-right: 0.75rem;
+}
+
+.project-name {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin: 0;
+    word-break: break-word;
+}
+
+.project-description {
+    color: var(--text-light);
+    margin-bottom: 1.5rem;
+    flex-grow: 1;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+}
+
+.project-meta {
+    font-size: 0.875rem;
+    color: var(--text-light);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: auto;
+}
+
+.project-status {
+    padding: 0.25rem 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-transform: capitalize;
+}
+
+.project-status-active {
+    background-color: rgba(52, 211, 153, 0.2);
+    color: var(--success-color);
+}
+
+.project-status-archived {
+    background-color: rgba(148, 163, 184, 0.2);
+    color: var(--text-light);
+}
+
+.project-status-completed {
+    background-color: rgba(96, 165, 250, 0.2);
+    color: var(--info-color);
+}
+
+.project-card-link {
+    display: block;
+    text-decoration: none;
+    color: var(--text-color);
+    padding: 1.5rem;
+    padding-bottom: 0.5rem;
+    transition: all 0.2s ease;
+    cursor: pointer;
+    height: calc(100% - 2.5rem);
+    display: flex;
+    flex-direction: column;
+}
+
+.project-card-link:hover {
+    color: var(--text-color);
+}
+
+.project-card-actions {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    z-index: 10;
+}
+
+.project-card:hover .project-card-actions {
+    opacity: 1;
+}
+
+.dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.dropdown-button {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 0.25rem;
+    color: var(--text-light);
+    transition: color 0.2s ease;
+}
+
+.project-list-actions .dropdown-button {
+    padding: 0.3rem;
+    border-radius: 0.45rem;
+    background: rgba(148, 163, 184, 0.12);
+    border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.project-list-actions .dropdown-button:hover {
+    background: rgba(148, 163, 184, 0.2);
+}
+
+.dropdown-button:hover {
+    color: var(--text-color);
+}
+
+.dropdown-menu {
+    position: absolute;
+    right: 0;
+    top: 100%;
+    background-color: var(--card-bg);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    z-index: 10;
+    min-width: 150px;
+    display: none;
+    border: 1px solid var(--border-color);
+}
+
+.dropdown.active .dropdown-menu {
+    display: block;
+}
+
+.dropdown-item {
+    width: 100%;
+    text-align: left;
+    border: none;
+    background: none;
+    cursor: pointer;
+    padding: 0.5rem 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: background-color 0.2s ease;
+    color: var(--text-color);
+    font-size: 0.9rem;
+    font-family: var(--font-family);
+}
+
+.dropdown-item:hover {
+    background-color: var(--light-bg);
+}
+
+.dropdown-item-danger {
+    color: var(--danger-color);
+}
+
+/* Create Project Form */
+.create-project-form {
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.emoji-picker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.emoji-option {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    background-color: var(--light-bg);
+}
+
+.emoji-option:hover {
+    background-color: rgba(99, 102, 241, 0.1);
+}
+
+.emoji-option.selected {
+    background-color: rgba(99, 102, 241, 0.2);
+    box-shadow: 0 0 0 2px var(--primary-color);
+}
+
+/* Empty state */
+.empty-state {
+    text-align: center;
+    padding: 4rem 1rem;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+/* Illustration */
+.empty-state-illustration {
+    position: relative;
+    margin-bottom: 3rem;
+    height: 180px;
+}
+
+.illustration-rocket {
+    font-size: 6rem;
+    background: linear-gradient(135deg, #a78bfa 0%, #c084fc 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: float 3s ease-in-out infinite;
+    position: relative;
+    z-index: 2;
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-10px); }
+}
+
+.illustration-particles {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 200px;
+    height: 200px;
+}
+
+.particle {
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    background: #a78bfa;
+    border-radius: 50%;
+    opacity: 0;
+    animation: particle-animation 3s infinite;
+}
+
+.particle:nth-child(1) {
+    top: 20%;
+    left: 20%;
+    animation-delay: 0s;
+}
+
+.particle:nth-child(2) {
+    top: 80%;
+    left: 80%;
+    animation-delay: 1s;
+}
+
+.particle:nth-child(3) {
+    top: 80%;
+    left: 20%;
+    animation-delay: 2s;
+}
+
+@keyframes particle-animation {
+    0% {
+        transform: translate(0, 0) scale(0);
+        opacity: 1;
+    }
+    100% {
+        transform: translate(100px, -100px) scale(1.5);
+        opacity: 0;
+    }
+}
+
+.empty-state-title {
+    font-size: 1.75rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+    color: var(--text-color);
+}
+
+.empty-state-text {
+    color: var(--text-light);
+    max-width: 500px;
+    margin: 0 auto 2.5rem;
+    font-size: 1.125rem;
+    line-height: 1.6;
+}
+
+/* Feature items */
+.empty-state-features {
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    margin-bottom: 3rem;
+    flex-wrap: wrap;
+}
+
+.feature-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text-light);
+    font-size: 0.875rem;
+}
+
+.feature-item i {
+    color: #a78bfa;
+    font-size: 1rem;
+}
+
+/* Large button */
+.btn-large {
+    padding: 0.875rem 2rem;
+    font-size: 1rem;
+    font-weight: 600;
+    gap: 0.75rem;
+    box-shadow: 0 4px 14px rgba(167, 139, 250, 0.3);
+    transition: all 0.3s ease;
+}
+
+.btn-large:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(167, 139, 250, 0.4);
+}
+
+/* Project detail page */
+.project-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.large-project-icon {
+    font-size: 3rem;
+    margin-right: 1rem;
+}
+
+.project-header-content {
+    flex-grow: 1;
+}
+
+.project-header-name {
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+}
+
+.project-header-meta {
+    color: var(--text-light);
+    display: flex;
+    gap: 1rem;
+    font-size: 0.875rem;
+}
+
+.project-header-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.project-header-actions .btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Create Project Button */
+.create-project-btn {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+    border: 2px dashed var(--border-color);
+    background-color: rgba(31, 41, 55, 0.5);
+    transition: border-color 0.2s ease, background-color 0.2s ease;
+    text-decoration: none;
+    padding: 0;
+}
+
+.card-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    width: 100%;
+    padding: 2rem;
+}
+
+.create-project-btn:hover {
+    border-color: var(--primary-color);
+    background-color: rgba(99, 102, 241, 0.1);
+    color: var(--text-color);
+}
+
+.create-project-btn-icon {
+    font-size: 2rem;
+    color: var(--primary-color);
+    margin-bottom: 0.75rem;
+}
+
+.create-project-btn-text {
+    font-weight: 500;
+    color: var(--primary-color);
+}
+
+/* Dark theme specific overrides for better visibility */
+.project-description-content {
+    line-height: 1.6;
+}
+
+/* Glow effect for cards on hover in dark mode */
+.card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 0 15px rgba(99, 102, 241, 0.3);
+}
+
+/* Glow effect for cards on hover in dark mode */
+.dark-mode .card:hover {
+    box-shadow: 0 0 15px rgba(147, 151, 255, 0.3);
+}
+
+.project-card-link:hover .project-name {
+    color: var(--primary-color);
+}
+
+.dark-mode .project-card-link:hover .project-name {
+    color: var(--primary-hover);
+}
+
+/* Improved contrast for status badges */
+.project-status {
+    font-weight: 600;
+}
+
+/* Improved button focus styles */
+.btn:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.3);
+}
+
+/* Status badge in select dropdown */
+#project-status {
+    background-color: var(--light-bg);
+    color: var(--text-color);
+    border-color: var(--border-color);
+}
+
+/* Conversation cards */
+.conversations-grid {
+    margin-top: 1rem;
+}
+
+.conversation-card {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    color: var(--text-color);
+}
+
+.conversation-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 0 15px rgba(99, 102, 241, 0.3);
+    color: var(--text-color);
+}
+
+.conversation-icon {
+    font-size: 1.5rem;
+    color: var(--primary-color);
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background-color: rgba(99, 102, 241, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.conversation-content {
+    flex-grow: 1;
+}
+
+.conversation-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.conversation-meta {
+    font-size: 0.75rem;
+    color: var(--text-light);
+    display: flex;
+    gap: 1rem;
+}
+
+.create-conversation-btn {
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    border: 2px dashed var(--border-color);
+    background-color: rgba(31, 41, 55, 0.5);
+}
+
+.create-conversation-btn:hover {
+    border-color: var(--primary-color);
+    background-color: rgba(99, 102, 241, 0.1);
+}
+
+.create-conversation-btn-icon {
+    font-size: 2rem;
+    color: var(--primary-color);
+    margin-bottom: 0.75rem;
+}
+
+.create-conversation-btn-text {
+    font-weight: 500;
+    color: var(--primary-color);
+}
+
+/* List View Styles */
+.project-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.project-list-item {
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 0.5rem;
+    display: flex;
+    position: relative;
+    padding: 0;
+    transition: all 0.3s ease;
+}
+
+.project-list-item:hover {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 15px rgba(99, 102, 241, 0.3);
+}
+
+.project-list-link {
+    flex: 1;
+    display: flex;
+    padding: 1rem 1.25rem;
+    padding-right: 4.75rem;
+    text-decoration: none;
+    color: inherit;
+}
+
+.project-list-main {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    width: 100%;
+}
+
+.project-list-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.project-list-header .project-icon {
+    font-size: 1.5rem;
+}
+
+.project-list-header .project-name {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 0;
+    color: var(--text-color);
+}
+
+.project-stats {
+    display: flex;
+    gap: 2rem;
+}
+
+.stat-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text-light);
+}
+
+.stat-item i {
+    font-size: 0.875rem;
+    color: var(--primary-color);
+}
+
+.stat-value {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.stat-label {
+    font-size: 0.75rem;
+    color: var(--text-light);
+}
+
+.project-list-actions {
+    position: absolute;
+    top: 0.9rem;
+    right: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.project-action-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.35rem 0.65rem;
+    border-radius: 0.55rem;
+    background: rgba(129, 140, 248, 0.18);
+    border: 1px solid rgba(129, 140, 248, 0.35);
+    color: #e0e7ff;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.project-action-button i {
+    font-size: 0.78rem;
+}
+
+.project-action-button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 14px rgba(129, 140, 248, 0.25);
+    background: rgba(129, 140, 248, 0.25);
+    color: #f5f3ff;
+}
+
+.project-action-button-secondary {
+    background: rgba(148, 163, 184, 0.12);
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    color: #d1d5db;
+    box-shadow: none;
+}
+
+.project-action-button-secondary:hover {
+    background: rgba(148, 163, 184, 0.18);
+    color: #f3f4f6;
+}
+
+/* Modal Styles */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.modal-overlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.modal {
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 0.75rem;
+    width: 90%;
+    max-width: 500px;
+    padding: 2rem;
+    position: relative;
+    transform: scale(0.9);
+    transition: transform 0.3s ease;
+}
+
+.modal-overlay.active .modal {
+    transform: scale(1);
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.5rem;
+}
+
+.modal-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin: 0;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    color: var(--text-light);
+    cursor: pointer;
+    font-size: 1.5rem;
+    padding: 0;
+    width: 2rem;
+    height: 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.25rem;
+    transition: background-color 0.2s ease;
+}
+
+.modal-close:hover {
+    background-color: var(--light-bg);
+    color: var(--text-color);
+}
+
+.modal-body .form-group {
+    margin-bottom: 1.5rem;
+}
+
+.modal-body .form-actions {
+    margin-top: 2rem;
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+}
+
+/* Main content with sidebar */
+.main-content-with-sidebar {
+    margin-left: 260px;
+    width: calc(100% - 260px);
+    min-height: 100vh;
+    padding: 2rem 0;
+    transition: margin-left 0.2s ease, width 0.2s ease;
+}
+
+/* Adjust for minimized sidebar */
+.app-container.sidebar-minimized .main-content-with-sidebar {
+    margin-left: 60px;
+    width: calc(100% - 60px);
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+    .main-content-with-sidebar {
+        margin-left: 0;
+        width: 100%;
+    }
+}
+
+/* GitHub Modal Styles */
+.github-connection-info {
+    text-align: center;
+    padding: 2rem 0;
+}
+
+.github-icon {
+    font-size: 3rem;
+    color: var(--primary-color);
+    margin-bottom: 1rem;
+}
+
+.github-connection-info h3 {
+    margin-bottom: 0.5rem;
+    color: var(--text-color);
+}
+
+.github-connection-info p {
+    color: var(--text-light);
+    margin-bottom: 1.5rem;
+}
+
+.github-benefits {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+}
+
+.benefit-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: var(--text-color);
+    font-size: 0.875rem;
+}
+
+.benefit-item i {
+    color: #2dce89;
+    font-size: 1rem;
+}
+
+.github-step {
+    min-height: 300px;
+}
+
+.indexing-info {
+    background-color: var(--light-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 0.5rem;
+    padding: 1rem;
+    margin-top: 1rem;
+}
+
+.indexing-info h4 {
+    margin-bottom: 0.75rem;
+    color: var(--text-color);
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.indexing-info ul {
+    margin: 0;
+    padding-left: 1.25rem;
+    color: var(--text-light);
+    font-size: 0.875rem;
+}
+
+.indexing-info li {
+    margin-bottom: 0.25rem;
+}
+
+/* Codebase Status Indicators */
+.codebase-stat {
+    position: relative;
+}
+
+.codebase-stat.codebase-not-connected {
+    opacity: 0.6;
+}
+
+.codebase-stat.codebase-not-connected .stat-value {
+    color: var(--text-light);
+}
+
+.codebase-status {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    border: 2px solid var(--card-bg);
+}
+
+.codebase-status.status-pending {
+    background-color: #ffc107;
+}
+
+.codebase-status.status-indexing {
+    background-color: #007bff;
+    animation: pulse 2s infinite;
+}
+
+.codebase-status.status-completed {
+    background-color: #28a745;
+}
+
+.codebase-status.status-error {
+    background-color: #dc3545;
+}
+
+@keyframes pulse {
+    0% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+    100% {
+        opacity: 1;
+    }
+}
+
+/* Tooltip for codebase status */
+.codebase-stat[title] {
+    cursor: help;
+}
+
+/* Mobile responsive adjustments for project stats */
+@media (max-width: 768px) {
+    .project-stats {
+        gap: 1rem;
+    }
+    
+    .stat-item {
+        gap: 0.25rem;
+    }
+    
+    .stat-value {
+        font-size: 0.875rem;
+    }
+    
+    .stat-label {
+        font-size: 0.625rem;
+    }
+} 

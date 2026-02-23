@@ -46,13 +46,6 @@
                 <span class="tab-count">{{ project.direct_conversations.all.count }}</span>
             {% endif %}
         </a>
-        <a href="#tickets" class="tab-item" data-section="tickets">
-            <i class="fas fa-tasks"></i>
-            Tickets
-            {% if project.tickets.all.count %}
-                <span class="tab-count">{{ project.tickets.all.count }}</span>
-            {% endif %}
-        </a>
         <a href="#integrations" class="tab-item" data-section="integrations">
             <i class="fas fa-puzzle-piece"></i>
             Integrations
@@ -66,6 +59,11 @@
             {% if instant_apps_count %}
                 <span class="tab-count">{{ instant_apps_count }}</span>
             {% endif %}
+        </a>
+        <a href="#events" class="tab-item" data-section="events">
+            <i class="fas fa-stream"></i>
+            Events
+            {% if events_count %}<span class="tab-count">{{ events_count }}</span>{% endif %}
         </a>
         <a href="#environment" class="tab-item" data-section="environment">
             <i class="fas fa-key"></i>
@@ -476,6 +474,100 @@
             <a href="{% url 'instant_mode' project_id=project.project_id %}" class="btn btn-primary" style="display: inline-flex; align-items: center; gap: 6px;">
                 <i class="fas fa-bolt"></i> <span>Launch Instant Mode</span>
             </a>
+        </div>
+    </div>
+
+    <!-- Events Section -->
+    <div class="project-section" id="events-section">
+        <style>
+            .event-filters { display: flex; gap: 0.5rem; }
+            .event-filter-btn {
+                background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12);
+                color: #999; padding: 0.35rem 0.75rem; border-radius: 6px; font-size: 0.8rem;
+                cursor: pointer; transition: all 0.2s ease;
+            }
+            .event-filter-btn:hover { background: rgba(255,255,255,0.1); color: #ddd; }
+            .event-filter-btn.active {
+                background: rgba(167,139,250,0.15); border-color: rgba(167,139,250,0.4); color: #a78bfa;
+            }
+            .event-timeline {
+                position: relative; padding-left: 2rem; margin-top: 1rem;
+            }
+            .event-timeline::before {
+                content: ''; position: absolute; left: 0.55rem; top: 0; bottom: 0;
+                width: 2px; background: rgba(255,255,255,0.1); border-radius: 1px;
+            }
+            .event-card { position: relative; margin-bottom: 1rem; }
+            .event-dot {
+                position: absolute; left: -1.7rem; top: 0.9rem;
+                width: 12px; height: 12px; border-radius: 50%;
+                border: 2px solid var(--card-bg, #1a1a2e); z-index: 1;
+            }
+            .event-dot-success { background: #34d399; }
+            .event-dot-error { background: #f87171; }
+            .event-dot-warning { background: #fbbf24; }
+            .event-dot-info { background: #60a5fa; }
+            .event-dot-interaction { background: #c084fc; }
+            .event-dot-knowledge { background: #2dd4bf; }
+            .event-content {
+                background: var(--card-bg, #1e1e2e); border: 1px solid rgba(255,255,255,0.08);
+                border-radius: 8px; padding: 0.85rem 1rem; transition: border-color 0.2s ease;
+            }
+            .event-content:hover { border-color: rgba(255,255,255,0.18); }
+            .event-header { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+            .event-badge {
+                font-size: 0.65rem; font-weight: 700; padding: 0.2rem 0.55rem;
+                border-radius: 999px; text-transform: uppercase; letter-spacing: 0.04em;
+            }
+            .event-badge-success { background: rgba(52,211,153,0.15); color: #34d399; }
+            .event-badge-error { background: rgba(248,113,113,0.15); color: #f87171; }
+            .event-badge-warning { background: rgba(251,191,36,0.15); color: #fbbf24; }
+            .event-badge-info { background: rgba(96,165,250,0.15); color: #60a5fa; }
+            .event-badge-interaction { background: rgba(192,132,252,0.15); color: #c084fc; }
+            .event-badge-knowledge { background: rgba(45,212,191,0.15); color: #2dd4bf; }
+            .event-run-type { font-size: 0.75rem; color: #888; }
+            .event-needs-action {
+                font-size: 0.7rem; color: #fbbf24; display: flex; align-items: center; gap: 0.25rem;
+            }
+            .event-time { font-size: 0.75rem; color: #666; margin-left: auto; }
+            .event-summary {
+                margin-top: 0.45rem; font-size: 0.85rem; color: #ccc; line-height: 1.45; word-break: break-word;
+            }
+            .event-trigger-msg {
+                margin-top: 0.35rem; font-size: 0.75rem; color: #777;
+                display: flex; align-items: flex-start; gap: 0.3rem;
+            }
+            .event-trigger-msg i { margin-top: 0.15rem; color: #a78bfa; font-size: 0.6rem; }
+            .event-ticket-link {
+                display: inline-flex; align-items: center; gap: 0.25rem;
+                margin-top: 0.35rem; font-size: 0.75rem; color: #a78bfa; text-decoration: none;
+            }
+            .event-ticket-link:hover { text-decoration: underline; }
+        </style>
+        <div class="section-header">
+            <h2 class="section-title">Agent Events</h2>
+            <div class="event-filters">
+                <button class="event-filter-btn active" data-filter="all">All</button>
+                <button class="event-filter-btn" data-filter="tickets">Tickets</button>
+                <button class="event-filter-btn" data-filter="interactions">Interactions</button>
+                <button class="event-filter-btn" data-filter="errors">Errors</button>
+            </div>
+        </div>
+
+        <div class="event-timeline" id="events-list">
+            <div style="text-align: center; padding: 2rem; color: #888;">
+                <i class="fas fa-spinner fa-spin"></i> Loading events...
+            </div>
+        </div>
+
+        <div class="empty-state" id="events-empty" style="display: none;">
+            <div class="empty-state-icon">
+                <i class="fas fa-stream"></i>
+            </div>
+            <h3 class="empty-state-title">No agent events yet</h3>
+            <div class="empty-state-text">
+                Events will appear here when the orchestrator processes tasks for this project.
+            </div>
         </div>
     </div>
 
@@ -1620,6 +1712,10 @@ document.addEventListener('DOMContentLoaded', function() {
             if (section === 'environment') {
                 loadEnvVars();
             }
+            // Load events when Events tab is clicked
+            if (section === 'events') {
+                loadAgentEvents();
+            }
         });
     });
 });
@@ -2223,5 +2319,148 @@ async function loadInstantApps() {
         console.error('Error loading instant apps:', e);
     }
 }
+
+// ============================================
+// Agent Events
+// ============================================
+
+let currentEventFilter = 'all';
+
+const EVENT_TYPE_COLORS = {
+    // Success - green
+    ticket_completed: 'success', run_completed: 'success', project_ticket_completed: 'success',
+    // Error - red
+    ticket_failed: 'error', run_failed: 'error', project_ticket_failed: 'error',
+    // Warning - amber
+    ticket_blocked: 'warning', project_ticket_blocked: 'warning', bug_reported: 'warning', bug_routed: 'warning',
+    // Info - blue
+    run_started: 'info', plan_created: 'info', ticket_dispatched: 'info', ticket_started: 'info', ticket_progress: 'info',
+    // Interaction - purple
+    user_question: 'interaction', user_response: 'interaction', env_var_needed: 'interaction', env_var_created: 'interaction',
+    // Knowledge - teal
+    knowledge_lookup: 'knowledge', document_created: 'knowledge',
+};
+
+function timeAgo(dateStr) {
+    const now = new Date();
+    const date = new Date(dateStr);
+    const seconds = Math.floor((now - date) / 1000);
+    if (seconds < 60) return 'just now';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `${days}d ago`;
+    return date.toLocaleDateString();
+}
+
+function formatEventType(type) {
+    return type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function summarizePayload(payload) {
+    if (!payload || typeof payload !== 'object') return '';
+    const parts = [];
+    if (payload.reasoning) parts.push(payload.reasoning);
+    else if (payload.message) parts.push(payload.message);
+    else if (payload.title) parts.push(payload.title);
+    else if (payload.question) parts.push(payload.question);
+    else if (payload.error) parts.push(payload.error);
+    if (payload.ticket_title && !parts.some(p => p.includes(payload.ticket_title))) {
+        parts.push(`Ticket: ${payload.ticket_title}`);
+    }
+    if (payload.run_type) parts.push(`Type: ${payload.run_type}`);
+    if (parts.length === 0) {
+        const keys = Object.keys(payload).slice(0, 3);
+        for (const k of keys) {
+            const v = payload[k];
+            if (typeof v === 'string' && v.length < 200) parts.push(`${k}: ${v}`);
+        }
+    }
+    return parts.join(' · ');
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function renderEvent(ev) {
+    const color = EVENT_TYPE_COLORS[ev.event_type] || 'info';
+    const summary = escapeHtml(summarizePayload(ev.payload));
+    const userAction = ev.requires_user_action
+        ? '<span class="event-needs-action"><i class="fas fa-exclamation-circle"></i> Needs response</span>' : '';
+    const runInfo = ev.agent_run
+        ? `<span class="event-run-type">${escapeHtml(formatEventType(ev.agent_run.run_type))}</span>` : '';
+    const ticketLink = ev.ticket_execution_id
+        ? `<a href="#tickets" class="event-ticket-link" onclick="showSection('tickets'); return false;"><i class="fas fa-external-link-alt"></i> View ticket</a>` : '';
+    const trigger = (ev.agent_run && ev.agent_run.trigger_message)
+        ? `<div class="event-trigger-msg"><i class="fas fa-bolt"></i> <span>${escapeHtml(ev.agent_run.trigger_message.substring(0, 120))}${ev.agent_run.trigger_message.length > 120 ? '...' : ''}</span></div>` : '';
+
+    return `
+        <div class="event-card">
+            <div class="event-dot event-dot-${color}"></div>
+            <div class="event-content">
+                <div class="event-header">
+                    <span class="event-badge event-badge-${color}">${formatEventType(ev.event_type)}</span>
+                    ${runInfo}
+                    ${userAction}
+                    <span class="event-time">${timeAgo(ev.created_at)}</span>
+                </div>
+                ${summary ? `<div class="event-summary">${summary}</div>` : ''}
+                ${trigger}
+                ${ticketLink}
+            </div>
+        </div>
+    `;
+}
+
+async function loadAgentEvents(filter) {
+    if (filter) currentEventFilter = filter;
+    const listEl = document.getElementById('events-list');
+    const emptyEl = document.getElementById('events-empty');
+    if (!listEl) return;
+
+    listEl.innerHTML = '<div class="events-loading" style="text-align: center; padding: 2rem; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading events...</div>';
+    emptyEl.style.display = 'none';
+
+    try {
+        let url = `/projects/{{ project.project_id }}/api/agent-events/`;
+        if (currentEventFilter !== 'all') url += `?filter=${currentEventFilter}`;
+        const resp = await fetch(url);
+        const data = await resp.json();
+        const events = data.events || [];
+
+        if (events.length === 0) {
+            listEl.innerHTML = '';
+            emptyEl.style.display = '';
+            return;
+        }
+
+        emptyEl.style.display = 'none';
+        listEl.innerHTML = events.map(renderEvent).join('');
+    } catch (e) {
+        console.error('Error loading agent events:', e);
+        listEl.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-muted);">Failed to load events.</div>';
+    }
+}
+
+// Event filter buttons
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.event-filter-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.event-filter-btn').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            loadAgentEvents(this.dataset.filter);
+        });
+    });
+
+    // Load events tab on click
+    const eventsTab = document.querySelector('[data-section="events"]');
+    if (eventsTab) {
+        eventsTab.addEventListener('click', function() { loadAgentEvents(); });
+    }
+});
 </script>
 {% endblock %}

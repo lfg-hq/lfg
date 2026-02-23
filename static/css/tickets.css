@@ -637,6 +637,93 @@
     background: linear-gradient(135deg, #dc2626, #b91c1c);
 }
 
+/* More menu (three-dot dropdown) */
+.drawer-more-menu {
+    position: relative;
+}
+
+.drawer-more-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    transition: all 0.2s ease;
+}
+
+.drawer-more-btn:hover {
+    color: var(--text-primary);
+    border-color: rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.drawer-more-dropdown {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    min-width: 180px;
+    background: var(--bg-secondary, #1e1e2e);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    padding: 4px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    z-index: 100;
+}
+
+.drawer-more-dropdown.open {
+    display: flex;
+    flex-direction: column;
+}
+
+.drawer-more-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border: none;
+    background: none;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    text-align: left;
+    width: 100%;
+}
+
+.drawer-more-item:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+}
+
+.drawer-more-item:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.drawer-more-item i {
+    width: 14px;
+    text-align: center;
+    font-size: 0.75rem;
+}
+
+.drawer-more-item--danger {
+    color: #ef4444;
+}
+
+.drawer-more-item--danger:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+}
+
 .drawer-tabs {
     display: flex;
     gap: 0;

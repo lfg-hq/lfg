@@ -40,36 +40,73 @@ except ImportError:
 def _get_ticket_workspace(ticket):
     """
     Get the Sandbox for a ticket's CLI workspace.
-    Falls back to any project workspace if ticket has no dedicated sandbox.
+    If the ticket's sandbox is broken (error/stopped), delete it and provision a fresh one.
     Returns (workspace, error_response) — error_response is None on success.
     """
-    # 1. Try ticket's own sandbox by naming convention ({ticket_id}-{uuid8})
+    from factory.mags import (
+        get_latest_claude_auth_workspace_id,
+        workspace_name_for_ticket,
+        workspace_name_for_claude_auth,
+    )
+
+    # 1. Try ticket's own healthy sandbox
     ws = Sandbox.objects.filter(
         mags_workspace_id__startswith=f'{ticket.id}-',
         workspace_type='ticket',
-    ).order_by('-updated_at').first()
+    ).exclude(status__in=['stopped', 'error']).order_by('-updated_at').first()
     if ws:
         return ws, None
 
-    # 2. Fall back: find any ticket-type sandbox for this project
-    ws = Sandbox.objects.filter(
-        project=ticket.project,
+    # 2. Ticket has no healthy sandbox — delete any broken ones and provision fresh
+    broken = Sandbox.objects.filter(
+        mags_workspace_id__startswith=f'{ticket.id}-',
         workspace_type='ticket',
-    ).order_by('-updated_at').first()
-    if ws:
-        return ws, None
-
-    # 3. Last resort: any sandbox for the project
-    ws = Sandbox.objects.filter(
-        project=ticket.project,
-    ).order_by('-updated_at').first()
-    if ws:
-        return ws, None
-
-    return None, JsonResponse(
-        {'error': 'No workspace found. Please run the ticket first to create a workspace.'},
-        status=400
+        status__in=['stopped', 'error'],
     )
+    if broken.exists():
+        logger.info(f"[DEV_SERVER] Deleting {broken.count()} broken sandbox(es) for ticket {ticket.id}")
+        broken.delete()
+
+    # Provision a new workspace
+    user = ticket.project.owner
+    base_ws = get_latest_claude_auth_workspace_id(user.id) or workspace_name_for_claude_auth(user.id)
+    ticket_ws = workspace_name_for_ticket(ticket.id)
+    logger.info(f"[DEV_SERVER] Provisioning new workspace {ticket_ws} from base {base_ws}")
+
+    try:
+        probe_result = run_command(
+            workspace_id=ticket_ws,
+            command='echo "WORKSPACE_READY"',
+            timeout=180,
+            with_node_env=False,
+            base_workspace_id=base_ws,
+        )
+        if 'WORKSPACE_READY' not in probe_result.get('stdout', ''):
+            logger.error(f"[DEV_SERVER] New workspace probe failed: {probe_result}")
+            return None, JsonResponse(
+                {'error': 'Failed to provision a new workspace. Please try again.'},
+                status=500
+            )
+    except Exception as e:
+        logger.error(f"[DEV_SERVER] Workspace provisioning error: {e}", exc_info=True)
+        return None, JsonResponse(
+            {'error': f'Failed to provision workspace: {str(e)}'},
+            status=500
+        )
+
+    # Create sandbox record
+    ws = Sandbox.objects.create(
+        project=ticket.project,
+        user=user,
+        job_id=ticket_ws,
+        workspace_id=ticket_ws,
+        mags_workspace_id=ticket_ws,
+        mags_base_workspace_id=base_ws,
+        workspace_type='ticket',
+        status='ready',
+    )
+    logger.info(f"[DEV_SERVER] New workspace ready: {ticket_ws}")
+    return ws, None
 
 
 def _get_job_request_id(workspace_id):
@@ -122,11 +159,16 @@ def _ensure_code_in_workspace(workspace, project, user, ticket=None, send_progre
         if send_progress:
             send_workspace_progress(project_id, step, message, extra_data=extra_data)
 
-    # Determine target branch: ticket branch > lfg-agent (default)
-    target_branch = 'lfg-agent'
+    # Determine target branch: saved ticket branch > derived ticket branch > lfg-agent
     if ticket and ticket.github_branch:
         target_branch = ticket.github_branch
         logger.info(f"[CODE_SETUP] Using ticket branch: {target_branch}")
+    elif ticket:
+        target_branch = f'feature/ticket-{ticket.id}'
+        logger.info(f"[CODE_SETUP] No saved branch, using derived: {target_branch}")
+    else:
+        target_branch = 'lfg-agent'
+        logger.info(f"[CODE_SETUP] No ticket context, defaulting to lfg-agent")
 
     # Check if code already exists - use stack-specific file patterns
     progress('checking_workspace', 'Checking workspace structure...')
@@ -338,405 +380,472 @@ fi
             return False, f"Project setup failed: {result.get('stderr', '')[:200]}"
 
 
+def _log_dev_server_error(ticket_id, error_msg):
+    """Log a dev server error to the ticket's action stream so the agent can see it."""
+    try:
+        log_entry = TicketLog.objects.create(
+            ticket_id=ticket_id,
+            log_type='error',
+            command='Dev Server',
+            explanation='Dev server preview failed',
+            output=error_msg[:2000],
+        )
+        send_ticket_log_notification(ticket_id, {
+            'id': log_entry.id,
+            'log_type': log_entry.log_type,
+            'command': log_entry.command,
+            'explanation': log_entry.explanation,
+            'output': log_entry.output,
+            'created_at': log_entry.created_at.isoformat(),
+        })
+    except Exception as e:
+        logger.warning(f"[DEV_SERVER] Failed to log error to ticket {ticket_id}: {e}")
+
+
+def start_dev_server_core(ticket, user):
+    """
+    Start dev server for a ticket. No HTTP request dependency.
+
+    Args:
+        ticket: ProjectTicket instance (with project already selected)
+        user: User instance (project owner)
+
+    Returns:
+        dict with keys: success, url, pid, workspace_id, error, message, auto_fix, status_code
+    """
+    project = ticket.project
+    ticket_id = ticket.id
+
+    # Check if Mags is available
+    if not mags_available:
+        return {
+            'success': False,
+            'error': 'Workspace service is not available. Please check configuration.',
+            'status_code': 503,
+        }
+
+    # Get the Sandbox for this ticket
+    sandbox, err_resp = _get_ticket_workspace(ticket)
+    if err_resp:
+        # err_resp is a JsonResponse — extract content for the dict return
+        import json as _json
+        err_body = _json.loads(err_resp.content)
+        return {
+            'success': False,
+            'error': err_body.get('error', 'Workspace provisioning failed'),
+            'status_code': err_resp.status_code,
+        }
+
+    # Ensure workspace job is running
+    workspace_id = sandbox.mags_workspace_id or sandbox.workspace_id
+    job_id = sandbox.mags_job_id or sandbox.job_id
+
+    # Get stack configuration
+    from factory.stack_configs import get_stack_config
+    stack_config = get_stack_config(project.stack, project)
+    project_dir = stack_config['project_dir']
+    workspace_path = f"{MAGS_WORKING_DIR}/{project_dir}"
+
+    logger.info(f"[DEV_SERVER] Starting dev server for ticket {ticket_id}")
+    logger.info(f"[DEV_SERVER] Project stack: {project.stack}, project_dir: {project_dir}")
+    logger.info(f"[DEV_SERVER] Job ID: {job_id}")
+    logger.info(f"[DEV_SERVER] Workspace path: {workspace_path}")
+
+    project_id = str(project.project_id)
+
+    # If this is the ticket's own workspace (code already built by Claude),
+    # skip the heavy code setup. Only run it for non-ticket workspaces.
+    sandbox_ws_id = sandbox.mags_workspace_id or sandbox.workspace_id
+    is_ticket_workspace = (
+        sandbox.workspace_type == 'ticket' and
+        sandbox_ws_id and str(sandbox_ws_id).startswith(f'{ticket.id}-')
+    )
+
+    if not is_ticket_workspace:
+        # Step 0: Ensure code exists in workspace and is on correct branch
+        logger.info(f"[DEV_SERVER] Non-ticket workspace, running code setup...")
+        code_success, code_message = _ensure_code_in_workspace(sandbox, project, user, ticket=ticket)
+        logger.info(f"[DEV_SERVER] Code setup result: {code_success}, {code_message}")
+
+        if not code_success:
+            send_workspace_progress(project_id, 'error', f'Failed to set up code: {code_message}', error=code_message)
+            _log_dev_server_error(ticket_id, f'Code setup failed: {code_message}')
+            return {
+                'success': False,
+                'error': f'Failed to set up code in workspace: {code_message}',
+                'status_code': 500,
+            }
+
+        # Step 0.5: Run bootstrap script to ensure stack tools are installed
+        bootstrap_script = stack_config.get('bootstrap_script', '')
+        if bootstrap_script and project.stack != 'nextjs':
+            send_workspace_progress(project_id, 'installing_tools', f'Checking/installing {stack_config["name"]} tools...')
+            bootstrap_result = run_command(workspace_id, bootstrap_script, timeout=300)
+            if bootstrap_result.get('exit_code', 0) != 0:
+                logger.warning(f"[DEV_SERVER] Bootstrap warning: {bootstrap_result.get('stderr', '')[:200]}")
+    else:
+        logger.info(f"[DEV_SERVER] Using ticket's own workspace — skipping code setup")
+
+    # Pre-check: verify project directory exists in workspace
+    dir_verify = run_command(workspace_id, f"test -d {workspace_path} && echo DIR_OK || echo DIR_MISSING", timeout=15)
+    if 'DIR_MISSING' in dir_verify.get('stdout', '') or 'DIR_OK' not in dir_verify.get('stdout', ''):
+        logger.warning(f"[DEV_SERVER] Project directory {workspace_path} missing in workspace {workspace_id}, running code setup...")
+        # Code is missing — set it up regardless of workspace type
+        code_success, code_message = _ensure_code_in_workspace(sandbox, project, user, ticket=ticket)
+        logger.info(f"[DEV_SERVER] Code setup result: {code_success}, {code_message}")
+
+        if not code_success:
+            error_msg = f"Failed to set up code in workspace: {code_message}"
+            send_workspace_progress(project_id, 'error', error_msg, error=error_msg)
+            _log_dev_server_error(ticket_id, f'Code setup failed: {code_message}')
+            return {'success': False, 'error': error_msg, 'status_code': 500}
+
+        # Re-check after setup
+        dir_verify2 = run_command(workspace_id, f"test -d {workspace_path} && echo DIR_OK || echo DIR_MISSING", timeout=15)
+        if 'DIR_MISSING' in dir_verify2.get('stdout', '') or 'DIR_OK' not in dir_verify2.get('stdout', ''):
+            logger.error(f"[DEV_SERVER] Project directory still missing after code setup — workspace is broken")
+            sandbox.status = 'error'
+            sandbox.save(update_fields=['status'])
+            error_msg = f"Workspace filesystem is broken — code setup succeeded but files didn't persist."
+            send_workspace_progress(project_id, 'error', error_msg, error=error_msg)
+            _log_dev_server_error(ticket_id, error_msg)
+            return {'success': False, 'error': error_msg, 'status_code': 500}
+
+    # Step 1: Kill existing processes and remove lock files
+    send_workspace_progress(project_id, 'clearing_cache', 'Clearing cache and stopping existing processes...')
+
+    # Build stack-specific cleanup command
+    # Use port 8080 — this is the Mags default proxy port. The URL alias
+    # (*.app.lfg.run) routes to 8080 automatically, so running the dev
+    # server on 8080 means the preview works without custom port mapping.
+    MAGS_PROXY_PORT = 8080
+    default_port = project.custom_default_port or MAGS_PROXY_PORT
+    if project.stack == 'nextjs':
+        cleanup_extras = """
+        npm config set cache {MAGS_WORKING_DIR}/.npm-cache
+        killall -9 node 2>/dev/null || true
+        pkill -9 node 2>/dev/null || true
+        rm -rf .next || true
+        rm -f package-lock.json || true
+        """
+    elif project.stack in ('python-django', 'python-fastapi'):
+        cleanup_extras = """
+        pkill -f 'runserver' 2>/dev/null || true
+        pkill -f 'uvicorn' 2>/dev/null || true
+        rm -rf __pycache__ .pytest_cache || true
+        """
+    elif project.stack == 'go':
+        cleanup_extras = """
+        pkill -f 'go run' 2>/dev/null || true
+        """
+    elif project.stack == 'rust':
+        cleanup_extras = """
+        pkill -f 'cargo run' 2>/dev/null || true
+        """
+    elif project.stack == 'ruby-rails':
+        cleanup_extras = """
+        pkill -f 'rails server' 2>/dev/null || true
+        rm -rf tmp/cache || true
+        """
+    else:
+        cleanup_extras = ""
+
+    cleanup_command = textwrap.dedent(f"""
+        cd {workspace_path}
+
+        echo "Stopping existing processes..."
+        {cleanup_extras}
+
+        # Kill anything on the default port
+        fuser -k -9 {default_port}/tcp 2>/dev/null || true
+
+        # Clean up PID file
+        rm -f .devserver_pid || true
+
+        # Wait for port to be fully released
+        sleep 3
+
+        echo "Cleanup completed"
+    """)
+
+    cleanup_result = run_command(workspace_id, cleanup_command, timeout=60)
+
+    logger.info(f"[CLEANUP] Result: {cleanup_result}")
+    logger.info(f"[CLEANUP] Exit code: {cleanup_result.get('exit_code')}")
+    logger.info(f"[CLEANUP] Stdout: {cleanup_result.get('stdout', '')[:500]}")
+    logger.info(f"[CLEANUP] Stderr: {cleanup_result.get('stderr', '')[:500]}")
+
+    if cleanup_result.get('exit_code') != 0:
+        logger.warning(f"Cleanup had non-zero exit code {cleanup_result.get('exit_code')}: {cleanup_result.get('stderr', '')}")
+
+    # Step 2: Start the dev server in background
+    send_workspace_progress(project_id, 'starting_server', 'Starting development server...')
+
+    # Get the dev command from stack config
+    dev_cmd = stack_config['dev_cmd']
+    # default_port is already set to MAGS_PROXY_PORT (8080) above
+    pre_dev_cmd = stack_config.get('pre_dev_cmd', '')
+
+    # Customize dev command for different stacks
+    if project.stack == 'nextjs':
+        final_dev_cmd = f"npm run dev -- --hostname :: --port {default_port}"
+    elif project.stack == 'astro':
+        final_dev_cmd = f"npx astro dev --host 0.0.0.0 --port {default_port}"
+    elif project.stack in ('python-django', 'python-fastapi'):
+        final_dev_cmd = dev_cmd
+    else:
+        final_dev_cmd = f"PORT={default_port} {dev_cmd}" if dev_cmd else f"echo 'No dev command configured'"
+
+    # Build the full dev command including any pre-setup (e.g., export PATH)
+    if pre_dev_cmd:
+        full_dev_cmd = f"{pre_dev_cmd} && {final_dev_cmd}"
+    else:
+        full_dev_cmd = final_dev_cmd
+
+    start_command = textwrap.dedent(f"""
+        cd {workspace_path}
+
+        # Start dev server in background
+        : > {workspace_path}/dev.log
+        nohup sh -c '{full_dev_cmd}' > {workspace_path}/dev.log 2>&1 &
+        pid=$!
+        echo "$pid" > .devserver_pid
+        echo "PID:$pid"
+
+        # Wait for server to start (Go/Rust need time to compile)
+        sleep 10
+
+        # Check if process is still running
+        if kill -0 "$pid" 2>/dev/null; then
+            echo "Dev server started successfully with PID $pid"
+        else
+            echo "ERROR: Dev server failed to start"
+            echo "=== Last 50 lines of dev.log ==="
+            tail -50 {workspace_path}/dev.log 2>/dev/null || echo "(no log available)"
+            echo "=== End of dev.log ==="
+            exit 1
+        fi
+    """)
+
+    start_result = run_command(workspace_id, start_command, timeout=120)
+
+    logger.info(f"[START] Result: {start_result}")
+    logger.info(f"[START] Exit code: {start_result.get('exit_code')}")
+    logger.info(f"[START] Stdout: {start_result.get('stdout', '')}")
+    logger.info(f"[START] Stderr: {start_result.get('stderr', '')}")
+
+    if start_result.get('exit_code') != 0:
+        stdout = start_result.get('stdout', '')
+        stderr = start_result.get('stderr', '')
+        error_msg = stderr or stdout or 'Unknown error - command exited with non-zero status'
+        logger.error(f"Failed to start dev server (exit {start_result.get('exit_code')}): stdout={stdout}, stderr={stderr}")
+
+        # Extract just the error from dev.log output (between the === markers)
+        dev_log_error = ''
+        if '=== Last' in stdout and '=== End' in stdout:
+            dev_log_error = stdout.split('=== Last')[1].split('===')[1].strip('= \n')
+            if dev_log_error.startswith('of dev.log'):
+                dev_log_error = dev_log_error[len('of dev.log'):].strip('= \n')
+
+        # Pipe the error to the ticket's chat agent so Claude can fix it
+        fix_message = (
+            f"The dev server failed to start with the following error:\n\n"
+            f"```\n{dev_log_error or error_msg[:500]}\n```\n\n"
+            f"Please fix this error so the dev server can run successfully. "
+            f"The dev command is: `{full_dev_cmd}`"
+        )
+        logger.info(f"[DEV_SERVER] Piping server error to ticket chat agent for auto-fix")
+        send_workspace_progress(project_id, 'fixing_error', 'Dev server failed — asking Claude to fix it...')
+
+        try:
+            # Create a system message log entry
+            fix_log = TicketLog.objects.create(
+                ticket=ticket,
+                log_type='user_message',
+                command=fix_message,
+                explanation='Auto-fix request from Preview (dev server failed to start)',
+            )
+            send_ticket_log_notification(ticket.id, {
+                'id': fix_log.id,
+                'log_type': 'user_message',
+                'command': fix_message,
+                'explanation': fix_log.explanation,
+                'output': '',
+                'exit_code': None,
+                'created_at': fix_log.created_at.isoformat()
+            })
+
+            # Trigger Claude CLI chat in background thread
+            import threading
+            from tasks.task_definitions import execute_ticket_chat_cli
+
+            session_id = sandbox.cli_session_id
+
+            def run_auto_fix():
+                try:
+                    execute_ticket_chat_cli(
+                        ticket_id=ticket.id,
+                        project_id=project.id,
+                        conversation_id=ticket.id,
+                        message=fix_message,
+                        session_id=session_id,
+                    )
+                except Exception as e:
+                    logger.error(f"[DEV_SERVER] Auto-fix chat error: {e}", exc_info=True)
+
+            thread = threading.Thread(target=run_auto_fix, daemon=True)
+            thread.start()
+
+        except Exception as e:
+            logger.error(f"[DEV_SERVER] Failed to trigger auto-fix: {e}", exc_info=True)
+
+        return {
+            'success': False,
+            'auto_fix': True,
+            'message': 'Dev server failed to start. Claude is working on a fix...',
+            'error': error_msg[:200],
+            'status_code': 200,
+        }
+
+    # Extract PID from output
+    stdout = start_result.get('stdout', '')
+    pid = None
+    for line in stdout.split('\n'):
+        if 'PID:' in line:
+            pid = line.split('PID:')[1].strip()
+            break
+
+    logger.info(f"Dev server started successfully with PID: {pid}")
+
+    # Get preview URL via Mags HTTP access + stable alias
+    send_workspace_progress(project_id, 'assigning_proxy', 'Getting preview URL...')
+    preview_url = None
+
+    # Step A: Enable HTTP access on the port. Since we run the dev server
+    # on 8080 (the Mags default), the URL alias routes there automatically.
+    # enable_access is still called to ensure the port is open and to
+    # capture the raw proxy URL as a fallback.
+    mags_job_id = sandbox.mags_job_id or sandbox.job_id
+
+    # Attempt 1: use stored mags_job_id (the original request_id)
+    if mags_job_id:
+        try:
+            logger.info(f"[DEV_SERVER] Enabling HTTP access: mags_job_id={mags_job_id}, port={default_port}")
+            raw_url = get_http_proxy_url(mags_job_id, default_port)
+            if raw_url and not raw_url.startswith('http://localhost'):
+                preview_url = raw_url
+                logger.info(f"[DEV_SERVER] enable_access returned URL: {raw_url}")
+        except Exception as e:
+            logger.warning(f"[DEV_SERVER] enable_access failed for job {mags_job_id}: {e}")
+
+    # Attempt 2: resolve a fresh request_id via find_job (handles stale mags_job_id)
+    if not preview_url:
+        try:
+            from factory.mags import _get_mags_client
+            client = _get_mags_client()
+            job = client.find_job(workspace_id)
+            if job:
+                fresh_id = job.get('request_id') or job.get('id')
+                if fresh_id and fresh_id != mags_job_id:
+                    logger.info(f"[DEV_SERVER] Retrying enable_access with fresh request_id={fresh_id}, port={default_port}")
+                    raw_url = get_http_proxy_url(fresh_id, default_port)
+                    if raw_url and not raw_url.startswith('http://localhost'):
+                        preview_url = raw_url
+                    # Save the fresh request_id regardless of URL response
+                    sandbox.mags_job_id = fresh_id
+                    sandbox.save(update_fields=['mags_job_id', 'updated_at'])
+                    logger.info(f"[DEV_SERVER] Updated mags_job_id to {fresh_id}")
+        except Exception as e:
+            logger.warning(f"[DEV_SERVER] Fallback enable_access also failed: {e}")
+
+    # Step B: Create a stable URL alias (uses workspace_id, not request_id).
+    # This maps <subdomain>.app.lfg.run to the workspace's active job.
+    # Always attempt this — it's the primary way to get a working preview URL.
+    alias_url = create_preview_url_alias(workspace_id, project_id)
+    if alias_url:
+        logger.info(f"[DEV_SERVER] Using stable alias URL: {alias_url}")
+        preview_url = alias_url
+
+    if not preview_url:
+        logger.warning(f"[DEV_SERVER] Could not obtain proxy URL, falling back to localhost:{default_port}")
+        preview_url = f'http://localhost:{default_port}'
+
+    # Save proxy_url on the sandbox for future use
+    if preview_url and not preview_url.startswith('http://localhost'):
+        sandbox.proxy_url = preview_url
+        sandbox.save(update_fields=['proxy_url', 'updated_at'])
+
+    # Step C: Ask Claude to whitelist the proxy URL in the project config
+    # (e.g. Vite allowedHosts, Django ALLOWED_HOSTS, etc.)
+    # Run in background so we don't block the response.
+    if preview_url and not preview_url.startswith('http://localhost'):
+        try:
+            from urllib.parse import urlparse
+            proxy_host = urlparse(preview_url).hostname
+            if proxy_host:
+                import threading
+                from tasks.task_definitions import execute_ticket_chat_cli
+
+                whitelist_message = (
+                    f"The dev server preview is being served through a proxy at {preview_url} "
+                    f"(hostname: {proxy_host}). "
+                    f"Please ensure this hostname is whitelisted/allowed in the project configuration "
+                    f"so the server accepts requests from it. For example:\n"
+                    f"- Vite/Astro: add `server.allowedHosts` or `vite.server.allowedHosts` in the config\n"
+                    f"- Django: add to ALLOWED_HOSTS\n"
+                    f"- Next.js: usually no change needed\n\n"
+                    f"Check the project config at {workspace_path} and make the necessary change. "
+                    f"Do NOT restart the server — just update the config file."
+                )
+                whitelist_session_id = sandbox.cli_session_id
+
+                def run_whitelist_fix():
+                    try:
+                        execute_ticket_chat_cli(
+                            ticket_id=ticket.id,
+                            project_id=project.id,
+                            conversation_id=ticket.id,
+                            message=whitelist_message,
+                            session_id=whitelist_session_id,
+                        )
+                    except Exception as e:
+                        logger.warning(f"[DEV_SERVER] Whitelist fix error: {e}")
+
+                thread = threading.Thread(target=run_whitelist_fix, daemon=True)
+                thread.start()
+                logger.info(f"[DEV_SERVER] Started whitelist fix thread for host {proxy_host}")
+        except Exception as e:
+            logger.warning(f"[DEV_SERVER] Could not start whitelist fix: {e}")
+
+    # Send completion notification
+    send_workspace_progress(project_id, 'complete', 'Dev server is ready!', extra_data={'url': preview_url})
+
+    return {
+        'success': True,
+        'message': 'Dev server started successfully',
+        'pid': pid,
+        'workspace_id': sandbox.workspace_id,
+        'url': preview_url,
+    }
+
+
 @csrf_exempt
 @login_required
 @require_http_methods(["POST"])
 def start_dev_server(request, ticket_id):
     """
     Start a development server for the ticket's project using sandbox workspace.
-    This will:
-    1. Get the Sandbox for the project
-    2. Kill any existing npm/node processes and remove lock files
-    3. Start 'npm run dev' via SSH in the sandbox workspace
+    Thin HTTP wrapper around start_dev_server_core().
     """
     try:
-        # Get the ticket
         ticket = ProjectTicket.objects.select_related('project').get(id=ticket_id)
 
-        # Check permissions
         if ticket.project.owner != request.user:
-            return JsonResponse(
-                {'error': 'Permission denied'},
-                status=403
-            )
+            return JsonResponse({'error': 'Permission denied'}, status=403)
 
-        project = ticket.project
-
-        # Check if Mags is available
-        if not mags_available:
-            return JsonResponse(
-                {'error': 'Workspace service is not available. Please check configuration.'},
-                status=503
-            )
-
-        # Get the Sandbox for this ticket
-        sandbox, err_resp = _get_ticket_workspace(ticket)
-        if err_resp:
-            return err_resp
-
-        # Ensure workspace job is running
-        workspace_id = sandbox.mags_workspace_id or sandbox.workspace_id
-        job_id = sandbox.mags_job_id or sandbox.job_id
-
-        # Get stack configuration
-        from factory.stack_configs import get_stack_config
-        stack_config = get_stack_config(project.stack, project)
-        project_dir = stack_config['project_dir']
-        workspace_path = f"{MAGS_WORKING_DIR}/{project_dir}"
-
-        logger.info(f"[DEV_SERVER] Starting dev server for ticket {ticket_id}")
-        logger.info(f"[DEV_SERVER] Project stack: {project.stack}, project_dir: {project_dir}")
-        logger.info(f"[DEV_SERVER] Job ID: {job_id}")
-        logger.info(f"[DEV_SERVER] Workspace path: {workspace_path}")
-
-        project_id = str(project.project_id)
-
-        # If this is the ticket's own workspace (code already built by Claude),
-        # skip the heavy code setup. Only run it for non-ticket workspaces.
-        sandbox_ws_id = sandbox.mags_workspace_id or sandbox.workspace_id
-        is_ticket_workspace = (
-            sandbox.workspace_type == 'ticket' and
-            sandbox_ws_id and str(sandbox_ws_id).startswith(f'{ticket.id}-')
-        )
-
-        if not is_ticket_workspace:
-            # Step 0: Ensure code exists in workspace and is on correct branch
-            logger.info(f"[DEV_SERVER] Non-ticket workspace, running code setup...")
-            code_success, code_message = _ensure_code_in_workspace(sandbox, project, request.user, ticket=ticket)
-            logger.info(f"[DEV_SERVER] Code setup result: {code_success}, {code_message}")
-
-            if not code_success:
-                send_workspace_progress(project_id, 'error', f'Failed to set up code: {code_message}', error=code_message)
-                return JsonResponse(
-                    {'error': f'Failed to set up code in workspace: {code_message}'},
-                    status=500
-                )
-
-            # Step 0.5: Run bootstrap script to ensure stack tools are installed
-            bootstrap_script = stack_config.get('bootstrap_script', '')
-            if bootstrap_script and project.stack != 'nextjs':
-                send_workspace_progress(project_id, 'installing_tools', f'Checking/installing {stack_config["name"]} tools...')
-                bootstrap_result = run_command(workspace_id, bootstrap_script, timeout=300)
-                if bootstrap_result.get('exit_code', 0) != 0:
-                    logger.warning(f"[DEV_SERVER] Bootstrap warning: {bootstrap_result.get('stderr', '')[:200]}")
-        else:
-            logger.info(f"[DEV_SERVER] Using ticket's own workspace — skipping code setup")
-
-        # Step 1: Kill existing processes and remove lock files
-        send_workspace_progress(project_id, 'clearing_cache', 'Clearing cache and stopping existing processes...')
-
-        # Build stack-specific cleanup command
-        # Use port 8080 — this is the Mags default proxy port. The URL alias
-        # (*.app.lfg.run) routes to 8080 automatically, so running the dev
-        # server on 8080 means the preview works without custom port mapping.
-        MAGS_PROXY_PORT = 8080
-        default_port = project.custom_default_port or MAGS_PROXY_PORT
-        if project.stack == 'nextjs':
-            cleanup_extras = """
-            npm config set cache {MAGS_WORKING_DIR}/.npm-cache
-            killall -9 node 2>/dev/null || true
-            pkill -9 node 2>/dev/null || true
-            rm -rf .next || true
-            rm -f package-lock.json || true
-            """
-        elif project.stack in ('python-django', 'python-fastapi'):
-            cleanup_extras = """
-            pkill -f 'runserver' 2>/dev/null || true
-            pkill -f 'uvicorn' 2>/dev/null || true
-            rm -rf __pycache__ .pytest_cache || true
-            """
-        elif project.stack == 'go':
-            cleanup_extras = """
-            pkill -f 'go run' 2>/dev/null || true
-            """
-        elif project.stack == 'rust':
-            cleanup_extras = """
-            pkill -f 'cargo run' 2>/dev/null || true
-            """
-        elif project.stack == 'ruby-rails':
-            cleanup_extras = """
-            pkill -f 'rails server' 2>/dev/null || true
-            rm -rf tmp/cache || true
-            """
-        else:
-            cleanup_extras = ""
-
-        cleanup_command = textwrap.dedent(f"""
-            cd {workspace_path}
-
-            echo "Stopping existing processes..."
-            {cleanup_extras}
-
-            # Kill anything on the default port
-            fuser -k -9 {default_port}/tcp 2>/dev/null || true
-
-            # Clean up PID file
-            rm -f .devserver_pid || true
-
-            # Wait for port to be fully released
-            sleep 3
-
-            echo "Cleanup completed"
-        """)
-
-        cleanup_result = run_command(workspace_id, cleanup_command, timeout=60)
-        
-        logger.info(f"[CLEANUP] Result: {cleanup_result}")
-        logger.info(f"[CLEANUP] Exit code: {cleanup_result.get('exit_code')}")
-        logger.info(f"[CLEANUP] Stdout: {cleanup_result.get('stdout', '')[:500]}")
-        logger.info(f"[CLEANUP] Stderr: {cleanup_result.get('stderr', '')[:500]}")
-
-        if cleanup_result.get('exit_code') != 0:
-            logger.warning(f"Cleanup had non-zero exit code {cleanup_result.get('exit_code')}: {cleanup_result.get('stderr', '')}")
-
-        # Step 2: Start the dev server in background
-        send_workspace_progress(project_id, 'starting_server', 'Starting development server...')
-
-        # Get the dev command from stack config
-        dev_cmd = stack_config['dev_cmd']
-        # default_port is already set to MAGS_PROXY_PORT (8080) above
-        pre_dev_cmd = stack_config.get('pre_dev_cmd', '')
-
-        # Customize dev command for different stacks
-        if project.stack == 'nextjs':
-            final_dev_cmd = f"npm run dev -- --hostname :: --port {default_port}"
-        elif project.stack == 'astro':
-            final_dev_cmd = f"npx astro dev --host 0.0.0.0 --port {default_port}"
-        elif project.stack in ('python-django', 'python-fastapi'):
-            final_dev_cmd = dev_cmd
-        else:
-            final_dev_cmd = f"PORT={default_port} {dev_cmd}" if dev_cmd else f"echo 'No dev command configured'"
-
-        # Build the full dev command including any pre-setup (e.g., export PATH)
-        if pre_dev_cmd:
-            full_dev_cmd = f"{pre_dev_cmd} && {final_dev_cmd}"
-        else:
-            full_dev_cmd = final_dev_cmd
-
-        start_command = textwrap.dedent(f"""
-            cd {workspace_path}
-
-            # Start dev server in background
-            : > {workspace_path}/dev.log
-            nohup sh -c '{full_dev_cmd}' > {workspace_path}/dev.log 2>&1 &
-            pid=$!
-            echo "$pid" > .devserver_pid
-            echo "PID:$pid"
-
-            # Wait for server to start (Go/Rust need time to compile)
-            sleep 10
-
-            # Check if process is still running
-            if kill -0 "$pid" 2>/dev/null; then
-                echo "Dev server started successfully with PID $pid"
-            else
-                echo "ERROR: Dev server failed to start"
-                echo "=== Last 50 lines of dev.log ==="
-                tail -50 {workspace_path}/dev.log 2>/dev/null || echo "(no log available)"
-                echo "=== End of dev.log ==="
-                exit 1
-            fi
-        """)
-
-        start_result = run_command(workspace_id, start_command, timeout=120)
-
-        logger.info(f"[START] Result: {start_result}")
-        logger.info(f"[START] Exit code: {start_result.get('exit_code')}")
-        logger.info(f"[START] Stdout: {start_result.get('stdout', '')}")
-        logger.info(f"[START] Stderr: {start_result.get('stderr', '')}")
-
-        if start_result.get('exit_code') != 0:
-            stdout = start_result.get('stdout', '')
-            stderr = start_result.get('stderr', '')
-            error_msg = stderr or stdout or 'Unknown error - command exited with non-zero status'
-            logger.error(f"Failed to start dev server (exit {start_result.get('exit_code')}): stdout={stdout}, stderr={stderr}")
-
-            # Extract just the error from dev.log output (between the === markers)
-            dev_log_error = ''
-            if '=== Last' in stdout and '=== End' in stdout:
-                dev_log_error = stdout.split('=== Last')[1].split('===')[1].strip('= \n')
-                if dev_log_error.startswith('of dev.log'):
-                    dev_log_error = dev_log_error[len('of dev.log'):].strip('= \n')
-
-            # Pipe the error to the ticket's chat agent so Claude can fix it
-            fix_message = (
-                f"The dev server failed to start with the following error:\n\n"
-                f"```\n{dev_log_error or error_msg[:500]}\n```\n\n"
-                f"Please fix this error so the dev server can run successfully. "
-                f"The dev command is: `{full_dev_cmd}`"
-            )
-            logger.info(f"[DEV_SERVER] Piping server error to ticket chat agent for auto-fix")
-            send_workspace_progress(project_id, 'fixing_error', 'Dev server failed — asking Claude to fix it...')
-
-            try:
-                # Create a system message log entry
-                fix_log = TicketLog.objects.create(
-                    ticket=ticket,
-                    log_type='user_message',
-                    command=fix_message,
-                    explanation='Auto-fix request from Preview (dev server failed to start)',
-                )
-                send_ticket_log_notification(ticket.id, {
-                    'id': fix_log.id,
-                    'log_type': 'user_message',
-                    'command': fix_message,
-                    'explanation': fix_log.explanation,
-                    'output': '',
-                    'exit_code': None,
-                    'created_at': fix_log.created_at.isoformat()
-                })
-
-                # Trigger Claude CLI chat in background thread
-                import threading
-                from tasks.task_definitions import execute_ticket_chat_cli
-
-                session_id = sandbox.cli_session_id
-
-                def run_auto_fix():
-                    try:
-                        execute_ticket_chat_cli(
-                            ticket_id=ticket.id,
-                            project_id=project.id,
-                            conversation_id=ticket.id,
-                            message=fix_message,
-                            session_id=session_id,
-                        )
-                    except Exception as e:
-                        logger.error(f"[DEV_SERVER] Auto-fix chat error: {e}", exc_info=True)
-
-                thread = threading.Thread(target=run_auto_fix, daemon=True)
-                thread.start()
-
-            except Exception as e:
-                logger.error(f"[DEV_SERVER] Failed to trigger auto-fix: {e}", exc_info=True)
-
-            return JsonResponse({
-                'success': False,
-                'auto_fix': True,
-                'message': 'Dev server failed to start. Claude is working on a fix...',
-                'error': error_msg[:200],
-            }, status=200)
-
-        # Extract PID from output
-        stdout = start_result.get('stdout', '')
-        pid = None
-        for line in stdout.split('\n'):
-            if 'PID:' in line:
-                pid = line.split('PID:')[1].strip()
-                break
-
-        logger.info(f"Dev server started successfully with PID: {pid}")
-
-        # Get preview URL via Mags HTTP access + stable alias
-        send_workspace_progress(project_id, 'assigning_proxy', 'Getting preview URL...')
-        preview_url = None
-
-        # Step A: Enable HTTP access on the port. Since we run the dev server
-        # on 8080 (the Mags default), the URL alias routes there automatically.
-        # enable_access is still called to ensure the port is open and to
-        # capture the raw proxy URL as a fallback.
-        mags_job_id = sandbox.mags_job_id or sandbox.job_id
-
-        # Attempt 1: use stored mags_job_id (the original request_id)
-        if mags_job_id:
-            try:
-                logger.info(f"[DEV_SERVER] Enabling HTTP access: mags_job_id={mags_job_id}, port={default_port}")
-                raw_url = get_http_proxy_url(mags_job_id, default_port)
-                if raw_url and not raw_url.startswith('http://localhost'):
-                    preview_url = raw_url
-                    logger.info(f"[DEV_SERVER] enable_access returned URL: {raw_url}")
-            except Exception as e:
-                logger.warning(f"[DEV_SERVER] enable_access failed for job {mags_job_id}: {e}")
-
-        # Attempt 2: resolve a fresh request_id via find_job (handles stale mags_job_id)
-        if not preview_url:
-            try:
-                from factory.mags import _get_mags_client
-                client = _get_mags_client()
-                job = client.find_job(workspace_id)
-                if job:
-                    fresh_id = job.get('request_id') or job.get('id')
-                    if fresh_id and fresh_id != mags_job_id:
-                        logger.info(f"[DEV_SERVER] Retrying enable_access with fresh request_id={fresh_id}, port={default_port}")
-                        raw_url = get_http_proxy_url(fresh_id, default_port)
-                        if raw_url and not raw_url.startswith('http://localhost'):
-                            preview_url = raw_url
-                        # Save the fresh request_id regardless of URL response
-                        sandbox.mags_job_id = fresh_id
-                        sandbox.save(update_fields=['mags_job_id', 'updated_at'])
-                        logger.info(f"[DEV_SERVER] Updated mags_job_id to {fresh_id}")
-            except Exception as e:
-                logger.warning(f"[DEV_SERVER] Fallback enable_access also failed: {e}")
-
-        # Step B: Create a stable URL alias (uses workspace_id, not request_id).
-        # This maps <subdomain>.app.lfg.run to the workspace's active job.
-        # Always attempt this — it's the primary way to get a working preview URL.
-        alias_url = create_preview_url_alias(workspace_id, project_id)
-        if alias_url:
-            logger.info(f"[DEV_SERVER] Using stable alias URL: {alias_url}")
-            preview_url = alias_url
-
-        if not preview_url:
-            logger.warning(f"[DEV_SERVER] Could not obtain proxy URL, falling back to localhost:{default_port}")
-            preview_url = f'http://localhost:{default_port}'
-
-        # Save proxy_url on the sandbox for future use
-        if preview_url and not preview_url.startswith('http://localhost'):
-            sandbox.proxy_url = preview_url
-            sandbox.save(update_fields=['proxy_url', 'updated_at'])
-
-        # Step C: Ask Claude to whitelist the proxy URL in the project config
-        # (e.g. Vite allowedHosts, Django ALLOWED_HOSTS, etc.)
-        # Run in background so we don't block the response.
-        if preview_url and not preview_url.startswith('http://localhost'):
-            try:
-                from urllib.parse import urlparse
-                proxy_host = urlparse(preview_url).hostname
-                if proxy_host:
-                    import threading
-                    from tasks.task_definitions import execute_ticket_chat_cli
-
-                    whitelist_message = (
-                        f"The dev server preview is being served through a proxy at {preview_url} "
-                        f"(hostname: {proxy_host}). "
-                        f"Please ensure this hostname is whitelisted/allowed in the project configuration "
-                        f"so the server accepts requests from it. For example:\n"
-                        f"- Vite/Astro: add `server.allowedHosts` or `vite.server.allowedHosts` in the config\n"
-                        f"- Django: add to ALLOWED_HOSTS\n"
-                        f"- Next.js: usually no change needed\n\n"
-                        f"Check the project config at {workspace_path} and make the necessary change. "
-                        f"Do NOT restart the server — just update the config file."
-                    )
-                    whitelist_session_id = sandbox.cli_session_id
-
-                    def run_whitelist_fix():
-                        try:
-                            execute_ticket_chat_cli(
-                                ticket_id=ticket.id,
-                                project_id=project.id,
-                                conversation_id=ticket.id,
-                                message=whitelist_message,
-                                session_id=whitelist_session_id,
-                            )
-                        except Exception as e:
-                            logger.warning(f"[DEV_SERVER] Whitelist fix error: {e}")
-
-                    thread = threading.Thread(target=run_whitelist_fix, daemon=True)
-                    thread.start()
-                    logger.info(f"[DEV_SERVER] Started whitelist fix thread for host {proxy_host}")
-            except Exception as e:
-                logger.warning(f"[DEV_SERVER] Could not start whitelist fix: {e}")
-
-        # Send completion notification
-        send_workspace_progress(project_id, 'complete', 'Dev server is ready!', extra_data={'url': preview_url})
-
-        return JsonResponse({
-            'success': True,
-            'message': 'Dev server started successfully',
-            'pid': pid,
-            'workspace_id': sandbox.workspace_id,
-            'url': preview_url
-        })
+        result = start_dev_server_core(ticket, request.user)
+        status_code = 200 if result.get('success') else result.get('status_code', 500)
+        return JsonResponse(result, status=status_code)
 
     except ProjectTicket.DoesNotExist:
         return JsonResponse(
@@ -745,6 +854,7 @@ def start_dev_server(request, ticket_id):
         )
     except Exception as e:
         logger.error(f"Error starting dev server: {e}", exc_info=True)
+        _log_dev_server_error(ticket_id, f'Dev server failed: {str(e)}')
         return JsonResponse(
             {'error': str(e)},
             status=500

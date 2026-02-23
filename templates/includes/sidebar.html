@@ -13,28 +13,22 @@
         <div class="project-selector-section">
             {% if current_project %}
             <div class="nav-dropdown-container" id="projectDropdownContainer">
-                <button class="project-dropdown-trigger" id="projectDropdownTrigger" title="{% if current_project %}Project Options{% else %}All Projects{% endif %}">
+                <button class="project-dropdown-trigger" id="projectDropdownTrigger" title="{% if current_project %}Project Options{% else %}Projects{% endif %}">
                     <i class="fas fa-folder{% if current_project %}-open{% endif %}"></i>
-                    <span class="project-name-text">{% if current_project %}{{ current_project.name|truncatechars:18 }}{% else %}All Projects{% endif %}</span>
+                    <span class="project-name-text">{% if current_project %}{{ current_project.name|truncatechars:18 }}{% else %}Projects{% endif %}</span>
                     <i class="fas fa-chevron-down dropdown-arrow"></i>
                 </button>
                 <div class="nav-dropdown" id="projectDropdown">
                     <a href="{% url 'projects:project_list' %}" class="nav-dropdown-item{% if not current_project %} active{% endif %}">
                         <i class="fas fa-th-large"></i>
-                        <span>All Projects</span>
+                        <span>Projects</span>
                     </a>
-                    {% if current_project %}
-                    <a href="{% url 'projects:project_detail' project_id=current_project.project_id %}" class="nav-dropdown-item">
-                        <i class="fas fa-tachometer-alt"></i>
-                        <span>Project Dashboard</span>
-                    </a>
-                    {% endif %}
                 </div>
             </div>
             {% else %}
-            <a href="{% url 'projects:project_list' %}" class="project-dropdown-trigger" title="All Projects">
+            <a href="{% url 'projects:project_list' %}" class="project-dropdown-trigger" title="Projects">
                 <i class="fas fa-folder"></i>
-                <span class="project-name-text">All Projects</span>
+                <span class="project-name-text">Projects</span>
             </a>
             {% endif %}
         </div>
@@ -54,9 +48,9 @@
                 <i class="fas fa-comments"></i>
                 <span class="nav-text">Chat</span>
             </a>
-            <a href="{% url 'projects:project_detail' project_id=current_project.project_id %}" class="nav-link{% if request.resolver_match.url_name == 'project_detail' %} active{% endif %}" title="Project Dashboard">
+            <a href="{% url 'projects:project_detail' project_id=current_project.project_id %}" class="nav-link{% if request.resolver_match.url_name == 'project_detail' %} active{% endif %}" title="Dashboard">
                 <i class="fas fa-tachometer-alt"></i>
-                <span class="nav-text">Project Dashboard</span>
+                <span class="nav-text">Dashboard</span>
             </a>
             <a href="{% url 'projects:project_tickets_list' project_id=current_project.project_id %}" class="nav-link{% if request.resolver_match.url_name == 'project_tickets_list' %} active{% endif %}" title="Tickets">
                 <i class="fas fa-tasks"></i>

@@ -513,6 +513,28 @@ retry_ticket = {
     }
 }
 
+send_ticket_message = {
+    "type": "function",
+    "function": {
+        "name": "send_ticket_message",
+        "description": "Send a follow-up message to an existing ticket's agent session. Use this to ask the agent to fix an error, adjust its approach, or continue work — without restarting from scratch. The message is delivered to the agent's existing conversation context.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "ticket_id": {
+                    "type": "integer",
+                    "description": "The ID of the ticket to message"
+                },
+                "message": {
+                    "type": "string",
+                    "description": "The message to send to the ticket's agent (e.g. 'fix the auth error', 'retry the failing test')"
+                }
+            },
+            "required": ["ticket_id", "message"]
+        }
+    }
+}
+
 schedule_tickets = {
     "type": "function",
     "function": {
@@ -1558,6 +1580,42 @@ generate_design_preview = {
     }
 }
 
+start_ticket_preview = {
+    "type": "function",
+    "function": {
+        "name": "start_ticket_preview",
+        "description": "Start the dev server for a ticket and return the preview URL. The server runs in the ticket's sandbox. Use this to let the user preview work, or to check for build errors after a ticket completes.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "ticket_id": {
+                    "type": "integer",
+                    "description": "The ID of the ticket to preview"
+                }
+            },
+            "required": ["ticket_id"]
+        }
+    }
+}
+
+check_ticket_preview = {
+    "type": "function",
+    "function": {
+        "name": "check_ticket_preview",
+        "description": "Check if a ticket's preview is working. Starts the dev server if needed, then fetches the preview URL and checks for HTTP errors or page errors. Returns the status code, any errors found, and a snippet of the page content. Use this when the user asks to check/verify a ticket's preview, or after asking the ticket agent to fix preview issues.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "ticket_id": {
+                    "type": "integer",
+                    "description": "The ID of the ticket to check"
+                }
+            },
+            "required": ["ticket_id"]
+        }
+    }
+}
+
 # Main tool lists
 tools_code = [get_prd, start_server, \
               get_github_access_token, \
@@ -1597,6 +1655,7 @@ tools_product = [
     queue_ticket_execution,
     schedule_tickets,
     retry_ticket,
+    send_ticket_message,
     get_ticket_execution_log,
     # Codebase
     search_existing_code,
@@ -1604,6 +1663,9 @@ tools_product = [
     ask_codebase,
     # Research
     lookup_technology_specs,
+    # Preview
+    start_ticket_preview,
+    check_ticket_preview,
 ]
 
 tools_turbo_ = [
@@ -1689,6 +1751,56 @@ register_required_env_vars = {
     }
 }
 
+# Tool for setting an environment variable value (OpenAI format)
+set_env_var = {
+    "type": "function",
+    "function": {
+        "name": "set_env_var",
+        "description": "Set the value of an environment variable for the project. Creates if new, updates if exists. Use after provisioning resources (databases, etc.) to store connection strings.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string",
+                    "description": "Environment variable name (e.g., DATABASE_URL)"
+                },
+                "value": {
+                    "type": "string",
+                    "description": "The value to set"
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Description of what this variable is for"
+                },
+                "is_secret": {
+                    "type": "boolean",
+                    "description": "Whether this is a sensitive value that should be masked. Default true."
+                }
+            },
+            "required": ["key", "value"]
+        }
+    }
+}
+
+# Tool for provisioning a PostgreSQL database (OpenAI format)
+provision_postgres_db = {
+    "type": "function",
+    "function": {
+        "name": "provision_postgres_db",
+        "description": "Provision a new PostgreSQL database on the shared dev server. Auto-creates the DB and sets DATABASE_URL in the project's env vars. Use when a project needs a database but DATABASE_URL is missing.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "db_name": {
+                    "type": "string",
+                    "description": "Database name. Auto-generated from project name if not provided."
+                }
+            },
+            "required": []
+        }
+    }
+}
+
 # Tool for agent to create a single ticket (OpenAI format)
 agent_create_ticket = {
     "type": "function",
@@ -1721,6 +1833,14 @@ agent_create_ticket = {
         }
     }
 }
+
+# Append env/provisioning tools to tools_product (defined after the list)
+tools_product.extend([
+    get_project_env_vars,
+    register_required_env_vars,
+    set_env_var,
+    provision_postgres_db,
+])
 
 tools_builder = [
     get_file_list,

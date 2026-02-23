@@ -1,0 +1,31 @@
+{
+  "default_model": "claude_4.5_sonnet",
+  "providers": {
+    "anthropic": {
+      "label": "Claude",
+      "default_model": "claude_4.5_sonnet",
+      "models": [
+        { "key": "claude_4.5_opus",   "provider_model": "claude-opus-4-5-20251101",    "requires_pro": true  },
+        { "key": "claude_4.5_sonnet", "provider_model": "claude-sonnet-4-5-20250929",  "requires_pro": false },
+        { "key": "claude_4.5_haiku",  "provider_model": "claude-haiku-4-5-20251001",   "requires_pro": false }
+      ]
+    },
+    "openai": {
+      "label": "OpenAI",
+      "default_model": "gpt-4o-mini",
+      "models": [
+        { "key": "gpt-4o",      "provider_model": "gpt-4o",      "requires_pro": true  },
+        { "key": "gpt-4o-mini", "provider_model": "gpt-4o-mini", "requires_pro": false }
+      ]
+    },
+    "google": {
+      "label": "Google",
+      "default_model": "gemini_2.5_flash",
+      "models": [
+        { "key": "gemini_2.5_pro",        "provider_model": "gemini-2.5-pro-preview-06-05",          "requires_pro": true  },
+        { "key": "gemini_2.5_flash",      "provider_model": "gemini-2.5-flash-preview-05-20",        "requires_pro": false },
+        { "key": "gemini_2.5_flash_lite", "provider_model": "gemini-2.5-flash-lite-preview-06-17",   "requires_pro": false }
+      ]
+    }
+  }
+}

@@ -34,6 +34,7 @@ MAGS_API_KEY = os.getenv("MAGS_API_KEY", "")
 
 MAGS_WORKING_DIR = "/root"
 MAGS_PROJECT_DIR = "/root/project"
+MAGS_CLAUDE_HOME = "/home/claudeuser"  # claudeuser's HOME — used in prompts to Claude CLI
 
 MAGS_NODE_VERSION = "20.18.0"
 MAGS_NODE_DISTRO = "linux-x64"

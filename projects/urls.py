@@ -111,6 +111,9 @@ urlpatterns = [
     # Ticket restart API (force reset + re-queue)
     path('<str:project_id>/api/tickets/<int:ticket_id>/restart-queue/', views.restart_ticket_queue_api, name='restart_ticket_queue_api'),
 
+    # Ticket discard changes API (delete sandbox, archive branch, clear logs, reset state)
+    path('<str:project_id>/api/tickets/<int:ticket_id>/discard-changes/', views.discard_ticket_changes_api, name='discard_ticket_changes_api'),
+
     # Project queue status API
     path('<str:project_id>/api/queue-status/', views.project_queue_status_api, name='project_queue_status_api'),
 
@@ -136,4 +139,7 @@ urlpatterns = [
 
     # Preview settings API
     path('<str:project_id>/api/preview-ticket/', views.set_preview_ticket_api, name='set_preview_ticket_api'),
+
+    # Agent events API
+    path('<str:project_id>/api/agent-events/', views.project_agent_events_api, name='project_agent_events_api'),
 ]

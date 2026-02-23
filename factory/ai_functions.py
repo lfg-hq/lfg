@@ -634,6 +634,89 @@ async def retry_ticket_tool(function_args, project_id, conversation_id):
         }
 
 
+async def send_ticket_message_tool(function_args, project_id, conversation_id):
+    """Send a follow-up message to an existing ticket's agent session."""
+    logger.info("send_ticket_message_tool called")
+
+    error_response = validate_project_id(project_id)
+    if error_response:
+        return error_response
+
+    ticket_id = function_args.get('ticket_id')
+    message = function_args.get('message')
+
+    if not ticket_id or not message:
+        return {"is_notification": False, "message_to_agent": "Error: ticket_id and message are required"}
+
+    project = await get_project(project_id)
+    if not project:
+        return {"is_notification": False, "message_to_agent": f"Error: Project with ID {project_id} does not exist"}
+
+    if not conversation_id:
+        return {"is_notification": False, "message_to_agent": "Error: conversation_id is required"}
+
+    def _validate_and_prepare():
+        try:
+            ticket = ProjectTicket.objects.get(id=ticket_id, project=project)
+        except ProjectTicket.DoesNotExist:
+            return None, None, None, "Ticket not found"
+
+        # Find active sandbox for this ticket
+        sandbox = Sandbox.objects.filter(
+            mags_workspace_id__startswith=f'{ticket_id}-',
+            workspace_type='ticket'
+        ).exclude(status__in=['stopped', 'error']).order_by('-updated_at').first()
+
+        if not sandbox:
+            return None, None, None, f"No active sandbox found for ticket #{ticket_id}. Use retry_ticket instead to start a fresh execution."
+
+        session_id = sandbox.cli_session_id  # May be None — execute_ticket_chat_cli handles it
+
+        # Log the message as a user_message (mirrors what views do)
+        user_log = TicketLog.objects.create(
+            ticket=ticket,
+            log_type='user_message',
+            command=message,
+            explanation="Message from orchestrator agent",
+        )
+
+        return ticket.id, session_id, user_log, None
+
+    result_ticket_id, session_id, user_log, error = await sync_to_async(_validate_and_prepare)()
+    if error:
+        return {"is_notification": False, "message_to_agent": f"Error: {error}"}
+
+    # Send WebSocket notification so the message appears in the ticket actions UI in real-time
+    await async_send_ticket_log_notification(result_ticket_id, {
+        'id': user_log.id,
+        'log_type': 'user_message',
+        'command': message,
+        'explanation': user_log.explanation,
+        'output': '',
+        'exit_code': None,
+        'created_at': user_log.created_at.isoformat(),
+    })
+
+    # Dispatch chat execution to the executor service via Redis queue
+    from tasks.dispatch import dispatch_ticket_chat_cli
+    dispatch_ticket_chat_cli(
+        ticket_id=result_ticket_id,
+        project_id=project_id,
+        conversation_id=conversation_id,
+        message=message,
+        session_id=session_id or ''
+    )
+
+    return {
+        "is_notification": True,
+        "notification_type": "checklist",
+        "status": "in_progress",
+        "message_to_agent": f"Message sent to ticket #{result_ticket_id} agent. The agent will process it in the background.",
+        "ticket_id": result_ticket_id,
+        "notification_marker": "__NOTIFICATION__"
+    }
+
+
 async def schedule_tickets_tool(function_args, project_id, conversation_id):
     """Dependency-aware ticket scheduling."""
     logger.info("schedule_tickets_tool called")
@@ -687,7 +770,7 @@ async def schedule_tickets_tool(function_args, project_id, conversation_id):
                 except (TypeError, ValueError):
                     continue
                 dep_status = all_statuses.get(dep_id_int)
-                if dep_status != 'done':
+                if dep_status not in ('done', 'review'):
                     unmet.append({'id': dep_id_int, 'status': dep_status or 'not found'})
 
             if unmet:
@@ -844,6 +927,146 @@ async def update_ticket_details_tool(function_args, project_id, conversation_id)
 
 
 # ============================================================================
+# PREVIEW TOOL
+# ============================================================================
+
+async def start_ticket_preview_tool(function_args, project_id, conversation_id):
+    """Start the dev server for a ticket and return the preview URL."""
+    logger.info("start_ticket_preview_tool called")
+
+    ticket_id = function_args.get('ticket_id')
+    if not ticket_id:
+        return {"is_notification": False, "message_to_agent": "Error: ticket_id is required"}
+
+    def _run():
+        from api.dev_server import start_dev_server_core
+
+        try:
+            ticket = ProjectTicket.objects.select_related('project').get(id=ticket_id)
+        except ProjectTicket.DoesNotExist:
+            return {"is_notification": False, "message_to_agent": f"Error: Ticket #{ticket_id} not found"}
+
+        user = ticket.project.owner
+        result = start_dev_server_core(ticket, user)
+        return result
+
+    result = await sync_to_async(_run, thread_sensitive=True)()
+
+    if result.get('success'):
+        url = result.get('url', '')
+        pid = result.get('pid', '')
+        return {
+            "is_notification": False,
+            "message_to_agent": (
+                f"Dev server started for ticket #{ticket_id}. "
+                f"Preview URL: {url} (PID: {pid}). "
+                f"Share this URL with the user so they can preview the work."
+            ),
+        }
+    else:
+        error = result.get('error', 'Unknown error')
+        auto_fix = result.get('auto_fix', False)
+        msg = f"Dev server failed for ticket #{ticket_id}: {error}"
+        if auto_fix:
+            msg += " — the ticket agent is already working on a fix."
+        return {"is_notification": False, "message_to_agent": msg}
+
+
+async def check_ticket_preview_tool(function_args, project_id, conversation_id):
+    """Start the dev server if needed, then fetch the preview URL and report results."""
+    import requests as http_requests
+    logger.info("check_ticket_preview_tool called")
+
+    ticket_id = function_args.get('ticket_id')
+    if not ticket_id:
+        return {"is_notification": False, "message_to_agent": "Error: ticket_id is required"}
+
+    def _run():
+        from api.dev_server import start_dev_server_core
+        from development.models import Sandbox
+
+        try:
+            ticket = ProjectTicket.objects.select_related('project').get(id=ticket_id)
+        except ProjectTicket.DoesNotExist:
+            return f"Error: Ticket #{ticket_id} not found"
+
+        # Find existing preview URL or start the dev server
+        proxy_url = None
+        ticket_sandbox = Sandbox.objects.filter(
+            mags_workspace_id__startswith=f'{ticket_id}-',
+            workspace_type='ticket',
+            proxy_url__isnull=False,
+        ).exclude(proxy_url='').order_by('-updated_at').first()
+
+        if ticket_sandbox:
+            proxy_url = ticket_sandbox.proxy_url
+
+        if not proxy_url:
+            # Start the dev server
+            user = ticket.project.owner
+            result = start_dev_server_core(ticket, user)
+            if result.get('success'):
+                proxy_url = result.get('url')
+            else:
+                return f"Dev server failed to start for ticket #{ticket_id}: {result.get('error', 'unknown')}"
+
+        if not proxy_url:
+            return f"No preview URL available for ticket #{ticket_id}."
+
+        # Fetch the URL and check for errors
+        import time
+        time.sleep(3)  # Give server a moment to be ready
+
+        errors = []
+        try:
+            resp = http_requests.get(proxy_url, timeout=15, allow_redirects=True)
+            status_code = resp.status_code
+            body = resp.text[:2000]
+
+            if status_code >= 400:
+                errors.append(f"HTTP {status_code}")
+
+            # Check for common error patterns in response body
+            error_patterns = [
+                'Internal Server Error', 'Application error',
+                'NEXT_NOT_FOUND', 'MODULE_NOT_FOUND',
+                'This page could not be found',
+                'Cannot find module', 'SyntaxError',
+            ]
+            for pattern in error_patterns:
+                if pattern.lower() in body.lower():
+                    # Extract a snippet around the error
+                    idx = body.lower().index(pattern.lower())
+                    snippet = body[max(0, idx-50):idx+100].strip()
+                    errors.append(f"Page contains error: '{pattern}' — ...{snippet}...")
+                    break
+
+            if errors:
+                return (
+                    f"Preview check for ticket #{ticket_id} at {proxy_url}:\n"
+                    f"Status: {status_code}\n"
+                    f"Errors: {'; '.join(errors)}\n"
+                    f"Page snippet: {body[:500]}"
+                )
+            else:
+                return (
+                    f"Preview check for ticket #{ticket_id} at {proxy_url}:\n"
+                    f"Status: {status_code} OK — preview is working!\n"
+                    f"Page snippet: {body[:300]}"
+                )
+
+        except http_requests.Timeout:
+            return f"Preview check for ticket #{ticket_id}: timeout fetching {proxy_url} (server may still be starting)"
+        except http_requests.ConnectionError as e:
+            return f"Preview check for ticket #{ticket_id}: connection error fetching {proxy_url}: {str(e)[:200]}"
+        except Exception as e:
+            return f"Preview check for ticket #{ticket_id}: error: {str(e)[:200]}"
+
+    result_msg = await sync_to_async(_run, thread_sensitive=True)()
+    return {"is_notification": False, "message_to_agent": result_msg}
+
+
+# ============================================================================
 # MAIN DISPATCHER
 # ============================================================================
 
@@ -932,6 +1155,9 @@ async def app_functions(function_name, function_args, project_id, conversation_i
         case "retry_ticket":
             return await retry_ticket_tool(function_args, project_id, conversation_id)
 
+        case "send_ticket_message":
+            return await send_ticket_message_tool(function_args, project_id, conversation_id)
+
         case "schedule_tickets":
             return await schedule_tickets_tool(function_args, project_id, conversation_id)
 
@@ -967,6 +1193,12 @@ async def app_functions(function_name, function_args, project_id, conversation_i
 
         case "get_project_env_vars":
             return await get_project_env_vars_tool(function_args, project_id, conversation_id)
+
+        case "set_env_var":
+            return await set_env_var_tool(function_args, project_id, conversation_id)
+
+        case "provision_postgres_db":
+            return await provision_postgres_db_tool(function_args, project_id, conversation_id)
 
         case "agent_create_ticket":
             return await agent_create_ticket_tool(function_args, project_id, conversation_id)
@@ -1155,6 +1387,12 @@ async def app_functions(function_name, function_args, project_id, conversation_i
                     "app_id": _app_id,
                 },
             }
+
+        case "start_ticket_preview":
+            return await start_ticket_preview_tool(function_args, project_id, conversation_id)
+
+        case "check_ticket_preview":
+            return await check_ticket_preview_tool(function_args, project_id, conversation_id)
 
         case "ask_sandbox":
             question = function_args.get("question", "")
@@ -4397,6 +4635,188 @@ Please go to Project Settings → Environment tab and provide values for the mis
         "existing_vars": existing_vars,
         "ticket_id": ticket_id,
         "message_to_agent": " ".join(message_parts) if message_parts else "No changes made."
+    }
+
+
+async def set_env_var_tool(function_args, project_id, conversation_id):
+    """
+    Set (create or update) a single environment variable for a project.
+    """
+    from projects.models import Project, ProjectEnvironmentVariable
+    from asgiref.sync import sync_to_async
+
+    key = (function_args.get('key') or '').upper().strip()
+    value = function_args.get('value', '')
+    description = function_args.get('description', '')
+    is_secret = function_args.get('is_secret', True)
+
+    if not key:
+        return {
+            "is_notification": False,
+            "message_to_agent": "No key specified."
+        }
+
+    project = await get_project(project_id)
+    if not project:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Project with ID {project_id} not found."
+        }
+
+    @sync_to_async
+    def _set_var():
+        env_var, created = ProjectEnvironmentVariable.objects.get_or_create(
+            project=project,
+            key=key,
+            defaults={
+                'is_secret': is_secret,
+                'is_required': True,
+                'has_value': False,
+                'description': description,
+            }
+        )
+        env_var.set_value(value)
+        env_var.has_value = True
+        if description:
+            env_var.description = description
+        env_var.save()
+        return created
+
+    created = await _set_var()
+    action = "Created" if created else "Updated"
+    logger.info(f"[SET_ENV_VAR] {action} env var {key} for project {project_id}")
+
+    # Broadcast so the UI env panel refreshes
+    try:
+        from channels.layers import get_channel_layer
+        channel_layer = get_channel_layer()
+        if channel_layer and conversation_id:
+            await channel_layer.group_send(
+                f"conversation_{conversation_id}",
+                {
+                    "type": "ai_response_chunk",
+                    "chunk": "",
+                    "is_final": False,
+                    "is_notification": True,
+                    "notification_type": "env_var_updated",
+                    "key": key,
+                },
+            )
+    except Exception:
+        pass
+
+    masked = value[:4] + "****" if len(value) > 8 else "****"
+    return {
+        "is_notification": True,
+        "notification_type": "env_var_updated",
+        "notification_marker": "__NOTIFICATION__",
+        "key": key,
+        "message_to_agent": f"{action} environment variable {key} (value: {masked})"
+    }
+
+
+async def provision_postgres_db_tool(function_args, project_id, conversation_id):
+    """
+    Provision a new PostgreSQL database on the shared dev server and set DATABASE_URL.
+    """
+    import re
+    import uuid
+    from django.conf import settings as django_settings
+    from asgiref.sync import sync_to_async
+
+    project = await get_project(project_id)
+    if not project:
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Project with ID {project_id} not found."
+        }
+
+    # Generate db name from project slug if not provided
+    db_name = function_args.get('db_name', '').strip()
+    if not db_name:
+        slug = re.sub(r'[^a-z0-9]', '_', (project.name or 'project').lower())
+        slug = re.sub(r'_+', '_', slug).strip('_')[:40]
+        short_id = uuid.uuid4().hex[:6]
+        db_name = f"lfg_{slug}_{short_id}"
+
+    # Validate db_name (only alphanumeric + underscores)
+    if not re.match(r'^[a-z0-9_]+$', db_name):
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Invalid database name: {db_name}. Use only lowercase letters, numbers, and underscores."
+        }
+
+    host = getattr(django_settings, 'POSTGRES_PROVISIONING_HOST', '135.181.37.208')
+    port = getattr(django_settings, 'POSTGRES_PROVISIONING_PORT', 5433)
+    user = getattr(django_settings, 'POSTGRES_PROVISIONING_USER', 'lfg_admin')
+    password = getattr(django_settings, 'POSTGRES_PROVISIONING_PASSWORD', '')
+
+    if not password:
+        return {
+            "is_notification": False,
+            "message_to_agent": "Postgres provisioning credentials not configured. Set POSTGRES_PROVISIONING_PASSWORD in settings."
+        }
+
+    # Create the database
+    import asyncio
+
+    def _create_db():
+        import psycopg2
+        conn = psycopg2.connect(
+            host=host, port=port, user=user, password=password, dbname='postgres'
+        )
+        conn.autocommit = True
+        cur = conn.cursor()
+
+        # Check if DB already exists
+        cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (db_name,))
+        exists = cur.fetchone() is not None
+
+        if not exists:
+            # Use format string for CREATE DATABASE (can't parameterize DDL identifiers)
+            # db_name is already validated via regex above
+            cur.execute(f'CREATE DATABASE "{db_name}"')
+            logger.info(f"[PROVISION_DB] Created database: {db_name}")
+
+        cur.close()
+        conn.close()
+        return exists
+
+    try:
+        already_existed = await asyncio.to_thread(_create_db)
+    except Exception as e:
+        logger.error(f"[PROVISION_DB] Failed to create database: {e}")
+        return {
+            "is_notification": False,
+            "message_to_agent": f"Failed to provision database: {str(e)}"
+        }
+
+    # Build connection string and set DATABASE_URL
+    connection_string = f"postgresql://{user}:{password}@{host}:{port}/{db_name}"
+
+    set_result = await set_env_var_tool(
+        {
+            'key': 'DATABASE_URL',
+            'value': connection_string,
+            'description': f'PostgreSQL connection string for database {db_name}',
+            'is_secret': True,
+        },
+        project_id,
+        conversation_id,
+    )
+
+    status = "already existed" if already_existed else "created"
+    masked_url = f"postgresql://{user}:****@{host}:{port}/{db_name}"
+
+    return {
+        "is_notification": True,
+        "notification_type": "database_provisioned",
+        "notification_marker": "__NOTIFICATION__",
+        "db_name": db_name,
+        "message_to_agent": (
+            f"Database '{db_name}' {status}. "
+            f"DATABASE_URL set to: {masked_url}"
+        )
     }
 
 

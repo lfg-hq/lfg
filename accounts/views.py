@@ -1882,6 +1882,13 @@ def claude_code_submit_code(request):
                 profile.save(update_fields=['claude_code_authenticated'])
                 logger.info(f"[CLAUDE_CODE] Profile saved - claude_code_authenticated=True for user {request.user.id}")
 
+                # Persist credentials to DB for future workspace recovery
+                try:
+                    from factory.claude_code_utils import save_credentials_to_db
+                    save_credentials_to_db(ws_name, request.user.id)
+                except Exception:
+                    logger.warning("[CRED_DB] Post-auth credential save failed", exc_info=True)
+
                 # Clear CLI session IDs for all user's sandboxes to prevent stale session auth
                 from development.models import Sandbox
                 cleared_count = Sandbox.objects.filter(
@@ -2126,6 +2133,13 @@ def claude_code_verify(request):
             # Update profile — no S3 backup needed, overlay auto-persists
             profile.claude_code_authenticated = True
             profile.save(update_fields=['claude_code_authenticated'])
+
+            # Persist credentials to DB for future workspace recovery
+            try:
+                from factory.claude_code_utils import save_credentials_to_db
+                save_credentials_to_db(ws_name, request.user.id)
+            except Exception:
+                logger.warning("[CRED_DB] Post-verify credential save failed", exc_info=True)
 
             # Clear CLI session IDs for all user's sandboxes to prevent stale session auth
             from development.models import Sandbox

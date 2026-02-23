@@ -2253,13 +2253,35 @@ document.addEventListener('DOMContentLoaded', () => {
                 break;
 
             case 'question':
-                // Agent asking user a question — render a question card
-                renderQuestionCard({
-                    question: data.chunk || data.content || '',
-                    options: data.options || [],
-                    context: data.context || '',
-                    ticketExecutionId: data.ticket_execution_id || null,
-                });
+                // Agent asking user a question — render inline in the chat flow
+                {
+                    const question = data.chunk || data.content || '';
+                    const options = data.options || [];
+                    const context = data.context || '';
+
+                    // Build question text with bullet-formatted options
+                    let questionText = '';
+                    if (context) questionText += context + '\n\n';
+                    questionText += question;
+                    if (options.length > 0) {
+                        questionText += '\n\n';
+                        options.forEach(opt => {
+                            questionText += `- ${opt}\n`;
+                        });
+                    }
+
+                    // Find existing streaming bubble or create a new one
+                    const streamingEl = document.querySelector('.orchestrator-streaming .message-content');
+                    if (streamingEl) {
+                        // Append to existing streamed message
+                        const raw = (streamingEl.getAttribute('data-raw-content') || '') + '\n\n' + questionText;
+                        streamingEl.setAttribute('data-raw-content', raw);
+                        streamingEl.innerHTML = marked.parse(raw);
+                    } else {
+                        addMessageToChat('assistant', questionText);
+                    }
+                    scrollToBottom();
+                }
                 break;
 
             case 'status_update':
@@ -2300,11 +2322,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 <span>${label}...</span>
             </div>
         `;
-        const messagesContainer = document.getElementById('messages');
-        if (messagesContainer) {
-            messagesContainer.appendChild(indicator);
-            scrollToBottom();
-        }
+        messageContainer.appendChild(indicator);
+        scrollToBottom();
     }
 
     /**

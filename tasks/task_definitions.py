@@ -72,7 +72,7 @@ from factory.ai_functions import _slugify_project_name
 from factory.mags import (
     get_or_create_workspace_job, run_command,
     workspace_name_for_claude_auth, workspace_name_for_ticket, get_latest_claude_auth_workspace_id,
-    CLAUDE_AUTH_SETUP_SCRIPT, MAGS_PROJECT_DIR, MAGS_WORKING_DIR, MagsAPIError,
+    CLAUDE_AUTH_SETUP_SCRIPT, MAGS_PROJECT_DIR, MAGS_WORKING_DIR, MAGS_CLAUDE_HOME, MagsAPIError,
 )
 from factory.prompts.builder_prompt import get_system_builder_mode
 from factory.ai_tools import tools_builder
@@ -812,7 +812,7 @@ elif [ -d {project_dir} ] && [ "$(ls -A {project_dir} 2>/dev/null)" ]; then
     git remote add origin https://{token}@github.com/{owner}/{repo_name}.git 2>/dev/null || \
         git remote set-url origin https://{token}@github.com/{owner}/{repo_name}.git
     git fetch origin 2>/dev/null || echo "FETCH_SKIPPED (remote may not exist)"
-    git checkout {escaped_branch} 2>/dev/null || git checkout -b {escaped_branch}
+    git checkout {escaped_branch} 2>/dev/null || git checkout -b {escaped_branch} origin/{escaped_branch} 2>/dev/null || git checkout -b {escaped_branch} origin/lfg-agent 2>/dev/null || git checkout -b {escaped_branch}
 else
     echo "Directory doesn't exist, cloning..."
     # Try to clone, handle empty repo case
@@ -820,7 +820,7 @@ else
         cd {project_dir}
         # Check if the repo has any commits
         if git rev-parse HEAD >/dev/null 2>&1; then
-            git checkout {escaped_branch} || git checkout -b {escaped_branch}
+            git checkout {escaped_branch} 2>/dev/null || git checkout -b {escaped_branch} origin/{escaped_branch} 2>/dev/null || git checkout -b {escaped_branch} origin/lfg-agent 2>/dev/null || git checkout -b {escaped_branch}
         else
             echo "Empty repo, initializing with minimal files..."
             git checkout -b main
@@ -1134,14 +1134,8 @@ def merge_feature_to_lfg_agent(token: str, owner: str, repo_name: str, feature_b
                 )
                 if create_response.status_code == 201:
                     logger.info(f"Created lfg-agent branch from {feature_branch} (SHA: {feature_sha[:8]})")
-                    # Also create main branch if it doesn't exist
-                    requests.post(
-                        f'https://api.github.com/repos/{owner}/{repo_name}/git/refs',
-                        headers=headers,
-                        json={'ref': 'refs/heads/main', 'sha': feature_sha},
-                        timeout=10
-                    )
-                    # Branches now point at the same commit — merge is a no-op
+                    # NOTE: Do NOT create/update main from feature SHA — main should remain
+                    # the clean baseline. Only lfg-agent gets feature code merged into it.
                     return {
                         'status': 'success',
                         'message': f'Created lfg-agent from {feature_branch} (identical commits, no merge needed)',
@@ -1555,8 +1549,9 @@ def commit_and_push_changes(job_id: str, branch_name: str, commit_message: str, 
         # Checkout feature branch with proper fallback order:
         # 1. Try existing local branch
         # 2. Try creating from remote tracking branch (origin/feature-branch)
-        # 3. Create new branch from current position (only if remote doesn't exist)
-        f"cd {MAGS_WORKING_DIR}/{project_dir} && (git checkout {escaped_branch} 2>/dev/null || git checkout -b {escaped_branch} origin/{escaped_branch} 2>/dev/null || git checkout -b {escaped_branch}) && echo 'On branch:' && git branch --show-current",
+        # 3. Create from origin/lfg-agent
+        # 4. Last resort: create branch from current HEAD (new repo, no remote branches)
+        f"cd {MAGS_WORKING_DIR}/{project_dir} && (git checkout {escaped_branch} 2>/dev/null || git checkout -b {escaped_branch} origin/{escaped_branch} 2>/dev/null || (git fetch origin lfg-agent 2>/dev/null && git checkout -b {escaped_branch} origin/lfg-agent) 2>/dev/null || git checkout -b {escaped_branch} 2>/dev/null || echo 'BRANCH_CHECKOUT_FAILED') && echo 'On branch:' && git branch --show-current",
         # Check git status (used to decide whether to commit)
         f"cd {MAGS_WORKING_DIR}/{project_dir} && git status --short",
     ]
@@ -1582,10 +1577,16 @@ def commit_and_push_changes(job_id: str, branch_name: str, commit_message: str, 
         )
 
     # Pull with rebase to integrate remote changes (now safe since local changes are committed)
-    push_commands.append(f"cd {MAGS_WORKING_DIR}/{project_dir} && git pull --rebase origin {escaped_branch} 2>/dev/null || true")
+    # If rebase fails (conflict), abort it and force-push our version — the feature branch
+    # is owned by this ticket agent so force-with-lease is safe
+    push_commands.append(
+        f"cd {MAGS_WORKING_DIR}/{project_dir} && "
+        f"(git pull --rebase origin {escaped_branch} 2>/dev/null || "
+        f"(git rebase --abort 2>/dev/null; echo 'REBASE_CONFLICT_ABORTED'))"
+    )
 
-    # Push feature branch to remote
-    push_commands.append(f"cd {MAGS_WORKING_DIR}/{project_dir} && git push -u origin {escaped_branch}")
+    # Push feature branch to remote (use --force-with-lease in case rebase was aborted above)
+    push_commands.append(f"cd {MAGS_WORKING_DIR}/{project_dir} && git push -u origin {escaped_branch} || git push --force-with-lease origin {escaped_branch}")
 
     def _run_and_log(cmd, step_label):
         """Run a single git command and log the result."""
@@ -1628,6 +1629,8 @@ def commit_and_push_changes(job_id: str, branch_name: str, commit_message: str, 
 
         if current_branch != branch_name:
             logger.warning(f"Branch mismatch during commit: expected {branch_name}, on {current_branch}")
+            # Abort — committing on wrong branch would push to wrong ref
+            return {'status': 'error', 'message': f'Branch mismatch: expected {branch_name}, on {current_branch}. Checkout failed.'}
 
         # Phase 2: Commit — only if git status shows actual changes (git diff)
         if changes_detected:
@@ -1692,7 +1695,6 @@ def commit_and_push_changes(job_id: str, branch_name: str, commit_message: str, 
                                 logger.info(f"  ✓ Push succeeded after repo recreation")
                                 branch_setup = (
                                     f"cd {MAGS_WORKING_DIR}/{project_dir} && "
-                                    f"git push origin {shlex.quote(branch_name)}:main 2>/dev/null; "
                                     f"git push origin {shlex.quote(branch_name)}:lfg-agent 2>/dev/null; "
                                     f"echo 'BRANCHES_CREATED'"
                                 )
@@ -2273,7 +2275,7 @@ Action required: Check workspace configuration and GitHub access
                 Error: {git_setup_error['message']}
 
                 🔧 BEFORE implementing the ticket, you MUST fix this git issue:
-                1. Check the current git status: cd {MAGS_WORKING_DIR}/{project_dir} && git status
+                1. Check the current git status: cd {MAGS_CLAUDE_HOME}/{project_dir} && git status
                 2. If there are merge conflicts, resolve them:
                 - Check conflicted files
                 - Resolve conflicts by editing files
@@ -2585,6 +2587,24 @@ Action required: Check workspace configuration and GitHub access
             # Broadcast status change to ticket logs WebSocket (clears queue indicator)
             broadcast_ticket_status_change(ticket_id, 'review', 'none')
 
+            # Bridge to orchestrator events (so Events page shows it + orchestrator can react)
+            try:
+                from orchestrator.events import publish_ticket_event_sync
+                publish_ticket_event_sync(ticket_id, 'project_ticket_completed', {
+                    'ticket_id': ticket_id,
+                    'ticket_title': ticket.name,
+                    'result_summary': f"Completed in {execution_time:.1f}s. Files: {len(files_created)}.",
+                })
+                # Enqueue async preview smoke-test
+                from django_q.tasks import async_task as q_async_task
+                q_async_task(
+                    "orchestrator.tasks.check_ticket_preview",
+                    ticket_id,
+                    task_name=f"preview-check-{ticket_id}",
+                )
+            except Exception as bridge_err:
+                logger.debug(f"[FINALIZE] Orchestrator bridge skipped: {bridge_err}")
+
             # Clear any cancellation flag (may have been set but we finished anyway)
             clear_ticket_cancellation_flag(ticket_id)
 
@@ -2670,6 +2690,18 @@ Action required: Review error and retry or manually fix
             # Broadcast status change to ticket logs WebSocket (clears queue indicator)
             broadcast_ticket_status_change(ticket_id, 'blocked', 'none')
 
+            # Bridge to orchestrator events
+            try:
+                from orchestrator.events import publish_ticket_event_sync
+                publish_ticket_event_sync(ticket_id, 'project_ticket_failed', {
+                    'ticket_id': ticket_id,
+                    'ticket_title': ticket.name,
+                    'error': error_reason,
+                    'failure_type': failure_type,
+                })
+            except Exception as bridge_err:
+                logger.debug(f"[FINALIZE] Orchestrator bridge skipped: {bridge_err}")
+
             logger.info(f"{'='*80}\n[TASK END] FAILED - Ticket #{ticket_id}\n{'='*80}\n")
 
             # Clear any cancellation flag
@@ -2738,6 +2770,18 @@ Action required: Check logs for detailed error trace and retry
             clear_ticket_cancellation_flag(ticket_id)
         except Exception:
             pass  # Don't fail on cleanup
+
+        # Bridge to orchestrator events
+        try:
+            from orchestrator.events import publish_ticket_event_sync
+            publish_ticket_event_sync(ticket_id, 'project_ticket_failed', {
+                'ticket_id': ticket_id,
+                'ticket_title': ticket.name if 'ticket' in locals() else f'Ticket #{ticket_id}',
+                'error': error_msg,
+                'failure_type': 'exception',
+            })
+        except Exception:
+            pass
 
         return {
             "status": "error",
@@ -2885,10 +2929,11 @@ Using Claude Code CLI mode
 
         base_ws = get_latest_claude_auth_workspace_id(user.id) or workspace_name_for_claude_auth(user.id)
         # Reuse existing ticket sandbox if available, otherwise create a fresh one
+        # Exclude dead/error sandboxes to avoid re-probing known-dead workspaces
         prev_sandbox = Sandbox.objects.filter(
             mags_workspace_id__startswith=f'{ticket.id}-',
             workspace_type='ticket',
-        ).order_by('-updated_at').first()
+        ).exclude(status__in=['stopped', 'error']).order_by('-updated_at').first()
         previous_ticket_ws = prev_sandbox.mags_workspace_id if prev_sandbox else None
         ticket_ws = previous_ticket_ws or workspace_name_for_ticket(ticket.id)
         is_reuse = bool(previous_ticket_ws)
@@ -2924,10 +2969,10 @@ Using Claude Code CLI mode
                     ticket_ws = workspace_name_for_ticket(ticket.id)
                     workspace_id = ticket_ws
                     is_reuse = False
-                    # Clear stale session since workspace changed
+                    # Mark old sandbox as dead and delete to prevent orphaned records
                     if prev_sandbox:
-                        prev_sandbox.cli_session_id = None
-                        prev_sandbox.save(update_fields=['cli_session_id'])
+                        logger.info(f"[CLI STEP 3/7] Deleting dead sandbox record: {prev_sandbox.mags_workspace_id}")
+                        prev_sandbox.delete()
                     probe_result = run_command(
                         workspace_id=ticket_ws,
                         command='echo "WORKSPACE_READY"',
@@ -3010,10 +3055,13 @@ Mode: Claude Code CLI
             cd {MAGS_WORKING_DIR}
 
             if [ -d "{project_dir}/.git" ]; then
-                # Repo already cloned — just fetch latest
+                # Repo already cloned — fetch latest and ensure clean state
                 echo "REPO_EXISTS"
                 cd {project_dir}
                 git fetch origin
+                # Reset any uncommitted changes so checkout works cleanly
+                git reset --hard HEAD 2>/dev/null || true
+                git clean -fd 2>/dev/null || true
             elif [ -d "{project_dir}" ] && [ "$(ls -A {project_dir} 2>/dev/null)" ]; then
                 # Directory has files but no .git (e.g. scaffolded with --no-git).
                 # Initialise git in-place and add the remote — do NOT delete the files.
@@ -3032,8 +3080,19 @@ Mode: Claude Code CLI
             fi
 
             # Checkout the ticket's feature branch (should already exist from setup)
-            # Do NOT switch through lfg-agent — stay on the feature branch
-            git checkout {feature_branch_name} 2>/dev/null || git checkout -b {feature_branch_name} 2>/dev/null || echo "BRANCH_ERROR"
+            # Always branch from lfg-agent if creating new — never from main
+            # If local branch exists, force-update it to match remote to avoid stale state
+            if git rev-parse --verify {feature_branch_name} 2>/dev/null; then
+                git checkout {feature_branch_name}
+                # If remote tracking branch exists, reset to it so working tree is up to date
+                if git rev-parse --verify origin/{feature_branch_name} 2>/dev/null; then
+                    git reset --hard origin/{feature_branch_name}
+                fi
+            else
+                git checkout -b {feature_branch_name} origin/{feature_branch_name} 2>/dev/null || \
+                    (git fetch origin lfg-agent 2>/dev/null && git checkout -b {feature_branch_name} origin/lfg-agent 2>/dev/null) || \
+                    echo "BRANCH_ERROR"
+            fi
             git pull origin {feature_branch_name} 2>/dev/null || echo "PULL_SKIPPED"
 
             # Configure git
@@ -3079,59 +3138,41 @@ Mode: Claude Code CLI
         _emit_cli_status("Verifying Claude authentication in sandbox...")
         # 4. VERIFY CLAUDE AUTH - run test command to ensure Claude is working
         # With Mags, auth is inherited from the base workspace overlay — no S3 restore needed
-        from factory.claude_code_utils import check_claude_auth_status
+        from factory.claude_code_utils import check_claude_auth_status, refresh_and_copy_credentials, load_credentials_from_db
+
+        # Try loading DB credentials before checking auth
+        load_credentials_from_db(user.id, workspace_id)
 
         auth_check = check_claude_auth_status(workspace_id)
 
         if not auth_check.get('authenticated'):
-                # Ticket sandbox auth failed — try to copy credentials from central workspace
-                logger.warning(f"[CLI STEP 4/7] Ticket sandbox auth failed, attempting credential copy from {base_ws}...")
+                # Ticket sandbox auth failed — refresh token on base and copy
+                logger.warning(f"[CLI STEP 4/7] Ticket sandbox auth failed, refreshing credentials from {base_ws}...")
                 _emit_cli_status("Refreshing Claude credentials from central workspace...")
 
-                auth_recovered = False
-                try:
-                    # Don't use check_claude_auth_status on base_ws — it deletes creds if expired.
-                    # Instead, just read the credentials file directly and copy it.
-                    creds_result = run_command(base_ws, "cat ~/.claude/.credentials.json 2>/dev/null", timeout=15, with_node_env=False)
-                    creds_content = creds_result.get('stdout', '').strip()
-                    if creds_content and creds_result.get('exit_code') == 0:
-                        import json as _json
-                        # Validate it's actual JSON before copying
-                        _json.loads(creds_content)
-                        logger.info(f"[CLI STEP 4/7] Found credentials on {base_ws}, copying to {workspace_id}")
-                        # Write credentials to ticket workspace (base64 to avoid shell escaping issues)
-                        import base64
-                        creds_b64 = base64.b64encode(creds_content.encode()).decode()
-                        write_cmd = f'mkdir -p ~/.claude && echo "{creds_b64}" | base64 -d > ~/.claude/.credentials.json'
-                        write_result = run_command(workspace_id, write_cmd, timeout=15, with_node_env=False)
-                        if write_result.get('exit_code') == 0:
-                            # Re-verify auth after copying credentials
-                            recheck = check_claude_auth_status(workspace_id)
-                            if recheck.get('authenticated'):
-                                logger.info(f"[CLI STEP 4/7] Auth recovered after copying credentials from {base_ws}")
-                                auth_recovered = True
-                            else:
-                                logger.warning(f"[CLI STEP 4/7] Auth still failing after credential copy: {recheck}")
-                    else:
-                        logger.warning(f"[CLI STEP 4/7] No credentials file on central workspace {base_ws}")
-                except Exception as e:
-                    logger.warning(f"[CLI STEP 4/7] Error during auth recovery attempt: {e}")
+                refresh_result = refresh_and_copy_credentials(base_ws, workspace_id, user_id=user.id)
+                auth_recovered = refresh_result.get('recovered', False)
 
                 if not auth_recovered:
-                    error_msg = "Claude Code is not authenticated. Please reconnect in Settings."
-                    logger.error(f"[CLI STEP 4/7] ✗ {error_msg}")
+                    # Only mark user as unauthenticated if the BASE workspace is also expired
+                    base_expired = refresh_result.get('base_expired', False)
+                    if base_expired:
+                        error_msg = "Claude Code OAuth token has expired. Please reconnect in Settings."
+                        profile.claude_code_authenticated = False
+                        profile.save(update_fields=['claude_code_authenticated'])
+                        logger.info(f"[CLI STEP 4/7] Base workspace expired — marked user as not authenticated")
+                    else:
+                        error_msg = "Claude Code authentication failed on sandbox. Please retry or reconnect in Settings."
+                        logger.warning(f"[CLI STEP 4/7] Sandbox auth failed but base may still be valid")
 
-                    # Mark the user as not authenticated so Settings page shows correct status
-                    profile.claude_code_authenticated = False
-                    profile.save(update_fields=['claude_code_authenticated'])
-                    logger.info(f"[CLI STEP 4/7] Marked user as not authenticated")
+                    logger.error(f"[CLI STEP 4/7] ✗ {error_msg}")
 
                     # Create a visible TicketLog so the error shows on the Actions tab
                     auth_error_log = TicketLog.objects.create(
                         ticket=ticket,
                         log_type='error',
                         command='Claude Authentication',
-                        explanation='Authentication expired — please reconnect',
+                        explanation='Authentication expired — please reconnect' if base_expired else 'Sandbox authentication failed — please retry',
                         output=(
                             "Claude Code OAuth token has expired.\n\n"
                             "To fix this:\n"
@@ -3139,6 +3180,10 @@ Mode: Claude Code CLI
                             "2. Click 'Connect Claude Code'\n"
                             "3. Complete the authentication flow\n"
                             "4. Re-run the ticket"
+                        ) if base_expired else (
+                            "Claude Code authentication failed on this sandbox.\n\n"
+                            "The base workspace may still be working. Try re-running the ticket.\n"
+                            "If the issue persists, reconnect in Settings > Claude Code."
                         ),
                     )
                     try:
@@ -3160,7 +3205,7 @@ Mode: Claude Code CLI
 [{datetime.now().strftime('%Y-%m-%d %H:%M')}] ❌ BLOCKED - Claude Auth Failed
 Reason: {error_msg}
 Mode: Claude Code CLI
-Action: Please go to Settings > Claude Code and reconnect
+Action: {'Please go to Settings > Claude Code and reconnect' if base_expired else 'Try re-running the ticket'}
 """
                     ticket.save(update_fields=['status', 'queue_status', 'notes'])
 
@@ -3253,7 +3298,7 @@ Action: Please go to Settings > Claude Code and reconnect
 {git_setup_error}
 
 Before implementing, fix the git issue:
-1. Check: cd {MAGS_WORKING_DIR}/{project_dir} && git status
+1. Check: cd {MAGS_CLAUDE_HOME}/{project_dir} && git status
 2. Resolve any conflicts or uncommitted changes
 3. Checkout the correct branch: git checkout {feature_branch_name}
 """
@@ -3270,7 +3315,7 @@ TICKET DESCRIPTION:
 {ticket.description}
 
 PROJECT STACK: {stack_config['name']}
-PROJECT PATH: {MAGS_WORKING_DIR}/{project_dir}
+PROJECT PATH: {MAGS_CLAUDE_HOME}/{project_dir}
 {project_context}
 {git_error_context}
 
@@ -3345,7 +3390,7 @@ This will block the ticket until the user responds.
 
 ## INSTRUCTIONS
 
-1. Navigate to the project directory: cd {MAGS_WORKING_DIR}/{project_dir}
+1. Navigate to the project directory: cd {MAGS_CLAUDE_HOME}/{project_dir}
 2. Understand the existing codebase structure
 3. Create tasks to track your implementation progress (using TodoWrite or the API)
 4. Implement the required changes for this ticket
@@ -3372,7 +3417,7 @@ You can also output (for logging purposes):
             implementation_prompt = (
                 f"Continue implementing ticket #{ticket.id}: {ticket.name}\n\n"
                 f"The user clicked 'Continue' to resume execution. "
-                f"Check the current state of the project at {MAGS_WORKING_DIR}/{project_dir}, "
+                f"Check the current state of the project at {MAGS_CLAUDE_HOME}/{project_dir}, "
                 f"review what has already been done, and continue implementing any remaining work. "
                 f"When done, call the status API to mark the ticket complete."
             )
@@ -3690,6 +3735,7 @@ You can also output (for logging purposes):
             working_dir=MAGS_WORKING_DIR,
             project_id=str(project.project_id),
             poll_callback=stream_output_callback,
+            user_id=user.id,
             lfg_env={
                 'LFG_API_URL': api_base_url,
                 'LFG_API_KEY': cli_api_key,
@@ -3719,20 +3765,48 @@ You can also output (for logging purposes):
                 is_auth_error = True
 
         if is_auth_error:
-            logger.warning(f"[CLI] Auth error detected, marking profile as not authenticated")
-            profile.claude_code_authenticated = False
-            profile.save(update_fields=['claude_code_authenticated'])
+            # Verify base workspace before marking user as unauthenticated
+            logger.warning(f"[CLI] Auth error detected during execution, checking base workspace {base_ws}...")
+            base_probe = run_command(base_ws, """
+                [ -f /etc/profile ] && . /etc/profile; [ -f ~/.bashrc ] && . ~/.bashrc
+                timeout 15 claude -p "reply just the word Hello" 2>&1 | head -5
+            """, timeout=25, with_node_env=False)
+            base_ok = base_probe.get('exit_code') == 0 and 'hello' in (base_probe.get('stdout', '') or '').lower()
+            if not base_ok:
+                logger.warning(f"[CLI] Base workspace auth also failed — marking user as not authenticated")
+                profile.claude_code_authenticated = False
+                profile.save(update_fields=['claude_code_authenticated'])
+            else:
+                logger.info(f"[CLI] Base workspace auth OK — sandbox issue only, not marking user as unauthenticated")
 
             # Update ticket status
             ticket.status = 'failed'
             ticket.queue_status = 'none'
             ticket.save(update_fields=['status', 'queue_status'])
 
+            auth_err_msg = (
+                "Claude Code token expired. Please reconnect in Settings > Claude Code."
+                if not base_ok
+                else "Claude Code auth failed on sandbox. Please retry the ticket."
+            )
+
+            # Bridge to orchestrator events
+            try:
+                from orchestrator.events import publish_ticket_event_sync
+                publish_ticket_event_sync(ticket_id, 'project_ticket_failed', {
+                    'ticket_id': ticket_id,
+                    'ticket_title': ticket.name,
+                    'error': auth_err_msg,
+                    'failure_type': 'auth_error',
+                })
+            except Exception as bridge_err:
+                logger.debug(f"[CLI] Orchestrator bridge skipped: {bridge_err}")
+
             return {
                 "status": "auth_error",
                 "ticket_id": ticket_id,
-                "error": "Claude Code token expired. Please reconnect in Settings > Claude Code.",
-                "auth_expired": True
+                "error": auth_err_msg,
+                "auth_expired": not base_ok
             }
 
         # Handle stale session: if we tried to resume but session no longer exists,
@@ -3752,7 +3826,7 @@ TICKET DESCRIPTION:
 {ticket.description}
 
 PROJECT STACK: {stack_config['name']}
-PROJECT PATH: {MAGS_WORKING_DIR}/{project_dir}
+PROJECT PATH: {MAGS_CLAUDE_HOME}/{project_dir}
 {project_context}
 {git_error_context}
 
@@ -3768,7 +3842,7 @@ ATTACHMENTS:
 
 ## INSTRUCTIONS
 
-1. Navigate to the project directory: cd {MAGS_WORKING_DIR}/{project_dir}
+1. Navigate to the project directory: cd {MAGS_CLAUDE_HOME}/{project_dir}
 2. Understand the existing codebase structure
 3. Create tasks to track your implementation progress (using TodoWrite or the API)
 4. Implement the required changes for this ticket
@@ -3783,6 +3857,7 @@ ATTACHMENTS:
                 working_dir=MAGS_WORKING_DIR,
                 project_id=str(project.project_id),
                 poll_callback=stream_output_callback,
+                user_id=user.id,
                 lfg_env={
                     'LFG_API_URL': api_base_url,
                     'LFG_API_KEY': cli_api_key,
@@ -3858,8 +3933,11 @@ ATTACHMENTS:
                 "execution_time": f"{execution_time:.2f}s"
             }
 
+        has_committed_code = False  # Track whether code was actually committed to the branch
+
         if github_owner and github_repo and github_token and feature_branch_name:
             logger.info(f"\n[CLI COMMIT] Committing and pushing changes...")
+            _emit_cli_status("Pushing changes to GitHub...")
 
             commit_prefix = "feat" if completed and not failed else "wip"
             commit_message = f"{commit_prefix}: {ticket.name}\n\nTicket #{ticket_id} (via Claude Code CLI)\n\n{ticket.description[:200]}"
@@ -3869,43 +3947,77 @@ ATTACHMENTS:
                 github_owner=github_owner, github_repo=github_repo,
             )
 
+            # Save refreshed credentials to DB after CLI work
+            try:
+                from factory.claude_code_utils import save_credentials_to_db
+                save_credentials_to_db(workspace_id, user.id)
+            except Exception:
+                logger.warning("[CRED_DB] Post-commit credential save failed", exc_info=True)
+
             if commit_result['status'] == 'no_changes':
                 logger.info(f"[CLI COMMIT] No changes to commit (git diff clean)")
+                # Check if the branch has ANY commits ahead of lfg-agent/main
+                # (the agent may have committed during execution)
+                ahead_check = run_command(
+                    workspace_id,
+                    f"cd {MAGS_WORKING_DIR}/{get_stack_config(stack)['project_dir']} && "
+                    f"git log origin/lfg-agent..{feature_branch_name} --oneline 2>/dev/null | head -5",
+                    timeout=30,
+                )
+                ahead_stdout = (ahead_check.get('stdout') or '').strip()
+                if ahead_stdout:
+                    has_committed_code = True
+                    logger.info(f"[CLI COMMIT] Branch has commits ahead of lfg-agent: {ahead_stdout[:200]}")
+                else:
+                    logger.warning(f"[CLI COMMIT] Branch has NO commits ahead of lfg-agent — code was not committed")
 
             if commit_result['status'] == 'success':
                 commit_sha = commit_result.get('commit_sha')
+                has_committed_code = True
                 logger.info(f"[CLI COMMIT] ✓ Committed: {commit_sha}")
+                _emit_cli_status(f"Changes pushed to GitHub ({commit_sha[:7] if commit_sha else 'ok'})")
 
                 ticket.github_commit_sha = commit_sha
                 ticket.save(update_fields=['github_commit_sha'])
 
-                # Only merge to lfg-agent if ticket completed successfully
-                if completed and not failed:
-                    merge_result = merge_feature_to_lfg_agent(github_token, github_owner, github_repo, feature_branch_name)
-
-                    if merge_result['status'] == 'success':
-                        logger.info(f"[CLI COMMIT] ✓ Merged to lfg-agent")
-                        merge_status = 'merged'
-                    elif merge_result['status'] == 'conflict':
-                        logger.warning(f"[CLI COMMIT] ⚠ Merge conflict, attempting resolution...")
-                        resolution_result = resolve_merge_conflict(
-                            workspace_id, feature_branch_name, ticket_id,
-                            project.project_id, conversation_id, stack=stack,
-                        )
-                        merge_status = 'merged' if resolution_result['status'] == 'success' else 'conflict'
-                    else:
-                        merge_status = 'failed'
-
-                    ticket.github_merge_status = merge_status
-                    ticket.save(update_fields=['github_merge_status'])
-            else:
+            if commit_result['status'] == 'error':
                 logger.error(f"[CLI COMMIT] ✗ Commit failed: {commit_result.get('message')}")
+                _emit_cli_status(f"GitHub push failed: {commit_result.get('message', 'unknown error')[:100]}")
+
+            # Only merge to lfg-agent if ticket completed AND code was committed
+            if completed and not failed and has_committed_code:
+                merge_result = merge_feature_to_lfg_agent(github_token, github_owner, github_repo, feature_branch_name)
+
+                if merge_result['status'] == 'success':
+                    logger.info(f"[CLI COMMIT] ✓ Merged to lfg-agent")
+                    merge_status = 'merged'
+                elif merge_result['status'] == 'conflict':
+                    logger.warning(f"[CLI COMMIT] ⚠ Merge conflict, attempting resolution...")
+                    resolution_result = resolve_merge_conflict(
+                        workspace_id, feature_branch_name, ticket_id,
+                        project.project_id, conversation_id, stack=stack,
+                    )
+                    merge_status = 'merged' if resolution_result['status'] == 'success' else 'conflict'
+                else:
+                    merge_status = 'failed'
+
+                ticket.github_merge_status = merge_status
+                ticket.save(update_fields=['github_merge_status'])
+            elif completed and not failed and not has_committed_code:
+                logger.warning(f"[CLI COMMIT] Skipping merge — no committed code on branch")
 
         # NOTE: Backup is NOT done after each ticket execution
         # Auth backup only happens during initial authentication in Settings
         # The Claude workspace persists between executions, so no backup needed
 
         # UPDATE TICKET STATUS
+        # A ticket is only "in review" when code is actually committed to the branch.
+        # If the agent said COMPLETE but no code was committed, treat it as failed.
+        if completed and not failed and not has_committed_code and github_owner:
+            logger.warning(f"\n[CLI FINALIZE] ⚠ Agent said COMPLETE but no code committed — marking as failed")
+            completed = False
+            failed = True
+
         if completed and not failed:
             logger.info(f"\n[CLI FINALIZE] ✓ SUCCESS - Marking as review")
             ticket.status = 'review'
@@ -3947,6 +4059,24 @@ CLI duration: {cli_duration:.2f}s{git_info}
             broadcast_ticket_status_change(ticket_id, 'review', 'none')
             clear_ticket_cancellation_flag(ticket_id)
 
+            # Bridge to orchestrator events
+            try:
+                from orchestrator.events import publish_ticket_event_sync
+                publish_ticket_event_sync(ticket_id, 'project_ticket_completed', {
+                    'ticket_id': ticket_id,
+                    'ticket_title': ticket.name,
+                    'result_summary': f"Completed via Claude CLI in {execution_time:.1f}s.",
+                })
+                # Enqueue async preview smoke-test
+                from django_q.tasks import async_task as q_async_task
+                q_async_task(
+                    "orchestrator.tasks.check_ticket_preview",
+                    ticket_id,
+                    task_name=f"preview-check-{ticket_id}",
+                )
+            except Exception as bridge_err:
+                logger.debug(f"[CLI FINALIZE] Orchestrator bridge skipped: {bridge_err}")
+
             return {
                 "status": "success",
                 "ticket_id": ticket_id,
@@ -3986,10 +4116,20 @@ CLI duration: {cli_duration:.2f}s{git_info}
             auth_error_keywords = ['not logged in', 'authentication', 'credential', 'login required', 'auth failed', 'unauthorized']
             is_auth_error = any(keyword in error_reason.lower() for keyword in auth_error_keywords)
             if is_auth_error:
-                logger.warning(f"[CLI FINALIZE] Detected auth error - marking user as disconnected")
-                profile = ticket.project.owner.profile
-                profile.claude_code_authenticated = False
-                profile.save(update_fields=['claude_code_authenticated'])
+                # Verify base workspace before marking user as unauthenticated
+                logger.warning(f"[CLI FINALIZE] Detected auth error, checking base workspace {base_ws}...")
+                base_probe = run_command(base_ws, """
+                    [ -f /etc/profile ] && . /etc/profile; [ -f ~/.bashrc ] && . ~/.bashrc
+                    timeout 15 claude -p "reply just the word Hello" 2>&1 | head -5
+                """, timeout=25, with_node_env=False)
+                base_ok = base_probe.get('exit_code') == 0 and 'hello' in (base_probe.get('stdout', '') or '').lower()
+                if not base_ok:
+                    logger.warning(f"[CLI FINALIZE] Base workspace auth also failed — marking user as disconnected")
+                    profile = ticket.project.owner.profile
+                    profile.claude_code_authenticated = False
+                    profile.save(update_fields=['claude_code_authenticated'])
+                else:
+                    logger.info(f"[CLI FINALIZE] Base workspace auth OK — sandbox issue only")
 
             ticket.status = 'blocked'
             ticket.queue_status = 'none'
@@ -4037,6 +4177,18 @@ Workspace: {workspace_id}
 
             broadcast_ticket_status_change(ticket_id, 'blocked', 'none', error_reason=error_reason)
             clear_ticket_cancellation_flag(ticket_id)
+
+            # Bridge to orchestrator events
+            try:
+                from orchestrator.events import publish_ticket_event_sync
+                publish_ticket_event_sync(ticket_id, 'project_ticket_failed', {
+                    'ticket_id': ticket_id,
+                    'ticket_title': ticket.name,
+                    'error': error_reason,
+                    'failure_type': 'auth_error' if is_auth_error else 'cli_error',
+                })
+            except Exception as bridge_err:
+                logger.debug(f"[CLI FINALIZE] Orchestrator bridge skipped: {bridge_err}")
 
             return {
                 "status": "failed",
@@ -4088,6 +4240,18 @@ Workspace: {workspace_id or 'N/A'}
         try:
             from tasks.dispatch import clear_ticket_cancellation_flag
             clear_ticket_cancellation_flag(ticket_id)
+        except Exception:
+            pass
+
+        # Bridge to orchestrator events
+        try:
+            from orchestrator.events import publish_ticket_event_sync
+            publish_ticket_event_sync(ticket_id, 'project_ticket_failed', {
+                'ticket_id': ticket_id,
+                'ticket_title': ticket.name if 'ticket' in locals() else f'Ticket #{ticket_id}',
+                'error': error_msg,
+                'failure_type': 'exception',
+            })
         except Exception:
             pass
 
@@ -4153,10 +4317,11 @@ def execute_ticket_chat_cli(
         base_ws = get_latest_claude_auth_workspace_id(user.id) or workspace_name_for_claude_auth(user.id)
         # For chat: reuse existing sandbox when resuming a session,
         # otherwise create fresh unique workspace.
+        # Exclude dead/error sandboxes to avoid re-probing known-dead workspaces
         prev_sandbox = Sandbox.objects.filter(
             mags_workspace_id__startswith=f'{ticket.id}-',
             workspace_type='ticket',
-        ).order_by('-updated_at').first()
+        ).exclude(status__in=['stopped', 'error']).order_by('-updated_at').first()
         previous_ticket_ws = prev_sandbox.mags_workspace_id if prev_sandbox else None
         ticket_ws = previous_ticket_ws or workspace_name_for_ticket(ticket.id)  # {ticket_id}-{uuid8}
         logger.info(
@@ -4190,6 +4355,12 @@ def execute_ticket_chat_cli(
                         base_workspace_id=base_ws,
                     )
                     if 'WORKSPACE_READY' not in probe_result.get('stdout', ''):
+                        # Mark sandbox as dead so it won't be picked up for reuse
+                        if prev_sandbox:
+                            logger.info(f"[CLI_CHAT] Marking dead sandbox: {prev_sandbox.mags_workspace_id}")
+                            prev_sandbox.status = 'error'
+                            prev_sandbox.cli_session_id = None
+                            prev_sandbox.save(update_fields=['status', 'cli_session_id'])
                         raise MagsAPIError(
                             f"Workspace probe failed after recreate: exit={probe_result.get('exit_code')}, "
                             f"stderr={probe_result.get('stderr', '')[:200]}"
@@ -4202,6 +4373,12 @@ def execute_ticket_chat_cli(
                             prev_sandbox.cli_session_id = None
                             prev_sandbox.save(update_fields=['cli_session_id'])
                 else:
+                    # Mark sandbox as dead so it won't be picked up for reuse
+                    if prev_sandbox:
+                        logger.info(f"[CLI_CHAT] Marking dead sandbox: {prev_sandbox.mags_workspace_id}")
+                        prev_sandbox.status = 'error'
+                        prev_sandbox.cli_session_id = None
+                        prev_sandbox.save(update_fields=['status', 'cli_session_id'])
                     raise MagsAPIError(
                         f"Workspace probe failed: exit={probe_result.get('exit_code')}, "
                         f"stderr={probe_result.get('stderr', '')[:200]}"
@@ -4258,6 +4435,7 @@ def execute_ticket_chat_cli(
         project_dir = stack_config.get('project_dir', 'app') if stack_config else 'app'
 
         # Ensure project directory exists in workspace (handles workspace resets)
+        has_project_files = False
         try:
             # Check if project dir has ANY files (not just .git) — the project
             # may have been scaffolded without git init (e.g. npm create --no-git).
@@ -4297,7 +4475,7 @@ def execute_ticket_chat_cli(
                 github_token_obj = GitHubToken.objects.filter(user=user).first()
 
                 if indexed_repo and github_token_obj:
-                    branch_name = ticket.github_branch or 'main'
+                    branch_name = ticket.github_branch or f'feature/ticket-{ticket.id}'
                     git_result = setup_git_in_workspace(
                         job_id=workspace_id,
                         owner=indexed_repo.github_owner,
@@ -4307,7 +4485,28 @@ def execute_ticket_chat_cli(
                         stack=stack,
                     )
                     if git_result.get('status') == 'success':
-                        logger.info(f"[CLI_CHAT] Project code restored successfully on branch {branch_name}")
+                        # Verify the clone actually persisted on the filesystem
+                        verify_result = run_command(
+                            workspace_id, f"test -d {MAGS_WORKING_DIR}/{project_dir}/.git && echo FS_OK || echo FS_BROKEN",
+                            timeout=15, with_node_env=False,
+                        )
+                        if 'FS_OK' in verify_result.get('stdout', ''):
+                            has_project_files = True  # Update: clone restored files
+                            logger.info(f"[CLI_CHAT] Project code restored successfully on branch {branch_name}")
+                        else:
+                            # Filesystem writes don't persist — workspace is broken
+                            logger.error(
+                                f"[CLI_CHAT] Git clone reported success but {MAGS_WORKING_DIR}/{project_dir} "
+                                f"doesn't exist — workspace filesystem is broken. Marking sandbox as dead."
+                            )
+                            ticket_workspace.status = 'error'
+                            ticket_workspace.cli_session_id = None
+                            ticket_workspace.save(update_fields=['status', 'cli_session_id'])
+                            return {
+                                "status": "error",
+                                "ticket_id": ticket_id,
+                                "error": "Workspace filesystem is broken (writes don't persist). Please re-run the ticket to get a fresh sandbox.",
+                            }
                     else:
                         logger.warning(f"[CLI_CHAT] Git setup returned: {git_result.get('message', 'unknown error')}")
                 else:
@@ -4320,56 +4519,100 @@ def execute_ticket_chat_cli(
                     ticket_workspace.cli_session_id = None
                     ticket_workspace.save(update_fields=['cli_session_id'])
             else:
-                # Directory has files — sandbox should already be on the correct branch
-                logger.info(f"[CLI_CHAT] Project directory exists with files, working on current branch")
+                # Directory has files — verify we're on the correct branch and pull latest
+                expected_branch = ticket.github_branch
+                if expected_branch:
+                    try:
+                        # Fix "dubious ownership" — repo owned by claudeus, commands run as root
+                        run_command(
+                            workspace_id=workspace_id,
+                            command=f"git config --global --add safe.directory {MAGS_WORKING_DIR}/{project_dir} 2>/dev/null || true",
+                            timeout=10, with_node_env=False,
+                        )
+                        branch_check = run_command(
+                            workspace_id=workspace_id,
+                            command=f"cd {MAGS_WORKING_DIR}/{project_dir} && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo NO_GIT",
+                            timeout=10, with_node_env=False,
+                        )
+                        current_branch = branch_check.get('stdout', '').strip()
+                        if current_branch and current_branch != 'NO_GIT' and current_branch != expected_branch:
+                            logger.info(f"[CLI_CHAT] Branch mismatch: on '{current_branch}', expected '{expected_branch}'. Checking out...")
+                            checkout_result = run_command(
+                                workspace_id=workspace_id,
+                                command=f"cd {MAGS_WORKING_DIR}/{project_dir} && git fetch origin {expected_branch} && git checkout {expected_branch} && git pull origin {expected_branch}",
+                                timeout=30, with_node_env=False,
+                            )
+                            if checkout_result.get('exit_code', 1) == 0:
+                                logger.info(f"[CLI_CHAT] Switched to branch {expected_branch} and pulled latest")
+                            else:
+                                # Remote branch doesn't exist yet — try local checkout
+                                logger.info(f"[CLI_CHAT] Remote fetch failed, trying local checkout of '{expected_branch}'...")
+                                local_checkout = run_command(
+                                    workspace_id=workspace_id,
+                                    command=f"cd {MAGS_WORKING_DIR}/{project_dir} && git checkout {expected_branch}",
+                                    timeout=15, with_node_env=False,
+                                )
+                                if local_checkout.get('exit_code', 1) == 0:
+                                    logger.info(f"[CLI_CHAT] Checked out existing local branch '{expected_branch}'")
+                                else:
+                                    # Branch doesn't exist locally or remotely — create it from HEAD
+                                    logger.info(f"[CLI_CHAT] Branch '{expected_branch}' not found, creating from HEAD...")
+                                    create_result = run_command(
+                                        workspace_id=workspace_id,
+                                        command=f"cd {MAGS_WORKING_DIR}/{project_dir} && git checkout -b {expected_branch}",
+                                        timeout=15, with_node_env=False,
+                                    )
+                                    if create_result.get('exit_code', 1) == 0:
+                                        logger.info(f"[CLI_CHAT] Created new branch '{expected_branch}' from HEAD")
+                                    else:
+                                        logger.warning(f"[CLI_CHAT] Failed to create branch '{expected_branch}': {create_result.get('stderr', '')[:200]}")
+                        elif current_branch == expected_branch:
+                            # On correct branch — pull latest to pick up any remote commits
+                            logger.info(f"[CLI_CHAT] On correct branch '{expected_branch}', pulling latest...")
+                            run_command(
+                                workspace_id=workspace_id,
+                                command=f"cd {MAGS_WORKING_DIR}/{project_dir} && git pull origin {expected_branch} 2>/dev/null || true",
+                                timeout=20, with_node_env=False,
+                            )
+                        else:
+                            logger.info(f"[CLI_CHAT] Project directory exists (no git or could not determine branch)")
+                    except Exception as branch_err:
+                        logger.warning(f"[CLI_CHAT] Branch check failed: {branch_err}")
+                else:
+                    logger.info(f"[CLI_CHAT] Project directory exists with files, no branch set on ticket")
         except Exception as e:
             logger.warning(f"[CLI_CHAT] Project directory check failed: {e}")
 
         # Verify Claude auth and copy credentials from central workspace if needed
-        from factory.claude_code_utils import check_claude_auth_status
+        from factory.claude_code_utils import check_claude_auth_status, load_credentials_from_db
+
+        # Try loading DB credentials before checking auth
+        load_credentials_from_db(user.id, workspace_id)
 
         logger.info(f"[CLI_CHAT] Verifying Claude auth in workspace {workspace_id}...")
         auth_check = check_claude_auth_status(workspace_id)
 
         if not auth_check.get('authenticated'):
-            logger.warning(f"[CLI_CHAT] Auth failed in ticket workspace, attempting credential copy from {base_ws}...")
-            auth_recovered = False
-            try:
-                # Don't use check_claude_auth_status on base_ws — it deletes creds if expired.
-                # Instead, just read the credentials file directly and copy it.
-                creds_result = run_command(base_ws, "cat ~/.claude/.credentials.json 2>/dev/null", timeout=15, with_node_env=False)
-                creds_content = creds_result.get('stdout', '').strip()
-                if creds_content and creds_result.get('exit_code') == 0:
-                    import json as _json
-                    _json.loads(creds_content)  # validate JSON
-                    logger.info(f"[CLI_CHAT] Found credentials on {base_ws}, copying to {workspace_id}")
-                    import base64
-                    creds_b64 = base64.b64encode(creds_content.encode()).decode()
-                    write_cmd = f'mkdir -p ~/.claude && echo "{creds_b64}" | base64 -d > ~/.claude/.credentials.json'
-                    write_result = run_command(workspace_id, write_cmd, timeout=15, with_node_env=False)
-                    if write_result.get('exit_code') == 0:
-                        recheck = check_claude_auth_status(workspace_id)
-                        if recheck.get('authenticated'):
-                            logger.info(f"[CLI_CHAT] Auth recovered after copying credentials from {base_ws}")
-                            auth_recovered = True
-                        else:
-                            logger.warning(f"[CLI_CHAT] Auth still failing after credential copy: {recheck}")
-                else:
-                    logger.warning(f"[CLI_CHAT] No credentials file on central workspace {base_ws}")
-            except Exception as e:
-                logger.warning(f"[CLI_CHAT] Error during auth recovery: {e}")
+            from factory.claude_code_utils import refresh_and_copy_credentials
+            logger.warning(f"[CLI_CHAT] Auth failed in ticket workspace, refreshing credentials from {base_ws}...")
+            refresh_result = refresh_and_copy_credentials(base_ws, workspace_id, user_id=user.id)
+            auth_recovered = refresh_result.get('recovered', False)
 
             if not auth_recovered:
-                error_msg = "Claude Code is not authenticated. Please reconnect in Settings."
+                base_expired = refresh_result.get('base_expired', False)
+                if base_expired:
+                    error_msg = "Claude Code OAuth token has expired. Please reconnect in Settings."
+                    profile.claude_code_authenticated = False
+                    profile.save(update_fields=['claude_code_authenticated'])
+                else:
+                    error_msg = "Claude Code authentication failed on sandbox. Please retry or reconnect in Settings."
                 logger.error(f"[CLI_CHAT] {error_msg}")
-                profile.claude_code_authenticated = False
-                profile.save(update_fields=['claude_code_authenticated'])
 
                 auth_error_log = TicketLog.objects.create(
                     ticket_id=ticket_id,
                     log_type='error',
                     command='Claude Authentication',
-                    explanation='Authentication expired — please reconnect',
+                    explanation='Authentication expired — please reconnect' if base_expired else 'Sandbox authentication failed — please retry',
                     output=(
                         "Claude Code OAuth token has expired.\n\n"
                         "To fix this:\n"
@@ -4377,6 +4620,10 @@ def execute_ticket_chat_cli(
                         "2. Click 'Connect Claude Code'\n"
                         "3. Complete the authentication flow\n"
                         "4. Re-run the ticket"
+                    ) if base_expired else (
+                        "Claude Code authentication failed on this sandbox.\n\n"
+                        "The base workspace may still be working. Try re-running the ticket.\n"
+                        "If the issue persists, reconnect in Settings > Claude Code."
                     ),
                 )
                 async_to_sync(async_send_ticket_log_notification)(ticket_id, {
@@ -4392,7 +4639,7 @@ def execute_ticket_chat_cli(
                     "status": "error",
                     "ticket_id": ticket_id,
                     "error": error_msg,
-                    "auth_required": True,
+                    "auth_required": base_expired,
                 }
         else:
             logger.info(f"[CLI_CHAT] Claude auth verified OK")
@@ -4582,13 +4829,65 @@ def execute_ticket_chat_cli(
                 except Exception:
                     pass
 
+        # Determine if ticket has existing work (branch with code already pushed)
+        ticket_has_existing_work = has_project_files and (
+            ticket.github_branch
+            and ticket.status in ('in_progress', 'completed', 'review', 'merged')
+        )
+
         if session_id:
             logger.info(f"[CLI_CHAT] Running CLI with --resume {session_id[:20]}...")
+        elif ticket_has_existing_work:
+            logger.info(f"[CLI_CHAT] Continuing existing implementation for ticket #{ticket_id} (session lost, branch exists)")
         else:
             logger.info(f"[CLI_CHAT] Running CLI with new session for ticket #{ticket_id}")
 
-        # Build prompt with ticket context for new sessions
-        if not session_id:
+        # Build prompt based on session state
+        if session_id:
+            # For resume sessions, just send the user message
+            prompt_with_context = message
+        elif ticket_has_existing_work:
+            # Session lost but branch exists with code — provide context without
+            # triggering a full re-implementation
+            stack_info = f"PROJECT STACK: {stack_config['name']}\n" if stack_config else ""
+
+            # Build conversation history from recent TicketLog entries
+            conversation_history = ""
+            try:
+                recent_logs = TicketLog.objects.filter(
+                    ticket_id=ticket_id,
+                    log_type__in=['user_message', 'ai_response']
+                ).order_by('-created_at')[:10]  # Last 5 exchanges (user + ai pairs)
+
+                history_lines = []
+                for log in reversed(list(recent_logs)):
+                    if log.log_type == 'user_message':
+                        history_lines.append(f"[User]: {(log.output or log.explanation or '')[:500]}")
+                    elif log.log_type == 'ai_response':
+                        history_lines.append(f"[Assistant]: {(log.output or '')[:1000]}")
+
+                if history_lines:
+                    conversation_history = "\n\nPREVIOUS CONVERSATION:\n" + "\n".join(history_lines)
+            except Exception as hist_err:
+                logger.warning(f"[CLI_CHAT] Could not build conversation history: {hist_err}")
+
+            prompt_with_context = f"""You are helping with ticket #{ticket.id}: {ticket.name}
+
+TICKET DESCRIPTION:
+{ticket.description}
+
+{stack_info}PROJECT: {project.name}
+WORKING DIRECTORY: {MAGS_CLAUDE_HOME}/{project_dir}
+
+IMPORTANT: This ticket has already been implemented on branch {ticket.github_branch}.
+The code is already in the workspace. Do NOT re-implement or start over.
+Just respond to the user's message below.
+{conversation_history}
+
+USER MESSAGE:
+{message}"""
+        else:
+            # Brand new session — full implementation prompt
             # Fetch documentation: prefer ticket-linked docs, then source_document FK, then project-level
             project_context = ""
             try:
@@ -4659,7 +4958,7 @@ TICKET DESCRIPTION:
 {ticket.description}
 
 {stack_info}PROJECT: {project.name}
-WORKING DIRECTORY: {MAGS_WORKING_DIR}/{project_dir}
+WORKING DIRECTORY: {MAGS_CLAUDE_HOME}/{project_dir}
 {project_context}
 {attachments_summary}
 
@@ -4667,9 +4966,6 @@ USER MESSAGE:
 {message}
 
 Please respond to the user's message in the context of this ticket."""
-        else:
-            # For resume sessions, just send the user message
-            prompt_with_context = message
 
         # Resolve project_dir from stack config so claudeuser gets ownership
         chat_project_dir = 'project'
@@ -4680,6 +4976,16 @@ Please respond to the user's message in the context of this ticket."""
             except Exception:
                 pass
 
+        # Build lfg_env so the CLI process has current LFG API URL
+        from django.conf import settings as _settings
+        _api_base_url = getattr(_settings, 'LFG_API_BASE_URL', 'https://www.turboship.ai')
+        _chat_lfg_env = {
+            'LFG_API_URL': _api_base_url,
+            'LFG_API_KEY': profile.cli_api_key or '',
+            'LFG_TICKET_ID': str(ticket.id),
+            'LFG_PROJECT_ID': str(project.project_id),
+        }
+
         # Run Claude CLI (session_id=None starts new session, otherwise resumes)
         cli_result = run_claude_cli(
             workspace_id=workspace_id,
@@ -4689,6 +4995,8 @@ Please respond to the user's message in the context of this ticket."""
             working_dir=MAGS_WORKING_DIR,
             poll_callback=stream_callback,
             project_dir=chat_project_dir,
+            lfg_env=_chat_lfg_env,
+            user_id=user.id,
         )
 
         # Check for auth errors and update profile if token expired
@@ -4707,17 +5015,27 @@ Please respond to the user's message in the context of this ticket."""
                 is_auth_error = True
 
         if is_auth_error:
-            logger.warning(f"[CLI_CHAT] Auth error detected, marking profile as not authenticated")
-            profile.claude_code_authenticated = False
-            profile.save(update_fields=['claude_code_authenticated'])
+            # Verify base workspace before marking user as unauthenticated
+            logger.warning(f"[CLI_CHAT] Auth error detected during execution, checking base workspace {base_ws}...")
+            base_probe = run_command(base_ws, """
+                [ -f /etc/profile ] && . /etc/profile; [ -f ~/.bashrc ] && . ~/.bashrc
+                timeout 15 claude -p "reply just the word Hello" 2>&1 | head -5
+            """, timeout=25, with_node_env=False)
+            base_ok = base_probe.get('exit_code') == 0 and 'hello' in (base_probe.get('stdout', '') or '').lower()
+            if not base_ok:
+                logger.warning(f"[CLI_CHAT] Base workspace auth also failed — marking user as not authenticated")
+                profile.claude_code_authenticated = False
+                profile.save(update_fields=['claude_code_authenticated'])
+            else:
+                logger.info(f"[CLI_CHAT] Base workspace auth OK — sandbox issue only, not marking user as unauthenticated")
 
-            # Send notification to user
             auth_error_log = TicketLog.objects.create(
                 ticket_id=ticket_id,
                 log_type='error',
                 command='Authentication Error',
-                explanation='Claude Code token has expired',
+                explanation='Claude Code token has expired' if not base_ok else 'Sandbox auth failed — please retry',
                 output='Your Claude Code session has expired. Please go to Settings > Claude Code and click "Disconnect" then reconnect.'
+                    if not base_ok else 'Claude Code auth failed on this sandbox. Please retry the ticket.'
             )
             async_to_sync(async_send_ticket_log_notification)(ticket_id, {
                 'id': auth_error_log.id,
@@ -4731,8 +5049,9 @@ Please respond to the user's message in the context of this ticket."""
             return {
                 "status": "auth_error",
                 "ticket_id": ticket_id,
-                "error": "Claude Code token expired. Please reconnect in Settings.",
-                "auth_expired": True
+                "error": "Claude Code token expired. Please reconnect in Settings." if not base_ok
+                    else "Claude Code auth failed on sandbox. Please retry.",
+                "auth_expired": not base_ok
             }
 
         # Check for "No conversation found" error - this means session_id was invalid
@@ -4814,7 +5133,7 @@ TICKET DESCRIPTION:
 {ticket.description}
 
 {stack_info}PROJECT: {project.name}
-WORKING DIRECTORY: {MAGS_WORKING_DIR}/{project_dir}
+WORKING DIRECTORY: {MAGS_CLAUDE_HOME}/{project_dir}
 {ticket_notes}
 {conversation_history}
 
@@ -4833,6 +5152,8 @@ Note: The previous conversation session was lost. The conversation history above
                 working_dir=MAGS_WORKING_DIR,
                 poll_callback=stream_callback,
                 project_dir=chat_project_dir,
+                lfg_env=_chat_lfg_env,
+                user_id=user.id,
             )
             # Fall through to save new session_id below
 
@@ -4851,14 +5172,25 @@ Note: The previous conversation session was lost. The conversation history above
         retry_stdout_start = retry_stdout[:500].lower()
         if (any(ind in retry_err_lower for ind in ['oauth token has expired', 'authentication_error', 'please run /login']) or
             ('api error: 401' in retry_stdout_start and ('authentication_error' in retry_stdout_start or 'oauth token has expired' in retry_stdout_start))):
-            logger.warning(f"[CLI_CHAT] Auth error detected after retry, skipping commit")
-            profile.claude_code_authenticated = False
-            profile.save(update_fields=['claude_code_authenticated'])
+            # Verify base workspace before marking user as unauthenticated
+            logger.warning(f"[CLI_CHAT] Auth error detected after retry, checking base workspace {base_ws}...")
+            base_probe = run_command(base_ws, """
+                [ -f /etc/profile ] && . /etc/profile; [ -f ~/.bashrc ] && . ~/.bashrc
+                timeout 15 claude -p "reply just the word Hello" 2>&1 | head -5
+            """, timeout=25, with_node_env=False)
+            base_ok = base_probe.get('exit_code') == 0 and 'hello' in (base_probe.get('stdout', '') or '').lower()
+            if not base_ok:
+                logger.warning(f"[CLI_CHAT] Base workspace auth also failed — marking user as not authenticated")
+                profile.claude_code_authenticated = False
+                profile.save(update_fields=['claude_code_authenticated'])
+            else:
+                logger.info(f"[CLI_CHAT] Base workspace auth OK — sandbox issue only")
             return {
                 "status": "auth_error",
                 "ticket_id": ticket_id,
-                "error": "Claude Code token expired. Please reconnect in Settings.",
-                "auth_expired": True
+                "error": "Claude Code token expired. Please reconnect in Settings." if not base_ok
+                    else "Claude Code auth failed on sandbox. Please retry.",
+                "auth_expired": not base_ok
             }
 
         # Check for uncommitted changes and auto-commit if there are any
@@ -4943,8 +5275,18 @@ fi""",
                     branch_setup_script = f"""
                     cd {MAGS_WORKING_DIR}/{project_dir}
                     git fetch origin 2>/dev/null || true
-                    # Try to checkout existing branch, or create from lfg-agent
-                    git checkout {feature_branch_name} 2>/dev/null || git checkout -b {feature_branch_name} 2>/dev/null || echo "BRANCH_SETUP_FAILED"
+                    # Try to checkout existing branch, or create from lfg-agent (never from main)
+                    # If local branch exists, force-update to match remote to avoid stale state
+                    if git rev-parse --verify {feature_branch_name} 2>/dev/null; then
+                        git checkout {feature_branch_name}
+                        if git rev-parse --verify origin/{feature_branch_name} 2>/dev/null; then
+                            git reset --hard origin/{feature_branch_name}
+                        fi
+                    else
+                        git checkout -b {feature_branch_name} origin/{feature_branch_name} 2>/dev/null || \
+                            git checkout -b {feature_branch_name} origin/lfg-agent 2>/dev/null || \
+                            echo "BRANCH_SETUP_FAILED"
+                    fi
                     git branch --show-current
                     """
                     branch_result = run_command(workspace_id=workspace_id, command=branch_setup_script, timeout=60, with_node_env=False)
@@ -4967,6 +5309,23 @@ fi""",
                     github_owner = indexed_repo.github_owner
                     github_repo = indexed_repo.github_repo_name
 
+                    # Emit pushing status
+                    push_status_log = TicketLog.objects.create(
+                        ticket_id=ticket_id,
+                        log_type='command',
+                        command='Setup',
+                        explanation='Pushing changes to GitHub...',
+                        output='Pushing changes to GitHub...',
+                    )
+                    async_to_sync(async_send_ticket_log_notification)(ticket_id, {
+                        'id': push_status_log.id,
+                        'log_type': push_status_log.log_type,
+                        'command': push_status_log.command,
+                        'explanation': push_status_log.explanation or '',
+                        'output': push_status_log.output,
+                        'created_at': push_status_log.created_at.isoformat()
+                    })
+
                     # Build commit message
                     short_message = message[:100] + ('...' if len(message) > 100 else '')
                     commit_message = f"chore(chat): Changes from chat session - TKT-{ticket.id}\n\nUser request: {short_message}"
@@ -4982,6 +5341,13 @@ fi""",
                         github_owner=github_owner,
                         github_repo=github_repo,
                     )
+
+                    # Save refreshed credentials to DB after CLI work
+                    try:
+                        from factory.claude_code_utils import save_credentials_to_db
+                        save_credentials_to_db(workspace_id, user.id)
+                    except Exception:
+                        logger.warning("[CRED_DB] Post-commit credential save failed", exc_info=True)
 
                     if commit_result.get('status') == 'no_changes':
                         logger.info(f"[CLI_CHAT] No changes to commit (git diff clean)")
@@ -5048,8 +5414,24 @@ fi""",
                             ticket.github_merge_status = 'failed'
 
                         ticket.save(update_fields=['github_merge_status'])
-                    else:
-                        logger.warning(f"[CLI_CHAT] Auto-commit failed: {commit_result.get('message')}")
+                    elif commit_result.get('status') == 'error':
+                        error_msg = commit_result.get('message', 'unknown error')
+                        logger.warning(f"[CLI_CHAT] Auto-commit failed: {error_msg}")
+                        error_log = TicketLog.objects.create(
+                            ticket_id=ticket_id,
+                            log_type='command',
+                            command='Setup',
+                            explanation=f'GitHub push failed: {error_msg[:150]}',
+                            output=f'GitHub push failed: {error_msg[:150]}',
+                        )
+                        async_to_sync(async_send_ticket_log_notification)(ticket_id, {
+                            'id': error_log.id,
+                            'log_type': error_log.log_type,
+                            'command': error_log.command,
+                            'explanation': error_log.explanation or '',
+                            'output': error_log.output,
+                            'created_at': error_log.created_at.isoformat()
+                        })
                 else:
                     # Log exactly what's missing
                     missing = []
@@ -5747,15 +6129,23 @@ def continue_ticket_with_message(ticket_id: int, project_id: int, user_message: 
                 github_repo = indexed_repo.github_repo_name
 
                 if github_token and feature_branch:
+                    logger.info(f"[TICKET CHAT] Pushing changes to GitHub...")
                     commit_message = f"chore: User requested changes for ticket #{ticket_id}\n\n{user_message[:200]}"
                     commit_result = commit_and_push_changes(workspace_id, feature_branch, commit_message, ticket_id, stack=stack, github_token=github_token, github_owner=github_owner, github_repo=github_repo)
+
+                    # Save refreshed credentials to DB after CLI work
+                    try:
+                        from factory.claude_code_utils import save_credentials_to_db
+                        save_credentials_to_db(workspace_id, user.id)
+                    except Exception:
+                        logger.warning("[CRED_DB] Post-commit credential save failed", exc_info=True)
 
                     if commit_result['status'] == 'no_changes':
                         logger.info(f"[TICKET CHAT] No changes to commit (git diff clean)")
 
                     if commit_result['status'] == 'success':
                         commit_sha = commit_result.get('commit_sha')
-                        logger.info(f"[TICKET CHAT] ✓ Changes committed and pushed: {commit_sha}")
+                        logger.info(f"[TICKET CHAT] ✓ Changes pushed to GitHub: {commit_sha}")
 
                         # Save commit SHA to ticket
                         ticket.github_commit_sha = commit_sha
@@ -5875,6 +6265,13 @@ Status: ✓ Complete
             "workspace_id": workspace_id,
             "execution_time": f"{execution_time:.2f}s"
         }
+    finally:
+        # Always clear the AI processing flag — prevents stuck locks on crashes
+        try:
+            from django.core.cache import cache
+            cache.delete(f'ticket_ai_processing_{ticket_id}')
+        except Exception:
+            pass
 
 
 # ============================================================================
@@ -5972,41 +6369,25 @@ def execute_instant_app(instant_app_id: int) -> Dict[str, Any]:
         # 2b. Verify Claude auth (same as ticket flow)
         broadcast_instant_status(conversation_id, app_id_str, 'building', "Verifying Claude authentication...")
 
-        from factory.claude_code_utils import check_claude_auth_status
+        from factory.claude_code_utils import check_claude_auth_status, refresh_and_copy_credentials, load_credentials_from_db
+
+        # Try loading DB credentials before checking auth
+        load_credentials_from_db(user.id, workspace_id)
 
         auth_check = check_claude_auth_status(workspace_id)
         if not auth_check.get('authenticated'):
-            logger.warning(f"[INSTANT] Sandbox auth failed, attempting credential copy from {base_ws}...")
-            auth_recovered = False
-            try:
-                # Don't use check_claude_auth_status on base_ws — it deletes creds if expired.
-                # Instead, just try to read the credentials file directly and copy it over.
-                creds_result = run_command(base_ws, "cat ~/.claude/.credentials.json 2>/dev/null", timeout=15, with_node_env=False)
-                creds_content = creds_result.get('stdout', '').strip()
-                if creds_content and creds_result.get('exit_code') == 0:
-                    import json as _json
-                    _json.loads(creds_content)  # validate JSON
-                    logger.info(f"[INSTANT] Found credentials on {base_ws}, copying to {workspace_id}")
-                    import base64 as _b64
-                    creds_b64 = _b64.b64encode(creds_content.encode()).decode()
-                    write_cmd = f'mkdir -p ~/.claude && echo "{creds_b64}" | base64 -d > ~/.claude/.credentials.json'
-                    write_result = run_command(workspace_id, write_cmd, timeout=15, with_node_env=False)
-                    if write_result.get('exit_code') == 0:
-                        recheck = check_claude_auth_status(workspace_id)
-                        if recheck.get('authenticated'):
-                            logger.info(f"[INSTANT] Auth recovered after copying credentials from {base_ws}")
-                            auth_recovered = True
-                        else:
-                            logger.warning(f"[INSTANT] Auth still failing after credential copy: {recheck}")
-                else:
-                    logger.warning(f"[INSTANT] No credentials file on central workspace {base_ws}")
-            except Exception as auth_err:
-                logger.warning(f"[INSTANT] Error during auth recovery attempt: {auth_err}")
+            logger.warning(f"[INSTANT] Sandbox auth failed, refreshing credentials from {base_ws}...")
+            refresh_result = refresh_and_copy_credentials(base_ws, workspace_id, user_id=user.id)
+            auth_recovered = refresh_result.get('recovered', False)
 
             if not auth_recovered:
-                error_msg = "Claude Code authentication expired. Please reconnect in Settings > Claude Code."
-                profile.claude_code_authenticated = False
-                profile.save(update_fields=['claude_code_authenticated'])
+                base_expired = refresh_result.get('base_expired', False)
+                if base_expired:
+                    error_msg = "Claude Code OAuth token has expired. Please reconnect in Settings > Claude Code."
+                    profile.claude_code_authenticated = False
+                    profile.save(update_fields=['claude_code_authenticated'])
+                else:
+                    error_msg = "Claude Code authentication failed on sandbox. Please retry or reconnect in Settings."
 
                 broadcast_instant_status(conversation_id, app_id_str, 'error', error_msg)
                 raise RuntimeError(error_msg)
@@ -6029,11 +6410,11 @@ def execute_instant_app(instant_app_id: int) -> Dict[str, Any]:
 
 ## Instructions
 1. Create a new Next.js project: npx create-next-app@latest {project_dir} --typescript --tailwind --eslint --app --src-dir --import-alias "@/*" --use-npm --yes
-2. cd {MAGS_WORKING_DIR}/{project_dir}
+2. cd {MAGS_CLAUDE_HOME}/{project_dir}
 3. Install Drizzle ORM + SQLite: npm install drizzle-orm better-sqlite3 && npm install -D drizzle-kit @types/better-sqlite3
 4. Init shadcn/ui: npx shadcn@latest init -y -d
 5. Implement ALL the requirements above — create all pages, API routes, database schema (using Drizzle ORM), and UI components (using shadcn/ui + Tailwind CSS)
-6. Build and start the production server: cd {MAGS_WORKING_DIR}/{project_dir} && npm run build && npm start -p 8080 -H 0.0.0.0 > dev.log 2>&1 &
+6. Build and start the production server: cd {MAGS_CLAUDE_HOME}/{project_dir} && npm run build && npm start -p 8080 -H 0.0.0.0 > dev.log 2>&1 &
 
 IMPORTANT: You MUST build and start the production server as the final step. The app must be accessible on port 8080. Always redirect server output to dev.log so logs are accessible.
 """
@@ -6123,6 +6504,7 @@ IMPORTANT: You MUST build and start the production server as the final step. The
                 poll_callback=instant_poll_callback,
                 lfg_env=lfg_env,
                 project_dir=project_dir,
+                user_id=user.id,
             )
 
             session_id = cli_result.get("session_id")
@@ -6261,43 +6643,27 @@ def continue_instant_app(instant_app_id: int, feedback: str) -> Dict[str, Any]:
         workspace_id = sandbox.mags_workspace_id
 
         # Verify Claude auth before running CLI
-        from factory.claude_code_utils import check_claude_auth_status
+        from factory.claude_code_utils import check_claude_auth_status, refresh_and_copy_credentials, load_credentials_from_db
         from factory.mags import run_command, get_latest_claude_auth_workspace_id, workspace_name_for_claude_auth
+
+        # Try loading DB credentials before checking auth
+        load_credentials_from_db(user.id, workspace_id)
 
         auth_check = check_claude_auth_status(workspace_id)
         if not auth_check.get('authenticated'):
-            logger.warning(f"[INSTANT CONTINUE] Auth failed in {workspace_id}, attempting credential copy...")
             base_ws = get_latest_claude_auth_workspace_id(user.id) or workspace_name_for_claude_auth(user.id)
-            auth_recovered = False
-            try:
-                # Don't use check_claude_auth_status on base_ws — it deletes creds if expired.
-                # Instead, just read the credentials file directly and copy it.
-                creds_result = run_command(base_ws, "cat ~/.claude/.credentials.json 2>/dev/null", timeout=15, with_node_env=False)
-                creds_content = creds_result.get('stdout', '').strip()
-                if creds_content and creds_result.get('exit_code') == 0:
-                    import json as _json
-                    _json.loads(creds_content)
-                    logger.info(f"[INSTANT CONTINUE] Found credentials on {base_ws}, copying to {workspace_id}")
-                    import base64 as _b64
-                    creds_b64 = _b64.b64encode(creds_content.encode()).decode()
-                    write_cmd = f'mkdir -p ~/.claude && echo "{creds_b64}" | base64 -d > ~/.claude/.credentials.json'
-                    write_result = run_command(workspace_id, write_cmd, timeout=15, with_node_env=False)
-                    if write_result.get('exit_code') == 0:
-                        recheck = check_claude_auth_status(workspace_id)
-                        if recheck.get('authenticated'):
-                            logger.info(f"[INSTANT CONTINUE] Auth recovered from {base_ws}")
-                            auth_recovered = True
-                        else:
-                            logger.warning(f"[INSTANT CONTINUE] Auth still failing after credential copy: {recheck}")
-                else:
-                    logger.warning(f"[INSTANT CONTINUE] No credentials file on central workspace {base_ws}")
-            except Exception as auth_err:
-                logger.warning(f"[INSTANT CONTINUE] Auth recovery error: {auth_err}")
+            logger.warning(f"[INSTANT CONTINUE] Auth failed in {workspace_id}, refreshing credentials from {base_ws}...")
+            refresh_result = refresh_and_copy_credentials(base_ws, workspace_id, user_id=user.id)
+            auth_recovered = refresh_result.get('recovered', False)
 
             if not auth_recovered:
-                error_msg = "Claude Code authentication expired. Please reconnect in Settings > Claude Code."
-                profile.claude_code_authenticated = False
-                profile.save(update_fields=['claude_code_authenticated'])
+                base_expired = refresh_result.get('base_expired', False)
+                if base_expired:
+                    error_msg = "Claude Code OAuth token has expired. Please reconnect in Settings > Claude Code."
+                    profile.claude_code_authenticated = False
+                    profile.save(update_fields=['claude_code_authenticated'])
+                else:
+                    error_msg = "Claude Code authentication failed on sandbox. Please retry or reconnect in Settings."
                 broadcast_instant_status(conversation_id, app_id_str, 'error', error_msg)
                 raise RuntimeError(error_msg)
 
@@ -6315,9 +6681,9 @@ def continue_instant_app(instant_app_id: int, feedback: str) -> Dict[str, Any]:
 {feedback}
 
 ## Instructions
-1. Apply the requested changes to the existing project at {MAGS_WORKING_DIR}/{project_dir}
+1. Apply the requested changes to the existing project at {MAGS_CLAUDE_HOME}/{project_dir}
 2. Make sure the dev server is still running on port 8080 after changes
-3. If the server stopped, rebuild and restart it: cd {MAGS_WORKING_DIR}/{project_dir} && npm run build && npm start -p 8080 -H 0.0.0.0 > dev.log 2>&1 &
+3. If the server stopped, rebuild and restart it: cd {MAGS_CLAUDE_HOME}/{project_dir} && npm run build && npm start -p 8080 -H 0.0.0.0 > dev.log 2>&1 &
 """
         logger.info(f"[INSTANT CONTINUE] Prompt being sent to Claude CLI:\n{prompt}")
 
@@ -6385,6 +6751,7 @@ def continue_instant_app(instant_app_id: int, feedback: str) -> Dict[str, Any]:
             poll_callback=continue_poll_callback,
             lfg_env=lfg_env,
             project_dir=project_dir,
+            user_id=user.id,
         )
 
         # Update session ID if it changed

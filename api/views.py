@@ -755,7 +755,7 @@ class ProjectTicketViewSet(viewsets.ReadOnlyModelViewSet):
             logger.info(f"[TICKET CHAT] Saved user message as log {user_log.id}")
 
             # Set AI processing flag BEFORE queuing to prevent race conditions
-            cache.set(ai_processing_key, True, timeout=1800)  # 30 minutes
+            cache.set(ai_processing_key, True, timeout=900)  # 15 minutes (CLI timeout is 10min)
 
             # Check if user has CLI mode enabled
             from accounts.models import ApplicationState, Profile as AccountProfile
@@ -792,7 +792,7 @@ class ProjectTicketViewSet(viewsets.ReadOnlyModelViewSet):
                 _ticket_sandbox = Sandbox.objects.filter(
                     mags_workspace_id__startswith=f'{ticket.id}-',
                     workspace_type='ticket',
-                ).order_by('-updated_at').first()
+                ).exclude(status__in=['stopped', 'error']).order_by('-updated_at').first()
                 session_id = _ticket_sandbox.cli_session_id if _ticket_sandbox else None
 
                 def run_cli_chat():

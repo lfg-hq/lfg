@@ -1399,12 +1399,22 @@
                     <button type="button" class="drawer-server-btn" id="restartServerBtn" onclick="restartDevServer()">
                         Restart Server
                     </button>
-                    <button class="drawer-open-url-btn" onclick="openPreviewInNewTab()" id="openPreviewBtn" title="Preview not available yet" disabled>
-                        <i class="fas fa-arrow-up-right-from-square"></i>
-                    </button>
                     <button class="drawer-execute-btn" onclick="handleExecuteButtonClick()" id="executeTicketBtn">
                         <i class="fas fa-hammer"></i> Build Ticket
                     </button>
+                    <div class="drawer-more-menu" id="drawerMoreMenu">
+                        <button type="button" class="drawer-more-btn" onclick="toggleDrawerMoreMenu(event)" title="More actions">
+                            <i class="fas fa-ellipsis-v"></i>
+                        </button>
+                        <div class="drawer-more-dropdown" id="drawerMoreDropdown">
+                            <button class="drawer-more-item" onclick="openPreviewInNewTab(); closeDrawerMoreMenu();" id="openPreviewBtn" disabled>
+                                <i class="fas fa-arrow-up-right-from-square"></i> Open preview
+                            </button>
+                            <button class="drawer-more-item drawer-more-item--danger" id="discardChangesBtn" onclick="discardTicketChanges(); closeDrawerMoreMenu();" style="display:none;">
+                                <i class="fas fa-trash-alt"></i> Discard changes
+                            </button>
+                        </div>
+                    </div>
                 </div>
                 <button class="drawer-close" onclick="closeTicketDrawer()">
                     <i class="fas fa-times"></i>
@@ -4408,6 +4418,13 @@
                 }
             }
 
+            // Show/hide discard button based on whether ticket has work to discard
+            const discardBtn = document.getElementById('discardChangesBtn');
+            if (discardBtn) {
+                const hasWork = (ticket.status && ticket.status !== 'open') || ticket.github_branch || (ticket.queue_status && ticket.queue_status !== 'none');
+                discardBtn.style.display = hasWork ? '' : 'none';
+            }
+
             const drawer = document.getElementById('ticketDrawer');
             const overlay = document.getElementById('ticketDrawerOverlay');
             const title = document.getElementById('drawerTicketTitle');
@@ -4446,10 +4463,29 @@
             saveTicketState();
         }
 
+        function toggleDrawerMoreMenu(event) {
+            event.stopPropagation();
+            const dropdown = document.getElementById('drawerMoreDropdown');
+            const isOpen = dropdown.classList.contains('open');
+            if (isOpen) {
+                closeDrawerMoreMenu();
+            } else {
+                dropdown.classList.add('open');
+                // Close on outside click
+                setTimeout(() => document.addEventListener('click', closeDrawerMoreMenu, { once: true }), 0);
+            }
+        }
+
+        function closeDrawerMoreMenu() {
+            const dropdown = document.getElementById('drawerMoreDropdown');
+            if (dropdown) dropdown.classList.remove('open');
+        }
+
         function closeTicketDrawer() {
             // Disconnect WebSocket when closing drawer
             disconnectTicketLogsWebSocket();
             pendingLogs = [];
+            closeDrawerMoreMenu();
 
             const drawer = document.getElementById('ticketDrawer');
             const overlay = document.getElementById('ticketDrawerOverlay');
@@ -4503,6 +4539,73 @@
             } catch (error) {
                 console.error('Error canceling from queue:', error);
                 alert('Error removing ticket from queue');
+            }
+        }
+
+        async function discardTicketChanges() {
+            if (!currentTicket || !currentProjectId) return;
+            if (!confirm('Discard all changes for this ticket? This will delete the sandbox, archive the branch, and clear all logs. This cannot be undone.')) return;
+
+            const btn = document.getElementById('discardChangesBtn');
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Discarding...';
+            }
+
+            try {
+                const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+                const response = await fetch(`/projects/${currentProjectId}/api/tickets/${currentTicket.id}/discard-changes/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    }
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    // Update local ticket state
+                    currentTicket.status = 'open';
+                    currentTicket.queue_status = 'none';
+                    currentTicket.github_branch = '';
+
+                    // Update queue status UI
+                    updateQueueStatusUI(currentTicket.id, 'none');
+
+                    // Hide the discard button since ticket is now clean
+                    if (btn) btn.style.display = 'none';
+
+                    // Reset execute button
+                    const executeBtn = document.getElementById('executeTicketBtn');
+                    if (executeBtn) {
+                        executeBtn.disabled = false;
+                        executeBtn.innerHTML = '<i class="fas fa-hammer"></i> Build Ticket';
+                        executeBtn.classList.remove('stop-mode');
+                    }
+
+                    // Refresh drawer content
+                    loadTabContent(currentTab);
+
+                    if (typeof showNotification === 'function') {
+                        showNotification('Changes discarded. Ticket is ready to be re-executed.', 'success');
+                    } else {
+                        alert('Changes discarded. Ticket is ready to be re-executed.');
+                    }
+
+                    if (data.warnings && data.warnings.length > 0) {
+                        console.warn('Discard warnings:', data.warnings);
+                    }
+                } else {
+                    alert('Failed to discard: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error discarding changes:', error);
+                alert('Error discarding changes: ' + error.message);
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-trash-alt"></i> Discard';
+                }
             }
         }
 

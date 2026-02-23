@@ -1952,27 +1952,51 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     content=f"Sorry, I encountered an error: {e}",
                 )
 
-        # Send non-text user messages (questions, status updates)
+        # Send non-text user messages and final signal through the channel
+        # layer (NOT direct self.send) to preserve ordering with
+        # orchestrator_text chunks that also travel through the channel layer.
+        # Direct self.send() would race ahead of pending channel-layer
+        # messages, causing the frontend to close the streaming bubble
+        # before all text chunks arrive — splitting one message into two.
+        group = f"conversation_{self.conversation.id}" if self.conversation else None
+
         for msg in user_messages:
             msg_type = msg.get("type", "text")
             content = msg.get("content", "")
             if msg_type == "text":
                 continue  # Already streamed by agent via channel layer
+            if group:
+                await self.channel_layer.group_send(group, {
+                    "type": "agent_orchestrator_event",
+                    "chunk": content,
+                    "is_final": False,
+                    "is_notification": True,
+                    "notification_type": f"orchestrator_{msg_type}",
+                })
+            else:
+                await self.send(text_data=json.dumps({
+                    'type': 'ai_chunk',
+                    'chunk': content,
+                    'is_final': False,
+                    'is_notification': True,
+                    'notification_type': f'orchestrator_{msg_type}',
+                }))
+
+        # Final signal — must go through channel layer to arrive AFTER
+        # all orchestrator_text chunks (which also use the channel layer).
+        if group:
+            await self.channel_layer.group_send(group, {
+                "type": "agent_orchestrator_event",
+                "chunk": "",
+                "is_final": True,
+                "conversation_id": self.conversation.id,
+            })
+        else:
             await self.send(text_data=json.dumps({
                 'type': 'ai_chunk',
-                'chunk': content,
-                'is_final': False,
-                'is_notification': True,
-                'notification_type': f'orchestrator_{msg_type}',
+                'chunk': '',
+                'is_final': True,
             }))
-
-        # Final signal
-        await self.send(text_data=json.dumps({
-            'type': 'ai_chunk',
-            'chunk': '',
-            'is_final': True,
-            'conversation_id': self.conversation.id if self.conversation else None,
-        }))
 
     @database_sync_to_async
     def _get_active_orchestrator_run(self):

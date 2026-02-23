@@ -246,6 +246,16 @@ class Profile(models.Model):
         null=True,
         help_text="S3 key where Claude auth folder is backed up"
     )
+    claude_code_credentials = models.TextField(
+        blank=True,
+        null=True,
+        help_text="JSON blob of ~/.claude/.credentials.json"
+    )
+    claude_code_credentials_updated_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When credentials were last saved to DB"
+    )
     cli_api_key = models.CharField(
         max_length=64,
         blank=True,

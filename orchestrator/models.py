@@ -172,6 +172,8 @@ class AgentEvent(models.Model):
         ('project_ticket_completed', 'Project Ticket Completed'),
         ('project_ticket_failed', 'Project Ticket Failed'),
         ('project_ticket_blocked', 'Project Ticket Blocked'),
+        # Automated checks
+        ('preview_check_completed', 'Preview Check Completed'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

@@ -29,17 +29,57 @@ MAX_TOOL_ROUNDS = 20
 
 # Human-readable labels for tool-call notifications
 _TOOL_LABELS = {
+    # Orchestrator tools
     "triage_request": "Analyzing request",
     "knowledge_lookup": "Searching knowledge base",
     "check_pipeline_status": "Checking pipeline status",
     "create_plan": "Creating execution plan",
     "dispatch_ticket": "Dispatching ticket",
-    "get_ticket_details": "Looking up ticket details",
-    "get_project_dashboard": "Loading project dashboard",
     "lfg_file": "Creating document",
-    "ask_user": "Preparing question",
+    "ask_user": "Asking a question",
     "modify_plan": "Updating plan",
+    # Product tools — project state
+    "get_file_list": "Reading project files",
+    "get_file_content": "Reading file content",
+    "get_project_dashboard": "Loading project dashboard",
+    "set_project_stack": "Setting project stack",
+    # Product tools — documents
+    "create_prd": "Creating PRD",
+    "get_prd": "Reading PRD",
+    "create_implementation": "Creating implementation plan",
+    "get_implementation": "Reading implementation plan",
+    "extract_features": "Extracting features",
+    "extract_personas": "Extracting personas",
+    # Product tools — tickets
+    "create_tickets": "Creating tickets",
+    "get_pending_tickets": "Checking pending tickets",
+    "get_ticket_details": "Looking up ticket details",
+    "update_ticket": "Updating ticket",
+    "update_ticket_details": "Updating ticket details",
+    "update_all_tickets": "Updating tickets",
+    "queue_ticket_execution": "Queueing ticket execution",
+    "schedule_tickets": "Scheduling tickets",
+    "retry_ticket": "Retrying ticket",
+    "send_ticket_message": "Messaging ticket agent",
+    "get_ticket_execution_log": "Reading execution logs",
+    # Product tools — codebase
+    "search_existing_code": "Searching codebase",
+    "get_codebase_summary": "Reading codebase summary",
+    "ask_codebase": "Querying codebase",
+    # Product tools — research
+    "lookup_technology_specs": "Researching technology",
+    # Product tools — preview
+    "start_ticket_preview": "Starting ticket preview",
+    "check_ticket_preview": "Checking ticket preview",
+    # Product tools — environment & provisioning
+    "set_env_var": "Setting environment variable",
+    "provision_postgres_db": "Provisioning database",
+    "get_project_env_vars": "Checking environment variables",
+    "register_required_env_vars": "Registering required environment variables",
 }
+
+# Tools that should NOT show a tool activity indicator (internal/silent tools)
+_SILENT_TOOLS = {"respond_to_user"}
 
 
 class _LfgFileStreamTracker:
@@ -268,8 +308,8 @@ class OrchestratorAgent:
                 tool_args = json.loads(tc["function"]["arguments"])
 
                 # Notify the user that a tool is being executed
-                if channel_layer and ws_group:
-                    label = _TOOL_LABELS.get(tool_name, tool_name)
+                if channel_layer and ws_group and tool_name not in _SILENT_TOOLS:
+                    label = _TOOL_LABELS.get(tool_name, tool_name.replace("_", " ").title())
                     await channel_layer.group_send(ws_group, {
                         "type": "agent_orchestrator_event",
                         "chunk": "",
