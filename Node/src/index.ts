@@ -12,7 +12,10 @@ import filesApi from "./routes/api/files.ts";
 import settingsApi from "./routes/api/settings.ts";
 import ticketsApi from "./routes/api/tickets.ts";
 import conversationsApi from "./routes/api/conversations.ts";
+import { cliRouter } from "./routes/api/cli.ts";
+import claudeAuthApi from "./routes/api/claude-auth.ts";
 import { auth } from "./auth/index.ts";
+import { startTicketWorker } from "./workers/ticket-executor.ts";
 import { db } from "./config/db.ts";
 import { agentRoles, modelSelections } from "./db/schema/chat.ts";
 import { eq } from "drizzle-orm";
@@ -44,6 +47,8 @@ app.route("/api/files", filesApi);
 app.route("/api/settings", settingsApi);
 app.route("/api/projects", ticketsApi);
 app.route("/api/conversations", conversationsApi);
+app.route("/api/v1/cli", cliRouter);
+app.route("/api/v1/claude-auth", claudeAuthApi);
 
 // ── Django-compat stubs ──────────────────────────────────────────────
 // chat.js calls /accounts/agent-settings/ for turbo mode + role state
@@ -96,11 +101,18 @@ async function handleFetch(req: Request, server: import("bun").Server<WsData>): 
   return app.fetch(req);
 }
 
+// ── Start background workers ─────────────────────────────────────────
+startTicketWorker();
+
 // ── Start server ────────────────────────────────────────────────────
 console.log(`Starting LFG on port ${env.PORT} (${env.NODE_ENV})`);
 
 export default {
   port: env.PORT,
+
+  // Long-running endpoints (Mags VM provisioning, Claude CLI install) can take
+  // 60-300s. Disable Bun's default 10s idle timeout.
+  idleTimeout: 0,
 
   fetch: handleFetch,
 

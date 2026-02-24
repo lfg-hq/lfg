@@ -7,3 +7,4 @@ export * from "./documents.ts";
 export * from "./design.ts";
 export * from "./orchestrator.ts";
 export * from "./tokens.ts";
+export * from "./sandbox.ts";

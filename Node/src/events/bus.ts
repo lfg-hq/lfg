@@ -46,3 +46,24 @@ class AppEventBus {
 }
 
 export const bus = new AppEventBus();
+
+/**
+ * Convenience shorthand: emit an event using flat payload fields.
+ * Usage: emit({ type: "ticket.queued", ticketId: "...", projectId: "..." })
+ * The `type` field is extracted and the rest becomes the payload.
+ */
+export function emit(event: FlatEvent): void {
+  const { type, ...payload } = event;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  bus.emit({ type, payload } as any);
+}
+
+type FlatEvent =
+  | { type: "ticket.status_changed"; ticketId: string; status: string; message?: string }
+  | { type: "ticket.tasks_updated"; ticketId: string; taskIds: string[] }
+  | { type: "ticket.input_requested"; ticketId: string; question: string; options?: string[] }
+  | { type: "ticket.chat_message"; ticketId: string; message: string; sender: string }
+  | { type: "ticket.execution_started"; ticketId: string; sandboxId: string }
+  | { type: "ticket.execution_finished"; ticketId: string; status: "complete" | "failed"; durationMs?: number }
+  | { type: "ticket.queued"; ticketId: string; projectId: string; notes?: string }
+  | { type: "ticket.commented"; ticketId: string; projectId: string; message: string; logType: string };

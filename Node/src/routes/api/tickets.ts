@@ -2,7 +2,8 @@ import { Hono } from "hono";
 import { requireAuth } from "../../auth/middleware.ts";
 import { db } from "../../config/db.ts";
 import { projects } from "../../db/schema/projects.ts";
-import { ticketStages, projectTickets, ticketLogs } from "../../db/schema/tickets.ts";
+import { ticketStages, projectTickets, ticketLogs, projectTodoLists } from "../../db/schema/tickets.ts";
+import { sandboxes } from "../../db/schema/sandbox.ts";
 import { conversations } from "../../db/schema/chat.ts";
 import { eq, and, asc, desc } from "drizzle-orm";
 import type { auth } from "../../auth/index.ts";
@@ -256,6 +257,174 @@ ticketsApi.get("/:projectId/conversations/", async (c) => {
       updated_at: c.updatedAt,
     }))
   );
+});
+
+// ── GET /:projectId/tickets/:ticketId/logs ──────────────────────────
+// Returns ticket execution logs (command + ai_response + user_message)
+
+ticketsApi.get("/:projectId/tickets/:ticketId/logs", async (c) => {
+  const user = c.get("user");
+  const { projectId, ticketId } = c.req.param();
+
+  const project = await resolveProject(projectId, user.id);
+  if (!project) return c.json({ error: "Not found" }, 404);
+
+  const logs = await db
+    .select()
+    .from(ticketLogs)
+    .where(eq(ticketLogs.ticketId, ticketId))
+    .orderBy(ticketLogs.createdAt)
+    .limit(500);
+
+  return c.json(logs.map((l) => ({
+    id: l.id,
+    type: l.logType,
+    message: l.command,
+    explanation: l.explanation,
+    createdAt: l.createdAt,
+  })));
+});
+
+// ── GET /:projectId/tickets/:ticketId/tasks ─────────────────────────
+
+ticketsApi.get("/:projectId/tickets/:ticketId/tasks", async (c) => {
+  const user = c.get("user");
+  const { projectId, ticketId } = c.req.param();
+
+  const project = await resolveProject(projectId, user.id);
+  if (!project) return c.json({ error: "Not found" }, 404);
+
+  const tasks = await db
+    .select()
+    .from(projectTodoLists)
+    .where(eq(projectTodoLists.ticketId, ticketId))
+    .orderBy(projectTodoLists.order);
+
+  return c.json(tasks);
+});
+
+// ── POST /:projectId/tickets/:ticketId/chat ─────────────────────────
+// User sends a chat message to the ticket agent
+
+ticketsApi.post("/:projectId/tickets/:ticketId/chat", async (c) => {
+  const user = c.get("user");
+  const { projectId, ticketId } = c.req.param();
+
+  const project = await resolveProject(projectId, user.id);
+  if (!project) return c.json({ error: "Not found" }, 404);
+
+  const body = await c.req.json<{ message: string }>();
+  if (!body.message?.trim()) return c.json({ error: "message required" }, 400);
+
+  // Log user message
+  await db.insert(ticketLogs).values({
+    ticketId,
+    logType: "user_message",
+    command: body.message,
+  });
+
+  // Dispatch to executor
+  const { bus } = await import("../../events/bus.ts");
+  bus.emit({ type: "ticket.chat_message", payload: { ticketId, message: body.message, sender: "user" } });
+
+  return c.json({ ok: true });
+});
+
+// ── POST /:projectId/tickets/:ticketId/queue ────────────────────────
+// Queue a ticket for execution
+
+ticketsApi.post("/:projectId/tickets/:ticketId/queue", async (c) => {
+  const user = c.get("user");
+  const { projectId, ticketId } = c.req.param();
+
+  const project = await resolveProject(projectId, user.id);
+  if (!project) return c.json({ error: "Not found" }, 404);
+
+  const body = await c.req.json<{ notes?: string }>().catch(() => ({} as { notes?: string }));
+
+  const [ticket] = await db
+    .select()
+    .from(projectTickets)
+    .where(and(eq(projectTickets.id, ticketId), eq(projectTickets.projectId, project.id)))
+    .limit(1);
+
+  if (!ticket) return c.json({ error: "Ticket not found" }, 404);
+
+  await db
+    .update(projectTickets)
+    .set({ queueStatus: "queued", queuedAt: new Date(), updatedAt: new Date() })
+    .where(eq(projectTickets.id, ticketId));
+
+  const { bus } = await import("../../events/bus.ts");
+  bus.emit({ type: "ticket.queued", payload: { ticketId, projectId: project.id, notes: body.notes } });
+
+  return c.json({ ok: true });
+});
+
+// ── GET /:projectId/tickets/:ticketId/sandbox ───────────────────────
+// Get sandbox info (preview URL, status, branch)
+
+ticketsApi.get("/:projectId/tickets/:ticketId/sandbox", async (c) => {
+  const user = c.get("user");
+  const { projectId, ticketId } = c.req.param();
+
+  const project = await resolveProject(projectId, user.id);
+  if (!project) return c.json({ error: "Not found" }, 404);
+
+  const [sandbox] = await db
+    .select()
+    .from(sandboxes)
+    .where(and(eq(sandboxes.ticketId, ticketId), eq(sandboxes.workspaceType, "ticket")))
+    .limit(1);
+
+  if (!sandbox) return c.json(null);
+
+  return c.json({
+    id: sandbox.id,
+    status: sandbox.status,
+    previewUrl: sandbox.previewUrl,
+    previewPort: sandbox.previewPort,
+    currentBranch: sandbox.currentBranch,
+    techStack: sandbox.techStack,
+    cliSessionId: sandbox.cliSessionId ? "active" : null,
+  });
+});
+
+// ── POST /:projectId/tickets/:ticketId/preview ──────────────────────
+// Start/restart dev server
+
+ticketsApi.post("/:projectId/tickets/:ticketId/preview", async (c) => {
+  const user = c.get("user");
+  const { projectId, ticketId } = c.req.param();
+
+  const project = await resolveProject(projectId, user.id);
+  if (!project) return c.json({ error: "Not found" }, 404);
+
+  const [sandbox] = await db
+    .select()
+    .from(sandboxes)
+    .where(and(eq(sandboxes.ticketId, ticketId), eq(sandboxes.workspaceType, "ticket")))
+    .limit(1);
+
+  if (!sandbox) return c.json({ error: "No sandbox found for this ticket" }, 404);
+
+  const body = await c.req.json<{ action?: string }>().catch(() => ({} as { action?: string }));
+  const action = body.action ?? "start";
+
+  const { startDevServer, restartDevServer, stopDevServer } = await import("../../services/preview.ts");
+
+  try {
+    if (action === "stop") {
+      await stopDevServer(sandbox.id);
+      return c.json({ ok: true });
+    }
+    const result = action === "restart"
+      ? await restartDevServer(sandbox.id)
+      : await startDevServer(sandbox.id);
+    return c.json(result);
+  } catch (err) {
+    return c.json({ error: String(err) }, 500);
+  }
 });
 
 export default ticketsApi;

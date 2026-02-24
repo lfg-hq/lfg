@@ -2104,6 +2104,48 @@ body[data-theme="light"] {
     color: #94a3b8 !important;
 }
 
+/* Action Log Entries — light mode */
+[data-theme="light"] .log-entry.log-cmd .log-cmd-header:hover {
+    background: rgba(0, 0, 0, 0.03);
+}
+[data-theme="light"] .log-entry.log-cmd .log-cmd-text {
+    color: #334155;
+}
+[data-theme="light"] .log-entry.log-cmd .log-cmd-body {
+    color: #475569;
+}
+[data-theme="light"] .log-entry.log-cmd .log-chev {
+    color: rgba(0, 0, 0, 0.3);
+}
+[data-theme="light"] .log-entry.log-agent {
+    background: rgba(16, 185, 129, 0.04);
+    border-left-color: #10b981;
+}
+[data-theme="light"] .log-entry.log-agent .log-agent-content {
+    color: #1e293b;
+}
+[data-theme="light"] .log-entry.log-user {
+    background: rgba(139, 92, 246, 0.04);
+    border-left-color: #8b5cf6;
+}
+[data-theme="light"] .log-entry.log-user .log-user-content {
+    color: #1e293b;
+}
+[data-theme="light"] .log-time {
+    color: #94a3b8;
+}
+[data-theme="light"] .logs-chat-container {
+    background: rgba(255, 255, 255, 0.95);
+    border-top-color: rgba(0, 0, 0, 0.08);
+}
+[data-theme="light"] .logs-chat-field {
+    background: #f8fafc;
+    border-color: rgba(0, 0, 0, 0.12);
+}
+[data-theme="light"] .logs-chat-field input {
+    color: #1e293b;
+}
+
 /* Tasks List */
 [data-theme="light"] .task-item:hover {
     background: #f8fafc !important;

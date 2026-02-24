@@ -436,21 +436,7 @@
 
 /* Drawer Styles */
 .drawer-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: rgba(0, 0, 0, 0.5);
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.3s ease;
-    z-index: 1001;
-}
-
-.drawer-overlay.active {
-    opacity: 1;
-    pointer-events: all;
+    display: none;
 }
 
 .drawer {
@@ -1298,6 +1284,200 @@
     align-items: center;
     justify-content: center;
     padding: 3rem 1.5rem;
+    text-align: center;
+}
+
+/* ── Execution Logs Container ────────────────────────────────── */
+.execution-logs-container {
+    flex: 1;
+    overflow-y: auto;
+    padding-bottom: 70px;
+}
+
+/* ── Log Entries ─────────────────────────────────────────────── */
+.log-entry {
+    margin: 0;
+}
+
+/* Plain command/system row — collapsible, no border, no color (like Django) */
+.log-entry.log-cmd {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+.log-entry.log-cmd .log-cmd-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.log-entry.log-cmd .log-cmd-header:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+.log-entry.log-cmd .log-chev {
+    color: rgba(255, 255, 255, 0.3);
+    font-size: 0.6rem;
+    flex-shrink: 0;
+    transition: transform 0.15s;
+    width: 0.75rem;
+}
+.log-entry.log-cmd .log-cmd-text {
+    flex: 1;
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.65);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.4;
+}
+.log-entry.log-cmd .log-time {
+    color: rgba(255, 255, 255, 0.2);
+    font-size: 0.7rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.log-entry.log-cmd .log-cmd-body {
+    display: none;
+    padding: 0.25rem 1rem 0.75rem 2.25rem;
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 0.825rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* Agent response — green left border, always expanded (like Django) */
+.log-entry.log-agent {
+    border-left: 3px solid #34d399;
+    background: rgba(167, 139, 250, 0.03);
+    margin: 0.75rem 0;
+    padding: 0.75rem 1rem;
+    border-radius: 0 8px 8px 0;
+}
+.log-entry.log-agent .log-agent-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+.log-entry.log-agent .log-agent-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    background: rgba(167, 139, 250, 0.15);
+    color: #a78bfa;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.log-entry.log-agent .log-time {
+    color: rgba(255, 255, 255, 0.2);
+    font-size: 0.7rem;
+    margin-left: auto;
+}
+.log-entry.log-agent .log-agent-content {
+    color: #e2e8f0;
+    font-size: 0.875rem;
+    line-height: 1.65;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* User message — purple left border */
+.log-entry.log-user {
+    border-left: 3px solid #8B5CF6;
+    background: rgba(139, 92, 246, 0.05);
+    margin: 0.75rem 0;
+    padding: 0.75rem 1rem;
+    border-radius: 0 8px 8px 0;
+}
+.log-entry.log-user .log-user-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.35rem;
+}
+.log-entry.log-user .log-user-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    background: rgba(139, 92, 246, 0.15);
+    color: #c4b5fd;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.log-entry.log-user .log-time {
+    color: rgba(255, 255, 255, 0.2);
+    font-size: 0.7rem;
+    margin-left: auto;
+}
+.log-entry.log-user .log-user-content {
+    color: #e2e8f0;
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+/* ── Chat Input (fixed bottom) ───────────────────────────────── */
+.logs-chat-container {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 0.75rem 1rem;
+    background: rgba(20, 20, 20, 0.95);
+    backdrop-filter: blur(8px);
+}
+.logs-chat-field {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: rgba(17, 17, 17, 0.9);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 12px;
+    padding: 0.35rem 0.5rem 0.35rem 0.85rem;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+.logs-chat-field:focus-within {
+    border-color: rgba(139, 92, 246, 0.7);
+    box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.5);
+}
+.logs-chat-field input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: #e2e8f0;
+    font-size: 0.85rem;
+    outline: none;
+    padding: 0.25rem 0;
+}
+.logs-chat-field input::placeholder {
+    color: rgba(255, 255, 255, 0.3);
+}
+.logs-chat-send-btn {
+    width: 26px;
+    height: 26px;
+    background: radial-gradient(circle at 30% 30%, #c084fc, #7c3aed);
+    border: none;
+    border-radius: 50%;
+    color: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: opacity 0.15s;
+}
+.logs-chat-send-btn:hover {
+    opacity: 0.85;
+}
+
+/* Placeholder for empty logs */
+.log-placeholder {
+    padding: 2rem 1.25rem;
+    color: rgba(255, 255, 255, 0.3);
+    font-size: 0.825rem;
     text-align: center;
 }
 

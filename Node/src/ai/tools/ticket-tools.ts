@@ -234,16 +234,20 @@ export const retryTicket = tool({
 });
 
 export const sendTicketMessage = tool({
-  description: "Add a message/note to a ticket's log.",
+  description: "Send a message to the coding agent currently working on a ticket. If a Claude session is active, it resumes that session with the message. Otherwise it starts a new session with context.",
   inputSchema: zodSchema(z.object({
     ticketId: z.string(),
-    message: z.string(),
+    message: z.string().describe("The instruction or question to send to the ticket agent"),
   })),
   execute: async ({ ticketId, message }) => {
     const [row] = await db.select({ projectId: projectTickets.projectId }).from(projectTickets).where(eq(projectTickets.id, ticketId));
+    // Log the message first
     await db.insert(ticketLogs).values({ ticketId, logType: "user_message", command: message });
     emitTicketCommented({ ticketId, projectId: row?.projectId ?? "", message, logType: "user_message" });
-    return { success: true };
+    // Dispatch to ticket chat executor (picks up active session or starts new one)
+    const { bus } = await import("../../events/bus.ts");
+    bus.emit({ type: "ticket.chat_message", payload: { ticketId, message, sender: "orchestrator" } });
+    return { success: true, note: "Message dispatched to ticket agent" };
   },
 });
 

@@ -9,11 +9,22 @@ interface SettingsPageProps {
     xai: boolean;
     usePersonalKeys: boolean;
   };
+  claudeCode?: {
+    authenticated: boolean;
+    hasCredentials: boolean;
+    cliApiKey: string | null;
+  };
+  github?: {
+    connected: boolean;
+    username: string | null;
+    avatarUrl: string | null;
+  };
+  activeSection?: "llm-keys" | "integrations";
   error?: string;
   success?: string;
 }
 
-export function SettingsPage({ user, apiKeys, error, success }: SettingsPageProps) {
+export function SettingsPage({ user, apiKeys, claudeCode, github, activeSection = "llm-keys", error, success }: SettingsPageProps) {
   const avatarLetter = (user.name?.[0] ?? user.email?.[0] ?? "?").toUpperCase();
 
   return html`<!DOCTYPE html>
@@ -303,17 +314,303 @@ export function SettingsPage({ user, apiKeys, error, success }: SettingsPageProp
       <!-- Secondary nav -->
       <div class="settings-sidebar">
         <nav class="settings-nav">
-          <a href="/settings" class="settings-nav-item active">
+          <a href="/settings" class="settings-nav-item ${activeSection === "llm-keys" ? "active" : ""}">
             <i class="fas fa-key"></i> LLM Keys
           </a>
-          <a href="/settings/profile" class="settings-nav-item disabled">
-            <i class="fas fa-user"></i> Profile
+          <a href="/settings/integrations" class="settings-nav-item ${activeSection === "integrations" ? "active" : ""}">
+            <i class="fas fa-plug"></i> Integrations
           </a>
         </nav>
       </div>
 
       <!-- Content -->
       <div class="settings-content">
+
+      ${activeSection === "integrations" ? html`
+
+        <!-- Claude Code Card -->
+        <div class="llm-keys-table" style="margin-bottom:1.5rem;">
+          <div class="llm-keys-row" style="border-bottom:1px solid rgba(255,255,255,0.07);padding:1rem 1.375rem;justify-content:space-between;">
+            <h3 style="margin:0;font-size:0.9375rem;font-weight:700;color:var(--text-color,#f0f0f0);display:flex;align-items:center;gap:.5rem;">
+              <img src="/public/images/anthropic-logo.png" style="width:18px;height:18px;object-fit:contain;" />
+              Claude Code CLI
+            </h3>
+            ${claudeCode?.hasCredentials ? html`
+              <span style="font-size:.75rem;padding:.25rem .625rem;background:rgba(52,211,153,.1);color:#34d399;border:1px solid rgba(52,211,153,.25);border-radius:20px;">
+                <i class="fas fa-check-circle" style="margin-right:.25rem;"></i>Connected
+              </span>
+            ` : html`
+              <span style="font-size:.75rem;padding:.25rem .625rem;background:rgba(255,255,255,.06);color:rgba(255,255,255,.4);border:1px solid rgba(255,255,255,.1);border-radius:20px;">
+                Not connected
+              </span>
+            `}
+          </div>
+
+          <!-- Status + connect/disconnect -->
+          <div class="llm-keys-row" style="flex-direction:column;align-items:stretch;gap:1rem;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;">
+              <div>
+                <div class="byok-label">Authentication</div>
+                <div class="byok-desc">
+                  ${claudeCode?.hasCredentials
+                    ? "Your Claude credentials are stored. Ticket execution is enabled."
+                    : "Connect your Claude account to enable AI-powered ticket execution."}
+                </div>
+              </div>
+              <div style="display:flex;gap:.5rem;flex-shrink:0;">
+                ${claudeCode?.hasCredentials ? html`
+                  <button id="cc-disconnect-btn" onclick="claudeCodeDisconnect()"
+                    class="llm-btn-remove" style="border-radius:7px;border:1px solid rgba(239,68,68,0.3);padding:.45rem .875rem;">
+                    <i class="fas fa-unlink"></i>&nbsp; Disconnect
+                  </button>
+                ` : html`
+                  <button id="cc-connect-btn" onclick="claudeCodeStartAuth()"
+                    class="llm-btn-save" style="border-radius:7px;padding:.45rem .875rem;">
+                    <i class="fas fa-plug"></i>&nbsp; Connect Claude Code
+                  </button>
+                `}
+              </div>
+            </div>
+
+            <!-- OAuth Flow Panel (shown dynamically) -->
+            <div id="cc-flow-panel" style="display:none;border-top:1px solid rgba(255,255,255,.07);padding-top:1rem;">
+
+              <!-- Step 1: Provisioning -->
+              <div id="cc-step-provisioning" style="display:none;">
+                <div style="display:flex;align-items:center;gap:.75rem;color:rgba(255,255,255,.6);font-size:.875rem;">
+                  <div class="cc-spinner"></div>
+                  <span id="cc-provisioning-msg">Creating secure VM and installing Claude CLI…</span>
+                </div>
+              </div>
+
+              <!-- Step 2: OAuth URL -->
+              <div id="cc-step-oauth" style="display:none;">
+                <!-- Step 1: open link -->
+                <div style="display:flex;gap:.75rem;margin-bottom:1rem;align-items:flex-start;">
+                  <div style="flex-shrink:0;width:22px;height:22px;border-radius:50%;background:rgba(139,92,246,.25);border:1px solid rgba(139,92,246,.5);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;color:#c4b5fd;margin-top:1px;">1</div>
+                  <div style="flex:1;min-width:0;">
+                    <p style="font-size:.875rem;color:rgba(255,255,255,.75);margin:0 0 .5rem;">Open this link in your browser and sign in to Claude:</p>
+                    <div style="display:flex;gap:.5rem;align-items:center;">
+                      <div style="flex:1;min-width:0;display:flex;align-items:center;gap:.625rem;padding:.45rem .75rem;background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.25);border-radius:8px;overflow:hidden;">
+                        <i class="fas fa-link" style="color:#a78bfa;font-size:.7rem;flex-shrink:0;"></i>
+                        <a id="cc-oauth-url" href="#" target="_blank" rel="noopener"
+                          style="flex:1;min-width:0;color:#c4b5fd;font-size:.8rem;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;">
+                        </a>
+                      </div>
+                      <button onclick="copyOAuthUrl()" id="cc-copy-btn"
+                        style="flex-shrink:0;padding:.45rem .75rem;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:rgba(255,255,255,.6);cursor:pointer;font-size:.8rem;white-space:nowrap;transition:all .15s;">
+                        <i class="fas fa-copy"></i> Copy
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Step 2: paste code -->
+                <div style="display:flex;gap:.75rem;align-items:flex-start;">
+                  <div style="flex-shrink:0;width:22px;height:22px;border-radius:50%;background:rgba(139,92,246,.25);border:1px solid rgba(139,92,246,.5);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;color:#c4b5fd;margin-top:1px;">2</div>
+                  <div style="flex:1;min-width:0;">
+                    <p style="font-size:.875rem;color:rgba(255,255,255,.75);margin:0 0 .5rem;">Paste the authorization code you receive:</p>
+                    <div style="display:flex;gap:.5rem;">
+                      <input id="cc-code-input" type="text" placeholder="Paste authorization code…"
+                        style="flex:1;min-width:0;padding:.45rem .75rem;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--text-color,#f0f0f0);font-size:.875rem;outline:none;"
+                        onkeydown="if(event.key==='Enter') claudeCodeSubmitCode()" />
+                      <button onclick="claudeCodeSubmitCode()" id="cc-submit-btn"
+                        class="llm-btn-save" style="flex-shrink:0;border-radius:8px;padding:.45rem 1rem;white-space:nowrap;">
+                        Verify
+                      </button>
+                    </div>
+                    <div id="cc-code-error" style="display:none;margin-top:.4rem;font-size:.8rem;color:#f87171;"></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Step 3: Verifying -->
+              <div id="cc-step-verifying" style="display:none;">
+                <div style="display:flex;align-items:center;gap:.75rem;color:rgba(255,255,255,.6);font-size:.875rem;">
+                  <div class="cc-spinner"></div>
+                  <span>Verifying and saving credentials…</span>
+                </div>
+              </div>
+
+              <!-- Step 4: Done -->
+              <div id="cc-step-done" style="display:none;">
+                <div style="display:flex;align-items:center;gap:.75rem;color:#34d399;font-size:.875rem;">
+                  <i class="fas fa-check-circle" style="font-size:1.1rem;"></i>
+                  <span>Claude Code connected successfully! Reloading…</span>
+                </div>
+              </div>
+
+              <!-- Error state -->
+              <div id="cc-step-error" style="display:none;">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;">
+                  <div style="display:flex;align-items:center;gap:.6rem;color:#f87171;font-size:.875rem;">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <span id="cc-error-msg">Something went wrong.</span>
+                  </div>
+                  <button onclick="claudeCodeStartAuth()"
+                    style="padding:.4rem .75rem;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:rgba(255,255,255,.7);cursor:pointer;font-size:.8125rem;">
+                    Try again
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <style>
+          .cc-spinner {
+            width: 16px; height: 16px; border-radius: 50%;
+            border: 2px solid rgba(255,255,255,.15);
+            border-top-color: #a78bfa;
+            animation: cc-spin .7s linear infinite;
+            flex-shrink: 0;
+          }
+          @keyframes cc-spin { to { transform: rotate(360deg); } }
+        </style>
+        <script>
+          function ccShowStep(name) {
+            ['provisioning','oauth','verifying','done','error'].forEach(s => {
+              document.getElementById('cc-step-' + s).style.display = 'none';
+            });
+            if (name) document.getElementById('cc-step-' + name).style.display = 'block';
+            document.getElementById('cc-flow-panel').style.display = name ? 'block' : 'none';
+          }
+
+          async function claudeCodeStartAuth() {
+            const btn = document.getElementById('cc-connect-btn');
+            if (btn) { btn.disabled = true; btn.innerHTML = '<div class="cc-spinner" style="display:inline-block;margin-right:.4rem;"></div> Starting…'; }
+            ccShowStep('provisioning');
+
+            try {
+              const res = await fetch('/api/v1/claude-auth/start', { method: 'POST' });
+              const data = await res.json();
+
+              if (data.status === 'already_authenticated') {
+                ccShowStep('done');
+                setTimeout(() => location.reload(), 1500);
+                return;
+              }
+
+              if (data.status === 'pending' && data.oauthUrl) {
+                document.getElementById('cc-oauth-url').href = data.oauthUrl;
+                document.getElementById('cc-oauth-url').textContent = data.oauthUrl;
+                ccShowStep('oauth');
+                return;
+              }
+
+              ccShowStep('error');
+              document.getElementById('cc-error-msg').textContent = data.error || 'Failed to start authentication.';
+            } catch (err) {
+              ccShowStep('error');
+              document.getElementById('cc-error-msg').textContent = 'Network error: ' + err.message;
+            } finally {
+              if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-plug"></i>&nbsp; Connect Claude Code'; }
+            }
+          }
+
+          async function claudeCodeSubmitCode() {
+            const input = document.getElementById('cc-code-input');
+            const code = input.value.trim();
+            if (!code) {
+              document.getElementById('cc-code-error').textContent = 'Please paste the authorization code.';
+              document.getElementById('cc-code-error').style.display = 'block';
+              return;
+            }
+            document.getElementById('cc-code-error').style.display = 'none';
+            document.getElementById('cc-submit-btn').disabled = true;
+            ccShowStep('verifying');
+
+            try {
+              const res = await fetch('/api/v1/claude-auth/submit-code', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code }),
+              });
+              const data = await res.json();
+
+              if (data.status === 'success') {
+                ccShowStep('done');
+                setTimeout(() => location.reload(), 1500);
+              } else {
+                ccShowStep('oauth');
+                document.getElementById('cc-code-error').textContent = data.error || 'Verification failed.';
+                document.getElementById('cc-code-error').style.display = 'block';
+                document.getElementById('cc-submit-btn').disabled = false;
+              }
+            } catch (err) {
+              ccShowStep('error');
+              document.getElementById('cc-error-msg').textContent = 'Network error: ' + err.message;
+            }
+          }
+
+          async function claudeCodeDisconnect() {
+            if (!confirm('Disconnect Claude Code? This will remove your stored credentials.')) return;
+            const btn = document.getElementById('cc-disconnect-btn');
+            if (btn) { btn.disabled = true; btn.textContent = 'Disconnecting…'; }
+            try {
+              await fetch('/api/v1/claude-auth/disconnect', { method: 'POST' });
+              location.reload();
+            } catch {
+              if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-unlink"></i>&nbsp; Disconnect'; }
+            }
+          }
+
+          function copyOAuthUrl() {
+            const url = document.getElementById('cc-oauth-url').href;
+            navigator.clipboard.writeText(url).then(() => {
+              const btn = document.getElementById('cc-copy-btn');
+              if (btn) {
+                btn.innerHTML = '<i class="fas fa-check"></i> Copied';
+                btn.style.color = '#4ade80';
+                btn.style.borderColor = 'rgba(74,222,128,.3)';
+                setTimeout(() => {
+                  btn.innerHTML = '<i class="fas fa-copy"></i> Copy';
+                  btn.style.color = '';
+                  btn.style.borderColor = '';
+                }, 2000);
+              }
+            }).catch(() => {});
+          }
+        </script>
+
+        <!-- GitHub Card -->
+        <div class="llm-keys-table">
+          <div class="llm-keys-row" style="border-bottom:1px solid rgba(255,255,255,0.07);padding:1rem 1.375rem;">
+            <h3 style="margin:0;font-size:0.9375rem;font-weight:700;color:var(--text-color,#f0f0f0);">GitHub</h3>
+          </div>
+          <div class="llm-keys-row">
+            <div style="flex:1;display:flex;align-items:center;gap:.875rem;">
+              ${github?.avatarUrl ? html`<img src="${github.avatarUrl}" style="width:36px;height:36px;border-radius:50%;" />` : html`<div style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;"><i class="fab fa-github" style="font-size:1.25rem;color:rgba(255,255,255,.4);"></i></div>`}
+              <div>
+                <div class="byok-label" style="margin-bottom:.15rem;">
+                  ${github?.connected ? `Connected as @${github.username}` : "Not connected"}
+                </div>
+                <div class="byok-desc">Used for creating branches and pull requests during ticket execution.</div>
+              </div>
+            </div>
+            <div>
+              ${github?.connected ? html`
+                <div style="display:flex;align-items:center;gap:.5rem;">
+                  <span style="padding:.4rem .875rem;background:rgba(16,185,129,.1);color:#34d399;border:1px solid rgba(16,185,129,.25);border-radius:7px;font-size:.8125rem;">
+                    <i class="fas fa-check"></i> Connected
+                  </span>
+                  <form method="POST" action="/settings/github/disconnect" style="margin:0;">
+                    <button type="submit" style="padding:.4rem .75rem;background:rgba(239,68,68,.08);color:#f87171;border:1px solid rgba(239,68,68,.2);border-radius:7px;font-size:.75rem;cursor:pointer;">
+                      Disconnect
+                    </button>
+                  </form>
+                </div>
+              ` : html`
+                <a href="/accounts/github-connect" style="padding:.4rem .875rem;background:rgba(255,255,255,.07);color:rgba(255,255,255,.75);border:1px solid rgba(255,255,255,.12);border-radius:7px;font-size:.8125rem;text-decoration:none;display:inline-flex;align-items:center;gap:.4rem;">
+                  <i class="fab fa-github"></i> Connect GitHub
+                </a>
+              `}
+            </div>
+          </div>
+        </div>
+
+      ` : html`
 
         <!-- One large card containing heading + BYOK + all providers -->
         <div class="llm-keys-table">
@@ -422,6 +719,8 @@ export function SettingsPage({ user, apiKeys, error, success }: SettingsPageProp
           </div>
 
         </div><!-- /llm-keys-table -->
+
+      `}<!-- /activeSection conditional -->
       </div><!-- /settings-content -->
     </div><!-- /settings-wrapper -->
   </div><!-- /settings-main -->

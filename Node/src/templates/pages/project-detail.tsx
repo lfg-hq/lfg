@@ -57,6 +57,7 @@ export function ProjectDetailPage({
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${project.name} — LFG</title>
+  <script>(function(){if(localStorage.getItem('sidebarMinimized')==='true'){document.documentElement.classList.add('sidebar-minimized-preload');}})()</script>
   <link rel="stylesheet" href="/public/css/theme-variables.css" />
   <link rel="stylesheet" href="/public/css/common.css" />
   <link rel="stylesheet" href="/public/css/sidebar.css" />
@@ -115,7 +116,6 @@ export function ProjectDetailPage({
           <a href="/projects/${project.projectId}/tickets" class="nav-link">
             <i class="fas fa-tasks"></i>
             <span class="nav-text">Tickets</span>
-            ${totalTickets > 0 ? html`<span style="margin-left:auto;font-size:0.7rem;background:rgba(139,92,246,0.2);color:#a78bfa;padding:0.1rem 0.4rem;border-radius:9999px;">${totalTickets}</span>` : ""}
           </a>
         </div>
       </div>
@@ -185,7 +185,6 @@ export function ProjectDetailPage({
         </a>
         <a href="/projects/${project.projectId}/tickets" class="tab-item" style="display:flex;align-items:center;gap:0.5rem;padding:0.875rem 1.25rem;text-decoration:none;font-size:0.875rem;font-weight:500;color:var(--text-secondary);border-bottom:2px solid transparent;margin-bottom:-1px;transition:color 0.15s;">
           <i class="fas fa-tasks"></i> Tickets
-          ${totalTickets > 0 ? html`<span style="font-size:0.7rem;background:rgba(139,92,246,0.2);color:#a78bfa;padding:0.1rem 0.4rem;border-radius:9999px;">${totalTickets}</span>` : ""}
         </a>
         <a href="/projects/${project.projectId}?tab=environment" class="tab-item${activeTab === "environment" ? " active" : ""}" style="display:flex;align-items:center;gap:0.5rem;padding:0.875rem 1.25rem;text-decoration:none;font-size:0.875rem;font-weight:500;color:${activeTab === "environment" ? "var(--text-color)" : "var(--text-secondary)"};border-bottom:2px solid ${activeTab === "environment" ? "var(--primary-color)" : "transparent"};margin-bottom:-1px;transition:color 0.15s;">
           <i class="fas fa-key"></i> Environment
@@ -302,6 +301,7 @@ export function ProjectDetailPage({
   </div>
 
   <script src="/public/js/sidebar.js"></script>
+  <script>requestAnimationFrame(()=>requestAnimationFrame(()=>document.documentElement.classList.remove('sidebar-minimized-preload')));</script>
 
 </body>
 </html>`;

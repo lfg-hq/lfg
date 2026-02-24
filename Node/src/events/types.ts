@@ -7,7 +7,12 @@ export type TicketEventType =
   | "ticket.updated"
   | "ticket.status_changed"
   | "ticket.queued"
-  | "ticket.commented";
+  | "ticket.commented"
+  | "ticket.tasks_updated"
+  | "ticket.input_requested"
+  | "ticket.chat_message"
+  | "ticket.execution_started"
+  | "ticket.execution_finished";
 
 export type DocumentEventType =
   | "document.created"      // PRD or implementation created
@@ -95,9 +100,14 @@ export interface AgentRunPayload {
 export type AppEvent =
   | { type: "ticket.created"; payload: TicketCreatedPayload }
   | { type: "ticket.updated"; payload: TicketUpdatedPayload }
-  | { type: "ticket.status_changed"; payload: TicketStatusChangedPayload }
+  | { type: "ticket.status_changed"; payload: TicketStatusChangedPayload & { message?: string } }
   | { type: "ticket.queued"; payload: TicketQueuedPayload }
   | { type: "ticket.commented"; payload: TicketCommentedPayload }
+  | { type: "ticket.tasks_updated"; payload: { ticketId: string; taskIds: string[] } }
+  | { type: "ticket.input_requested"; payload: { ticketId: string; question: string; options?: string[] } }
+  | { type: "ticket.chat_message"; payload: { ticketId: string; message: string; sender: string } }
+  | { type: "ticket.execution_started"; payload: { ticketId: string; sandboxId: string } }
+  | { type: "ticket.execution_finished"; payload: { ticketId: string; status: "complete" | "failed"; durationMs?: number } }
   | { type: "document.created"; payload: DocumentCreatedPayload }
   | { type: "document.updated"; payload: DocumentUpdatedPayload }
   | { type: "document.file_created"; payload: DocumentCreatedPayload }

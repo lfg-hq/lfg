@@ -1241,7 +1241,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             // First fetch the list of PRDs
-            const listUrl = `/projects/${projectId}/api/prd/?list=1`;
+            const listUrl = `/projects/${projectId}/api/prd?list=1`;
             
             fetch(listUrl)
                 .then(response => response.json())
@@ -1290,7 +1290,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     
                     // Now fetch the specific PRD content
-                    const url = `/projects/${projectId}/api/prd/?prd_name=${encodeURIComponent(prdName || 'Main PRD')}`;
+                    const url = `/projects/${projectId}/api/prd?prd_name=${encodeURIComponent(prdName || 'Main PRD')}`;
                     
                     return fetch(url);
                 })
@@ -1431,7 +1431,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             const prdNameToDelete = this.getAttribute('data-prd-name');
                             if (confirm(`Are you sure you want to delete the PRD "${prdNameToDelete}"?`)) {
                                 // Delete the PRD
-                                fetch(`/projects/${projectId}/api/prd/?prd_name=${encodeURIComponent(prdNameToDelete)}`, {
+                                fetch(`/projects/${projectId}/api/prd?prd_name=${encodeURIComponent(prdNameToDelete)}`, {
                                     method: 'DELETE',
                                     headers: {
                                         'X-CSRFToken': getCsrfToken()
@@ -7296,7 +7296,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     cancelButton.innerHTML = '<i class="fas fa-times"></i> Cancel';
                     cancelButton.title = 'Cancel editing';
                     cancelButton.addEventListener('click', () => cancelEditMode());
-                    if (viewerActions) viewerActions.appendChild(cancelButton);
+                    const viewerActionsForCancel = document.getElementById('viewer-actions');
+                    if (viewerActionsForCancel) viewerActionsForCancel.appendChild(cancelButton);
                 }
                 
                 saveButton.style.display = 'inline-block';
@@ -7845,18 +7846,18 @@ document.addEventListener('DOMContentLoaded', function() {
                     let url, method, body;
                     
                     if (type === 'prd') {
-                        url = `/projects/${projectId}/api/prd/?prd_name=${encodeURIComponent(fileName)}`;
+                        url = `/projects/${projectId}/api/prd?prd_name=${encodeURIComponent(fileName)}`;
                         method = 'POST';
                         body = JSON.stringify({ content: content });
                     } else if (type === 'implementation') {
-                        url = `/projects/${projectId}/api/implementation/`;
+                        url = `/projects/${projectId}/api/implementation`;
                         method = 'POST';
                         body = JSON.stringify({ content: content });
                     } else {
                         // For other file types, use the generic files API
                         // The type should match the file_type in the model (e.g., 'design', 'test', 'other')
                         const fileType = type || 'other';
-                        url = `/projects/${projectId}/api/files/?type=${fileType}&name=${encodeURIComponent(fileName)}`;
+                        url = `/projects/${projectId}/api/files?type=${fileType}&name=${encodeURIComponent(fileName)}`;
                         method = 'POST';
                         body = JSON.stringify({ content: content });
                     }
@@ -8038,7 +8039,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 
                 try {
-                    const response = await fetch(`/projects/${projectId}/api/files/${fileId}/versions/`, {
+                    const response = await fetch(`/projects/${projectId}/api/files/${fileId}/versions`, {
                         method: 'GET',
                         headers: {
                             'Content-Type': 'application/json',
@@ -8089,7 +8090,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const fileVersions = [...versions]; // Create a copy to avoid reference issues
                 
                 fileVersions.forEach(version => {
-                    const versionDate = new Date(version.created_at);
+                    const versionDate = new Date(version.createdAt);
                     const dateStr = versionDate.toDateString();
                     let groupLabel;
                     
@@ -8128,37 +8129,37 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <div class="version-date-group">
                                     <div class="version-date-label">${date}</div>
                                     ${dateVersions.map(version => {
-                                        const versionDate = new Date(version.created_at);
-                                        const timeStr = versionDate.toLocaleTimeString('en-US', { 
-                                            hour: 'numeric', 
+                                        const versionDate = new Date(version.createdAt);
+                                        const timeStr = versionDate.toLocaleTimeString('en-US', {
+                                            hour: 'numeric',
                                             minute: '2-digit',
-                                            hour12: true 
+                                            hour12: true
                                         });
-                                        const isCurrentVersion = version.version_number === fileVersions[0].version_number;
-                                        
+                                        const isCurrentVersion = version.versionNumber === fileVersions[0].versionNumber;
+
                                         return `
-                                            <div class="version-item ${isCurrentVersion ? 'current-version' : ''}" 
-                                                 onclick="selectVersion(${fileId}, ${version.version_number}, this)">
+                                            <div class="version-item ${isCurrentVersion ? 'current-version' : ''}"
+                                                 onclick="selectVersion(${fileId}, ${version.versionNumber}, this)">
                                                 <div class="version-item-content">
                                                     <div class="version-item-header">
                                                         <span class="version-time">${timeStr}</span>
                                                         ${isCurrentVersion ? '<span class="current-badge">Current</span>' : ''}
                                                     </div>
                                                     <div class="version-item-info">
-                                                        <span class="version-number">Version ${version.version_number}</span>
-                                                        ${version.created_by ? `<span class="version-author">${version.created_by}</span>` : ''}
+                                                        <span class="version-number">Version ${version.versionNumber}</span>
+                                                        ${version.createdById ? `<span class="version-author">${version.createdById}</span>` : ''}
                                                     </div>
-                                                    ${version.change_description ? 
-                                                        `<div class="version-description">${version.change_description}</div>` : ''}
+                                                    ${version.changeDescription ?
+                                                        `<div class="version-description">${version.changeDescription}</div>` : ''}
                                                 </div>
                                                 <div class="version-item-actions">
-                                                    <button class="btn btn-ghost btn-sm" title="View this version" 
-                                                            onclick="event.stopPropagation(); viewVersion(${fileId}, ${version.version_number})">
+                                                    <button class="btn btn-ghost btn-sm" title="View this version"
+                                                            onclick="event.stopPropagation(); viewVersion(${fileId}, ${version.versionNumber})">
                                                         <i class="fas fa-eye"></i>
                                                     </button>
                                                     ${!isCurrentVersion ? `
-                                                        <button class="btn btn-ghost btn-sm" title="Restore this version" 
-                                                                onclick="event.stopPropagation(); restoreVersion(${fileId}, ${version.version_number}, '${fileName.replace(/'/g, "\\'")}')">  
+                                                        <button class="btn btn-ghost btn-sm" title="Restore this version"
+                                                                onclick="event.stopPropagation(); restoreVersion(${fileId}, ${version.versionNumber}, '${fileName.replace(/'/g, "\\'")}')">
                                                             <i class="fas fa-undo"></i>
                                                         </button>
                                                     ` : ''}
@@ -8457,7 +8458,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (!projectId || !fileId) return;
                 
                 try {
-                    const response = await fetch(`/projects/${projectId}/api/files/${fileId}/versions/${versionNumber}/`, {
+                    const response = await fetch(`/projects/${projectId}/api/files/${fileId}/versions/${versionNumber}`, {
                         method: 'GET',
                         headers: {
                             'Content-Type': 'application/json',
@@ -8487,7 +8488,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             align-items: center;
                         `;
                         versionNotice.innerHTML = `
-                            <span><i class="fas fa-info-circle"></i> Viewing version ${versionNumber} from ${new Date(data.created_at).toLocaleDateString()}</span>
+                            <span><i class="fas fa-info-circle"></i> Viewing version ${versionNumber} from ${new Date(data.version.createdAt).toLocaleDateString()}</span>
                             <button id="close-version-view" style="background: #8b5cf6; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">
                                 Back to Current
                             </button>
@@ -8499,9 +8500,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         
                         const contentDiv = document.createElement('div');
                         if (typeof marked !== 'undefined') {
-                            contentDiv.innerHTML = marked.parse(data.content);
+                            contentDiv.innerHTML = marked.parse(data.version.content);
                         } else {
-                            contentDiv.innerHTML = data.content.replace(/\n/g, '<br>');
+                            contentDiv.innerHTML = data.version.content.replace(/\n/g, '<br>');
                         }
                         viewerMarkdown.appendChild(contentDiv);
                         
@@ -8526,7 +8527,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (!projectId || !fileId) return;
                 
                 try {
-                    const response = await fetch(`/projects/${projectId}/api/files/${fileId}/versions/${versionNumber}/`, {
+                    const response = await fetch(`/projects/${projectId}/api/files/${fileId}/versions/${versionNumber}/restore`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -8573,11 +8574,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     fileId: fileId,
                     fileName: fileName,
                     fileType: fileType,
-                    url: `/projects/${projectId}/api/files/?type=${fileType}&name=${encodeURIComponent(fileName)}`
+                    url: `/projects/${projectId}/api/files?type=${fileType}&name=${encodeURIComponent(fileName)}`
                 });
-                
+
                 // Use the unified files API with query parameters
-                fetch(`/projects/${projectId}/api/files/?type=${fileType}&name=${encodeURIComponent(fileName)}`, {
+                fetch(`/projects/${projectId}/api/files?type=${fileType}&name=${encodeURIComponent(fileName)}`, {
                     method: 'DELETE',
                     headers: {
                         'Content-Type': 'application/json',

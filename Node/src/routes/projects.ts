@@ -239,6 +239,66 @@ projectsRouter.get("/projects/:projectId/tickets", async (c) => {
   );
 });
 
+// ── DELETE /projects/:projectId/api/checklist/:ticketId/delete ───────
+projectsRouter.delete("/projects/:projectId/api/checklist/:ticketId/delete", async (c) => {
+  const user = c.get("user");
+  const { projectId, ticketId } = c.req.param();
+
+  const [project] = await db
+    .select()
+    .from(projects)
+    .where(and(eq(projects.projectId, projectId!), eq(projects.ownerId, user.id)));
+
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
+  const result = await db.delete(projectTickets).where(
+    and(eq(projectTickets.id, ticketId!), eq(projectTickets.projectId, project.id))
+  );
+
+  return c.json({ success: true, deleted: 1 });
+});
+
+// ── PATCH /projects/:projectId/api/checklist/:ticketId/stage — move ticket between stages
+projectsRouter.patch("/projects/:projectId/api/checklist/:ticketId/stage", async (c) => {
+  const user = c.get("user");
+  const { projectId, ticketId } = c.req.param();
+  const { stageId } = await c.req.json();
+
+  const [project] = await db
+    .select()
+    .from(projects)
+    .where(and(eq(projects.projectId, projectId!), eq(projects.ownerId, user.id)));
+
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
+  await db.update(projectTickets).set({ stageId, updatedAt: new Date() }).where(
+    and(eq(projectTickets.id, ticketId!), eq(projectTickets.projectId, project.id))
+  );
+
+  return c.json({ success: true });
+});
+
+// ── GET /projects/:projectId/api/checklist/:ticketId — get single ticket
+projectsRouter.get("/projects/:projectId/api/checklist/:ticketId", async (c) => {
+  const user = c.get("user");
+  const { projectId, ticketId } = c.req.param();
+
+  const [project] = await db
+    .select()
+    .from(projects)
+    .where(and(eq(projects.projectId, projectId!), eq(projects.ownerId, user.id)));
+
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
+  const [ticket] = await db.select().from(projectTickets).where(
+    and(eq(projectTickets.id, ticketId!), eq(projectTickets.projectId, project.id))
+  );
+
+  if (!ticket) return c.json({ error: "Ticket not found" }, 404);
+
+  return c.json({ ticket });
+});
+
 // ── Compat: GET /projects/:projectId/api/checklist ──────────────────
 // artifacts-loader.js (Django-era) fetches this URL for the Task List tab.
 // We return project tickets in a compatible format.
@@ -477,6 +537,21 @@ projectsRouter.get("/projects/:projectId/api/files/:fileId/versions", async (c) 
   return c.json({ versions });
 });
 
+// ── GET /projects/:projectId/api/files/:fileId/versions/:versionNumber — fetch single version content
+projectsRouter.get("/projects/:projectId/api/files/:fileId/versions/:versionNumber", async (c) => {
+  const { fileId, versionNumber } = c.req.param();
+
+  const [version] = await db
+    .select()
+    .from(projectFileVersions)
+    .where(and(eq(projectFileVersions.fileId, fileId!), eq(projectFileVersions.versionNumber, Number(versionNumber))));
+
+  if (!version) return c.json({ success: false, error: "Version not found" }, 404);
+
+  const content = await getContent(null, version.content);
+  return c.json({ success: true, version: { ...version, content } });
+});
+
 // ── POST /projects/:projectId/api/files/:fileId/versions/:versionId/restore
 projectsRouter.post("/projects/:projectId/api/files/:fileId/versions/:versionNumber/restore", async (c) => {
   const user = c.get("user");
@@ -492,11 +567,15 @@ projectsRouter.post("/projects/:projectId/api/files/:fileId/versions/:versionNum
   const [file] = await db.select().from(projectFiles).where(eq(projectFiles.id, fileId!));
   if (!file) return c.json({ error: "File not found" }, 404);
 
-  // Snapshot current content as new version before restoring
-  await saveVersion(fileId!, file.content ?? "", user.id);
-  await db.update(projectFiles).set({ content: version.content, updatedAt: new Date() }).where(eq(projectFiles.id, fileId!));
+  // Snapshot current content before restoring
+  const currentContent = await getContent(file.s3Key, file.content);
+  await saveVersion(fileId!, currentContent, user.id);
 
-  return c.json({ success: true, restoredVersion: version.versionNumber });
+  // Save restored content (respects S3 if enabled)
+  const { s3Key: newKey, dbContent: newContent } = await saveContent(file.projectId, file.fileType, file.name, version.content ?? "");
+  await db.update(projectFiles).set({ content: newContent, s3Key: newKey, updatedAt: new Date() }).where(eq(projectFiles.id, fileId!));
+
+  return c.json({ success: true, restoredVersion: version.versionNumber, message: `Restored to version ${version.versionNumber}` });
 });
 
 export default projectsRouter;

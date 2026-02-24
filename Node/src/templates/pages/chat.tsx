@@ -31,6 +31,7 @@ export function ChatPage({
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${projectName} — LFG</title>
+  <script>(function(){if(localStorage.getItem('sidebarMinimized')==='true'){document.documentElement.classList.add('sidebar-minimized-preload');}})()</script>
   <link rel="stylesheet" href="/public/css/theme-variables.css" />
   <link rel="stylesheet" href="/public/css/common.css" />
   <link rel="stylesheet" href="/public/css/sidebar.css" />
@@ -387,6 +388,7 @@ export function ChatPage({
     });
 
     // Artifacts panel toggle is handled by artifacts.js (uses #artifacts-toggle and #resize-handle)
+    requestAnimationFrame(()=>requestAnimationFrame(()=>document.documentElement.classList.remove('sidebar-minimized-preload')));
   </script>
 </body>
 </html>`;
